@@ -14,3 +14,33 @@ chroma_db/
 
 # macOS
 .DS_Store
+
+# Node
+node_modules/
+
+# Application database (lives outside the repo by default; ignored in case
+# APP_DB_PATH is ever pointed in here). SQLite WAL sidecars must never sync.
+*.db
+*.db-wal
+*.db-shm
+
+# Generated lesson plans — the .docx output dir. Rebuildable from plans.plan_json.
+plans/
+
+# Scratch. temp/ is no longer a store as of the 2026-08-04 refactor; kept
+# ignored so any stragglers don't get committed.
+temp/
+
+# Stray CLI output at the repo root
+/Lesson_Plan.docx
+
+# Redundant duplicate of source_docs/ that still contains the AI-contaminated
+# act-english-standards.md (byte-identical to source_docs/quarantine/…
+# CONTAMINATED.md). Not parsed by anything. Left untracked deliberately so the
+# quarantine decision in source_docs/SPOT_CHECK_step1.md isn't undone by a
+# commit. Delete it once confirmed it holds nothing unique.
+AP_LANG_RAG/
+
+# Drifted local copy of the build-lesson-plan skill. The canonical one lives at
+# Iris_OS/Skills/build-lesson-plan/ and is what BUILDER_PATH points to.
+build-lesson-plan/
