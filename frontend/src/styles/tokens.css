@@ -1,0 +1,181 @@
+/* ============================================================================
+   Design tokens — academic / editorial
+   ----------------------------------------------------------------------------
+   Warm unbleached paper, ink text, one restrained accent (claret — the colour of
+   a marking pencil, not of pottery). The district's own blue is a SECOND,
+   strictly functional hue: it appears only inside the artifact table, so the
+   on-screen preview reads as the .docx it produces.
+
+   Replaces a 12-variable set in which --border-light and --bg-muted were used
+   seven times and never defined — which is why the artifact cards had no
+   borders. Everything used is declared here.
+
+   useTheme resolves "system" via matchMedia and always writes a concrete
+   data-theme="light|dark" onto <html>, so the dark values need exactly one
+   selector below rather than being duplicated across a media query.
+   ========================================================================= */
+
+:root {
+  color-scheme: light dark;
+
+  /* ── type ──────────────────────────────────────────────────────────────── */
+  --font-display: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
+  --font-ui: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-md: 0.9375rem;
+  --fs-base: 1rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.375rem;
+
+  --lh-tight: 1.18;
+  --lh-snug: 1.35;
+  --lh-normal: 1.55;
+  --lh-relaxed: 1.7;
+
+  --tracking-caps: 0.08em;
+  --tracking-tight: -0.011em;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* ── space (4px base) ──────────────────────────────────────────────────── */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 1.5rem;
+  --sp-8: 2rem;
+  --sp-10: 2.5rem;
+  --sp-12: 3rem;
+  --sp-16: 4rem;
+
+  /* ── radii ─────────────────────────────────────────────────────────────── */
+  --r-xs: 2px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-full: 999px;
+
+  /* ── motion ────────────────────────────────────────────────────────────── */
+  --t-fast: 120ms;
+  --t-base: 200ms;
+  --t-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── layout ────────────────────────────────────────────────────────────── */
+  --sidebar-w: 264px;
+  --artifact-w: clamp(460px, 46vw, 900px);
+  --measure: 68ch;
+  --topbar-h: 52px;
+
+  /* ── LIGHT ─────────────────────────────────────────────────────────────── */
+  --paper-canvas: #fbf8f1;
+  --paper-raised: #fffdf8;
+  --paper-sunken: #f3eee2;
+  --paper-sunken-2: #eae3d3;
+  --paper-user-msg: #f0eadc;
+
+  --ink-strong: #1b1815;
+  --ink: #2c2822;
+  --ink-soft: #57503f;
+  --ink-muted: #7c7361;
+  --ink-faint: #a79c86;
+
+  --rule: #ded5c1;
+  --rule-strong: #c6baa0;
+  --rule-hair: rgba(27, 24, 21, 0.07);
+
+  --accent: #8a3033;
+  --accent-hover: #6f2629;
+  --accent-active: #591e21;
+  --accent-tint: #f6e9e6;
+  --accent-tint-2: #efd8d4;
+  --accent-on: #fffdf8;
+  --accent-ring: rgba(138, 48, 51, 0.32);
+
+  --danger: #a32b23;
+  --danger-tint: #f8e7e4;
+  --warn: #8a5d0f;
+  --warn-tint: #f8eeda;
+  --ok: #2f6b48;
+  --ok-tint: #e4f0e8;
+  --info: #2a5480;
+  --info-tint: #e5edf6;
+
+  /* The district DOCX palette. Scoped to the artifact table ONLY — these are
+     the literal values in build_lesson_plan.py (BLUE = 6d9eeb). */
+  --district-blue: #6d9eeb;
+  --district-blue-soft: #cfe2f3;
+  --district-ink: #10131a;
+  --district-cell: #ffffff;
+
+  /* Warm-tinted shadows. Neutral black on paper reads as dirt. */
+  --shadow-xs: 0 1px 2px rgba(59, 44, 24, 0.05);
+  --shadow-sm: 0 1px 3px rgba(59, 44, 24, 0.07), 0 1px 2px rgba(59, 44, 24, 0.04);
+  --shadow-md: 0 4px 12px rgba(59, 44, 24, 0.08), 0 1px 3px rgba(59, 44, 24, 0.05);
+  --shadow-lg: 0 16px 40px rgba(59, 44, 24, 0.14), 0 2px 8px rgba(59, 44, 24, 0.06);
+  --shadow-panel: -8px 0 24px rgba(59, 44, 24, 0.06);
+
+  --focus-ring: 0 0 0 2px var(--paper-canvas), 0 0 0 4px var(--accent-ring);
+}
+
+/* ── DARK ────────────────────────────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  --paper-canvas: #14130f;
+  --paper-raised: #1d1b16;
+  --paper-sunken: #100f0c;
+  --paper-sunken-2: #282419;
+  --paper-user-msg: #262218;
+
+  --ink-strong: #f5f0e4;
+  --ink: #e7e0d0;
+  --ink-soft: #bfb6a1;
+  --ink-muted: #948b78;
+  --ink-faint: #6b6455;
+
+  --rule: #322d24;
+  --rule-strong: #4a4234;
+  --rule-hair: rgba(245, 240, 228, 0.08);
+
+  /* Lifted for AA contrast on dark paper — #8A3033 fails there. */
+  --accent: #d98a86;
+  --accent-hover: #e6a19d;
+  --accent-active: #f0b5b1;
+  --accent-tint: #2a1c1b;
+  --accent-tint-2: #3b2624;
+  --accent-on: #1a1210;
+  --accent-ring: rgba(217, 138, 134, 0.4);
+
+  --danger: #e98a80;
+  --danger-tint: #2e1a17;
+  --warn: #d9ae5f;
+  --warn-tint: #2c2214;
+  --ok: #7fbe97;
+  --ok-tint: #16251c;
+  --info: #8fb4dd;
+  --info-tint: #16202c;
+
+  /* The artifact table stays a light document even in dark mode — it is a
+     preview of a printed page, and inverting it would misrepresent the file. */
+  --district-blue: #6d9eeb;
+  --district-blue-soft: #cfe2f3;
+  --district-ink: #10131a;
+  --district-cell: #ffffff;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-panel: -8px 0 24px rgba(0, 0, 0, 0.4);
+}

@@ -126,6 +126,63 @@ def rewrite_day(day: dict, feedback: str, full_plan_context: str, result: Retrie
     return loads_lenient(msg.content or "")
 
 
+QUERY_EXPANSION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "queries": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "3 to 5 short skill-phrased search queries.",
+        }
+    },
+    "required": ["queries"],
+}
+
+_EXPANSION_PROMPT = """You turn a teacher's lesson-plan request into search queries for a
+database of academic standards.
+
+Standards are written as abstract skill statements — "Explain how word choice,
+comparisons, and syntax contribute to a text's tone" — and never mention specific
+texts, authors, week numbers, or courses. So a request like "Week 6, voice and
+tone with The Cask of Amontillado" retrieves badly: the proper nouns dominate the
+embedding and every relevant skill falls out of range.
+
+Rewrite the request as 3 to 5 short queries in that abstract skill register.
+Strip week numbers, titles, and author names. Cover the distinct skills the week
+would actually teach — reading analysis, writing, language conventions, speaking
+and listening — one query each, so different families of standards can match."""
+
+
+def expand_query(query: str) -> list[str]:
+    """Rephrase a teacher's request into standards-register search queries.
+
+    Measured effect: AP skill chunks for "Week 6 voice and tone with The Cask of
+    Amontillado" sit at 0.89, beyond the relevance floor, while the same skills
+    match "how word choice and syntax convey tone" at 0.41. Without this step the
+    generator gets no AP skills for a normal request and fills the gap from
+    memory. Uses a cheap model; falls back to the raw query on any failure.
+    """
+    try:
+        resp = client().chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0,
+            max_tokens=300,
+            response_format=_response_format("expanded_queries", QUERY_EXPANSION_SCHEMA),
+            messages=[
+                {"role": "system", "content": _EXPANSION_PROMPT},
+                {"role": "user", "content": query[:2000]},
+            ],
+        )
+        data = json.loads(resp.choices[0].message.content or "{}")
+        out = [q.strip() for q in data.get("queries", []) if isinstance(q, str) and q.strip()]
+        log.info("expanded query into %d searches", len(out))
+        return out[:5]
+    except Exception as e:  # noqa: BLE001 — expansion is an optimisation, never a hard failure
+        log.warning("query expansion failed, using the raw query: %s", e)
+        return []
+
+
 def transcribe(path: str) -> str:
     with open(path, "rb") as f:
         result = client().audio.transcriptions.create(model="whisper-1", file=f)

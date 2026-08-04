@@ -185,9 +185,12 @@ class RetrievalResult:
         return self.rejected[0] if self.rejected else None
 
 
-def retrieve_raw(query: str, n: int) -> list[dict]:
+def retrieve_raw(query: str, n: int, where: dict | None = None) -> list[dict]:
     res = get_collection().query(
-        query_texts=[query], n_results=n, include=["documents", "metadatas", "distances"]
+        query_texts=[query],
+        n_results=n,
+        where=where,
+        include=["documents", "metadatas", "distances"],
     )
     out = []
     for i in range(len(res["ids"][0])):
@@ -202,20 +205,66 @@ def retrieve_raw(query: str, n: int) -> list[dict]:
     return out
 
 
+# A lesson plan needs a course standard, an ACT alignment, and an AP skill — the
+# district template has a row for each. A single top-k ranking routinely returned
+# five ALCOS chunks and no AP skills at all, and the model then filled the AP row
+# from memory (one run invented "2.C", a code 01_parse_chunks.py notes does not
+# exist). Retrieving per source type means the codes it needs are actually on the
+# table, which prevents the fabrication rather than just flagging it afterwards.
+STRATA = ("ap_skills", "state_course_of_study", "act_standards", "act_recurring")
+
+
 def retrieve_grounded(
-    query: str, top_k: int | None = None, max_distance: float | None = None
+    query: str,
+    top_k: int | None = None,
+    max_distance: float | None = None,
+    extra_queries: list[str] | None = None,
 ) -> RetrievalResult:
     top_k = top_k or settings.retrieval_top_k
     floor = settings.retrieval_max_distance if max_distance is None else max_distance
 
-    # Over-fetch then filter, so a couple of near-misses don't cost us real hits.
-    raw = retrieve_raw(query, n=max(top_k * 3, top_k))
-    raw.sort(key=lambda c: c["distance"])
+    # Search the teacher's own words plus any skill-register rephrasings (see
+    # llm.expand_query). Each chunk keeps its BEST distance across all queries, so
+    # a rephrasing can rescue a standard the raw wording missed without loosening
+    # the floor for anything else.
+    searches = [query, *(extra_queries or [])]
+    best: dict[str, dict] = {}
 
-    keep = [c for c in raw if c["distance"] <= floor][:top_k]
-    drop = [
-        {"id": c["id"], "distance": c["distance"]} for c in raw if c["distance"] > floor
-    ][:3]
+    def consider(hits: list[dict]) -> None:
+        for c in hits:
+            prev = best.get(c["id"])
+            if prev is None or c["distance"] < prev["distance"]:
+                best[c["id"]] = c
+
+    for q in searches:
+        # Over-fetch then filter, so near-misses don't cost us real hits.
+        consider(retrieve_raw(q, n=max(top_k * 3, top_k)))
+        # Then per stratum, so each source type gets a fair look — the district
+        # template has a row for a course standard, an ACT code, and an AP skill.
+        for source_type in STRATA:
+            try:
+                consider(retrieve_raw(q, n=top_k, where={"source_type": source_type}))
+            except Exception as e:  # noqa: BLE001 — a filter failing must not break retrieval
+                log.warning("stratified retrieval failed for %s: %s", source_type, e)
+
+    raw = sorted(best.values(), key=lambda c: c["distance"])
+
+    survivors = [c for c in raw if c["distance"] <= floor]
+    # Keep the best top_k overall, plus the best survivor from each stratum, so a
+    # relevant AP skill isn't crowded out by five close ALCOS matches.
+    keep = survivors[:top_k]
+    kept_ids = {c["id"] for c in keep}
+    for source_type in STRATA:
+        best = next(
+            (c for c in survivors if (c.get("metadata") or {}).get("source_type") == source_type),
+            None,
+        )
+        if best and best["id"] not in kept_ids:
+            keep.append(best)
+            kept_ids.add(best["id"])
+    keep.sort(key=lambda c: c["distance"])
+
+    drop = [{"id": c["id"], "distance": c["distance"]} for c in raw if c["distance"] > floor][:3]
 
     log.info(
         "retrieval query_len=%d kept=%d floor=%.2f best=%.3f",

@@ -28,7 +28,10 @@ def prepare(query: str) -> RetrievalResult:
     if off_scope:
         raise retrieval.scope_error(query, off_scope)
 
-    result = retrieval.retrieve_grounded(query)
+    # Rephrase into standards register before searching — a teacher's own wording
+    # ("Week 6, voice and tone with The Cask of Amontillado") embeds badly against
+    # abstract skill statements. See llm.expand_query.
+    result = retrieval.retrieve_grounded(query, extra_queries=llm.expand_query(query))
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
     return result

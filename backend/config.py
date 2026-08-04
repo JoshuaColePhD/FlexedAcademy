@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     known_gaps_path: Path = PROJECT_ROOT / "source_docs" / "KNOWN_GAPS.md"
     builder_path: Path = DEFAULT_BUILDER
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
+    # The canonical curriculum reference, alongside the builder. Its week->date
+    # map and holiday list are the only place the real school calendar lives, so
+    # we read it rather than copying dates into a prompt that would go stale.
+    curriculum_path: Path = DEFAULT_BUILDER.parent.parent / "reference" / "ap-lang-curriculum.md"
 
     retrieval_top_k: int = 5
     # Tuned empirically for all-MiniLM-L6-v2 + Chroma's default L2 space via
@@ -64,7 +68,9 @@ class Settings(BaseSettings):
     retrieval_thin_threshold: int = 3
 
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
-    api_port: int = 8000
+    # 8000 is taken on this machine by the local oMLX LLM server, so the app
+    # lives on 8010 by default.
+    api_port: int = 8010
     log_level: str = "INFO"
 
     max_audio_bytes: int = 25 * 1024 * 1024  # Whisper's own cap

@@ -2,9 +2,36 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AP Lang RAG IDE</title>
+    <meta
+      name="description"
+      content="Weekly AP Language lesson plans grounded in real standards documents, in the Florence City Schools template."
+    />
+    <title>AP Lang Planner</title>
+
+    <!-- Fonts via preconnect + stylesheet rather than an @import at the top of
+         the CSS, which blocks rendering until it resolves. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400;1,6..72,600&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
+
+    <!-- Set the theme before first paint so a dark-mode load doesn't flash white. -->
+    <script>
+      try {
+        var saved = localStorage.getItem('aplang.theme') || 'system'
+        var dark =
+          saved === 'dark' ||
+          (saved === 'system' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light')
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

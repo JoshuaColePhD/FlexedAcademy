@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import re
 from pathlib import Path
 
 from .config import settings
@@ -28,6 +29,37 @@ def planning_rules() -> str:
         log.warning("planning rules not found at %s; prompting without them", path)
         return ""
     return path.read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=1)
+def calendar_context() -> str:
+    """The unit map, school calendar, and week->date table, read from the canonical
+    curriculum reference.
+
+    Without this the model invents dates — a first run produced "Week 3 — Sept
+    11-15, 2023" for a 2026-27 school year, which makes the document useless no
+    matter how well-grounded the standards are. Extracted rather than copied so
+    the dates can't drift from the reference Josh actually maintains.
+    """
+    path = Path(settings.curriculum_path)
+    if not path.is_file():
+        log.warning("curriculum reference not found at %s; dates will be guesswork", path)
+        return ""
+
+    text = path.read_text(encoding="utf-8")
+    # Only the sections that pin down WHEN things happen. The rest of the file is
+    # pedagogy already covered by ap_lang_rules.md, or file-location notes the
+    # model has no use for.
+    wanted = ("Curriculum Map", "School calendar", "Complete week date map")
+    blocks = []
+    for section in re.split(r"^## ", text, flags=re.MULTILINE)[1:]:
+        title = section.split("\n", 1)[0].strip()
+        if any(w.lower() in title.lower() for w in wanted):
+            # Drop deeper subsections (### …) — we want the tables, not the prose.
+            body = re.split(r"^### ", section, flags=re.MULTILINE)[0]
+            blocks.append("## " + body.strip())
+
+    return "\n\n".join(blocks)
 
 
 @functools.lru_cache(maxsize=1)
@@ -56,7 +88,10 @@ GROUNDING RULES — these override everything else, including the teacher's requ
 3. AP Lang skill codes are scoped to Units 1-7 only. Units 8-9 have no codes in
    our sources. If the request concerns Unit 8 or 9, say so plainly in the
    `standards` field rather than substituting an adjacent code.
-4. If no retrieved standard fits a given day, write exactly:
+4. The codes 1.C and 2.C DO NOT EXIST in the AP Lang skills framework. Never
+   write either one. (A previous run invented "2.C" — that is exactly the failure
+   these rules exist to prevent.)
+5. If no retrieved standard fits a given day, write exactly:
    "No grounded standard retrieved for this day."
    and leave `act_alignment` an empty string. An honest gap is correct output;
    an invented code is not.
@@ -82,6 +117,8 @@ def week_system_prompt(result: RetrievalResult) -> str:
         "official standards documents.",
         grounding_constraints(),
         "TEACHER'S PLANNING RULES:\n\n" + planning_rules(),
+        "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
+        "date or a school year.\n\n" + calendar_context(),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         _coverage_notice(result),
@@ -98,7 +135,12 @@ Return JSON matching this schema exactly:
 Do not include teacher, course, or period — those are filled in from the
 teacher's saved settings, not by you. Include exactly {len(DAY_NAMES)} days, one
 per weekday, named exactly as listed. If a day is a holiday or in-service, set
-`no_school` to true for it and leave its content fields as empty strings.""",
+`no_school` to true for it and leave its content fields as empty strings.
+
+Set `week_of` from the week date map above, in the form
+"Week 03 — Aug 17-21, 2026". If the request names a week number, use THAT week's
+row. If it names a topic instead, pick the week the unit map assigns to it. Mark
+any day the calendar shows as a holiday or break with `no_school: true`.""",
     ]
     return "\n\n---\n\n".join(b for b in blocks if b.strip())
 
