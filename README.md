@@ -1,4 +1,4 @@
-# AP Lang RAG Lesson Plan Generator — Phase 1
+# AP Lang Planner — standards-grounded lesson plans
 
 A retrieval-augmented generation pipeline that drafts AP Language & Composition
 lesson plan sections **grounded in real standards documents**, not in an LLM's
@@ -15,36 +15,70 @@ that models compress badly. RAG changes the question from *recall* to *reading
 comprehension*: we retrieve the verbatim standard text first, then ask the model
 to write a lesson section using only what it was handed. Hallucinated standard
 codes become a checkable failure rather than an invisible one, which is exactly
-what the eval harness in step 6 checks.
+what the eval harness and the post-generation grounding audit check.
 
 ## Status
 
-Phase 1 (local, single-user, my own AP Lang class). No web UI, no multi-user, no
-cloud vector store — those are Phase 2–4.
+Local, single-user, my own AP Lang class. There is a web UI (React) and a FastAPI
+backend; multi-user and a cloud vector store are still out of scope.
 
 | Step | What | State |
 |---|---|---|
 | 0 | Environment + git | done |
-| 1 | Parse + chunk 3 source docs | in progress |
-| 2 | Embed + store in Chroma | not started |
-| 3 | `retrieve(query, top_k)` | not started |
-| 4 | Generation with citation constraint | not started |
-| 5 | FCS `.docx` output (via existing Iris_OS lesson-plan skill) | not started |
-| 6 | Eval harness | not started |
+| 1 | Parse + chunk 3 source docs (164 chunks, all `verbatim_ok`) | done |
+| 2 | Embed + store in Chroma | done |
+| 3 | Grounded retrieval — relevance floor, per-source-type, query expansion | done |
+| 4 | Generation with citation constraint + post-hoc grounding audit | done |
+| 5 | FCS `.docx` output via the canonical `build-lesson-plan` skill | done |
+| 6 | Eval harness — retrieval, floor, docx contract, generation | done |
+| 7 | Web UI: chat, plans library, standards browser, class settings | done |
 
-## Setup
+## Running it
 
 ```bash
-cd ~/Projects/ap-lang-rag
-source venv/bin/activate
-python -c "import chromadb, sentence_transformers, anthropic"   # sanity check
+./run.sh                      # backend on 127.0.0.1:8010
+cd frontend && npm run dev    # UI on :5174, proxies /api to the backend
 ```
 
-Python 3.12.13. Dependencies: `chromadb`, `sentence-transformers`, `pypdf`,
-`anthropic`, `python-docx`.
+Port 8010, not 8000: the local oMLX LLM server owns 8000 on this machine.
+`OPENAI_API_KEY` in `.env` is required for generation and transcription —
+see `.env.example` for every setting and its default.
 
-An `ANTHROPIC_API_KEY` is **not** needed for steps 1–3 — embeddings run locally
-on `all-MiniLM-L6-v2`. It becomes necessary at step 4 (generation).
+```bash
+python scripts/05_eval_harness.py --offline   # retrieval + floor + docx, no API key
+python scripts/06_threshold_sweep.py          # re-tune the relevance floor
+curl localhost:8010/api/health                # diagnose any misconfiguration
+```
+
+Re-run the threshold sweep if the embedding model or chunking ever changes —
+`RETRIEVAL_MAX_DISTANCE` is specific to `all-MiniLM-L6-v2` in Chroma's L2 space
+and means nothing otherwise.
+
+## How grounding actually works
+
+Three layers, because no single one is sufficient:
+
+1. **Relevance floor** (0.78, measured not guessed). Off-domain queries — algebra,
+   recipes, gibberish — sit at 0.82+ and are refused outright rather than answered
+   from the nearest five standards.
+2. **Prompt constraints** from `source_docs/KNOWN_GAPS.md`. A floor cannot catch
+   "give me Unit 8 skills": that query returns real, in-domain, wrong-for-the-question
+   standards at distance 0.52. Only an explicit rule catches it.
+3. **Post-generation audit.** Every standard code in the output is checked against
+   what retrieval actually supplied. Anything else is flagged in the UI margin.
+   This is the only layer that is verifiable after the fact rather than trusted.
+
+Plus a **scope guard**: a query naming a grade other than 11 is refused. "Grade 9
+ELA standards" measures 0.411 — nearer than most genuinely relevant queries,
+because the corpus *is* ELA standards — and since every grade re-uses standard
+numbers 1–30, answering it would be confidently wrong.
+
+And **query expansion**: teacher phrasing embeds badly against abstract skill
+statements. "Week 6 voice and tone with The Cask of Amontillado" puts every AP
+skill at 0.81–0.89, outside the floor; rephrased as "how word choice and syntax
+convey tone" the same skills land at 0.41. Without this the generator gets no AP
+codes and invents them — it once produced "2.C", a code the parser notes does not
+exist.
 
 ## Source documents
 
@@ -106,6 +140,20 @@ ap-lang-rag/
   venv/              gitignored
 ```
 
-Not in iCloud or Google Drive on purpose: `venv/` is ~20k small files and
-`chroma_db/` is a live SQLite database — both behave badly under file sync.
-Git is the portability mechanism instead.
+This project **does** sit inside Google Drive (it lives under `Iris_OS/Projects/`),
+which the original note here said it wouldn't. What actually matters is which
+files are exposed to sync:
+
+- `venv/` (~1.3 GB, ~20k small files) and `chroma_db/` are gitignored and
+  rebuildable. Chroma survives sync because it is effectively read-only in normal
+  use; if Drive ever leaves a conflict copy, delete the directory and re-run
+  `scripts/02_embed_store.py`.
+- **`app.db` lives outside the synced tree** — `~/Library/Application
+  Support/ap-lang-rag/app.db` by default. SQLite in WAL mode keeps `-wal` and
+  `-shm` sidecars that must stay mutually consistent; Drive uploads them
+  independently and makes `app.db (1)` on conflict. It holds the only
+  irreplaceable data here (your plans and conversations), so it stays out.
+- Generated `.docx` in `plans/` are the opposite case: written once then read, so
+  syncing them is the point.
+
+Git (private GitHub remote) is still the backup mechanism.
