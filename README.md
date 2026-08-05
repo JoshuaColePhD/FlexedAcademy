@@ -19,8 +19,15 @@ what the eval harness and the post-generation grounding audit check.
 
 ## Status
 
-Local, single-user, my own AP Lang class. There is a web UI (React) and a FastAPI
-backend; multi-user and a cloud vector store are still out of scope.
+Local, single-user. There is a web UI (React) and a FastAPI backend; multi-user
+and a cloud vector store are still out of scope.
+
+As of 2026-08-04 the corpus is no longer AP Lang only: all 11 Alabama Course of
+Study subject frameworks are ingested for **grades 9-12** (2,997 standards; 11,435
+chunks in the store with AP Lang and ACT). K-8 is deliberately excluded — this is a
+high school app — and is one flag away if that changes. AP Lang remains the
+calibrated, fully-tested path; see "Multi-subject" below for what is and isn't
+trustworthy in the rest.
 
 | Step | What | State |
 |---|---|---|
@@ -32,6 +39,7 @@ backend; multi-user and a cloud vector store are still out of scope.
 | 5 | FCS `.docx` output via the canonical `build-lesson-plan` skill | done |
 | 6 | Eval harness — retrieval, floor, docx contract, generation | done |
 | 7 | Web UI: chat, plans library, standards browser, class settings | done |
+| 8 | All 11 Alabama COS frameworks (grades 9-12) via the ALSDE CASE feed, PDF-verified | done |
 
 ## Running it
 
@@ -46,9 +54,28 @@ see `.env.example` for every setting and its default.
 
 ```bash
 python scripts/05_eval_harness.py --offline   # retrieval + floor + docx, no API key
-python scripts/06_threshold_sweep.py          # re-tune the relevance floor
+python scripts/06_threshold_sweep.py          # re-tune the floor (AP_Lang by default)
 curl localhost:8010/api/health                # diagnose any misconfiguration
+curl localhost:8010/api/frameworks            # what subjects/grades are loaded
 ```
+
+Rebuilding the corpus from scratch:
+
+```bash
+python scripts/01_parse_chunks.py             # AP Lang + ALCOS Grade 11 -> chunks.json
+python scripts/01b_ingest_act_standards.py    # ACT -> act_chunks.json
+python scripts/01d_ingest_alcos_case.py       # 11 Alabama frameworks, grades 9-12
+#   ... --grades 0-12                        # widen to K-12 if ever needed
+python scripts/02_embed_store.py              # full rebuild of chroma_db
+```
+
+`02_embed_store.py` now **rebuilds by default** rather than upserting. It used to
+add to whatever was already in the collection, so the store accumulated rows from
+runs whose chunk files had since been overwritten — the live collection held
+12,085 chunks that no file in the repo could account for, two of them hand-written
+placeholder standards (`SCI.9.1`, `MATH.10.1`) seeded by a scaffolding script.
+`/api/health` reports `chunks` and `chroma_count`; if they disagree, the store is
+not reproducible from the repo and should be rebuilt.
 
 Re-run the threshold sweep if the embedding model or chunking ever changes —
 `RETRIEVAL_MAX_DISTANCE` is specific to `all-MiniLM-L6-v2` in Chroma's L2 space
@@ -80,9 +107,54 @@ convey tone" the same skills land at 0.41. Without this the generator gets no AP
 codes and invents them — it once produced "2.C", a code the parser notes does not
 exist.
 
+## Multi-subject
+
+The Subject Framework and Grade Level dropdowns in **My Class** are built from
+`/api/frameworks`, which is derived from the chunks — a framework is offered only
+while it is actually ingested, so the UI cannot present a subject retrieval would
+fail to ground. Retrieval filters on `course` + `grade` before distance, which is
+what lets 12 frameworks share one collection without competing.
+
+Two things to know before trusting a non-AP-Lang subject:
+
+1. **The 0.78 relevance floor is calibrated for AP Lang and does not transfer.**
+   Math, Science and PE measurably fail to reject off-domain input at 0.78 (Math
+   grounds gibberish at 0.746). Per-course floors exist (`RETRIEVAL_FLOORS`) but
+   are deliberately unset until measured. Run
+   `python scripts/06_threshold_sweep.py --course Math --grade 11`.
+   The floor is a property of the **corpus**, not the subject: PE was safely
+   outside it at 0.887 until the corpus narrowed to grades 9-12. Re-measure after
+   any change to grade scope, chunking, or embedding model.
+2. **PDF verification is 93.3% overall, not 100%** — and 61% for Physical
+   Education. ELA is 100%. Every chunk carries `verbatim_ok` / `wordwise_ok` and a
+   reason when it misses.
+
+Both are written up in full in `source_docs/KNOWN_GAPS.md`. Per-framework numbers
+are in `source_docs/ALCOS_INGEST_REPORT.json`.
+
+### Why the CASE feed rather than parsing the PDFs with an LLM
+
+The Course of Study PDFs in `../_Shared/Alabama Standards/` are the documents of
+record. They are also published as CASE 1.0 packages by ALSDE itself at
+`alabamastandards.org` (the site ALEX embeds under "Standards"), and each
+package's `officialSourceURL` names the PDF it was cut from.
+
+Feeding 300-page PDFs to gpt-4o — as `01_parse_universal.py` does for small
+targeted documents — would put a paraphrase risk on every one of ~7,500 standards
+and cost real money on every rebuild. The CASE feed is the state's own structured
+copy of the same text with no model in the loop, so the standard text is
+authoritative by construction. The PDFs are still used, as the verification
+target.
+
+Note that ALEX itself hosts no PDFs and offers no PDF export — it serves standards
+as CASE JSON and Canvas/PowerSchool CSV. The PDFs come from
+`alabamaachieves.org/acad-stand/`.
+
 ## Source documents
 
-All three live in `source_docs/` (copied from `~/Desktop/AP_LANG_RAG/`).
+The three original AP Lang sources live in `source_docs/`; the Alabama frameworks
+are cached CASE packages in `source_docs/case/` verified against the PDFs in
+`../_Shared/Alabama Standards/`.
 
 1. **`alcos_ela.pdf`** — Alabama Course of Study: English Language Arts, 147pp,
    all grades. Only **Grade 11** content standards (pp. 134–139, standards 1–30

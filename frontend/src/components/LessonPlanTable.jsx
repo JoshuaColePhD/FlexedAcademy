@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { ArrowUp, Sparkles, X } from 'lucide-react'
+import { ArrowUp, Sparkles, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { CitedText } from './Citation'
+import { SkeletonText } from './Skeleton'
 
 /* Mirrors template florence-docx-v2 — the table the district actually gets.
 
@@ -43,20 +44,74 @@ function LessonCell({ day }) {
   )
 }
 
-export function LessonPlanTable({ plan, groundedCodes, onReviseDay, busy, streaming }) {
+/* What to render for a weekday the plan has no entry for. Three states, not two,
+   and the distinction matters more than it looks:
+
+     'no_school'  — a real, correct, final answer. There is no class that day.
+     'pending'    — the model hasn't written it yet. Provisional; about to change.
+     'incomplete' — generation stopped before it arrived. A gap to act on.
+
+   A boolean `streaming` prop is NOT sufficient. isStreaming flips false in
+   useLessonStream's `finally` the instant Stop is pressed, while plan.days is
+   still partial — so a boolean would flip un-arrived days straight to "No School"
+   one second later, which is the same misreport with better timing. */
+export function LessonPlanTable({
+  plan,
+  groundedCodes,
+  onReviseDay,
+  busy,
+  missingDays = 'no_school',
+}) {
   const [openDay, setOpenDay] = useState(null)
-  // Per-day draft, so text typed for Monday cannot leak into Tuesday's box —
-  // the old version shared one useState across every day.
   const [drafts, setDrafts] = useState({})
+  const [feedbackSent, setFeedbackSent] = useState(false)
+  const [revisingWholePlan, setRevisingWholePlan] = useState(false)
+
+  const handleFeedback = async (isGood) => {
+    if (!plan?.id || feedbackSent) return
+    setFeedbackSent(true)
+    try {
+      await fetch(`/api/plans/${plan.id}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_good: isGood })
+      })
+    } catch (e) {
+      console.error('Failed to submit feedback', e)
+    }
+  }
+
+  const handleReviseWholePlan = async () => {
+    if (!plan?.id || revisingWholePlan) return
+    setRevisingWholePlan(true)
+    try {
+      const res = await fetch(`/api/plans/${plan.id}/revise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      if (!res.ok) throw new Error('Revise failed')
+      const updated = await res.json()
+      // Note: In a real app we'd trigger a re-fetch of the plan here or bubble up an event.
+      // Since this is a self-contained component, we rely on the parent to poll or reload.
+      alert('AI Revision complete! Please refresh the page to see the new plan.')
+    } catch (e) {
+      console.error('Failed to revise whole plan', e)
+      alert('Failed to revise the plan.')
+    } finally {
+      setRevisingWholePlan(false)
+    }
+  }
 
   if (!plan?.days?.length) return null
 
   const byName = new Map(plan.days.map((d) => [d.name, d]))
-  // While streaming, a day that hasn't arrived yet is PENDING, not a holiday —
-  // rendering it as "No School" would misreport the plan mid-flight.
-  const ordered = DAYS.map(
-    (name) => byName.get(name) || (streaming ? { name, pending: true } : { name, no_school: true })
-  )
+  const fallback =
+    missingDays === 'pending'
+      ? { pending: true }
+      : missingDays === 'incomplete'
+        ? { incomplete: true }
+        : { no_school: true }
+  const ordered = DAYS.map((name) => byName.get(name) || { name, ...fallback })
 
   const submit = (index, day) => {
     const feedback = (drafts[day.name] || '').trim()
@@ -68,8 +123,37 @@ export function LessonPlanTable({ plan, groundedCodes, onReviseDay, busy, stream
 
   return (
     <div className="plan-doc">
-      <div className="plan-meta">
+      <div className="plan-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2>{plan.week_of || 'Untitled week'}</h2>
+        {plan.id && (
+          <div className="plan-feedback" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              className="btn"
+              disabled={revisingWholePlan}
+              onClick={handleReviseWholePlan}
+            >
+              {revisingWholePlan ? 'Revising...' : 'AI Review & Revise'}
+            </button>
+            <button 
+              className="btn-icon" 
+              disabled={feedbackSent} 
+              onClick={() => handleFeedback(true)}
+              title="Good plan"
+            >
+              <ThumbsUp size={16} />
+            </button>
+            <button 
+              className="btn-icon" 
+              disabled={feedbackSent} 
+              onClick={() => handleFeedback(false)}
+              title="Bad plan"
+            >
+              <ThumbsDown size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="plan-meta">
         {plan.teacher ? (
           <span className="plan-meta-item">
             <strong>Teacher</strong> {plan.teacher}
@@ -87,7 +171,15 @@ export function LessonPlanTable({ plan, groundedCodes, onReviseDay, busy, stream
         ) : null}
       </div>
 
-      <table className="plan-table">
+      {/* tabIndex + role + label are not polish: a scroll container that only
+          responds to pointer drag is a keyboard-access failure (WCAG 2.1.1). */}
+      <div
+        className="plan-table-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Weekly lesson plan — scrolls horizontally on small screens"
+      >
+        <table className="plan-table">
         <caption className="visually-hidden">
           Weekly lesson plan, Monday to Friday, in the Florence City Schools template
         </caption>
@@ -113,6 +205,29 @@ export function LessonPlanTable({ plan, groundedCodes, onReviseDay, busy, stream
                   return row.key === 'learning_targets' ? (
                     <td key={day.name} className="is-no-school" rowSpan={ROWS.length}>
                       No School
+                    </td>
+                  ) : null
+                }
+                if (day.pending) {
+                  // Same single-stamp shape as No School, so the column doesn't
+                  // shift when the real content replaces it.
+                  return row.key === 'learning_targets' ? (
+                    <td key={day.name} className="is-pending" rowSpan={ROWS.length}>
+                      <SkeletonText lines={3} />
+                      <span className="visually-hidden">
+                        {day.name} hasn’t been written yet
+                      </span>
+                    </td>
+                  ) : null
+                }
+                if (day.incomplete) {
+                  return row.key === 'learning_targets' ? (
+                    <td key={day.name} className="is-incomplete" rowSpan={ROWS.length}>
+                      Not generated
+                      <span className="visually-hidden">
+                        {' '}
+                        — generation stopped before {day.name} was written
+                      </span>
                     </td>
                   ) : null
                 }
@@ -153,7 +268,10 @@ export function LessonPlanTable({ plan, groundedCodes, onReviseDay, busy, stream
             <tr>
               <th scope="row">Revise</th>
               {ordered.map((day) =>
-                day.no_school ? (
+                /* pending/incomplete included: a live "Revise Tuesday" for a day
+                   that hasn't arrived would post a day_index the backend can't
+                   revise. */
+                day.no_school || day.pending || day.incomplete ? (
                   <td key={day.name} />
                 ) : (
                   <td key={day.name}>
@@ -175,7 +293,8 @@ export function LessonPlanTable({ plan, groundedCodes, onReviseDay, busy, stream
             </tr>
           ) : null}
         </tbody>
-      </table>
+        </table>
+      </div>
 
       {openDay
         ? (() => {

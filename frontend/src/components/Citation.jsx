@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import { errorParts, isNotFound } from '../lib/apiError'
 
 /* THE SIGNATURE ELEMENT — the grounding apparatus.
 
@@ -11,18 +12,40 @@ import { api } from '../lib/api'
    This is the app's actual differentiator made visible. Everything else in the
    design stays quiet so this can carry the weight. */
 
-// Families and shapes present in the corpus, plus the two (CLR, IKI) that
-// KNOWN_GAPS.md says can never be grounded.
-const CODE_RE =
-  /(\d\.[A-C]|Grade\d{1,2}-\d{1,2}[a-c]?|R\d{1,2}|(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\s?\d{3})/g
+/* Families and shapes present in the corpus, plus the two (CLR, IKI) that
+   KNOWN_GAPS.md says can never be grounded.
+
+   The `[A-Z]{2,5}\d{2}(\.…)+` alternative matches the Alabama CASE codes as ALSDE
+   publishes them — ELA21.11.R2, MA19.GDA.5, SS24.US2.4, SC23.CHEM.1e,
+   CSC26.9-12.CD.3. Without it, every standard from the eleven Course of Study
+   frameworks rendered as plain text: no citation, no popover, and no ungrounded
+   mark — so the grounding apparatus was silently inert for every subject except
+   AP Lang. Mirrors backend/retrieval.py's _CODE_RE, which the grounding audit
+   uses; the two should be changed together. */
+const CODE_RE = new RegExp(
+  '(' +
+    [
+      '\\d\\.[A-C]', // AP Lang skill, e.g. 2.A
+      'Grade\\d{1,2}-\\d{1,2}[a-c]?', // legacy ALCOS parse, e.g. Grade11-22a
+      '[A-Z]{2,5}\\d{2}(?:\\.[A-Za-z0-9-]+){1,4}', // Alabama CASE, e.g. ELA21.11.R2
+      'R\\d{1,2}', // ACT recurring, e.g. R4
+      '(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\\s?\\d{3}', // ACT English/Writing
+    ].join('|') +
+    ')',
+  'g'
+)
 
 const cache = new Map()
+
+/* Only one popover open at a time. Every Cite owned its own `open` state, so
+   clicking three codes left three popovers stacked over each other. */
+let closeOpenPopover = null
 
 function normalize(code) {
   return code.replace(/\s+/g, ' ').trim().toUpperCase()
 }
 
-function Popover({ code, anchorRef, onClose }) {
+function Popover({ code, anchorRef, onClose, popoverId }) {
   const [record, setRecord] = useState(() => cache.get(normalize(code)))
   const [error, setError] = useState(null)
   const [pos, setPos] = useState(null)
@@ -34,17 +57,17 @@ function Popover({ code, anchorRef, onClose }) {
       setRecord(cache.get(key))
       return
     }
-    let alive = true
+    const controller = new AbortController()
     api
-      .getStandard(code)
+      .getStandard(code, { signal: controller.signal })
       .then((r) => {
         cache.set(key, r)
-        if (alive) setRecord(r)
+        setRecord(r)
       })
-      .catch((e) => alive && setError(e))
-    return () => {
-      alive = false
-    }
+      .catch((e) => {
+        if (e?.name !== 'AbortError') setError(e)
+      })
+    return () => controller.abort()
   }, [code])
 
   useLayoutEffect(() => {
@@ -73,19 +96,35 @@ function Popover({ code, anchorRef, onClose }) {
   }, [onClose, anchorRef])
 
   return (
+    /* Deliberately NOT role="dialog". It used to claim that while never being
+       focused, trapped, or restoring focus — a dialog a screen reader is never
+       moved into is worse than a plain disclosure. It holds no focusable content,
+       so the trigger keeps focus and this is just the expanded region. */
     <div
       ref={popRef}
+      id={popoverId}
       className="cite-pop"
-      role="dialog"
-      aria-label={`Standard ${code}`}
       style={pos ? { left: pos.left, top: pos.top } : { visibility: 'hidden' }}
     >
       <span className="cite-pop-code">{code}</span>
       {error ? (
-        <p>
-          Not in the standards corpus. {error.code === 'standard_not_found' ? 'Nothing in the ' : ''}
-          source documents defines this code.
-        </p>
+        /* The old copy was assembled from a fragment and read
+           "Not in the standards corpus. source documents defines this code." for
+           any error other than a 404 — malformed, and it blamed the corpus for
+           what was usually a dropped connection. */
+        isNotFound(error) ? (
+          <p>Not in the standards corpus — no source document we hold defines this code.</p>
+        ) : (
+          <p>
+            Couldn’t look this up. {errorParts(error).message}
+            {errorParts(error).hint ? (
+              <>
+                {' '}
+                <span style={{ color: 'var(--ink-muted)' }}>{errorParts(error).hint}</span>
+              </>
+            ) : null}
+          </p>
+        )
       ) : !record ? (
         <p style={{ color: 'var(--ink-muted)' }}>Looking it up…</p>
       ) : (
@@ -107,9 +146,37 @@ function Popover({ code, anchorRef, onClose }) {
   )
 }
 
+let citeSeq = 0
+
 function Cite({ code, grounded }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const idRef = useRef(null)
+  if (idRef.current === null) idRef.current = `cite-pop-${++citeSeq}`
+
+  const close = () => {
+    setOpen(false)
+    if (closeOpenPopover === close) closeOpenPopover = null
+    // Focus never left the trigger, but say so explicitly: an outside click can
+    // move it, and the trigger is where the reader expects to be.
+    ref.current?.focus?.({ preventScroll: true })
+  }
+
+  const toggle = () => {
+    if (open) {
+      close()
+      return
+    }
+    closeOpenPopover?.()
+    closeOpenPopover = close
+    setOpen(true)
+  }
+
+  useEffect(() => () => {
+    if (closeOpenPopover === close) closeOpenPopover = null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <>
       <button
@@ -117,16 +184,19 @@ function Cite({ code, grounded }) {
         type="button"
         className={`cite${grounded ? '' : ' is-ungrounded'}`}
         aria-expanded={open}
+        aria-controls={open ? idRef.current : undefined}
         aria-label={
           grounded
             ? `Standard ${code} — show the source text`
             : `Standard ${code} — not among the standards retrieved for this plan`
         }
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
       >
         {code}
       </button>
-      {open ? <Popover code={code} anchorRef={ref} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <Popover code={code} anchorRef={ref} onClose={close} popoverId={idRef.current} />
+      ) : null}
     </>
   )
 }
@@ -138,7 +208,13 @@ function Cite({ code, grounded }) {
  */
 export function CitedText({ text, groundedCodes }) {
   if (!text) return null
-  const known = groundedCodes instanceof Set ? groundedCodes : new Set(groundedCodes || [])
+  // Normalize BOTH sides. The backend stores retrieved ids upper-cased, but a
+  // plan loaded from elsewhere may not be, and a case mismatch would falsely
+  // brand a properly grounded code as invented — the worst possible direction for
+  // this particular error to fail in.
+  const known = new Set(
+    [...(groundedCodes instanceof Set ? groundedCodes : groundedCodes || [])].map(normalize)
+  )
   // No grounding info available (e.g. a stored plan) — don't cry wolf.
   const checking = known.size > 0
 

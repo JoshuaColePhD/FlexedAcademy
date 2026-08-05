@@ -1,0 +1,866 @@
+[
+  {
+    "course": "AP_Lang",
+    "grade": 11,
+    "query": "Create a lesson plan that engages students in following technical instructions to successfully complete a specific task, emphasizing clarity and attention to detail.",
+    "expected_code": "Grade11-9"
+  },
+  {
+    "course": "AP_Lang",
+    "grade": 10,
+    "query": "Create a lesson plan that teaches students how to choose and use effective transitional sentences to enhance the flow between paragraphs in their writing.",
+    "expected_code": "E.ORG.502"
+  },
+  {
+    "course": "ELA",
+    "grade": 9,
+    "query": "Create a lesson plan that guides students in identifying and evaluating the relevance of key ideas and supporting details in moderately complex texts.",
+    "expected_code": "E.TOD.401"
+  },
+  {
+    "course": "ELA",
+    "grade": 10,
+    "query": "Create a lesson plan that helps students understand and practice maintaining stylistic consistency in their writing across different genres and formats.",
+    "expected_code": "ELA21.10.19a"
+  },
+  {
+    "course": "Math",
+    "grade": 12,
+    "query": "Create a lesson plan that guides students in selecting the most suitable method for solving a system of two linear equations in two variables, such as graphing, substitution, or elimination.",
+    "expected_code": "MA19.A1.10"
+  },
+  {
+    "course": "Math",
+    "grade": 10,
+    "query": "Create a lesson plan that guides students through the mathematical modeling cycle using geometric methods to solve real-world design problems.",
+    "expected_code": "MA19.GDA.38"
+  },
+  {
+    "course": "Science",
+    "grade": 10,
+    "query": "Create a lesson plan that explores significant tectonic and geological events in Alabama's history, highlighting their impact and relevance to the state's current landscape.",
+    "expected_code": "SC23.ESS.5d"
+  },
+  {
+    "course": "Science",
+    "grade": 10,
+    "query": "Create a lesson plan that explores how to use mathematical models to calculate and compare the theoretical, actual, and percent yields of chemical reactions.",
+    "expected_code": "SC23.CHEM.4c"
+  },
+  {
+    "course": "Social_Studies",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the impact of the domino theory and the Gulf of Tonkin Resolution on U.S. involvement in the Vietnam conflict, including key events and perspectives from that era.",
+    "expected_code": "SS24.US2.13b"
+  },
+  {
+    "course": "Social_Studies",
+    "grade": 9,
+    "query": "Create a lesson plan that explores the importance of using birth cohorts in research, highlighting how they help in understanding social, economic, and health trends over time.",
+    "expected_code": "SS24.S.5a"
+  },
+  {
+    "course": "Arts",
+    "grade": 12,
+    "query": "Create a lesson plan that guides students in developing a unique interpretation of a selected piece of repertoire, emphasizing their ability to justify their artistic choices through historical context and expressive intent.",
+    "expected_code": "AE24.MU.PE.HS2.7"
+  },
+  {
+    "course": "Arts",
+    "grade": 9,
+    "query": "Design a lesson plan that guides students in documenting their creative choices while revising a dance piece, emphasizing the importance of reflection and decision-making in the choreographic process.",
+    "expected_code": "AE24.D.HS4.5a"
+  },
+  {
+    "course": "DLCS",
+    "grade": 12,
+    "query": "Create a lesson plan that encourages students to analyze the ethical implications of AI technologies while evaluating their societal and ecological impacts.",
+    "expected_code": "DLCS25.HS.38"
+  },
+  {
+    "course": "DLCS",
+    "grade": 9,
+    "query": "Create a lesson plan that explores the motivations behind hacking, including ethical considerations, and encourages students to critically analyze the implications of these actions in today's digital society.",
+    "expected_code": "DLCS25.HS.28"
+  },
+  {
+    "course": "Health",
+    "grade": 9,
+    "query": "Create a lesson plan that explores the relationship between genetics, family history, and their effects on individual health outcomes.",
+    "expected_code": "HE19.HE.1.3"
+  },
+  {
+    "course": "Health",
+    "grade": 12,
+    "query": "Create a lesson plan that helps students identify warning signs of suicide and explore effective prevention strategies.",
+    "expected_code": "HE19.HE.1.2b"
+  },
+  {
+    "course": "PE",
+    "grade": 12,
+    "query": "Create a lesson plan that guides students in identifying and developing the key components of a personal fitness plan tailored to their individual goals and needs.",
+    "expected_code": "PE19.BK1.3.8"
+  },
+  {
+    "course": "PE",
+    "grade": 12,
+    "query": "Please create a lesson plan that incorporates peer assistance and modeling strategies to support diverse learners in mastering the content.",
+    "expected_code": "PE19.BK2.2.2.APE"
+  },
+  {
+    "course": "World_Languages",
+    "grade": 9,
+    "query": "Create a lesson plan that encourages students to compare and contrast cultural practices in the target culture with those in their own native culture.",
+    "expected_code": "WL17.WL.L3.9b"
+  },
+  {
+    "course": "World_Languages",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in reading, translating, and analyzing Latin texts to explore and compare differing perspectives on a historical or literary theme.",
+    "expected_code": "WL17.LAT.L3.2c"
+  },
+  {
+    "course": "Counseling",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students effective self-regulation techniques to help them manage their emotions, behaviors, and goals.",
+    "expected_code": "CSC26.9-12.FW.12"
+  },
+  {
+    "course": "Counseling",
+    "grade": 11,
+    "query": "Create a lesson plan that encourages students to take ownership of their learning by practicing self-advocacy skills and demonstrating initiative in setting and pursuing their academic goals.",
+    "expected_code": "CSC26.9-12.AD.2"
+  },
+  {
+    "course": "Math_AWF",
+    "grade": 12,
+    "query": "Create a lesson plan that helps students understand and apply exponential growth and decay equations to model real-life relationships between quantities.",
+    "expected_code": "AWF15.15d"
+  },
+  {
+    "course": "Math_AWF",
+    "grade": 12,
+    "query": "Create a lesson plan that helps students recognize, represent, and solve proportional relationships using equations through engaging activities and real-world examples.",
+    "expected_code": "AWF15.4c"
+  },
+  {
+    "course": "AP US History Themes 2014-2015",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how economic, political, social, and ethnic factors influenced the development of regional identities in the United States from the colonial period to the 19th century.",
+    "expected_code": "ID-5"
+  },
+  {
+    "course": "AP US History Themes 2014-2015",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how the exchange of goods, people, diseases, and ideas in the Atlantic World after European contact influenced the development of colonial societies in North America.",
+    "expected_code": "WXT-1"
+  },
+  {
+    "course": "AP Physics C",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how two objects with opposite charges attract each other, including hands-on activities and real-world examples to illustrate the concept.",
+    "expected_code": "8.1.A.3.ii"
+  },
+  {
+    "course": "AP Physics C",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the concept of magnetic fields generated by current-carrying wires and introduces the Biot-Savart Law, including hands-on activities and real-world applications to enhance student understanding.",
+    "expected_code": "12.3"
+  },
+  {
+    "course": "AP Calculus BC Topic Outline",
+    "grade": 11,
+    "query": "Create a lesson plan that explores various techniques of antidifferentiation, including substitution, integration by parts, and recognizing patterns in integrals.",
+    "expected_code": "III.D"
+  },
+  {
+    "course": "AP Calculus BC Topic Outline",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students translate verbal descriptions of real-world scenarios into equations involving derivatives, while also practicing how to interpret and explain those equations back into verbal form.",
+    "expected_code": "II.C.4"
+  },
+  {
+    "course": "AP Physics 1",
+    "grade": 11,
+    "query": "Create a lesson plan that explains the concept of kinetic friction between two surfaces, including real-world examples and interactive demonstrations.",
+    "expected_code": "2.7.A"
+  },
+  {
+    "course": "AP Physics 1",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how all objects fall at the same acceleration in a vacuum, regardless of their mass, and includes engaging demonstrations and activities to illustrate this concept.",
+    "expected_code": "EK.1.C.2.b"
+  },
+  {
+    "course": "AP Biology",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how mathematical routines can be applied to understand the interactions between living systems and their environment, focusing on the movement of matter and energy.",
+    "expected_code": "LO 4.14"
+  },
+  {
+    "course": "AP Biology",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students evaluate data to understand the relationship between photosynthesis and respiration in the flow of free energy through ecosystems.",
+    "expected_code": "2.41"
+  },
+  {
+    "course": "AP US History - Thematic Learning Objectives",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the impact of popular movements, reform efforts, and activist groups in shaping American society and institutions throughout history.",
+    "expected_code": "POL 2.0"
+  },
+  {
+    "course": "AP US History - Thematic Learning Objectives",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the evolution of exchange patterns, markets, and private enterprise, while analyzing governmental responses to various economic issues.",
+    "expected_code": "WXT 2.0"
+  },
+  {
+    "course": "AP Calculus AB & BC",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how to apply the chain rule and the derivative formula for inverse functions to find the derivatives of inverse trigonometric functions.",
+    "expected_code": "FUN-3.E.2"
+  },
+  {
+    "course": "AP Calculus AB & BC",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how slope fields can illustrate the behavior of solutions to first-order differential equations.",
+    "expected_code": "FUN-7.C.2"
+  },
+  {
+    "course": "AP European History",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how the expansion of commerce and industrialization from the 16th to the 19th centuries contributed to urban growth and transformed social structures, particularly the shift from a landed elite to a commercial elite.",
+    "expected_code": "PP-6"
+  },
+  {
+    "course": "AP European History",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the causes, key events, and lasting effects of the Cold War in the years following World War II.",
+    "expected_code": "AP.Euro.9C"
+  },
+  {
+    "course": "AP European History - Learning Objectives",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the Bolshevik takeover and its impact on the subsequent civil war, highlighting the roles of both communist forces and their foreign supporters.",
+    "expected_code": "4.2 I C"
+  },
+  {
+    "course": "AP European History - Learning Objectives",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how Mussolini and Hitler capitalized on postwar bitterness and economic instability to rise to power, focusing on their use of terror and manipulation of weak democracies in their countries.",
+    "expected_code": "4.2 II B"
+  },
+  {
+    "course": "APHuG",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the importance of agriculture, food production, and the sustainable use of rural land.",
+    "expected_code": "V"
+  },
+  {
+    "course": "APHuG",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the key factors that initiate and drive urbanization and suburbanization, including economic, social, and environmental influences.",
+    "expected_code": "VII.A.1"
+  },
+  {
+    "course": "AP",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the architectural significance and historical context of the Pazzi Chapel in Florence, designed by Filippo Brunelleschi, focusing on its masonry construction and influence on Renaissance architecture.",
+    "expected_code": "CA.3.67"
+  },
+  {
+    "course": "AP",
+    "grade": 11,
+    "query": "Create a lesson plan focused on Albrecht D\u00fcrer's 1504 engraving \"Adam and Eve,\" exploring its artistic techniques, historical context, and significance in the Renaissance.",
+    "expected_code": "CA.3.74"
+  },
+  {
+    "course": "AP Psychology",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how heuristics influence decision-making through mental shortcuts, highlighting the representativeness and availability heuristics, and their potential to lead to errors in judgment based on prior expectations and vivid memories.",
+    "expected_code": "2.2.A.4"
+  },
+  {
+    "course": "AP Psychology",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the key concepts and differences between social-cognitive and trait theories of personality, including examples and applications in real-life scenarios.",
+    "expected_code": "4.5"
+  },
+  {
+    "course": "Pre AP English 1",
+    "grade": 11,
+    "query": "Design a lesson plan that guides students in developing skills for effective academic discussions by incorporating substantial evidence to enhance their credibility and the significance of their arguments.",
+    "expected_code": "EK 5.1B1\u00a0"
+  },
+  {
+    "course": "Pre AP English 1",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students identify and emulate various organizational patterns in argumentative writing.",
+    "expected_code": "EK 2.2B3\u00a0"
+  },
+  {
+    "course": "AP Statistics - Course Skills",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand how to identify and formulate null and alternative hypotheses in the context of statistical inference.",
+    "expected_code": "1.F"
+  },
+  {
+    "course": "AP Statistics - Course Skills",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students interpret statistical calculations and findings in order to understand their significance and evaluate claims effectively.",
+    "expected_code": "4.B"
+  },
+  {
+    "course": "AP Physics 1/2",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in selecting and justifying the use of various mathematical routines to effectively solve real-world problems.",
+    "expected_code": "SP.2.1"
+  },
+  {
+    "course": "AP Physics 1/2",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand the process by which scientific explanations and theories are refined or replaced, including key examples and the importance of evidence in this evolution.",
+    "expected_code": "SP.6.3"
+  },
+  {
+    "course": "AP English Language and Composition",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students analyze how writers' choices in tone, style, and structure reflect the components of the rhetorical situation, including audience, purpose, and context.",
+    "expected_code": "RHS-1"
+  },
+  {
+    "course": "AP English Language and Composition",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students learn how to effectively qualify a claim by using modifiers, counterarguments, and alternative perspectives.",
+    "expected_code": "CLE-4C"
+  },
+  {
+    "course": "AP Biology Big Ideas",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how different organisms use environmental cues to regulate their growth, reproduction, and homeostasis through timing and coordination of biological mechanisms.",
+    "expected_code": "ENE-3"
+  },
+  {
+    "course": "AP Biology Big Ideas",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how cells communicate through the generation, transmission, reception, and response to chemical signals.",
+    "expected_code": "IST-3"
+  },
+  {
+    "course": "AP Biology Science Practices",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students explain the relationships among various characteristics of biological concepts, processes, or models through visual representations in both theoretical and applied contexts.",
+    "expected_code": "SP.2B"
+  },
+  {
+    "course": "AP Biology Science Practices",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in using evidence to support their claims about biological theories, encouraging critical thinking and connections between data and concepts.",
+    "expected_code": "SP.6C"
+  },
+  {
+    "course": "Advanced English",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in developing commentary that effectively connects textual evidence to their line of reasoning and thesis.",
+    "expected_code": "LAN-7.C"
+  },
+  {
+    "course": "Advanced English",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand the difference between literal and figurative language through engaging activities and examples.",
+    "expected_code": "FIG-5.A"
+  },
+  {
+    "course": "AP Human Geography 2019 Updated CED Standards",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how agriculture has evolved through cultural diffusion and technological advancements throughout history.",
+    "expected_code": "5"
+  },
+  {
+    "course": "AP Human Geography 2019 Updated CED Standards",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how the quest for raw materials and new markets fueled the rise of colonialism and imperialism in the 19th century.",
+    "expected_code": "7.A.3"
+  },
+  {
+    "course": "AP English Literature and Composition",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how characters' behaviors and descriptions of their surroundings reflect their attitudes and shape both character development and readers' interpretations.",
+    "expected_code": "SET-1.H"
+  },
+  {
+    "course": "AP English Literature and Composition",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand how to construct a logical sequence of claims that effectively supports an overarching thesis statement in their writing.",
+    "expected_code": "LAN-1.F"
+  },
+  {
+    "course": "AP World History",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the historical causes and consequences of China's adoption of communism, focusing on key events and figures that shaped this transformation.",
+    "expected_code": "8D"
+  },
+  {
+    "course": "AP World History",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the key networks of exchange from around 1200 to 1450, highlighting the cultural, economic, and technological interactions between different civilizations during this period.",
+    "expected_code": "Unit 2"
+  },
+  {
+    "course": "AP Environmental Science",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how the availability, price, and governmental regulations impact the choice and usage of different energy sources.",
+    "expected_code": "ENG-3.B.5"
+  },
+  {
+    "course": "AP Environmental Science",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the various social, economic, and environmental factors influencing total fertility rates in human populations.",
+    "expected_code": "EIN-1.B"
+  },
+  {
+    "course": "AP Seminar",
+    "grade": 11,
+    "query": "Create a lesson plan that focuses on teaching students how to explain and analyze the logic and reasoning behind various arguments in texts.",
+    "expected_code": "LO 2.2A"
+  },
+  {
+    "course": "AP Seminar",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students about the seriousness of plagiarism, how it occurs, and the importance of properly acknowledging sources to avoid it.",
+    "expected_code": "EK 4.3A2"
+  },
+  {
+    "course": "AP US History Key Concepts 2019-2020",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how the U.S. government pursued influence and control over North America after the Louisiana Purchase through exploration and diplomatic efforts.",
+    "expected_code": "KC 4.1.I.C"
+  },
+  {
+    "course": "AP US History Key Concepts 2019-2020",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how congressional attempts at political compromise, like the Missouri Compromise, temporarily alleviated but ultimately failed to resolve the escalating tensions between opponents and defenders of slavery in the United States.",
+    "expected_code": "KC 4.3.II.C"
+  },
+  {
+    "course": "AP United States History",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the U.S. government's diplomatic efforts to address the British and Spanish presence in North America as settlers moved westward and sought free navigation of the Mississippi River.",
+    "expected_code": "KC 3.3.II.A"
+  },
+  {
+    "course": "AP United States History",
+    "grade": 11,
+    "query": "Create a comprehensive lesson plan that explores the causes, major events, and consequences of the Seven Years' War, also known as the French and Indian War, highlighting its significance in shaping colonial relations and influencing future conflicts.",
+    "expected_code": "3.2"
+  },
+  {
+    "course": "AP Spanish Language and Culture",
+    "grade": 11,
+    "query": "Design a lesson plan that teaches students how to effectively use vocal techniques and visual aids to enhance their presentations and communicate their ideas clearly.",
+    "expected_code": "7.B"
+  },
+  {
+    "course": "AP Spanish Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students determine the meaning of words and phrases using contextual clues found in the text.",
+    "expected_code": "1.B.5"
+  },
+  {
+    "course": "AP Computer Science A",
+    "grade": 11,
+    "query": "Create a lesson plan that explains how parameters in constructors can be used to set initial values for object attributes in programming.",
+    "expected_code": "1.13.C.2"
+  },
+  {
+    "course": "AP Computer Science A",
+    "grade": 11,
+    "query": "Create a lesson plan that explains the concept of object references and aliases in programming, emphasizing how two references can point to the same object in memory.",
+    "expected_code": "CON.H.1"
+  },
+  {
+    "course": "AP Microeconomics",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the importance of a well-defined system of property rights in ensuring the effective functioning of a market system.",
+    "expected_code": "MKT.3.A.1"
+  },
+  {
+    "course": "AP Microeconomics",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how consumers make choices to maximize their total utility in the context of rational consumer behavior.",
+    "expected_code": "CBA-2.A.2"
+  },
+  {
+    "course": "AP Chinese Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students effective research strategies to gather information and evidence for their spoken presentations.",
+    "expected_code": "7A2"
+  },
+  {
+    "course": "AP Chinese Language and Culture",
+    "grade": 11,
+    "query": "Design a lesson plan that helps students effectively express their opinions using detailed examples in a presentational speaking format.",
+    "expected_code": "7D"
+  },
+  {
+    "course": "AP Spanish Literature and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students identify and analyze various rhetorical figures in texts and speeches.",
+    "expected_code": "1.C.i"
+  },
+  {
+    "course": "AP Spanish Literature and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students develop skills to self-monitor and adjust their language production in both oral and written communication.",
+    "expected_code": "7.G"
+  },
+  {
+    "course": "AP US History",
+    "grade": 11,
+    "query": "Develop a lesson plan that explores the expansion of slavery in the Deep South and western territories, highlighting the contrasting regional attitudes and the rise of antislavery sentiment during this period.",
+    "expected_code": "KC 3.2.III.C"
+  },
+  {
+    "course": "AP US History",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the societal and cultural impacts of the Market Revolution in the United States, focusing on how it transformed communities, labor, and daily life during the 19th century.",
+    "expected_code": "4.6"
+  },
+  {
+    "course": "AP Research",
+    "grade": 11,
+    "query": "Create a lesson plan focused on helping students evaluate the relevance and credibility of evidence in arguments, emphasizing the importance of context in this process.",
+    "expected_code": "LO 2.2B"
+  },
+  {
+    "course": "AP Research",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in combining qualitative and quantitative data to identify and analyze trends, patterns, correlations, and themes in a real-world context.",
+    "expected_code": "EK 1.5B10"
+  },
+  {
+    "course": "AP Statistics",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand how to calculate and interpret statistics for two categorical variables using real-world data.",
+    "expected_code": "UNC-1.Q"
+  },
+  {
+    "course": "AP Statistics",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in identifying and describing the essential elements of a well-designed experiment, including variables, controls, and procedures.",
+    "expected_code": "VAR-3.B"
+  },
+  {
+    "course": "AP Latin",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the uses of the subjunctive mood, focusing on commands, wishes, possibilities, and how it functions in dependent clauses.",
+    "expected_code": "GRAM-2.E"
+  },
+  {
+    "course": "AP Latin",
+    "grade": 11,
+    "query": "Create a lesson plan focused on helping students summarize a Latin text by identifying its main ideas, setting, and sequence of events.",
+    "expected_code": "SUM-1"
+  },
+  {
+    "course": "AP Comparative Government and Politics",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how international and supranational organizations affect domestic policymaking and the implications for national sovereignty.",
+    "expected_code": "LEG-3.A"
+  },
+  {
+    "course": "AP Comparative Government and Politics",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the relationship between political participation and the characteristics of democratic and authoritarian regimes, highlighting how each influences the other.",
+    "expected_code": "DEM-1.B"
+  },
+  {
+    "course": "AP Chemistry",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the concepts of pH and pKa, including their definitions, significance in chemistry, and practical applications in various fields.",
+    "expected_code": "8.7"
+  },
+  {
+    "course": "AP Chemistry",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the concept of reversible processes in nature and chemistry, including examples like evaporation and condensation, gas absorption and desorption, as well as acid-base and redox reactions.",
+    "expected_code": "7.1.A.1"
+  },
+  {
+    "course": "AP Computer Science Principles",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how conditional statements, or \"if-statements,\" influence the flow of control in programming by executing different statements based on the outcome of Boolean expressions.",
+    "expected_code": "AAP-2.H.1"
+  },
+  {
+    "course": "AP Computer Science Principles",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the legal and ethical concerns surrounding technology use in the classroom and beyond.",
+    "expected_code": "5.5"
+  },
+  {
+    "course": "AP Music Theory",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students apply their understanding of musical symbols and terms to accurately sing the pitches and rhythms of a notated melody in various clefs, keys, and meters, including the use of chromatically altered pitches.",
+    "expected_code": "3.D"
+  },
+  {
+    "course": "AP Music Theory",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students analyze notated music by applying musical terms, concepts, and relationships to enhance their understanding and interpretation of the written score.",
+    "expected_code": "APMT-2"
+  },
+  {
+    "course": "AP Historical Thinking Skills",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the key developments and processes that have shaped our understanding of historical events and societal changes.",
+    "expected_code": "1"
+  },
+  {
+    "course": "AP Historical Thinking Skills",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand how to contextualize historical events by analyzing the social, political, and economic factors that influenced them.",
+    "expected_code": "4"
+  },
+  {
+    "course": "Pre-AP Algebra 1",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the different forms of quadratic functions, emphasizing the standard form, vertex form, and the conditions under which a quadratic may not have a real factored form.",
+    "expected_code": "EK.3.2.2b"
+  },
+  {
+    "course": "Pre-AP Algebra 1",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand how to identify and calculate the slope of a line in a linear relationship and its significance as the constant rate of change.",
+    "expected_code": "EK.1.1.2a"
+  },
+  {
+    "course": "Pre-AP Biology",
+    "grade": 11,
+    "query": "Create a lesson plan that explains the role of ATP in supporting various processes in biological systems, highlighting its importance in energy transfer and cellular functions.",
+    "expected_code": "CELLS 1.4.a"
+  },
+  {
+    "course": "Pre-AP Biology",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how competition for resources influences the growth, survival, and behavior of different populations in an ecosystem.",
+    "expected_code": "ECO 2.2.c"
+  },
+  {
+    "course": "AP African American Studies",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the significance of visual depictions of African American leaders in photography and art during and after the era of slavery, focusing on their impact on cultural identity and social change.",
+    "expected_code": "LO 2.21.A"
+  },
+  {
+    "course": "AP African American Studies",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the impact of religion and faith on social, educational, and community-building aspects within African American communities throughout history.",
+    "expected_code": "LO 4.16.B"
+  },
+  {
+    "course": "AP Precalculus",
+    "grade": 11,
+    "query": "Create a comprehensive lesson plan that explains additive and multiplicative transformations of the tangent function, including examples and interactive activities for students to practice.",
+    "expected_code": "3.8.C"
+  },
+  {
+    "course": "AP Precalculus",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand how to analyze and determine the relationship between two quantities in an implicitly defined function.",
+    "expected_code": "4.5.B"
+  },
+  {
+    "course": "AP US History Key Concepts",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the cultural and intellectual movements, public reform efforts, and political debates surrounding economic and social policies during the Gilded Age.",
+    "expected_code": "KC 6.3"
+  },
+  {
+    "course": "AP US History Key Concepts",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how the British colonies engaged in political, social, cultural, and economic exchanges with Great Britain, highlighting the ways these interactions fostered both stronger ties and growing resistance to British control.",
+    "expected_code": "KC 2.2"
+  },
+  {
+    "course": "AP Human Geography",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how population distribution and density influence environmental conditions and the availability of natural resources, focusing on the concept of carrying capacity.",
+    "expected_code": "PSO-2.D.2"
+  },
+  {
+    "course": "AP Human Geography",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the characteristics and examples of clustered, dispersed, and linear rural settlement patterns.",
+    "expected_code": "PSO-5.B.2"
+  },
+  {
+    "course": "Grades 9-12AP Environmental Science",
+    "grade": 11,
+    "query": "Create a lesson plan that explains food chains and food webs, highlighting the different trophic levels and the roles of various organisms within these systems.",
+    "expected_code": "ENG-1.D"
+  },
+  {
+    "course": "Grades 9-12AP Environmental Science",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the concept of the tragedy of the commons, focusing on how individuals' self-interest can lead to the depletion of shared resources and the implications for the common good.",
+    "expected_code": "EIN-2.A.1"
+  },
+  {
+    "course": "AP Calculus Skills Standards",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students recognize and analyze common underlying structures in various problem-solving scenarios across different contexts.",
+    "expected_code": "2.A"
+  },
+  {
+    "course": "AP Calculus Skills Standards",
+    "grade": 11,
+    "query": "Create a lesson plan that encourages students to use technology to formulate and test their own claims and conjectures in a collaborative environment.",
+    "expected_code": "3.A"
+  },
+  {
+    "course": "AP Physics 2",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand how to describe the electric field produced by a charged object or a configuration of point charges.",
+    "expected_code": "10.3.A"
+  },
+  {
+    "course": "AP Physics 2",
+    "grade": 11,
+    "query": "Create a lesson plan that explains the concept of magnetic permeability in materials, including its significance and practical applications.",
+    "expected_code": "12.1.C"
+  },
+  {
+    "course": "AP Seminar Curricular Requirements",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand ethical research practices and the importance of adhering to the AP Capstone Policy regarding plagiarism and the falsification or fabrication of information.",
+    "expected_code": "CR 4"
+  },
+  {
+    "course": "AP Seminar Curricular Requirements",
+    "grade": 11,
+    "query": "Create a lesson plan that encourages students to explore the theme of climate change by examining its impacts through scientific, economic, and ethical lenses while making connections to historical events and cultural responses.",
+    "expected_code": "CR 1"
+  },
+  {
+    "course": "AP Seminar Curriculum Framework",
+    "grade": 11,
+    "query": "Create a lesson plan focused on teaching students how precise word choice can enhance clarity by reducing confusion, wordiness, and redundancy in their writing.",
+    "expected_code": "EK 5.1B3"
+  },
+  {
+    "course": "AP Seminar Curriculum Framework",
+    "grade": 11,
+    "query": "Create a lesson plan focused on helping students understand how to effectively contribute to a collaborative task and recognize the value of individual efforts within a team.",
+    "expected_code": "LO 5.2A"
+  },
+  {
+    "course": "AP US Government & Politics",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in analyzing and discussing the potential limitations of visual data representations.",
+    "expected_code": "3.F"
+  },
+  {
+    "course": "AP US Government & Politics",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the role of interest groups in the political process, including their functions in educating voters and lawmakers, conducting lobbying, drafting legislation, mobilizing members, and submitting amicus curiae briefs.",
+    "expected_code": "EK 5.6.A.1"
+  },
+  {
+    "course": "AP Art and Design",
+    "grade": 11,
+    "query": "Create a lesson plan that encourages students to explore how different works of art and design combine various materials, processes, and ideas to express meaning and creativity.",
+    "expected_code": "3.B"
+  },
+  {
+    "course": "AP Art and Design",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in exploring and documenting the materials, processes, and concepts involved in the creation of various works of art and design.",
+    "expected_code": "3.A"
+  },
+  {
+    "course": "AP English Literature",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how the relationship between a character and their setting influences the character's actions and emotions in a story.",
+    "expected_code": "2.C"
+  },
+  {
+    "course": "AP English Literature",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in writing a paragraph that presents a claim supported by textual evidence.",
+    "expected_code": "7.A"
+  },
+  {
+    "course": "AP Macroeconomics",
+    "grade": 11,
+    "query": "Create a lesson plan that explains how short-run equilibrium output can vary in relation to full-employment output and the implications of positive and negative output gaps on the economy.",
+    "expected_code": "MOD-2.G.3"
+  },
+  {
+    "course": "AP Macroeconomics",
+    "grade": 11,
+    "query": "Create a lesson plan that explains the aggregate demand\u2013aggregate supply model and its role in illustrating the relationship between price levels, aggregate output, employment, and the effects of macroeconomic shocks.",
+    "expected_code": "MOD-2"
+  },
+  {
+    "course": "AP Environmental Science Subunits",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the concepts of plate tectonics, including the types of tectonic plates, their movements, and the impact on Earth's geology and natural events.",
+    "expected_code": "4.1"
+  },
+  {
+    "course": "AP Environmental Science Subunits",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the environmental, economic, and social impacts of overfishing on marine ecosystems and coastal communities.",
+    "expected_code": "5.8"
+  },
+  {
+    "course": "AP US Government and Politics",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the key themes and arguments presented in Federalist No. 78, focusing on the role of the judiciary and the concept of judicial review.",
+    "expected_code": "Fed 78"
+  },
+  {
+    "course": "AP US Government and Politics",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the significance of the Supreme Court case Engle v. Vitale (1962), focusing on its impact on the separation of church and state in public schools.",
+    "expected_code": "E v. V"
+  },
+  {
+    "course": "Pre-AP Algebra 2",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how to use matrix multiplication to determine the sizes of population subgroups at a future time based on their current sizes and transition matrices.",
+    "expected_code": "4M.3.2c"
+  },
+  {
+    "course": "Pre-AP Algebra 2",
+    "grade": 11,
+    "query": "Create a lesson plan that explores the concept of linear transformations, focusing on how they map points (x, y) to their images and illustrate this with examples and visual aids.",
+    "expected_code": "4M.1.1c"
+  },
+  {
+    "course": "AP Japanese Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students develop their written interpersonal communication skills through engaging activities and real-life scenarios.",
+    "expected_code": "1.4"
+  },
+  {
+    "course": "AP Japanese Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students explore how the themes and messages in a specific text connect to the cultural practices and beliefs of the target culture.",
+    "expected_code": "2.A.2"
+  },
+  {
+    "course": "Pre-AP Chemistry",
+    "grade": 11,
+    "query": "Design a lesson plan that engages students in creating and evaluating models of chemical transformations, incorporating hands-on activities and real-world applications.",
+    "expected_code": "3.2.A.1"
+  },
+  {
+    "course": "Pre-AP Chemistry",
+    "grade": 11,
+    "query": "Create a lesson plan that explores how the density of a pure substance is influenced by the arrangement of its particles.",
+    "expected_code": "1.1.C.2"
+  }
+]

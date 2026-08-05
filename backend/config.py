@@ -5,6 +5,8 @@ nothing else needs to know where things live.
 """
 from __future__ import annotations
 
+import json
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -14,10 +16,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# The canonical Florence City Schools builder. Lives OUTSIDE this repo, shared
-# with the build-lesson-plan skill. Never fork it — see docx_build.py.
 DEFAULT_BUILDER = (
-    PROJECT_ROOT.parents[2] / "Skills" / "build-lesson-plan" / "scripts" / "build_lesson_plan.py"
+    PROJECT_ROOT / "backend" / "builder" / "build_lesson_plan.py"
 )
 
 
@@ -33,7 +33,7 @@ def _default_db_path() -> Path:
     """
     xdg = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg) if xdg else Path.home() / "Library" / "Application Support"
-    return base / "ap-lang-rag" / "app.db"
+    return base / "flexed-academy" / "app.db"
 
 
 class Settings(BaseSettings):
@@ -43,18 +43,18 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
+    common_standards_api_key: str = ""
 
-    app_db_path: Path = Field(default_factory=_default_db_path)
+    database_url: str = ""
+    curriculum_maps_dir: Path = PROJECT_ROOT / "data" / "curriculum_maps"
     plans_dir: Path = PROJECT_ROOT / "plans"
-    chroma_path: Path = PROJECT_ROOT / "chroma_db"
-    chunks_path: Path = PROJECT_ROOT / "chunks.json"
-    known_gaps_path: Path = PROJECT_ROOT / "source_docs" / "KNOWN_GAPS.md"
+    chunks_path: Path = PROJECT_ROOT / "data" / "processed" / "chunks.json"
+    known_gaps_path: Path = PROJECT_ROOT / "data" / "raw" / "KNOWN_GAPS.md"
     builder_path: Path = DEFAULT_BUILDER
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
-    # The canonical curriculum reference, alongside the builder. Its week->date
-    # map and holiday list are the only place the real school calendar lives, so
-    # we read it rather than copying dates into a prompt that would go stale.
-    curriculum_path: Path = DEFAULT_BUILDER.parent.parent / "reference" / "ap-lang-curriculum.md"
+    school_profile_path: Path = Path(__file__).resolve().parent / "context" / "school_profile.md"
+    # The global school calendar for Florence City Schools, applying to all courses.
+    calendar_path: Path = Path(__file__).resolve().parent / "context" / "school_calendar.md"
 
     retrieval_top_k: int = 5
     # Tuned empirically for all-MiniLM-L6-v2 + Chroma's default L2 space via
@@ -63,11 +63,52 @@ class Settings(BaseSettings):
     # Birmingham Jail" sit at 0.71); off-domain starts at ~0.82. This number is
     # MEANINGLESS if the embedding model or chunking changes — re-run the sweep.
     retrieval_max_distance: float = 0.78
+    # Per-course overrides, as JSON: {"Math": 0.62}.
+    #
+    # The 0.78 above was measured against AP Lang and does NOT transfer to the
+    # Alabama frameworks. Re-measured 2026-08-04 on the grade 9-12 corpus, nearest
+    # off-domain match per framework: Health 0.884, Counseling 0.884, Social
+    # Studies 0.875, Arts 0.858, AP Lang 0.838, ELA 0.838, DLCS 0.827,
+    # Math_AWF 0.827, World Languages 0.812 — all safely outside 0.78 — but
+    # Math 0.746, Science 0.752 and PE 0.762, all INSIDE it.
+    #
+    # (PE was outside at 0.887 while K-8 was loaded and moved inside when the
+    # corpus narrowed to high school. The floor is a property of the corpus, not
+    # of the subject — re-measure after ANY change to grade scope or chunking.)
+    #
+    # Deliberately left empty rather than guessed at. For those three the viable
+    # band is now wide — in-domain tops out at 0.47 — so ~0.60 would likely work,
+    # but that is two probe queries per subject, and AP Lang has legitimate
+    # in-domain phrasing out at 0.73. Run
+    #   scripts/06_threshold_sweep.py --course Math --grade 11
+    # with real teacher phrasings and put the measured number here.
+    # See KNOWN_GAPS.md.
+    #
+    # Held as a string and parsed in `retrieval_floors`, NOT typed as dict here.
+    # pydantic-settings json.loads()es complex-typed fields inside the env source,
+    # before any validator can normalise them, so RETRIEVAL_FLOORS="" — which is
+    # exactly what copying .env.example gives you, since every other setting there
+    # uses "" for unset — raised JSONDecodeError and took the app down at import.
+    retrieval_floors_raw: str = Field(default="", alias="RETRIEVAL_FLOORS")
     # Below this many surviving chunks, the generator is told to say so rather
     # than supply a code from memory.
     retrieval_thin_threshold: int = 3
 
-    allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Signs the login session cookie (see auth.py). Any value works for local
+    # dev — every existing session just invalidates if it changes — but a real
+    # shared deployment MUST override this via .env, or every server restart
+    # (a fresh random key) logs every teacher out, and worse, a guessable
+    # default would let anyone forge another teacher's session cookie.
+    session_secret: str = "dev-secret-do-not-use-in-production"
+    require_login: bool = True
+    google_client_id: str | None = None  # TEMPORARY bypass (2026-08-04) so Josh can iterate on the visual redesign
+    # without hitting the login wall on every reload. With this False,
+    # get_current_user() returns 'default_user' for any request with no valid
+    # session cookie, instead of a 401 — everyone unauthenticated shares Josh's
+    # existing account and data. Flip back to True to re-enable real login
+    # before this is ever used by more than one person.
+
+    allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5175,http://127.0.0.1:5175"
     # 8000 is taken on this machine by the local oMLX LLM server, so the app
     # lives on 8010 by default.
     api_port: int = 8010
@@ -83,12 +124,40 @@ class Settings(BaseSettings):
         return v.strip()
 
     @property
+    def retrieval_floors(self) -> dict[str, float]:
+        """Per-course floor overrides. Malformed JSON is ignored, loudly.
+
+        A bad value here must not stop the app from starting — the global floor is
+        a safe fallback, and a teacher mid-lesson-plan should not meet a stack
+        trace over a tuning override.
+        """
+        raw = (self.retrieval_floors_raw or "").strip()
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+            return {str(k): float(v) for k, v in parsed.items()}
+        except (ValueError, TypeError, AttributeError):
+            logging.getLogger("aplang.config").warning(
+                "RETRIEVAL_FLOORS is not a JSON object of course->float (%r); "
+                "ignoring it and using RETRIEVAL_MAX_DISTANCE=%.2f for every course.",
+                raw, self.retrieval_max_distance,
+            )
+            return {}
+
+    @property
     def origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
     @property
     def has_api_key(self) -> bool:
         return bool(self.openai_api_key) and self.openai_api_key != "your-api-key-here"
+
+    def floor_for(self, course: str | None) -> float:
+        """The relevance floor for one course, falling back to the global one."""
+        if course and course in self.retrieval_floors:
+            return float(self.retrieval_floors[course])
+        return self.retrieval_max_distance
 
 
 @lru_cache(maxsize=1)

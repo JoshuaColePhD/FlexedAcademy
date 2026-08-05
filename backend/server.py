@@ -16,7 +16,7 @@ from . import db
 from .config import settings
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
-from .routes import generate, misc, plans, standards
+from .routes import auth, curriculum, generate, misc, plans, standards
 from .schema import SchemaError
 
 logging.basicConfig(
@@ -37,6 +37,11 @@ async def lifespan(app: FastAPI):
         log.error("BUILDER CHECK FAILED: %s — %s", e.message, e.hint or "")
     if not settings.has_api_key:
         log.warning("OPENAI_API_KEY is not set; generation and transcription will fail.")
+    if settings.session_secret == "dev-only-insecure-secret-set-a-real-one-in-env":
+        log.warning(
+            "SESSION_SECRET is not set — using the insecure dev default. Every "
+            "login session cookie is forgeable until a real one is set in .env."
+        )
     misc.purge_legacy_temp()
     yield
     db.close()
@@ -47,10 +52,11 @@ app = FastAPI(title="AP Lang RAG", version="2.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.origins,
-    # Was True alongside allow_origins=["*"], a combination browsers reject
-    # outright — so credentialed CORS never actually worked. Nothing here uses
-    # cookies, so it stays off.
-    allow_credentials=False,
+    # Was False, alongside a comment saying nothing here used cookies — now the
+    # login session does. This is safe specifically BECAUSE allow_origins is an
+    # explicit list, never "*"; browsers reject credentials with a wildcard
+    # origin outright, so there's no way to accidentally combine the two.
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
@@ -66,12 +72,31 @@ async def schema_error_handler(request: Request, exc: SchemaError) -> JSONRespon
     return JSONResponse(status_code=422, content={"error": exc.payload()})
 
 
+app.include_router(auth.router)
 app.include_router(misc.router)
 app.include_router(generate.router)
 app.include_router(plans.router)
 app.include_router(standards.router)
+app.include_router(curriculum.router)
 
+import os
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-@app.get("/")
-def root():
-    return {"name": "AP Lang RAG", "docs": "/docs", "health": "/api/health"}
+dist_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+
+if os.path.isdir(dist_dir):
+    app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Serve exact file if it exists (e.g. favicon.ico, images)
+        file_path = os.path.join(dist_dir, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # Otherwise serve index.html for React Router
+        return FileResponse(os.path.join(dist_dir, "index.html"))
+else:
+    @app.get("/")
+    def root():
+        return {"name": "AP Lang RAG (Frontend not built)", "docs": "/docs"}

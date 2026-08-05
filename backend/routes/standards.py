@@ -33,6 +33,8 @@ _LIST_FIELDS = (
     "frequency",
     "grade",
     "verbatim_ok",
+    "parent_code",
+    "parent_text",
 )
 
 
@@ -50,10 +52,17 @@ def list_standards(
     source_type: str | None = Query(None, max_length=60),
     strand: str | None = Query(None, max_length=120),
     q: str | None = Query(None, max_length=200),
+    subject: str | None = Query(None, max_length=120),
+    grade: int | None = Query(None),
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
     items = retrieval.load_chunks()
+
+    if subject:
+        items = [c for c in items if c.get("course") == subject]
+    if grade is not None:
+        items = [c for c in items if c.get("grade") == grade]
 
     if source_type:
         items = [c for c in items if c.get("source_type") == source_type]
@@ -75,8 +84,17 @@ def list_standards(
 
 
 @router.get("/stats")
-def stats():
+def stats(
+    subject: str | None = Query(None, max_length=120),
+    grade: int | None = Query(None)
+):
     items = retrieval.load_chunks()
+    
+    if subject:
+        items = [c for c in items if c.get("course") == subject]
+    if grade is not None:
+        items = [c for c in items if c.get("grade") == grade]
+        
     return {
         "total": len(items),
         "by_source_type": dict(Counter(c.get("source_type") or "?" for c in items)),

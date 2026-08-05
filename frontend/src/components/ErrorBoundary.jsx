@@ -29,10 +29,27 @@ export class ErrorBoundary extends Component {
             Your plans are stored on the server, so nothing has been lost. Reloading usually clears
             it.
           </p>
-          <pre>{String(this.state.error?.stack || this.state.error)}</pre>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+          {/* The message is useful; a raw stack trace is not something to put in
+              front of a teacher as the first thing they read. It stays available
+              — collapsed — so a bug report is still possible. */}
+          <p className="crash-message">{String(this.state.error?.message || this.state.error)}</p>
+          <details className="crash-details">
+            <summary>Technical details</summary>
+            <pre>{String(this.state.error?.stack || this.state.error)}</pre>
+          </details>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" onClick={() => location.reload()}>
               <RotateCcw size={14} aria-hidden="true" /> Reload
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => {
+                const text = String(this.state.error?.stack || this.state.error)
+                navigator.clipboard?.writeText(text).catch(() => {})
+              }}
+            >
+              Copy details
             </button>
             <button
               type="button"

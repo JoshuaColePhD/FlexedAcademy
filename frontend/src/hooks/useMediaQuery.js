@@ -16,4 +16,9 @@ export function useMediaQuery(query) {
   return matches
 }
 
+/* Both of these are duplicated in components.css — NARROW at the `.sidebar`
+   drawer block, PANEL_OVERLAY at the `.artifact-panel` absolute-position block.
+   Keep them in step: the JS decides whether to trap focus, the CSS decides
+   whether the thing is actually covering the page, and they must agree. */
 export const NARROW = '(max-width: 900px)'
+export const PANEL_OVERLAY = '(max-width: 1180px)'

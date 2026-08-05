@@ -38,8 +38,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SOURCE_DOCS = PROJECT_ROOT / "source_docs"
-OUTPUT_PATH = PROJECT_ROOT / "chunks.json"
+SOURCE_DOCS = PROJECT_ROOT / "data" / "raw"
+OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "chunks.json"
 
 # --- Course-level constants -------------------------------------------------
 # Phase 1 populates one value each. The fields exist because Phase 2 scopes

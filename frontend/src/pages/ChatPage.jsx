@@ -1,30 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, PanelLeft } from 'lucide-react'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { api } from '../lib/api'
 import { useLessonStream } from '../hooks/useLessonStream'
+import { ArrowDown } from 'lucide-react'
 import { useToast } from '../lib/toastContext'
+import { useConfirm } from '../lib/confirmContext'
 import { Composer } from '../components/Composer'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
-import { ThemeToggle } from '../components/ThemeToggle'
-
-const SUGGESTIONS = [
-  'Week 3 — rhetorical analysis of Letter from Birmingham Jail',
-  'A week on line of reasoning and evidence',
-  'Week 12, synthesis essay from six sources',
-]
+import { TopBar } from '../components/TopBar'
+import { Greeting } from '../components/Greeting'
+import { Starters } from '../components/Starters'
+import { WeekStrip } from '../components/WeekStrip'
 
 let localId = 0
 const nextId = () => `m${++localId}`
 
 export function ChatPage({ shell }) {
   const toast = useToast()
+  const confirm = useConfirm()
   const {
     chats,
     setChats,
     currentChatId,
     setCurrentChatId,
-    theme,
     onToggleSidebar,
     refreshChats,
   } = shell
@@ -35,7 +34,6 @@ export function ChatPage({ shell }) {
   const [artifact, setArtifact] = useState(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
-  const [busy, setBusy] = useState(false)
 
   const scrollRef = useRef(null)
   const endRef = useRef(null)
@@ -85,13 +83,17 @@ export function ChatPage({ shell }) {
       .getChat(currentChatId)
       .then(async (chat) => {
         if (!alive) return
-        const loaded = chat.messages.map((m) => ({
+        const loaded = (chat.messages || []).map((m) => ({
           id: nextId(),
           role: m.role,
           content: m.content,
           planId: m.plan_id || null,
         }))
-        setMessages(loaded)
+        setMessages((prev) => {
+          // If we have more messages locally (optimistic UI), don't overwrite with stale fetch
+          if (prev.length > loaded.length) return prev
+          return loaded
+        })
         const lastPlan = [...loaded].reverse().find((m) => m.planId)
         if (lastPlan) {
           try {
@@ -111,7 +113,7 @@ export function ChatPage({ shell }) {
           setArtifact(null)
         }
       })
-      .catch((err) => alive && toast.error('Could not open that chat', err.message))
+      .catch((err) => alive && toast.apiError('Could not open that chat', err))
     return () => {
       alive = false
     }
@@ -123,7 +125,7 @@ export function ChatPage({ shell }) {
       const assistantId = nextId()
       setMessages((prev) => [
         ...prev,
-        { id: assistantId, role: 'assistant', content: 'Drafting the week…', streaming: true },
+        { id: assistantId, role: 'assistant', content: '', streaming: true },
       ])
       setArtifact(null)
       setPanelOpen(true)
@@ -161,29 +163,33 @@ export function ChatPage({ shell }) {
           planId: done.plan_id,
           plan: done.plan,
           warnings: done.warnings,
-          grounding: stream.grounding,
+          grounding: done.grounding,
           unit: done.unit,
         })
         if (chatId) {
-          await api.addMessage(chatId, {
-            role: 'assistant',
-            content: `Generated ${done.week_label}`,
-            plan_id: done.plan_id,
-          })
+          try {
+            await api.addMessage(chatId, {
+              role: 'assistant',
+              content: `Generated ${done.week_label}`,
+              plan_id: done.plan_id,
+            })
+          } catch (err) {
+            toast.apiError('The plan was saved, but this conversation wasn’t updated', err)
+          }
           refreshChats()
         }
       } catch {
         // Already surfaced by the hook's onError.
       }
     },
-    [stream, refreshChats]
+    [stream, refreshChats, toast]
   )
 
-  const submit = useCallback(async () => {
-    const text = query.trim()
-    if (!text && attachments.length === 0) return
+  const submit = useCallback(async (overrideQuery) => {
+    const raw = (typeof overrideQuery === 'string' ? overrideQuery : query).trim()
+    if (!raw && attachments.length === 0) return
 
-    let fullQuery = text
+    let fullQuery = raw
     if (attachments.length) {
       fullQuery += '\n\n--- Attached context ---\n'
       for (const f of attachments) fullQuery += `\nDocument: ${f.filename}\n${f.text}\n`
@@ -193,38 +199,54 @@ export function ChatPage({ shell }) {
     let chatId = currentChatId
     if (!chatId) {
       try {
-        // Title from the first line only, and the ellipsis decided from that same
-        // line — the old version sliced the first line but tested the full length.
-        const firstLine = (text || 'Attached files').split('\n')[0]
+        const firstLine = (raw || 'Attached files').split('\n')[0]
         const title = firstLine.length > 40 ? `${firstLine.slice(0, 40)}…` : firstLine
         const chat = await api.createChat(title)
         chatId = chat.id
         setCurrentChatId(chat.id)
         setChats((prev) => [chat, ...prev])
+
+        api
+          .suggestChatTitle(raw || 'Attached files')
+          .then(({ title: suggested }) => {
+            if (!suggested || suggested === title) return
+            setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, title: suggested } : c)))
+            api.renameChat(chat.id, suggested).catch(() => {})
+          })
+          .catch(() => {})
       } catch (err) {
-        toast.error('Could not start a new chat', err.message)
+        toast.apiError('Could not start a new chat', err)
         return
       }
     }
 
-    setMessages((prev) => [
-      ...prev,
-      { id: nextId(), role: 'user', content: text || 'Attached files for context.' },
-    ])
+    const userMessageId = nextId()
+    const userContent = raw || 'Attached files for context.'
+    setMessages((prev) => [...prev, { id: userMessageId, role: 'user', content: userContent }])
     setQuery('')
     setAttachments([])
     setAtBottom(true)
 
     if (chatId) {
-      api
-        .addMessage(chatId, { role: 'user', content: text || 'Attached files for context.' })
-        .catch(() => {})
+      api.addMessage(chatId, { role: 'user', content: userContent }).catch((err) => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === userMessageId ? { ...m, unsaved: true } : m))
+        )
+        toast.apiError('That message wasn’t saved to this conversation', err)
+      })
     }
 
-    setBusy(true)
     await runGeneration(fullQuery, { chatId })
-    setBusy(false)
-  }, [query, attachments, currentChatId, setCurrentChatId, setChats, toast, runGeneration])
+
+  }, [
+    query,
+    attachments,
+    currentChatId,
+    setCurrentChatId,
+    setChats,
+    toast,
+    runGeneration,
+  ])
 
   const retry = useCallback(async () => {
     if (!lastQueryRef.current) return
@@ -233,9 +255,7 @@ export function ChatPage({ shell }) {
       while (next.length && next[next.length - 1].role === 'assistant') next.pop()
       return next
     })
-    setBusy(true)
     await runGeneration(lastQueryRef.current, { chatId: currentChatId })
-    setBusy(false)
   }, [runGeneration, currentChatId])
 
   const editAndResend = useCallback(
@@ -243,22 +263,32 @@ export function ChatPage({ shell }) {
       const text = newText.trim()
       if (!text) return
       const idx = messages.findIndex((m) => m.id === message.id)
-      setMessages((prev) => [
-        ...prev.slice(0, idx),
-        { ...prev[idx], content: text },
-      ])
+      if (idx === -1) return
+
+      const dropped = messages.length - 1 - idx
+      if (dropped > 0) {
+        const ok = await confirm({
+          title: 'Resend this message?',
+          body: `The ${dropped} message${dropped === 1 ? '' : 's'} after it will be removed from this conversation.`,
+          confirmLabel: 'Resend',
+        })
+        if (!ok) return
+      }
+
+      setMessages((prev) => {
+        const at = prev.findIndex((m) => m.id === message.id)
+        if (at === -1) return prev
+        return [...prev.slice(0, at), { ...prev[at], content: text }]
+      })
       lastQueryRef.current = text
-      setBusy(true)
       await runGeneration(text, { chatId: currentChatId })
-      setBusy(false)
     },
-    [messages, runGeneration, currentChatId]
+    [messages, runGeneration, currentChatId, confirm]
   )
 
   const reviseDay = useCallback(
     async (dayIndex, day, feedback) => {
       if (!artifact?.planId) return
-      setBusy(true)
       setMessages((prev) => [
         ...prev,
         { id: nextId(), role: 'user', content: `Revise ${day.name}: ${feedback}` },
@@ -298,8 +328,6 @@ export function ChatPage({ shell }) {
           },
         ])
         toast.error(`Could not revise ${day.name}`, err.hint || err.message)
-      } finally {
-        setBusy(false)
       }
     },
     [artifact, toast]
@@ -316,74 +344,70 @@ export function ChatPage({ shell }) {
   )
 
   const activeChat = chats.find((c) => c.id === currentChatId)
+  const isEmpty = messages.length === 0
+
+  /* Was the previous render empty? Drives a one-shot settle so the composer
+     reads as moving into the footer rather than jumping there. */
+  const wasEmpty = useRef(true)
+  const justDocked = !isEmpty && wasEmpty.current
+  useEffect(() => {
+    wasEmpty.current = isEmpty
+  }, [isEmpty])
 
   return (
-    <>
-      <div className="column">
-        <header className="topbar">
-          <button
-            type="button"
-            className="btn-icon"
-            onClick={onToggleSidebar}
-            aria-label="Toggle sidebar"
-          >
-            <PanelLeft size={16} aria-hidden="true" />
-          </button>
-          <span className="topbar-title">{activeChat?.title || 'New plan'}</span>
-          <span className="topbar-spacer" />
-          <ThemeToggle mode={theme.mode} onCycle={theme.cycle} />
-        </header>
+    <PanelGroup autoSaveId="chat-layout-v6" orientation="horizontal" className="h-full w-full">
+{/* Left Pane: Chat */}
+      <Panel
+        defaultSize={panelOpen && liveArtifact ? 55 : 100}
+        minSize={30}
+        className="relative flex h-full min-h-0 flex-col bg-paper"
+      >
+        <TopBar
+          title={isEmpty ? '' : activeChat?.title || 'New plan'}
+          course={shell.settings?.course}
+          collapsed={shell.collapsed}
+          onToggleSidebar={onToggleSidebar}
+        />
 
-        <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
-          {messages.length === 0 ? (
-            <div className="empty-state">
-              <h1>
-                What are we <em>teaching</em> next week?
-              </h1>
-              <p>
-                Describe a week. Every standard gets cited from your own source documents, and
-                you get the district template as a&nbsp;.docx.
-              </p>
-              <div className="suggestions">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" className="suggestion" onClick={() => setQuery(s)}>
-                    {s}
-                  </button>
-                ))}
+        {/* Hidden, not zero-height, so it contributes nothing to the centring
+            below when there is nothing to show. */}
+        <div
+          className={isEmpty ? 'hidden' : 'min-h-0 flex-1 scroll-smooth overflow-y-auto'}
+          ref={scrollRef}
+          onScroll={onScroll}
+        >
+          <div className="mx-auto flex w-full max-w-measure flex-col gap-7 px-5 py-8">
+            {messages.map((m, i) => (
+              <Message
+                key={m.id}
+                message={m}
+                isLast={i === messages.length - 1}
+                onOpenArtifact={() => setPanelOpen(true)}
+                onRetry={m.role === 'assistant' && !stream.isStreaming ? retry : undefined}
+                onEdit={editAndResend}
+              />
+            ))}
+            {/* Progress is the week filling in, not three bouncing dots. A
+                teacher can see which day is being written and how many are
+                left, which is the only thing they'd want to know while
+                waiting. */}
+            {stream.isStreaming ? (
+              <div className="w-full">
+                <p className="eyebrow mb-2">
+                  {stream.preview?.days?.length ? 'Writing the week' : 'Retrieving standards'}
+                </p>
+                <WeekStrip days={stream.preview?.days} writing compact />
               </div>
-            </div>
-          ) : (
-            <div className="chat-inner">
-              {messages.map((m, i) => (
-                <Message
-                  key={m.id}
-                  message={m}
-                  isLast={i === messages.length - 1}
-                  onOpenArtifact={() => setPanelOpen(true)}
-                  onRetry={m.role === 'assistant' && !stream.isStreaming ? retry : undefined}
-                  onEdit={editAndResend}
-                />
-              ))}
-              {stream.isStreaming && !messages.some((m) => m.streaming) ? (
-                <div className="msg is-assistant">
-                  <span className="msg-avatar">
-                    <img src="/logo.png" alt="" aria-hidden="true" />
-                  </span>
-                  <div className="msg-body">
-                    <span className="thinking">
-                      <i /> <i /> <i /> Retrieving standards
-                    </span>
-                  </div>
-                </div>
-              ) : null}
-              <div ref={endRef} />
-            </div>
-          )}
+            ) : null}
+            <div ref={endRef} />
+          </div>
+        </div>
 
-          {!atBottom && messages.length > 0 ? (
+        {!atBottom && !isEmpty ? (
+          <div className="pointer-events-none absolute bottom-[92px] left-0 right-0 z-10 flex justify-center">
             <button
               type="button"
-              className="scroll-bottom"
+              className="pointer-events-auto flex items-center gap-2 rounded-full bg-paper-inset px-3.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge active:scale-[0.98]"
               onClick={() => {
                 setAtBottom(true)
                 endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -391,11 +415,9 @@ export function ChatPage({ shell }) {
             >
               <ArrowDown size={13} aria-hidden="true" /> Latest
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
-        {/* Announces streaming status and errors to a screen reader — errors used
-            to arrive via alert(), which is invisible until dismissed. */}
         <div className="visually-hidden" role="status" aria-live="polite">
           {stream.isStreaming
             ? 'Generating the lesson plan.'
@@ -404,26 +426,72 @@ export function ChatPage({ shell }) {
               : ''}
         </div>
 
-        <Composer
-          value={query}
-          onChange={setQuery}
-          onSubmit={submit}
-          onStop={stream.stop}
-          isStreaming={stream.isStreaming}
-          attachments={attachments}
-          setAttachments={setAttachments}
-        />
-      </div>
+        {/* ── the dock ──────────────────────────────────────────────────────
+            Empty, this IS the page: greeting, composer and starter pills
+            centred as one unit. Once a conversation exists it becomes a footer.
 
+            DO NOT refactor this into `{isEmpty ? <A><Composer/></A> :
+            <B><Composer/></B>}`. Composer owns a MediaRecorder, a
+            ResizeObserver and an autosized inline height, all of which die on
+            remount — a teacher mid-dictation would lose the recording the
+            instant their first message landed. The composer must stay in the
+            same slot of the same parent; only the wrapper's className may
+            change, and the siblings render as `null` so its position index
+            never shifts.
+
+            max-w-measure is identical in both states for the same reason: a
+            width change would fire the ResizeObserver and re-measure the box. */}
+        <div
+          className={
+            isEmpty
+              ? 'flex min-h-0 flex-1 flex-col justify-center px-5 pb-[8vh]'
+              : 'shrink-0 px-5 pb-5 pt-1'
+          }
+        >
+          <div
+            className={`mx-auto w-full max-w-measure ${justDocked ? 'animate-dock-settle' : ''}`}
+          >
+            {isEmpty ? <Greeting settings={shell.settings} /> : null}
+
+            <Composer
+              value={query}
+              onChange={setQuery}
+              onSubmit={submit}
+              onStop={stream.stop}
+              isStreaming={stream.isStreaming}
+              attachments={attachments}
+              setAttachments={setAttachments}
+              focusOnMount
+            />
+
+            {isEmpty ? (
+              <Starters settings={shell.settings} onPick={(prompt) => submit(prompt)} />
+            ) : null}
+          </div>
+        </div>
+      </Panel>
+{/* Right Pane: Artifact (when available) */}
       {panelOpen && liveArtifact ? (
-        <ArtifactPanel
-          artifact={{ ...liveArtifact, plan: livePlan }}
-          onClose={() => setPanelOpen(false)}
-          onReviseDay={reviseDay}
-          busy={busy || stream.isStreaming}
-          streamingText={stream.text}
-        />
+        <>
+          <PanelResizeHandle className="w-px shrink-0 cursor-col-resize bg-edge transition-colors hover:bg-edge-strong active:w-0.5 active:bg-accent" />
+          <Panel id="artifact-panel" defaultSize={45} minSize={30} className="relative z-10 flex h-full flex-col bg-paper-raised">
+            <ArtifactPanel
+              missingDays={
+                stream.isStreaming
+                  ? 'pending'
+                  : liveArtifact && !liveArtifact.planId
+                    ? 'incomplete'
+                    : 'no_school'
+              }
+              artifact={{ ...liveArtifact, plan: livePlan }}
+              onClose={() => setPanelOpen(false)}
+              onReviseDay={reviseDay}
+              busy={stream.isStreaming}
+              streamingText={stream.text}
+            />
+          </Panel>
+        </>
       ) : null}
-    </>
+</PanelGroup>
   )
 }

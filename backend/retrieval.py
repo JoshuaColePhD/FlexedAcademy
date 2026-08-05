@@ -53,11 +53,22 @@ UNGROUNDABLE_FAMILIES = ("CLR", "IKI")
 _CODE_RE = re.compile(
     r"\b("
     r"\d\.[A-C]"  # AP Lang skill, e.g. 2.A
-    r"|Grade\d{1,2}-\d{1,2}[a-c]?"  # ALCOS, e.g. Grade11-22a
+    r"|Grade\d{1,2}-\d{1,2}[a-c]?"  # legacy ALCOS parse, e.g. Grade11-22a
+    # Alabama CASE codes as published by ALSDE: a subject+year prefix, a grade or
+    # course segment, then the standard. e.g. ELA21.11.R2, MA19.GDA.5,
+    # SS24.11.3a, SCI23.9.1, CSC26.9-12.CD.3, ARTS24.HS.MU.1
+    r"|[A-Z]{2,5}\d{2}(?:\.[A-Za-z0-9-]+){1,4}"
     r"|R\d{1,2}"  # ACT recurring, e.g. R4
     r"|(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\s?\d{3}"  # ACT English/Writing + ungroundable
     r")\b"
 )
+
+
+@functools.lru_cache(maxsize=1)
+def get_reranker():
+    from sentence_transformers import CrossEncoder
+    log.info("Loading CrossEncoder (BAAI/bge-reranker-base)...")
+    return CrossEncoder('BAAI/bge-reranker-base')
 
 
 def _norm_code(code: str) -> str:
@@ -86,29 +97,29 @@ _GRADE_RE = re.compile(
 )
 
 
-def out_of_scope_grades(query: str) -> list[int]:
+def out_of_scope_grades(query: str, corpus_grade: int = 11) -> list[int]:
     """Grades named in the query that this corpus cannot answer for."""
     found = set()
     for a, b in _GRADE_RE.findall(query):
         raw = a or b
         if raw and raw.isdigit():
             found.add(int(raw))
-    return sorted(g for g in found if g != CORPUS_GRADE)
+    return sorted(g for g in found if g != corpus_grade)
 
 
-def scope_error(query: str, grades: list[int]) -> AppError:
+def scope_error(query: str, grades: list[int], corpus_grade: int = 11) -> AppError:
     listed = ", ".join(str(g) for g in grades)
     return AppError(
         "out_of_scope_grade",
-        f"This corpus only covers Grade {CORPUS_GRADE}; the request names Grade {listed}.",
+        f"This corpus only covers Grade {corpus_grade}; the request names Grade {listed}.",
         status=422,
         hint=(
-            f"Only Grade {CORPUS_GRADE} ALCOS standards were parsed (alcos_ela.pdf pp. 133-138). "
+            f"Only Grade {corpus_grade} standards were parsed. "
             f"Because every grade re-uses standard numbers 1-30, answering from Grade "
-            f"{CORPUS_GRADE} would look right and be wrong. Drop the grade from the "
-            f"request, or add that grade to source_docs and re-run scripts/01-02."
+            f"{corpus_grade} would look right and be wrong. Drop the grade from the "
+            f"request, or add that grade to source_docs."
         ),
-        extra={"named_grades": grades, "corpus_grade": CORPUS_GRADE},
+        extra={"named_grades": grades, "corpus_grade": corpus_grade},
     )
 
 
@@ -116,11 +127,6 @@ def scope_error(query: str, grades: list[int]) -> AppError:
 # Chroma access
 # ---------------------------------------------------------------------------
 
-
-@functools.lru_cache(maxsize=1)
-def get_collection():
-    import chromadb
-    from chromadb.utils import embedding_functions
 
     db_path = Path(settings.chroma_path)
     if not db_path.exists():
@@ -135,22 +141,41 @@ def get_collection():
 
 
 @functools.lru_cache(maxsize=1)
+@functools.lru_cache(maxsize=1)
+def get_embedding_model():
+    from sentence_transformers import SentenceTransformer
+    log.info("Loading SentenceTransformer (%s)...", EMBED_MODEL)
+    return SentenceTransformer(EMBED_MODEL)
+
+def embed_query(query: str) -> list[float]:
+    return get_embedding_model().encode(query).tolist()
+
 def load_chunks() -> list[dict]:
-    """The full chunk records, straight from chunks.json.
+    """The full chunk records, straight from the *chunks.json files.
 
     Richer than Chroma's metadata (which flattens lists to ' | '-joined strings
-    and drops Nones), 190KB, and needs no embedding model — which is what makes
-    the Standards browser instant.
+    and drops Nones) and needs no embedding model — which is what makes the
+    Standards browser instant.
+
+    Globs every `*chunks.json` beside chunks.json, matching what
+    scripts/02_embed_store.py embeds. Reading only chunks.json meant the browser
+    showed 164 AP Lang chunks while the vector store held every Alabama subject,
+    so the Standards page and the generator disagreed about what the corpus was.
     """
-    path = Path(settings.chunks_path)
-    if not path.is_file():
+    primary = Path(settings.chunks_path)
+    paths = sorted(primary.parent.glob("*chunks.json"))
+    if not paths:
         raise AppError(
             "chunks_missing",
-            "chunks.json was not found.",
-            hint="Run: python scripts/01_parse_chunks.py",
+            "No *chunks.json files were found.",
+            hint="Run: python scripts/01_parse_chunks.py "
+                 "and python scripts/01d_ingest_alcos_case.py",
         )
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    out: list[dict] = []
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            out.extend(json.load(f))
+    return out
 
 
 @functools.lru_cache(maxsize=1)
@@ -179,29 +204,59 @@ class RetrievalResult:
 
     @property
     def codes(self) -> set[str]:
-        return {_norm_code(c["id"]) for c in self.chunks}
+        """The citable standard codes retrieved — what audit_grounding checks against.
+
+        Read from metadata, not from the Chroma id. Ids are
+        `{course}:{grade}:{code}` so that one standard covering grades 9-12 can be
+        stored once per grade; using the id here would put "ELA:11:ELA21.11.R2" in
+        the allowed set while the plan cites "ELA21.11.R2", and every correctly
+        grounded citation would be flagged as ungrounded.
+        """
+        out = set()
+        for c in self.chunks:
+            code = (c.get("metadata") or {}).get("code") or c["id"]
+            out.add(_norm_code(str(code)))
+        return out
 
     def closest_rejected(self) -> dict | None:
         return self.rejected[0] if self.rejected else None
 
 
-def retrieve_raw(query: str, n: int, where: dict | None = None) -> list[dict]:
-    res = get_collection().query(
-        query_texts=[query],
-        n_results=n,
-        where=where,
-        include=["documents", "metadatas", "distances"],
-    )
+def retrieve_raw(query: str, n: int, course: str, grade: int, source_type: str | None = None) -> list[dict]:
+    query_vector = embed_query(query)
+    from . import db
+    
+    sql = "SELECT id, document, metadata, embedding <=> %s::vector AS distance FROM chunks WHERE 1=1"
+    params = [query_vector]
+    
+    if source_type in ("act_standards", "act_recurring"):
+        sql += " AND metadata->>'source_type' = %s"
+        params.append(source_type)
+    else:
+        sql += " AND metadata->>'course' = %s"
+        params.append(course)
+        
+        # The OR condition
+        sql += " AND ((metadata->>'grade')::int = %s OR metadata->>'source_type' IN ('college_board', 'ap_skills'))"
+        params.append(grade)
+        
+        if source_type:
+            sql += " AND metadata->>'source_type' = %s"
+            params.append(source_type)
+            
+    sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
+    params.extend([query_vector, n])
+    
+    rows = db._rows(sql, tuple(params))
+    
     out = []
-    for i in range(len(res["ids"][0])):
-        out.append(
-            {
-                "id": res["ids"][0][i],
-                "document": res["documents"][0][i],
-                "metadata": res["metadatas"][0][i],
-                "distance": float(res["distances"][0][i]),
-            }
-        )
+    for r in rows:
+        out.append({
+            "id": r["id"],
+            "document": r["document"],
+            "metadata": r["metadata"],
+            "distance": float(r["distance"])
+        })
     return out
 
 
@@ -216,17 +271,15 @@ STRATA = ("ap_skills", "state_course_of_study", "act_standards", "act_recurring"
 
 def retrieve_grounded(
     query: str,
+    subject_code: str = "AP_Lang",
+    grade: int = 11,
     top_k: int | None = None,
     max_distance: float | None = None,
     extra_queries: list[str] | None = None,
 ) -> RetrievalResult:
     top_k = top_k or settings.retrieval_top_k
-    floor = settings.retrieval_max_distance if max_distance is None else max_distance
+    floor = settings.floor_for(subject_code) if max_distance is None else max_distance
 
-    # Search the teacher's own words plus any skill-register rephrasings (see
-    # llm.expand_query). Each chunk keeps its BEST distance across all queries, so
-    # a rephrasing can rescue a standard the raw wording missed without loosening
-    # the floor for anything else.
     searches = [query, *(extra_queries or [])]
     best: dict[str, dict] = {}
 
@@ -237,32 +290,42 @@ def retrieve_grounded(
                 best[c["id"]] = c
 
     for q in searches:
-        # Over-fetch then filter, so near-misses don't cost us real hits.
-        consider(retrieve_raw(q, n=max(top_k * 3, top_k)))
-        # Then per stratum, so each source type gets a fair look — the district
-        # template has a row for a course standard, an ACT code, and an AP skill.
+        # Over-fetch then filter
+        consider(retrieve_raw(q, n=max(top_k * 3, top_k), course=subject_code, grade=grade, source_type=None))
+        # Then per stratum
         for source_type in STRATA:
             try:
-                consider(retrieve_raw(q, n=top_k, where={"source_type": source_type}))
-            except Exception as e:  # noqa: BLE001 — a filter failing must not break retrieval
+                consider(retrieve_raw(q, n=top_k, course=subject_code, grade=grade, source_type=source_type))
+            except Exception as e:
                 log.warning("stratified retrieval failed for %s: %s", source_type, e)
 
     raw = sorted(best.values(), key=lambda c: c["distance"])
 
     survivors = [c for c in raw if c["distance"] <= floor]
-    # Keep the best top_k overall, plus the best survivor from each stratum, so a
-    # relevant AP skill isn't crowded out by five close ALCOS matches.
+    
+    if survivors:
+        try:
+            reranker = get_reranker()
+            pairs = [[query, c["document"]] for c in survivors]
+            scores = reranker.predict(pairs)
+            for c, s in zip(survivors, scores):
+                c["rerank_score"] = float(s)
+            survivors = sorted(survivors, key=lambda c: c["rerank_score"], reverse=True)
+            log.info("Reranked %d candidates using CrossEncoder.", len(survivors))
+        except Exception as e:
+            log.warning("CrossEncoder reranking failed, falling back to embedding distance: %s", e)
+
     keep = survivors[:top_k]
     kept_ids = {c["id"] for c in keep}
     for source_type in STRATA:
-        best = next(
+        best_stratum = next(
             (c for c in survivors if (c.get("metadata") or {}).get("source_type") == source_type),
             None,
         )
-        if best and best["id"] not in kept_ids:
-            keep.append(best)
-            kept_ids.add(best["id"])
-    keep.sort(key=lambda c: c["distance"])
+        if best_stratum and best_stratum["id"] not in kept_ids:
+            keep.append(best_stratum)
+            kept_ids.add(best_stratum["id"])
+    keep.sort(key=lambda c: -c.get("rerank_score", -c["distance"]))
 
     drop = [{"id": c["id"], "distance": c["distance"]} for c in raw if c["distance"] > floor][:3]
 
@@ -277,15 +340,40 @@ def retrieve_grounded(
 
 
 def format_context(result: RetrievalResult) -> str:
-    parts = []
+    """What the generator reads.
+
+    The bracketed label is the standard's own code, not the Chroma id — this is
+    the string we want the model to copy into the plan, and it is the string
+    audit_grounding will look for afterwards.
+    """
+    primary_parts = []
+    act_parts = []
+    
     for i, c in enumerate(result.chunks, 1):
         meta = c.get("metadata") or {}
+        code = meta.get("code") or c["id"]
+        source_type = meta.get("source_type", "")
         meta_str = " | ".join(f"{k}: {v}" for k, v in meta.items() if v not in (None, ""))
-        parts.append(
-            f"Standard {i} [{c['id']}] (distance {c['distance']:.3f}):\n"
+        
+        chunk_str = (
+            f"Standard [{code}] (distance {c['distance']:.3f}):\n"
             f"Text: {c['document']}\nMetadata: {meta_str}\n"
         )
-    return "\n".join(parts)
+        
+        if "act_" in source_type:
+            act_parts.append(chunk_str)
+        else:
+            primary_parts.append(chunk_str)
+            
+    out = []
+    if primary_parts:
+        out.append("--- PRIMARY COURSE STANDARDS ---")
+        out.extend(primary_parts)
+    if act_parts:
+        out.append("--- COMPANION ACT STANDARDS ---")
+        out.extend(act_parts)
+        
+    return "\n".join(out)
 
 
 def no_grounded_standards_error(query: str, result: RetrievalResult) -> AppError:

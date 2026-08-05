@@ -6,17 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Weekly AP Language lesson plans grounded in real standards documents, in the Florence City Schools template."
+      content="Build a week of lesson plans for your class, grounded in the Alabama Course of Study and delivered in the Florence City Schools template."
     />
-    <title>AP Lang Planner</title>
+    <title>Lesson Plans</title>
 
     <!-- Fonts via preconnect + stylesheet rather than an @import at the top of
-         the CSS, which blocks rendering until it resolves. -->
+         the CSS, which blocks rendering until it resolves.
+
+         Inter is the whole interface. Newsreader appears in exactly one place —
+         the greeting on an empty screen — which is the restraint that keeps the
+         app feeling warm rather than decorated. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400;1,6..72,600&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
     />
 
     <!-- Set the theme before first paint so a dark-mode load doesn't flash white. -->
@@ -33,8 +37,13 @@
       }
     </script>
   </head>
-  <body>
-    <div id="root"></div>
+  <!-- No oncontextmenu handler. Suppressing right-click across the whole app was
+       borrowed from IDE chrome, but teachers copy text out of a plan constantly
+       and it broke every one of those attempts. -->
+  <body
+    class="h-screen w-screen overflow-hidden bg-paper text-ink font-sans selection:bg-accent/15 overscroll-none"
+  >
+    <div id="root" class="h-full w-full"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

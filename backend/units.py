@@ -28,11 +28,18 @@ def week_number(week_label: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def unit_for_week(week_label: str) -> str | None:
+def unit_for_week(week_label: str, subject: str = "AP Language & Composition") -> str | None:
     n = week_number(week_label)
     if n is None:
         return None
-    for lo, hi, name in UNIT_MAP:
-        if lo <= n <= hi:
-            return name
-    return None
+    
+    # If it's AP Lang, use the hardcoded 9-unit map
+    if subject == "AP Language & Composition":
+        for lo, hi, name in UNIT_MAP:
+            if lo <= n <= hi:
+                return name
+        return None
+    
+    # For generalized courses, just return "Week X" if no specific unit map is provided.
+    # In the future, this could pull from the user's uploaded curriculum map.
+    return f"Week {n}"

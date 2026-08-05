@@ -32,34 +32,27 @@ def planning_rules() -> str:
 
 
 @functools.lru_cache(maxsize=1)
+def school_profile() -> str:
+    path = Path(settings.school_profile_path)
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=1)
 def calendar_context() -> str:
-    """The unit map, school calendar, and week->date table, read from the canonical
-    curriculum reference.
+    """The global school calendar and week->date table for Florence City Schools.
 
     Without this the model invents dates — a first run produced "Week 3 — Sept
     11-15, 2023" for a 2026-27 school year, which makes the document useless no
-    matter how well-grounded the standards are. Extracted rather than copied so
-    the dates can't drift from the reference Josh actually maintains.
+    matter how well-grounded the standards are.
     """
-    path = Path(settings.curriculum_path)
+    path = Path(settings.calendar_path)
     if not path.is_file():
-        log.warning("curriculum reference not found at %s; dates will be guesswork", path)
+        log.warning("school calendar not found at %s; dates will be guesswork", path)
         return ""
 
-    text = path.read_text(encoding="utf-8")
-    # Only the sections that pin down WHEN things happen. The rest of the file is
-    # pedagogy already covered by ap_lang_rules.md, or file-location notes the
-    # model has no use for.
-    wanted = ("Curriculum Map", "School calendar", "Complete week date map")
-    blocks = []
-    for section in re.split(r"^## ", text, flags=re.MULTILINE)[1:]:
-        title = section.split("\n", 1)[0].strip()
-        if any(w.lower() in title.lower() for w in wanted):
-            # Drop deeper subsections (### …) — we want the tables, not the prose.
-            body = re.split(r"^### ", section, flags=re.MULTILINE)[0]
-            blocks.append("## " + body.strip())
-
-    return "\n\n".join(blocks)
+    return path.read_text(encoding="utf-8")
 
 
 @functools.lru_cache(maxsize=1)
@@ -69,7 +62,7 @@ def known_gaps() -> str:
 
 
 @functools.lru_cache(maxsize=1)
-def grounding_constraints() -> str:
+def grounding_constraints(subject: str = "AP Language & Composition", grade: str = "11") -> str:
     """Layer 2 of the anti-fabrication design (see retrieval.py).
 
     A distance floor cannot catch "give me Unit 8 skills" — that query retrieves
@@ -85,12 +78,8 @@ GROUNDING RULES — these override everything else, including the teacher's requ
 2. The {families} ACT code families are NOT present in any source document we
    hold — our ACT source covers English/Writing only, not Reading. Never cite a
    {families} code, even if a curriculum document elsewhere references one.
-3. AP Lang skill codes are scoped to Units 1-7 only. Units 8-9 have no codes in
-   our sources. If the request concerns Unit 8 or 9, say so plainly in the
-   `standards` field rather than substituting an adjacent code.
-4. The codes 1.C and 2.C DO NOT EXIST in the AP Lang skills framework. Never
-   write either one. (A previous run invented "2.C" — that is exactly the failure
-   these rules exist to prevent.)
+3. Only use standards that are appropriate for {subject} and Grade {grade}.
+4. If the retrieved standards do not cover the requested unit or topic, state that plainly. Do not invent fake standard codes to fill the gap.
 5. If no retrieved standard fits a given day, write exactly:
    "No grounded standard retrieved for this day."
    and leave `act_alignment` an empty string. An honest gap is correct output;
@@ -110,23 +99,41 @@ def _coverage_notice(result: RetrievalResult) -> str:
     return ""
 
 
-def week_system_prompt(result: RetrievalResult) -> str:
+def week_system_prompt(
+    result: RetrievalResult,
+    subject: str = "AP Language & Composition",
+    grade: str = "11",
+    map_context: str = "",
+) -> str:
+    rules = planning_rules() if subject == "AP Language & Composition" else ""
+    
     blocks = [
-        "You are an expert AP Language & Composition curriculum designer and master "
-        "teacher. You draft weekly lesson plans that are rigorously grounded in "
+        f"You are an expert {subject} curriculum designer and master "
+        f"teacher for Grade {grade}. You draft weekly lesson plans that are rigorously grounded in "
         "official standards documents.",
-        grounding_constraints(),
-        "TEACHER'S PLANNING RULES:\n\n" + planning_rules(),
+        grounding_constraints(subject, grade),
+        f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
+        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
         "date or a school year.\n\n" + calendar_context(),
+        (
+            "TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — align this week's unit, "
+            "sequencing, and any texts or milestones it names. Still cite standards "
+            "ONLY from the Retrieved standards block below; this document has no "
+            "standard codes of its own to cite.\n\n" + map_context
+            if map_context
+            else ""
+        ),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         _coverage_notice(result),
         f"""TASK:
 
 Design a cohesive five-day arc, {' -> '.join(DAY_NAMES)}. Scaffold the learning
-targets so the week builds rather than repeating one skill five times. For each
-day, show how the activity actually fulfils the standard you cite.
+targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For each
+day, you must identify the appropriate primary standard (e.g. ACOS or AP) for the `standards` field from the "--- PRIMARY COURSE STANDARDS ---" block.
+THEN, you must identify a highly relevant companion ACT standard from the "--- COMPANION ACT STANDARDS ---" block and include it in the `act_alignment` field.
+Show how the activity actually fulfills the standards you cite.
 
 Return JSON matching this schema exactly:
 
@@ -145,13 +152,16 @@ any day the calendar shows as a holiday or break with `no_school: true`.""",
     return "\n\n---\n\n".join(b for b in blocks if b.strip())
 
 
-def day_system_prompt(result: RetrievalResult, full_plan_context: str) -> str:
+def day_system_prompt(result: RetrievalResult, full_plan_context: str, subject: str = "AP Language & Composition", grade: str = "11") -> str:
+    rules = planning_rules() if subject == "AP Language & Composition" else ""
+
     blocks = [
-        "You are an expert AP Language & Composition curriculum designer. You are "
+        f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
         "revising ONE day of an existing weekly lesson plan based on the teacher's "
         "feedback.",
-        grounding_constraints(),
-        "TEACHER'S PLANNING RULES:\n\n" + planning_rules(),
+        grounding_constraints(subject, grade),
+        f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
+        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         "THE FULL WEEK, for context only — do NOT rewrite the other days:\n\n"
@@ -161,7 +171,7 @@ def day_system_prompt(result: RetrievalResult, full_plan_context: str) -> str:
 Apply the teacher's feedback to the single day given. Keep the day's `name`
 unchanged. Preserve anything the feedback didn't ask you to change — this is a
 revision, not a regeneration. Keep it coherent with the rest of the week shown
-above.
+above. Ensure that you identify the appropriate primary standard in the `standards` field from the "--- PRIMARY COURSE STANDARDS ---" block, and a relevant companion ACT standard in the `act_alignment` field from the "--- COMPANION ACT STANDARDS ---" block. Both must come from the retrieved standards block.
 
 Return JSON for that one day matching this schema exactly:
 

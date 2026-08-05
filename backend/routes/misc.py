@@ -6,11 +6,14 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, UploadFile
+from collections import Counter
+
+from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 
-from .. import db, docx_build, llm, retrieval
+from .. import db, docx_build, llm, retrieval, service
 from ..config import settings
+from ..deps import get_current_user
 from ..errors import AppError
 
 log = logging.getLogger("aplang.misc")
@@ -30,7 +33,7 @@ def health():
         "ok": True,
         "model": settings.openai_model,
         "api_key_set": settings.has_api_key,
-        "db_path": str(settings.app_db_path),
+        "database": "PostgreSQL",
         "plans_dir": str(settings.plans_dir),
         "retrieval_floor": settings.retrieval_max_distance,
         "retrieval_top_k": settings.retrieval_top_k,
@@ -44,15 +47,13 @@ def health():
         out["builder_found"] = False
         out["builder_error"] = e.message
     try:
-        out["chunks"] = len(retrieval.load_chunks())
-    except AppError as e:
+        conn = db.connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM chunks")
+            out["chunks"] = cur.fetchone()["count"]
+    except Exception as e:
         out["ok"] = False
-        out["chunks_error"] = e.message
-    try:
-        out["chroma_count"] = retrieval.get_collection().count()
-    except Exception as e:  # noqa: BLE001 — health must never itself 500
-        out["ok"] = False
-        out["chroma_error"] = str(e)[:200]
+        out["pg_error"] = str(e)
     return out
 
 
@@ -60,21 +61,109 @@ def health():
 # Settings — one AP Lang class. Singleton by DB constraint, no profile switcher.
 # ---------------------------------------------------------------------------
 
+# Display names for the course codes the ingest scripts write. These ids are what
+# the Subject Framework dropdown saves into settings.subject, and what retrieval
+# filters on — so this map and scripts/01d_ingest_alcos_case.py FRAMEWORKS have to
+# agree. The year is part of the label because Alabama has several live editions
+# and a plan citing "Social Studies" is ambiguous without it.
+SUBJECT_LABELS = {
+    "AP_Lang": "AP Language & Composition",
+    "ELA": "English Language Arts (2021)",
+    "Math": "Mathematics (2019)",
+    "Math_AWF": "Mathematics: Algebra with Finance (2015)",
+    "Science": "Science (2023)",
+    "Social_Studies": "Social Studies (2024)",
+    "Arts": "Arts Education (2024)",
+    "DLCS": "Digital Literacy & Computer Science (2025)",
+    "Health": "Health Education (2019)",
+    "PE": "Physical Education (2019)",
+    "World_Languages": "World Languages (2017)",
+    "Counseling": "Comprehensive School Counseling (2024-2026)",
+}
+
+# AP Lang first: it is the course this app exists for and the default settings row.
+_FRAMEWORK_PRIORITY = ("AP_Lang", "ELA")
+
+
+@router.get("/frameworks")
+def get_frameworks():
+    """What the Subject Framework and Grade Level dropdowns are built from.
+
+    Derived from the chunks, so a framework is offered only while it is actually
+    ingested — the UI can't present a subject retrieval would fail to ground.
+    """
+    grades: dict[str, set[int]] = {}
+    counts: Counter = Counter()
+    verbatim: Counter = Counter()
+
+    for c in retrieval.load_chunks():
+        course = c.get("course")
+        if not course:
+            continue
+        counts[course] += 1
+        if c.get("verbatim_ok"):
+            verbatim[course] += 1
+        if course.startswith("AP"):
+            grades.setdefault(course, set()).update([9, 10, 11, 12])
+        else:
+            grade = c.get("grade")
+            # `if course and grade` was the old test, which dropped every
+            # Kindergarten chunk: grade 0 is falsy. It also admitted 99, a
+            # "grade unknown" sentinel from an earlier ingest that no teacher can
+            # select and that matches nothing when used as a filter.
+            if isinstance(grade, int) and 0 <= grade <= 12:
+                grades.setdefault(course, set()).add(grade)
+
+    result = [
+        {
+            "id": course,
+            "label": SUBJECT_LABELS.get(course, course.replace("_", " ")),
+            "grades": sorted(grades.get(course, set())),
+            "chunks": counts[course],
+            "verbatim_ok": verbatim[course],
+        }
+        for course in counts
+    ]
+    result.sort(key=lambda f: (
+        _FRAMEWORK_PRIORITY.index(f["id"]) if f["id"] in _FRAMEWORK_PRIORITY
+        else len(_FRAMEWORK_PRIORITY),
+        f["label"],
+    ))
+    return result
 
 class SettingsBody(BaseModel):
     teacher: str = Field(min_length=1, max_length=120)
     course: str = Field(min_length=1, max_length=160)
     period: str = Field(min_length=1, max_length=80)
+    subject: str = Field(default="AP Language & Composition", max_length=120)
+    grade: str = Field(default="11", max_length=20)
 
 
 @router.get("/settings")
-def get_settings_route():
-    return db.get_settings_row()
+def get_settings_route(subject: str = None, user_id: str = Depends(get_current_user)):
+    """The settings row, with `subject` resolved to a live course code.
+
+    Normalised on the way out rather than migrated in place, so a row written
+    before the frameworks were renamed still drives the UI correctly: the Grade
+    Level dropdown is built by looking `subject` up in /api/frameworks, and an
+    id that no longer exists there left it stuck on a single hardcoded option.
+    The next save persists the resolved value.
+    """
+    row = dict(db.get_settings_row(user_id, subject))
+    row["subject"] = service.subject_code(row.get("subject", ""))
+    return row
 
 
 @router.put("/settings")
-def put_settings(body: SettingsBody):
-    return db.update_settings(body.teacher.strip(), body.course.strip(), body.period.strip())
+def put_settings(body: SettingsBody, user_id: str = Depends(get_current_user)):
+    return db.update_settings(
+        user_id,
+        body.teacher.strip(),
+        body.course.strip(),
+        body.period.strip(),
+        body.subject.strip(),
+        body.grade.strip()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -86,43 +175,60 @@ class ChatBody(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
+class TitleRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/chats/title")
+def suggest_chat_title(body: TitleRequest, user_id: str = Depends(get_current_user)):
+    """A short descriptive title generated from a chat's first message.
+
+    Called after the chat is already created with a truncated placeholder
+    title, so a slow or failed title suggestion never blocks sending the
+    first message. Requires login like every other route here, even though
+    it doesn't touch the requester's data — an anonymous caller shouldn't be
+    able to spend the shared OpenAI budget.
+    """
+    return {"title": llm.generate_chat_title(body.message)}
+
+
 @router.get("/chats")
-def list_chats():
-    return db.list_chats()
+def list_chats(user_id: str = Depends(get_current_user)):
+    return db.list_chats(user_id)
 
 
 @router.post("/chats")
-def create_chat(body: ChatBody):
-    return db.create_chat(body.title)
+def create_chat(body: ChatBody, user_id: str = Depends(get_current_user)):
+    return db.create_chat(user_id, body.title)
 
 
 @router.get("/chats/{chat_id}")
-def get_chat(chat_id: str):
-    chat = db.get_chat(chat_id, with_messages=True)
+def get_chat(chat_id: str, user_id: str = Depends(get_current_user)):
+    chat = db.get_chat(user_id, chat_id, with_messages=True)
     if not chat:
         raise AppError("chat_not_found", "No such chat.", status=404)
     return chat
 
 
 @router.patch("/chats/{chat_id}")
-def rename_chat(chat_id: str, body: ChatBody):
-    chat = db.rename_chat(chat_id, body.title)
+def rename_chat(chat_id: str, body: ChatBody, user_id: str = Depends(get_current_user)):
+    chat = db.rename_chat(user_id, chat_id, body.title)
     if not chat:
         raise AppError("chat_not_found", "No such chat.", status=404)
     return chat
 
 
 @router.delete("/chats/{chat_id}", status_code=204)
-def delete_chat(chat_id: str):
-    if not db.delete_chat(chat_id):
+def delete_chat(chat_id: str, user_id: str = Depends(get_current_user)):
+    if not db.delete_chat(user_id, chat_id):
         raise AppError("chat_not_found", "No such chat.", status=404)
     return None
 
 
 @router.post("/chats/import")
-def import_chats(payload: list[dict]):
+def import_chats(payload: list[dict], user_id: str = Depends(get_current_user)):
     """One-time migration of the old localStorage['lesson_chats'] array."""
-    return db.import_chats(payload)
+    return db.import_chats(user_id, payload)
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +275,48 @@ async def transcribe(audio: UploadFile = File(...)):
         path.unlink(missing_ok=True)
 
 
+def read_text_from_path(path: Path, ext: str) -> str:
+    """Shared by /extract_text and curriculum-map ingestion, so PDF/docx handling
+    lives in exactly one place."""
+    if ext == ".pdf":
+        try:
+            out = subprocess.run(
+                ["pdftotext", "-layout", str(path), "-"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except FileNotFoundError as e:
+            raise AppError(
+                "pdftotext_missing",
+                "The pdftotext tool isn't installed.",
+                hint="Install poppler: brew install poppler",
+            ) from e
+        except subprocess.TimeoutExpired as e:
+            raise AppError("pdf_timeout", "That PDF took too long to read.", status=422) from e
+        if out.returncode != 0:
+            raise AppError(
+                "pdf_unreadable",
+                "Could not extract text from that PDF.",
+                status=422,
+                hint=(out.stderr or "").strip()[:200] or None,
+            )
+        return out.stdout
+    if ext == ".docx":
+        import docx as _docx
+
+        d = _docx.Document(str(path))
+        parts = [p.text for p in d.paragraphs if p.text.strip()]
+        for table in d.tables:
+            for row in table.rows:
+                cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+        return "\n".join(parts)
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
 @router.post("/extract_text")
 async def extract_text(file: UploadFile = File(...)):
     original = Path(file.filename or "upload")
@@ -183,33 +331,7 @@ async def extract_text(file: UploadFile = File(...)):
 
     path = _spool(file, ext, settings.max_doc_bytes)
     try:
-        if ext == ".pdf":
-            try:
-                out = subprocess.run(
-                    ["pdftotext", "-layout", str(path), "-"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    check=False,
-                )
-            except FileNotFoundError as e:
-                raise AppError(
-                    "pdftotext_missing",
-                    "The pdftotext tool isn't installed.",
-                    hint="Install poppler: brew install poppler",
-                ) from e
-            except subprocess.TimeoutExpired as e:
-                raise AppError("pdf_timeout", "That PDF took too long to read.", status=422) from e
-            if out.returncode != 0:
-                raise AppError(
-                    "pdf_unreadable",
-                    "Could not extract text from that PDF.",
-                    status=422,
-                    hint=(out.stderr or "").strip()[:200] or None,
-                )
-            text = out.stdout
-        else:
-            text = path.read_text(encoding="utf-8", errors="ignore")
+        text = read_text_from_path(path, ext)
         # Keep the ORIGINAL name for display; it never touched the filesystem.
         return {"filename": original.name, "text": text, "chars": len(text)}
     finally:

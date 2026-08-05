@@ -19,19 +19,17 @@ export class ApiError extends Error {
   }
 }
 
-async function toError(res) {
-  let body = null
-  try {
-    body = await res.json()
-  } catch {
-    // Non-JSON error (proxy down, HTML error page) — fall through to the status.
-  }
+/* Exported because useLessonStream needs the same logic and had its own copy.
+   The SSE path can't go through request() — it reads a stream — but it does get
+   the identical {error:{code,message,hint}} envelope, so one function should
+   decide how a backend error becomes an ApiError. */
+export function apiErrorFromBody(body, status = 0) {
   const e = body?.error
   if (e?.message) {
     return new ApiError(e.message, {
       code: e.code,
       hint: e.hint,
-      status: res.status,
+      status,
       extra: e,
     })
   }
@@ -41,13 +39,31 @@ async function toError(res) {
     return new ApiError(d.msg || 'That request was rejected.', {
       code: 'validation_error',
       hint: (d.loc || []).join(' → '),
-      status: res.status,
+      status,
     })
   }
-  return new ApiError(`Request failed (${res.status})`, {
+  return new ApiError(`Request failed (${status})`, {
     code: 'http_error',
-    status: res.status,
+    status,
   })
+}
+
+async function toError(res) {
+  let body = null
+  try {
+    body = await res.json()
+  } catch {
+    // Non-JSON error (proxy down, HTML error page) — fall through to the status.
+  }
+  // A session that expired (or was revoked) mid-use fails as an ordinary
+  // ApiError otherwise — every page would need its own "log back in" handling.
+  // AuthProvider listens for this once, globally, and drops back to the login
+  // screen. Excludes /api/auth/* itself: a wrong password on the login form is
+  // not a session expiring, and should stay on the form as a normal error.
+  if (res.status === 401 && !res.url.includes('/api/auth/')) {
+    window.dispatchEvent(new CustomEvent('aplang:unauthorized'))
+  }
+  return apiErrorFromBody(body, res.status)
 }
 
 async function request(path, { method = 'GET', body, signal } = {}) {
@@ -56,6 +72,11 @@ async function request(path, { method = 'GET', body, signal } = {}) {
     res = await fetch(`${API_BASE}${path}`, {
       method,
       signal,
+      // 'include' rather than the default 'same-origin': harmless in dev
+      // (proxied, so already same-origin) but required once the frontend and
+      // API are served from different origins — the login session is a
+      // cookie, and without this it silently stops being sent.
+      credentials: 'include',
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
@@ -74,7 +95,7 @@ async function request(path, { method = 'GET', body, signal } = {}) {
 async function upload(path, formData, { signal } = {}) {
   let res
   try {
-    res = await fetch(`${API_BASE}${path}`, { method: 'POST', body: formData, signal })
+    res = await fetch(`${API_BASE}${path}`, { method: 'POST', body: formData, signal, credentials: 'include' })
   } catch (err) {
     if (err.name === 'AbortError') throw err
     throw new ApiError('Can’t reach the server.', { code: 'network_error' })
@@ -84,45 +105,65 @@ async function upload(path, formData, { signal } = {}) {
 }
 
 export const api = {
-  health: () => request('/api/health'),
+  health: ({ signal } = {}) => request('/api/health', { signal }),
 
-  getSettings: () => request('/api/settings'),
+  me: ({ signal } = {}) => request('/api/auth/me', { signal }),
+  signup: (name, email, password) =>
+    request('/api/auth/signup', { method: 'POST', body: { name, email, password } }),
+  login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
+  loginWithGoogle: (credential) => request('/api/auth/google', { method: 'POST', body: { credential } }),
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
+
+  getSettings: ({ subject, signal } = {}) => request(subject ? `/api/settings?subject=${encodeURIComponent(subject)}` : '/api/settings', { signal }),
   putSettings: (payload) => request('/api/settings', { method: 'PUT', body: payload }),
+  getFrameworks: ({ signal } = {}) => request('/api/frameworks', { signal }),
 
-  listChats: () => request('/api/chats'),
+  listChats: ({ signal } = {}) => request('/api/chats', { signal }),
   createChat: (title) => request('/api/chats', { method: 'POST', body: { title } }),
   getChat: (id) => request(`/api/chats/${id}`),
   renameChat: (id, title) => request(`/api/chats/${id}`, { method: 'PATCH', body: { title } }),
+  suggestChatTitle: (message) => request('/api/chats/title', { method: 'POST', body: { message } }),
   deleteChat: (id) => request(`/api/chats/${id}`, { method: 'DELETE' }),
   addMessage: (chatId, msg) =>
     request(`/api/chats/${chatId}/messages`, { method: 'POST', body: msg }),
   importChats: (payload) => request('/api/chats/import', { method: 'POST', body: payload }),
 
-  listPlans: (params = {}) => {
+  // `signal` is destructured out so it is never serialised into the query string.
+  listPlans: ({ signal, ...params } = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
     )
-    return request(`/api/plans${qs.toString() ? `?${qs}` : ''}`)
+    return request(`/api/plans${qs.toString() ? `?${qs}` : ''}`, { signal })
   },
   getPlan: (id) => request(`/api/plans/${id}`),
-  patchPlan: (id, payload) => request(`/api/plans/${id}`, { method: 'PATCH', body: payload }),
   rebuildPlan: (id) => request(`/api/plans/${id}/rebuild`, { method: 'POST' }),
   deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),
   planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,
+  /* The two raw SSE endpoints. generate_stream drives useLessonStream and yields
+     a structured plan with grounding; chat_stream drives useChatStream and yields
+     plain conversational text. They are not interchangeable. */
+  streamUrl: () => `${API_BASE}/api/generate_stream`,
+  chatStreamUrl: () => `${API_BASE}/api/chat_stream`,
 
   reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload }),
 
-  listStandards: (params = {}) => {
+  listStandards: ({ signal, ...params } = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
     )
-    return request(`/api/standards${qs.toString() ? `?${qs}` : ''}`)
+    return request(`/api/standards${qs.toString() ? `?${qs}` : ''}`, { signal })
   },
-  getStandard: (code) => request(`/api/standards/${encodeURIComponent(code)}`),
-  standardsStats: () => request('/api/standards/stats'),
-  standardsGaps: () => request('/api/standards/gaps'),
-  searchStandards: (query, topK = 10) =>
-    request('/api/standards/search', { method: 'POST', body: { query, top_k: topK } }),
+  getStandard: (code, { signal } = {}) =>
+    request(`/api/standards/${encodeURIComponent(code)}`, { signal }),
+  standardsStats: ({ signal, ...params } = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    )
+    return request(`/api/standards/stats${qs.toString() ? `?${qs}` : ''}`, { signal })
+  },
+  standardsGaps: ({ signal } = {}) => request('/api/standards/gaps', { signal }),
+  searchStandards: (query, topK = 10, { signal } = {}) =>
+    request('/api/standards/search', { method: 'POST', body: { query, top_k: topK }, signal }),
 
   transcribe: (blob, { signal } = {}) => {
     const fd = new FormData()
@@ -135,6 +176,15 @@ export const api = {
     return upload('/api/extract_text', fd, { signal })
   },
 
-  /** Raw stream endpoint — consumed by useLessonStream. */
-  streamUrl: () => `${API_BASE}/api/generate_stream`,
+  getCurriculumMap: (subject, { signal } = {}) =>
+    request(`/api/curriculum_map?subject=${encodeURIComponent(subject)}`, { signal }),
+  uploadCurriculumMap: (subject, file, { signal } = {}) => {
+    const fd = new FormData()
+    fd.append('subject', subject)
+    fd.append('file', file)
+    return upload('/api/curriculum_map', fd, { signal })
+  },
+  deleteCurriculumMap: (id) => request(`/api/curriculum_map/${id}`, { method: 'DELETE' }),
+  getCurriculumProgress: (subject, { signal } = {}) =>
+    request(`/api/curriculum_progress?subject=${encodeURIComponent(subject)}`, { signal }),
 }

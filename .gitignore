@@ -44,3 +44,20 @@ AP_LANG_RAG/
 # Drifted local copy of the build-lesson-plan skill. The canonical one lives at
 # Iris_OS/Skills/build-lesson-plan/ and is what BUILDER_PATH points to.
 build-lesson-plan/
+
+# Generated standards chunk files. Regenerable, and big enough to matter in a
+# Google-Drive-synced repo: alcos_chunks.json alone is ~29MB and would be
+# rewritten wholesale on every ingest.
+#
+#   act_chunks.json    <- scripts/01b_ingest_act_standards.py  (network: ACT sheet)
+#   alcos_chunks.json  <- scripts/01d_ingest_alcos_case.py     (offline: source_docs/case/)
+#
+# chunks.json stays TRACKED: it is ~190KB and is the hand-audited AP Lang parse
+# whose spot check is recorded in source_docs/SPOT_CHECK_step1.md.
+#
+# source_docs/case/ also stays tracked (~15MB), because it is the authoritative
+# input that pins these to the exact ALSDE CASE packages verified on 2026-08-04.
+# Keeping it means the whole corpus rebuilds offline and identically even if the
+# state changes or withdraws the feed.
+act_chunks.json
+alcos_chunks.json

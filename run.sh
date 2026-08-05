@@ -24,6 +24,12 @@ export TOKENIZERS_PARALLELISM=false
 RELOAD=""
 [[ "${DEV_RELOAD:-0}" == "1" ]] && RELOAD="--reload"
 
+# Build the frontend so it can be served entirely by the backend, bypassing Vite
+if [[ ! -d "frontend/dist" ]] || [[ "${BUILD_UI:-0}" == "1" ]]; then
+  echo "Building frontend..."
+  (cd frontend && npm install && npm run build)
+fi
+
 exec venv/bin/uvicorn backend.server:app \
   --host 127.0.0.1 \
   --port "${API_PORT:-8010}" \

@@ -5,7 +5,16 @@ import { useToast } from '../lib/toastContext'
 
 const MAX_H = 220
 
-export function Composer({ value, onChange, onSubmit, onStop, isStreaming, attachments, setAttachments }) {
+export function Composer({
+  value,
+  onChange,
+  onSubmit,
+  onStop,
+  isStreaming,
+  attachments,
+  setAttachments,
+  focusOnMount = false,
+}) {
   const toast = useToast()
   const textareaRef = useRef(null)
   const wrapperRef = useRef(null)
@@ -23,6 +32,14 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, attac
   }, [])
 
   useLayoutEffect(autosize, [value, autosize])
+
+  /* Only when asked. The composer is the primary control on an empty screen, so
+     focusing it there is right; doing it unconditionally would steal focus every
+     time the panel re-renders. */
+  useEffect(() => {
+    if (focusOnMount) textareaRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Re-measure once webfonts land and whenever the width changes. Without this
   // the first measurement happens while the fallback font is still in use — the
@@ -97,17 +114,23 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, attac
   }
 
   return (
-    <div className="composer-wrap">
-      <div className="composer-inner" ref={wrapperRef}>
+    <div className="relative w-full">
+      <div
+        className="relative flex w-full flex-col overflow-hidden rounded-xl border border-edge bg-paper-raised transition-colors focus-within:border-edge-strong"
+        ref={wrapperRef}
+      >
         {attachments.length > 0 ? (
-          <div className="attachments">
+          <div className="flex flex-wrap gap-2 px-3 pt-2.5">
             {attachments.map((f, i) => (
-              <span className="chip" key={`${f.filename}-${i}`}>
-                <FileText size={12} aria-hidden="true" />
-                <span>{f.filename}</span>
+              <span
+                className="flex items-center gap-1.5 rounded-md bg-paper-sunken px-2.5 py-1 text-xs font-medium text-ink"
+                key={`${f.filename}-${i}`}
+              >
+                <FileText size={14} className="text-ink-muted" aria-hidden="true" />
+                <span className="max-w-[120px] truncate">{f.filename}</span>
                 <button
                   type="button"
-                  className="btn-icon"
+                  className="ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
                   aria-label={`Remove ${f.filename}`}
                   onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
                 >
@@ -118,10 +141,34 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, attac
           </div>
         ) : null}
 
-        <div className={`composer${isRecording ? ' is-recording' : ''}`}>
-          <label className="visually-hidden" htmlFor="composer-input">
+        <div
+          className={`relative flex min-h-[60px] items-end px-2 pb-2 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
+        >
+          <label className="sr-only" htmlFor="composer-input">
             Describe the week you want to plan
           </label>
+
+          <label
+            className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+            htmlFor="composer-file"
+          >
+            {isAttaching ? (
+              <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Paperclip size={18} aria-hidden="true" />
+            )}
+            <span className="sr-only">Attach a PDF or text file</span>
+          </label>
+          <input
+            id="composer-file"
+            className="sr-only"
+            aria-label="Attach a PDF or text file"
+            type="file"
+            accept=".pdf,.txt,.md,.csv"
+            onChange={handleFile}
+            disabled={isAttaching}
+          />
+
           <textarea
             id="composer-input"
             ref={textareaRef}
@@ -132,90 +179,74 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, attac
                 ? 'Listening…'
                 : isTranscribing
                   ? 'Transcribing…'
-                  : 'Describe the week — e.g. “Week 3, rhetorical analysis of Letter from Birmingham Jail”'
+                  : 'What are you teaching?'
             }
+            title="Enter to send · Shift+Enter for a new line"
+            className="max-h-[220px] flex-1 resize-none overflow-y-auto border-none bg-transparent px-2 py-[0.9375rem] text-[0.9375rem] leading-relaxed text-ink outline-none placeholder:font-normal placeholder:text-ink-faint"
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
             disabled={isRecording || isTranscribing}
           />
 
-          <div className="composer-bar">
-            {/* The input is visually hidden but still focusable — display:none
-                would take it out of the tab order entirely. */}
-            <label className="btn-icon btn-file" htmlFor="composer-file">
-              {isAttaching ? (
-                <Loader2 size={16} className="spin" aria-hidden="true" />
-              ) : (
-                <Paperclip size={16} aria-hidden="true" />
-              )}
-              <span className="visually-hidden">Attach a PDF or text file</span>
-            </label>
-            <input
-              id="composer-file"
-              className="visually-hidden"
-              aria-label="Attach a PDF or text file"
-              type="file"
-              accept=".pdf,.txt,.md,.csv"
-              onChange={handleFile}
-              disabled={isAttaching}
-            />
-
+          <div className="flex shrink-0 items-center gap-1 pb-0.5">
             {isTranscribing ? (
-              <button type="button" className="btn-icon" disabled aria-label="Transcribing">
-                <Loader2 size={16} className="spin" aria-hidden="true" />
+              <button
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted"
+                disabled
+                aria-label="Transcribing"
+              >
+                <Loader2 size={18} className="animate-spin" aria-hidden="true" />
               </button>
             ) : isRecording ? (
               <button
                 type="button"
-                className="btn-icon"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint"
                 onClick={stopRecording}
                 aria-label="Stop recording"
-                style={{ color: 'var(--danger)' }}
               >
-                <Square size={15} fill="currentColor" aria-hidden="true" />
+                <Square size={16} fill="currentColor" aria-hidden="true" />
               </button>
             ) : (
               <button
                 type="button"
-                className="btn-icon"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
                 onClick={startRecording}
                 disabled={isStreaming}
                 aria-label="Dictate"
               >
-                <Mic size={16} aria-hidden="true" />
+                <Mic size={18} aria-hidden="true" />
               </button>
             )}
-
-            <span className="composer-bar-spacer" />
 
             {isStreaming ? (
               <button
                 type="button"
-                className="btn-send is-stop"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-ink-inverse transition-colors hover:bg-ink-soft"
                 onClick={onStop}
                 aria-label="Stop generating"
               >
-                <Square size={13} fill="currentColor" aria-hidden="true" />
+                <Square size={14} fill="currentColor" aria-hidden="true" />
               </button>
             ) : (
               <button
                 type="button"
-                className="btn-send"
-                onClick={onSubmit}
+                className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
+                  canSend
+                    ? 'bg-ink text-ink-inverse hover:bg-ink-soft active:scale-95'
+                    : 'cursor-not-allowed bg-paper-sunken text-ink-faint'
+                }`}
+                onClick={() => onSubmit()}
                 disabled={!canSend}
-                aria-label="Generate the lesson plan"
+                aria-label="Build the lesson plan"
               >
                 <ArrowUp size={16} strokeWidth={2.5} aria-hidden="true" />
               </button>
             )}
           </div>
         </div>
-
-        <p className="composer-note">
-          Every standard is cited from your source documents — click a code to see it.{' '}
-          <kbd>Enter</kbd> to send, <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line.
-        </p>
       </div>
+
     </div>
   )
 }

@@ -18,11 +18,13 @@ from collections.abc import Iterator
 
 from openai import OpenAI
 
+from . import curriculum
 from .config import settings
 from .errors import AppError
 from .prompts import day_system_prompt, week_system_prompt
 from .retrieval import RetrievalResult
 from .schema import DAY_JSON_SCHEMA, PLAN_JSON_SCHEMA, loads_lenient
+from . import db
 
 log = logging.getLogger("aplang.llm")
 
@@ -51,15 +53,27 @@ def _check_refusal(message) -> None:
         raise AppError("model_refusal", f"The model declined this request: {refusal}", status=422)
 
 
-def generate_plan(query: str, result: RetrievalResult) -> dict:
+def _map_context_for(user_id: str, subject: str, query: str) -> str:
+    active = db.get_active_curriculum_map(user_id, subject)
+    return curriculum.retrieve_map_context(active["id"], query) if active else ""
+
+
+def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
     """Non-streaming week generation. Returns parsed (not yet validated) JSON."""
+    s = db.get_settings_row(user_id)
+    map_context = _map_context_for(user_id, s["subject"], query)
     resp = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.2,
         max_tokens=4000,
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
-            {"role": "system", "content": week_system_prompt(result)},
+            {
+                "role": "system",
+                "content": week_system_prompt(
+                    result, subject=s["subject"], grade=s["grade"], map_context=map_context
+                ),
+            },
             {"role": "user", "content": query},
         ],
     )
@@ -73,15 +87,22 @@ def generate_plan(query: str, result: RetrievalResult) -> dict:
     return loads_lenient(msg.content or "")
 
 
-def stream_plan(query: str, result: RetrievalResult) -> Iterator[str]:
+def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[str]:
     """Yield raw content deltas. The caller accumulates and validates."""
+    s = db.get_settings_row(user_id)
+    map_context = _map_context_for(user_id, s["subject"], query)
     stream = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.2,
         max_tokens=4000,
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
-            {"role": "system", "content": week_system_prompt(result)},
+            {
+                "role": "system",
+                "content": week_system_prompt(
+                    result, subject=s["subject"], grade=s["grade"], map_context=map_context
+                ),
+            },
             {"role": "user", "content": query},
         ],
         stream=True,
@@ -98,26 +119,63 @@ def stream_plan(query: str, result: RetrievalResult) -> Iterator[str]:
             yield delta.content
 
 
-def rewrite_day(day: dict, feedback: str, full_plan_context: str, result: RetrievalResult) -> dict:
+def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, result: RetrievalResult) -> dict:
     """Revise one day. Emits the SAME schema as generate_plan's days.
 
     Previously this returned split do_now/during/assessment with
     engagement_strategy as an array while generate emitted a flat `lesson`
     string — so a rewritten day could not be merged back into the week.
     """
+    s = db.get_settings_row(user_id)
     resp = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.3,
         max_tokens=1600,
         response_format=_response_format("lesson_plan_day", DAY_JSON_SCHEMA),
         messages=[
-            {"role": "system", "content": day_system_prompt(result, full_plan_context)},
+            {"role": "system", "content": day_system_prompt(result, full_plan_context, subject=s["subject"], grade=s["grade"])},
             {
                 "role": "user",
                 "content": (
                     f"The day to revise:\n{json.dumps(day, indent=2)}\n\n"
                     f"Teacher's feedback: {feedback}"
                 ),
+            },
+        ],
+    )
+    msg = resp.choices[0].message
+    _check_refusal(msg)
+    return loads_lenient(msg.content or "")
+
+
+_CRITIQUE_PROMPT = """You are a master curriculum coordinator. Your job is to review a drafted lesson plan against the exact academic standards retrieved for it.
+1. Are there any activities that do not directly address the standard?
+2. Are any cited standard codes hallucinated (not in the provided context)?
+3. Is there a logical progression through the week?
+
+Provide a brief, stern critique, then rewrite the ENTIRE week's plan to fix the issues while strictly adhering to the schema.
+"""
+
+def critique_and_revise(user_id: str, plan: dict, retrieved_context: str) -> dict:
+    """Agentic self-correction loop. Critiques and rewrites the whole plan."""
+    s = db.get_settings_row(user_id)
+    resp = client().chat.completions.create(
+        model=settings.openai_model,
+        temperature=0.3,
+        max_tokens=4000,
+        response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    f"{_CRITIQUE_PROMPT}\n\n"
+                    f"Subject: {s['subject']} (Grade {s['grade']})\n\n"
+                    f"Retrieved Standards Context:\n{retrieved_context}"
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Here is the drafted plan. Revise it:\n{json.dumps(plan, indent=2)}"
             },
         ],
     )
@@ -183,7 +241,84 @@ def expand_query(query: str) -> list[str]:
         return []
 
 
+TITLE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "A short, specific chat title, 3-6 words, no quotes or trailing punctuation.",
+        }
+    },
+    "required": ["title"],
+}
+
+_TITLE_PROMPT = """Give this teacher's message a short chat title, 3-6 words.
+
+Name the concrete thing they're planning — the unit, text, or skill — not the
+fact that they're asking for a lesson plan (every chat here is that). Teachers
+often open with the same boilerplate instruction ("interview me to help me
+build..."), so look past it for whatever specific is buried in it: a week
+number, an anchor text, a skill, a standard. If nothing specific is there,
+summarize the actual request in plain words instead. No quotes, no trailing
+punctuation."""
+
+
+def generate_chat_title(message: str) -> str:
+    """A short descriptive title for a new chat, replacing a truncated first line.
+
+    Teachers' opening messages are often identical boilerplate ("I want you to
+    interview me to help me build...") repeated chat after chat, so slicing the
+    first 40 characters produced a sidebar where every row read the same. Falls
+    back to that same truncation on any failure — this is cosmetic, never worth
+    blocking chat creation over.
+    """
+    try:
+        resp = client().chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            max_tokens=60,
+            response_format=_response_format("chat_title", TITLE_SCHEMA),
+            messages=[
+                {"role": "system", "content": _TITLE_PROMPT},
+                {"role": "user", "content": message[:2000]},
+            ],
+        )
+        title = json.loads(resp.choices[0].message.content or "{}").get("title", "").strip()
+        if title:
+            return title[:80]
+    except Exception as e:  # noqa: BLE001 — a title is cosmetic, never a hard failure
+        log.warning("chat title generation failed, falling back to truncation: %s", e)
+    first_line = message.split("\n")[0].strip() or "New plan"
+    return first_line[:40] + ("…" if len(first_line) > 40 else "")
+
+
 def transcribe(path: str) -> str:
     with open(path, "rb") as f:
         result = client().audio.transcriptions.create(model="whisper-1", file=f)
     return result.text
+
+
+def stream_chat(messages: list[dict]) -> Iterator[str]:
+    """Conversational streaming. Returns standard text, not JSON schema.
+    
+    The first message should be the system prompt.
+    """
+    stream = client().chat.completions.create(
+        model=settings.openai_model,
+        temperature=0.7,
+        max_tokens=4000,
+        messages=messages,
+        stream=True,
+    )
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        if getattr(delta, "refusal", None):
+            raise AppError(
+                "model_refusal", f"The model declined this request: {delta.refusal}", status=422
+            )
+        if delta.content:
+            yield delta.content
+

@@ -17,11 +17,23 @@ the floor against those would either destroy recall or produce the false
 conclusion that no threshold exists. They are handled by
 retrieval.out_of_scope_grades() and by the prompt rules plus grounding audit.
 
+The query sets below are AP Lang phrasings, so the sweep scopes its searches to
+one framework at a time (--course/--grade) exactly as retrieval does in
+production. Before the Alabama frameworks were ingested there was only one course
+in the store and an unscoped search was equivalent; with 12 frameworks sharing the
+collection it is not, and an unscoped sweep would measure "how close is the
+nearest chunk in any subject", which is not the number the floor is applied to.
+
+Each framework needs its own sweep with its own teacher-phrased positives — the
+0.78 floor is calibrated for AP Lang and does NOT transfer (see KNOWN_GAPS.md).
+
 Usage:
-    python scripts/06_threshold_sweep.py
+    python scripts/06_threshold_sweep.py                          # AP_Lang, grade 11
+    python scripts/06_threshold_sweep.py --course ELA --grade 11
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -74,20 +86,36 @@ WRONG_SCOPE = [
 TOP_K = 5
 
 
-def best_distances(queries: list[str]) -> dict[str, float]:
+def best_distances(queries: list[str], where: dict | None) -> dict[str, float]:
     """Nearest-neighbour distance per query — one embedding pass each."""
     out = {}
     for q in queries:
-        hits = retrieval.retrieve_raw(q, n=TOP_K)
+        hits = retrieval.retrieve_raw(q, n=TOP_K, where=where)
         out[q] = min(h["distance"] for h in hits) if hits else float("inf")
     return out
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--course", default="AP_Lang",
+                    help="course code to scope the sweep to (default: AP_Lang)")
+    ap.add_argument("--grade", type=int, default=11,
+                    help="grade to scope the sweep to (default: 11)")
+    args = ap.parse_args()
+
+    where = {"$and": [{"course": {"$eq": args.course}}, {"grade": {"$eq": args.grade}}]}
+    print(f"Scope: course={args.course} grade={args.grade}")
+    print(f"Floor in effect for this course: "
+          f"{settings.floor_for(args.course):.2f}\n")
     print("Embedding queries (this loads the MiniLM model once)...\n")
-    pos = best_distances(POSITIVES)
-    off = best_distances(OFF_DOMAIN)
-    gap = best_distances(WRONG_SCOPE)
+    pos = best_distances(POSITIVES, where)
+    off = best_distances(OFF_DOMAIN, where)
+    gap = best_distances(WRONG_SCOPE, where)
+
+    if all(d == float("inf") for d in pos.values()):
+        print(f"No chunks at all for course={args.course} grade={args.grade}. "
+              f"Check /api/frameworks for what is actually loaded.")
+        return 1
 
     def table(title: str, data: dict[str, float]) -> None:
         print(f"{title}")
@@ -130,10 +158,13 @@ def main() -> int:
     midpoint = round((worst_pos + best_off) / 2, 2)
     print(f"\nViable band    : {worst_pos:.3f} .. {best_off:.3f}")
     print(f"Recommended    : {midpoint:.2f}  (midpoint — maximum margin either side)")
-    print(f"Currently set  : {settings.retrieval_max_distance:.2f}")
-    if abs(midpoint - settings.retrieval_max_distance) > 0.03:
+    current = settings.floor_for(args.course)
+    print(f"Currently set  : {current:.2f}  (for course {args.course})")
+    if abs(midpoint - current) > 0.03:
         print(
-            f"\n  Drift: consider setting RETRIEVAL_MAX_DISTANCE={midpoint:.2f} in .env"
+            f"\n  Drift: set this course's floor to {midpoint:.2f} — either\n"
+            f"  RETRIEVAL_MAX_DISTANCE={midpoint:.2f} (global) or, to change only this\n"
+            f'  course, RETRIEVAL_FLOORS=\'{{"{args.course}": {midpoint:.2f}}}\' in .env'
         )
     else:
         print("\n  Configured floor is within tolerance of the measured midpoint.")

@@ -16,7 +16,61 @@ from .retrieval import RetrievalResult
 log = logging.getLogger("aplang.service")
 
 
-def prepare(query: str) -> RetrievalResult:
+# The settings row can hold either form of the subject, and both must resolve or
+# retrieval silently filters on a course that isn't in the store and grounds
+# nothing:
+#   * a course code ("AP_Lang") — what the Subject Framework dropdown now saves,
+#     since its options come from /api/frameworks whose ids ARE the course codes
+#   * a display name ("AP Language & Composition") — db.DEFAULT_SETTINGS, and any
+#     row written before that dropdown was wired up
+#
+#   * a retired course code — an earlier CASE ingest wrote "English_Language_Arts",
+#     "Mathematics" and "Writing", which no longer exist in the store. Josh's live
+#     settings row held "English_Language_Arts", so without an alias the app would
+#     have planned against AP Lang while the UI claimed ELA.
+#
+# Unknown values fall back to AP_Lang rather than raising: this app's reason to
+# exist is that one course, and a stale settings row shouldn't take it down.
+_SUBJECT_ALIASES = {
+    # display names
+    "AP Language & Composition": "AP_Lang",
+    "English Language Arts": "ELA",
+    "Mathematics": "Math",
+    "Science": "Science",
+    "Social Studies": "Social_Studies",
+    "Arts Education": "Arts",
+    "Digital Literacy & Computer Science": "DLCS",
+    "Health Education": "Health",
+    "Physical Education": "PE",
+    "World Languages": "World_Languages",
+    "Comprehensive School Counseling": "Counseling",
+    # retired course codes
+    "English_Language_Arts": "ELA",
+    "Writing": "ELA",
+}
+
+
+def subject_code(subject: str) -> str:
+    """Resolve whatever the settings row holds to a course code that exists."""
+    from .routes.misc import SUBJECT_LABELS  # the course codes that actually exist
+
+    subject = (subject or "").strip()
+    if subject in SUBJECT_LABELS:
+        return subject
+    if subject in _SUBJECT_ALIASES:
+        return _SUBJECT_ALIASES[subject]
+    # Tolerate a full label ("Science (2023)").
+    for code, label in SUBJECT_LABELS.items():
+        if subject == label:
+            return code
+    # If not in hardcoded aliases, assume it is a valid dynamic subject (like AP Biology)
+    return subject or "AP_Lang"
+
+
+_subject_code = subject_code  # internal callers
+
+
+def prepare(user_id: str, query: str) -> RetrievalResult:
     """Retrieve, and refuse to spend a token if the request can't be grounded.
 
     Two independent refusals, because they fail differently:
@@ -24,31 +78,61 @@ def prepare(query: str) -> RetrievalResult:
         catch it, and answering would be confidently wrong (see retrieval.py)
       * nothing above the relevance floor — genuinely off-domain
     """
-    off_scope = retrieval.out_of_scope_grades(query)
+    s = db.get_settings_row(user_id)
+    subject = s.get("subject", "AP Language & Composition")
+    grade_str = s.get("grade", "11")
+    
+    try:
+        grade = int(grade_str)
+    except (ValueError, TypeError):
+        grade = 11
+
+    subject_code = _subject_code(subject)
+
+    off_scope = retrieval.out_of_scope_grades(query, corpus_grade=grade)
     if off_scope:
-        raise retrieval.scope_error(query, off_scope)
+        raise retrieval.scope_error(query, off_scope, corpus_grade=grade)
 
     # Rephrase into standards register before searching — a teacher's own wording
     # ("Week 6, voice and tone with The Cask of Amontillado") embeds badly against
     # abstract skill statements. See llm.expand_query.
-    result = retrieval.retrieve_grounded(query, extra_queries=llm.expand_query(query))
+    result = retrieval.retrieve_grounded(
+        query, 
+        subject_code=subject_code, 
+        grade=grade, 
+        extra_queries=llm.expand_query(query)
+    )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
     return result
 
 
+from fastapi import BackgroundTasks
+
+def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
+    from . import docx_build, db
+    try:
+        docx_build.build_docx(plan, out_path)
+        db.update_plan(user_id, plan_id, docx_path=str(out_path))
+        log.info("background docx built for plan_id=%s", plan_id)
+    except Exception as e:
+        log.exception("failed to build background docx for plan_id=%s: %s", plan_id, e)
+
+
 def finalize(
     *,
+    user_id: str,
     plan_raw: dict,
     query: str,
     result: RetrievalResult,
     chat_id: str | None = None,
+    bg_tasks: BackgroundTasks | None = None,
 ) -> dict:
     """Validate, stamp identity, build the .docx, persist. Returns the plan row."""
     started = time.monotonic()
     plan, warnings = schema.validate_plan(plan_raw)
 
-    s = db.get_settings_row()
+    s = db.get_settings_row(user_id)
     plan = schema.with_identity(
         plan, teacher=s["teacher"], course=s["course"], period=s["period"]
     )
@@ -57,16 +141,23 @@ def finalize(
 
     plan_id = db.new_id()
     out_path = docx_build.plan_output_path(plan, plan_id)
-    docx_build.build_docx(plan, out_path)
+
+    if bg_tasks is not None:
+        bg_tasks.add_task(_build_docx_bg, user_id, plan, out_path, plan_id)
+        docx_path_val = None
+    else:
+        docx_build.build_docx(plan, out_path)
+        docx_path_val = str(out_path)
 
     row = db.create_plan(
         plan_id=plan_id,
+        user_id=user_id,
         course=plan["course"],
         week_label=plan["week_of"],
-        unit=units.unit_for_week(plan["week_of"]),
+        unit=units.unit_for_week(plan["week_of"], subject=plan["course"]),
         query=query,
         plan_json=plan,
-        docx_path=str(out_path),
+        docx_path=docx_path_val,
         retrieved_ids=sorted(result.codes),
         warnings=warnings,
         chat_id=chat_id,
@@ -82,37 +173,48 @@ def finalize(
     return row
 
 
-def generate(query: str, chat_id: str | None = None) -> dict:
-    result = prepare(query)
+def generate(user_id: str, query: str, chat_id: str | None = None, bg_tasks: BackgroundTasks | None = None) -> dict:
+    result = prepare(user_id, query)
     return finalize(
-        plan_raw=llm.generate_plan(query, result), query=query, result=result, chat_id=chat_id
+        user_id=user_id,
+        plan_raw=llm.generate_plan(user_id, query, result),
+        query=query,
+        result=result,
+        chat_id=chat_id,
+        bg_tasks=bg_tasks,
     )
 
 
-def rebuild(plan_id: str) -> dict:
+def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None) -> dict:
     """Re-emit the .docx from stored plan_json.
 
     Because the plan is in the database, a lost or deleted document is always
     recoverable — which is what makes the download endpoint's 404 actionable.
     """
-    row = db.get_plan(plan_id)
+    row = db.get_plan(user_id, plan_id)
     if not row:
         raise AppError("plan_not_found", "No such plan.", status=404)
     plan = row["plan_json"]
     if not plan:
         raise AppError("plan_json_missing", "This plan has no stored content to rebuild from.")
     out_path = docx_build.plan_output_path(plan, plan_id)
-    docx_build.build_docx(plan, out_path)
-    return db.update_plan(plan_id, docx_path=str(out_path))  # type: ignore[return-value]
+
+    if bg_tasks is not None:
+        db.update_plan(user_id, plan_id, docx_path=None)
+        bg_tasks.add_task(_build_docx_bg, user_id, plan, out_path, plan_id)
+        return db.get_plan(user_id, plan_id)  # type: ignore[return-value]
+    else:
+        docx_build.build_docx(plan, out_path)
+        return db.update_plan(user_id, plan_id, docx_path=str(out_path))  # type: ignore[return-value]
 
 
-def revise_day(plan_id: str, day_index: int, feedback: str) -> dict:
+def revise_day(user_id: str, plan_id: str, day_index: int, feedback: str, bg_tasks: BackgroundTasks | None = None) -> dict:
     """Rewrite one day, then REBUILD the document.
 
     The old flow updated React state only, so the already-built .docx went stale
     and the file the teacher downloaded no longer matched the plan on screen.
     """
-    row = db.get_plan(plan_id)
+    row = db.get_plan(user_id, plan_id)
     if not row:
         raise AppError("plan_not_found", "No such plan.", status=404)
 
@@ -126,9 +228,24 @@ def revise_day(plan_id: str, day_index: int, feedback: str) -> dict:
         )
 
     original = days[day_index]
+    s = db.get_settings_row(user_id)
+    subject = s.get("subject", "AP Language & Composition")
+    grade_str = s.get("grade", "11")
+    
+    try:
+        grade = int(grade_str)
+    except (ValueError, TypeError):
+        grade = 11
+
+    subject_code = _subject_code(subject)
+
     # Re-retrieve against the feedback so a revision can cite a standard the
     # original week didn't need, while still being grounded.
-    result = retrieval.retrieve_grounded(f"{feedback} {original.get('learning_targets', '')}")
+    result = retrieval.retrieve_grounded(
+        f"{feedback} {original.get('learning_targets', '')}",
+        subject_code=subject_code,
+        grade=grade
+    )
     if result.empty:
         # A revision is allowed to proceed ungrounded — it inherits the week's
         # standards — but it must not invent new codes, and the audit will flag
@@ -137,7 +254,7 @@ def revise_day(plan_id: str, day_index: int, feedback: str) -> dict:
 
     import json as _json
 
-    updated_raw = llm.rewrite_day(original, feedback, _json.dumps(plan, indent=2), result)
+    updated_raw = llm.rewrite_day(user_id, original, feedback, _json.dumps(plan, indent=2), result)
     updated, warnings = schema.validate_day(updated_raw, path=f"days[{day_index}]")
 
     if updated["name"] != original.get("name"):
@@ -155,11 +272,18 @@ def revise_day(plan_id: str, day_index: int, feedback: str) -> dict:
     warnings += retrieval.audit_grounding(new_plan, allowed)
 
     out_path = docx_build.plan_output_path(new_plan, plan_id)
-    docx_build.build_docx(new_plan, out_path)
+
+    if bg_tasks is not None:
+        bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
+        docx_path_val = None
+    else:
+        docx_build.build_docx(new_plan, out_path)
+        docx_path_val = str(out_path)
 
     return db.update_plan(
+        user_id,
         plan_id,
         plan_json=new_plan,
-        docx_path=str(out_path),
+        docx_path=docx_path_val,
         warnings=(row.get("warnings") or []) + warnings,
     )  # type: ignore[return-value]

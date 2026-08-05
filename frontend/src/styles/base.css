@@ -1,187 +1,818 @@
-/* Reset, element defaults, and the shared primitives. */
+/* tokens.css was never imported by anything — not here, not in App.jsx, not in
+   main.jsx. Neither was components.css. Roughly 2,100 lines of stylesheet were
+   dead, which is why `.cite-pop`, `.marginalia`, `.grounding-strip`,
+   `.strategy-tag`, `.revise-box`, `.btn-icon` and `.skeleton` all rendered with
+   no styling at all, and why `.visually-hidden` text was on screen instead of
+   hidden. Everything those files still needed to say now lives in this file,
+   and the tokens come in first. */
+@import './tokens.css';
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-* {
-  margin: 0;
-}
+/* ============================================================================
+   Surfaces
+   ----------------------------------------------------------------------------
+   Flat. Warm neutral surfaces separated by a half-step of tone and a hairline,
+   never by a shadow or a texture. Anything that needs to stand out does it with
+   space and weight.
+   ========================================================================= */
 
-html,
-body,
-#root {
-  height: 100%;
-}
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-size-adjust: 100%;
+  }
 
-body {
-  font-family: var(--font-ui);
-  font-size: var(--fs-md);
-  line-height: var(--lh-normal);
-  color: var(--ink);
-  background: var(--paper-canvas);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
+  body {
+    font-family: var(--font-ui);
+    font-size: var(--fs-base);
+    line-height: var(--lh-normal);
+    color: var(--ink);
+    background: var(--paper);
+  }
 
-h1,
-h2,
-h3,
-h4 {
-  font-family: var(--font-display);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
-  letter-spacing: var(--tracking-tight);
-  color: var(--ink-strong);
-  font-optical-sizing: auto;
-}
+  /* One focus style for the whole app: two rings, one in the page colour and
+     one in the accent, so it stays visible on paper, on a card, and on a filled
+     button alike. */
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: var(--r-sm);
+  }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
-}
+  ::selection {
+    background: rgb(var(--accent-rgb) / 0.15);
+  }
 
-button {
-  background: none;
-  border: none;
-  cursor: pointer;
-}
+  /* Scrollbars — the colour of a page edge, not system grey. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--edge-strong-rgb)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgb(var(--edge-strong-rgb));
+    border-radius: var(--r-full);
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--ink-faint-rgb));
+    background-clip: content-box;
+  }
 
-a {
-  color: var(--accent);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
-}
-
-/* One focus treatment everywhere. Previously the only focus styling in the whole
-   app was a :focus-within background change on the composer. */
-:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-  border-radius: var(--r-sm);
-}
-
-::selection {
-  background: var(--accent-tint-2);
-  color: var(--ink-strong);
-}
-
-/* Scrollbars — thin, paper-toned, not default grey. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--rule-strong) transparent;
-}
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-*::-webkit-scrollbar-thumb {
-  background: var(--rule);
-  border-radius: var(--r-full);
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--rule-strong);
-  background-clip: content-box;
-}
-
-/* ── utilities ───────────────────────────────────────────────────────────── */
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.skip-link {
-  position: absolute;
-  left: var(--sp-2);
-  top: -3rem;
-  z-index: 100;
-  padding: var(--sp-2) var(--sp-4);
-  background: var(--accent);
-  color: var(--accent-on);
-  border-radius: var(--r-md);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  transition: top var(--t-fast) var(--ease);
-}
-.skip-link:focus {
-  top: var(--sp-2);
-}
-
-.eyebrow {
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--ink-muted);
-}
-
-.spin {
-  animation: spin 900ms linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-@keyframes fade-in {
-  from {
-    opacity: 0;
+@layer components {
+  /* A quiet aside: smaller, softer, same face as everything else. This used to
+     be an italic serif set in the margin of a ruled page. */
+  .note {
+    font-size: var(--fs-sm);
+    line-height: var(--lh-normal);
+    color: var(--ink-muted);
   }
-  to {
-    opacity: 1;
+
+  .eyebrow {
+    font-family: var(--font-ui);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  /* ── the week strip ─────────────────────────────────────────────────────
+     Five cells, Monday to Friday, in document order. Used as the generation
+     progress indicator and the artifact header: "Thursday is being written,
+     three days done" is the fact a teacher wants while waiting, and a
+     percentage is not. */
+  .week-strip {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--edge);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .week-day {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-height: 4.25rem;
+    padding: var(--sp-3);
+    background: var(--paper-raised);
+    transition: background var(--t-base) var(--ease);
+  }
+  .week-day-label {
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .week-day-note {
+    font-size: var(--fs-xs);
+    line-height: var(--lh-snug);
+    color: var(--ink-muted);
+  }
+  .week-day.is-filled,
+  .week-day.is-writing {
+    background: var(--accent-tint);
+  }
+  .week-day.is-filled .week-day-label,
+  .week-day.is-writing .week-day-label {
+    color: var(--accent-text);
+  }
+  .week-day.is-off {
+    background: var(--paper-sunken);
+  }
+
+  .week-day-bar {
+    height: 3px;
+    border-radius: var(--r-full);
+    background: rgb(var(--accent-rgb) / 0.2);
+    overflow: hidden;
+  }
+  .week-day-bar > i {
+    display: block;
+    width: 40%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    animation: week-sweep 1.1s var(--ease) infinite;
+  }
+  @keyframes week-sweep {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(350%);
+    }
+  }
+
+  /* ── the artifact table ─────────────────────────────────────────────────
+     Mirrors florence-docx-v2, so it keeps the district's own blue (--doc-blue)
+     rather than the interface accent — the one place in the app where a
+     different hue is correct. A teacher holding this next to the printed .docx
+     should see the same document. */
+  .plan-doc {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+  }
+  .plan-meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding-bottom: var(--sp-5);
+    border-bottom: 1px solid var(--edge);
+  }
+  .plan-meta h2 {
+    margin-bottom: var(--sp-2);
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--lh-tight);
+    color: var(--ink);
+  }
+  .plan-meta-item {
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+  }
+  .plan-meta-item strong {
+    margin-right: var(--sp-2);
+    font-weight: var(--fw-semibold);
+    color: var(--ink-soft);
+  }
+
+  /* Keeps its border where cards lost theirs: this table mirrors the printed
+     .docx, and the frame is part of what it is showing you. */
+  .plan-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    background: var(--district-cell);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+  }
+  .plan-table {
+    width: 100%;
+    min-width: 860px;
+    font-size: var(--fs-sm);
+    text-align: left;
+    border-collapse: collapse;
+  }
+  .plan-table th,
+  .plan-table td {
+    padding: var(--sp-3);
+    vertical-align: top;
+    line-height: var(--lh-relaxed);
+    border: 1px solid rgb(var(--doc-blue-rgb) / 0.3);
+  }
+  /* The day header row and label column are the district blue, as printed. */
+  .plan-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--doc-blue);
+    /* Literal, NOT --ink-inverse: --doc-blue is deliberately identical in both
+       themes, so this label must not flip with the theme. Tokenising it would
+       give near-black text on mid-blue in dark mode. */
+    color: #fff;
+    font-weight: var(--fw-semibold);
+  }
+  .plan-table tbody th {
+    width: 10.5rem;
+    white-space: nowrap;
+    background: var(--district-blue-soft);
+    color: var(--ink);
+    font-weight: var(--fw-semibold);
+  }
+  .plan-table tbody td {
+    background: var(--district-cell);
+    color: var(--ink);
+  }
+  .plan-table .is-no-school,
+  .plan-table .is-pending,
+  .plan-table .is-incomplete {
+    vertical-align: middle;
+    text-align: center;
+    background: var(--paper-sunken);
+    color: var(--ink-muted);
+  }
+  .plan-table .is-incomplete {
+    background: var(--flag-tint);
+    color: var(--flag);
+  }
+  .plan-lesson-part {
+    margin-bottom: var(--sp-3);
+  }
+  .plan-lesson-part:last-child {
+    margin-bottom: 0;
+  }
+  .plan-lesson-part b {
+    display: block;
+    margin-bottom: var(--sp-1);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  .plan-day-actions {
+    display: flex;
+    justify-content: center;
+  }
+
+  .strategy-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+  }
+  .strategy-tag {
+    display: inline-block;
+    padding: 2px var(--sp-2);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-medium);
+    color: var(--ink-soft);
+    background: var(--district-tag-bg);
+    border: 1px solid rgb(var(--doc-blue-rgb) / 0.35);
+    border-radius: var(--r-full);
+  }
+
+  /* ── the grounding apparatus — the signature element ────────────────────
+     A standard code is a citation, so it is set like one: mono, hairline
+     underline, opening to the verbatim source. A code retrieval never supplied
+     is set in marking-pen red with a reference mark, the way a critical edition
+     flags a doubtful reading. */
+  .cite {
+    padding: 0 1px;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--accent-text);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: rgb(var(--accent-text-rgb) / 0.5);
+    text-underline-offset: 3px;
+    transition: color var(--t-fast) var(--ease);
+  }
+  .cite:hover {
+    color: var(--ink);
+    text-decoration-color: currentColor;
+  }
+  .cite.is-ungrounded {
+    color: var(--mark);
+    text-decoration-color: rgb(var(--mark-rgb) / 0.6);
+  }
+  .cite.is-ungrounded::after {
+    content: '\203B'; /* ※ — the reference mark */
+    margin-left: 1px;
+    font-size: 0.85em;
+    vertical-align: super;
+  }
+
+  .cite-pop {
+    position: fixed;
+    z-index: 60;
+    width: min(340px, calc(100vw - 16px));
+    padding: var(--sp-4);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-normal);
+    color: var(--ink);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge-strong);
+    border-left: 3px solid var(--accent);
+    /* the one place the accent carries structural weight */
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+  }
+  .cite-pop p {
+    margin: 0;
+  }
+  .cite-pop-code {
+    display: block;
+    margin-bottom: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    color: var(--accent-text);
+  }
+  .cite-pop-src {
+    margin-top: var(--sp-3);
+    padding-top: var(--sp-2);
+    font-size: var(--fs-2xs);
+    color: var(--ink-muted);
+    border-top: 1px solid var(--edge);
+  }
+  .cite-pop-src code {
+    font-family: var(--font-mono);
+  }
+
+  /* ── marginalia ─────────────────────────────────────────────────────────
+     Grounding notes are warnings, not errors: the plan is usable, the teacher
+     just needs to know which line to check. Amber, low-key, and never in the
+     way of the download button. */
+  .marginalia {
+    padding: var(--sp-4);
+    color: var(--ink-soft);
+    background: var(--flag-tint);
+    border: 1px solid rgb(var(--flag-rgb) / 0.25);
+    border-radius: var(--r-md);
+  }
+  .marginalia-title {
+    display: block;
+    margin-bottom: var(--sp-2);
+    font-family: var(--font-ui);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--flag);
+  }
+  .marginalia ul {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .marginalia li {
+    font-size: var(--fs-sm);
+    line-height: var(--lh-relaxed);
+  }
+
+  .grounding-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--paper-sunken);
+    border-radius: var(--r-lg);
+  }
+  .grounding-strip .cite {
+    cursor: default;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--sp-2);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-medium);
+    border-radius: var(--r-full);
+  }
+  .tag.is-warn {
+    color: var(--flag);
+    background: var(--flag-tint);
+    border: 1px solid rgb(var(--flag-rgb) / 0.35);
+  }
+
+  /* ── revise box ─────────────────────────────────────────────────────── */
+  .revise-box {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    background: var(--paper-sunken);
+    border-radius: var(--r-lg);
+  }
+  .revise-box .input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: var(--fs-sm);
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    outline: none;
+  }
+  .revise-box .input::placeholder {
+    color: var(--ink-muted);
+  }
+
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: var(--ink-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: all var(--t-fast) var(--ease);
+  }
+  .btn-icon:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--paper-sunken);
+    border-color: var(--edge);
+  }
+  .btn-icon:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-send {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: var(--ink-inverse);
+    background: var(--ink);
+    border: none;
+    border-radius: var(--r-full);
+    cursor: pointer;
+    transition: all var(--t-fast) var(--ease);
+  }
+  .btn-send:hover:not(:disabled) {
+    background: var(--ink-soft);
+  }
+  .btn-send:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* ── the general button ─────────────────────────────────────────────────
+     ConfirmProvider is the only consumer today, but this is the shape any
+     non-icon button should take, so it is a primitive rather than
+     `.dialog-actions button`. Nothing defined `.btn` anywhere, which is why the
+     confirm dialog's buttons were rendering as browser defaults. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    min-height: 34px;
+    padding: 0 var(--sp-4);
+    font-family: var(--font-ui);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    color: var(--ink-soft);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition:
+      color var(--t-fast) var(--ease),
+      background var(--t-fast) var(--ease),
+      border-color var(--t-fast) var(--ease);
+  }
+  .btn:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--paper-sunken);
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Ink ground, not accent: --accent is 3.1:1 and fails AA behind a label.
+     --ink and --ink-inverse both flip with the theme, so one rule covers light
+     and dark. */
+  .btn-primary {
+    color: var(--ink-inverse);
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  .btn-primary:hover:not(:disabled) {
+    color: var(--ink-inverse);
+    background: var(--ink-soft);
+    border-color: var(--ink-soft);
+  }
+
+  .btn-danger {
+    color: var(--ink-inverse);
+    background: var(--mark);
+    border-color: var(--mark);
+  }
+  .btn-danger:hover:not(:disabled) {
+    color: var(--ink-inverse);
+    background: rgb(var(--mark-rgb) / 0.85);
+    border-color: rgb(var(--mark-rgb) / 0.85);
+  }
+
+  /* ── toasts ─────────────────────────────────────────────────────────────
+     ToastProvider keeps TWO live regions inside one visual column: errors
+     interrupt (assertive), everything else waits (polite). Both must stay in
+     the DOM and stay visible, because a screen reader can miss content inserted
+     into a region that was display:none at that moment.
+
+     That rules out the obvious `.toast-region:empty { display: none }`. So
+     there is deliberately NO `gap` here — a gap applies between flex children
+     regardless of their size, and an empty region would leave a phantom 8px
+     above the stack, which is the common case. Spacing lives on the toast
+     itself instead; an empty region is then a 0-height box that costs nothing.
+
+     z-index 95 puts these ABOVE the dialog scrim at 90, on purpose: an error is
+     never worth burying under a modal. */
+  .toasts {
+    position: fixed;
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    z-index: 95;
+    display: flex;
+    width: min(380px, calc(100vw - var(--sp-8)));
+    flex-direction: column;
+    /* A stack sitting over the composer must not eat clicks; each toast turns
+       pointer events back on for itself. */
+    pointer-events: none;
+  }
+  .toast-region {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .toast {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+    padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge-strong);
+    /* Tone rides a rule down the leading edge, the way .cite-pop carries the
+       accent — not a coloured card. */
+    border-left: 3px solid var(--edge-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-lg);
+    pointer-events: auto;
+    animation: toast-in var(--t-base) var(--ease-out) both;
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .toast-body {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--sp-1);
+  }
+  .toast-body > strong {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-snug);
+    color: var(--ink);
+  }
+  .toast-body small {
+    font-size: var(--fs-xs);
+    line-height: var(--lh-normal);
+    color: var(--ink-muted);
+    /* Backend messages carry file paths and shell commands, which offer no break
+       opportunities and would otherwise push the toast past its own width. */
+    overflow-wrap: anywhere;
+  }
+  /* The backend's actionable half — "Start it with ./run.sh". Ruled off and a
+     step darker, because it is the part to act on. */
+  .toast-body .toast-hint {
+    margin-top: var(--sp-1);
+    padding-top: var(--sp-2);
+    color: var(--ink-soft);
+    border-top: 1px solid var(--edge);
+  }
+
+  .toast.is-error {
+    border-left-color: var(--mark);
+  }
+  .toast.is-error .toast-body > strong {
+    color: var(--mark);
+  }
+  .toast.is-success {
+    border-left-color: var(--ok);
+  }
+  .toast.is-info {
+    border-left-color: var(--accent);
+  }
+
+  .toast > .btn-icon {
+    flex: none;
+    margin: -3px -3px 0 0;
+  }
+
+  @media (max-width: 640px) {
+    .toasts {
+      right: var(--sp-3);
+      bottom: var(--sp-3);
+      left: var(--sp-3);
+      width: auto;
+    }
+  }
+
+  /* ── confirm dialog ─────────────────────────────────────────────────────
+     Below the toasts, above everything else. The scrim uses --scrim rather than
+     a fixed black so it darkens the right amount in both themes (0.28 → 0.55).
+     Padding on the scrim keeps the card off the edge on a phone and is still
+     scrim for the mousedown-to-dismiss test. */
+  .dialog-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    padding: var(--sp-4);
+    background: var(--scrim);
+    backdrop-filter: blur(2px);
+    animation: scrim-in var(--t-fast) var(--ease-out) both;
+  }
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .dialog {
+    width: min(420px, 100%);
+    padding: var(--sp-6);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
+    /* tabIndex={-1} exists only as a focus-trap fallback; it should never draw
+       a ring. The trap focuses Cancel. */
+    outline: none;
+    animation: dialog-in var(--t-base) var(--ease-out) both;
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .dialog h2 {
+    margin: 0;
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-snug);
+    letter-spacing: var(--tracking-display);
+    color: var(--ink);
+  }
+  .dialog p {
+    margin: var(--sp-2) 0 0;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-relaxed);
+    color: var(--ink-muted);
+  }
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+    margin-top: var(--sp-6);
+  }
+  @media (max-width: 420px) {
+    /* Plain `column`, not column-reverse: reversing would show Confirm above
+       Cancel while DOM and tab order stayed Cancel → Confirm, and the focus trap
+       computes first/last from the DOM. */
+    .dialog-actions {
+      flex-direction: column;
+    }
+    .dialog-actions .btn {
+      width: 100%;
+    }
+  }
+
+  /* ── skeletons ──────────────────────────────────────────────────────── */
+  .skeleton {
+    display: block;
+    background: linear-gradient(
+      90deg,
+      var(--paper-sunken) 25%,
+      var(--paper-inset) 37%,
+      var(--paper-sunken) 63%
+    );
+    background-size: 400% 100%;
+    border-radius: var(--r-xs);
+    animation: skeleton-sweep 1.4s var(--ease) infinite;
+  }
+  @keyframes skeleton-sweep {
+    0% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0 50%;
+    }
+  }
+  .skeleton-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+  .skeleton-line {
+    height: 0.75rem;
+  }
+  .skeleton-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: var(--sp-2) 0;
+  }
+  .skeleton-row-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--sp-2);
   }
 }
 
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+@layer utilities {
+  /* Was referenced by LessonPlanTable's <caption> and several screen-reader-only
+     spans, and defined only in the never-imported components.css — so that text
+     was rendering on screen. */
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }

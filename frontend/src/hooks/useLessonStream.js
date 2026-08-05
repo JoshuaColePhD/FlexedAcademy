@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { ApiError, api } from '../lib/api'
+import { ApiError, api, apiErrorFromBody } from '../lib/api'
 import { parsePartialJson, usablePlan } from '../lib/partialJson'
 
 /* All the streaming logic, in one place.
@@ -23,7 +23,20 @@ import { parsePartialJson, usablePlan } from '../lib/partialJson'
       "data: ". Now it's a checked prefix slice.
 
    Plus a real AbortController, so Stop actually stops and navigating away
-   doesn't leave a request running. */
+   doesn't leave a request running.
+
+   Two further fixes, 2026-08-04:
+
+   4. `grounding` is now held in a ref as well as state, and merged into the value
+      start() resolves with. ChatPage reads `stream.grounding` from the closure it
+      captured BEFORE the grounding event arrived, and the `done` event doesn't
+      carry it — so the saved artifact got null and the grounding strip vanished
+      the moment a plan finished. That strip is the app's whole differentiator, so
+      it was disappearing exactly when the teacher would look at it.
+
+   5. onDone/onError live in refs, so `start` — and therefore the whole returned
+      object, and every callback in ChatPage built from it — stops being rebuilt on
+      every render. ChatPage passes an inline arrow for onError. */
 
 const SSE_PREFIX = 'data:'
 
@@ -33,6 +46,15 @@ export function useLessonStream({ onDone, onError } = {}) {
   const [preview, setPreview] = useState(null)
   const [grounding, setGrounding] = useState(null)
   const abortRef = useRef(null)
+  // Mirrors the grounding state so the resolved value can carry it — state set
+  // mid-stream is not visible to the closure that started the stream.
+  const groundingRef = useRef(null)
+
+  // Latest callbacks without making them dependencies of `start`.
+  const onDoneRef = useRef(onDone)
+  const onErrorRef = useRef(onError)
+  onDoneRef.current = onDone
+  onErrorRef.current = onError
 
   const stop = useCallback(() => {
     abortRef.current?.abort()
@@ -44,6 +66,7 @@ export function useLessonStream({ onDone, onError } = {}) {
     setText('')
     setPreview(null)
     setGrounding(null)
+    groundingRef.current = null
   }, [])
 
   const start = useCallback(
@@ -56,6 +79,7 @@ export function useLessonStream({ onDone, onError } = {}) {
       setText('')
       setPreview(null)
       setGrounding(null)
+      groundingRef.current = null
 
       let accumulated = ''
 
@@ -65,6 +89,7 @@ export function useLessonStream({ onDone, onError } = {}) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query, chat_id: chatId ?? null }),
           signal: controller.signal,
+          credentials: 'include',
         })
 
         if (!res.ok || !res.body) {
@@ -74,13 +99,9 @@ export function useLessonStream({ onDone, onError } = {}) {
           } catch {
             /* non-JSON error body */
           }
-          const e = payload?.error
-          throw new ApiError(e?.message || `The server rejected the request (${res.status}).`, {
-            code: e?.code || 'http_error',
-            hint: e?.hint,
-            status: res.status,
-            extra: e || {},
-          })
+          // Was a second hand-rolled copy of api.js's envelope parsing; one
+          // function should decide how a backend error becomes an ApiError.
+          throw apiErrorFromBody(payload, res.status)
         }
 
         const reader = res.body.getReader()
@@ -120,6 +141,7 @@ export function useLessonStream({ onDone, onError } = {}) {
 
             if (event.grounding) {
               setGrounding(event.grounding)
+              groundingRef.current = event.grounding
             }
 
             if (event.chunk) {
@@ -143,18 +165,22 @@ export function useLessonStream({ onDone, onError } = {}) {
         }
 
         setPreview(finished.plan ?? null)
-        onDone?.(finished)
-        return finished
+        // Grounding rides along, because `finished` (the done event) has none and
+        // the caller's `stream.grounding` is a stale read.
+        const result = { ...finished, grounding: groundingRef.current }
+        onDoneRef.current?.(result)
+        return result
       } catch (err) {
         if (err.name === 'AbortError') return null // user pressed Stop
-        onError?.(err)
+        onErrorRef.current?.(err)
         throw err
       } finally {
         if (abortRef.current === controller) abortRef.current = null
         setIsStreaming(false)
       }
     },
-    [onDone, onError]
+    // Empty on purpose — the callbacks are read through refs above.
+    []
   )
 
   return { start, stop, reset, isStreaming, text, preview, grounding }

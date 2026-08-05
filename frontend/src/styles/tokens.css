@@ -1,181 +1,281 @@
 /* ============================================================================
-   Design tokens — academic / editorial
+   Design tokens — quiet, warm, product-first
    ----------------------------------------------------------------------------
-   Warm unbleached paper, ink text, one restrained accent (claret — the colour of
-   a marking pencil, not of pottery). The district's own blue is a SECOND,
-   strictly functional hue: it appears only inside the artifact table, so the
-   on-screen preview reads as the .docx it produces.
+   Modelled on the Claude desktop app, which is the register asked for: warm
+   off-white surfaces, a soft neutral rail, near-black type, and one warm accent
+   used sparingly. No texture, no ornament. The interest comes from spacing and
+   hierarchy, not decoration.
 
-   Replaces a 12-variable set in which --border-light and --bg-muted were used
-   seven times and never defined — which is why the artifact cards had no
-   borders. Everything used is declared here.
+   The one rule worth stating, because it is the easy thing to get wrong:
 
-   useTheme resolves "system" via matchMedia and always writes a concrete
-   data-theme="light|dark" onto <html>, so the dark values need exactly one
-   selector below rather than being duplicated across a media query.
+     --accent (#d97757) is a FILL and a MARK, never body text and never a
+     button label background. It measures 3.1:1 on white, which fails AA both
+     as text and as a fill behind white text. Where the accent has to carry a
+     word — a link, a small label — use --accent-text (#a8442a, 6.0:1). Where a
+     button needs to be the primary action, it is --ink on --paper-raised text,
+     which is how the Claude app does it too.
+
+   Contrast measured against --paper (#faf9f7, L=0.945) on 2026-08-04:
+
+     --ink        #141413   17.5:1   body, headings, primary buttons
+     --ink-soft   #3d3d3a   10.7:1   secondary body
+     --ink-muted  #6b6a65    5.3:1   labels, meta
+     --ink-faint  #9a9890    2.7:1   NOT text. Dividers, disabled marks.
+     --accent-text #a8442a   5.7:1   links and accent-coloured words
+     --mark       #b3392f    5.6:1   destructive
+     --flag       #b45309    4.4:1   warnings — large/medium text only
+     --ok         #2e6b4f    5.2:1
+
+   Channels, not hex, are the source of truth. Tailwind composes each one as an
+   rgb() with an alpha-value slot, so `bg-paper/50` works; the plain aliases
+   exist for hand-written CSS.
+
+   ----------------------------------------------------------------------------
+   FOUR RULES. Everything below is an application of these; if a change breaks
+   one of them it is the change that is wrong.
+
+   1. Separation is TONE, not line. A border survives only where two surfaces of
+      identical tone meet, or where the outline IS the affordance — a text
+      input, a pill, the .plan-table that mirrors the printed .docx.
+
+   2. Elevation is for FLOATING layers only: popover, toast, dialog, the mobile
+      drawer. Nothing docked in the layout gets a shadow.
+
+   3. ONE measure. Everything in the chat column shares --measure.
+
+   4. --accent is a FILL, never a label and never a button ground. Words that
+      need to be accent-coloured use --accent-text. Primary buttons are --ink
+      with an --ink-inverse label, which is what the Claude app does too.
    ========================================================================= */
 
 :root {
   color-scheme: light dark;
 
   /* ── type ──────────────────────────────────────────────────────────────── */
-  --font-display: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
-  --font-ui: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* One sans for the whole interface. The serif appears in exactly one place —
+     the greeting on an empty screen — which is the same restraint the Claude
+     app shows and the reason it reads as warm rather than decorated. */
+  --font-display: 'Newsreader', ui-serif, Georgia, serif;
+  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --fs-2xs: 0.6875rem;
   --fs-xs: 0.75rem;
   --fs-sm: 0.8125rem;
-  --fs-md: 0.9375rem;
-  --fs-base: 1rem;
+  --fs-md: 0.875rem;
+  --fs-base: 0.9375rem;
   --fs-lg: 1.0625rem;
-  --fs-xl: 1.375rem;
+  --fs-xl: 1.3125rem;
   --fs-2xl: 1.75rem;
   --fs-3xl: 2.375rem;
+  --fs-4xl: 3.25rem;
 
-  --lh-tight: 1.18;
-  --lh-snug: 1.35;
-  --lh-normal: 1.55;
-  --lh-relaxed: 1.7;
+  --lh-tight: 1.1;
+  --lh-snug: 1.3;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.65;
 
   --tracking-caps: 0.08em;
-  --tracking-tight: -0.011em;
+  --tracking-tight: -0.015em;
+  --tracking-display: -0.02em;
 
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
+  --fw-bold: 700;
 
-  /* ── space (4px base) ──────────────────────────────────────────────────── */
+  /* ── space (4px base; 28/56 land on the rule) ──────────────────────────── */
   --sp-1: 0.25rem;
   --sp-2: 0.5rem;
   --sp-3: 0.75rem;
   --sp-4: 1rem;
   --sp-5: 1.25rem;
   --sp-6: 1.5rem;
+  --sp-7: 1.75rem;
   --sp-8: 2rem;
   --sp-10: 2.5rem;
   --sp-12: 3rem;
+  --sp-14: 3.5rem;
   --sp-16: 4rem;
 
-  /* ── radii ─────────────────────────────────────────────────────────────── */
-  --r-xs: 2px;
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 10px;
-  --r-xl: 14px;
+  /* ── radii — paper has corners; cards get a soft crop only ─────────────── */
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
   --r-full: 999px;
 
   /* ── motion ────────────────────────────────────────────────────────────── */
-  --t-fast: 120ms;
-  --t-base: 200ms;
-  --t-slow: 320ms;
-  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --t-fast: 130ms;
+  --t-base: 220ms;
+  --t-slow: 420ms;
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
   /* ── layout ────────────────────────────────────────────────────────────── */
   --sidebar-w: 264px;
-  --artifact-w: clamp(460px, 46vw, 900px);
-  --measure: 68ch;
-  --topbar-h: 52px;
+  --artifact-w: 480px;
+  /* The single column width the whole chat surface shares — greeting, composer,
+     starter pills and message list all sit inside it, so the composer never
+     changes width when it moves from the centre of an empty screen down to the
+     footer. Was 68ch, which at Inter 15px is ~551px: fine for prose, far too
+     narrow for a message column, and it made the "one measure" rule impossible
+     to actually apply. */
+  --measure: 46rem;
+  /* A settings form wants to stay narrower than prose. */
+  --measure-form: 42rem;
+  --topbar-h: 56px;
 
-  /* ── LIGHT ─────────────────────────────────────────────────────────────── */
-  --paper-canvas: #fbf8f1;
-  --paper-raised: #fffdf8;
-  --paper-sunken: #f3eee2;
-  --paper-sunken-2: #eae3d3;
-  --paper-user-msg: #f0eadc;
+  /* ══ LIGHT ═══════════════════════════════════════════════════════════════ */
 
-  --ink-strong: #1b1815;
-  --ink: #2c2822;
-  --ink-soft: #57503f;
-  --ink-muted: #7c7361;
-  --ink-faint: #a79c86;
+  /* surfaces — warm neutrals, a half-step apart */
+  --paper-rgb: 250 249 247;
+  --paper-raised-rgb: 255 255 255;
+  --paper-sunken-rgb: 242 240 234;
+  --paper-inset-rgb: 233 230 221;
 
-  --rule: #ded5c1;
-  --rule-strong: #c6baa0;
-  --rule-hair: rgba(27, 24, 21, 0.07);
+  /* hairlines */
+  --edge-rgb: 229 226 217;
+  --edge-strong-rgb: 213 209 197;
 
-  --accent: #8a3033;
-  --accent-hover: #6f2629;
-  --accent-active: #591e21;
-  --accent-tint: #f6e9e6;
-  --accent-tint-2: #efd8d4;
-  --accent-on: #fffdf8;
-  --accent-ring: rgba(138, 48, 51, 0.32);
+  /* ink */
+  --ink-rgb: 20 20 19;
+  --ink-soft-rgb: 61 61 58;
+  --ink-muted-rgb: 107 106 101;
+  --ink-faint-rgb: 154 152 144;
+  --ink-inverse-rgb: 250 249 247;
 
-  --danger: #a32b23;
-  --danger-tint: #f8e7e4;
-  --warn: #8a5d0f;
-  --warn-tint: #f8eeda;
-  --ok: #2f6b48;
-  --ok-tint: #e4f0e8;
-  --info: #2a5480;
-  --info-tint: #e5edf6;
+  /* the warm accent — a fill and a mark, never text (see the header) */
+  --accent-rgb: 217 119 87;
+  --accent-hover-rgb: 196 102 74;
+  --accent-tint-rgb: 250 238 232;
+  --accent-text-rgb: 168 68 42;
+  --doc-blue-rgb: 109 158 235; /* the exact value printed in the .docx */
 
-  /* The district DOCX palette. Scoped to the artifact table ONLY — these are
-     the literal values in build_lesson_plan.py (BLUE = 6d9eeb). */
-  --district-blue: #6d9eeb;
-  --district-blue-soft: #cfe2f3;
-  --district-ink: #10131a;
-  --district-cell: #ffffff;
+  --mark-rgb: 179 57 47;
+  --mark-tint-rgb: 251 238 236;
 
-  /* Warm-tinted shadows. Neutral black on paper reads as dirt. */
-  --shadow-xs: 0 1px 2px rgba(59, 44, 24, 0.05);
-  --shadow-sm: 0 1px 3px rgba(59, 44, 24, 0.07), 0 1px 2px rgba(59, 44, 24, 0.04);
-  --shadow-md: 0 4px 12px rgba(59, 44, 24, 0.08), 0 1px 3px rgba(59, 44, 24, 0.05);
-  --shadow-lg: 0 16px 40px rgba(59, 44, 24, 0.14), 0 2px 8px rgba(59, 44, 24, 0.06);
-  --shadow-panel: -8px 0 24px rgba(59, 44, 24, 0.06);
+  --flag-rgb: 180 83 9;
+  --flag-tint-rgb: 253 243 227;
 
-  --focus-ring: 0 0 0 2px var(--paper-canvas), 0 0 0 4px var(--accent-ring);
+  --ok-rgb: 46 107 79;
+  --ok-tint-rgb: 231 242 236;
+
+  --scrim-rgb: 26 27 24;
+
+  /* ── shadow — paper lifting off paper, never a glow ────────────────────── */
+  --shadow-xs: 0 1px 1px rgb(20 20 19 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(20 20 19 / 0.05);
+  --shadow-md: 0 2px 6px rgb(20 20 19 / 0.06), 0 1px 2px rgb(20 20 19 / 0.04);
+  --shadow-lg: 0 8px 28px rgb(20 20 19 / 0.1), 0 2px 6px rgb(20 20 19 / 0.05);
+  --shadow-pop: 0 12px 40px rgb(20 20 19 / 0.16);
+  --shadow-panel: -4px 0 16px rgb(20 20 19 / 0.05);
+
+  /* ── aliases for hand-written CSS ──────────────────────────────────────── */
+  --paper: rgb(var(--paper-rgb));
+  --paper-raised: rgb(var(--paper-raised-rgb));
+  --paper-sunken: rgb(var(--paper-sunken-rgb));
+  --paper-inset: rgb(var(--paper-inset-rgb));
+  --edge: rgb(var(--edge-rgb));
+  --edge-strong: rgb(var(--edge-strong-rgb));
+  --ink: rgb(var(--ink-rgb));
+  --ink-soft: rgb(var(--ink-soft-rgb));
+  --ink-muted: rgb(var(--ink-muted-rgb));
+  --ink-faint: rgb(var(--ink-faint-rgb));
+  --ink-inverse: rgb(var(--ink-inverse-rgb));
+  --accent: rgb(var(--accent-rgb));
+  --accent-hover: rgb(var(--accent-hover-rgb));
+  --accent-tint: rgb(var(--accent-tint-rgb));
+  --accent-text: rgb(var(--accent-text-rgb));
+  --accent-on: rgb(var(--ink-inverse-rgb));
+  --accent-ring: rgb(var(--accent-rgb) / 0.32);
+  --doc-blue: rgb(var(--doc-blue-rgb));
+  --mark: rgb(var(--mark-rgb));
+  --mark-tint: rgb(var(--mark-tint-rgb));
+  --flag: rgb(var(--flag-rgb));
+  --flag-tint: rgb(var(--flag-tint-rgb));
+  --ok: rgb(var(--ok-rgb));
+  --ok-tint: rgb(var(--ok-tint-rgb));
+  --scrim: rgb(var(--scrim-rgb) / 0.28);
+
+  --focus-ring: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent-ring);
+
+  /* The artifact table mirrors the .docx, so it alone keeps the district's own
+     blue rather than the interface accent. This is the single place the two
+     blues are allowed to differ. */
+  --district-cell: var(--paper-raised);
+  --district-blue-soft: rgb(var(--doc-blue-rgb) / 0.22);
+  --district-tag-bg: rgb(var(--doc-blue-rgb) / 0.12);
+
+  /* ── aliases kept for login.css ──────────────────────────────────────────
+     login.css is written against the older token names. LoginPage is currently
+     unreachable — Gate() in App.jsx bypasses auth — but the page is kept so
+     re-enabling login stays a one-line revert, and check-tokens.mjs walks every
+     file under src/ whether it is imported or not. So these four stay. */
+  --paper-canvas: var(--paper);
+  --paper-sunken-2: var(--paper-inset);
+  --ink-strong: var(--ink);
+  --rule-hair: rgb(var(--ink-rgb) / 0.05);
 }
 
-/* ── DARK ────────────────────────────────────────────────────────────────── */
-:root[data-theme="dark"] {
-  --paper-canvas: #14130f;
-  --paper-raised: #1d1b16;
-  --paper-sunken: #100f0c;
-  --paper-sunken-2: #282419;
-  --paper-user-msg: #262218;
+/* ══ DARK ══════════════════════════════════════════════════════════════════
+   Warm neutrals taken down rather than inverted, so the app reads as the same
+   product at night. The accent holds its hue; --accent-text lightens, because
+   the dark surface flips which end of the ramp is readable.
+   Measured against --paper (#1E1D1B, L=0.0136): --ink 16.4:1, --ink-soft 9.5:1,
+   --ink-muted 5.2:1, --accent-text 7.1:1, --mark 6.6:1, --flag 8.6:1.
+   ======================================================================== */
+:root[data-theme='dark'] {
+  --paper-rgb: 30 29 27;
+  --paper-raised-rgb: 38 37 34;
+  --paper-sunken-rgb: 24 23 22;
+  --paper-inset-rgb: 48 46 43;
 
-  --ink-strong: #f5f0e4;
-  --ink: #e7e0d0;
-  --ink-soft: #bfb6a1;
-  --ink-muted: #948b78;
-  --ink-faint: #6b6455;
+  --edge-rgb: 55 53 50;
+  --edge-strong-rgb: 74 71 67;
 
-  --rule: #322d24;
-  --rule-strong: #4a4234;
-  --rule-hair: rgba(245, 240, 228, 0.08);
+  --ink-rgb: 240 238 233;
+  --ink-soft-rgb: 191 188 181;
+  --ink-muted-rgb: 150 147 140;
+  --ink-faint-rgb: 108 105 100;
+  --ink-inverse-rgb: 30 29 27;
 
-  /* Lifted for AA contrast on dark paper — #8A3033 fails there. */
-  --accent: #d98a86;
-  --accent-hover: #e6a19d;
-  --accent-active: #f0b5b1;
-  --accent-tint: #2a1c1b;
-  --accent-tint-2: #3b2624;
-  --accent-on: #1a1210;
-  --accent-ring: rgba(217, 138, 134, 0.4);
+  --accent-rgb: 217 119 87;
+  --accent-hover-rgb: 232 141 111;
+  --accent-tint-rgb: 61 40 32;
+  --accent-text-rgb: 232 152 122;
+  --doc-blue-rgb: 109 158 235;
 
-  --danger: #e98a80;
-  --danger-tint: #2e1a17;
-  --warn: #d9ae5f;
-  --warn-tint: #2c2214;
-  --ok: #7fbe97;
-  --ok-tint: #16251c;
-  --info: #8fb4dd;
-  --info-tint: #16202c;
+  --mark-rgb: 232 122 112;
+  --mark-tint-rgb: 61 32 29;
 
-  /* The artifact table stays a light document even in dark mode — it is a
-     preview of a printed page, and inverting it would misrepresent the file. */
-  --district-blue: #6d9eeb;
-  --district-blue-soft: #cfe2f3;
-  --district-ink: #10131a;
-  --district-cell: #ffffff;
+  --flag-rgb: 224 165 74;
+  --flag-tint-rgb: 55 41 20;
 
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-panel: -8px 0 24px rgba(0, 0, 0, 0.4);
+  --ok-rgb: 106 190 150;
+  --ok-tint-rgb: 24 46 37;
+
+  --scrim-rgb: 0 0 0;
+
+  --shadow-xs: 0 1px 1px rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 2px 6px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 8px 28px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
+  --shadow-pop: 0 12px 40px rgb(0 0 0 / 0.65);
+  --shadow-panel: -4px 0 16px rgb(0 0 0 / 0.4);
+
+  --scrim: rgb(var(--scrim-rgb) / 0.55);
+
+  /* In dark the artifact stops pretending to be printed paper — a white table
+     on a dark page is a flashbang. The district blue stays as a header and rule
+     colour only. */
+  --district-cell: var(--paper-raised);
+  --district-blue-soft: rgb(var(--doc-blue-rgb) / 0.16);
+  /* Nudged UP where its sibling was nudged down. --district-blue-soft is a large
+     wash, which reads stronger on a dark ground at the same alpha; this one is a
+     small chip fill behind --ink-soft text, and at 0.12 it disappears entirely
+     on #262522 so the tag renders as a bare outline. */
+  --district-tag-bg: rgb(var(--doc-blue-rgb) / 0.18);
 }

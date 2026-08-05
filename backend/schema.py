@@ -70,7 +70,7 @@ DAY_JSON_SCHEMA = {
         "no_school": {"type": "boolean"},
         "learning_targets": {
             "type": "string",
-            "description": 'Single line, must start with "I can". No newlines.',
+            "description": 'Single line, must start with "I can" followed by a Bloom\'s taxonomy verb matched to the Depth of Knowledge (DOK). No newlines.',
         },
         "standards": {
             "type": "string",

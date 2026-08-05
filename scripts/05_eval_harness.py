@@ -40,31 +40,64 @@ from backend.config import settings  # noqa: E402
 
 RETRIEVAL_TEST_CASES = [
     {
+        "course": "AP_Lang",
+        "grade": 11,
         "query": "Students need practice synthesizing graphic texts like charts and dashboards.",
         "expected_code": "Grade11-2",
     },
     {
+        "course": "AP_Lang",
+        "grade": 11,
         "query": "I want a lesson plan on explaining how an argument understands the audience's beliefs.",
         "expected_code": "1.B",
     },
-    {"query": "We are focusing on deleting irrelevant material in an essay.", "expected_code": "TOD 201"},
     {
+        "course": "AP_Lang",
+        "grade": 11,
+        "query": "We are focusing on deleting irrelevant material in an essay.", 
+        "expected_code": "TOD 201"
+    },
+    {
+        "course": "AP_Lang",
+        "grade": 11,
         "query": "I need a lesson about evaluating tone and credibility through active listening.",
         "expected_code": "Grade11-10",
     },
+    {
+        "course": "AP Biology",
+        "grade": 11,
+        "query": "How species diversity within an ecosystem influences ecosystem stability.",
+        "expected_code": "LO 4.27",
+    },
+    {
+        "course": "AP Biology",
+        "grade": 11,
+        "query": "predict effects of variation within populations on survival and fitness.",
+        "expected_code": "LO 4.26",
+    },
 ]
+
+# Load golden dataset if it exists
+GOLDEN_DATASET_PATH = PROJECT_ROOT / "data" / "eval" / "golden_cases.json"
+if GOLDEN_DATASET_PATH.is_file():
+    try:
+        with open(GOLDEN_DATASET_PATH, "r", encoding="utf-8") as f:
+            RETRIEVAL_TEST_CASES = json.load(f)
+            print(f"Loaded {len(RETRIEVAL_TEST_CASES)} golden cases from {GOLDEN_DATASET_PATH.name}")
+    except Exception as e:
+        print(f"Failed to load golden cases: {e}")
 
 # Real teacher phrasings that must always retrieve something. The SPACE CAT one
 # is here deliberately: it sits at distance ~0.71 because proper nouns and
 # internal framework names don't appear in standards text, so a plausible-looking
 # 0.70 floor would break Josh's most natural way of asking.
 FLOOR_POSITIVES = [
-    "Week 3 SPACE CAT analysis of Letter from Birmingham Jail",
-    "rhetorical analysis of a speech",
-    "students need help with line of reasoning and evidence",
-    "timed synthesis essay from six sources",
-    "comma splices and subordination in student drafts",
-    *[c["query"] for c in RETRIEVAL_TEST_CASES],
+    ("AP_Lang", "Week 3 SPACE CAT analysis of Letter from Birmingham Jail"),
+    ("AP_Lang", "rhetorical analysis of a speech"),
+    ("AP_Lang", "students need help with line of reasoning and evidence"),
+    ("AP_Lang", "timed synthesis essay from six sources"),
+    ("AP_Lang", "comma splices and subordination in student drafts"),
+    *[ (c["course"], c["query"]) for c in RETRIEVAL_TEST_CASES ],
 ]
 
 FLOOR_NEGATIVES_OFFDOMAIN = [
@@ -89,14 +122,36 @@ def _hdr(title: str) -> None:
     print("=" * 78)
 
 
+# Every case above is an AP Lang, Grade 11 question, so the eval must search the
+# way production searches — retrieve_grounded() always filters on the selected
+# course and grade (see backend/service.py). This used to call retrieve_raw with
+# no filter, which was indistinguishable from the real thing while the store held
+# one course. Once the Alabama Course of Study frameworks went in (20,773 chunks
+# across 12 frameworks), the unscoped query started returning Arts Education and
+# Grade-3 ELA chunks and the eval failed on a corpus that production handles
+# correctly. Scoping here keeps the eval a test of retrieval quality rather than
+# of how many other subjects happen to be loaded.
+EVAL_SCOPE = {"course": "AP_Lang", "grade": 11}
+
+
+def _scope_filter(course: str, grade: int) -> dict:
+    return {"$and": [{"course": {"$eq": course}}, {"grade": {"$eq": grade}}]}
+
+
 def run_retrieval_evals(top_k: int = 5) -> bool:
-    _hdr(f"RETRIEVAL — expected code within top {top_k}")
+    _hdr(f"RETRIEVAL — expected code within top {top_k} (Multi-Subject)")
     passed = 0
     for i, case in enumerate(RETRIEVAL_TEST_CASES, 1):
-        codes = [c["id"] for c in retrieval.retrieve_raw(case["query"], n=top_k)]
+        where = _scope_filter(case["course"], case["grade"])
+        hits = retrieval.retrieve_raw(case["query"], n=top_k, where=where)
+        # The standard's own code, not the Chroma id. Ids are
+        # `{course}:{grade}:{code}` so one standard can be stored once per grade
+        # it covers; comparing ids here would fail every case for a formatting
+        # reason rather than a retrieval one.
+        codes = [(c.get("metadata") or {}).get("code") or c["id"] for c in hits]
         ok = case["expected_code"] in codes
         passed += ok
-        print(f"[{i}/{len(RETRIEVAL_TEST_CASES)}] {'PASS' if ok else 'FAIL'}  {case['expected_code']}")
+        print(f"[{i}/{len(RETRIEVAL_TEST_CASES)}] {'PASS' if ok else 'FAIL'}  {case['course']}: {case['expected_code']}")
         if not ok:
             print(f"        query: {case['query']}")
             print(f"        got:   {codes}")
@@ -108,8 +163,8 @@ def run_floor_evals() -> bool:
     _hdr(f"RELEVANCE FLOOR — {settings.retrieval_max_distance}")
     ok = True
 
-    for q in FLOOR_POSITIVES:
-        r = retrieval.retrieve_grounded(q)
+    for course, q in FLOOR_POSITIVES:
+        r = retrieval.retrieve_grounded(q, subject_code=course, grade=11)
         good = not r.empty
         ok &= good
         best = r.chunks[0]["distance"] if r.chunks else float("nan")
@@ -194,9 +249,9 @@ def run_generation_evals() -> bool:
     query = "Draft a Week 3 lesson plan on using transition words and line of reasoning in essays."
     print(f"  query: {query}")
     try:
-        result = service.prepare(query)
+        result = service.prepare("default_user", query)
         print(f"  retrieved: {sorted(result.codes)}")
-        plan, warnings = schema.validate_plan(llm.generate_plan(query, result))
+        plan, warnings = schema.validate_plan(llm.generate_plan("default_user", query, result))
         print(f"  PASS  {len(plan['days'])} days, {len(warnings)} schema warning(s)")
         audit = retrieval.audit_grounding(plan, result.codes)
         for w in audit:
