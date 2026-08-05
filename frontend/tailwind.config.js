@@ -50,11 +50,9 @@ export default {
       },
 
       fontFamily: {
-        /* Inter runs the interface. `font-display` is the serif used for the
-           one greeting on an empty screen — reach for it on purpose or not at
-           all. */
+        /* Inter runs the whole interface. There is no display face: the serif
+           greeting it existed for went with the week board. */
         sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-        display: ['Newsreader', 'ui-serif', 'Georgia', 'serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
 

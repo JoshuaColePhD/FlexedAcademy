@@ -185,6 +185,25 @@ export const api = {
     return upload('/api/curriculum_map', fd, { signal })
   },
   deleteCurriculumMap: (id) => request(`/api/curriculum_map/${id}`, { method: 'DELETE' }),
+  /* ── classes and the week board ──────────────────────────────────────────
+     A teacher has several preps. `subject` used to be the scoping token in
+     every URL here, which is why two classes on the same framework collided. */
+  /** The teacher's name, once for the whole app rather than per class. */
+  updateMe: (name) => request('/api/me', { method: 'PATCH', body: { name } }),
+  listClasses: ({ signal } = {}) => request('/api/classes', { signal }),
+  createClass: ({ name, subject, grade }) =>
+    request('/api/classes', { method: 'POST', body: { name, subject, grade } }),
+  updateClass: (id, patch) => request(`/api/classes/${id}`, { method: 'PATCH', body: patch }),
+  deleteClass: (id) => request(`/api/classes/${id}`, { method: 'DELETE' }),
+  listClassDocuments: (id, { signal } = {}) =>
+    request(`/api/classes/${id}/documents`, { signal }),
+
+  /** The school year for one class: every week, its real dates, whether it has
+   *  a plan and whether school is even open. Sourced from the same calendar
+   *  file the generation prompt quotes, so the two cannot disagree. */
+  getWeeks: (classId, { signal } = {}) =>
+    request(classId ? `/api/weeks?class_id=${encodeURIComponent(classId)}` : '/api/weeks', { signal }),
+
   getCurriculumProgress: (subject, { signal } = {}) =>
     request(`/api/curriculum_progress?subject=${encodeURIComponent(subject)}`, { signal }),
 }

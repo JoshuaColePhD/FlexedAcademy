@@ -9,8 +9,7 @@ import { Composer } from '../components/Composer'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
 import { TopBar } from '../components/TopBar'
-import { Greeting } from '../components/Greeting'
-import { Starters } from '../components/Starters'
+import { WeekBoard } from '../components/WeekBoard'
 import { WeekStrip } from '../components/WeekStrip'
 
 let localId = 0
@@ -426,33 +425,26 @@ export function ChatPage({ shell }) {
               : ''}
         </div>
 
+        {/* The year. This is the home screen — an empty message list means
+            "nothing planned in this conversation yet", not "say something". */}
+        {isEmpty ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <WeekBoard
+              activeClass={shell.activeClass}
+              onPlanWeek={(w) => submit(`Plan ${w.label}.`)}
+              onOpenPlan={(w) => w.plan_id && shell.onOpenPlan?.(w.plan_id)}
+            />
+          </div>
+        ) : null}
+
         {/* ── the dock ──────────────────────────────────────────────────────
-            Empty, this IS the page: greeting, composer and starter pills
-            centred as one unit. Once a conversation exists it becomes a footer.
-
-            DO NOT refactor this into `{isEmpty ? <A><Composer/></A> :
-            <B><Composer/></B>}`. Composer owns a MediaRecorder, a
-            ResizeObserver and an autosized inline height, all of which die on
-            remount — a teacher mid-dictation would lose the recording the
-            instant their first message landed. The composer must stay in the
-            same slot of the same parent; only the wrapper's className may
-            change, and the siblings render as `null` so its position index
-            never shifts.
-
-            max-w-measure is identical in both states for the same reason: a
-            width change would fire the ResizeObserver and re-measure the box. */}
-        <div
-          className={
-            isEmpty
-              ? 'flex min-h-0 flex-1 flex-col justify-center px-5 pb-[8vh]'
-              : 'shrink-0 px-5 pb-5 pt-1'
-          }
-        >
-          <div
-            className={`mx-auto w-full max-w-measure ${justDocked ? 'animate-dock-settle' : ''}`}
-          >
-            {isEmpty ? <Greeting settings={shell.settings} /> : null}
-
+            The composer sits at the bottom in both states now. It must still
+            stay in the SAME slot of the same parent across the transition:
+            Composer owns a MediaRecorder, a ResizeObserver and an autosized
+            inline height, all of which die on remount. Only the wrapper's
+            className may change. */}
+        <div className="shrink-0 border-t border-edge bg-paper px-5 pb-5 pt-3">
+          <div className={`mx-auto w-full max-w-measure ${justDocked ? 'animate-dock-settle' : ''}`}>
             <Composer
               value={query}
               onChange={setQuery}
@@ -461,12 +453,7 @@ export function ChatPage({ shell }) {
               isStreaming={stream.isStreaming}
               attachments={attachments}
               setAttachments={setAttachments}
-              focusOnMount
             />
-
-            {isEmpty ? (
-              <Starters settings={shell.settings} onPick={(prompt) => submit(prompt)} />
-            ) : null}
           </div>
         </div>
       </Panel>

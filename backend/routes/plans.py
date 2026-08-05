@@ -114,19 +114,40 @@ def revise_whole_plan(plan_id: str, bg_tasks: BackgroundTasks, user_id: str = De
     if not retrieved_ids:
         raise AppError("no_context", "Cannot revise without retrieved standards.", status=400)
     
-    # Load chunks
-    all_chunks = retrieval.chunks_by_code()
-    # Actually retrieved_ids in the DB are the Chroma chunk IDs.
-    # We need to construct the result object.
-    chunks = []
-    # retrieved_ids is a list of strings
-    # We don't have the full text easily without querying chroma or parsing chunks.json again.
-    # Actually, we can just load chunks.json and filter by id.
-    raw_chunks = retrieval.load_chunks()
-    chunks = [c for c in raw_chunks if c["id"] in retrieved_ids]
-    
-    # Mock a RetrievalResult for format_context
-    res = retrieval.RetrievalResult(chunks=[{"id": c["id"], "document": c.get("text", ""), "metadata": c, "distance": 0.0} for c in chunks])
+    # plans.retrieved_ids holds standard CODES — service.finalize writes
+    # `sorted(result.codes)`, which reads metadata["code"]. This used to filter
+    # load_chunks() on c["id"], and chunk ids are "{course}:{grade}:{code}", so
+    # nothing ever matched: every revise ran with an empty context and the model
+    # re-invented the standards it was supposed to be held to.
+    by_code = retrieval.chunks_by_code()
+    wanted = {retrieval._norm_code(c) for c in retrieved_ids}
+    chunks = [by_code[c] for c in wanted if c in by_code]
+    if not chunks:
+        raise AppError(
+            "no_context",
+            "None of this plan's standards could be found in the corpus.",
+            status=409,
+            hint=(
+                "The plan cites codes the current corpus doesn't contain — it was "
+                "probably built against a different framework or before a re-ingest. "
+                "Rebuild the plan rather than revising it."
+            ),
+            extra={"codes": sorted(wanted)},
+        )
+
+    # chunks.json records carry `code` and `description`; they have no `id` and
+    # no `text` — those are the pgvector row's shape, not the source file's.
+    res = retrieval.RetrievalResult(
+        chunks=[
+            {
+                "id": c.get("code"),
+                "document": c.get("description", ""),
+                "metadata": c,
+                "distance": 0.0,
+            }
+            for c in chunks
+        ]
+    )
     context = retrieval.format_context(res)
     
     # Generate critique and revised plan

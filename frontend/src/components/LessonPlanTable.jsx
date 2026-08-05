@@ -90,9 +90,9 @@ export function LessonPlanTable({
         headers: { 'Content-Type': 'application/json' }
       })
       if (!res.ok) throw new Error('Revise failed')
-      const updated = await res.json()
-      // Note: In a real app we'd trigger a re-fetch of the plan here or bubble up an event.
-      // Since this is a self-contained component, we rely on the parent to poll or reload.
+      // The response body is the updated plan, but this component has no way to
+      // hand it upward — hence the reload prompt below. Left unread rather than
+      // assigned to a variable nothing uses.
       alert('AI Revision complete! Please refresh the page to see the new plan.')
     } catch (e) {
       console.error('Failed to revise whole plan', e)

@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     curriculum_maps_dir: Path = PROJECT_ROOT / "data" / "curriculum_maps"
     plans_dir: Path = PROJECT_ROOT / "plans"
     chunks_path: Path = PROJECT_ROOT / "data" / "processed" / "chunks.json"
+    # Curriculum maps are still embedded in Chroma (standards moved to pgvector).
+    # curriculum.py has always read settings.chroma_path, but it was never
+    # declared here — so get_curriculum_collection() raised AttributeError on
+    # every upload, and a bare `except Exception` reported chunks_embedded: 0.
+    # Uploading a pacing guide looked like it worked and indexed nothing.
+    chroma_path: Path = PROJECT_ROOT / "data" / "db" / "chroma_db"
     known_gaps_path: Path = PROJECT_ROOT / "data" / "raw" / "KNOWN_GAPS.md"
     builder_path: Path = DEFAULT_BUILDER
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
@@ -57,6 +63,13 @@ class Settings(BaseSettings):
     calendar_path: Path = Path(__file__).resolve().parent / "context" / "school_calendar.md"
 
     retrieval_top_k: int = 5
+    # The CrossEncoder reranker (BAAI/bge-reranker-base) is ~280M params and
+    # wants roughly a gigabyte resident, on top of the MiniLM embedder. That is
+    # comfortably over a Render free instance's 512MB, and an OOM there is a
+    # SIGKILL of the whole container — not something retrieval.py's
+    # try/except can catch and fall back from. Off means retrieval ranks by
+    # embedding distance alone, which is how it worked before reranking existed.
+    retrieval_rerank: bool = True
     # Tuned empirically for all-MiniLM-L6-v2 + Chroma's default L2 space via
     # scripts/06_threshold_sweep.py. In-domain queries top out at ~0.73
     # (jargon-heavy ones like "Week 3 SPACE CAT analysis of Letter from

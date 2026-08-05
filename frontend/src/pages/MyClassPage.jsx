@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Calendar, FileText, Loader2, UploadCloud } from 'lucide-react'
+import { Calendar, Check, FileText, Loader2, Plus, Trash2, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -7,492 +7,493 @@ import { useAsync } from '../hooks/useAsync'
 import { errorParts } from '../lib/apiError'
 import { TopBar } from '../components/TopBar'
 import { FrameworkPicker } from '../components/FrameworkPicker'
-import { Field, Section, inputClass } from '../components/Field'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 import fhsEvents from '../data/fhs_events.json'
 
-/* Everything about the teacher's class, in the order they need it:
+/* Your classes.
  *
- *   1. Who the plan is for      — goes in the .docx header
- *   2. Which standards           — decides what can be cited
- *   3. The pacing guide          — decides what "next week" means
- *   4. The school calendar       — reference, moved here off the empty state
- *   5. Diagnostics               — last, because it is for Josh, not for them
+ * The page this replaces asked for Teacher, Course, Framework and Grade — per
+ * class — then scrolled on through a pacing guide, the entire school calendar
+ * and a diagnostics table. Three of those four fields said the same thing twice:
+ * "11th Grade AP Lang" restates the framework and the grade, and the teacher's
+ * name was retyped into every prep.
  *
- * The page used to be titled "Settings" while the nav called it "My Class",
- * and it opened on a form whose first control was a 72-item <select>.
+ * Now: your name once, at the top. A class is two picks and names itself.
+ * Everything reference-shaped is collapsed, so the screen ends where the work
+ * ends.
  */
 
+const GRADES = [9, 10, 11, 12]
+
 function gradeLabel(g) {
-  if (g === 0) return 'Kindergarten'
-  const suffix = g === 1 ? 'st' : g === 2 ? 'nd' : g === 3 ? 'rd' : 'th'
-  return `${g}${suffix} grade`
+  const n = Number(g)
+  const suffix = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'
+  return `${n}${suffix}`
 }
 
-const FIELDS = ['teacher', 'course', 'subject', 'grade']
-const BLANK = { teacher: '', course: '', subject: 'ELA', grade: '11' }
+const KIND_LABEL = {
+  pacing_guide: 'Pacing guide',
+  syllabus: 'Syllabus',
+  curriculum_map: 'Curriculum map',
+  other: 'Other',
+}
 
-export function MyClassPage({ shell }) {
+/** Framework label without its adoption year — right in a picker, noise in a
+ *  class name. */
+const shortLabel = (fw, fallback) =>
+  fw ? fw.label.split(' (')[0] : String(fallback || '').replace(/_/g, ' ')
+
+/* ── add a class: two picks, inline ─────────────────────────────────────────
+   The name is derived and shown so it can be corrected, not demanded up front. */
+function AddClass({ frameworks, onCreated, onCancel }) {
   const toast = useToast()
-  const confirm = useConfirm()
-  const { onToggleSidebar, settings, setSettings, settingsError, reloadSettings } = shell
-  const [form, setForm] = useState(settings || BLANK)
+  const [subject, setSubject] = useState('')
+  const [grade, setGrade] = useState('11')
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    if (settings) setForm(settings)
-  }, [settings])
+  const fw = findFramework(frameworks, subject)
+  const preview = fw ? `${shortLabel(fw)} · ${gradeLabel(grade)}` : ''
 
-  const [curriculumMap, setCurriculumMap] = useState(null)
-  const [mapLoading, setMapLoading] = useState(false)
-  const [mapUploading, setMapUploading] = useState(false)
-  const [progress, setProgress] = useState(null)
-  const fileInputRef = useRef(null)
-
-  const refreshProgress = (subject) =>
-    api
-      .getCurriculumProgress(subject)
-      .then(setProgress)
-      .catch(() => setProgress(null))
-
-  useEffect(() => {
-    if (!form.subject) return undefined
-    let cancelled = false
-    setMapLoading(true)
-    api
-      .getCurriculumMap(form.subject)
-      .then((m) => !cancelled && setCurriculumMap(m))
-      .catch(() => !cancelled && setCurriculumMap(null))
-      .finally(() => !cancelled && setMapLoading(false))
-    refreshProgress(form.subject)
-    return () => {
-      cancelled = true
-    }
-  }, [form.subject])
-
-  const handleMapFile = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    setMapUploading(true)
-    try {
-      const result = await api.uploadCurriculumMap(form.subject, file)
-      setCurriculumMap(result)
-      toast.success(
-        'Pacing guide saved',
-        `${result.weeks_parsed} week${result.weeks_parsed === 1 ? '' : 's'} read, ` +
-          `${result.chunks_embedded} section${result.chunks_embedded === 1 ? '' : 's'} indexed.`
-      )
-      refreshProgress(form.subject)
-    } catch (err) {
-      toast.apiError('Could not read that pacing guide', err)
-    } finally {
-      setMapUploading(false)
-    }
-  }
-
-  const handleMapDelete = async () => {
-    if (!curriculumMap) return
-    // window.confirm was the only blocking browser dialog left in the app; the
-    // rest of it already had a styled, focus-trapped confirm.
-    const ok = await confirm({
-      title: `Delete “${curriculumMap.original_name}”?`,
-      body: 'Your plans are kept. You can upload the guide again at any time.',
-      confirmLabel: 'Delete',
-      tone: 'danger',
-    })
-    if (!ok) return
-    try {
-      await api.deleteCurriculumMap(curriculumMap.id)
-      setCurriculumMap(null)
-      setProgress(null)
-      toast.success('Pacing guide deleted')
-    } catch (err) {
-      toast.apiError('Could not delete that pacing guide', err)
-    }
-  }
-
-  const healthState = useAsync((signal) => api.health({ signal }), [])
-  const frameworksState = useAsync((signal) => api.getFrameworks({ signal }), [])
-  const health = healthState.data
-  const frameworks = frameworksState.data || []
-  const selectedFw = findFramework(frameworks, form.subject)
-  const grades = selectedFw?.grades || [9, 10, 11, 12]
-
-  const save = async (e) => {
+  const submit = async (e) => {
     e.preventDefault()
+    if (!subject) return
     setSaving(true)
     try {
-      const saved = await api.putSettings({
-        teacher: (form.teacher || '').trim(),
-        course: (form.course || '').trim(),
-        // Not asked for — the settings column is NOT NULL, so it is sent empty.
-        period: '',
-        subject: (form.subject || '').trim(),
-        grade: String(form.grade || '').trim(),
-      })
-      setSettings(saved)
-      toast.success('Saved', 'New plans will use these details.')
+      const created = await api.createClass({ subject, grade })
+      toast.success(`Added ${created.name}`)
+      onCreated(created)
     } catch (err) {
-      toast.apiError('Could not save', err)
+      toast.apiError('Could not add that class', err)
     } finally {
       setSaving(false)
     }
   }
 
-  const dirty = FIELDS.some((k) => (form[k] ?? '') !== (settings?.[k] ?? ''))
-  const verified = verifiedPct(selectedFw)
+  return (
+    <form onSubmit={submit} className="rounded-xl border border-accent/30 bg-accent-tint/40 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+        <div className="min-w-0 flex-1">
+          <FrameworkPicker
+            frameworks={frameworks}
+            value={subject}
+            onChange={setSubject}
+            id="new-class-framework"
+          />
+        </div>
+        <select
+          aria-label="Grade"
+          value={grade}
+          onChange={(e) => setGrade(e.target.value)}
+          className="rounded-lg border border-edge bg-paper-raised px-2.5 py-2.5 text-sm text-ink outline-none focus:border-accent sm:w-24"
+        >
+          {GRADES.map((g) => (
+            <option key={g} value={g}>
+              {gradeLabel(g)}
+            </option>
+          ))}
+        </select>
+        <div className="flex items-center gap-1">
+          <button
+            type="submit"
+            disabled={!subject || saving}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel"
+            className="rounded-lg p-2.5 text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      {preview ? (
+        <p className="mt-2 text-xs text-ink-muted">
+          Will be called <span className="font-medium text-ink">{preview}</span> — rename it any
+          time.
+        </p>
+      ) : null}
+    </form>
+  )
+}
+
+/* ── documents for one class ───────────────────────────────────────────────
+   A class holds several: the old table allowed exactly one per framework, so
+   uploading a syllabus silently deactivated the pacing guide. */
+function ClassDocuments({ cls, onChanged }) {
+  const toast = useToast()
+  const fileRef = useRef(null)
+  const [kind, setKind] = useState('pacing_guide')
+  const [uploading, setUploading] = useState(false)
+  const docs = useAsync((signal) => api.listClassDocuments(cls.id, { signal }), [cls.id])
+
+  const upload = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    try {
+      const res = await api.uploadCurriculumMap(cls.subject, file)
+      toast.success(
+        `${KIND_LABEL[kind]} saved`,
+        res?.weeks_parsed ? `${res.weeks_parsed} weeks read from it.` : undefined
+      )
+      docs.run()
+      onChanged?.()
+    } catch (err) {
+      toast.apiError('Could not read that file', err)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const rows = docs.data || []
+
+  return (
+    <div className="mt-2 space-y-2">
+      {rows.length ? (
+        <ul className="divide-y divide-edge overflow-hidden rounded-lg bg-paper-sunken">
+          {rows.map((d) => (
+            <li key={d.id} className="flex items-center gap-2.5 px-3 py-2">
+              <FileText size={14} aria-hidden="true" className="shrink-0 text-ink-muted" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-ink">{d.original_name}</span>
+                <span className="text-xs text-ink-muted">
+                  {KIND_LABEL[d.kind] || d.kind} · {(d.chars || 0).toLocaleString()} characters
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-ink-muted">
+          No documents yet. A pacing guide lets the week board name your units.
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label="Document type"
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+          className="rounded-lg border border-edge bg-paper-raised px-2 py-1.5 text-xs text-ink outline-none focus:border-accent"
+        >
+          {Object.entries(KIND_LABEL).map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:border-edge-strong hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
+        >
+          {uploading ? (
+            <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Upload size={13} aria-hidden="true" />
+          )}
+          {uploading ? 'Reading…' : 'Add a document'}
+        </button>
+        <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md,.csv" hidden onChange={upload} />
+      </div>
+    </div>
+  )
+}
+
+/* ── one class ─────────────────────────────────────────────────────────────── */
+function ClassRow({ cls, frameworks, isActive, onSelect, onChanged }) {
+  const toast = useToast()
+  const confirm = useConfirm()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(cls.name)
+
+  useEffect(() => setName(cls.name), [cls.name])
+
+  const fw = findFramework(frameworks, cls.subject)
+  const verified = verifiedPct(fw)
+
+  const commitName = async () => {
+    const next = name.trim()
+    if (!next || next === cls.name) return setName(cls.name)
+    try {
+      await api.updateClass(cls.id, { name: next })
+      onChanged?.()
+    } catch (err) {
+      toast.apiError('Could not rename that class', err)
+      setName(cls.name)
+    }
+  }
+
+  const remove = async () => {
+    const ok = await confirm({
+      title: `Remove ${cls.name}?`,
+      body: 'Plans you built for it are kept — the class is archived, not deleted.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await api.deleteClass(cls.id)
+      toast.success(`${cls.name} removed`)
+      onChanged?.()
+    } catch (err) {
+      toast.apiError('Could not remove that class', err)
+    }
+  }
+
+  return (
+    <li className="border-b border-edge last:border-b-0">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => onSelect(cls.id)}
+          aria-label={`Build new plans for ${cls.name}`}
+          aria-pressed={isActive}
+          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
+            isActive
+              ? 'border-accent bg-accent text-ink-inverse'
+              : 'border-edge-strong hover:border-ink-faint'
+          }`}
+        >
+          {isActive ? <Check size={12} aria-hidden="true" /> : null}
+        </button>
+
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') setName(cls.name)
+          }}
+          aria-label={`Name of ${cls.name}`}
+          className="min-w-0 flex-1 truncate rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors hover:bg-paper-sunken focus:bg-paper-sunken"
+        />
+
+        <span className="hidden shrink-0 text-xs text-ink-muted sm:block">
+          {shortLabel(fw, cls.subject)} · {gradeLabel(cls.grade)}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+        >
+          {open ? 'Done' : 'Documents'}
+        </button>
+        <button
+          type="button"
+          onClick={remove}
+          aria-label={`Remove ${cls.name}`}
+          className="shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:bg-mark-tint hover:text-mark"
+        >
+          <Trash2 size={14} aria-hidden="true" />
+        </button>
+      </div>
+
+      {open ? (
+        <div className="px-3 pb-3 pl-10">
+          {/* Verification is not uniform — ELA is 100%, PE 61% — and it matters
+              before trusting a plan built on this framework. */}
+          {verified !== null && verified < 100 ? (
+            <p className="mb-2 text-xs text-flag">
+              {verified}% of {shortLabel(fw)} was verified word-for-word against the source PDF.
+            </p>
+          ) : null}
+          <ClassDocuments cls={cls} onChanged={onChanged} />
+        </div>
+      ) : null}
+    </li>
+  )
+}
+
+/* Last, and shut. For whoever is debugging the app, not for a teacher planning
+   a week. */
+function Diagnostics() {
+  const health = useAsync((signal) => api.health({ signal }), [])
+  const h = health.data
+
+  return (
+    <details className="mt-2 overflow-hidden rounded-xl border border-edge">
+      <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken">
+        Diagnostics
+      </summary>
+      <div className="border-t border-edge px-3 py-2">
+        {health.isError ? (
+          <p className="text-sm text-mark">{errorParts(health.error).message}</p>
+        ) : !h ? (
+          <p className="text-sm text-ink-muted">Checking…</p>
+        ) : (
+          <dl className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+            {[
+              ['Model', h.model],
+              ['Template', h.builder_template],
+              ['Standards indexed', h.chunks],
+              ['Relevance floor', h.retrieval_floor],
+              ['Database', h.database],
+              ['API key', h.api_key_set ? 'set' : 'missing'],
+            ].map(([k, v]) => (
+              <div className="flex items-center justify-between gap-3 py-1" key={k}>
+                <dt className="text-xs text-ink-muted">{k}</dt>
+                <dd className="truncate font-mono text-xs text-ink">{String(v)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+    </details>
+  )
+}
+
+export function MyClassPage({ shell }) {
+  const toast = useToast()
+  const { onToggleSidebar, classes, activeClass, selectClass, reloadClasses, settings } = shell
+
+  const frameworksState = useAsync((signal) => api.getFrameworks({ signal }), [])
+  const frameworks = frameworksState.data || []
+
+  const [adding, setAdding] = useState(false)
+  const [teacher, setTeacher] = useState('')
+  const [savedName, setSavedName] = useState('')
+
+  // users.name is where the teacher's name lives now; settings.teacher is a
+  // projection of it and the fallback for an install predating classes.
+  const meState = useAsync((signal) => api.me({ signal }), [])
+  useEffect(() => {
+    const n = meState.data?.name || settings?.teacher || ''
+    setTeacher(n)
+    setSavedName(n)
+  }, [meState.data, settings?.teacher])
+
+  const commitTeacher = async () => {
+    const next = teacher.trim()
+    if (!next || next === savedName) return setTeacher(savedName)
+    try {
+      await api.updateMe(next)
+      setSavedName(next)
+      toast.success('Saved')
+      reloadClasses?.()
+    } catch (err) {
+      toast.apiError('Could not save your name', err)
+      setTeacher(savedName)
+    }
+  }
+
+  const list = classes || []
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-paper">
-      <TopBar title="My class" collapsed={shell.collapsed} onToggleSidebar={onToggleSidebar} />
+      <TopBar title="My classes" collapsed={shell.collapsed} onToggleSidebar={onToggleSidebar} />
 
       <div className="w-full flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-measure-form px-4 pb-24 pt-6 md:px-8">
-          <header>
-            <h1 className="text-2xl font-semibold tracking-tight text-ink">My class</h1>
-            <p className="mt-1.5 text-ink-muted">These details go on every plan you build.</p>
-          </header>
+        <div className="mx-auto w-full max-w-measure-form px-5 pb-16 pt-4">
+          {/* ── your name, once ─────────────────────────────────────────── */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <label htmlFor="teacher" className="text-sm text-ink-muted">
+              Plans are signed
+            </label>
+            <input
+              id="teacher"
+              value={teacher}
+              onChange={(e) => setTeacher(e.target.value)}
+              onBlur={commitTeacher}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') setTeacher(savedName)
+              }}
+              placeholder="Mr. Cole"
+              className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-faint hover:bg-paper-sunken focus:bg-paper-sunken"
+            />
+          </div>
 
-          {settingsError ? (
-            <div className="mt-6">
-              <div
-                className="rounded-xl border border-mark/25 bg-mark-tint p-4"
-                role="alert"
-              >
-                <strong className="block text-sm font-semibold text-mark">
-                  Couldn’t load your saved details
-                </strong>
-                <p className="mt-1 text-sm text-ink-soft">
-                  {errorParts(settingsError).hint || errorParts(settingsError).message}
-                </p>
-                <button
-                  type="button"
-                  className="mt-2 text-sm font-medium text-mark underline underline-offset-4"
-                  onClick={reloadSettings}
-                >
-                  Try again
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          <form onSubmit={save}>
-            <Section label="Your class">
-              Printed in the header of the .docx, exactly as you write it here.
-            </Section>
-
-            <Field label="Teacher" htmlFor="teacher">
-              <input
-                id="teacher"
-                className={inputClass}
-                value={form.teacher}
-                onChange={(e) => setForm({ ...form, teacher: e.target.value })}
-                placeholder="Mr. Cole"
-                required
-              />
-            </Field>
-
-            <Field label="Course" htmlFor="course">
-              <input
-                id="course"
-                className={inputClass}
-                value={form.course}
-                onChange={(e) => setForm({ ...form, course: e.target.value })}
-                placeholder="11th Grade AP Lang"
-                required
-              />
-            </Field>
-
-
-            <Section label="Standards" className="mt-10">
-              Every standard a plan cites is quoted from this framework rather than recalled from
-              memory, and each one traces back to the page it came from. Change it and the next
-              plan is written against the new one.
-            </Section>
-
-            <Field label="Framework" htmlFor="subject">
-              {frameworksState.isError ? (
-                <div className="rounded-xl border border-mark/25 bg-mark-tint p-3">
-                  <p className="text-sm text-mark">
-                    {errorParts(frameworksState.error).hint ||
-                      errorParts(frameworksState.error).message}
-                  </p>
-                  <button
-                    type="button"
-                    className="mt-2 text-sm font-medium text-mark underline underline-offset-4"
-                    onClick={frameworksState.run}
-                  >
-                    Try again
-                  </button>
-                </div>
-              ) : (
-                <FrameworkPicker
-                  id="subject"
-                  frameworks={frameworks}
-                  value={form.subject}
-                  disabled={frameworksState.isLoading}
-                  onChange={async (subjectId) => {
-                    const fw = findFramework(frameworks, subjectId)
-                    const grade = fw?.grades?.includes(Number(form.grade))
-                      ? form.grade
-                      : String(fw?.grades?.[0] ?? '11')
-                    setForm((prev) => ({ ...prev, subject: subjectId, grade }))
-                    try {
-                      const next = await api.getSettings({ subject: subjectId })
-                      setForm(next)
-                      setSettings(next)
-                    } catch (err) {
-                      toast.apiError('Could not load saved details for that framework', err)
-                    }
-                  }}
-                />
-              )}
-            </Field>
-
-            <Field label="Grade" htmlFor="grade">
-              <select
-                id="grade"
-                className={inputClass}
-                value={form.grade}
-                onChange={(e) => setForm({ ...form, grade: e.target.value })}
-              >
-                {grades.map((g) => (
-                  <option key={g} value={g}>
-                    {gradeLabel(g)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            {/* Not uniform across frameworks — ELA is 100%, Physical Education
-                61% — and a teacher should see that before trusting a plan built
-                on one. */}
-            {verified !== null && verified < 100 ? (
-              <div>
-                <div className="marginalia text-sm">
-                  <span className="marginalia-title">Worth knowing</span>
-                  {verified}% of {selectedFw.label} was verified word-for-word against the source
-                  PDF. The rest is from the state’s structured feed and may differ in formatting.
-                </div>
-              </div>
+          {/* ── the classes ─────────────────────────────────────────────── */}
+          <div className="mt-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 className="text-sm font-semibold text-ink">Your classes</h2>
+            {list.length > 1 ? (
+              <span className="text-xs text-ink-muted">
+                The checked one is what new plans are built for
+              </span>
             ) : null}
+          </div>
 
-            <div className="mt-8 flex flex-wrap items-center gap-4 border-t border-edge pt-6">
-              <button
-                type="submit"
-                disabled={saving || !dirty}
-                className="inline-flex min-w-[8rem] items-center justify-center gap-2 rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {saving ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : null}
-                {saving ? 'Saving' : dirty ? 'Save changes' : 'Saved'}
-              </button>
+          <ul className="mt-2 overflow-hidden rounded-xl border border-edge bg-paper-raised">
+            {list.length ? (
+              list.map((c) => (
+                <ClassRow
+                  key={c.id}
+                  cls={c}
+                  frameworks={frameworks}
+                  isActive={c.id === activeClass?.id}
+                  onSelect={selectClass}
+                  onChanged={reloadClasses}
+                />
+              ))
+            ) : (
+              <li className="px-3 py-4 text-sm text-ink-muted">
+                No classes yet. Add one — its standards framework decides what your plans can cite.
+              </li>
+            )}
+          </ul>
+
+          <div className="mt-2">
+            {adding ? (
+              <AddClass
+                frameworks={frameworks}
+                onCancel={() => setAdding(false)}
+                onCreated={(created) => {
+                  setAdding(false)
+                  reloadClasses?.()
+                  selectClass?.(created.id)
+                }}
+              />
+            ) : (
               <button
                 type="button"
-                onClick={() => setForm(settings || BLANK)}
-                className={`text-sm font-medium text-ink-muted transition-colors hover:text-ink ${
-                  dirty ? 'opacity-100' : 'pointer-events-none opacity-0'
-                }`}
+                onClick={() => setAdding(true)}
+                disabled={frameworksState.isLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent-tint disabled:opacity-50"
               >
-                Discard changes
+                <Plus size={15} aria-hidden="true" /> Add a class
               </button>
-            </div>
-          </form>
+            )}
+            {frameworksState.isError ? (
+              <p className="mt-2 text-xs text-mark">
+                {errorParts(frameworksState.error).hint ||
+                  errorParts(frameworksState.error).message}
+              </p>
+            ) : null}
+          </div>
 
-          {/* ── pacing guide ─────────────────────────────────────────────── */}
-          <div className="mt-12">
-            <Section label="Pacing guide">
-              Upload your pacing guide or curriculum map and the app can tell which week comes next
-              — and offer it on the start screen.
-            </Section>
-
-            <div className="mt-4">
-              {mapLoading ? (
-                <p className="note py-2">Checking for a saved guide…</p>
-              ) : curriculumMap ? (
-                <div className="flex flex-col justify-between gap-4 rounded-xl bg-paper-sunken p-4 md:flex-row md:items-center">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="rounded-lg bg-paper-raised p-2">
-                      <FileText size={17} className="text-ink-soft" aria-hidden="true" />
-                    </span>
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-sm font-medium text-ink">
-                        {curriculumMap.original_name}
-                      </span>
-                      <span className="text-xs text-ink-muted">
-                        Uploaded {new Date(curriculumMap.uploaded_at).toLocaleDateString()} ·{' '}
-                        {curriculumMap.chars.toLocaleString()} characters
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-4">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={mapUploading}
-                      className="text-sm font-medium text-accent-text transition-colors hover:underline disabled:opacity-50"
-                    >
-                      {mapUploading ? 'Replacing…' : 'Replace'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleMapDelete}
-                      disabled={mapUploading}
-                      className="text-sm font-medium text-mark transition-colors hover:underline disabled:opacity-50"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={mapUploading}
-                  className="group flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-edge py-6 text-ink transition-colors hover:border-edge-strong hover:bg-paper-sunken"
-                >
-                  <UploadCloud
-                    size={18}
-                    aria-hidden="true"
-                    className="text-ink-muted"
-                  />
-                  <span className="text-sm font-medium">
-                    {mapUploading ? 'Uploading…' : 'Upload a pacing guide (.pdf, .docx)'}
+          {/* ── reference, collapsed ────────────────────────────────────── */}
+          <details className="mt-6 overflow-hidden rounded-xl border border-edge">
+            <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken">
+              <Calendar size={14} aria-hidden="true" className="text-ink-muted" />
+              School calendar
+              <span className="ml-auto text-xs font-normal text-ink-muted">
+                {fhsEvents.length} dates
+              </span>
+            </summary>
+            <ul className="max-h-64 divide-y divide-edge overflow-y-auto border-t border-edge">
+              {fhsEvents.map((evt, i) => (
+                <li className="flex gap-3 px-3 py-1.5" key={i}>
+                  <span className="w-24 shrink-0 text-xs tabular-nums text-ink-muted">
+                    {evt.date}
                   </span>
-                </button>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.docx,.txt,.md,.csv"
-                hidden
-                onChange={handleMapFile}
-              />
+                  <span className="text-sm leading-snug text-ink">{evt.event}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
 
-              {progress?.map && progress.weeks?.length ? (
-                <div className="mt-5">
-                  <p className="mb-3 text-sm text-ink-soft">
-                    {progress.summary?.on_pace ? (
-                      <>
-                        On pace — {progress.summary.done} of {progress.summary.total} weeks planned.
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium text-flag">
-                          {progress.summary?.behind} week
-                          {progress.summary?.behind === 1 ? '' : 's'} past their target date
-                        </span>{' '}
-                        with no plan yet.
-                      </>
-                    )}
-                  </p>
-                  <ul className="divide-y divide-edge overflow-hidden rounded-xl bg-paper-sunken">
-                    {progress.weeks.map((w, i) => (
-                      <li
-                        className="flex items-center justify-between gap-4 p-3 transition-colors hover:bg-paper-inset"
-                        key={i}
-                      >
-                        <span className="flex min-w-0 flex-col">
-                          <span className="truncate text-sm font-medium text-ink">
-                            {w.week_label || w.unit || `Row ${i + 1}`}
-                          </span>
-                          <span className="text-xs text-ink-muted">
-                            {w.target_start || '?'} – {w.target_end || '?'}
-                          </span>
-                        </span>
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold tracking-caps ${
-                            w.status === 'done'
-                              ? 'bg-ok-tint text-ok'
-                              : w.status === 'behind'
-                                ? 'bg-flag-tint text-flag'
-                                : w.status === 'current'
-                                  ? 'bg-accent-tint text-accent-text'
-                                  : 'text-ink-muted'
-                          }`}
-                        >
-                          {w.status}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : progress?.map ? (
-                <p className="note mt-4">
-                  The guide is saved, but no week-by-week schedule could be read out of it.
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          {/* ── school calendar — reference, off the start screen ─────────── */}
-          <div className="mt-12">
-            <Section label="School calendar">
-              Florence High School, 2026–2027. Not used when building plans — it’s here so you don’t
-              have to go looking for it.
-            </Section>
-            <div className="mt-4">
-              <details className="overflow-hidden rounded-xl bg-paper-sunken">
-                <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-paper-inset">
-                  <Calendar size={15} aria-hidden="true" className="text-ink-muted" />
-                  {fhsEvents.length} dates
-                </summary>
-                <ul className="max-h-72 divide-y divide-edge overflow-y-auto border-t border-edge">
-                  {fhsEvents.map((evt, i) => (
-                    <li className="flex gap-4 px-4 py-2.5" key={i}>
-                      <span className="w-28 shrink-0 text-xs font-semibold tracking-caps text-ink-muted">
-                        {evt.date}
-                      </span>
-                      <span className="text-sm leading-snug text-ink">{evt.event}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </div>
-          </div>
-
-          {/* ── diagnostics, last ────────────────────────────────────────── */}
-          <div className="mt-12">
-            <Section label="Diagnostics">
-              For troubleshooting. Nothing here needs your attention day to day.
-            </Section>
-            <div className="mt-4">
-              {healthState.isError ? (
-                <div className="flex items-center justify-between gap-4 rounded-xl border border-mark/25 bg-mark-tint p-3">
-                  <small className="text-sm font-medium text-mark">
-                    Status unavailable — {errorParts(healthState.error).message}
-                  </small>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-mark underline underline-offset-4"
-                    onClick={healthState.run}
-                  >
-                    Try again
-                  </button>
-                </div>
-              ) : !health ? (
-                <p className="note">Checking…</p>
-              ) : (
-                <dl className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
-                  {[
-                    ['Model', health.model],
-                    ['Template', health.builder_template],
-                    ['Standards indexed', `${health.chunks} (${health.chroma_count} embedded)`],
-                    ['Relevance floor', health.retrieval_floor],
-                    ['API key', health.api_key_set ? 'set' : 'missing'],
-                  ].map(([k, v]) => (
-                    <div
-                      className="flex items-center justify-between gap-4 border-b border-dashed border-edge py-2"
-                      key={k}
-                    >
-                      <dt className="text-sm text-ink-muted">{k}</dt>
-                      <dd className="truncate font-mono text-xs text-ink">{String(v)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-            </div>
-          </div>
+          <Diagnostics />
         </div>
       </div>
     </div>

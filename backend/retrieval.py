@@ -123,24 +123,12 @@ def scope_error(query: str, grades: list[int], corpus_grade: int = 11) -> AppErr
     )
 
 
-# ---------------------------------------------------------------------------
-# Chroma access
-# ---------------------------------------------------------------------------
+# Standards retrieval is pgvector over the `chunks` table (see retrieve_raw).
+# A Chroma `get_collection()` used to live here; the Postgres rewrite removed its
+# `def` line but left the body behind as an unreachable block after scope_error's
+# return — which also meant the missing `settings.chroma_path` never surfaced.
+# Curriculum maps still use Chroma; that lives in curriculum.py.
 
-
-    db_path = Path(settings.chroma_path)
-    if not db_path.exists():
-        raise AppError(
-            "vector_store_missing",
-            "The standards vector store has not been built.",
-            hint=f"Run: python scripts/02_embed_store.py (expected at {db_path})",
-        )
-    client = chromadb.PersistentClient(path=str(db_path))
-    emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=EMBED_MODEL)
-    return client.get_collection(name=COLLECTION_NAME, embedding_function=emb_fn)
-
-
-@functools.lru_cache(maxsize=1)
 @functools.lru_cache(maxsize=1)
 def get_embedding_model():
     from sentence_transformers import SentenceTransformer
@@ -305,6 +293,8 @@ def retrieve_grounded(
     
     if survivors:
         try:
+            if not settings.retrieval_rerank:
+                raise RuntimeError("reranking disabled (RETRIEVAL_RERANK=false)")
             reranker = get_reranker()
             pairs = [[query, c["document"]] for c in survivors]
             scores = reranker.predict(pairs)

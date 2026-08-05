@@ -1,7 +1,42 @@
 import { useState } from 'react'
 import { GoogleLogin } from '@react-oauth/google'
-import { BookOpen, Clock, LayoutDashboard } from 'lucide-react'
+import { CalendarDays, FileCheck2, Quote } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
+
+/* The first screen a teacher sees.
+ *
+ * It was built in a palette of its own — indigo-600, purple-50, gray-900, all
+ * raw Tailwind — so it ignored the design tokens and dark mode entirely and read
+ * as a different product from the app behind it. Everything here now goes
+ * through the tokens, which means it follows the theme and the district blue
+ * like every other surface.
+ *
+ * The three claims were also generic SaaS copy, one of which ("Instant slide
+ * decks") this app does not do. They are now the things that are actually true
+ * and actually unusual: standards quoted rather than recalled, the real school
+ * calendar, and the district's own template.
+ */
+
+const CLAIMS = [
+  {
+    icon: Quote,
+    title: 'Standards quoted, not recalled',
+    body: 'Every code in a plan is retrieved from the Alabama Course of Study and links back to the page it came from.',
+  },
+  {
+    icon: CalendarDays,
+    title: 'Knows your calendar',
+    body: 'Weeks come from the Florence City Schools calendar, so Fall Break never gets five days of lessons.',
+  },
+  {
+    icon: FileCheck2,
+    title: 'The district’s own template',
+    body: 'Plans come out as the Florence City Schools .docx, ready to hand in without reformatting.',
+  },
+]
+
+const inputClass =
+  'block w-full rounded-lg border border-edge bg-paper-raised px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent'
 
 export default function LoginPage() {
   const { login, loginWithGoogle } = useAuth()
@@ -13,7 +48,7 @@ export default function LoginPage() {
   const handleEmailLogin = async (e) => {
     e.preventDefault()
     if (!email || !password) {
-      setError('Please enter both email and password.')
+      setError('Enter your email and password.')
       return
     }
     setError(null)
@@ -21,7 +56,7 @@ export default function LoginPage() {
     try {
       await login(email, password)
     } catch (err) {
-      setError(err.message || 'Login failed')
+      setError(err.message || 'That email and password didn’t match an account.')
     } finally {
       setLoading(false)
     }
@@ -33,81 +68,59 @@ export default function LoginPage() {
     try {
       await loginWithGoogle(credentialResponse.credential)
     } catch (err) {
-      setError(err.message || 'Google login failed')
+      setError(err.message || 'Google sign-in didn’t complete.')
       setLoading(false)
     }
   }
 
-  const handleGoogleError = () => {
-    setError('Google login was unsuccessful. Please try again.')
-  }
-
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      <div className="mx-auto flex max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl shadow-indigo-100/50 sm:flex-row flex-col">
-        {/* Left Side: Value Propositions */}
-        <div className="flex flex-col justify-center bg-indigo-50/50 p-12 sm:w-[480px]">
-          <div className="mb-8 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 font-bold text-white shadow-sm">
+    <div className="flex min-h-screen w-full items-center justify-center bg-paper p-5">
+      <div className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-edge bg-paper-raised shadow-lg md:grid-cols-[1.1fr_1fr]">
+        {/* ── what this is ─────────────────────────────────────────────── */}
+        <div className="flex flex-col justify-center gap-7 border-b border-edge bg-paper-sunken p-8 md:border-b-0 md:border-r md:p-10">
+          <div className="flex items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className="grid h-7 w-7 place-items-center rounded-md bg-accent text-[0.8125rem] font-bold text-ink-inverse"
+            >
               F
-            </div>
-            <span className="text-xl font-bold tracking-tight text-gray-900">FlexedAcademy</span>
+            </span>
+            <span className="text-sm font-semibold tracking-tight text-ink">Flexed Academy</span>
           </div>
 
-          <h2 className="mb-8 text-3xl font-bold tracking-tight text-gray-900">
-            Welcome to FlexedAcademy
-          </h2>
+          <h1 className="text-2xl font-semibold leading-snug tracking-tight text-ink">
+            A week of lesson plans,
+            <br />
+            grounded in the real standards.
+          </h1>
 
-          <div className="space-y-6">
-            <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
-                <BookOpen className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Rigorous, standards-aligned</h3>
-                <p className="text-sm text-gray-500">
-                  Generate lesson plans perfectly mapped to state standards and pacing guides.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
-                <Clock className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Save hours every week</h3>
-                <p className="text-sm text-gray-500">
-                  Automate the heavy lifting of curriculum planning so you can focus on teaching.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
-                <LayoutDashboard className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Instant slide decks</h3>
-                <p className="text-sm text-gray-500">
-                  Turn any lesson plan into a complete, ready-to-present slide deck in seconds.
-                </p>
-              </div>
-            </div>
-          </div>
+          <ul className="flex flex-col gap-5">
+            {CLAIMS.map(({ icon: Icon, title, body }) => (
+              <li className="flex items-start gap-3" key={title}>
+                <span
+                  aria-hidden="true"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-paper-raised text-accent"
+                >
+                  <Icon size={16} />
+                </span>
+                <span>
+                  <span className="block text-sm font-medium text-ink">{title}</span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-ink-muted">{body}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        {/* Right Side: Login Form */}
-        <div className="flex flex-col justify-center p-12 sm:w-[400px]">
-          <div className="text-center">
-            <h3 className="mb-2 text-2xl font-bold text-gray-900">Log in</h3>
-            <p className="mb-8 text-sm text-gray-500">Sign in to your account to continue</p>
-          </div>
+        {/* ── sign in ──────────────────────────────────────────────────── */}
+        <div className="flex flex-col justify-center p-8 md:p-10">
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Sign in</h2>
+          <p className="mt-1 text-sm text-ink-muted">Use your school Google account or an email.</p>
 
-          <div className="mb-6 flex justify-center">
+          <div className="mt-6 flex justify-center">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
+              onError={() => setError('Google sign-in didn’t complete. Try again.')}
               theme="outline"
               size="large"
               width="100%"
@@ -116,56 +129,61 @@ export default function LoginPage() {
             />
           </div>
 
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="bg-white px-2 text-gray-500">Or continue with email</span>
-            </div>
+          <div className="my-6 flex items-center gap-3">
+            <span className="h-px flex-1 bg-edge" />
+            <span className="text-xs text-ink-muted">or</span>
+            <span className="h-px flex-1 bg-edge" />
           </div>
 
-          <form onSubmit={handleEmailLogin} className="space-y-4">
-            {error && (
-              <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
+          <form onSubmit={handleEmailLogin} className="flex flex-col gap-3">
+            {error ? (
+              <p
+                role="alert"
+                className="rounded-lg border border-mark/25 bg-mark-tint px-3 py-2 text-sm text-mark"
+              >
                 {error}
-              </div>
-            )}
+              </p>
+            ) : null}
+
             <div>
-              <label className="sr-only" htmlFor="email">
-                Email Address
+              <label className="visually-hidden" htmlFor="email">
+                Email address
               </label>
               <input
                 id="email"
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Email address"
-                className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm placeholder-gray-400 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                className={inputClass}
               />
             </div>
             <div>
-              <label className="sr-only" htmlFor="password">
+              <label className="visually-hidden" htmlFor="password">
                 Password
               </label>
               <input
                 id="password"
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
-                className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm placeholder-gray-400 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                className={inputClass}
               />
             </div>
 
+            {/* --ink, not --accent: a filled accent button with a white label
+                is the one pairing the token rules forbid outright. */}
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 disabled:opacity-50"
+              className="mt-1 w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? 'Signing in...' : 'Sign in with Email'}
+              {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
         </div>

@@ -21,6 +21,7 @@ import './styles/base.css'
 
 const LEGACY_KEY = 'lesson_chats'
 const SIDEBAR_KEY = 'aplang.sidebarCollapsed'
+const CLASS_KEY = 'aplang.activeClassId'
 
 /** The teacher's docked-layout preference. One reader, used by both the initial
  *  state and the breakpoint effect, so they can't disagree. */
@@ -95,6 +96,14 @@ function Shell() {
   const [chats, setChats] = useState([])
   const [currentChatId, setCurrentChatId] = useState(null)
   const [settings, setSettings] = useState(null)
+  const [classes, setClasses] = useState([])
+  const [activeClassId, setActiveClassId] = useState(() => {
+    try {
+      return localStorage.getItem(CLASS_KEY) || null
+    } catch {
+      return null
+    }
+  })
   const isNarrow = useMediaQuery(NARROW)
   const [collapsed, setCollapsed] = useState(() => {
     // On a narrow screen the sidebar is an overlay drawer, so it must start shut
@@ -157,10 +166,35 @@ function Shell() {
     [toast]
   )
 
+  /* Classes are best-effort: the endpoint 404s or 500s until migration 9 has
+     run, and the app must still work — every screen falls back to the settings
+     row, which is what a pre-classes install has. */
+  const loadClasses = useCallback(
+    () =>
+      api
+        .listClasses()
+        .then((rows) => setClasses(Array.isArray(rows) ? rows : []))
+        .catch(() => setClasses([])),
+    []
+  )
+
   useEffect(() => {
     refreshChats()
     loadSettings()
-  }, [refreshChats, loadSettings])
+    loadClasses()
+  }, [refreshChats, loadSettings, loadClasses])
+
+  const activeClass =
+    classes.find((c) => c.id === activeClassId) || classes[0] || null
+
+  const selectClass = useCallback((id) => {
+    setActiveClassId(id)
+    try {
+      localStorage.setItem(CLASS_KEY, id)
+    } catch {
+      /* not persisted */
+    }
+  }, [])
 
   const toggleSidebar = useCallback(() => {
     setCollapsed((c) => {
@@ -257,6 +291,10 @@ function Shell() {
     onToggleSidebar: toggleSidebar,
     refreshChats,
     collapsed,
+    classes,
+    activeClass,
+    selectClass,
+    reloadClasses: loadClasses,
   }
 
   const narrowOpen = isNarrow && !collapsed
@@ -288,6 +326,9 @@ function Shell() {
               onRetryChats={refreshChats}
               isNarrow={isNarrow}
               theme={theme}
+              classes={classes}
+              activeClass={activeClass}
+              onSelectClass={selectClass}
             />
           </div>
         )}
@@ -312,6 +353,9 @@ function Shell() {
                 onRetryChats={refreshChats}
                 isNarrow={isNarrow}
                 theme={theme}
+                classes={classes}
+                activeClass={activeClass}
+                onSelectClass={selectClass}
               />
             </Panel>
             <PanelResizeHandle className="w-px shrink-0 cursor-col-resize bg-edge transition-colors hover:bg-edge-strong active:w-0.5 active:bg-accent" />

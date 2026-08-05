@@ -1,3 +1,22 @@
+# Render blueprint.
+#
+# The `sync: false` keys cannot live here — that setting tells Render to prompt
+# for a value in the dashboard rather than read one from this tracked file.
+#
+# Two things worth reading before the first deploy:
+#
+#   DATABASE_URL must be the Supabase CONNECTION POOLER, not the direct host.
+#   db.<ref>.supabase.co resolves IPv6-only and Render's outbound is IPv4, so a
+#   direct URL fails with "No route to host" — the same failure it gives on a
+#   machine without IPv6 egress. Get the pooler string from Supabase → Project
+#   Settings → Database → Connection pooling; the username becomes
+#   postgres.<project-ref>.
+#
+#   The free plan is 512MB. sentence-transformers' MiniLM embedder fits; the
+#   CrossEncoder reranker (~280M params) does not, and an OOM on Render is a
+#   SIGKILL that no try/except can recover from. RETRIEVAL_RERANK=false below
+#   turns it off — retrieval then ranks by embedding distance alone, which is how
+#   it worked before reranking was added. Drop that line on a paid instance.
 services:
   - type: web
     name: flexed-academy-backend
@@ -6,12 +25,33 @@ services:
     buildCommand: "npm --prefix frontend install && npm --prefix frontend run build && pip install -e ."
     startCommand: "uvicorn backend.server:app --host 0.0.0.0 --port $PORT"
     envVars:
+      # ── set these in the dashboard ────────────────────────────────────────
       - key: DATABASE_URL
         sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: COMMON_STANDARDS_API_KEY
         sync: false
+      # Vite inlines this at BUILD time, so it must exist before the build runs,
+      # not merely at boot. Without it GoogleOAuthProvider receives clientId
+      # undefined and the Google button on the login page renders but fails.
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+
+      # ── generated once by Render, then held ──────────────────────────────
+      # Login is on in production and session cookies are signed with this.
+      # Unset, config.py falls back to a known dev string and every session
+      # cookie is forgeable by anyone who can read the source.
+      - key: SESSION_SECRET
+        generateValue: true
+
+      # ── fixed ────────────────────────────────────────────────────────────
+      - key: REQUIRE_LOGIN
+        value: "true"
+      - key: RETRIEVAL_RERANK
+        value: "false"
+      # Models aren't baked into the image, so the first boot has to be allowed
+      # to fetch them from huggingface.co.
       - key: HF_HUB_OFFLINE
         value: "0"
       - key: PYTHON_VERSION

@@ -1,17 +1,18 @@
-"""SQLite persistence.
+"""PostgreSQL persistence (Supabase, via psycopg2 + pgvector).
 
-Replaces the frontend's localStorage['lesson_chats'], which was the only record
-of any conversation and white-screened the app permanently if it ever held
-corrupt JSON.
+This module said "SQLite" until now, and pointed at config._default_db_path()
+for an explanation about Google Drive and WAL sidecars. Both were left behind by
+the Postgres rewrite: the database is remote, DATABASE_URL is required, and
+_default_db_path() is dead code nothing calls.
 
-On location: the database deliberately does NOT live in the repo. See
-config._default_db_path() for why (Google Drive + SQLite WAL sidecars).
+Placeholders are written as `?` throughout and rewritten to `%s` by
+_write/_rows/_row — so a literal `?` inside a SQL string would be corrupted.
 
-On the multi-user seam: every table is keyed by an opaque TEXT id and every
-query goes through this module. Adding users later is `ALTER TABLE ... ADD
-COLUMN user_id` plus a WHERE clause here — cheap precisely because no handler
-inlines SQL. There is deliberately no users table and no profile abstraction
-now; settings is a DB-enforced singleton.
+Migrations are the MIGRATIONS list below: version == index + 1, applied in order,
+recorded in schema_version. Append only — never edit or reorder an entry, since
+`MIGRATIONS[version:]` is what decides what still needs running. A migration that
+raises leaves its version un-recorded and replays from the top next boot, so new
+DDL should be idempotent (IF NOT EXISTS / guarded backfills).
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import settings
+from .errors import AppError
 
 log = logging.getLogger("aplang.db")
 
@@ -172,7 +174,70 @@ MIGRATIONS: list[str] = [
       embedding   vector(384)
     );
     CREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);
+    """,
+    # ── 9: classes ───────────────────────────────────────────────────────────
+    # A teacher has several preps. Until now the only thing standing in for that
+    # was settings' (user_id, subject) primary key, which meant "one class per
+    # standards framework" — so ENG 101 and ENG 102, both ELA, silently
+    # overwrote each other, and the teacher's name had to be re-typed into every
+    # row. Classes are now first-class:
+    #
+    #   * the teacher's name moves to users.name, asked once for the whole app
+    #   * plans and chats point at the class they belong to, so Recent can be
+    #     filtered instead of mixing every prep into one list
+    #   * curriculum_maps hang off a class rather than a framework, and gain a
+    #     `kind` so one class can hold a pacing guide AND a syllabus AND a map
+    #
+    # Written to be re-runnable: a migration that raises leaves its version
+    # un-inserted and replays from the top on the next boot, so every statement
+    # here is IF NOT EXISTS or an idempotent backfill.
     """
+    CREATE TABLE IF NOT EXISTS classes (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      subject    TEXT NOT NULL,
+      grade      TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      archived   INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_classes_user ON classes(user_id, archived, sort_order);
+
+    ALTER TABLE plans           ADD COLUMN IF NOT EXISTS class_id TEXT REFERENCES classes(id) ON DELETE SET NULL;
+    ALTER TABLE chats           ADD COLUMN IF NOT EXISTS class_id TEXT REFERENCES classes(id) ON DELETE SET NULL;
+    ALTER TABLE curriculum_maps ADD COLUMN IF NOT EXISTS class_id TEXT REFERENCES classes(id) ON DELETE CASCADE;
+    ALTER TABLE curriculum_maps ADD COLUMN IF NOT EXISTS kind     TEXT NOT NULL DEFAULT 'pacing_guide';
+
+    CREATE INDEX IF NOT EXISTS idx_plans_class ON plans(class_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chats_class ON chats(class_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_curriculum_maps_class ON curriculum_maps(class_id, active);
+
+    -- One class per existing settings row, which is exactly what those rows
+    -- already were. settings.course is the display name the teacher typed, so
+    -- it carries over as the class name.
+    INSERT INTO classes (id, user_id, name, subject, grade, sort_order, archived, created_at)
+    SELECT md5(s.user_id || ':' || s.subject), s.user_id, s.course, s.subject, s.grade, 0, 0, s.updated_at
+    FROM settings s
+    WHERE NOT EXISTS (SELECT 1 FROM classes c WHERE c.id = md5(s.user_id || ':' || s.subject));
+
+    -- Adopt existing rows. plans.course is a free-text display string copied
+    -- from settings.course, which is the only handle available — there was
+    -- never a key. Anything that doesn't match stays NULL rather than being
+    -- guessed into the wrong class.
+    UPDATE plans p SET class_id = c.id
+      FROM classes c
+     WHERE p.class_id IS NULL AND c.user_id = p.user_id AND c.name = p.course;
+
+    UPDATE curriculum_maps m SET class_id = c.id
+      FROM classes c
+     WHERE m.class_id IS NULL AND c.user_id = m.user_id AND c.subject = m.subject;
+
+    -- Seed users.name from the teacher name that was being repeated per row.
+    UPDATE users u SET name = s.teacher
+      FROM (SELECT DISTINCT ON (user_id) user_id, teacher FROM settings ORDER BY user_id, updated_at DESC) s
+     WHERE u.id = s.user_id AND COALESCE(NULLIF(TRIM(s.teacher), ''), NULL) IS NOT NULL;
+    """,
 ]
 
 
@@ -190,8 +255,26 @@ def connect() -> psycopg2.extensions.connection:
         return _conn
     if not settings.database_url:
         raise ValueError("DATABASE_URL is not set in .env")
-    
-    conn = psycopg2.connect(settings.database_url, cursor_factory=RealDictCursor)
+
+    try:
+        conn = psycopg2.connect(settings.database_url, cursor_factory=RealDictCursor)
+    except psycopg2.OperationalError as exc:
+        # Every data route died with a generic "Something went wrong on the
+        # server" when this happened, which sent you to the logs to find out the
+        # database simply wasn't reachable. The overwhelmingly common cause is
+        # Supabase's move to IPv6-only direct connections: db.<ref>.supabase.co
+        # has no A record any more, so a host without IPv6 egress gets
+        # "No route to host". The pooler is dual-stack, which is the fix.
+        detail = str(exc).strip().splitlines()[0] if str(exc).strip() else "connection failed"
+        hint = (
+            "Check DATABASE_URL. If the host is db.<ref>.supabase.co it resolves "
+            "IPv6-only, and any machine without IPv6 egress cannot reach it — "
+            "switch to the Supabase connection pooler instead (Project Settings "
+            "→ Database → Connection pooling). Note the username becomes "
+            "postgres.<project-ref>."
+        )
+        raise AppError("database_unreachable", f"Can't reach the database: {detail}", status=503, hint=hint) from exc
+
     conn.autocommit = False
     
     try:
@@ -321,6 +404,110 @@ def update_settings(user_id: str, teacher: str, course: str, period: str, subjec
 
 
 # ---------------------------------------------------------------------------
+# Classes
+#
+# A teacher's preps. This is what `settings` was standing in for: its
+# (user_id, subject) primary key meant one class per standards framework, so two
+# ELA courses could not coexist, and the teacher's name was stored once per row
+# instead of once per teacher.
+#
+# `settings` is deliberately left in place and still written. Six call sites
+# resolve identity through get_settings_row() — service.prepare/finalize/
+# revise_day, generate.chat_stream, plans.patch/revise — and retrieval scopes on
+# the subject code it returns. Keeping the two in step means classes can land
+# without touching the generate path in the same change.
+# ---------------------------------------------------------------------------
+
+
+def list_classes(user_id: str, include_archived: bool = False) -> list[dict]:
+    where = "" if include_archived else " AND archived = 0"
+    return _rows(
+        f"SELECT * FROM classes WHERE user_id = ?{where} ORDER BY sort_order, created_at",
+        (user_id,),
+    )
+
+
+def get_class(user_id: str, class_id: str) -> dict | None:
+    return _row("SELECT * FROM classes WHERE id = ? AND user_id = ?", (class_id, user_id))
+
+
+def create_class(user_id: str, *, name: str, subject: str, grade: str) -> dict:
+    class_id = new_id()
+    row = _row("SELECT COALESCE(MAX(sort_order), -1) AS m FROM classes WHERE user_id = ?", (user_id,))
+    _write(
+        """
+        INSERT INTO classes (id, user_id, name, subject, grade, sort_order, archived, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+        """,
+        (class_id, user_id, name.strip()[:120], subject, str(grade), int(row["m"]) + 1, now()),
+    )
+    # Mirror into settings so the generate path, which still reads
+    # get_settings_row(user_id), sees this class the moment it is created.
+    sync_settings_from_class(user_id, class_id)
+    return get_class(user_id, class_id)
+
+
+_CLASS_FIELDS = {"name", "subject", "grade", "sort_order", "archived"}
+
+
+def update_class(user_id: str, class_id: str, **fields: Any) -> dict | None:
+    sets = {k: v for k, v in fields.items() if k in _CLASS_FIELDS and v is not None}
+    if not sets:
+        return get_class(user_id, class_id)
+    clause = ", ".join(f"{k} = ?" for k in sets)
+    _write(
+        f"UPDATE classes SET {clause} WHERE id = ? AND user_id = ?",
+        (*sets.values(), class_id, user_id),
+    )
+    sync_settings_from_class(user_id, class_id)
+    return get_class(user_id, class_id)
+
+
+def delete_class(user_id: str, class_id: str) -> bool:
+    # Archive rather than delete. Plans reference the class and are the only
+    # copy of a week's work; ON DELETE SET NULL would orphan them into the same
+    # undifferentiated pile classes exist to break up.
+    cur = _write("UPDATE classes SET archived = 1 WHERE id = ? AND user_id = ?", (class_id, user_id))
+    return cur.rowcount > 0
+
+
+def sync_settings_from_class(user_id: str, class_id: str) -> None:
+    """Keep the legacy settings row in step with a class.
+
+    settings is keyed (user_id, subject) and everything downstream of generate
+    still reads it, so a class is projected onto it: name -> course, and the
+    teacher's name comes from users.name rather than being retyped per class.
+    Touching updated_at is what makes get_settings_row(user_id) — which resolves
+    'current' as ORDER BY updated_at DESC — return this class next."""
+    cls = get_class(user_id, class_id)
+    if not cls:
+        return
+    user = get_user_by_id(user_id) or {}
+    prev = _row("SELECT period FROM settings WHERE user_id = ? AND subject = ?", (user_id, cls["subject"]))
+    update_settings(
+        user_id,
+        teacher=(user.get("name") or DEFAULT_SETTINGS["teacher"]),
+        course=cls["name"],
+        period=(prev or {}).get("period", ""),
+        subject=cls["subject"],
+        grade=cls["grade"],
+    )
+
+
+def resolve_class(user_id: str, class_id: str | None = None) -> dict | None:
+    """The class a request is about: the one asked for, else the first one.
+
+    Returns None when a teacher has no classes yet — callers fall back to the
+    settings row, which is what every pre-classes install has."""
+    if class_id:
+        cls = get_class(user_id, class_id)
+        if cls:
+            return cls
+    rows = list_classes(user_id)
+    return rows[0] if rows else None
+
+
+# ---------------------------------------------------------------------------
 # Plans
 # ---------------------------------------------------------------------------
 
@@ -339,11 +526,12 @@ def create_plan(
     warnings: list[str],
     chat_id: str | None,
     template: str,
+    class_id: str | None = None,
 ) -> dict:
     _write(
         """INSERT INTO plans (id, user_id, created_at, course, week_label, unit, query, plan_json,
-                              docx_path, retrieved_ids, warnings, chat_id, template)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                              docx_path, retrieved_ids, warnings, chat_id, template, class_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             plan_id,
             user_id,
@@ -358,6 +546,7 @@ def create_plan(
             json.dumps(warnings),
             chat_id,
             template,
+            class_id,
         ),
     )
     return get_plan(user_id, plan_id)  # type: ignore[return-value]
@@ -377,8 +566,11 @@ def get_plan(user_id: str, plan_id: str) -> dict | None:
     return _hydrate_plan(row) if row else None
 
 
-def list_plans(user_id: str, *, limit: int = 50, offset: int = 0, q: str | None = None) -> dict:
+def list_plans(user_id: str, *, limit: int = 50, offset: int = 0, q: str | None = None, class_id: str | None = None) -> dict:
     where, params = "WHERE user_id = ?", [user_id]
+    if class_id:
+        where += " AND class_id = ?"
+        params.append(class_id)
     if q:
         where += " AND (week_label LIKE ? OR query LIKE ? OR unit LIKE ?)"
         like = f"%{q}%"
@@ -398,7 +590,7 @@ def list_plans(user_id: str, *, limit: int = 50, offset: int = 0, q: str | None 
 
 
 def update_plan(user_id: str, plan_id: str, **fields: Any) -> dict | None:
-    allowed = {"plan_json", "week_label", "unit", "docx_path", "warnings", "course"}
+    allowed = {"plan_json", "week_label", "unit", "docx_path", "warnings", "course", "class_id"}
     sets, params = [], []
     for k, v in fields.items():
         if k not in allowed:
@@ -593,6 +785,126 @@ def curriculum_status(user_id: str, subject: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Class documents
+#
+# curriculum_maps, scoped to a class instead of a framework and allowed to hold
+# more than one kind of thing. A teacher has a pacing guide AND a syllabus AND
+# sometimes a curriculum map; the old table could hold exactly one per subject,
+# so uploading the second silently deactivated the first.
+# ---------------------------------------------------------------------------
+
+DOCUMENT_KINDS = ("pacing_guide", "syllabus", "curriculum_map", "other")
+
+
+def list_class_documents(user_id: str, class_id: str) -> list[dict]:
+    return _rows(
+        """SELECT id, class_id, subject, kind, original_name, chars, active, uploaded_at
+             FROM curriculum_maps
+            WHERE user_id = ? AND class_id = ? AND active = 1
+            ORDER BY uploaded_at DESC""",
+        (user_id, class_id),
+    )
+
+
+def create_class_document(
+    *, map_id: str, user_id: str, class_id: str, subject: str, kind: str,
+    original_name: str, stored_path: str, chars: int,
+) -> dict:
+    """Only one ACTIVE document per (class, kind) — re-uploading a pacing guide
+    replaces it — but the kinds coexist, which is the point."""
+    if kind not in DOCUMENT_KINDS:
+        kind = "other"
+    _write(
+        "UPDATE curriculum_maps SET active = 0 WHERE user_id = ? AND class_id = ? AND kind = ?",
+        (user_id, class_id, kind),
+    )
+    _write(
+        """INSERT INTO curriculum_maps
+             (id, user_id, class_id, subject, kind, original_name, stored_path, chars, active, uploaded_at)
+           VALUES (?,?,?,?,?,?,?,?,1,?)""",
+        (map_id, user_id, class_id, subject, kind, original_name, stored_path, chars, now()),
+    )
+    return _row("SELECT * FROM curriculum_maps WHERE id = ?", (map_id,))  # type: ignore[return-value]
+
+
+def get_class_document(user_id: str, class_id: str, kind: str) -> dict | None:
+    return _row(
+        """SELECT * FROM curriculum_maps
+            WHERE user_id = ? AND class_id = ? AND kind = ? AND active = 1
+            ORDER BY uploaded_at DESC LIMIT 1""",
+        (user_id, class_id, kind),
+    )
+
+
+# ---------------------------------------------------------------------------
+# The week board
+# ---------------------------------------------------------------------------
+
+
+def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) -> dict:
+    """The school year for one class: every week, whether it has a plan, and
+    what the calendar says about it.
+
+    Replaces guessing. The starter prompts used to compute "next Monday" in the
+    browser with no idea whether that week was Fall Break, and week_label was
+    whatever the model decided to write. Both now come from the same file the
+    prompt quotes — backend/context/school_calendar.md — so a week the school is
+    closed can be shown as closed rather than offered as a plan to build."""
+    from . import schoolcal  # local: keeps the calendar out of db's import cycle
+
+    cls = resolve_class(user_id, class_id)
+    weeks = schoolcal.school_weeks()
+    if not weeks:
+        return {"class": cls, "weeks": [], "current_week": None}
+
+    # Which weeks already have a plan. class_id is the key where one exists;
+    # plans written before migration 9 only have the course display name, so
+    # both are accepted rather than showing a teacher's own back-catalogue as
+    # unplanned.
+    if cls:
+        rows = _rows(
+            "SELECT week_label, id, unit, class_id, course FROM plans WHERE user_id = ? AND (class_id = ? OR (class_id IS NULL AND course = ?))",
+            (user_id, cls["id"], cls["name"]),
+        )
+    else:
+        rows = _rows("SELECT week_label, id, unit, class_id, course FROM plans WHERE user_id = ?", (user_id,))
+
+    from .units import week_number
+
+    by_week: dict[int, dict] = {}
+    for r in rows:
+        n = week_number(r["week_label"] or "")
+        if n is not None:
+            by_week.setdefault(n, {"plan_id": r["id"], "week_label": r["week_label"], "unit": r.get("unit")})
+
+    today = now()[:10]
+    current = schoolcal.week_for()
+    out = []
+    for w in weeks:
+        plan = by_week.get(w["week"])
+        out.append(
+            {
+                **w,
+                "label": schoolcal.label_for(w),
+                "teaching_days": len(schoolcal.teaching_days(w)),
+                "plan_id": (plan or {}).get("plan_id"),
+                # What the week is ABOUT. The board shows this instead of
+                # repeating the date that is already in the row's date column.
+                "unit": (plan or {}).get("unit"),
+                "has_plan": plan is not None,
+                "is_current": bool(current and current["week"] == w["week"]),
+                "is_past": w["end"] < today,
+            }
+        )
+
+    return {
+        "class": cls,
+        "weeks": out,
+        "current_week": current["week"] if current else None,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Chats & messages
 # ---------------------------------------------------------------------------
 
@@ -708,6 +1020,19 @@ def create_user(email: str, name: str, password_hash: str) -> dict:
         (uid, email.strip().lower(), name.strip(), password_hash, now()),
     )
     return get_user_by_id(uid)  # type: ignore[return-value]
+
+
+def update_user_name(user_id: str, name: str) -> dict | None:
+    """The teacher's name, asked once for the whole app.
+
+    It used to live on every settings row, which meant retyping it per class and
+    gave two rows the chance to disagree. sync_settings_from_class projects this
+    back down onto settings, so this is the only place it is authored."""
+    _write("UPDATE users SET name = ? WHERE id = ?", (name.strip()[:120], user_id))
+    # Push the new name onto every class's settings row so plan headers follow.
+    for cls in list_classes(user_id):
+        sync_settings_from_class(user_id, cls["id"])
+    return get_user_by_id(user_id)
 
 
 def claim_user(user_id: str, name: str, password_hash: str) -> dict:

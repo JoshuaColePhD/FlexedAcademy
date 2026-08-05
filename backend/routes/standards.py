@@ -41,6 +41,12 @@ _LIST_FIELDS = (
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=1000)
     top_k: int = Field(default=10, ge=1, le=50)
+    # retrieve_raw filters on chunk metadata course + grade, and both are
+    # required positionals. This endpoint passed neither, so every call raised
+    # TypeError — the floor-inspection tool was unreachable. Defaults are the
+    # calibrated corpus: AP Lang, grade 11.
+    subject: str = Field(default="AP_Lang", max_length=120)
+    grade: int = Field(default=11, ge=0, le=12)
 
 
 def _slim(chunk: dict) -> dict:
@@ -130,7 +136,7 @@ def search(req: SearchRequest):
     "your query's nearest standard was 0.83, above the 0.78 cutoff" instead of
     being handed five confident-looking irrelevant results.
     """
-    raw = retrieval.retrieve_raw(req.query, n=req.top_k)
+    raw = retrieval.retrieve_raw(req.query, n=req.top_k, course=req.subject, grade=req.grade)
     raw.sort(key=lambda c: c["distance"])
     floor = settings.retrieval_max_distance
     return {

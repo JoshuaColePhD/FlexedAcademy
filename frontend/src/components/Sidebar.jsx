@@ -4,7 +4,7 @@ import { SkeletonRows } from './Skeleton'
 import { ThemeToggle } from './ThemeToggle'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { errorParts } from '../lib/apiError'
-import { Check, PanelLeft, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { Check, ChevronsUpDown, PanelLeft, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react'
 
 /* App.jsx binds Cmd/Ctrl+K. Sniffed once at module scope rather than per render
    — it cannot change while the tab is open. */
@@ -100,6 +100,90 @@ function ChatRow({ chat, isActive, onOpen, onRename, onDelete }) {
   )
 }
 
+/* Which prep you're planning for. Sits at the top of the rail because it scopes
+   everything under it — the week board, Recent, and the class a new plan is
+   stamped with. Hidden entirely until a teacher has two classes: a switcher
+   with one option is furniture. */
+function ClassSwitcher({ classes, activeClass, onSelectClass }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onDown = (e) => {
+      if (!ref.current?.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  if (!classes?.length) return null
+
+  if (classes.length === 1) {
+    return (
+      <p className="truncate px-3 pb-1 text-sm font-medium text-ink" title={classes[0].name}>
+        {classes[0].name}
+      </p>
+    )
+  }
+
+  return (
+    <div className="relative px-2 pb-1" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-paper-inset"
+      >
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+          {activeClass?.name || 'Choose a class'}
+        </span>
+        <ChevronsUpDown size={14} aria-hidden="true" className="shrink-0 text-ink-faint" />
+      </button>
+
+      {open ? (
+        <ul
+          role="listbox"
+          aria-label="Your classes"
+          className="absolute left-2 right-2 z-50 mt-1 overflow-hidden rounded-lg border border-edge-strong bg-paper-raised py-1 shadow-pop"
+        >
+          {classes.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={c.id === activeClass?.id}
+                onClick={() => {
+                  onSelectClass?.(c.id)
+                  setOpen(false)
+                }}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
+                  c.id === activeClass?.id ? 'bg-accent-tint text-accent' : 'text-ink-soft hover:bg-paper-sunken'
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                {c.id === activeClass?.id ? (
+                  <Check size={13} aria-hidden="true" className="shrink-0" />
+                ) : null}
+              </button>
+            </li>
+          ))}
+          <li>
+            <NavLink
+              to="/my-class"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 border-t border-edge px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+            >
+              <Plus size={13} aria-hidden="true" /> Add a class
+            </NavLink>
+          </li>
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
 export function Sidebar({
   collapsed,
   onClose,
@@ -116,6 +200,9 @@ export function Sidebar({
   onRetryChats,
   isNarrow,
   theme,
+  classes,
+  activeClass,
+  onSelectClass,
 }) {
   const navRef = useRef(null)
 
@@ -159,6 +246,8 @@ export function Sidebar({
         </button>
       </div>
 
+      <ClassSwitcher classes={classes} activeClass={activeClass} onSelectClass={onSelectClass} />
+
       <div className="flex shrink-0 flex-col gap-0.5 px-2 pb-2">
         {/* A row at nav weight rather than a filled button. The ⌘K hint is the
             only affordance that shortcut has ever had — App.jsx has bound it for
@@ -184,7 +273,7 @@ export function Sidebar({
             }`
           }
         >
-          <SlidersHorizontal size={16} aria-hidden="true" /> My class
+          <SlidersHorizontal size={16} aria-hidden="true" /> My classes
         </NavLink>
       </div>
 
@@ -241,9 +330,9 @@ export function Sidebar({
               {settings?.teacher || 'Set up your class'}
             </span>
             <span className="mt-0.5 block truncate text-xs text-ink-muted">
-              {[settings?.course, settings?.subject?.replace(/_/g, ' ')]
-                .filter(Boolean)
-                .join(' · ') || 'Name, course and standards'}
+              {classes?.length
+                ? `${classes.length} class${classes.length === 1 ? '' : 'es'}`
+                : 'Name, course and standards'}
             </span>
           </NavLink>
           {theme ? <ThemeToggle mode={theme.mode} onCycle={theme.cycle} /> : null}

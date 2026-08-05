@@ -16,7 +16,7 @@ from . import db
 from .config import settings
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
-from .routes import auth, curriculum, generate, misc, plans, standards
+from .routes import auth, classes, curriculum, generate, misc, plans, standards
 from .schema import SchemaError
 
 logging.basicConfig(
@@ -28,7 +28,18 @@ log = logging.getLogger("aplang")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db.connect()
+    # Connect eagerly so migrations run at boot, but do not let a database that
+    # is merely unreachable stop the app from starting. Refusing to boot means
+    # /api/health can't be reached either, so the one endpoint that would tell
+    # you what's wrong goes down with it. Every data route re-calls connect() and
+    # will surface the same AppError with its hint; health reports pg_error.
+    try:
+        db.connect()
+    except Exception as e:
+        log.error(
+            "DATABASE UNAVAILABLE AT BOOT: %s — serving anyway; /api/health has details",
+            getattr(e, "message", None) or e,
+        )
     try:
         # Fail loud at boot if the shared canonical builder drifted. This is the
         # check that would have caught the original v1/v2 template mismatch.
@@ -79,6 +90,7 @@ app.include_router(plans.router)
 app.include_router(standards.router)
 app.include_router(curriculum.router)
 
+app.include_router(classes.router)
 import os
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
