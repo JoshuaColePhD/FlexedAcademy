@@ -14,3 +14,5 @@ services:
         sync: false
       - key: HF_HUB_OFFLINE
         value: "0"
+      - key: PYTHON_VERSION
+        value: "3.12.3"
