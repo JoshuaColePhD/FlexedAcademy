@@ -2,6 +2,7 @@ services:
   - type: web
     name: flexed-academy-backend
     env: python
+    plan: free
     buildCommand: "npm --prefix frontend install && npm --prefix frontend run build && pip install -e ."
     startCommand: "uvicorn backend.server:app --host 0.0.0.0 --port $PORT"
     envVars:

@@ -61,3 +61,24 @@ build-lesson-plan/
 # state changes or withdraws the feed.
 act_chunks.json
 alcos_chunks.json
+
+# ── the 2026-08-04 data/ restructure ────────────────────────────────────────
+# The rules above were written when the store was ./chroma_db and the chunk
+# files sat at the repo root. Everything moved under data/, which quietly took
+# ~300MB back out of ignore range. Same intent, new paths:
+#
+#   data/db/        the vector store — 253MB, rebuilt by scripts/02_embed_store.py
+#   data/processed/ generated chunk files — 37MB, rewritten wholesale on ingest
+#
+# data/raw/ and data/eval/ stay TRACKED on purpose: raw/ is the authoritative
+# input (the PDFs and the ALSDE CASE packages the corpus is pinned to) and
+# eval/golden_cases.json is the test set. Both are small and neither is
+# regenerable from anything else in the repo.
+data/db/
+data/processed/
+# ...except the hand-audited AP Lang parse, which is ~190KB and whose spot check
+# is recorded in data/raw/SPOT_CHECK_step1.md.
+!data/processed/chunks.json
+
+# setuptools build metadata
+*.egg-info
