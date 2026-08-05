@@ -238,6 +238,28 @@ MIGRATIONS: list[str] = [
       FROM (SELECT DISTINCT ON (user_id) user_id, teacher FROM settings ORDER BY user_id, updated_at DESC) s
      WHERE u.id = s.user_id AND COALESCE(NULLIF(TRIM(s.teacher), ''), NULL) IS NOT NULL;
     """,
+    # ── 10: curriculum map chunks in pgvector ────────────────────────────────
+    # These lived in a Chroma collection embedded with all-MiniLM-L6-v2, which
+    # meant carrying chromadb + torch purely for pacing-guide lookup — and it
+    # never actually ran: settings.chroma_path was referenced but never declared,
+    # so every embed raised AttributeError behind a bare `except` and
+    # retrieve_map_context silently returned "". The pacing guide has therefore
+    # never once reached the generation prompt.
+    #
+    # Same 384-dim space as `chunks`, so one embedding model serves both.
+    """
+    CREATE TABLE IF NOT EXISTS curriculum_chunks (
+      id          TEXT PRIMARY KEY,
+      map_id      TEXT NOT NULL REFERENCES curriculum_maps(id) ON DELETE CASCADE,
+      user_id     TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      document    TEXT NOT NULL,
+      embedding   vector(384)
+    );
+    CREATE INDEX IF NOT EXISTS idx_curriculum_chunks_map ON curriculum_chunks(map_id, chunk_index);
+    CREATE INDEX IF NOT EXISTS idx_curriculum_chunks_vec
+      ON curriculum_chunks USING hnsw (embedding vector_cosine_ops);
+    """,
 ]
 
 
@@ -834,6 +856,49 @@ def get_class_document(user_id: str, class_id: str, kind: str) -> dict | None:
             ORDER BY uploaded_at DESC LIMIT 1""",
         (user_id, class_id, kind),
     )
+
+
+# ---------------------------------------------------------------------------
+# Curriculum map chunks (pgvector)
+# ---------------------------------------------------------------------------
+
+
+def replace_curriculum_chunks(map_id: str, user_id: str, rows: list) -> int:
+    """Swap in one map's chunks. `rows` is [(document, embedding), ...]."""
+    from psycopg2.extras import execute_values
+
+    _write("DELETE FROM curriculum_chunks WHERE map_id = ?", (map_id,))
+    if not rows:
+        return 0
+    conn = connect()
+    with _lock, conn.cursor() as cur:
+        execute_values(
+            cur,
+            "INSERT INTO curriculum_chunks (id, map_id, user_id, chunk_index, document, embedding) VALUES %s",
+            [(f"{map_id}:{i}", map_id, user_id, i, doc, emb) for i, (doc, emb) in enumerate(rows)],
+        )
+        conn.commit()
+    return len(rows)
+
+
+def delete_curriculum_chunks(map_id: str) -> None:
+    _write("DELETE FROM curriculum_chunks WHERE map_id = ?", (map_id,))
+
+
+def search_curriculum_chunks(map_id: str, query_vec: list, top_k: int = 4) -> list:
+    """Nearest chunks within ONE map.
+
+    Scoped by map_id, never by subject: two teachers sharing a subject name must
+    not read each other's pacing guide, and a superseded upload's chunks must not
+    resurface (replacing a map deactivates its row but the chunks would linger)."""
+    rows = _rows(
+        """SELECT document FROM curriculum_chunks
+            WHERE map_id = %s
+            ORDER BY embedding <=> %s::vector
+            LIMIT %s""",
+        (map_id, query_vec, top_k),
+    )
+    return [r["document"] for r in rows]
 
 
 # ---------------------------------------------------------------------------

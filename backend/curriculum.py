@@ -1,11 +1,17 @@
 """Curriculum map / pacing guide: persistent upload, chunk+embed, and a
 structured week-by-week schedule parsed out for progress tracking.
 
-Kept in its own Chroma collection ("curriculum_maps"), separate from
-COLLECTION_NAME in retrieval.py. Mixing the two would have fed pacing-guide
-prose into retrieve_grounded()'s stratified standards search and its
-audit_grounding() code-citation checks, neither of which are meaningful for a
-document that contains no standard codes of its own.
+Kept in its own table (`curriculum_chunks`), separate from the `chunks` standards
+corpus. Mixing the two would feed pacing-guide prose into retrieve_grounded()'s
+stratified standards search and its audit_grounding() code-citation checks,
+neither of which is meaningful for a document containing no standard codes of its
+own.
+
+This used to be a Chroma collection embedded with all-MiniLM-L6-v2, and it never
+worked: settings.chroma_path was read but never declared, so every upload raised
+AttributeError behind a bare `except` and reported chunks_embedded: 0. It is now
+pgvector in the same 384-dim space as the standards corpus, which also means one
+embedding model serves both and chromadb is no longer a dependency.
 """
 from __future__ import annotations
 
@@ -39,23 +45,8 @@ def _client():
         )
     return OpenAI(api_key=settings.openai_api_key)
 
-CURRICULUM_COLLECTION = "curriculum_maps"
-EMBED_MODEL = "all-MiniLM-L6-v2"
-
 CHUNK_CHARS = 1200
 CHUNK_OVERLAP = 150
-
-
-@functools.lru_cache(maxsize=1)
-def get_curriculum_collection():
-    import chromadb
-    from chromadb.utils import embedding_functions
-
-    db_path = Path(settings.chroma_path)
-    db_path.mkdir(parents=True, exist_ok=True)
-    chroma_client = chromadb.PersistentClient(path=str(db_path))
-    emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=EMBED_MODEL)
-    return chroma_client.get_or_create_collection(name=CURRICULUM_COLLECTION, embedding_function=emb_fn)
 
 
 def chunk_text(text: str, size: int = CHUNK_CHARS, overlap: int = CHUNK_OVERLAP) -> list[str]:
@@ -81,24 +72,29 @@ def chunk_text(text: str, size: int = CHUNK_CHARS, overlap: int = CHUNK_OVERLAP)
 
 
 def embed_map(map_id: str, user_id: str, subject: str, text: str) -> int:
-    """(Re-)embeds one map's chunks. Returns the chunk count."""
+    """(Re-)embeds one map's chunks into pgvector. Returns the chunk count.
+
+    `subject` is no longer stored on the chunk: retrieval is by map_id alone, and
+    a subject column here only ever invited the cross-teacher leak the old
+    where-clause allowed.
+    """
+    from . import db
+    from .embeddings import embed_texts
+
     chunks = chunk_text(text)
     if not chunks:
         return 0
-    collection = get_curriculum_collection()
-    collection.add(
-        ids=[f"{map_id}:{i}" for i in range(len(chunks))],
-        documents=chunks,
-        metadatas=[{"map_id": map_id, "user_id": user_id, "subject": subject} for _ in chunks],
-    )
-    return len(chunks)
+    vectors = embed_texts(chunks)
+    return db.replace_curriculum_chunks(map_id, user_id, list(zip(chunks, vectors)))
 
 
 def delete_map_embeddings(map_id: str) -> None:
+    from . import db
+
     try:
-        get_curriculum_collection().delete(where={"map_id": map_id})
-    except Exception as e:  # noqa: BLE001 — deletion of a derived index must never block the DB delete
-        log.warning("could not delete chroma chunks for map %s: %s", map_id, e)
+        db.delete_curriculum_chunks(map_id)
+    except Exception as e:  # noqa: BLE001 — deleting a derived index must never block the row delete
+        log.warning("could not delete curriculum chunks for map %s: %s", map_id, e)
 
 
 def retrieve_map_context(map_id: str, query: str, top_k: int = 4) -> str:
@@ -118,17 +114,14 @@ def retrieve_map_context(map_id: str, query: str, top_k: int = 4) -> str:
     """
     if not map_id:
         return ""
+    from . import db
+    from .embeddings import embed_query
+
     try:
-        res = get_curriculum_collection().query(
-            query_texts=[query],
-            n_results=top_k,
-            where={"map_id": map_id},
-            include=["documents"],
-        )
+        docs = db.search_curriculum_chunks(map_id, embed_query(query), top_k)
     except Exception as e:  # noqa: BLE001
         log.warning("curriculum map retrieval failed: %s", e)
         return ""
-    docs = (res.get("documents") or [[]])[0]
     return "\n\n".join(docs)
 
 

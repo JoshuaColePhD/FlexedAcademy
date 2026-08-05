@@ -40,7 +40,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "db" / "chroma_db"
 COLLECTION_NAME = "ap_lang_standards"
-EMBED_MODEL = "all-MiniLM-L6-v2"
+# Kept as a label for the printout; the authoritative values live in
+# backend/embeddings.py, which is what actually does the work.
+from backend.embeddings import EMBED_DIMS, EMBED_MODEL  # noqa: E402
 
 # Chroma's own ceiling on a single add/upsert call.
 BATCH_SIZE = 5000
@@ -139,7 +141,7 @@ def main() -> int:
 
     print("\\nPostgreSQL Database configured in settings.")
     from backend import db
-    from backend.retrieval import get_embedding_model
+    from backend.embeddings import embed_texts
 
     conn = db.connect()
     
@@ -149,8 +151,7 @@ def main() -> int:
             conn.commit()
             print("Dropped existing chunks.")
 
-    print(f"Embedding {len(ids)} chunks...")
-    model = get_embedding_model()
+    print(f"Embedding {len(ids)} chunks with {EMBED_MODEL} ({EMBED_DIMS} dims)...")
     
     with conn.cursor() as cur:
         for start in range(0, len(ids), BATCH_SIZE):
@@ -161,8 +162,8 @@ def main() -> int:
             batch_docs = documents[start:end]
             batch_metas = metadatas[start:end]
             
-            # Embed batch
-            batch_embs = model.encode(batch_docs).tolist()
+            # One API call per sub-batch, retried inside embed_texts.
+            batch_embs = embed_texts(batch_docs)
             
             from psycopg2.extras import execute_values
             import json

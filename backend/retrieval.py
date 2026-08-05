@@ -42,7 +42,6 @@ from .errors import AppError
 log = logging.getLogger("aplang.retrieval")
 
 COLLECTION_NAME = "ap_lang_standards"
-EMBED_MODEL = "all-MiniLM-L6-v2"
 
 # Families that appear in our sources.
 GROUNDED_FAMILIES = ("TOD", "ORG", "KLA", "SST", "USG", "PUN")
@@ -62,13 +61,6 @@ _CODE_RE = re.compile(
     r"|(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\s?\d{3}"  # ACT English/Writing + ungroundable
     r")\b"
 )
-
-
-@functools.lru_cache(maxsize=1)
-def get_reranker():
-    from sentence_transformers import CrossEncoder
-    log.info("Loading CrossEncoder (BAAI/bge-reranker-base)...")
-    return CrossEncoder('BAAI/bge-reranker-base')
 
 
 def _norm_code(code: str) -> str:
@@ -127,16 +119,10 @@ def scope_error(query: str, grades: list[int], corpus_grade: int = 11) -> AppErr
 # A Chroma `get_collection()` used to live here; the Postgres rewrite removed its
 # `def` line but left the body behind as an unreachable block after scope_error's
 # return — which also meant the missing `settings.chroma_path` never surfaced.
-# Curriculum maps still use Chroma; that lives in curriculum.py.
 
-@functools.lru_cache(maxsize=1)
-def get_embedding_model():
-    from sentence_transformers import SentenceTransformer
-    log.info("Loading SentenceTransformer (%s)...", EMBED_MODEL)
-    return SentenceTransformer(EMBED_MODEL)
-
-def embed_query(query: str) -> list[float]:
-    return get_embedding_model().encode(query).tolist()
+# Query vectors come from the OpenAI embeddings API now (see backend/embeddings.py).
+# Re-exported under the old name so callers and scripts don't need to change.
+from .embeddings import EMBED_DIMS, EMBED_MODEL, embed_query  # noqa: E402,F401
 
 def load_chunks() -> list[dict]:
     """The full chunk records, straight from the *chunks.json files.
@@ -273,9 +259,21 @@ def retrieve_grounded(
 
     def consider(hits: list[dict]) -> None:
         for c in hits:
-            prev = best.get(c["id"])
+            # Keyed on the standard CODE, not the chunk id.
+            #
+            # Chunk ids are "{course}:{grade}:{code}", and ACT standards are
+            # ingested once per course partition — E.CSE.301 exists 8 times with
+            # 8 different ids and identical text. The ACT strata deliberately
+            # skip course/grade filtering (ACT is cross-course), so every copy
+            # comes back, and keying on id kept all of them: a single standard
+            # could take every slot in top_k and crowd out the rest of the
+            # week's grounding. Same code in one scoped query is the same
+            # standard, so keep the nearest and drop the rest.
+            meta = c.get("metadata") or {}
+            key = _norm_code(str(meta["code"])) if meta.get("code") else c["id"]
+            prev = best.get(key)
             if prev is None or c["distance"] < prev["distance"]:
-                best[c["id"]] = c
+                best[key] = c
 
     for q in searches:
         # Over-fetch then filter
@@ -291,19 +289,6 @@ def retrieve_grounded(
 
     survivors = [c for c in raw if c["distance"] <= floor]
     
-    if survivors:
-        try:
-            if not settings.retrieval_rerank:
-                raise RuntimeError("reranking disabled (RETRIEVAL_RERANK=false)")
-            reranker = get_reranker()
-            pairs = [[query, c["document"]] for c in survivors]
-            scores = reranker.predict(pairs)
-            for c, s in zip(survivors, scores):
-                c["rerank_score"] = float(s)
-            survivors = sorted(survivors, key=lambda c: c["rerank_score"], reverse=True)
-            log.info("Reranked %d candidates using CrossEncoder.", len(survivors))
-        except Exception as e:
-            log.warning("CrossEncoder reranking failed, falling back to embedding distance: %s", e)
 
     keep = survivors[:top_k]
     kept_ids = {c["id"] for c in keep}
@@ -315,7 +300,8 @@ def retrieve_grounded(
         if best_stratum and best_stratum["id"] not in kept_ids:
             keep.append(best_stratum)
             kept_ids.add(best_stratum["id"])
-    keep.sort(key=lambda c: -c.get("rerank_score", -c["distance"]))
+    # Distance ascending: nearest first. There is no rerank_score any more.
+    keep.sort(key=lambda c: c["distance"])
 
     drop = [{"id": c["id"], "distance": c["distance"]} for c in raw if c["distance"] > floor][:3]
 

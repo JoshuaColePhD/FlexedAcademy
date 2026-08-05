@@ -134,17 +134,20 @@ def _hdr(title: str) -> None:
 EVAL_SCOPE = {"course": "AP_Lang", "grade": 11}
 
 
-def _scope_filter(course: str, grade: int) -> dict:
-    return {"$and": [{"course": {"$eq": course}}, {"grade": {"$eq": grade}}]}
+# Scoping used to be a Chroma `where` dict. Retrieval moved to pgvector, where
+# course/grade are explicit arguments, and this file was not updated — so the
+# harness has been raising TypeError since that rewrite rather than reporting a
+# recall number.
 
 
 def run_retrieval_evals(top_k: int = 5) -> bool:
     _hdr(f"RETRIEVAL — expected code within top {top_k} (Multi-Subject)")
     passed = 0
     for i, case in enumerate(RETRIEVAL_TEST_CASES, 1):
-        where = _scope_filter(case["course"], case["grade"])
-        hits = retrieval.retrieve_raw(case["query"], n=top_k, where=where)
-        # The standard's own code, not the Chroma id. Ids are
+        hits = retrieval.retrieve_raw(
+            case["query"], n=top_k, course=case["course"], grade=case["grade"]
+        )
+        # The standard's own code, not the chunk id. Ids are
         # `{course}:{grade}:{code}` so one standard can be stored once per grade
         # it covers; comparing ids here would fail every case for a formatting
         # reason rather than a retrieval one.

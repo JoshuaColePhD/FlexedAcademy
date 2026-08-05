@@ -16,7 +16,11 @@ dependencies = [
   "openai==2.52.1",
   "psycopg2-binary",
   "pgvector==0.3.2",
-  "sentence-transformers==5.6.1",
+  # sentence-transformers was removed here deliberately. It existed to turn a
+  # query into a 384-dim vector, and dragged in torch (518MB) + transformers
+  # (98MB) to do it — which is what made this app awkward to host and what
+  # forced the model download at boot. That job is now one OpenAI API call; see
+  # backend/embeddings.py. Re-adding it means re-embedding the corpus.
   "python-docx==1.2.0",
   "google-auth==2.56.2",
   "requests",

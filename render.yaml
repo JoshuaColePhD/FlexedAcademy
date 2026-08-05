@@ -12,11 +12,11 @@
 #   Settings → Database → Connection pooling; the username becomes
 #   postgres.<project-ref>.
 #
-#   The free plan is 512MB. sentence-transformers' MiniLM embedder fits; the
-#   CrossEncoder reranker (~280M params) does not, and an OOM on Render is a
-#   SIGKILL that no try/except can recover from. RETRIEVAL_RERANK=false below
-#   turns it off — retrieval then ranks by embedding distance alone, which is how
-#   it worked before reranking was added. Drop that line on a paid instance.
+#   Footprint: query embedding moved to the OpenAI API, so torch (518MB),
+#   transformers (98MB) and sentence-transformers are all gone, along with the
+#   model download at first boot and the CrossEncoder's OOM risk. What's left —
+#   fastapi, pydantic, openai, psycopg2, python-docx — fits the free plan's 512MB
+#   with room to spare and builds in a fraction of the time.
 services:
   - type: web
     name: flexed-academy-backend
@@ -48,11 +48,5 @@ services:
       # ── fixed ────────────────────────────────────────────────────────────
       - key: REQUIRE_LOGIN
         value: "true"
-      - key: RETRIEVAL_RERANK
-        value: "false"
-      # Models aren't baked into the image, so the first boot has to be allowed
-      # to fetch them from huggingface.co.
-      - key: HF_HUB_OFFLINE
-        value: "0"
       - key: PYTHON_VERSION
         value: "3.12.3"

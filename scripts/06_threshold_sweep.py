@@ -86,11 +86,17 @@ WRONG_SCOPE = [
 TOP_K = 5
 
 
-def best_distances(queries: list[str], where: dict | None) -> dict[str, float]:
-    """Nearest-neighbour distance per query — one embedding pass each."""
+def best_distances(queries: list[str], course: str, grade: int) -> dict[str, float]:
+    """Nearest-neighbour distance per query — one embedding call each.
+
+    The `where=` dict this used to pass was Chroma's filter syntax. Retrieval
+    moved to pgvector, where scoping is explicit course/grade arguments, and this
+    script was never updated — so the sweep has been raising TypeError since that
+    rewrite, which is why the floor could not be re-measured.
+    """
     out = {}
     for q in queries:
-        hits = retrieval.retrieve_raw(q, n=TOP_K, where=where)
+        hits = retrieval.retrieve_raw(q, n=TOP_K, course=course, grade=grade)
         out[q] = min(h["distance"] for h in hits) if hits else float("inf")
     return out
 
@@ -103,14 +109,13 @@ def main() -> int:
                     help="grade to scope the sweep to (default: 11)")
     args = ap.parse_args()
 
-    where = {"$and": [{"course": {"$eq": args.course}}, {"grade": {"$eq": args.grade}}]}
     print(f"Scope: course={args.course} grade={args.grade}")
     print(f"Floor in effect for this course: "
           f"{settings.floor_for(args.course):.2f}\n")
-    print("Embedding queries (this loads the MiniLM model once)...\n")
-    pos = best_distances(POSITIVES, where)
-    off = best_distances(OFF_DOMAIN, where)
-    gap = best_distances(WRONG_SCOPE, where)
+    print(f"Embedding queries via {retrieval.EMBED_MODEL} ({retrieval.EMBED_DIMS} dims)...\n")
+    pos = best_distances(POSITIVES, args.course, args.grade)
+    off = best_distances(OFF_DOMAIN, args.course, args.grade)
+    gap = best_distances(WRONG_SCOPE, args.course, args.grade)
 
     if all(d == float("inf") for d in pos.values()):
         print(f"No chunks at all for course={args.course} grade={args.grade}. "

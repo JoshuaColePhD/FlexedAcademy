@@ -82,3 +82,6 @@ data/processed/
 
 # setuptools build metadata
 *.egg-info
+
+# Timestamped .env backups (they contain the live DATABASE_URL password).
+.env.bak.*

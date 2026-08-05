@@ -49,12 +49,6 @@ class Settings(BaseSettings):
     curriculum_maps_dir: Path = PROJECT_ROOT / "data" / "curriculum_maps"
     plans_dir: Path = PROJECT_ROOT / "plans"
     chunks_path: Path = PROJECT_ROOT / "data" / "processed" / "chunks.json"
-    # Curriculum maps are still embedded in Chroma (standards moved to pgvector).
-    # curriculum.py has always read settings.chroma_path, but it was never
-    # declared here — so get_curriculum_collection() raised AttributeError on
-    # every upload, and a bare `except Exception` reported chunks_embedded: 0.
-    # Uploading a pacing guide looked like it worked and indexed nothing.
-    chroma_path: Path = PROJECT_ROOT / "data" / "db" / "chroma_db"
     known_gaps_path: Path = PROJECT_ROOT / "data" / "raw" / "KNOWN_GAPS.md"
     builder_path: Path = DEFAULT_BUILDER
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
@@ -63,19 +57,29 @@ class Settings(BaseSettings):
     calendar_path: Path = Path(__file__).resolve().parent / "context" / "school_calendar.md"
 
     retrieval_top_k: int = 5
-    # The CrossEncoder reranker (BAAI/bge-reranker-base) is ~280M params and
-    # wants roughly a gigabyte resident, on top of the MiniLM embedder. That is
-    # comfortably over a Render free instance's 512MB, and an OOM there is a
-    # SIGKILL of the whole container — not something retrieval.py's
-    # try/except can catch and fall back from. Off means retrieval ranks by
-    # embedding distance alone, which is how it worked before reranking existed.
-    retrieval_rerank: bool = True
-    # Tuned empirically for all-MiniLM-L6-v2 + Chroma's default L2 space via
-    # scripts/06_threshold_sweep.py. In-domain queries top out at ~0.73
-    # (jargon-heavy ones like "Week 3 SPACE CAT analysis of Letter from
-    # Birmingham Jail" sit at 0.71); off-domain starts at ~0.82. This number is
-    # MEANINGLESS if the embedding model or chunking changes — re-run the sweep.
-    retrieval_max_distance: float = 0.78
+    # MEASURED, NOT GUESSED — and specific to the embedding model.
+    #
+    # Re-measured 2026-08-05 with scripts/06_threshold_sweep.py after the corpus
+    # moved from all-MiniLM-L6-v2 (Chroma, L2) to text-embedding-3-small at 384
+    # dims (pgvector, cosine), for AP_Lang grade 11:
+    #
+    #     hardest in-domain query   0.604   (must be kept)
+    #     nearest off-domain query  0.689   ("asdf qwerty zxcv")
+    #     viable band               0.604 .. 0.689
+    #     chosen                    0.65    (midpoint, maximum margin both ways)
+    #
+    # At 0.65: 11/11 in-domain kept, 6/6 off-domain rejected.
+    #
+    # The previous value was 0.78, carried over from MiniLM. In this space that
+    # is well above the off-domain floor — gibberish (0.689), "solve quadratic
+    # equations by factoring" (0.775), "photosynthesis lab" (0.708) and "AP
+    # Calculus BC derivatives" (0.708) would all have passed and been answered
+    # from the nearest AP Lang standards. The floor IS the off-domain guarantee,
+    # so re-run the sweep after ANY change to the model, dimensions or chunking.
+    #
+    # NOTE: this figure is AP_Lang's. Other courses were never swept in this
+    # space; see retrieval_floors_raw below.
+    retrieval_max_distance: float = 0.65
     # Per-course overrides, as JSON: {"Math": 0.62}.
     #
     # The 0.78 above was measured against AP Lang and does NOT transfer to the
