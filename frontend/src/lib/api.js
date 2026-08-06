@@ -144,7 +144,14 @@ export const api = {
      into the global 401 handler. Going through `request` fixes all three, and
      revisePlan returns the updated row so the caller can put it straight into
      state instead of telling the teacher to refresh the page. */
-  revisePlan: (id) => request(`/api/plans/${id}/revise`, { method: 'POST' }),
+  /* With `feedback` this is the chat's iteration loop — "make Thursday a
+     Socratic seminar". Without it, the autonomous self-critique it has always
+     been. Returns the updated row so the caller can put it straight into state. */
+  revisePlan: (id, feedback) =>
+    request(`/api/plans/${id}/revise`, {
+      method: 'POST',
+      body: { feedback: feedback || null },
+    }),
   planFeedback: (id, isGood, notes) =>
     request(`/api/plans/${id}/feedback`, {
       method: 'POST',

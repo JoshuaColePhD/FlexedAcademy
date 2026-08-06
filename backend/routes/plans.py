@@ -104,9 +104,21 @@ def rebuild_plan(plan_id: str, bg_tasks: BackgroundTasks, user_id: str = Depends
     return service.rebuild(user_id, plan_id, bg_tasks=bg_tasks)
 
 
+class ReviseBody(BaseModel):
+    # Optional: with no feedback this stays the autonomous self-critique it was.
+    # With feedback it is the chat's iteration loop — "make Thursday a Socratic
+    # seminar" — which previously had nowhere to go but a per-day revise.
+    feedback: str | None = Field(default=None, max_length=4000)
+
+
 @router.post("/{plan_id}/revise")
-def revise_whole_plan(plan_id: str, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
-    """AI Critique & Revise loop for the entire plan."""
+def revise_whole_plan(
+    plan_id: str,
+    bg_tasks: BackgroundTasks,
+    body: ReviseBody | None = None,
+    user_id: str = Depends(get_current_user),
+):
+    """Revise the whole plan, on the teacher's instruction or by self-critique."""
     from .. import llm, retrieval
     
     row = _require_plan(user_id, plan_id)
@@ -151,7 +163,9 @@ def revise_whole_plan(plan_id: str, bg_tasks: BackgroundTasks, user_id: str = De
     context = retrieval.format_context(res)
     
     # Generate critique and revised plan
-    new_plan_json = llm.critique_and_revise(user_id, row["plan_json"], context)
+    new_plan_json = llm.critique_and_revise(
+        user_id, row["plan_json"], context, feedback=(body.feedback if body else None)
+    )
     
     # Validate and save
     plan, warnings = schema.validate_plan(new_plan_json)
@@ -200,6 +214,16 @@ def download_plan(plan_id: str, user_id: str = Depends(get_current_user)):
     row = _require_plan(user_id, plan_id)
     path_str = row.get("docx_path")
     if not path_str:
+        # "No docx yet" has two very different causes and they used to be
+        # reported identically — so a build that had already failed told the
+        # teacher to wait, indefinitely.
+        if service.DOCX_FAILED in (row.get("warnings") or []):
+            raise AppError(
+                "docx_failed",
+                "The document couldn't be built from this plan.",
+                status=409,
+                hint="Rebuild it — the plan itself is safe in the database.",
+            )
         raise AppError(
             "docx_pending",
             "This plan's document is still generating in the background.",

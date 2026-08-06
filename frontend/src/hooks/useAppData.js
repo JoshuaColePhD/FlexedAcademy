@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
+
 import { useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
@@ -60,34 +60,6 @@ export function useCalendar(classId) {
     // what stops four surfaces reading the same board from firing four requests.
     staleTime: 5 * 60_000,
   })
-}
-
-/** One week out of the board, by number. The week page needs its neighbours for
- *  the ← / → arrows as well, so it reads the same cached year rather than
- *  fetching a week on its own — a second endpoint would be a second truth. */
-export function useWeek(classId, weekNo) {
-  const q = useCalendar(classId)
-  const weeks = q.data?.weeks || []
-  const n = Number(weekNo)
-  const index = weeks.findIndex((w) => w.week === n)
-  return {
-    ...q,
-    weeks,
-    week: index >= 0 ? weeks[index] : null,
-    prev: index > 0 ? weeks[index - 1] : null,
-    next: index >= 0 && index < weeks.length - 1 ? weeks[index + 1] : null,
-    klass: q.data?.class || null,
-  }
-}
-
-/** Everything that changes a plan has to land here, or the calendar behind it
- *  goes stale and starts lying about which weeks are planned. */
-export function useInvalidateCalendar(classId) {
-  const qc = useQueryClient()
-  return useCallback(
-    () => qc.invalidateQueries({ queryKey: qk.calendar(classId) }),
-    [qc, classId]
-  )
 }
 
 /* ── chats ───────────────────────────────────────────────────────────────── */

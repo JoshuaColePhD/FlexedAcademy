@@ -116,7 +116,22 @@ def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
         db.update_plan(user_id, plan_id, docx_path=str(out_path))
         log.info("background docx built for plan_id=%s", plan_id)
     except Exception as e:
+        # A failure here used to be logged and then forgotten. update_plan has
+        # already cleared docx_path by this point, so the row was left looking
+        # exactly like one whose build had not finished yet — and /download
+        # answered "still generating in the background" forever, for a build
+        # that was never coming. Recording it lets the download endpoint tell
+        # the teacher the truth and point at Rebuild.
         log.exception("failed to build background docx for plan_id=%s: %s", plan_id, e)
+        try:
+            db.update_plan(user_id, plan_id, warnings=(plan.get("_warnings") or []) + [DOCX_FAILED])
+        except Exception:
+            log.exception("could not record the docx failure for plan_id=%s", plan_id)
+
+
+# Written into plans.warnings so the download endpoint can distinguish "not
+# finished yet" from "will never finish".
+DOCX_FAILED = "The document could not be built from this plan. Rebuild it to try again."
 
 
 def finalize(
@@ -210,10 +225,29 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
     plan = row["plan_json"]
     if not plan:
         raise AppError("plan_json_missing", "This plan has no stored content to rebuild from.")
+
+    # Re-sanitise, and WRITE IT BACK. Rebuild used to re-emit the stored JSON
+    # verbatim, so a plan carrying an XML-illegal character — see schema._clean —
+    # failed exactly the same way every time it was rebuilt. The download
+    # endpoint tells the teacher "rebuild it", so rebuild has to be able to
+    # actually fix something; otherwise that hint is a loop.
+    cleaned = schema._clean(plan)
+    if cleaned != plan:
+        log.info("rebuild repaired XML-illegal characters in plan_id=%s", plan_id)
+        plan = cleaned
+        db.update_plan(user_id, plan_id, plan_json=plan)
+
     out_path = docx_build.plan_output_path(plan, plan_id)
 
     if bg_tasks is not None:
-        db.update_plan(user_id, plan_id, docx_path=None)
+        # Clear the previous failure marker; this attempt gets to succeed on its
+        # own merits rather than inheriting the last one's verdict.
+        db.update_plan(
+            user_id,
+            plan_id,
+            docx_path=None,
+            warnings=[w for w in (row.get("warnings") or []) if w != DOCX_FAILED],
+        )
         bg_tasks.add_task(_build_docx_bg, user_id, plan, out_path, plan_id)
         return db.get_plan(user_id, plan_id)  # type: ignore[return-value]
     else:
