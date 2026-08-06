@@ -116,6 +116,17 @@ class Settings(BaseSettings):
     # shared deployment MUST override this via .env, or every server restart
     # (a fresh random key) logs every teacher out, and worse, a guessable
     # default would let anyone forge another teacher's session cookie.
+    # Connections per process. The app previously shared ONE connection behind a
+    # global lock, which serialised every query across every user — nine
+    # concurrent reads measured 1.36x faster than nine sequential ones. A pool is
+    # what lets two teachers generate at once.
+    #
+    # Small on purpose: the app may run as several processes (or several warm
+    # serverless instances), each with its own pool, and Supabase's pooler has a
+    # ceiling. 8 x a few processes stays well inside it, and the work is
+    # I/O-bound on OpenAI rather than on Postgres.
+    db_pool_size: int = 8
+
     session_secret: str = "dev-secret-do-not-use-in-production"
 
     # With this False, get_current_user() returns 'default_user' for any request

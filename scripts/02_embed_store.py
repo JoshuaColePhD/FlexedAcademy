@@ -143,7 +143,8 @@ def main() -> int:
     from backend import db
     from backend.embeddings import embed_texts
 
-    conn = db.connect()
+    db.connect()
+    ctx = db.borrow(); conn = ctx.__enter__()
     
     if not args.upsert:
         with conn.cursor() as cur:

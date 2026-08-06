@@ -47,10 +47,7 @@ def health():
         out["builder_found"] = False
         out["builder_error"] = e.message
     try:
-        conn = db.connect()
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM chunks")
-            out["chunks"] = cur.fetchone()["count"]
+        out["chunks"] = db._row("SELECT COUNT(*) AS n FROM chunks")["n"]
     except Exception as e:
         out["ok"] = False
         out["pg_error"] = str(e)
