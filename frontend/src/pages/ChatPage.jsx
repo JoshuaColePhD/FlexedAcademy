@@ -77,7 +77,10 @@ export function ChatPage() {
 
   useEffect(() => {
     let cancelled = false
-    if (!chatId) {
+    // 'new' is the sentinel for a conversation that has no row yet — fetching
+    // it 404s and toasts "Couldn't open that conversation" on a screen the
+    // teacher just deliberately opened.
+    if (!chatId || chatId === 'new') {
       setMessages([])
       return undefined
     }
@@ -114,7 +117,7 @@ export function ChatPage() {
       const history = [...messages, { id: nextId(), role: 'user', content }]
       setMessages(history)
 
-      let activeChatId = chatId
+      let activeChatId = chatId === 'new' ? null : chatId
       if (!activeChatId) {
         try {
           const created = await api.createChat(content.slice(0, 80))
@@ -296,6 +299,8 @@ export function ChatPage() {
               isStreaming={stream.isStreaming}
               attachments={attachments}
               setAttachments={setAttachments}
+              placeholder="What are you thinking about this week?"
+              sendLabel="Send"
             />
           </div>
         </div>

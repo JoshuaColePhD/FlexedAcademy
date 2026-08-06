@@ -826,15 +826,41 @@
     background: var(--paper-sunken);
     border-radius: var(--r-lg);
   }
-  .revise-box .input {
-    flex: 1;
-    min-width: 0;
+  /* A standalone text field. Only `.revise-box .input` was ever defined, so a
+     bare .input elsewhere (the "anything it should cover?" box on an unplanned
+     week) rendered as a browser default — and rule 1's exception applies here:
+     an outline IS the affordance for a text input. */
+  .input {
+    display: block;
+    width: 100%;
+    min-height: var(--touch-min);
+    padding: var(--sp-2) var(--sp-3);
     font: inherit;
     font-size: var(--fs-sm);
     color: var(--ink);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-md);
+    outline: none;
+    transition: border-color var(--t-fast) var(--ease);
+  }
+  .input:focus {
+    border-color: var(--accent);
+  }
+  .input::placeholder {
+    color: var(--ink-faint);
+  }
+
+  /* Inside the revise box it is a bare line, not a field: the box already has
+     the outline. */
+  .revise-box .input {
+    flex: 1;
+    width: auto;
+    min-height: 0;
+    padding: 0;
     background: transparent;
     border: none;
-    outline: none;
+    border-radius: 0;
   }
   .revise-box .input::placeholder {
     color: var(--ink-muted);
