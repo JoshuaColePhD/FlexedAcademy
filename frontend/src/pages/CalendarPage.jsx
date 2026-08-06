@@ -6,6 +6,7 @@ import { errorParts } from '../lib/apiError'
 import { YearGrid } from '../components/calendar/YearGrid'
 import { NextUp } from '../components/NextUp'
 import { SkeletonText } from '../components/Skeleton'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 /* Home.
  *
@@ -20,6 +21,8 @@ import { SkeletonText } from '../components/Skeleton'
 export function CalendarPage() {
   const { classId, activeClass, isLoading: classesLoading } = useActiveClass()
   const { data, isLoading, isError, error, refetch } = useCalendar(classId)
+
+  useDocumentTitle(activeClass?.name || 'Your year')
 
   const weeks = data?.weeks || []
   const next = firstUnplanned(weeks)

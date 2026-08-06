@@ -680,6 +680,41 @@
     border-radius: var(--r-md);
     box-shadow: var(--shadow-pop);
   }
+  /* The phone form of the same disclosure. A card positioned off a 10px inline
+     code is unusable on a touch screen; anchored to the bottom it is always
+     reachable and always fully on screen, however long the standard text is. */
+  .cite-sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 60;
+    max-height: var(--sheet-max-h);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--sp-5) var(--gutter) calc(var(--sp-5) + var(--safe-b));
+    font-size: var(--fs-base);
+    line-height: var(--lh-relaxed);
+    color: var(--ink);
+    background: var(--paper-raised);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
+    box-shadow: var(--shadow-pop);
+    animation: artifact-sheet-in var(--t-base) var(--ease-out) both;
+  }
+  .cite-sheet .cite-pop-code {
+    display: block;
+    margin-bottom: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--accent-text);
+  }
+  .cite-sheet .cite-pop-src {
+    margin-top: var(--sp-4);
+    padding-top: var(--sp-3);
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+    border-top: 1px solid var(--edge);
+  }
+
   .cite-pop p {
     margin: 0;
   }

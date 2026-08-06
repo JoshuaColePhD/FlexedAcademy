@@ -5,17 +5,28 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from .. import auth, db
+from ..config import settings
 from ..deps import COOKIE_NAME, get_current_user
 from ..errors import AppError
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# Same-site, not cross-site: the dev frontend (5173/5174) and backend (8010)
-# are different ports on one machine, which browsers treat as same-site for
-# this purpose. `secure=False` is correct for the current 127.0.0.1-only,
-# HTTP-only deployment — flip it once this sits behind HTTPS, or the cookie
-# stops being sent at all.
-COOKIE_KWARGS = dict(httponly=True, samesite="lax", secure=False, max_age=auth.SESSION_MAX_AGE_SECONDS)
+# Same-site, not cross-site: the dev frontend (5173/5174) and backend (8010) are
+# different ports on one machine, which browsers treat as same-site for this
+# purpose.
+#
+# `secure` is config-driven rather than hardcoded False. It does NOT stop the
+# cookie working over HTTPS — it stops the browser ever sending it over plain
+# HTTP, which is the point. Hardcoding it False meant the session token for a
+# real teacher's account was sendable in plaintext once this was deployed.
+# Local dev is http://127.0.0.1, where a Secure cookie would never be sent at
+# all, so the default stays False and render.yaml sets COOKIE_SECURE=true.
+COOKIE_KWARGS = dict(
+    httponly=True,
+    samesite="lax",
+    secure=settings.cookie_secure,
+    max_age=auth.SESSION_MAX_AGE_SECONDS,
+)
 
 
 def _public_user(user: dict) -> dict:
@@ -93,7 +104,11 @@ def google_login(body: GoogleLoginBody, response: Response):
 
 @router.post("/logout")
 def logout(response: Response):
-    response.delete_cookie(COOKIE_NAME)
+    # Must match the attributes it was SET with, or the browser treats it as a
+    # different cookie and quietly keeps the session alive after "Sign out".
+    response.delete_cookie(
+        COOKIE_NAME, httponly=True, samesite="lax", secure=settings.cookie_secure
+    )
     return {"ok": True}
 
 

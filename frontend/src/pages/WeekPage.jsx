@@ -15,6 +15,7 @@ import { LessonPlanTable } from '../components/LessonPlanTable'
 import { GroundingStrip, Marginalia } from '../components/Marginalia'
 import { WeekStrip } from '../components/WeekStrip'
 import { SkeletonText } from '../components/Skeleton'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 /* One week, full screen, at its own address.
  *
@@ -43,6 +44,10 @@ export function WeekPage() {
     queryFn: () => api.getFrameworks(),
     staleTime: Infinity,
   })
+
+  useDocumentTitle(
+    week ? `Week ${String(week.week).padStart(2, '0')} · ${activeClass?.name || ''}`.trim() : null
+  )
 
   const [artifact, setArtifact] = useState(null)
   const [loadingPlan, setLoadingPlan] = useState(false)

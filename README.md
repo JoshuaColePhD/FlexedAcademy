@@ -1,8 +1,8 @@
-# AP Lang Planner — standards-grounded lesson plans
+# FlexedAcademy — standards-grounded lesson plans
 
-A retrieval-augmented generation pipeline that drafts AP Language & Composition
-lesson plan sections **grounded in real standards documents**, not in an LLM's
-memory of what standards probably say.
+A retrieval-augmented generation pipeline that drafts weekly lesson plans
+**grounded in real standards documents**, not in an LLM's memory of what
+standards probably say, and delivers them as the district's own .docx.
 
 Every generated claim about a standard traces back to a chunk of an actual
 source document, with a code and a page/section citation.
@@ -19,8 +19,15 @@ what the eval harness and the post-generation grounding audit check.
 
 ## Status
 
-Local, single-user. There is a web UI (React) and a FastAPI backend; multi-user
-and a cloud vector store are still out of scope.
+Multi-teacher, deployed. React frontend + FastAPI backend, served from one
+process (the API also serves `frontend/dist`). Postgres/Supabase with pgvector;
+sessions are signed cookies with PBKDF2 or Google OAuth.
+
+The frontend is organised around the WEEK, not around a chat. Home is the year
+as a five-column grid; each week has its own URL (`/c/:classId/week/:n`) and is
+where generation happens. Chat is a separate destination for thinking a week
+through, on `/api/chat_stream`. Mobile is review-and-check: read the plan as day
+cards, check the citations, download the .docx — building a plan is desktop.
 
 As of 2026-08-04 the corpus is no longer AP Lang only: all 11 Alabama Course of
 Study subject frameworks are ingested for **grades 9-12** (2,997 standards; 11,435
@@ -33,7 +40,7 @@ trustworthy in the rest.
 |---|---|---|
 | 0 | Environment + git | done |
 | 1 | Parse + chunk 3 source docs (164 chunks, all `verbatim_ok`) | done |
-| 2 | Embed + store in Chroma | done |
+| 2 | Embed + store in pgvector | done |
 | 3 | Grounded retrieval — relevance floor, per-source-type, query expansion | done |
 | 4 | Generation with citation constraint + post-hoc grounding audit | done |
 | 5 | FCS `.docx` output via the canonical `build-lesson-plan` skill | done |
@@ -66,7 +73,7 @@ python scripts/01_parse_chunks.py             # AP Lang + ALCOS Grade 11 -> chun
 python scripts/01b_ingest_act_standards.py    # ACT -> act_chunks.json
 python scripts/01d_ingest_alcos_case.py       # 11 Alabama frameworks, grades 9-12
 #   ... --grades 0-12                        # widen to K-12 if ever needed
-python scripts/02_embed_store.py              # full rebuild of chroma_db
+python scripts/02_embed_store.py              # full rebuild of the vector store
 ```
 
 `02_embed_store.py` now **rebuilds by default** rather than upserting. It used to
@@ -74,18 +81,18 @@ add to whatever was already in the collection, so the store accumulated rows fro
 runs whose chunk files had since been overwritten — the live collection held
 12,085 chunks that no file in the repo could account for, two of them hand-written
 placeholder standards (`SCI.9.1`, `MATH.10.1`) seeded by a scaffolding script.
-`/api/health` reports `chunks` and `chroma_count`; if they disagree, the store is
+`/api/health` reports `chunks`; if that disagrees with the corpus, the store is
 not reproducible from the repo and should be rebuilt.
 
 Re-run the threshold sweep if the embedding model or chunking ever changes —
-`RETRIEVAL_MAX_DISTANCE` is specific to `all-MiniLM-L6-v2` in Chroma's L2 space
+`RETRIEVAL_MAX_DISTANCE` is specific to `text-embedding-3-small` in pgvector cosine space
 and means nothing otherwise.
 
 ## How grounding actually works
 
 Three layers, because no single one is sufficient:
 
-1. **Relevance floor** (0.78, measured not guessed). Off-domain queries — algebra,
+1. **Relevance floor** (0.65, measured not guessed). Off-domain queries — algebra,
    recipes, gibberish — sit at 0.82+ and are refused outright rather than answered
    from the nearest five standards.
 2. **Prompt constraints** from `source_docs/KNOWN_GAPS.md`. A floor cannot catch
@@ -117,8 +124,8 @@ what lets 12 frameworks share one collection without competing.
 
 Two things to know before trusting a non-AP-Lang subject:
 
-1. **The 0.78 relevance floor is calibrated for AP Lang and does not transfer.**
-   Math, Science and PE measurably fail to reject off-domain input at 0.78 (Math
+1. **The 0.65 relevance floor is calibrated for AP Lang and does not transfer.**
+   Math, Science and PE measurably fail to reject off-domain input at that floor (Math
    grounds gibberish at 0.746). Per-course floors exist (`RETRIEVAL_FLOORS`) but
    are deliberately unset until measured. Run
    `python scripts/06_threshold_sweep.py --course Math --grade 11`.
@@ -204,27 +211,38 @@ re-index, so it is much cheaper to carry them from the first commit.
 ## Layout
 
 ```
-ap-lang-rag/
-  source_docs/       three source documents + KNOWN_GAPS.md
+FlexedAcademy/
+  backend/           FastAPI app
+    routes/          auth, classes, generate, plans, standards, curriculum, misc
+    schoolcal.py     reads context/school_calendar.md -> weeks AND days
+    db.py            Postgres + pgvector, append-only MIGRATIONS list
+  frontend/src/
+    pages/           CalendarPage, WeekPage, ChatPage, ClassPage, auth/, onboarding/
+    components/      AppShell, calendar/YearGrid, PlanDayCards, LessonPlanTable, …
+    hooks/useAppData.js   TanStack Query layer (there is no global store)
+    lib/             breakpoints, planShape, queue, dates, queryKeys, api
+    styles/tokens.css     the single source of truth for design tokens
   scripts/           01_parse_chunks.py … 05_eval_harness.py
-  chroma_db/         persistent vector store (gitignored, rebuildable)
   eval/              eval test cases
   venv/              gitignored
 ```
+
+`npm run check` in `frontend/` runs lint, then two custom checks that fail the
+build: `check-tokens.mjs` (a `var(--x)` used but never declared) and
+`check-classes.mjs` (a semantic className no stylesheet defines — the bug that
+left the crash screen rendering unstyled for months).
 
 This project **does** sit inside Google Drive (it lives under `Iris_OS/Projects/`),
 which the original note here said it wouldn't. What actually matters is which
 files are exposed to sync:
 
-- `venv/` (~1.3 GB, ~20k small files) and `chroma_db/` are gitignored and
-  rebuildable. Chroma survives sync because it is effectively read-only in normal
-  use; if Drive ever leaves a conflict copy, delete the directory and re-run
-  `scripts/02_embed_store.py`.
-- **`app.db` lives outside the synced tree** — `~/Library/Application
-  Support/ap-lang-rag/app.db` by default. SQLite in WAL mode keeps `-wal` and
-  `-shm` sidecars that must stay mutually consistent; Drive uploads them
-  independently and makes `app.db (1)` on conflict. It holds the only
-  irreplaceable data here (your plans and conversations), so it stays out.
+- `venv/` and `node_modules/` are gitignored and rebuildable. Note that the venv
+  bakes an absolute path into `pyvenv.cfg`, so MOVING this folder breaks it —
+  recreate with `python3 -m venv venv && venv/bin/pip install -e .` rather than
+  wondering why psycopg2 has vanished.
+- **The database is not in the tree at all** — it is Postgres (Supabase), which
+  removes the old SQLite-on-Drive hazard entirely: WAL mode kept `-wal`/`-shm`
+  sidecars that Drive uploaded independently and forked into `app.db (1)`.
 - Generated `.docx` in `plans/` are the opposite case: written once then read, so
   syncing them is the point.
 

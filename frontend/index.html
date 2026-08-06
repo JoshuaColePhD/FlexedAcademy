@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/logo.png" />
+    <!-- Was /logo.png, a 1024px 399KB file, downloaded on every cold load. On
+         school wifi that is most of a second spent on a 16px square. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- viewport-fit=cover is what makes env(safe-area-inset-*) return anything
          other than 0 — without it the safe-area tokens are dead weight and a
          bottom bar sits under the home indicator.
@@ -26,7 +29,7 @@
       name="description"
       content="Build a week of lesson plans for your class, grounded in the Alabama Course of Study and delivered in the Florence City Schools template."
     />
-    <title>Lesson Plans</title>
+    <title>Flexed Academy</title>
 
     <!-- Fonts via preconnect + stylesheet rather than an @import at the top of
          the CSS, which blocks rendering until it resolves.
