@@ -50,18 +50,91 @@ GROUNDED_FAMILIES = ("TOD", "ORG", "KLA", "SST", "USG", "PUN")
 # we hold — see KNOWN_GAPS.md "ACT Reading-specific codes not included".
 UNGROUNDABLE_FAMILIES = ("CLR", "IKI")
 
+# Order matters twice over. Alternation is leftmost-first, so the LONGEST code
+# shapes must come first; and the lookarounds make a match a whole token, so a
+# short alternative can never carve a fragment out of a longer code.
+#
+# Both mattered in practice. The old pattern read "LO.3.A.3.1" — an AP Physics
+# learning objective — as the AP Lang skill "3.A", then flagged that invented
+# fragment as ungrounded, while "R.WME.501" and "S.IOD.301" (the actual ACT
+# codes our source publishes) matched nothing at all and sailed through
+# unchecked. An audit that cannot see the corpus's own code vocabulary is not
+# an audit.
 _CODE_RE = re.compile(
-    r"\b("
-    r"\d\.[A-C]"  # AP Lang skill, e.g. 2.A
-    r"|Grade\d{1,2}-\d{1,2}[a-c]?"  # legacy ALCOS parse, e.g. Grade11-22a
+    r"(?<![\w.])("
+    # ACT standards as published in our source sheet: section letter, strand,
+    # score band. e.g. E.CSE.301, R.WME.501, M.NCP.401, S.IOD.301, W.DEV.501
+    r"[ERMSW]\.[A-Z]{2,4}\.\d{3}"
+    # College Board: learning objectives, essential knowledge, science
+    # practices, enduring understandings. e.g. LO.3.A.3.1, EK 1.2.A.1, SP 4.2
+    r"|(?:LO|EK|EU|SP)[\s.]?\d+(?:\.[A-Za-z0-9]+)*"
     # Alabama CASE codes as published by ALSDE: a subject+year prefix, a grade or
     # course segment, then the standard. e.g. ELA21.11.R2, MA19.GDA.5,
     # SS24.11.3a, SCI23.9.1, CSC26.9-12.CD.3, ARTS24.HS.MU.1
     r"|[A-Z]{2,5}\d{2}(?:\.[A-Za-z0-9-]+){1,4}"
-    r"|R\d{1,2}"  # ACT recurring, e.g. R4
-    r"|(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\s?\d{3}"  # ACT English/Writing + ungroundable
-    r")\b"
+    r"|Grade\d{1,2}-\d{1,2}[a-c]?"  # legacy ALCOS parse, e.g. Grade11-22a
+    r"|(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\s?\d{3}"  # legacy ACT naming
+    r"|R\d{1,2}"  # Alabama ELA recurring, e.g. R4
+    r"|\d\.[A-C]"  # AP Lang skill, e.g. 2.A
+    r")(?!\.?\w)"
 )
+
+
+# ---------------------------------------------------------------------------
+# ACT companion scoping
+#
+# ACT standards are ingested per subject area (01b_ingest_act_standards.py maps
+# the sheet's Section onto courses): English/Reading/Writing -> AP_Lang + ELA,
+# Math -> Math, Science -> Science. Every ACT chunk therefore already carries a
+# course.
+#
+# retrieve_raw used to drop the course filter for the ACT strata on the theory
+# that "ACT is cross-course". It is not. The corpus holds 724 ELA-side ACT
+# chunks against 212 Math and 72 Science, and a lesson-plan query is prose
+# either way, so the ELA side won the nearest-neighbour race for every subject.
+# Measured symptom: an AP Physics 1 week whose ACT Alignment row cited R.WME.501
+# (ACT *Reading* — word meanings in a passage) on three of five days.
+#
+# A physics week's ACT companion is ACT Science, or it is nothing. The mapping
+# below is deterministic on purpose: course names here are free text (any AP
+# course the teacher types becomes its own `course` value), so this matches on
+# what the name says rather than trusting an embedding to notice the subject.
+# ---------------------------------------------------------------------------
+
+# The `course` value the ACT chunks live under, per companion area.
+ACT_ELA = "AP_Lang"
+ACT_MATH = "Math"
+ACT_SCIENCE = "Science"
+
+_ACT_COURSE_PATTERNS: tuple[tuple[str, str], ...] = (
+    # Order matters: first match wins. "AP Computer Science A" must not read as
+    # science, and "AP Environmental Science" must not read as ELA via "AP".
+    (r"computer science|comp\s*sci|\bcsp?\b|programming|coding", ""),
+    (r"physics|chemistry|biology|anatomy|geolog|astronom|environmental|"
+     r"\bscience\b|\bsci\b", ACT_SCIENCE),
+    (r"math|algebra|geometry|calculus|statistic|precalc|pre-calc|trig|"
+     r"quantitative", ACT_MATH),
+    (r"english|language arts|\bela\b|\blang\b|literature|\blit\b|composition|"
+     r"reading|writing|rhetoric", ACT_ELA),
+)
+
+
+def act_course_for(subject_code: str | None) -> str | None:
+    """Which ACT subject area is a legitimate companion for this course.
+
+    Returns the ACT chunks' `course` value, or None when the ACT has no test
+    section for this subject (social studies, the arts, PE, world languages,
+    health, computer science, counseling). None means the generator gets no
+    COMPANION ACT STANDARDS block at all and must leave act_alignment empty —
+    an empty row is correct output where a borrowed ELA code is not.
+    """
+    name = (subject_code or "").replace("_", " ").lower()
+    if not name:
+        return None
+    for pattern, act_course in _ACT_COURSE_PATTERNS:
+        if re.search(pattern, name):
+            return act_course or None
+    return None
 
 
 def _norm_code(code: str) -> str:
@@ -197,6 +270,36 @@ class RetrievalResult:
         return self.rejected[0] if self.rejected else None
 
 
+# Every query below is an ANN search with a metadata filter, and Postgres applies
+# that filter AFTER the HNSW index has already chosen its candidates. When the
+# filter is selective, the candidate list contains none of the matching rows and
+# the query returns FEWER results than asked for — often zero — with no error.
+#
+# Measured on the live 26,555-row corpus, plain HNSW:
+#
+#     source_type='ap_skills'      (22 rows)  -> 0 results.  ALWAYS.
+#     source_type='act_recurring'  ( 7 rows)  -> 0 results.  ALWAYS.
+#
+# ap_skills is the stratum that exists specifically to stop the model inventing
+# AP skill codes (see STRATA below). It has been returning nothing at all, for
+# every request, for every course — so the AP row was being filled from the
+# model's memory exactly as the STRATA comment feared, and the fix that was
+# supposed to prevent it was never running.
+#
+# pgvector 0.8's iterative scan is the supported answer: keep pulling candidates
+# from the index until enough rows survive the filter. relaxed_order lets it
+# return results slightly out of distance order, which costs nothing here — the
+# caller re-sorts by distance anyway. max_scan_tuples is raised past the table
+# size so a filter matching only a handful of rows can still find them.
+#
+# Cost measured against Supabase: none discernible. All of these queries are
+# ~170-200ms either way; the time is the network round trip, not the scan.
+_ITERATIVE_SCAN = (
+    "SET LOCAL hnsw.iterative_scan = relaxed_order; "
+    "SET LOCAL hnsw.max_scan_tuples = 100000; "
+)
+
+
 def retrieve_raw(
     query: str,
     n: int,
@@ -215,7 +318,23 @@ def retrieve_raw(
     sql = "SELECT id, document, metadata, embedding <=> %s::vector AS distance FROM chunks WHERE 1=1"
     params = [query_vector]
     
-    if source_type in ("act_standards", "act_recurring"):
+    if source_type == "act_standards":
+        # Course-scoped, not cross-course — see act_course_for(). A course with
+        # no ACT section gets no ACT standards rather than the nearest ELA one.
+        act_course = act_course_for(course)
+        if act_course is None:
+            return []
+        sql += " AND metadata->>'source_type' = %s AND metadata->>'course' = %s"
+        params.extend([source_type, act_course])
+    elif source_type == "act_recurring":
+        # R1-R7 are Alabama's ELA Recurring Standards for Grades 9-12 (see
+        # scripts/01_parse_chunks.py._parse_recurring, which notes the
+        # source_type is "a schema label, not a claim about ACT"). They are
+        # ingested under AP_Lang only and they are ELA standards, so they belong
+        # to ELA-family courses and nowhere else. Unscoped, R6 — grammar,
+        # mechanics and usage — was landing in a physics plan.
+        if act_course_for(course) != ACT_ELA:
+            return []
         sql += " AND metadata->>'source_type' = %s"
         params.append(source_type)
     else:
@@ -232,8 +351,8 @@ def retrieve_raw(
             
     sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
     params.extend([query_vector, n])
-    
-    rows = db._rows(sql, tuple(params))
+
+    rows = db._rows(_ITERATIVE_SCAN + sql, tuple(params))
     
     out = []
     for r in rows:
@@ -371,7 +490,12 @@ def format_context(result: RetrievalResult) -> str:
             f"Text: {c['document']}\nMetadata: {meta_str}\n"
         )
         
-        if "act_" in source_type:
+        # Only genuine ACT standards go in the ACT block. `act_recurring` is a
+        # schema label for Alabama's ELA Recurring Standards R1-R7, not ACT
+        # content; routing it here on a substring match is what put "R6 —
+        # conventions of grammar, mechanics and usage" in an ACT Alignment row,
+        # sourced to alcos_ela.pdf. It is a primary state standard.
+        if source_type == "act_standards":
             act_parts.append(chunk_str)
         else:
             primary_parts.append(chunk_str)

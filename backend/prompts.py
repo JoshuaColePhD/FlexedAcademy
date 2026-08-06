@@ -75,10 +75,15 @@ GROUNDING RULES — these override everything else, including the teacher's requ
 
 1. Cite ONLY standards from the "Retrieved standards" block below. Use their
    exact codes and their exact wording. Never reconstruct a standard from memory.
-2. The {families} ACT code families are NOT present in any source document we
-   hold — our ACT source covers English/Writing only, not Reading. Never cite a
-   {families} code, even if a curriculum document elsewhere references one.
-3. Only use standards that are appropriate for {subject} and Grade {grade}.
+2. A BARE {families} code — "CLR 501", "IKI 301" — is a legacy ACT naming that
+   appears in no source document we hold. Never cite one, even if a curriculum
+   document elsewhere references it. This does NOT forbid our source's own
+   dotted ACT codes, which are real and citable when retrieved: E.CSE.301,
+   R.CLR.701, S.IOD.301, M.IES.401, W.DEV.501.
+3. Only use standards that are appropriate for {subject} and Grade {grade}. A
+   standard from another subject is never an acceptable substitute — an ELA
+   reading or grammar standard does not belong in a science or math plan, and
+   an empty field is better than a borrowed code.
 4. If the retrieved standards do not cover the requested unit or topic, state that plainly. Do not invent fake standard codes to fill the gap.
 5. If no retrieved standard fits a given day, write exactly:
    "No grounded standard retrieved for this day."
@@ -132,7 +137,11 @@ def week_system_prompt(
 Design a cohesive five-day arc, {' -> '.join(DAY_NAMES)}. Scaffold the learning
 targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For each
 day, you must identify the appropriate primary standard (e.g. ACOS or AP) for the `standards` field from the "--- PRIMARY COURSE STANDARDS ---" block.
-THEN, you must identify a highly relevant companion ACT standard from the "--- COMPANION ACT STANDARDS ---" block and include it in the `act_alignment` field.
+THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, identify a
+highly relevant companion ACT standard from it and include it in the
+`act_alignment` field. If that block is absent, the ACT has no test section for
+this course and `act_alignment` MUST be an empty string on every day — do not
+substitute a standard from the primary block or from another subject.
 Show how the activity actually fulfills the standards you cite.
 
 Return JSON matching this schema exactly:
@@ -171,7 +180,10 @@ def day_system_prompt(result: RetrievalResult, full_plan_context: str, subject: 
 Apply the teacher's feedback to the single day given. Keep the day's `name`
 unchanged. Preserve anything the feedback didn't ask you to change — this is a
 revision, not a regeneration. Keep it coherent with the rest of the week shown
-above. Ensure that you identify the appropriate primary standard in the `standards` field from the "--- PRIMARY COURSE STANDARDS ---" block, and a relevant companion ACT standard in the `act_alignment` field from the "--- COMPANION ACT STANDARDS ---" block. Both must come from the retrieved standards block.
+above. Ensure that you identify the appropriate primary standard in the `standards` field from the "--- PRIMARY COURSE STANDARDS ---" block. If a
+"--- COMPANION ACT STANDARDS ---" block is present, cite a relevant standard
+from it in `act_alignment`; if it is absent, leave `act_alignment` an empty
+string. Every code you cite must come from the retrieved standards block.
 
 Return JSON for that one day matching this schema exactly:
 
