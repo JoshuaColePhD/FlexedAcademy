@@ -1,42 +1,56 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
+import { useEffect } from 'react'
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { api } from './lib/api'
-import { useTheme } from './hooks/useTheme'
-import { NARROW, useMediaQuery } from './hooks/useMediaQuery'
 import { useToast } from './lib/toastContext'
 import { ToastProvider } from './components/ToastProvider'
 import { ConfirmProvider } from './components/ConfirmProvider'
-import { useConfirm } from './lib/confirmContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { Sidebar } from './components/Sidebar'
 import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './lib/authContext'
+import { BootScreen } from './components/BootScreen'
+import { AppShell } from './components/AppShell'
+import { useCalendar, useClasses } from './hooks/useAppData'
+import { firstUnplanned } from './lib/queue'
+import { CalendarPage } from './pages/CalendarPage'
+import { WeekPage } from './pages/WeekPage'
 import { ChatPage } from './pages/ChatPage'
-import { MyClassPage } from './pages/MyClassPage'
-import LoginPage from './pages/LoginPage'
+import { ClassPage } from './pages/ClassPage'
+import { WelcomePage } from './pages/onboarding/WelcomePage'
+import LoginPage from './pages/auth/LoginPage'
+import SignupPage from './pages/auth/SignupPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import './styles/base.css'
 
 const LEGACY_KEY = 'lesson_chats'
-const SIDEBAR_KEY = 'aplang.sidebarCollapsed'
-const CLASS_KEY = 'aplang.activeClassId'
+const LAST_CLASS_KEY = 'aplang.lastClassId'
 
-/** The teacher's docked-layout preference. One reader, used by both the initial
- *  state and the breakpoint effect, so they can't disagree. */
-function readCollapsedPref() {
-  try {
-    return localStorage.getItem(SIDEBAR_KEY) === '1'
-  } catch {
-    return false
-  }
-}
+/* Shell() is gone.
+ *
+ * It held chats, classes, settings, activeClassId, currentChatId and collapsed,
+ * and prop-drilled a 15-key `shell` object into every page. Every one of those
+ * was either a question about what the server says — now a query, see
+ * hooks/useAppData.js — or a question about what the teacher is looking at, now
+ * the URL. Nothing was left over, which is why no store replaced it.
+ *
+ * The class is a path segment because `activeClassId` was a localStorage global
+ * with two writers (the sidebar switcher and a radio on My Class). In the URL it
+ * has one writer, it is linkable, and the back button undoes a class switch.
+ */
 
 /** One-time migration of the old localStorage chats into the database.
  *  localStorage is cleared only after the import succeeds, so a failure is never
  *  data loss. */
-function useLegacyImport(onImported) {
+function useLegacyImport() {
   const toast = useToast()
   useEffect(() => {
     let raw
@@ -77,340 +91,192 @@ function useLegacyImport(onImported) {
             `Moved ${res.imported} conversation${res.imported === 1 ? '' : 's'} to the server`,
             'They were only in this browser before.'
           )
-          onImported?.()
         }
       })
       .catch(() => {
         // Leave localStorage intact and try again next load.
       })
-  }, [toast, onImported])
+  }, [toast])
 }
 
-function Shell() {
-  const theme = useTheme()
-  const toast = useToast()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const confirm = useConfirm()
+/** Where "/" goes.
+ *
+ *  The last class is a hint read ONCE, here, and never during render — which is
+ *  the difference between a hint and the old localStorage global. If it names a
+ *  class that no longer exists, the first class wins rather than the app
+ *  rendering an empty year for a deleted prep. */
+function RootRedirect() {
+  const { data: classes = [], isLoading } = useClasses()
+  useLegacyImport()
 
-  const [chats, setChats] = useState([])
-  const [currentChatId, setCurrentChatId] = useState(null)
-  const [settings, setSettings] = useState(null)
-  const [classes, setClasses] = useState([])
-  const [activeClassId, setActiveClassId] = useState(() => {
-    try {
-      return localStorage.getItem(CLASS_KEY) || null
-    } catch {
-      return null
-    }
-  })
-  const isNarrow = useMediaQuery(NARROW)
-  const [collapsed, setCollapsed] = useState(() => {
-    // On a narrow screen the sidebar is an overlay drawer, so it must start shut
-    // rather than covering the app on first load.
-    if (window.matchMedia?.(NARROW).matches) return true
-    return readCollapsedPref()
-  })
+  if (isLoading) return <BootScreen />
+  if (!classes.length) return <Navigate to="/welcome" replace />
 
-  // Crossing the breakpoint changes what the sidebar IS (a column vs. an
-  // overlay), so the open/closed default has to change with it.
-  //
-  // Guarded by the previous value because this effect also runs on mount, where
-  // it used to overwrite the localStorage preference the useState initialiser had
-  // just restored — so the docked preference was written on every toggle and
-  // honoured on none. Coming back to desktop now restores it rather than forcing
-  // the sidebar open.
-  const prevNarrowRef = useRef(isNarrow)
-  useEffect(() => {
-    if (prevNarrowRef.current === isNarrow) return
-    prevNarrowRef.current = isNarrow
-    setCollapsed(isNarrow ? true : readCollapsedPref())
-  }, [isNarrow])
+  let hint = null
+  try {
+    hint = localStorage.getItem(LAST_CLASS_KEY)
+  } catch {
+    /* not available */
+  }
+  const target = classes.find((c) => c.id === hint) || classes[0]
+  return <Navigate to={`/c/${target.id}/calendar`} replace />
+}
 
-  // A failed fetch used to be swallowed, so the sidebar showed "Nothing yet.
-  // Describe a week to get started." — a backend outage rendered as an empty
-  // state, which invites the teacher to start a duplicate of a chat that exists.
-  const [chatsError, setChatsError] = useState(null)
-  const [chatsLoading, setChatsLoading] = useState(true)
-
-  const refreshChats = useCallback(() => {
-    setChatsLoading(true)
-    return api
-      .listChats()
-      .then((rows) => {
-        setChats(rows)
-        setChatsError(null)
-      })
-      .catch((err) => setChatsError(err))
-      .finally(() => setChatsLoading(false))
-  }, [])
-
-  useLegacyImport(refreshChats)
-
-  // Recorded, not just toasted: MyClassPage derives `dirty` from `settings`, so a
-  // null settings object used to disable Save permanently with no explanation.
-  const [settingsError, setSettingsError] = useState(null)
-
-  const loadSettings = useCallback(
-    () =>
-      api
-        .getSettings()
-        .then((row) => {
-          setSettings(row)
-          setSettingsError(null)
-        })
-        .catch((err) => {
-          setSettingsError(err)
-          toast.apiError('Can’t reach the backend', err, 'Start it with ./run.sh, then reload.')
-        }),
-    [toast]
+/** The canonical "plan the next thing" URL.
+ *
+ *  Exists as a redirect-only route so the queue card, ⌘K and any link a teacher
+ *  bookmarks all funnel through one address instead of each computing the next
+ *  unplanned week for themselves. */
+function NextWeekRedirect() {
+  const { classId } = useParams()
+  const { data, isLoading } = useCalendar(classId)
+  if (isLoading) return <BootScreen />
+  const next = firstUnplanned(data?.weeks)
+  return (
+    <Navigate
+      to={next ? `/c/${classId}/week/${next.week}` : `/c/${classId}/calendar`}
+      replace
+    />
   )
+}
 
-  /* Classes are best-effort: the endpoint 404s or 500s until migration 9 has
-     run, and the app must still work — every screen falls back to the settings
-     row, which is what a pre-classes install has. */
-  const loadClasses = useCallback(
-    () =>
-      api
-        .listClasses()
-        .then((rows) => setClasses(Array.isArray(rows) ? rows : []))
-        .catch(() => setClasses([])),
-    []
-  )
-
+/** Remembers the class you were last in, for the next cold load. Writing it in
+ *  an effect rather than during render keeps it a hint: nothing reads it except
+ *  RootRedirect, once. */
+function RememberClass() {
+  const { classId } = useParams()
   useEffect(() => {
-    refreshChats()
-    loadSettings()
-    loadClasses()
-  }, [refreshChats, loadSettings, loadClasses])
-
-  const activeClass =
-    classes.find((c) => c.id === activeClassId) || classes[0] || null
-
-  const selectClass = useCallback((id) => {
-    setActiveClassId(id)
+    if (!classId) return
     try {
-      localStorage.setItem(CLASS_KEY, id)
+      localStorage.setItem(LAST_CLASS_KEY, classId)
     } catch {
       /* not persisted */
     }
-  }, [])
+  }, [classId])
+  return null
+}
 
-  const toggleSidebar = useCallback(() => {
-    setCollapsed((c) => {
-      const next = !c
-      // Only remember the choice for the docked layout; the drawer always
-      // reopens shut.
-      if (!window.matchMedia?.(NARROW).matches) {
-        try {
-          localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0')
-        } catch {
-          /* not persisted */
-        }
-      }
-      return next
-    })
-  }, [])
-
-  const newChat = useCallback(() => {
-    setCurrentChatId(null)
-    navigate('/')
-  }, [navigate])
-
-  const openChat = useCallback(
-    (id) => {
-      setCurrentChatId(id)
-      navigate('/')
-      if (window.matchMedia?.(NARROW).matches) setCollapsed(true)
-    },
-    [navigate]
+function ClassRoutes() {
+  return (
+    <>
+      <RememberClass />
+      <AppShell>
+        <Routes>
+          <Route path="calendar" element={<CalendarPage />} />
+          <Route path="week/next" element={<NextWeekRedirect />} />
+          <Route path="week/:weekNo" element={<WeekPage />} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="chat/:chatId" element={<ChatPage />} />
+          <Route path="class" element={<ClassPage />} />
+          <Route index element={<Navigate to="calendar" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </AppShell>
+    </>
   )
+}
 
-  const renameChat = useCallback(
-    async (id, title) => {
-      setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)))
-      try {
-        await api.renameChat(id, title)
-      } catch (err) {
-        toast.apiError('Could not rename that chat', err)
-        refreshChats()
-      }
-    },
-    [toast, refreshChats]
+/** Public vs private, as a route split rather than a ternary.
+ *
+ *  `?next=` matters now that weeks are linkable: a teacher opening a bookmarked
+ *  /c/x/week/12 with an expired cookie should land back on that week, not at the
+ *  top of the app. */
+function Gate() {
+  const { status } = useAuth()
+  const location = useLocation()
+
+  if (status === 'loading') return <BootScreen />
+
+  if (status === 'anon') {
+    const here = location.pathname + location.search
+    const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup'
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to={isAuthRoute ? '/login' : `/login?next=${encodeURIComponent(here)}`}
+              replace
+            />
+          }
+        />
+      </Routes>
+    )
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<RootRedirect />} />
+      <Route path="/welcome" element={<WelcomePage />} />
+      {/* Already signed in — bounce off the auth pages rather than showing a
+          sign-in form to someone who is signed in. */}
+      <Route path="/login" element={<AfterAuthRedirect />} />
+      <Route path="/signup" element={<AfterAuthRedirect />} />
+      <Route path="/c/:classId/*" element={<ClassRoutes />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
   )
+}
 
-  const deleteChat = useCallback(
-    async (chat) => {
-      const ok = await confirm({
-        title: `Delete “${chat.title}”?`,
-        body: 'Plans it generated are kept.',
-        confirmLabel: 'Delete',
-        tone: 'danger',
-      })
-      if (!ok) return
-      setChats((prev) => prev.filter((c) => c.id !== chat.id))
-      if (currentChatId === chat.id) setCurrentChatId(null)
-      try {
-        await api.deleteChat(chat.id)
-      } catch (err) {
-        toast.apiError('Could not delete that chat', err)
-        refreshChats()
-      }
-    },
-    [currentChatId, toast, refreshChats, confirm]
-  )
+/** Honours ?next= after a successful sign-in. */
+function AfterAuthRedirect() {
+  const location = useLocation()
+  const next = new URLSearchParams(location.search).get('next')
+  // Only same-origin paths, so a crafted ?next=https://… can't turn the login
+  // screen into an open redirect.
+  const safe = next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
+  return <Navigate to={safe} replace />
+}
 
-  /* Cmd/Ctrl+K starts a new plan. The Sidebar shows the shortcut next to "New
-     plan" — it existed here for a while with no affordance anywhere, so nobody
-     could have known about it.
-
-     There used to be a global contextmenu handler here suppressing right-click
-     "for IDE feel". It is gone: teachers copy text out of a plan constantly, and
-     it broke every one of those attempts. */
+/** ⌘K goes to the next week that needs planning — the one action the app is
+ *  for. It used to open a blank chat. */
+function CommandK() {
+  const navigate = useNavigate()
+  const location = useLocation()
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
-        newChat()
+        const m = location.pathname.match(/^\/c\/([^/]+)/)
+        if (m) navigate(`/c/${m[1]}/week/next`)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [newChat])
-
-  const shell = {
-    chats,
-    setChats,
-    currentChatId,
-    setCurrentChatId,
-    settings,
-    setSettings,
-    settingsError,
-    reloadSettings: loadSettings,
-    theme,
-    onToggleSidebar: toggleSidebar,
-    refreshChats,
-    collapsed,
-    classes,
-    activeClass,
-    selectClass,
-    reloadClasses: loadClasses,
-  }
-
-  const narrowOpen = isNarrow && !collapsed
-
-  return (
-    <div className="h-full w-full overflow-hidden bg-paper font-sans text-ink">
-      <a className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md" href="#main">
-        Skip to content
-      </a>
-
-      {/* No autoSaveId: react-resizable-panels v4 removed it in favour of a
-          useDefaultLayout({id, storage}) hook. The prop was doing nothing but
-          leaking onto a DOM node and logging a React warning on every load —
-          panel widths have not actually persisted since the v4 upgrade. */}
-      <PanelGroup orientation="horizontal" className="h-full w-full">
-        
-        {/* Mobile Sidebar Overlay */}
-        {narrowOpen && (
-          <div className="fixed inset-y-0 left-0 z-50 flex h-full w-[264px] flex-col bg-paper-sunken shadow-lg">
-            <Sidebar
-              collapsed={false}
-              onClose={() => setCollapsed(true)}
-              onToggleSidebar={toggleSidebar}
-              chats={chats}
-              currentChatId={currentChatId}
-              onNewChat={newChat}
-              onOpenChat={openChat}
-              onRenameChat={renameChat}
-              onDeleteChat={deleteChat}
-              settings={settings}
-              chatsError={chatsError}
-              chatsLoading={chatsLoading}
-              onRetryChats={refreshChats}
-              isNarrow={isNarrow}
-              theme={theme}
-              classes={classes}
-              activeClass={activeClass}
-              onSelectClass={selectClass}
-            />
-          </div>
-        )}
-
-        {/* Desktop Sidebar Panel */}
-        {!isNarrow && !collapsed && (
-          <>
-            <Panel order={1} id="sidebar" defaultSize="20" minSize="15" maxSize="30" className="flex h-full flex-col overflow-hidden bg-paper-sunken">
-              <Sidebar
-                collapsed={collapsed}
-                onClose={() => setCollapsed(true)}
-                onToggleSidebar={toggleSidebar}
-                chats={chats}
-                currentChatId={currentChatId}
-                onNewChat={newChat}
-                onOpenChat={openChat}
-                onRenameChat={renameChat}
-                onDeleteChat={deleteChat}
-                settings={settings}
-                chatsError={chatsError}
-                chatsLoading={chatsLoading}
-                onRetryChats={refreshChats}
-                isNarrow={isNarrow}
-                theme={theme}
-                classes={classes}
-                activeClass={activeClass}
-                onSelectClass={selectClass}
-              />
-            </Panel>
-            <PanelResizeHandle className="w-px shrink-0 cursor-col-resize bg-edge transition-colors hover:bg-edge-strong active:w-0.5 active:bg-accent" />
-          </>
-        )}
-
-        {/* Mobile Backdrop */}
-        {narrowOpen && (
-          <button
-            type="button"
-            className="fixed inset-0 z-40 bg-[var(--scrim)] backdrop-blur-[2px]"
-            aria-label="Close menu"
-            onClick={() => setCollapsed(true)}
-          />
-        )}
-
-        <Panel order={2} className="relative flex min-w-[300px] flex-col overflow-hidden bg-paper" id="main">
-          <Routes location={location}>
-            <Route path="/" element={<ChatPage shell={shell} />} />
-            <Route path="/my-class" element={<MyClassPage shell={shell} />} />
-            <Route path="*" element={<NotFoundPage shell={shell} />} />
-          </Routes>
-        </Panel>
-      </PanelGroup>
-    </div>
-  )
+  }, [navigate, location.pathname])
+  return null
 }
 
-/** Renders the login form until a session cookie resolves to a real user —
- *  everything below this (chats, plans, settings) is per-teacher data now, so
- *  nothing in Shell should mount before we know who's asking. */
-function Gate() {
-  const { status } = useAuth()
-  if (status === 'loading') return null // Or a spinner
-  if (status === 'anon') return <LoginPage />
-  return <Shell />
-}
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // A 401 is handled globally by api.js dispatching aplang:unauthorized;
+      // retrying it three times first just delays the login screen.
+      retry: (count, err) => err?.status !== 401 && err?.status !== 404 && count < 2,
+      refetchOnWindowFocus: false,
+    },
+  },
+})
 
 export default function App() {
   return (
     <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
       <ErrorBoundary>
-        <BrowserRouter>
-          <ToastProvider>
-            <ConfirmProvider>
-              <AuthProvider>
-                <Gate />
-              </AuthProvider>
-            </ConfirmProvider>
-          </ToastProvider>
-        </BrowserRouter>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <ToastProvider>
+              <ConfirmProvider>
+                <AuthProvider>
+                  <CommandK />
+                  <Gate />
+                </AuthProvider>
+              </ConfirmProvider>
+            </ToastProvider>
+          </BrowserRouter>
+        </QueryClientProvider>
       </ErrorBoundary>
     </GoogleOAuthProvider>
   )

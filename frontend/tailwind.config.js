@@ -77,7 +77,11 @@ export default {
          visible viewport, which is what puts a bottom-docked composer under the
          browser chrome; --app-h resolves to 100dvh where that exists. */
       height: { app: 'var(--app-h)' },
-      minHeight: { app: 'var(--app-h)', touch: 'var(--touch-min)' },
+      minHeight: {
+        app: 'var(--app-h)',
+        touch: 'var(--touch-min)',
+        'touch-lg': 'var(--touch-min-lg)',
+      },
       minWidth: { touch: 'var(--touch-min)' },
 
       spacing: {
@@ -111,6 +115,25 @@ export default {
       letterSpacing: {
         caps: 'var(--tracking-caps)',
         display: 'var(--tracking-display)',
+        tight: 'var(--tracking-tight)',
+      },
+
+      /* The type scale was declared in tokens.css and never exposed to Tailwind,
+         so every component reached for Tailwind's own text-xs/text-sm defaults
+         and the scale existed only for hand-written CSS. Two scales, one of them
+         unused — the same split that let tailwind.config.js and tokens.css
+         disagree about the palette. */
+      fontSize: {
+        '2xs': ['var(--fs-2xs)', { lineHeight: 'var(--lh-normal)' }],
+        xs: ['var(--fs-xs)', { lineHeight: 'var(--lh-normal)' }],
+        sm: ['var(--fs-sm)', { lineHeight: 'var(--lh-normal)' }],
+        md: ['var(--fs-md)', { lineHeight: 'var(--lh-normal)' }],
+        base: ['var(--fs-base)', { lineHeight: 'var(--lh-normal)' }],
+        lg: ['var(--fs-lg)', { lineHeight: 'var(--lh-snug)' }],
+        xl: ['var(--fs-xl)', { lineHeight: 'var(--lh-snug)' }],
+        '2xl': ['var(--fs-2xl)', { lineHeight: 'var(--lh-tight)' }],
+        '3xl': ['var(--fs-3xl)', { lineHeight: 'var(--lh-tight)' }],
+        '4xl': ['var(--fs-4xl)', { lineHeight: 'var(--lh-tight)' }],
       },
 
       transitionTimingFunction: {
