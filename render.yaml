@@ -22,6 +22,16 @@ services:
     name: flexed-academy-backend
     env: python
     plan: free
+    # Push to master -> Render rebuilds and redeploys, no dashboard visit. This
+    # is Render's default, but it is stated here so the deploy loop is a fact of
+    # the repo rather than a setting someone has to remember checking.
+    #
+    # The build runs the FULL pipeline: npm ci, vite build, pip install. So a
+    # one-line frontend change is a several-minute rebuild on the free plan, and
+    # the service is down while it swaps. Batch changes rather than pushing ten
+    # times in a row.
+    branch: master
+    autoDeploy: true
     buildCommand: "npm --prefix frontend install && npm --prefix frontend run build && pip install -e ."
     startCommand: "uvicorn backend.server:app --host 0.0.0.0 --port $PORT"
     envVars:
