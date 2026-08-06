@@ -37,6 +37,24 @@ def health():
         "plans_dir": str(settings.plans_dir),
         "retrieval_floor": settings.retrieval_max_distance,
         "retrieval_top_k": settings.retrieval_top_k,
+        # The two settings whose value cannot be inferred from the app's
+        # behaviour without either being logged in or trying to break in.
+        #
+        # require_login=False means every unauthenticated request resolves to
+        # 'default_user' — i.e. anyone who loads the site is signed in as the
+        # first teacher. That shipped to production once already, and the only
+        # way we caught it was noticing /api/chats answered 200 to a stranger.
+        # Reporting it turns "is auth on?" from an inference into a fact.
+        #
+        # Neither is a secret: one is a boolean, the other says whether the
+        # session cookie is marked Secure. Knowing them helps a defender far
+        # more than an attacker, who can determine both by trying anyway.
+        "require_login": settings.require_login,
+        "cookie_secure": settings.cookie_secure,
+        # Length only, never the value. Every deploy failure so far has been a
+        # malformed DATABASE_URL, and each one cost a round trip through the
+        # logs to identify. 110 is correct; 160 means the host is in there twice.
+        "database_url_len": len(settings.database_url or ""),
     }
     try:
         out["builder_found"] = True
