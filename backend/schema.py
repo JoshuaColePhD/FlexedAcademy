@@ -256,6 +256,53 @@ def validate_day(day: object, *, path: str = "day") -> tuple[dict, list[str]]:
     return d, warnings
 
 
+# python-docx writes straight into OOXML, and XML 1.0 cannot represent most
+# control characters at all — it raises "All strings must be XML compatible" and
+# the whole build dies.
+#
+# This is not hypothetical. A revised plan came back with week_of containing
+# U+0014, which is a mangled U+2014 em dash: the model dropped the high byte of
+# "—". The .docx build then failed in a BACKGROUND task, after update_plan had
+# already cleared docx_path — so the plan was left permanently undownloadable
+# while the UI cheerfully reported "still generating" forever.
+#
+# Where a control character is the low byte of a punctuation mark a model
+# commonly mangles, it is restored; everything else non-printable is dropped.
+# Tab, newline and carriage return are legal XML and are kept.
+_MANGLED = {
+    "\x13": "–",  # U+2013 en dash
+    "\x14": "—",  # U+2014 em dash
+    "\x18": "‘",  # U+2018
+    "\x19": "’",  # U+2019
+    "\x1c": "“",  # U+201C
+    "\x1d": "”",  # U+201D
+    "\x26": "…",  # U+2026 — only reached for the control char, not for "&"
+}
+
+
+def _clean_text(s: str) -> str:
+    out = []
+    for ch in s:
+        o = ord(ch)
+        if o in (0x09, 0x0A, 0x0D) or o >= 0x20:
+            out.append(ch)  # legal XML, including a literal "&"
+        elif ch in _MANGLED:
+            out.append(_MANGLED[ch])
+        # else: dropped
+    return "".join(out)
+
+
+def _clean(obj):
+    """Recursively strip XML-illegal characters from every string in a plan."""
+    if isinstance(obj, str):
+        return _clean_text(obj)
+    if isinstance(obj, dict):
+        return {k: _clean(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean(v) for v in obj]
+    return obj
+
+
 def validate_plan(plan: object) -> tuple[dict, list[str]]:
     """Validate a whole week. Returns (normalized_plan, warnings).
 
@@ -264,6 +311,10 @@ def validate_plan(plan: object) -> tuple[dict, list[str]]:
     """
     if not isinstance(plan, dict):
         raise SchemaError("not_an_object", "Expected a JSON object at the top level.")
+
+    # Before anything else looks at the strings — every path into a plan
+    # (generate, revise_day, revise) comes through here, which is the point.
+    plan = _clean(plan)
 
     if not str(plan.get("week_of", "")).strip():
         raise SchemaError("missing_field", "Missing 'week_of'.", path="week_of")

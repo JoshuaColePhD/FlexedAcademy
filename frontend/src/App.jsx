@@ -19,10 +19,7 @@ import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './lib/authContext'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
-import { useCalendar, useClasses } from './hooks/useAppData'
-import { firstUnplanned } from './lib/queue'
-import { CalendarPage } from './pages/CalendarPage'
-import { WeekPage } from './pages/WeekPage'
+import { useClasses } from './hooks/useAppData'
 import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
@@ -119,25 +116,7 @@ function RootRedirect() {
     /* not available */
   }
   const target = classes.find((c) => c.id === hint) || classes[0]
-  return <Navigate to={`/c/${target.id}/calendar`} replace />
-}
-
-/** The canonical "plan the next thing" URL.
- *
- *  Exists as a redirect-only route so the queue card, ⌘K and any link a teacher
- *  bookmarks all funnel through one address instead of each computing the next
- *  unplanned week for themselves. */
-function NextWeekRedirect() {
-  const { classId } = useParams()
-  const { data, isLoading } = useCalendar(classId)
-  if (isLoading) return <BootScreen />
-  const next = firstUnplanned(data?.weeks)
-  return (
-    <Navigate
-      to={next ? `/c/${classId}/week/${next.week}` : `/c/${classId}/calendar`}
-      replace
-    />
-  )
+  return <Navigate to={`/c/${target.id}`} replace />
 }
 
 /** Remembers the class you were last in, for the next cold load. Writing it in
@@ -162,13 +141,12 @@ function ClassRoutes() {
       <RememberClass />
       <AppShell>
         <Routes>
-          <Route path="calendar" element={<CalendarPage />} />
-          <Route path="week/next" element={<NextWeekRedirect />} />
-          <Route path="week/:weekNo" element={<WeekPage />} />
-          <Route path="chat" element={<ChatPage />} />
+          {/* A new plan IS the home screen. There is no calendar route: the
+              school calendar still shapes every generation, from
+              backend/schoolcal.py, it just doesn't need a screen to do it. */}
+          <Route index element={<ChatPage />} />
           <Route path="chat/:chatId" element={<ChatPage />} />
           <Route path="class" element={<ClassPage />} />
-          <Route index element={<Navigate to="calendar" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AppShell>
@@ -231,8 +209,7 @@ function AfterAuthRedirect() {
   return <Navigate to={safe} replace />
 }
 
-/** ⌘K goes to the next week that needs planning — the one action the app is
- *  for. It used to open a blank chat. */
+/** ⌘K starts a new plan — the one action the app is for. */
 function CommandK() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -241,7 +218,7 @@ function CommandK() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         const m = location.pathname.match(/^\/c\/([^/]+)/)
-        if (m) navigate(`/c/${m[1]}/week/next`)
+        if (m) navigate(`/c/${m[1]}`)
       }
     }
     window.addEventListener('keydown', onKey)

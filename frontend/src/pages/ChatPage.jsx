@@ -1,53 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Lightbulb, MessageSquarePlus, Search, Sparkles, Trash2, Users } from 'lucide-react'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
+import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
-import { useConfirm } from '../lib/confirmContext'
-import { useChatStream } from '../hooks/useChatStream'
-import { useLayoutMode } from '../hooks/useMediaQuery'
-import { useCalendar, useChats, useDeleteChat } from '../hooks/useAppData'
-import { defaultWeek } from '../lib/queue'
+import { useLessonStream } from '../hooks/useLessonStream'
+import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
+import { useActiveClass, useChats } from '../hooks/useAppData'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { Composer } from '../components/Composer'
 import { Message } from '../components/Message'
-import { SkeletonText } from '../components/Skeleton'
+import { ArtifactPanel } from '../components/ArtifactPanel'
+import { WeekStrip } from '../components/WeekStrip'
+import { Greeting } from '../components/Greeting'
 
-/* The dedicated chat.
+/* One chat, one plan.
  *
- * useChatStream and POST /api/chat_stream have both existed the whole time and
- * nothing has ever called either of them — 98 lines of frontend and a
- * three-mode backend, orphaned. Its own system prompt ends "tell them they can
- * click the Generate Lesson Plan button", so the chat→week handoff was designed
- * and then never wired to anything.
+ * Say what you need, it builds it, then every message after that revises it.
+ * That last part is the piece that never existed: the whole-plan revise
+ * endpoint ran an autonomous self-critique and took no instruction, so "make
+ * Thursday a Socratic seminar" had nowhere to go. It takes feedback now.
  *
- * The important structural point: this is a place to THINK, not the container
- * the app lives in. Generating a plan happens on a week, at that week's URL.
- * When the old ChatPage was both, "home" was a state of a chat, no plan had an
- * address, and the sidebar's Recent list became a second index of the year.
+ * The calendar is not a screen. It is still the thing keeping generation
+ * honest — backend/schoolcal.py reads the same file the prompt quotes, so the
+ * model cannot put five days of lessons inside Fall Break — it just doesn't
+ * need a surface of its own to do that.
+ *
+ * Intent routing is deliberately dumb and predictable: no plan yet, your
+ * message builds one; plan exists, your message revises it. A model guessing
+ * which you meant would be wrong occasionally, and "occasionally regenerates
+ * your week from scratch" is the worst failure this app has available. To start
+ * something else, start a new chat.
  */
-
-const MODES = [
-  {
-    id: 'brainstorm',
-    label: 'Brainstorm',
-    Icon: Lightbulb,
-    blurb: 'Kick ideas around for a week before you build it.',
-  },
-  {
-    id: 'interview',
-    label: 'Interview me',
-    Icon: Users,
-    blurb: 'It asks the questions, one at a time, until the week is clear.',
-  },
-  {
-    id: 'standards',
-    label: 'Find standards',
-    Icon: Search,
-    blurb: 'Narrow down which standards the week should actually hit.',
-  },
-]
 
 let idSeq = 0
 const nextId = () => `m${++idSeq}`
@@ -56,68 +42,113 @@ export function ChatPage() {
   const { classId, chatId } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
-  const confirm = useConfirm()
   const qc = useQueryClient()
   const mode = useLayoutMode()
-
-  const { data: chats = [], isLoading: chatsLoading } = useChats()
-  const { data: calendar } = useCalendar(classId)
-  const deleteChat = useDeleteChat()
+  const isOverlay = useMediaQuery(PANEL_OVERLAY)
+  const { activeClass } = useActiveClass()
+  const { data: chats = [] } = useChats()
 
   const [messages, setMessages] = useState([])
+  const [artifact, setArtifact] = useState(null)
   const [query, setQuery] = useState('')
   const [attachments, setAttachments] = useState([])
-  const [chatMode, setChatMode] = useState('brainstorm')
-  const [loadingChat, setLoadingChat] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(true)
+  const [revising, setRevising] = useState(false)
+  const [atBottom, setAtBottom] = useState(true)
+
+  const scrollRef = useRef(null)
   const endRef = useRef(null)
 
-  const stream = useChatStream({
-    onError: (err) => toast.apiError('The reply failed', err),
-  })
+  const activeChat = chats.find((c) => c.id === chatId)
+  useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
 
+  /* ── load an existing conversation and whatever plan it produced ──────── */
   useEffect(() => {
     let cancelled = false
-    // 'new' is the sentinel for a conversation that has no row yet — fetching
-    // it 404s and toasts "Couldn't open that conversation" on a screen the
-    // teacher just deliberately opened.
-    if (!chatId || chatId === 'new') {
+    if (!chatId) {
       setMessages([])
+      setArtifact(null)
       return undefined
     }
-    setLoadingChat(true)
     api
       .getChat(chatId)
-      .then((row) => {
+      .then(async (row) => {
         if (cancelled) return
-        setMessages(
-          (row.messages || []).map((m) => ({
-            id: nextId(),
-            role: m.role,
-            content: m.content,
-          }))
-        )
+        const loaded = (row.messages || []).map((m) => ({
+          id: nextId(),
+          role: m.role,
+          content: m.content,
+          planId: m.plan_id || null,
+        }))
+        setMessages(loaded)
+        const last = [...loaded].reverse().find((m) => m.planId)
+        if (!last) {
+          setArtifact(null)
+          return
+        }
+        try {
+          const plan = await api.getPlan(last.planId)
+          if (!cancelled) {
+            setArtifact({
+              planId: plan.id,
+              plan: plan.plan_json,
+              warnings: plan.warnings,
+              retrievedIds: plan.retrieved_ids,
+              unit: plan.unit,
+            })
+          }
+        } catch {
+          if (!cancelled) setArtifact(null)
+        }
       })
       .catch(() => !cancelled && toast.error("Couldn't open that conversation"))
-      .finally(() => !cancelled && setLoadingChat(false))
     return () => {
       cancelled = true
     }
   }, [chatId, toast])
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages])
+  const stream = useLessonStream({
+    onDone: (done) => {
+      setArtifact({
+        planId: done.plan_id,
+        plan: done.plan,
+        warnings: done.warnings,
+        retrievedIds: done.retrieved_ids ?? done.grounding?.codes,
+        unit: done.unit,
+      })
+      setPanelOpen(true)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          content: `Built ${done.plan?.week_of || 'the week'}. Tell me what to change and I'll revise it.`,
+          planId: done.plan_id,
+          weekLabel: done.plan?.week_of,
+        },
+      ])
+      qc.invalidateQueries({ queryKey: qk.chats })
+    },
+    onError: (err) => {
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
+      ])
+      toast.apiError("Couldn't build that", err)
+    },
+  })
 
+  const busy = stream.isStreaming || revising
+
+  /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
     async (text) => {
       const content = (text ?? query).trim()
-      if (!content || stream.isStreaming) return
+      if (!content || busy) return
       setQuery('')
+      setMessages((prev) => [...prev, { id: nextId(), role: 'user', content }])
 
-      const history = [...messages, { id: nextId(), role: 'user', content }]
-      setMessages(history)
-
-      let activeChatId = chatId === 'new' ? null : chatId
+      let activeChatId = chatId
       if (!activeChatId) {
         try {
           const created = await api.createChat(content.slice(0, 80))
@@ -125,190 +156,239 @@ export function ChatPage() {
           qc.invalidateQueries({ queryKey: qk.chats })
           navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
         } catch {
-          /* Keep talking even if the conversation can't be saved — losing the
-             transcript is better than refusing to answer. */
+          /* Keep working even if the conversation can't be saved. */
         }
       }
-      if (activeChatId) {
-        api.addMessage(activeChatId, { role: 'user', content }).catch(() => {})
+      if (activeChatId) api.addMessage(activeChatId, { role: 'user', content }).catch(() => {})
+
+      // No plan in this chat yet -> build one. Otherwise -> revise it.
+      if (!artifact?.planId) {
+        stream.start(content, { chatId: activeChatId }).catch(() => {})
+        return
       }
 
-      const replyId = nextId()
-      setMessages((prev) => [...prev, { id: replyId, role: 'assistant', content: '' }])
+      setRevising(true)
+      try {
+        const row = await api.revisePlan(artifact.planId, content)
+        setArtifact((a) => ({
+          ...a,
+          plan: row.plan_json,
+          warnings: row.warnings,
+          retrievedIds: row.retrieved_ids,
+        }))
+        setPanelOpen(true)
+        const reply = {
+          id: nextId(),
+          role: 'assistant',
+          content: 'Updated the week and rebuilt the document.',
+          planId: row.id,
+          weekLabel: row.week_label,
+        }
+        setMessages((prev) => [...prev, reply])
+        if (activeChatId) {
+          api
+            .addMessage(activeChatId, { role: 'assistant', content: reply.content, plan_id: row.id })
+            .catch(() => {})
+        }
+      } catch (err) {
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
+        ])
+        toast.apiError("Couldn't revise that", err)
+      } finally {
+        setRevising(false)
+      }
+    },
+    [query, busy, chatId, classId, artifact, stream, navigate, qc, toast]
+  )
 
-      await stream.start(
-        history.map(({ role, content: c }) => ({ role, content: c })),
-        chatMode,
-        {
-          onChunk: (accumulated) =>
-            setMessages((prev) =>
-              prev.map((m) => (m.id === replyId ? { ...m, content: accumulated } : m))
-            ),
-          onDone: () => {
-            setMessages((prev) => {
-              const final = prev.find((m) => m.id === replyId)
-              if (activeChatId && final?.content) {
-                api
-                  .addMessage(activeChatId, { role: 'assistant', content: final.content })
-                  .catch(() => {})
-              }
-              return prev
-            })
+  /* Per-day revise, from the Sparkles button in the table. Surgical, where the
+     composer is conversational — both end up in the transcript so the chat is a
+     complete record of what happened to the plan. */
+  const reviseDay = useCallback(
+    async (dayIndex, day, feedback) => {
+      if (!artifact?.planId) return
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: 'user', content: `Revise ${day.name}: ${feedback}` },
+      ])
+      try {
+        const row = await api.reviseDay({ plan_id: artifact.planId, day_index: dayIndex, feedback })
+        setArtifact((a) => ({
+          ...a,
+          plan: row.plan_json,
+          warnings: row.warnings,
+          retrievedIds: row.retrieved_ids,
+        }))
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: 'assistant',
+            content: `Updated ${day.name} and rebuilt the document.`,
+            planId: row.id,
+            weekLabel: row.week_label,
           },
-        }
-      )
+        ])
+      } catch (err) {
+        toast.apiError(`Could not revise ${day.name}`, err)
+      }
     },
-    [query, messages, stream, chatId, classId, chatMode, navigate, qc]
+    [artifact, toast]
   )
 
-  const removeChat = useCallback(
-    async (chat) => {
-      const ok = await confirm({
-        title: `Delete “${chat.title}”?`,
-        body: 'Plans you built are kept — this only removes the conversation.',
-        confirmLabel: 'Delete',
-        tone: 'danger',
-      })
-      if (!ok) return
-      await deleteChat.mutateAsync(chat.id).catch((err) => toast.apiError('Could not delete', err))
-      if (chat.id === chatId) navigate(`/c/${classId}/chat`)
-    },
-    [confirm, deleteChat, chatId, classId, navigate, toast]
-  )
+  const onPlanRevised = useCallback((row) => {
+    if (!row) return
+    setArtifact((a) => ({
+      ...a,
+      plan: row.plan_json,
+      warnings: row.warnings,
+      retrievedIds: row.retrieved_ids,
+    }))
+  }, [])
 
-  // The handoff the orphaned backend prompt was written for.
-  const target = defaultWeek(calendar?.weeks)
-  const buildHref = target ? `/c/${classId}/week/${target.week}` : `/c/${classId}/week/next`
-  const canCompose = mode === 'desktop' || mode === 'tablet'
-
-  /* ── the conversation list ───────────────────────────────────────────── */
-  if (!chatId) {
-    return (
-      <div className="column">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-2 px-gutter">
-          <h1 className="text-sm font-semibold text-ink">Chats</h1>
-        </header>
-        <div className="page scroll-y">
-          <div className="mx-auto flex w-full max-w-measure flex-col gap-5">
-            <div>
-              <p className="text-sm text-ink-muted">
-                Somewhere to think a week through before you build it. Nothing here writes a
-                plan — that happens on the week itself.
-              </p>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-3">
-              {MODES.map(({ id, label, Icon, blurb }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => {
-                    setChatMode(id)
-                    setMessages([])
-                    navigate(`/c/${classId}/chat/new`)
-                  }}
-                  className="flex flex-col gap-1.5 rounded-xl border border-edge bg-paper-raised p-3 text-left transition-colors hover:bg-paper-sunken"
-                >
-                  <Icon size={16} aria-hidden="true" className="text-ink-muted" />
-                  <span className="text-sm font-medium text-ink">{label}</span>
-                  <span className="text-2xs leading-relaxed text-ink-muted">{blurb}</span>
-                </button>
-              ))}
-            </div>
-
-            <div>
-              <h2 className="eyebrow mb-2">Recent</h2>
-              {chatsLoading ? (
-                <SkeletonText lines={4} />
-              ) : chats.length ? (
-                <ul className="overflow-hidden rounded-xl border border-edge bg-paper-raised">
-                  {chats.map((c) => (
-                    <li
-                      key={c.id}
-                      className="group flex items-center gap-2 border-b border-edge px-3 last:border-b-0"
-                    >
-                      <Link
-                        to={`/c/${classId}/chat/${c.id}`}
-                        className="min-w-0 flex-1 truncate py-2.5 text-sm text-ink hover:underline"
-                      >
-                        {c.title}
-                      </Link>
-                      <button
-                        type="button"
-                        className="btn-icon opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
-                        aria-label={`Delete ${c.title}`}
-                        onClick={() => removeChat(c)}
-                      >
-                        <Trash2 size={14} aria-hidden="true" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="rounded-xl bg-paper-sunken p-4 text-sm text-ink-muted">
-                  No conversations yet.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+  /* ── scroll ───────────────────────────────────────────────────────────── */
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120)
   }
+  useEffect(() => {
+    if (atBottom) endRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages, atBottom])
 
-  /* ── one conversation ────────────────────────────────────────────────── */
-  return (
-    <div className="column">
-      <header className="flex h-14 shrink-0 items-center gap-2 px-gutter">
-        <h1 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-          {chats.find((c) => c.id === chatId)?.title || 'New conversation'}
-        </h1>
-        {/* Chat brainstorms; the week generates. That is the seam, and this is
-            the door through it. */}
-        <Link to={buildHref} className="btn">
-          <Sparkles size={14} aria-hidden="true" />
-          <span className="hidden sm:inline">Build a week</span>
-        </Link>
-      </header>
+  const livePlan = artifact?.plan || stream.preview
+  const liveArtifact = useMemo(
+    () =>
+      artifact ||
+      (stream.preview || stream.isStreaming
+        ? { plan: stream.preview, grounding: stream.grounding }
+        : null),
+    [artifact, stream.preview, stream.isStreaming, stream.grounding]
+  )
 
-      <div className="page scroll-y">
-        <div className="mx-auto flex w-full max-w-measure flex-col gap-7">
-          {loadingChat ? (
-            <SkeletonText lines={6} />
-          ) : messages.length === 0 ? (
-            <div className="empty-state">
-              <MessageSquarePlus size={20} aria-hidden="true" className="text-ink-faint" />
-              <h1>{MODES.find((m) => m.id === chatMode)?.label}</h1>
-              <p>{MODES.find((m) => m.id === chatMode)?.blurb}</p>
-            </div>
-          ) : (
-            messages.map((m) => <Message key={m.id} message={m} />)
-          )}
-          <div ref={endRef} />
-        </div>
-      </div>
+  const isEmpty = messages.length === 0
+  const showPanel = panelOpen && liveArtifact && livePlan?.days?.length
 
-      {canCompose ? (
-        <div className="shrink-0 border-t border-edge bg-paper px-gutter pb-4 pt-3">
-          <div className="mx-auto w-full max-w-measure">
-            <Composer
-              value={query}
-              onChange={setQuery}
-              onSubmit={submit}
-              onStop={stream.stop}
-              isStreaming={stream.isStreaming}
-              attachments={attachments}
-              setAttachments={setAttachments}
-              placeholder="What are you thinking about this week?"
-              sendLabel="Send"
-            />
+  const artifactEl = (
+    <ArtifactPanel
+      artifact={{ ...liveArtifact, plan: livePlan }}
+      missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
+      onClose={() => setPanelOpen(false)}
+      onReviseDay={mode === 'desktop' && artifact?.planId ? reviseDay : undefined}
+      onPlanRevised={onPlanRevised}
+      busy={busy}
+      streamingText={stream.text}
+      framework={activeClass?.name}
+    />
+  )
+
+  const chatPane = (
+    <div className="relative flex h-full min-h-0 flex-col bg-paper">
+      {isEmpty ? (
+        <Greeting onPick={submit} className={activeClass?.name} />
+      ) : (
+        <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
+          <div className="mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
+            {messages.map((m) => (
+              <Message
+                key={m.id}
+                message={m}
+                onOpenArtifact={m.planId ? () => setPanelOpen(true) : undefined}
+              />
+            ))}
+
+            {/* Progress is the week filling in, not three bouncing dots — a
+                teacher can see which day is being written and how many are
+                left, which is the only thing worth knowing while waiting. */}
+            {stream.isStreaming ? (
+              <div className="w-full">
+                <p className="eyebrow mb-2">
+                  {stream.preview?.days?.length ? 'Writing the week' : 'Retrieving standards'}
+                </p>
+                <WeekStrip days={stream.preview?.days} writing compact />
+              </div>
+            ) : revising ? (
+              <p className="eyebrow">Revising the week…</p>
+            ) : null}
+
+            <div ref={endRef} />
           </div>
         </div>
-      ) : (
-        <p className="shrink-0 border-t border-edge px-gutter py-3 text-center text-xs text-ink-muted">
-          Open this on a computer to join the conversation.
-        </p>
       )}
+
+      {!atBottom && !isEmpty ? (
+        <div className="pointer-events-none absolute bottom-[92px] left-0 right-0 z-10 flex justify-center">
+          <button
+            type="button"
+            className="pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge"
+            onClick={() => {
+              setAtBottom(true)
+              endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+            }}
+          >
+            <ArrowDown size={13} aria-hidden="true" /> Latest
+          </button>
+        </div>
+      ) : null}
+
+      <div className="visually-hidden" role="status" aria-live="polite">
+        {stream.isStreaming ? 'Building the lesson plan.' : artifact?.planId ? 'Lesson plan ready.' : ''}
+      </div>
+
+      {/* The dock. Composer must stay in the SAME slot of the same parent across
+          the empty/non-empty transition — it owns a MediaRecorder, a
+          ResizeObserver and an autosized inline height, all of which die on
+          remount. Only the wrapper's className may change. */}
+      <div className="shrink-0 border-t border-edge bg-paper px-gutter pb-5 pt-3">
+        <div className="mx-auto w-full max-w-measure">
+          <Composer
+            value={query}
+            onChange={setQuery}
+            onSubmit={submit}
+            onStop={stream.stop}
+            isStreaming={busy}
+            attachments={attachments}
+            setAttachments={setAttachments}
+            placeholder={
+              artifact?.planId
+                ? 'What should change? — e.g. make Thursday a Socratic seminar'
+                : 'What do you need a lesson plan for?'
+            }
+            sendLabel={artifact?.planId ? 'Revise the plan' : 'Build the lesson plan'}
+          />
+        </div>
+      </div>
     </div>
+  )
+
+  return (
+    <PanelGroup orientation="horizontal" className="h-full w-full">
+      <Panel defaultSize={showPanel && !isOverlay ? 55 : 100} minSize={30} className="min-w-0">
+        {chatPane}
+      </Panel>
+
+      {showPanel && !isOverlay ? (
+        <>
+          <PanelResizeHandle className="w-px shrink-0 cursor-col-resize bg-edge transition-colors hover:bg-edge-strong active:w-0.5 active:bg-accent" />
+          <Panel id="artifact" defaultSize={45} minSize={30} className="relative z-10 flex h-full flex-col bg-paper-raised">
+            {artifactEl}
+          </Panel>
+        </>
+      ) : null}
+
+      {showPanel && isOverlay ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close lesson plan"
+            className="fixed inset-0 z-40 bg-[var(--scrim)]"
+            onClick={() => setPanelOpen(false)}
+          />
+          <div className="artifact-overlay">{artifactEl}</div>
+        </>
+      ) : null}
+    </PanelGroup>
   )
 }

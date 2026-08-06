@@ -156,9 +156,33 @@ _CRITIQUE_PROMPT = """You are a master curriculum coordinator. Your job is to re
 Provide a brief, stern critique, then rewrite the ENTIRE week's plan to fix the issues while strictly adhering to the schema.
 """
 
-def critique_and_revise(user_id: str, plan: dict, retrieved_context: str) -> dict:
-    """Agentic self-correction loop. Critiques and rewrites the whole plan."""
+def critique_and_revise(
+    user_id: str, plan: dict, retrieved_context: str, feedback: str | None = None
+) -> dict:
+    """Rewrites the whole plan — either on the teacher's instruction, or, with no
+    instruction, as an autonomous self-critique.
+
+    `feedback` is what makes the chat loop work. Without it this could only ever
+    do what it thought best, so a teacher saying "make Thursday a Socratic
+    seminar" had nowhere to go but a per-day revise. When feedback is present it
+    OUTRANKS the critique prompt: the teacher asking for something is not a
+    defect to be corrected, and a self-critique that quietly undoes what they
+    just asked for is the most annoying possible behaviour.
+    """
     s = db.get_settings_row(user_id)
+
+    if feedback:
+        instruction = (
+            "Revise the plan to do what the teacher asks. Their instruction is "
+            "the requirement — do not overrule it with your own judgement.\n"
+            "Change only what the instruction implies; leave every other day and "
+            "field exactly as it is. Keep every standard code grounded in the "
+            "retrieved context below; do not introduce a code that is not there.\n\n"
+            f"Teacher's instruction:\n{feedback}"
+        )
+    else:
+        instruction = _CRITIQUE_PROMPT
+
     resp = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.3,
@@ -168,14 +192,14 @@ def critique_and_revise(user_id: str, plan: dict, retrieved_context: str) -> dic
             {
                 "role": "system",
                 "content": (
-                    f"{_CRITIQUE_PROMPT}\n\n"
+                    f"{instruction}\n\n"
                     f"Subject: {s['subject']} (Grade {s['grade']})\n\n"
                     f"Retrieved Standards Context:\n{retrieved_context}"
                 )
             },
             {
                 "role": "user",
-                "content": f"Here is the drafted plan. Revise it:\n{json.dumps(plan, indent=2)}"
+                "content": f"Here is the current plan:\n{json.dumps(plan, indent=2)}"
             },
         ],
     )
