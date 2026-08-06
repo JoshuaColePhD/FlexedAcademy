@@ -20,7 +20,9 @@ export function NotFoundPage({ shell }) {
         <div className="empty-state">
           <h1>No such page</h1>
           <p>That address doesn’t exist in this app.</p>
-          <Link to="/chat" className="btn btn-primary">
+          {/* Was "/chat", which is not a route — so the only way off the 404
+              page was back to the 404 page. */}
+          <Link to="/" className="btn btn-primary">
             Back to planning
           </Link>
         </div>

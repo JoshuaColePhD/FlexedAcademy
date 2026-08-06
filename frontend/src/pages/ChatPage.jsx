@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { api } from '../lib/api'
 import { useLessonStream } from '../hooks/useLessonStream'
+import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { ArrowDown } from 'lucide-react'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -332,7 +333,31 @@ export function ChatPage({ shell }) {
     [artifact, toast]
   )
 
+  /* The whole-plan revise returns the updated row. Putting it into state here is
+     what lets that button stop telling the teacher to refresh the page — the
+     same shape reviseDay above already uses. */
+  const onPlanRevised = useCallback((row) => {
+    if (!row) return
+    setArtifact((a) => ({
+      ...a,
+      plan: row.plan_json,
+      warnings: row.warnings,
+      retrievedIds: row.retrieved_ids,
+    }))
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: nextId(),
+        role: 'assistant',
+        content: 'Reviewed the whole week and rewrote it.',
+        planId: row.id,
+        weekLabel: row.week_label,
+      },
+    ])
+  }, [])
+
   const livePlan = artifact?.plan || stream.preview
+
   const liveArtifact = useMemo(
     () =>
       artifact ||
@@ -340,6 +365,27 @@ export function ChatPage({ shell }) {
         ? { plan: stream.preview, grounding: stream.grounding }
         : null),
     [artifact, stream.preview, stream.isStreaming, stream.grounding]
+  )
+
+  /* Built once and rendered into whichever container the width calls for, so
+     the docked and overlaid panels can never drift apart in props. */
+  const isOverlay = useMediaQuery(PANEL_OVERLAY)
+  const artifactEl = (
+    <ArtifactPanel
+      missingDays={
+        stream.isStreaming
+          ? 'pending'
+          : liveArtifact && !liveArtifact.planId
+            ? 'incomplete'
+            : 'no_school'
+      }
+      artifact={{ ...liveArtifact, plan: livePlan }}
+      onClose={() => setPanelOpen(false)}
+      onReviseDay={reviseDay}
+      onPlanRevised={onPlanRevised}
+      busy={stream.isStreaming}
+      streamingText={stream.text}
+    />
   )
 
   const activeChat = chats.find((c) => c.id === currentChatId)
@@ -353,8 +399,10 @@ export function ChatPage({ shell }) {
     wasEmpty.current = isEmpty
   }, [isEmpty])
 
+  /* autoSaveId removed — see the note in App.jsx. P5 collapses these two nested
+     groups into one and wires useDefaultLayout there. */
   return (
-    <PanelGroup autoSaveId="chat-layout-v6" orientation="horizontal" className="h-full w-full">
+    <PanelGroup orientation="horizontal" className="h-full w-full">
 {/* Left Pane: Chat */}
       <Panel
         defaultSize={panelOpen && liveArtifact ? 55 : 100}
@@ -458,25 +506,27 @@ export function ChatPage({ shell }) {
         </div>
       </Panel>
 {/* Right Pane: Artifact (when available) */}
-      {panelOpen && liveArtifact ? (
+      {panelOpen && liveArtifact && !isOverlay ? (
         <>
           <PanelResizeHandle className="w-px shrink-0 cursor-col-resize bg-edge transition-colors hover:bg-edge-strong active:w-0.5 active:bg-accent" />
           <Panel id="artifact-panel" defaultSize={45} minSize={30} className="relative z-10 flex h-full flex-col bg-paper-raised">
-            <ArtifactPanel
-              missingDays={
-                stream.isStreaming
-                  ? 'pending'
-                  : liveArtifact && !liveArtifact.planId
-                    ? 'incomplete'
-                    : 'no_school'
-              }
-              artifact={{ ...liveArtifact, plan: livePlan }}
-              onClose={() => setPanelOpen(false)}
-              onReviseDay={reviseDay}
-              busy={stream.isStreaming}
-              streamingText={stream.text}
-            />
+            {artifactEl}
           </Panel>
+        </>
+      ) : null}
+
+      {/* Below --xl the panel cannot share width with the plan, so it overlays.
+          The scrim is a real button, not a div with onClick: the panel claims
+          aria-modal, and a modal you can only dismiss with a mouse is not one. */}
+      {panelOpen && liveArtifact && isOverlay ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close lesson plan"
+            className="fixed inset-0 z-40 bg-[var(--scrim)]"
+            onClick={() => setPanelOpen(false)}
+          />
+          <div className="artifact-overlay">{artifactEl}</div>
         </>
       ) : null}
 </PanelGroup>

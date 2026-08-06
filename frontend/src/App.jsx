@@ -305,7 +305,11 @@ function Shell() {
         Skip to content
       </a>
 
-      <PanelGroup autoSaveId="app-layout-v2" orientation="horizontal" className="h-full w-full">
+      {/* No autoSaveId: react-resizable-panels v4 removed it in favour of a
+          useDefaultLayout({id, storage}) hook. The prop was doing nothing but
+          leaking onto a DOM node and logging a React warning on every load —
+          panel widths have not actually persisted since the v4 upgrade. */}
+      <PanelGroup orientation="horizontal" className="h-full w-full">
         
         {/* Mobile Sidebar Overlay */}
         {narrowOpen && (

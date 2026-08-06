@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "oxlint",
     "check:tokens": "node scripts/check-tokens.mjs",
-    "check": "npm run lint && npm run check:tokens && npm run build",
+    "check:classes": "node scripts/check-classes.mjs",
+    "check": "npm run lint && npm run check:tokens && npm run check:classes && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {

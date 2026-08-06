@@ -26,12 +26,23 @@
     text-size-adjust: 100%;
   }
 
+  html,
+  body {
+    height: var(--app-h);
+  }
+
   body {
     font-family: var(--font-ui);
     font-size: var(--fs-base);
     line-height: var(--lh-normal);
     color: var(--ink);
     background: var(--paper);
+    /* The grey flash box mobile Safari and Chrome paint on every tap. The app
+       has its own :active states; this one is the browser's opinion. */
+    -webkit-tap-highlight-color: transparent;
+    /* Removes the legacy 300ms click delay WITHOUT disabling double-tap zoom,
+       which `touch-action: none` would — see the viewport note in index.html. */
+    touch-action: manipulation;
   }
 
   /* One focus style for the whole app: two rings, one in the page colour and
@@ -205,6 +216,77 @@
     color: var(--ink-soft);
   }
 
+  /* The week title and its plan-level actions. Was three inline style objects in
+     LessonPlanTable, in a codebase whose entire argument is that layout lives in
+     tokens. Wraps rather than squeezing: "AI review & revise" plus two icon
+     buttons plus a week label does not fit beside itself on a phone. */
+  .plan-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+  }
+  .plan-head h2 {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--lh-tight);
+    color: var(--ink);
+  }
+  .plan-feedback {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+
+  /* ── the artifact, when it can't sit beside the plan ─────────────────────
+     ArtifactPanel has always set role="dialog" + aria-modal and trapped focus
+     below --xl, while ChatPage rendered it as a resizable <Panel> sharing width
+     with the chat. So a screen reader was told the rest of the page was inert
+     while it was plainly visible and the pointer could still reach it — worse
+     than never claiming to be a dialog. The CSS that was supposed to actually
+     cover the page lived in components.css and was deleted with it; this is
+     that rule, restored, and now the JS and the CSS finally agree.
+
+     Rule 2 applies: this one IS floating, so it may have elevation. */
+  .artifact-overlay {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    width: min(var(--artifact-w), 100%);
+    background: var(--paper-raised);
+    box-shadow: var(--shadow-panel);
+    animation: artifact-slide-in var(--t-base) var(--ease-out) both;
+  }
+
+  /* A phone gets a bottom sheet. A right-hand drawer at 375px is a full-screen
+     takeover wearing a scrim nobody can see — that is a modal pretending to be
+     a panel, and it loses the "the plan is over there" spatial cue that makes
+     the drawer worth having in the first place. */
+  @media (max-width: 767.98px) {
+    .artifact-overlay {
+      inset: auto 0 0 0;
+      width: 100%;
+      max-height: var(--sheet-max-h);
+      padding-bottom: var(--safe-b);
+      border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
+      box-shadow: var(--shadow-pop);
+      animation-name: artifact-sheet-in;
+    }
+  }
+
+  @keyframes artifact-slide-in {
+    from { transform: translateX(12px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes artifact-sheet-in {
+    from { transform: translateY(16px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+
   /* Keeps its border where cards lost theirs: this table mirrors the printed
      .docx, and the frame is part of what it is showing you. */
   .plan-table-scroll {
@@ -306,6 +388,10 @@
      is set in marking-pen red with a reference mark, the way a critical edition
      flags a doubtful reading. */
   .cite {
+    /* @extend .tap-target — see the utilities layer. A standard code is the most
+       important thing on this screen to be able to tap, and at 0.9em mono it is
+       the smallest. Declared here so no JSX has to carry the class. */
+    position: relative;
     padding: 0 1px;
     font-family: var(--font-mono);
     font-size: 0.9em;
@@ -318,6 +404,15 @@
     text-decoration-color: rgb(var(--accent-text-rgb) / 0.5);
     text-underline-offset: 3px;
     transition: color var(--t-fast) var(--ease);
+  }
+  .cite::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100%, var(--touch-min));
+    height: var(--touch-min);
   }
   .cite:hover {
     color: var(--ink);
@@ -455,6 +550,25 @@
     color: var(--ink-muted);
   }
 
+  /* 30px on screen, 44px to a thumb — the ::before below. Both of these are
+     declared here rather than as a .tap-target class in the markup, because
+     every consumer of .btn-icon / .btn-send wants it and none of them should
+     have to remember. */
+  .btn-icon,
+  .btn-send {
+    position: relative;
+  }
+  .btn-icon::before,
+  .btn-send::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: var(--touch-min);
+    height: var(--touch-min);
+  }
+
   .btn-icon {
     display: inline-flex;
     align-items: center;
@@ -557,6 +671,132 @@
     color: var(--ink-inverse);
     background: rgb(var(--mark-rgb) / 0.85);
     border-color: rgb(var(--mark-rgb) / 0.85);
+  }
+
+  /* The third tone. ConfirmProvider only ever needed primary and danger, so
+     .btn-outline was never written — but ErrorBoundary and NotFoundPage both
+     reach for it, and both got a bare .btn. On the crash screen that meant
+     "Reload" and "Clear local settings" rendered identically, with no way to
+     tell the safe action from the destructive-ish one. */
+  .btn-outline {
+    color: var(--ink-soft);
+    background: transparent;
+    border-color: var(--edge-strong);
+  }
+  .btn-outline:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--paper-sunken);
+    border-color: var(--edge-strong);
+  }
+
+  /* ── page scaffold ───────────────────────────────────────────────────────
+     .column / .page / .empty-state went with components.css. NotFoundPage is
+     the only consumer today and has been rendering as raw browser defaults
+     ever since, but every full-page state wants this shape — an empty class
+     list, a week with no plan, a calendar that failed to load. */
+  .column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .page {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: var(--sp-8) var(--gutter) calc(var(--sp-8) + var(--safe-b));
+  }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-3);
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: var(--sp-10) 0;
+    text-align: center;
+  }
+  .empty-state h1 {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--lh-snug);
+  }
+  .empty-state p {
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+  }
+
+  /* ── the crash screen ────────────────────────────────────────────────────
+     This is the one surface a teacher only ever sees when something has
+     already gone wrong, and it has been rendering unstyled. It sits outside
+     the router and outside the shell, so it must be self-sufficient: no
+     layout class from a parent, no assumption that anything else mounted. */
+  .crash {
+    display: grid;
+    place-items: center;
+    min-height: var(--app-h);
+    padding: max(var(--sp-6), var(--safe-t)) var(--gutter) max(var(--sp-6), var(--safe-b));
+    background: var(--paper);
+  }
+  .crash-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    width: min(34rem, 100%);
+    padding: var(--sp-6);
+    background: var(--paper-raised);
+    /* Rule 2: docked, not floating — a hairline, not a shadow. */
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-lg);
+  }
+  .crash-card h1 {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--lh-snug);
+  }
+  .crash-card > p {
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+  }
+  .crash-message {
+    padding: var(--sp-3);
+    font-family: var(--font-mono);
+    /* An error message is frequently one long unbroken token. */
+    overflow-wrap: anywhere;
+    color: var(--mark);
+    background: var(--mark-tint);
+    border-radius: var(--r-sm);
+  }
+  .crash-card > .crash-message {
+    font-size: var(--fs-xs);
+  }
+  .crash-details summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--touch-min);
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+  .crash-details pre {
+    max-height: 14rem;
+    overflow: auto;
+    padding: var(--sp-3);
+    margin-top: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    line-height: var(--lh-normal);
+    color: var(--ink-muted);
+    background: var(--paper-sunken);
+    border-radius: var(--r-sm);
+  }
+  .crash-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
   }
 
   /* ── toasts ─────────────────────────────────────────────────────────────
@@ -814,5 +1054,45 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+
+  /* ── touch targets ────────────────────────────────────────────────────────
+     A 36px control with a 44px target. The pseudo-element is transparent and
+     absolutely positioned, so it costs no layout: the icon stays the size the
+     desktop density needs and the thumb still gets its 44px.
+
+     Growing the controls themselves was the alternative and it is worse — the
+     composer's six h-9 icon buttons at 44px would push the send button off the
+     row, and a 44px paperclip reads as a bug.
+
+     ::before, not ::after: .cite.is-ungrounded already spends its ::after on the
+     ※ reference mark, and .cite is one of the controls that most needs this — a
+     standard code set at 0.9em mono is a ~10px tap target. */
+  .tap-target {
+    position: relative;
+  }
+  .tap-target::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100%, var(--touch-min));
+    height: max(100%, var(--touch-min));
+  }
+
+  /* ── scrollers ────────────────────────────────────────────────────────────
+     Applied by class rather than to `*`: overscroll-behavior on every element
+     is a repaint tax, and only the handful of real scrollers need it. Without
+     it, reaching the end of an inner list rubber-bands the whole app on iOS. */
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
   }
 }

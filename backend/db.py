@@ -260,6 +260,29 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_curriculum_chunks_vec
       ON curriculum_chunks USING hnsw (embedding vector_cosine_ops);
     """,
+    # ── 11: a plan knows which week it is ────────────────────────────────────
+    # week_board joined plans to weeks by PARSING WHAT THE MODEL WROTE —
+    # units.week_number(plans.week_label), where week_label is free text the LLM
+    # emitted into `week_of`. That was tolerable while the board was a read-only
+    # list. It is not tolerable now that the week number is a URL: /week/12
+    # resolving to the right plan would depend on the model having chosen to
+    # write "Week 12 — ..." rather than "the week of October 19".
+    #
+    # The backfill uses the same regex units.week_number does, so nothing that
+    # currently resolves stops resolving. Rows whose label never parsed stay
+    # NULL — they were already invisible to the board, and guessing a week for
+    # them would put a plan on a date nobody chose.
+    """
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS week_number INTEGER;
+
+    UPDATE plans
+       SET week_number = NULLIF(substring(week_label FROM '(?i)week\\s*0*(\\d{1,2})'), '')::int
+     WHERE week_number IS NULL
+       AND week_label ~* 'week\\s*0*\\d{1,2}';
+
+    CREATE INDEX IF NOT EXISTS idx_plans_week
+      ON plans(user_id, class_id, week_number);
+    """,
 ]
 
 
@@ -549,11 +572,20 @@ def create_plan(
     chat_id: str | None,
     template: str,
     class_id: str | None = None,
+    week_number: int | None = None,
 ) -> dict:
+    from .units import week_number as parse_week
+
+    # Prefer the week the caller actually meant. Falling back to the label keeps
+    # free-text generation working, but a caller that knows the week (the week
+    # page does) must never have its answer overridden by what the model wrote.
+    wk = week_number if week_number is not None else parse_week(week_label or "")
+
     _write(
         """INSERT INTO plans (id, user_id, created_at, course, week_label, unit, query, plan_json,
-                              docx_path, retrieved_ids, warnings, chat_id, template, class_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                              docx_path, retrieved_ids, warnings, chat_id, template, class_id,
+                              week_number)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             plan_id,
             user_id,
@@ -569,6 +601,7 @@ def create_plan(
             chat_id,
             template,
             class_id,
+            wk,
         ),
     )
     return get_plan(user_id, plan_id)  # type: ignore[return-value]
@@ -928,17 +961,20 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
     # unplanned.
     if cls:
         rows = _rows(
-            "SELECT week_label, id, unit, class_id, course FROM plans WHERE user_id = ? AND (class_id = ? OR (class_id IS NULL AND course = ?))",
+            "SELECT week_label, week_number, id, unit, class_id, course FROM plans WHERE user_id = ? AND (class_id = ? OR (class_id IS NULL AND course = ?))",
             (user_id, cls["id"], cls["name"]),
         )
     else:
-        rows = _rows("SELECT week_label, id, unit, class_id, course FROM plans WHERE user_id = ?", (user_id,))
+        rows = _rows("SELECT week_label, week_number, id, unit, class_id, course FROM plans WHERE user_id = ?", (user_id,))
 
     from .units import week_number
 
     by_week: dict[int, dict] = {}
     for r in rows:
-        n = week_number(r["week_label"] or "")
+        # The stored column is the week the teacher asked for; the label parse is
+        # only a fallback for rows written before migration 11 whose backfill
+        # found nothing.
+        n = r.get("week_number") or week_number(r["week_label"] or "")
         if n is not None:
             by_week.setdefault(n, {"plan_id": r["id"], "week_label": r["week_label"], "unit": r.get("unit")})
 
@@ -947,11 +983,16 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
     out = []
     for w in weeks:
         plan = by_week.get(w["week"])
+        days = schoolcal.week_days(w)
         out.append(
             {
                 **w,
                 "label": schoolcal.label_for(w),
-                "teaching_days": len(schoolcal.teaching_days(w)),
+                # Mon–Fri with a date and a reason on each. The board can shade a
+                # holiday in the cell it actually falls in; the week row alone
+                # could only say "something in here is closed".
+                "days": days,
+                "teaching_days": sum(1 for d in days if d["is_school"]),
                 "plan_id": (plan or {}).get("plan_id"),
                 # What the week is ABOUT. The board shows this instead of
                 # repeating the date that is already in the row's date column.

@@ -127,8 +127,15 @@ def finalize(
     result: RetrievalResult,
     chat_id: str | None = None,
     bg_tasks: BackgroundTasks | None = None,
+    class_id: str | None = None,
+    week_number: int | None = None,
 ) -> dict:
-    """Validate, stamp identity, build the .docx, persist. Returns the plan row."""
+    """Validate, stamp identity, build the .docx, persist. Returns the plan row.
+
+    `week_number` is the week the teacher actually asked for, when the caller
+    knows it. Without it the week is parsed back out of whatever label the model
+    wrote, which is a guess — see migration 11.
+    """
     started = time.monotonic()
     plan, warnings = schema.validate_plan(plan_raw)
 
@@ -162,6 +169,12 @@ def finalize(
         warnings=warnings,
         chat_id=chat_id,
         template=docx_build.builder_template(),
+        # Was never passed, so every plan since migration 9 has been written with
+        # class_id NULL — the week board only found them at all through its
+        # `class_id IS NULL AND course = name` fallback, which breaks the moment
+        # two classes share a display name.
+        class_id=class_id or (db.resolve_class(user_id) or {}).get("id"),
+        week_number=week_number,
     )
     log.info(
         "plan built id=%s week=%r warnings=%d elapsed_ms=%d",

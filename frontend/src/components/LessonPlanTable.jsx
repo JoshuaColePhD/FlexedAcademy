@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { ArrowUp, Sparkles, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { api } from '../lib/api'
+import { useToast } from '../lib/toastContext'
 import { CitedText } from './Citation'
 import { SkeletonText } from './Skeleton'
 
@@ -57,8 +59,10 @@ function LessonCell({ day }) {
    one second later, which is the same misreport with better timing. */
 export function LessonPlanTable({
   plan,
+  planId,
   groundedCodes,
   onReviseDay,
+  onPlanRevised,
   busy,
   missingDays = 'no_school',
 }) {
@@ -66,37 +70,39 @@ export function LessonPlanTable({
   const [drafts, setDrafts] = useState({})
   const [feedbackSent, setFeedbackSent] = useState(false)
   const [revisingWholePlan, setRevisingWholePlan] = useState(false)
+  const toast = useToast()
 
+  /* Both of these used to be bare fetch() calls gated on `plan.id`. `plan` is
+     plan_json, which has no id — the DB id arrives as `planId` — so the toolbar
+     below was gated on undefined and never rendered. Fixing the gate is what
+     makes the feature exist at all; routing through lib/api.js is what makes it
+     send the session cookie, surface a {code,message,hint} error, and reach the
+     global 401 handler. */
   const handleFeedback = async (isGood) => {
-    if (!plan?.id || feedbackSent) return
+    if (!planId || feedbackSent) return
     setFeedbackSent(true)
     try {
-      await fetch(`/api/plans/${plan.id}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_good: isGood })
-      })
+      await api.planFeedback(planId, isGood)
+      toast.success(isGood ? 'Thanks — noted.' : 'Thanks. That helps tune the prompt.')
     } catch (e) {
-      console.error('Failed to submit feedback', e)
+      setFeedbackSent(false)
+      toast.apiError("Couldn't send that", e)
     }
   }
 
   const handleReviseWholePlan = async () => {
-    if (!plan?.id || revisingWholePlan) return
+    if (!planId || revisingWholePlan) return
     setRevisingWholePlan(true)
     try {
-      const res = await fetch(`/api/plans/${plan.id}/revise`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      if (!res.ok) throw new Error('Revise failed')
-      // The response body is the updated plan, but this component has no way to
-      // hand it upward — hence the reload prompt below. Left unread rather than
-      // assigned to a variable nothing uses.
-      alert('AI Revision complete! Please refresh the page to see the new plan.')
+      const row = await api.revisePlan(planId)
+      // The endpoint returns the updated row. Handing it upward is what replaces
+      // `alert('...please refresh the page')` — asking a teacher to reload as
+      // part of a normal, successful action is not a loading state, it's a bug
+      // with a dialog in front of it.
+      onPlanRevised?.(row)
+      toast.success('Revised', 'The week has been rewritten and the .docx rebuilt.')
     } catch (e) {
-      console.error('Failed to revise whole plan', e)
-      alert('Failed to revise the plan.')
+      toast.apiError("Couldn't revise the plan", e)
     } finally {
       setRevisingWholePlan(false)
     }
@@ -123,35 +129,40 @@ export function LessonPlanTable({
 
   return (
     <div className="plan-doc">
-      <div className="plan-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="plan-head">
         <h2>{plan.week_of || 'Untitled week'}</h2>
-        {plan.id && (
-          <div className="plan-feedback" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        {planId ? (
+          <div className="plan-feedback">
             <button
+              type="button"
               className="btn"
-              disabled={revisingWholePlan}
+              disabled={revisingWholePlan || busy}
               onClick={handleReviseWholePlan}
             >
-              {revisingWholePlan ? 'Revising...' : 'AI Review & Revise'}
+              {revisingWholePlan ? 'Revising…' : 'AI review & revise'}
             </button>
-            <button 
-              className="btn-icon" 
-              disabled={feedbackSent} 
+            <button
+              type="button"
+              className="btn-icon"
+              disabled={feedbackSent}
               onClick={() => handleFeedback(true)}
-              title="Good plan"
+              aria-label="This plan is good"
+              title="This plan is good"
             >
-              <ThumbsUp size={16} />
+              <ThumbsUp size={16} aria-hidden="true" />
             </button>
-            <button 
-              className="btn-icon" 
-              disabled={feedbackSent} 
+            <button
+              type="button"
+              className="btn-icon"
+              disabled={feedbackSent}
               onClick={() => handleFeedback(false)}
-              title="Bad plan"
+              aria-label="This plan needs work"
+              title="This plan needs work"
             >
-              <ThumbsDown size={16} />
+              <ThumbsDown size={16} aria-hidden="true" />
             </button>
           </div>
-        )}
+        ) : null}
       </div>
       <div className="plan-meta">
         {plan.teacher ? (

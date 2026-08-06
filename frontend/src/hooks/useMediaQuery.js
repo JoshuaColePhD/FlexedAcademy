@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { COARSE, atLeast, below, between } from '../lib/breakpoints'
 
 /** Reactive media query, so layout decisions don't get made once at mount from a
  *  stale window.innerWidth. */
@@ -16,9 +17,31 @@ export function useMediaQuery(query) {
   return matches
 }
 
-/* Both of these are duplicated in components.css — NARROW at the `.sidebar`
-   drawer block, PANEL_OVERLAY at the `.artifact-panel` absolute-position block.
-   Keep them in step: the JS decides whether to trap focus, the CSS decides
-   whether the thing is actually covering the page, and they must agree. */
-export const NARROW = '(max-width: 900px)'
-export const PANEL_OVERLAY = '(max-width: 1180px)'
+/* Every number below comes from lib/breakpoints.js, which tailwind.config.js
+   also reads. There is no second copy to keep in step any more. */
+
+/** Below this the sidebar is a drawer, not a dock. */
+export const NARROW = below('lg')
+
+/** Below this the artifact cannot sit beside the plan; it overlays. */
+export const PANEL_OVERLAY = below('xl')
+
+/** The review/author line. Below it a teacher reads a plan; they don't build one. */
+export const PHONE = below('md')
+
+export const TOUCH = COARSE
+
+/** 'phone' | 'tablet' | 'desktop'.
+ *
+ *  One decision, read everywhere — instead of four components each asking a
+ *  slightly different question about the same screen and disagreeing at the
+ *  edges. Components that need a layout branch should use this; the raw
+ *  constants above are for the two overlay decisions that are genuinely about
+ *  a specific piece of chrome. */
+export function useLayoutMode() {
+  const phone = useMediaQuery(below('md'))
+  const tablet = useMediaQuery(between('md', 'lg'))
+  return phone ? 'phone' : tablet ? 'tablet' : 'desktop'
+}
+
+export { atLeast, below, between }

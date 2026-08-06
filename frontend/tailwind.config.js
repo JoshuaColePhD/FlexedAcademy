@@ -12,9 +12,16 @@
    components rely on (`bg-paper/50`, `border-accent/30`) keep working. */
 const c = (name) => `rgb(var(--${name}-rgb) / <alpha-value>)`
 
+import { screens } from './src/lib/breakpoints.js'
+
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    /* REPLACES Tailwind's defaults rather than extending them, so `sm:` means
+       480 and not 640. Every existing sm: in this app is "hide a secondary
+       label on a phone" — a tablet-sized 640 was never what any of them meant.
+       Same file tailwind and useMediaQuery both read; see lib/breakpoints.js. */
+    screens,
     extend: {
       colors: {
         /* surfaces */
@@ -63,7 +70,24 @@ export default {
       maxWidth: {
         measure: 'var(--measure)',
         'measure-form': 'var(--measure-form)',
+        'measure-wide': 'var(--measure-wide)',
       },
+
+      /* h-app instead of h-screen. 100vh on iOS Safari is taller than the
+         visible viewport, which is what puts a bottom-docked composer under the
+         browser chrome; --app-h resolves to 100dvh where that exists. */
+      height: { app: 'var(--app-h)' },
+      minHeight: { app: 'var(--app-h)', touch: 'var(--touch-min)' },
+      minWidth: { touch: 'var(--touch-min)' },
+
+      spacing: {
+        gutter: 'var(--gutter)',
+        'safe-t': 'var(--safe-t)',
+        'safe-b': 'var(--safe-b)',
+        tabbar: 'var(--tabbar-h)',
+      },
+
+      backgroundImage: { 'hatch-closed': 'var(--hatch-closed)' },
 
       boxShadow: {
         xs: 'var(--shadow-xs)',

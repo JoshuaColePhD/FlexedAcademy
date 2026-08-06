@@ -138,6 +138,18 @@ export const api = {
   getPlan: (id) => request(`/api/plans/${id}`),
   rebuildPlan: (id) => request(`/api/plans/${id}/rebuild`, { method: 'POST' }),
   deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),
+  /* These two existed on the server and were called from LessonPlanTable with a
+     bare fetch() — no credentials: 'include', so they would 401 the moment the
+     app is served cross-origin, no {code,message,hint} envelope, and no route
+     into the global 401 handler. Going through `request` fixes all three, and
+     revisePlan returns the updated row so the caller can put it straight into
+     state instead of telling the teacher to refresh the page. */
+  revisePlan: (id) => request(`/api/plans/${id}/revise`, { method: 'POST' }),
+  planFeedback: (id, isGood, notes) =>
+    request(`/api/plans/${id}/feedback`, {
+      method: 'POST',
+      body: { is_good: isGood, ...(notes ? { notes } : {}) },
+    }),
   planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,
   /* The two raw SSE endpoints. generate_stream drives useLessonStream and yields
      a structured plan with grounding; chat_stream drives useChatStream and yields

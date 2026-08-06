@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component {
       <div className="crash">
         <div className="crash-card">
           <h1>Something broke in the interface</h1>
-          <p style={{ color: 'var(--ink-muted)' }}>
+          <p>
             Your plans are stored on the server, so nothing has been lost. Reloading usually clears
             it.
           </p>
@@ -37,7 +37,7 @@ export class ErrorBoundary extends Component {
             <summary>Technical details</summary>
             <pre>{String(this.state.error?.stack || this.state.error)}</pre>
           </details>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+          <div className="crash-actions">
             <button type="button" className="btn btn-primary" onClick={() => location.reload()}>
               <RotateCcw size={14} aria-hidden="true" /> Reload
             </button>

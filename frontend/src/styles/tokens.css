@@ -120,7 +120,39 @@
   --measure: 46rem;
   /* A settings form wants to stay narrower than prose. */
   --measure-form: 42rem;
+  /* The year grid is a table, not prose. Rule 3 governs the reading column; a
+     43×5 grid squeezed into --measure would be unreadable, and widening
+     --measure to suit it would wreck every paragraph in the app. */
+  --measure-wide: 68rem;
   --topbar-h: 56px;
+
+  /* ── touch & mobile layout ───────────────────────────────────────────────
+     44px is the WCAG 2.5.5 / iOS HIG minimum. It is a HIT-AREA floor, not a
+     visual size — see .tap-target in base.css, which grows the target without
+     growing the control. A 44px paperclip in a composer looks like a mistake. */
+  --touch-min: 44px;
+  --touch-min-lg: 48px; /* the one primary action on a screen: Download */
+
+  --tabbar-h: 56px;
+  --sheet-max-h: 85vh;
+  --sheet-radius: var(--r-xl);
+
+  /* Safe areas. env() resolves to 0px on every desktop browser, so these can be
+     used unconditionally — no @supports fork at each call site. Requires
+     viewport-fit=cover in index.html, or they stay 0 even on a notched phone. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+
+  /* The app's real height. 100vh on iOS Safari is the URL-bar-COLLAPSED height,
+     so a shell sized to it is taller than what you can see and a bottom-docked
+     composer sits under the browser chrome. dvh is the fix; the vh line is the
+     fallback for anything without it. */
+  --app-h: 100vh;
+
+  /* Page gutter, one value stepped by width, so nothing hand-picks px-5. */
+  --gutter: var(--sp-4);
 
   /* ══ LIGHT ═══════════════════════════════════════════════════════════════ */
 
@@ -204,6 +236,34 @@
   --district-blue-soft: rgb(var(--doc-blue-rgb) / 0.22);
   --district-tag-bg: rgb(var(--doc-blue-rgb) / 0.12);
 
+  /* A closed day on the year grid. Rule 1 says separation is tone — but tone
+     alone can't distinguish "school is shut" from "this surface is sunken", and
+     on a calendar that difference is the whole point. The hatch carries the
+     meaning the tone can't. Built from --ink-faint-rgb, so it flips with the
+     theme and needs no dark override. */
+  --hatch-closed: repeating-linear-gradient(
+    45deg,
+    transparent 0 5px,
+    rgb(var(--ink-faint-rgb) / 0.14) 5px 6px
+  );
+}
+
+/* dvh where it exists. Declared after :root so it wins, and as its own block so
+   the fallback above stays readable. */
+@supports (height: 100dvh) {
+  :root {
+    --app-h: 100dvh;
+    --sheet-max-h: 85dvh;
+  }
+}
+
+/* Gutters open up as the screen does. Declared here rather than at each call
+   site, so `px-gutter` is correct at every width without a responsive prefix. */
+@media (min-width: 768px) {
+  :root { --gutter: var(--sp-6); }
+}
+@media (min-width: 1024px) {
+  :root { --gutter: var(--sp-8); }
 }
 
 /* ══ DARK — cooled the same way ══════════════════════════════════════════════════════════════════
