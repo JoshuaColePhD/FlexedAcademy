@@ -144,58 +144,62 @@ def main() -> int:
     from backend.embeddings import embed_texts
 
     db.connect()
-    ctx = db.borrow(); conn = ctx.__enter__()
+    # A real `with`, not ctx.__enter__(). borrow() takes a pool slot and a
+    # semaphore permit; entering without exiting leaks both. Harmless in a
+    # script that exits immediately, wrong everywhere else, and this file is
+    # the example someone copies.
+    with db.borrow() as conn:
     
-    if not args.upsert:
+        if not args.upsert:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM chunks")
+                conn.commit()
+                print("Dropped existing chunks.")
+
+        print(f"Embedding {len(ids)} chunks with {EMBED_MODEL} ({EMBED_DIMS} dims)...")
+    
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM chunks")
-            conn.commit()
-            print("Dropped existing chunks.")
-
-    print(f"Embedding {len(ids)} chunks with {EMBED_MODEL} ({EMBED_DIMS} dims)...")
-    
-    with conn.cursor() as cur:
-        for start in range(0, len(ids), BATCH_SIZE):
-            end = min(start + BATCH_SIZE, len(ids))
-            print(f"  {start}-{end}")
+            for start in range(0, len(ids), BATCH_SIZE):
+                end = min(start + BATCH_SIZE, len(ids))
+                print(f"  {start}-{end}")
             
-            batch_ids = ids[start:end]
-            batch_docs = documents[start:end]
-            batch_metas = metadatas[start:end]
+                batch_ids = ids[start:end]
+                batch_docs = documents[start:end]
+                batch_metas = metadatas[start:end]
             
-            # One API call per sub-batch, retried inside embed_texts.
-            batch_embs = embed_texts(batch_docs)
+                # One API call per sub-batch, retried inside embed_texts.
+                batch_embs = embed_texts(batch_docs)
             
-            from psycopg2.extras import execute_values
-            import json
+                from psycopg2.extras import execute_values
+                import json
             
-            # Use execute_values for fast insert
-            values = []
-            for i, d, m, e in zip(batch_ids, batch_docs, batch_metas, batch_embs):
-                values.append((i, d, json.dumps(m), e))
+                # Use execute_values for fast insert
+                values = []
+                for i, d, m, e in zip(batch_ids, batch_docs, batch_metas, batch_embs):
+                    values.append((i, d, json.dumps(m), e))
                 
-            execute_values(
-                cur,
-                "INSERT INTO chunks (id, document, metadata, embedding) VALUES %s ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document, metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding",
-                values
-            )
-            conn.commit()
+                execute_values(
+                    cur,
+                    "INSERT INTO chunks (id, document, metadata, embedding) VALUES %s ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document, metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding",
+                    values
+                )
+                conn.commit()
             
-        cur.execute("SELECT COUNT(*) FROM chunks")
-        final = cur.fetchone()["count"]
+            cur.execute("SELECT COUNT(*) FROM chunks")
+            final = cur.fetchone()["count"]
         
-    print(f"\\nStored {final} chunks in PostgreSQL 'chunks' table.")
+        print(f"\\nStored {final} chunks in PostgreSQL 'chunks' table.")
 
-    # Spot check
-    with conn.cursor() as cur:
-        cur.execute("SELECT id, metadata FROM chunks LIMIT 1")
-        sample = cur.fetchone()
+        # Spot check
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, metadata FROM chunks LIMIT 1")
+            sample = cur.fetchone()
         
-    if sample:
-        meta = sample["metadata"]
-        print("Spot-check:", sample["id"],
-              f"-> course={meta.get('course')} grade={meta.get('grade')} "
-              f"code={meta.get('code')} verbatim_ok={meta.get('verbatim_ok')}")
+        if sample:
+            meta = sample["metadata"]
+            print("Spot-check:", sample["id"],
+                  f"-> course={meta.get('course')} grade={meta.get('grade')} "
+                  f"code={meta.get('code')} verbatim_ok={meta.get('verbatim_ok')}")
     return 0
 
 

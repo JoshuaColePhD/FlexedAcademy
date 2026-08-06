@@ -290,6 +290,35 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_plans_week
       ON plans(user_id, class_id, week_number);
     """,
+    # ── 12: close the public REST API ────────────────────────────────────────
+    # Supabase exposes the `public` schema to PostgREST, so with RLS off anyone
+    # holding the project's anon key — which Supabase treats as public by
+    # design, and which is meant to ship in frontend code — could read and write
+    # users, plans, chats and messages directly, over the internet, with no
+    # login. Supabase's own security advisor flagged all twelve tables as ERROR.
+    #
+    # This was first applied by hand. It is a migration now because a database
+    # that starts insecure and depends on someone remembering to lock it is a
+    # database that will eventually be left unlocked — and the app has already
+    # been rebuilt on a fresh project once.
+    #
+    # The app is unaffected: it connects over the pooler as `postgres`, which
+    # has BYPASSRLS. Deliberately NO policies — a policy would be a way in, and
+    # there is no legitimate caller here that isn't already bypassing RLS.
+    """
+    ALTER TABLE users               ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE classes             ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE settings            ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE chats               ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE messages            ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE plans               ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE plan_feedback       ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE curriculum_maps     ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE curriculum_progress ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE curriculum_chunks   ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE chunks              ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE schema_version      ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
