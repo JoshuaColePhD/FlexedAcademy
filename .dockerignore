@@ -1,0 +1,25 @@
+# Keep the build context small and the image clean. venv/ alone is ~1GB and
+# would be copied into the build context on every build without this.
+venv/
+.venv/
+**/node_modules/
+frontend/dist/
+.git/
+.env
+.env.*
+!.env.example
+__pycache__/
+**/__pycache__/
+*.pyc
+*.egg-info/
+plans/
+temp/
+scratch/
+logs/
+.DS_Store
+.claude/
+.agents/
+eval/
+scripts/
+Dockerfile
+.dockerignore
