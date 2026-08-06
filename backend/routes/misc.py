@@ -50,7 +50,9 @@ def health():
         # session cookie is marked Secure. Knowing them helps a defender far
         # more than an attacker, who can determine both by trying anyway.
         "require_login": settings.require_login,
-        "cookie_secure": settings.cookie_secure,
+        # Derived per-request now (see routes/auth.py). Reported as the
+        # OVERRIDE flag only — "false" here means "auto", not "insecure".
+        "cookie_secure_forced": settings.cookie_secure,
         # Length only, never the value. Every deploy failure so far has been a
         # malformed DATABASE_URL, and each one cost a round trip through the
         # logs to identify. 110 is correct; 160 means the host is in there twice.
