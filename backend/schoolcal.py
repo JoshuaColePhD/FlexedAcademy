@@ -43,6 +43,47 @@ _MONTHS = {
 _WEEK_OFF = re.compile(r"no school all week|break\s*[—-]\s*no school|winter break", re.I)
 _ANY_CLOSURE = re.compile(r"no school", re.I)
 
+_DOW = ("Mon", "Tue", "Wed", "Thu", "Fri")
+
+_MONTH_ALT = "|".join(_MONTHS)
+
+# "Oct 8–9", "Nov 23–27", "Mar 22–26", "Nov 11", and the cross-month "Dec 21–Jan 1".
+# Used on both the bullet list at the top of the file and the per-week Notes; the
+# two are redundant on purpose, and the redundancy is the point — a date has to be
+# missing from BOTH to fall through.
+_SPAN = re.compile(
+    rf"(?P<m1>{_MONTH_ALT})\s+(?P<d1>\d{{1,2}})"
+    rf"(?:\s*[-–—]\s*(?:(?P<m2>{_MONTH_ALT})\s+)?(?P<d2>\d{{1,2}}))?",
+    re.I,
+)
+
+# Bullets that name a boundary rather than a closure. "Last day May 27" is when
+# the year ENDS, not a day off — treating it as one would close the final week.
+_NOT_A_CLOSURE = re.compile(r"last day|first day|school starts|return from", re.I)
+
+# The human name of a closure, when the note bothers to give one:
+#   "Mon Sep 7 = Labor Day (no school)"  ->  "Labor Day"
+_NAMED = re.compile(r"=\s*([^(;]+)")
+
+
+# "Thu–Fri Oct 8–9 may be no school" leads with the weekday, not a holiday name.
+# Without this the calendar cell would read "Thu–Fri", which is both wrong and
+# already obvious from the column the cell is sitting in.
+_LEADING_DOW = re.compile(
+    r"^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*[-–—]?\s*)+", re.I
+)
+
+
+def _reason(segment: str) -> str:
+    """A label worth showing in a calendar cell. Falls back to the generic rather
+    than inventing one — an unnamed closure is still a closure."""
+    named = _NAMED.search(segment)
+    if named:
+        return named.group(1).strip(" .")
+    # Bullet-list form: the label is whatever precedes the first date token.
+    head = _SPAN.split(segment)[0].strip(" -–—.;")
+    return _LEADING_DOW.sub("", head).strip(" -–—.;") or "No school"
+
 
 def _mk_date(token: str, fall_year: int, spring_year: int) -> date | None:
     """"Oct 19" -> date. Aug–Dec belong to the first year of the span, Jan–Jul to
@@ -57,6 +98,22 @@ def _mk_date(token: str, fall_year: int, spring_year: int) -> date | None:
 
 
 @lru_cache(maxsize=1)
+def _read() -> tuple[str, int, int]:
+    """The calendar file plus the two years its dates belong to. Cached because
+    every week board hits it and it changes once a year."""
+    path = settings.calendar_path
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        log.warning("school calendar not readable at %s — week board will be empty", path)
+        return "", date.today().year, date.today().year
+
+    m = _YEARS.search(text)
+    fall_year, spring_year = (int(m.group(1)), int(m.group(2))) if m else (date.today().year,) * 2
+    return text, fall_year, spring_year
+
+
+@lru_cache(maxsize=1)
 def school_weeks() -> list[dict]:
     """Every numbered week of the year, in order.
 
@@ -67,15 +124,9 @@ def school_weeks() -> list[dict]:
       closures   True when any day in it is out — a plan for such a week has
                  fewer than five teaching days
     """
-    path = settings.calendar_path
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        log.warning("school calendar not readable at %s — week board will be empty", path)
+    text, fall_year, spring_year = _read()
+    if not text:
         return []
-
-    m = _YEARS.search(text)
-    fall_year, spring_year = (int(m.group(1)), int(m.group(2))) if m else (date.today().year,) * 2
 
     weeks: list[dict] = []
     for line in text.splitlines():
@@ -130,12 +181,114 @@ def label_for(week: dict) -> str:
     return f"Week {week['week']:02d} — {span}, {end.year}"
 
 
-def teaching_days(week: dict) -> list[str]:
-    """Monday–Friday as ISO dates, minus whole-week closures. Individual
-    no-school days stay in the list: the note names them ("Mon Jan 18 = MLK Day")
-    but not in a shape worth parsing, and the model is already told to mark a day
-    `no_school` when the calendar says so."""
-    if week["no_school"]:
-        return []
+def _dates_in(segment: str, fall_year: int, spring_year: int) -> list[date]:
+    """Every date a phrase refers to, expanding "Oct 8–9" and "Dec 21–Jan 1"."""
+    out: list[date] = []
+    for m in _SPAN.finditer(segment):
+        first = _mk_date(f"{m.group('m1')} {m.group('d1')}", fall_year, spring_year)
+        if not first:
+            continue
+        if not m.group("d2"):
+            out.append(first)
+            continue
+        last = _mk_date(
+            f"{m.group('m2') or m.group('m1')} {m.group('d2')}", fall_year, spring_year
+        )
+        # A span that appears to run backwards has crossed the new year, which
+        # _mk_date can't see from the month alone: "Dec 21–Jan 1" reads as
+        # Dec 2026 → Jan 2026. Push the end into the following year.
+        if last and last < first:
+            last = last.replace(year=last.year + 1)
+        if not last or (last - first).days > 30:
+            out.append(first)
+            continue
+        out.extend(first + timedelta(days=i) for i in range((last - first).days + 1))
+    return out
+
+
+@lru_cache(maxsize=1)
+def closure_days() -> dict[str, str]:
+    """Every individual day the school is closed -> why.
+
+    Read from BOTH the bullet list at the top of the calendar file and the
+    per-week Notes column, because the two disagree in useful ways: the bullets
+    name the holiday ("Veterans Day Nov 11") while the notes say which weekday it
+    lands on ("Wed Nov 11 = Veterans Day (no school)"). A named reason wins over
+    the generic one, so a cell can say "Veterans Day" rather than "No school".
+
+    Whole-week closures are deliberately NOT expanded here — `week["no_school"]`
+    already carries those, and duplicating them would make a Fall Break week look
+    like five unrelated holidays.
+    """
+    text, fall_year, spring_year = _read()
+    if not text:
+        return {}
+
+    out: dict[str, str] = {}
+
+    def add(segment: str) -> None:
+        if _NOT_A_CLOSURE.search(segment):
+            return
+        reason = _reason(segment)
+        for d in _dates_in(segment, fall_year, spring_year):
+            iso = d.isoformat()
+            # First writer wins unless it only had the generic label to offer.
+            if iso not in out or out[iso].lower().startswith("no school"):
+                out[iso] = reason
+
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("- "):  # the bullet list
+            for segment in line[2:].split(";"):
+                if not _WEEK_OFF.search(segment):
+                    add(segment)
+        elif (row := _ROW.match(line)) and not _WEEK_OFF.search(row.group(4)):
+            notes = row.group(4).strip(" |")
+            if _ANY_CLOSURE.search(notes):
+                add(notes)
+
+    return out
+
+
+def week_days(week: dict) -> list[dict]:
+    """Monday–Friday as five records: {date, dow, is_school, note}.
+
+    Always five, even for a week the school is shut — a calendar grid needs a
+    cell per column, and "closed" is information, not absence.
+
+    This is what lets the interface shade a holiday IN PLACE. The week row alone
+    can only say "week 15 has a closure somewhere"; deriving Wednesday from that
+    in the browser is the same guessing that put a lesson plan inside Fall Break.
+    """
     start = date.fromisoformat(week["start"])
-    return [(start + timedelta(days=i)).isoformat() for i in range(5)]
+    end = date.fromisoformat(week["end"])
+    # Anchor on the real Monday, not on `start`. Week 1 starts Wednesday and the
+    # last week ends Thursday; counting five days forward from `start` would have
+    # week 1 running Wed–Sun.
+    monday = start - timedelta(days=start.weekday())
+    closed = closure_days()
+
+    out = []
+    for i in range(5):
+        d = monday + timedelta(days=i)
+        iso = d.isoformat()
+        if week["no_school"]:
+            is_school, note = False, (week["notes"] or "No school")
+        elif d < start:
+            is_school, note = False, "Before the first day"
+        elif d > end:
+            is_school, note = False, "After the last day"
+        elif iso in closed:
+            is_school, note = False, closed[iso]
+        else:
+            is_school, note = True, ""
+        out.append({"date": iso, "dow": _DOW[i], "is_school": is_school, "note": note})
+    return out
+
+
+def teaching_days(week: dict) -> list[str]:
+    """The ISO dates school is actually in session that week — now derived from
+    `week_days`, so the count the board shows and the grid a teacher reads cannot
+    drift apart. Previously this returned all five days of any week that wasn't
+    wholly closed, which overcounted every holiday week by one."""
+    return [d["date"] for d in week_days(week) if d["is_school"]]

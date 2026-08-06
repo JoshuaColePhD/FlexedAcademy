@@ -2,13 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Was /logo.png, a 1024px 399KB file, downloaded on every cold load. On
+         school wifi that is most of a second spent on a 16px square. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) return anything
+         other than 0 — without it the safe-area tokens are dead weight and a
+         bottom bar sits under the home indicator.
+
+         interactive-widget=resizes-content shrinks the layout viewport when the
+         soft keyboard opens, instead of letting the page scroll underneath it.
+         Chromium-only; iOS relies on --app-h being 100dvh.
+
+         No maximum-scale / user-scalable=no: teachers zoom into standards text,
+         and disabling that is an accessibility failure, not a polish win. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Value is written by the pre-paint script below so it follows data-theme
+         rather than the system scheme; a teacher who forced light mode on a dark
+         phone should not get a dark status bar. -->
+    <meta name="theme-color" content="#fbfbfc" />
     <meta
       name="description"
       content="Build a week of lesson plans for your class, grounded in the Alabama Course of Study and delivered in the Florence City Schools template."
     />
-    <title>Lesson Plans</title>
+    <title>Flexed Academy</title>
 
     <!-- Fonts via preconnect + stylesheet rather than an @import at the top of
          the CSS, which blocks rendering until it resolves.
@@ -33,6 +54,11 @@
           (saved === 'system' &&
             window.matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+        // Browser chrome (iOS status bar, Android URL bar) matches --paper.
+        // Literal hex because a meta tag can't read a custom property; these are
+        // the two --paper-rgb values in tokens.css.
+        var tc = document.querySelector('meta[name="theme-color"]')
+        if (tc) tc.setAttribute('content', dark ? '#101216' : '#fbfbfc')
       } catch (e) {
         document.documentElement.setAttribute('data-theme', 'light')
       }
@@ -41,8 +67,12 @@
   <!-- No oncontextmenu handler. Suppressing right-click across the whole app was
        borrowed from IDE chrome, but teachers copy text out of a plan constantly
        and it broke every one of those attempts. -->
+  <!-- h-app not h-screen: see --app-h in tokens.css.
+       w-full not w-screen: 100vw includes the scrollbar gutter, which overflows
+       the document by ~15px on Windows and gives every page a horizontal
+       scrollbar it never asked for. -->
   <body
-    class="h-screen w-screen overflow-hidden bg-paper text-ink font-sans selection:bg-accent/15 overscroll-none"
+    class="h-app w-full overflow-hidden bg-paper text-ink font-sans selection:bg-accent/15 overscroll-none"
   >
     <div id="root" class="h-full w-full"></div>
     <script type="module" src="/src/main.jsx"></script>

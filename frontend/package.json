@@ -8,11 +8,13 @@
     "build": "vite build",
     "lint": "oxlint",
     "check:tokens": "node scripts/check-tokens.mjs",
-    "check": "npm run lint && npm run check:tokens && npm run build",
+    "check:classes": "node scripts/check-classes.mjs",
+    "check": "npm run lint && npm run check:tokens && npm run check:classes && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.5",
+    "@tanstack/react-query": "^5.101.4",
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

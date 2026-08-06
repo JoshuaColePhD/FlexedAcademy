@@ -48,5 +48,11 @@ services:
       # ── fixed ────────────────────────────────────────────────────────────
       - key: REQUIRE_LOGIN
         value: "true"
+      # Render terminates TLS, so the session cookie can and must be marked
+      # Secure — without it the browser will happily send a real teacher's
+      # session token over plain HTTP. Stays false locally, where the app is
+      # served over http://127.0.0.1 and a Secure cookie would never be sent.
+      - key: COOKIE_SECURE
+        value: "true"
       - key: PYTHON_VERSION
         value: "3.12.3"

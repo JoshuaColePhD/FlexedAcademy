@@ -12,6 +12,7 @@ export function ArtifactPanel({
   artifact,
   onClose,
   onReviseDay,
+  onPlanRevised,
   busy,
   streamingText,
   missingDays,
@@ -118,10 +119,17 @@ export function ArtifactPanel({
               {/* The week at a glance, before the detail. */}
               <WeekStrip days={plan.days} writing={busy} compact />
               {artifact?.grounding ? <GroundingStrip grounding={artifact.grounding} /> : null}
+              {/* planId is the DB row id and lives on the artifact — NOT on
+                  plan.id. LessonPlanTable used to read plan.id, but `plan` here
+                  is plan_json, which has no id, so its whole revise/feedback
+                  toolbar was gated on a value that is always undefined and had
+                  almost certainly never rendered for anyone. */}
               <LessonPlanTable
                 plan={plan}
+                planId={planId}
                 groundedCodes={grounded}
                 onReviseDay={planId ? onReviseDay : undefined}
+                onPlanRevised={onPlanRevised}
                 busy={busy}
                 missingDays={missingDays}
               />

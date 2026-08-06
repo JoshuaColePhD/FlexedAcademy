@@ -14,6 +14,12 @@ export function Composer({
   attachments,
   setAttachments,
   focusOnMount = false,
+  /* Composer is shared by the chat and (formerly) the plan surface, so the two
+     strings that name the ACTION are props. Hardcoding "Build the lesson plan"
+     meant a screen-reader user on the chat page was told the send button
+     generates a document. */
+  placeholder = 'What are you teaching?',
+  sendLabel = 'Send',
 }) {
   const toast = useToast()
   const textareaRef = useRef(null)
@@ -179,7 +185,7 @@ export function Composer({
                 ? 'Listening…'
                 : isTranscribing
                   ? 'Transcribing…'
-                  : 'What are you teaching?'
+                  : placeholder
             }
             title="Enter to send · Shift+Enter for a new line"
             className="max-h-[220px] flex-1 resize-none overflow-y-auto border-none bg-transparent px-2 py-[0.9375rem] text-[0.9375rem] leading-relaxed text-ink outline-none placeholder:font-normal placeholder:text-ink-faint"
@@ -238,7 +244,7 @@ export function Composer({
                 }`}
                 onClick={() => onSubmit()}
                 disabled={!canSend}
-                aria-label="Build the lesson plan"
+                aria-label={sendLabel}
               >
                 <ArrowUp size={16} strokeWidth={2.5} aria-hidden="true" />
               </button>

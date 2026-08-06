@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Calendar, Check, FileText, Loader2, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Check, FileText, Loader2, Plus, Trash2, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
-import { useAsync } from '../hooks/useAsync'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { qk } from '../lib/queryKeys'
+import { useActiveClass } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
-import { TopBar } from '../components/TopBar'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { findFramework, verifiedPct } from '../lib/frameworks'
-import fhsEvents from '../data/fhs_events.json'
 
 /* Your classes.
  *
@@ -129,7 +130,11 @@ function ClassDocuments({ cls, onChanged }) {
   const fileRef = useRef(null)
   const [kind, setKind] = useState('pacing_guide')
   const [uploading, setUploading] = useState(false)
-  const docs = useAsync((signal) => api.listClassDocuments(cls.id, { signal }), [cls.id])
+  const docs = useQuery({
+    queryKey: qk.classDocuments(cls.id),
+    queryFn: () => api.listClassDocuments(cls.id),
+    retry: false,
+  })
 
   const upload = async (e) => {
     const file = e.target.files?.[0]
@@ -142,7 +147,7 @@ function ClassDocuments({ cls, onChanged }) {
         `${KIND_LABEL[kind]} saved`,
         res?.weeks_parsed ? `${res.weeks_parsed} weeks read from it.` : undefined
       )
-      docs.run()
+      docs.refetch()
       onChanged?.()
     } catch (err) {
       toast.apiError('Could not read that file', err)
@@ -208,7 +213,7 @@ function ClassDocuments({ cls, onChanged }) {
 }
 
 /* ── one class ─────────────────────────────────────────────────────────────── */
-function ClassRow({ cls, frameworks, isActive, onSelect, onChanged }) {
+function ClassRow({ cls, frameworks, isActive, onChanged }) {
   const toast = useToast()
   const confirm = useConfirm()
   const [open, setOpen] = useState(false)
@@ -251,19 +256,20 @@ function ClassRow({ cls, frameworks, isActive, onSelect, onChanged }) {
   return (
     <li className="border-b border-edge last:border-b-0">
       <div className="flex items-center gap-2 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => onSelect(cls.id)}
-          aria-label={`Build new plans for ${cls.name}`}
-          aria-pressed={isActive}
-          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
-            isActive
-              ? 'border-accent bg-accent text-ink-inverse'
-              : 'border-edge-strong hover:border-ink-faint'
+        {/* A check, not a radio. This shows which class you are IN — the URL
+            decides that, and the rail switcher is the one control that changes
+            it. The radio that used to be here was a second writer of the same
+            hidden global, which is how the sidebar and this page could end up
+            claiming different active classes. */}
+        <span
+          aria-hidden={!isActive}
+          aria-label={isActive ? 'Currently open' : undefined}
+          className={`grid h-5 w-5 shrink-0 place-items-center ${
+            isActive ? 'text-ok' : 'text-transparent'
           }`}
         >
-          {isActive ? <Check size={12} aria-hidden="true" /> : null}
-        </button>
+          <Check size={13} />
+        </span>
 
         <input
           value={name}
@@ -318,7 +324,7 @@ function ClassRow({ cls, frameworks, isActive, onSelect, onChanged }) {
 /* Last, and shut. For whoever is debugging the app, not for a teacher planning
    a week. */
 function Diagnostics() {
-  const health = useAsync((signal) => api.health({ signal }), [])
+  const health = useQuery({ queryKey: ['health'], queryFn: () => api.health(), retry: false })
   const h = health.data
 
   return (
@@ -353,25 +359,47 @@ function Diagnostics() {
   )
 }
 
-export function MyClassPage({ shell }) {
+/* Your classes.
+ *
+ * Reads from the query cache and the URL instead of a `shell` prop. Two things
+ * are gone from this page and both were duplicate pathways:
+ *
+ *   - The active-class radio button. "Which class am I planning for" is the
+ *     :classId in the URL now, set by the one switcher in the rail. Two controls
+ *     writing one hidden global is what made it possible for the sidebar and
+ *     this page to disagree.
+ *
+ *   - The collapsed "School calendar" list, which rendered src/data/fhs_events
+ *     .json — a hardcoded THIRD index of the school year that could silently
+ *     contradict school_calendar.md, the file both the prompt and the week board
+ *     read. Deleted along with the JSON.
+ */
+export function ClassPage() {
   const toast = useToast()
-  const { onToggleSidebar, classes, activeClass, selectClass, reloadClasses, settings } = shell
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const { classes, activeClass } = useActiveClass()
 
-  const frameworksState = useAsync((signal) => api.getFrameworks({ signal }), [])
+  const frameworksState = useQuery({
+    queryKey: qk.frameworks,
+    queryFn: () => api.getFrameworks(),
+    staleTime: Infinity,
+  })
   const frameworks = frameworksState.data || []
+
+  const meState = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
+  const reloadClasses = () => qc.invalidateQueries({ queryKey: qk.classes })
 
   const [adding, setAdding] = useState(false)
   const [teacher, setTeacher] = useState('')
   const [savedName, setSavedName] = useState('')
 
-  // users.name is where the teacher's name lives now; settings.teacher is a
-  // projection of it and the fallback for an install predating classes.
-  const meState = useAsync((signal) => api.me({ signal }), [])
+  // users.name is where the teacher's name lives now.
   useEffect(() => {
-    const n = meState.data?.name || settings?.teacher || ''
+    const n = meState.data?.name || ''
     setTeacher(n)
     setSavedName(n)
-  }, [meState.data, settings?.teacher])
+  }, [meState.data])
 
   const commitTeacher = async () => {
     const next = teacher.trim()
@@ -380,7 +408,7 @@ export function MyClassPage({ shell }) {
       await api.updateMe(next)
       setSavedName(next)
       toast.success('Saved')
-      reloadClasses?.()
+      qc.invalidateQueries({ queryKey: qk.me })
     } catch (err) {
       toast.apiError('Could not save your name', err)
       setTeacher(savedName)
@@ -390,11 +418,13 @@ export function MyClassPage({ shell }) {
   const list = classes || []
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-paper">
-      <TopBar title="My classes" collapsed={shell.collapsed} onToggleSidebar={onToggleSidebar} />
+    <div className="column">
+      <header className="flex h-14 shrink-0 items-center px-gutter">
+        <h1 className="text-sm font-semibold text-ink">My classes</h1>
+      </header>
 
-      <div className="w-full flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-measure-form px-5 pb-16 pt-4">
+      <div className="page scroll-y">
+        <div className="mx-auto w-full max-w-measure-form">
           {/* ── your name, once ─────────────────────────────────────────── */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <label htmlFor="teacher" className="text-sm text-ink-muted">
@@ -432,7 +462,6 @@ export function MyClassPage({ shell }) {
                   cls={c}
                   frameworks={frameworks}
                   isActive={c.id === activeClass?.id}
-                  onSelect={selectClass}
                   onChanged={reloadClasses}
                 />
               ))
@@ -448,10 +477,11 @@ export function MyClassPage({ shell }) {
               <AddClass
                 frameworks={frameworks}
                 onCancel={() => setAdding(false)}
-                onCreated={(created) => {
+                onCreated={async (created) => {
                   setAdding(false)
-                  reloadClasses?.()
-                  selectClass?.(created.id)
+                  await reloadClasses()
+                  // Selecting a class is a navigation now, not a setState.
+                  navigate(`/c/${created.id}/class`)
                 }}
               />
             ) : (
@@ -472,26 +502,11 @@ export function MyClassPage({ shell }) {
             ) : null}
           </div>
 
-          {/* ── reference, collapsed ────────────────────────────────────── */}
-          <details className="mt-6 overflow-hidden rounded-xl border border-edge">
-            <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken">
-              <Calendar size={14} aria-hidden="true" className="text-ink-muted" />
-              School calendar
-              <span className="ml-auto text-xs font-normal text-ink-muted">
-                {fhsEvents.length} dates
-              </span>
-            </summary>
-            <ul className="max-h-64 divide-y divide-edge overflow-y-auto border-t border-edge">
-              {fhsEvents.map((evt, i) => (
-                <li className="flex gap-3 px-3 py-1.5" key={i}>
-                  <span className="w-24 shrink-0 text-xs tabular-nums text-ink-muted">
-                    {evt.date}
-                  </span>
-                  <span className="text-sm leading-snug text-ink">{evt.event}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
+          {/* The "School calendar" list that used to sit here rendered
+              src/data/fhs_events.json — a hardcoded third copy of the school
+              year, alongside school_calendar.md (which the prompt quotes and the
+              week board reads). Three sources, two of which could drift. The
+              year now lives on the calendar page, where it is the point. */}
 
           <Diagnostics />
         </div>

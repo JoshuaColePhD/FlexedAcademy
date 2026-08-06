@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { PHONE, useMediaQuery } from '../hooks/useMediaQuery'
 import { api } from '../lib/api'
 import { errorParts, isNotFound } from '../lib/apiError'
 
@@ -70,7 +71,15 @@ function Popover({ code, anchorRef, onClose, popoverId }) {
     return () => controller.abort()
   }, [code])
 
+  /* Below --md this is a bottom sheet, not a popover.
+     A getBoundingClientRect-positioned card is fiddly on a phone and lands
+     off-screen for a code near an edge — and standard text is long enough that
+     a 340px card at the bottom of a 375px viewport has nowhere to go. Same
+     fetch, same module-level cache, different presentation. */
+  const isPhone = useMediaQuery(PHONE)
+
   useLayoutEffect(() => {
+    if (isPhone) return
     const anchor = anchorRef.current
     if (!anchor) return
     const r = anchor.getBoundingClientRect()
@@ -80,7 +89,7 @@ function Popover({ code, anchorRef, onClose, popoverId }) {
     const popH = popRef.current?.offsetHeight ?? 160
     const top = below + popH > window.innerHeight - 8 ? Math.max(8, r.top - popH - 8) : below
     setPos({ left, top })
-  }, [anchorRef, record, error])
+  }, [anchorRef, record, error, isPhone])
 
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -103,8 +112,8 @@ function Popover({ code, anchorRef, onClose, popoverId }) {
     <div
       ref={popRef}
       id={popoverId}
-      className="cite-pop"
-      style={pos ? { left: pos.left, top: pos.top } : { visibility: 'hidden' }}
+      className={isPhone ? 'cite-sheet' : 'cite-pop'}
+      style={isPhone ? undefined : pos ? { left: pos.left, top: pos.top } : { visibility: 'hidden' }}
     >
       <span className="cite-pop-code">{code}</span>
       {error ? (

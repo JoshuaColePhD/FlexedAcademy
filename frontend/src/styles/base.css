@@ -26,12 +26,23 @@
     text-size-adjust: 100%;
   }
 
+  html,
+  body {
+    height: var(--app-h);
+  }
+
   body {
     font-family: var(--font-ui);
     font-size: var(--fs-base);
     line-height: var(--lh-normal);
     color: var(--ink);
     background: var(--paper);
+    /* The grey flash box mobile Safari and Chrome paint on every tap. The app
+       has its own :active states; this one is the browser's opinion. */
+    -webkit-tap-highlight-color: transparent;
+    /* Removes the legacy 300ms click delay WITHOUT disabling double-tap zoom,
+       which `touch-action: none` would — see the viewport note in index.html. */
+    touch-action: manipulation;
   }
 
   /* One focus style for the whole app: two rings, one in the page colour and
@@ -180,12 +191,15 @@
     flex-direction: column;
     gap: var(--sp-6);
   }
+  /* Set like the document's own header rather than like app chrome: mono,
+     tab-aligned, above a district-blue rule. Rule 2 — docked, so a rule and not
+     a shadow. */
   .plan-meta {
     display: flex;
     flex-direction: column;
     gap: var(--sp-1);
-    padding-bottom: var(--sp-5);
-    border-bottom: 1px solid var(--edge);
+    padding-bottom: var(--sp-3);
+    border-bottom: 2px solid var(--doc-blue);
   }
   .plan-meta h2 {
     margin-bottom: var(--sp-2);
@@ -197,12 +211,316 @@
   }
   .plan-meta-item {
     font-size: var(--fs-sm);
-    color: var(--ink-muted);
+    color: var(--ink);
   }
   .plan-meta-item strong {
+    display: inline-block;
+    min-width: 5.5rem;
     margin-right: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  /* The week title and its plan-level actions. Was three inline style objects in
+     LessonPlanTable, in a codebase whose entire argument is that layout lives in
+     tokens. Wraps rather than squeezing: "AI review & revise" plus two icon
+     buttons plus a week label does not fit beside itself on a phone. */
+  .plan-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+  }
+  .plan-head h2 {
+    font-size: var(--fs-xl);
     font-weight: var(--fw-semibold);
-    color: var(--ink-soft);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--lh-tight);
+    color: var(--ink);
+  }
+  .plan-feedback {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+
+  /* ── the plan, on a phone ────────────────────────────────────────────────
+     One card per screen. The scroller owns horizontal panning and the page
+     keeps vertical, which is what stops an iOS swipe two degrees off horizontal
+     scrolling the page instead of the deck. */
+  .plan-deck {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    min-height: 0;
+  }
+  .plan-deck-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: var(--sp-1);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding-bottom: var(--sp-1);
+    background: var(--paper);
+  }
+  .plan-deck-tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--touch-min);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    background: var(--paper-sunken);
+    border-radius: var(--r-sm);
+    transition: all var(--t-fast) var(--ease);
+  }
+  .plan-deck-tab.is-active {
+    color: var(--ink-inverse);
+    background: var(--ink);
+  }
+  .plan-deck-tab.is-closed {
+    color: var(--ink-faint);
+    background: var(--paper-sunken);
+    background-image: var(--hatch-closed);
+  }
+  .plan-deck-tab.is-closed.is-active {
+    color: var(--ink-inverse);
+    background: var(--ink-soft);
+    background-image: none;
+  }
+
+  .plan-deck-scroller {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 100%;
+    gap: var(--sp-3);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    touch-action: pan-x pinch-zoom;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .plan-deck-scroller::-webkit-scrollbar {
+    display: none;
+  }
+
+  .plan-day-card {
+    scroll-snap-align: center;
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-5);
+    background: var(--district-cell);
+    /* Keeps its frame for the same reason .plan-table does: this IS the
+       document, and the district blue is what makes it recognisable as the
+       thing a teacher hands in. */
+    border: 1px solid var(--district-blue-soft);
+    border-radius: var(--r-lg);
+  }
+  .plan-day-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin: calc(var(--sp-5) * -1) calc(var(--sp-5) * -1) var(--sp-5);
+    padding: var(--sp-3) var(--sp-5);
+    background: var(--doc-blue);
+    /* Literal white, the same exception .plan-table thead makes: this cell is
+       the printed header, not an interface surface, so it does not flip. */
+    color: #fff;
+    border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0;
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+  }
+  .plan-field + .plan-field {
+    margin-top: var(--sp-4);
+  }
+  .plan-field .eyebrow {
+    display: block;
+    margin-bottom: var(--sp-1);
+  }
+  .plan-day-card details > summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--touch-min);
+    margin-top: var(--sp-4);
+    padding-top: var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+    cursor: pointer;
+    border-top: 1px solid var(--edge);
+  }
+
+  /* The escape hatch. The app promises the screen and the document agree, so a
+     teacher must always be able to check that — even sideways. What was wrong
+     before was not that the table scrolls; it is that it was the only option. */
+  .plan-view-toggle {
+    align-self: center;
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+  }
+
+  /* ── the year grid ───────────────────────────────────────────────────────
+     Five day columns at every width, with the week gutter and the unit rail
+     dropping away as the screen narrows. The day cells never disappear: at
+     375px that is 5 x ~65px, enough for a tabular numeral and a state wash,
+     which is what keeps the year SPATIAL on a phone instead of degrading back
+     into the list this replaced.
+
+     The 1px gap is the rule — rule 1, separation is tone. The grid's own
+     background shows through between cells, so there are no borders to collapse
+     or double up. */
+  .year-grid {
+    display: grid;
+    grid-template-columns: [wk] 2.75rem repeat(5, minmax(0, 1fr)) [rail] 14rem;
+    gap: 1px;
+    background: var(--edge);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    /* Identifiers on this board are numbers you compare down a column. */
+    font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 1023.98px) {
+    .year-grid { grid-template-columns: [wk] 2.25rem repeat(5, minmax(0, 1fr)) [rail] 9rem; }
+  }
+  @media (max-width: 767.98px) {
+    /* The rail wraps under the week rather than squeezing: a unit name in 4rem
+       is unreadable, and the week number moves into it. */
+    .year-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .year-grid .year-rail { grid-column: 1 / -1; }
+  }
+
+  .year-head {
+    padding: var(--sp-2) var(--sp-2);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: var(--paper-sunken);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  @media (max-width: 767.98px) {
+    .year-head.year-rail { display: none; }
+  }
+
+  /* The month you are looking at is always named. */
+  .year-month {
+    grid-column: 1 / -1;
+    position: sticky;
+    top: var(--sp-7);
+    z-index: 1;
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    background: var(--paper-sunken);
+    scroll-margin-top: var(--sp-12);
+  }
+
+  /* Week numbers in mono. JetBrains Mono already ships and is used only for
+     standard codes; extending it to the calendar's identifiers is what makes
+     this read as a planner rather than a feed, and it costs nothing. */
+  .year-wk {
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    background: var(--paper-sunken);
+  }
+
+  .year-grid [data-current] > * {
+    background: var(--accent-tint);
+  }
+
+  /* ── phone navigation ────────────────────────────────────────────────────
+     Docked, so per rule 2 it gets a hairline and no shadow. */
+  .tabbar {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    flex-shrink: 0;
+    height: calc(var(--tabbar-h) + var(--safe-b));
+    padding-bottom: var(--safe-b);
+    background: var(--paper-raised);
+    border-top: 1px solid var(--edge);
+  }
+  .tabbar-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: var(--touch-min);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-medium);
+    color: var(--ink-muted);
+    transition: color var(--t-fast) var(--ease);
+  }
+  /* The one exception granted to rule 4's "accent means waiting for you": this
+     is a location indicator, and at 11px --ink is indistinguishable from the
+     inactive --ink-muted. */
+  .tabbar-item.is-active {
+    color: var(--accent-text);
+  }
+
+  /* ── the artifact, when it can't sit beside the plan ─────────────────────
+     ArtifactPanel has always set role="dialog" + aria-modal and trapped focus
+     below --xl, while ChatPage rendered it as a resizable <Panel> sharing width
+     with the chat. So a screen reader was told the rest of the page was inert
+     while it was plainly visible and the pointer could still reach it — worse
+     than never claiming to be a dialog. The CSS that was supposed to actually
+     cover the page lived in components.css and was deleted with it; this is
+     that rule, restored, and now the JS and the CSS finally agree.
+
+     Rule 2 applies: this one IS floating, so it may have elevation. */
+  .artifact-overlay {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    width: min(var(--artifact-w), 100%);
+    background: var(--paper-raised);
+    box-shadow: var(--shadow-panel);
+    animation: artifact-slide-in var(--t-base) var(--ease-out) both;
+  }
+
+  /* A phone gets a bottom sheet. A right-hand drawer at 375px is a full-screen
+     takeover wearing a scrim nobody can see — that is a modal pretending to be
+     a panel, and it loses the "the plan is over there" spatial cue that makes
+     the drawer worth having in the first place. */
+  @media (max-width: 767.98px) {
+    .artifact-overlay {
+      inset: auto 0 0 0;
+      width: 100%;
+      max-height: var(--sheet-max-h);
+      padding-bottom: var(--safe-b);
+      border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
+      box-shadow: var(--shadow-pop);
+      animation-name: artifact-sheet-in;
+    }
+  }
+
+  @keyframes artifact-slide-in {
+    from { transform: translateX(12px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes artifact-sheet-in {
+    from { transform: translateY(16px); opacity: 0; }
+    to { transform: none; opacity: 1; }
   }
 
   /* Keeps its border where cards lost theirs: this table mirrors the printed
@@ -306,6 +624,10 @@
      is set in marking-pen red with a reference mark, the way a critical edition
      flags a doubtful reading. */
   .cite {
+    /* @extend .tap-target — see the utilities layer. A standard code is the most
+       important thing on this screen to be able to tap, and at 0.9em mono it is
+       the smallest. Declared here so no JSX has to carry the class. */
+    position: relative;
     padding: 0 1px;
     font-family: var(--font-mono);
     font-size: 0.9em;
@@ -318,6 +640,15 @@
     text-decoration-color: rgb(var(--accent-text-rgb) / 0.5);
     text-underline-offset: 3px;
     transition: color var(--t-fast) var(--ease);
+  }
+  .cite::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100%, var(--touch-min));
+    height: var(--touch-min);
   }
   .cite:hover {
     color: var(--ink);
@@ -349,6 +680,41 @@
     border-radius: var(--r-md);
     box-shadow: var(--shadow-pop);
   }
+  /* The phone form of the same disclosure. A card positioned off a 10px inline
+     code is unusable on a touch screen; anchored to the bottom it is always
+     reachable and always fully on screen, however long the standard text is. */
+  .cite-sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 60;
+    max-height: var(--sheet-max-h);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--sp-5) var(--gutter) calc(var(--sp-5) + var(--safe-b));
+    font-size: var(--fs-base);
+    line-height: var(--lh-relaxed);
+    color: var(--ink);
+    background: var(--paper-raised);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
+    box-shadow: var(--shadow-pop);
+    animation: artifact-sheet-in var(--t-base) var(--ease-out) both;
+  }
+  .cite-sheet .cite-pop-code {
+    display: block;
+    margin-bottom: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--accent-text);
+  }
+  .cite-sheet .cite-pop-src {
+    margin-top: var(--sp-4);
+    padding-top: var(--sp-3);
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+    border-top: 1px solid var(--edge);
+  }
+
   .cite-pop p {
     margin: 0;
   }
@@ -405,14 +771,33 @@
     line-height: var(--lh-relaxed);
   }
 
+  /* The claim, then the evidence. --ok on the left edge, not --accent: this is
+     a verification that has passed, not something waiting to be done. */
+  .grounding-seal {
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--paper-sunken);
+    border-left: 3px solid var(--ok);
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
+  }
+  .grounding-claim {
+    margin-bottom: var(--sp-2);
+    font-size: var(--fs-sm);
+    color: var(--ink-soft);
+  }
+  .grounding-claim strong {
+    font-weight: var(--fw-semibold);
+    color: var(--ink);
+  }
+
   .grounding-strip {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-4);
-    background: var(--paper-sunken);
-    border-radius: var(--r-lg);
+  }
+  .grounding-seal .grounding-strip {
+    padding: 0;
+    background: none;
   }
   .grounding-strip .cite {
     cursor: default;
@@ -441,18 +826,63 @@
     background: var(--paper-sunken);
     border-radius: var(--r-lg);
   }
-  .revise-box .input {
-    flex: 1;
-    min-width: 0;
+  /* A standalone text field. Only `.revise-box .input` was ever defined, so a
+     bare .input elsewhere (the "anything it should cover?" box on an unplanned
+     week) rendered as a browser default — and rule 1's exception applies here:
+     an outline IS the affordance for a text input. */
+  .input {
+    display: block;
+    width: 100%;
+    min-height: var(--touch-min);
+    padding: var(--sp-2) var(--sp-3);
     font: inherit;
     font-size: var(--fs-sm);
     color: var(--ink);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-md);
+    outline: none;
+    transition: border-color var(--t-fast) var(--ease);
+  }
+  .input:focus {
+    border-color: var(--accent);
+  }
+  .input::placeholder {
+    color: var(--ink-faint);
+  }
+
+  /* Inside the revise box it is a bare line, not a field: the box already has
+     the outline. */
+  .revise-box .input {
+    flex: 1;
+    width: auto;
+    min-height: 0;
+    padding: 0;
     background: transparent;
     border: none;
-    outline: none;
+    border-radius: 0;
   }
   .revise-box .input::placeholder {
     color: var(--ink-muted);
+  }
+
+  /* 30px on screen, 44px to a thumb — the ::before below. Both of these are
+     declared here rather than as a .tap-target class in the markup, because
+     every consumer of .btn-icon / .btn-send wants it and none of them should
+     have to remember. */
+  .btn-icon,
+  .btn-send {
+    position: relative;
+  }
+  .btn-icon::before,
+  .btn-send::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: var(--touch-min);
+    height: var(--touch-min);
   }
 
   .btn-icon {
@@ -557,6 +987,132 @@
     color: var(--ink-inverse);
     background: rgb(var(--mark-rgb) / 0.85);
     border-color: rgb(var(--mark-rgb) / 0.85);
+  }
+
+  /* The third tone. ConfirmProvider only ever needed primary and danger, so
+     .btn-outline was never written — but ErrorBoundary and NotFoundPage both
+     reach for it, and both got a bare .btn. On the crash screen that meant
+     "Reload" and "Clear local settings" rendered identically, with no way to
+     tell the safe action from the destructive-ish one. */
+  .btn-outline {
+    color: var(--ink-soft);
+    background: transparent;
+    border-color: var(--edge-strong);
+  }
+  .btn-outline:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--paper-sunken);
+    border-color: var(--edge-strong);
+  }
+
+  /* ── page scaffold ───────────────────────────────────────────────────────
+     .column / .page / .empty-state went with components.css. NotFoundPage is
+     the only consumer today and has been rendering as raw browser defaults
+     ever since, but every full-page state wants this shape — an empty class
+     list, a week with no plan, a calendar that failed to load. */
+  .column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .page {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: var(--sp-8) var(--gutter) calc(var(--sp-8) + var(--safe-b));
+  }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-3);
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: var(--sp-10) 0;
+    text-align: center;
+  }
+  .empty-state h1 {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--lh-snug);
+  }
+  .empty-state p {
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+  }
+
+  /* ── the crash screen ────────────────────────────────────────────────────
+     This is the one surface a teacher only ever sees when something has
+     already gone wrong, and it has been rendering unstyled. It sits outside
+     the router and outside the shell, so it must be self-sufficient: no
+     layout class from a parent, no assumption that anything else mounted. */
+  .crash {
+    display: grid;
+    place-items: center;
+    min-height: var(--app-h);
+    padding: max(var(--sp-6), var(--safe-t)) var(--gutter) max(var(--sp-6), var(--safe-b));
+    background: var(--paper);
+  }
+  .crash-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    width: min(34rem, 100%);
+    padding: var(--sp-6);
+    background: var(--paper-raised);
+    /* Rule 2: docked, not floating — a hairline, not a shadow. */
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-lg);
+  }
+  .crash-card h1 {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--lh-snug);
+  }
+  .crash-card > p {
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+  }
+  .crash-message {
+    padding: var(--sp-3);
+    font-family: var(--font-mono);
+    /* An error message is frequently one long unbroken token. */
+    overflow-wrap: anywhere;
+    color: var(--mark);
+    background: var(--mark-tint);
+    border-radius: var(--r-sm);
+  }
+  .crash-card > .crash-message {
+    font-size: var(--fs-xs);
+  }
+  .crash-details summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--touch-min);
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+  .crash-details pre {
+    max-height: 14rem;
+    overflow: auto;
+    padding: var(--sp-3);
+    margin-top: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    line-height: var(--lh-normal);
+    color: var(--ink-muted);
+    background: var(--paper-sunken);
+    border-radius: var(--r-sm);
+  }
+  .crash-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
   }
 
   /* ── toasts ─────────────────────────────────────────────────────────────
@@ -814,5 +1370,45 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+
+  /* ── touch targets ────────────────────────────────────────────────────────
+     A 36px control with a 44px target. The pseudo-element is transparent and
+     absolutely positioned, so it costs no layout: the icon stays the size the
+     desktop density needs and the thumb still gets its 44px.
+
+     Growing the controls themselves was the alternative and it is worse — the
+     composer's six h-9 icon buttons at 44px would push the send button off the
+     row, and a 44px paperclip reads as a bug.
+
+     ::before, not ::after: .cite.is-ungrounded already spends its ::after on the
+     ※ reference mark, and .cite is one of the controls that most needs this — a
+     standard code set at 0.9em mono is a ~10px tap target. */
+  .tap-target {
+    position: relative;
+  }
+  .tap-target::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100%, var(--touch-min));
+    height: max(100%, var(--touch-min));
+  }
+
+  /* ── scrollers ────────────────────────────────────────────────────────────
+     Applied by class rather than to `*`: overscroll-behavior on every element
+     is a repaint tax, and only the handful of real scrollers need it. Without
+     it, reaching the end of an inner list rubber-bands the whole app on iOS. */
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
   }
 }

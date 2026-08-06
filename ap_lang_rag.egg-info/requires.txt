@@ -5,11 +5,12 @@ pydantic-settings==2.14.2
 python-dotenv==1.2.2
 python-multipart
 openai==2.52.1
-psycopg2-binary==2.9.9
+psycopg2-binary
 pgvector==0.3.2
-sentence-transformers==5.6.1
 python-docx==1.2.0
 google-auth==2.56.2
+requests
+email-validator
 
 [dev]
 httpx

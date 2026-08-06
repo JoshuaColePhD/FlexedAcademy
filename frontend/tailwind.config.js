@@ -12,9 +12,16 @@
    components rely on (`bg-paper/50`, `border-accent/30`) keep working. */
 const c = (name) => `rgb(var(--${name}-rgb) / <alpha-value>)`
 
+import { screens } from './src/lib/breakpoints.js'
+
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    /* REPLACES Tailwind's defaults rather than extending them, so `sm:` means
+       480 and not 640. Every existing sm: in this app is "hide a secondary
+       label on a phone" — a tablet-sized 640 was never what any of them meant.
+       Same file tailwind and useMediaQuery both read; see lib/breakpoints.js. */
+    screens,
     extend: {
       colors: {
         /* surfaces */
@@ -63,7 +70,28 @@ export default {
       maxWidth: {
         measure: 'var(--measure)',
         'measure-form': 'var(--measure-form)',
+        'measure-wide': 'var(--measure-wide)',
       },
+
+      /* h-app instead of h-screen. 100vh on iOS Safari is taller than the
+         visible viewport, which is what puts a bottom-docked composer under the
+         browser chrome; --app-h resolves to 100dvh where that exists. */
+      height: { app: 'var(--app-h)' },
+      minHeight: {
+        app: 'var(--app-h)',
+        touch: 'var(--touch-min)',
+        'touch-lg': 'var(--touch-min-lg)',
+      },
+      minWidth: { touch: 'var(--touch-min)' },
+
+      spacing: {
+        gutter: 'var(--gutter)',
+        'safe-t': 'var(--safe-t)',
+        'safe-b': 'var(--safe-b)',
+        tabbar: 'var(--tabbar-h)',
+      },
+
+      backgroundImage: { 'hatch-closed': 'var(--hatch-closed)' },
 
       boxShadow: {
         xs: 'var(--shadow-xs)',
@@ -87,6 +115,25 @@ export default {
       letterSpacing: {
         caps: 'var(--tracking-caps)',
         display: 'var(--tracking-display)',
+        tight: 'var(--tracking-tight)',
+      },
+
+      /* The type scale was declared in tokens.css and never exposed to Tailwind,
+         so every component reached for Tailwind's own text-xs/text-sm defaults
+         and the scale existed only for hand-written CSS. Two scales, one of them
+         unused — the same split that let tailwind.config.js and tokens.css
+         disagree about the palette. */
+      fontSize: {
+        '2xs': ['var(--fs-2xs)', { lineHeight: 'var(--lh-normal)' }],
+        xs: ['var(--fs-xs)', { lineHeight: 'var(--lh-normal)' }],
+        sm: ['var(--fs-sm)', { lineHeight: 'var(--lh-normal)' }],
+        md: ['var(--fs-md)', { lineHeight: 'var(--lh-normal)' }],
+        base: ['var(--fs-base)', { lineHeight: 'var(--lh-normal)' }],
+        lg: ['var(--fs-lg)', { lineHeight: 'var(--lh-snug)' }],
+        xl: ['var(--fs-xl)', { lineHeight: 'var(--lh-snug)' }],
+        '2xl': ['var(--fs-2xl)', { lineHeight: 'var(--lh-tight)' }],
+        '3xl': ['var(--fs-3xl)', { lineHeight: 'var(--lh-tight)' }],
+        '4xl': ['var(--fs-4xl)', { lineHeight: 'var(--lh-tight)' }],
       },
 
       transitionTimingFunction: {

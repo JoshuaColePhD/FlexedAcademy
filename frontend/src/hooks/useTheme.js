@@ -30,6 +30,13 @@ export function useTheme() {
       const next = mode === 'system' ? systemTheme() : mode
       setResolved(next)
       document.documentElement.setAttribute('data-theme', next)
+      // Keep the iOS status bar / Android URL bar in step. index.html's
+      // pre-paint script sets this once; without updating it here, toggling to
+      // dark leaves a white bar above a dark app. Literal hex because a meta
+      // tag cannot read a custom property — these are --paper-rgb in tokens.css.
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', next === 'dark' ? '#101216' : '#fbfbfc')
     }
     apply()
 

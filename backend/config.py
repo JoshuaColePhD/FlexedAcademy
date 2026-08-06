@@ -117,13 +117,20 @@ class Settings(BaseSettings):
     # (a fresh random key) logs every teacher out, and worse, a guessable
     # default would let anyone forge another teacher's session cookie.
     session_secret: str = "dev-secret-do-not-use-in-production"
+
+    # With this False, get_current_user() returns 'default_user' for any request
+    # with no valid session cookie instead of a 401 — everyone unauthenticated
+    # shares one account and its data. It exists as a local-iteration escape
+    # hatch and must stay True anywhere more than one person can reach.
     require_login: bool = True
-    google_client_id: str | None = None  # TEMPORARY bypass (2026-08-04) so Josh can iterate on the visual redesign
-    # without hitting the login wall on every reload. With this False,
-    # get_current_user() returns 'default_user' for any request with no valid
-    # session cookie, instead of a 401 — everyone unauthenticated shares Josh's
-    # existing account and data. Flip back to True to re-enable real login
-    # before this is ever used by more than one person.
+
+    # Marks the session cookie Secure, so a browser will only ever send it over
+    # HTTPS. Off by default because local dev is plain http://127.0.0.1 and a
+    # Secure cookie would never be sent there at all; render.yaml sets it true.
+    # Without it in production the session token is sendable in plaintext.
+    cookie_secure: bool = False
+
+    google_client_id: str | None = None
 
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5175,http://127.0.0.1:5175"
     # 8000 is taken on this machine by the local oMLX LLM server, so the app

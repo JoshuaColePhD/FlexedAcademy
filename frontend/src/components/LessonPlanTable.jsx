@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { ArrowUp, Sparkles, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { api } from '../lib/api'
+import { useToast } from '../lib/toastContext'
+import { useLayoutMode } from '../hooks/useMediaQuery'
+import { LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
 import { CitedText } from './Citation'
+import { PlanDayCards } from './PlanDayCards'
 import { SkeletonText } from './Skeleton'
 
 /* Mirrors template florence-docx-v2 — the table the district actually gets.
@@ -13,21 +18,10 @@ import { SkeletonText } from './Skeleton'
    A no-school day matches the builder exactly: "No School" centred in the first
    content row, the rest of that column blank and unshaded, and no revise button. */
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-
-const ROWS = [
-  { label: 'Learning Targets', key: 'learning_targets' },
-  { label: 'Standards', key: 'standards', cited: true },
-  { label: 'ACT Alignment', key: 'act_alignment', cited: true },
-  { label: 'Engagement Strategy', key: 'engagement_strategy', tags: true },
-  { label: 'Lesson', key: null },
-]
-
-const LESSON_PARTS = [
-  ['Do Now', 'do_now'],
-  ['During', 'during'],
-  ['Assessment', 'assessment'],
-]
+/* DAYS, ROWS, LESSON_PARTS and the ordered-days fallback logic moved to
+   lib/planShape.js so the table and the phone card deck read from one source.
+   Duplicating the three-state no_school/pending/incomplete reasoning into a
+   second view is exactly how the two would drift. */
 
 function LessonCell({ day }) {
   return (
@@ -44,21 +38,19 @@ function LessonCell({ day }) {
   )
 }
 
-/* What to render for a weekday the plan has no entry for. Three states, not two,
-   and the distinction matters more than it looks:
-
-     'no_school'  — a real, correct, final answer. There is no class that day.
-     'pending'    — the model hasn't written it yet. Provisional; about to change.
-     'incomplete' — generation stopped before it arrived. A gap to act on.
-
-   A boolean `streaming` prop is NOT sufficient. isStreaming flips false in
-   useLessonStream's `finally` the instant Stop is pressed, while plan.days is
-   still partial — so a boolean would flip un-arrived days straight to "No School"
-   one second later, which is the same misreport with better timing. */
+/* The plan document, in whichever form the screen can carry.
+ *
+ * Keeps its name and its props so nothing upstream changes: it is a router now.
+ * Desktop gets the 860px district table, unchanged. Anything narrower gets the
+ * day-card deck, with a toggle back to the real table — because the app's whole
+ * promise is that the screen and the .docx agree, and a teacher must always be
+ * able to check that, even sideways. */
 export function LessonPlanTable({
   plan,
+  planId,
   groundedCodes,
   onReviseDay,
+  onPlanRevised,
   busy,
   missingDays = 'no_school',
 }) {
@@ -66,37 +58,41 @@ export function LessonPlanTable({
   const [drafts, setDrafts] = useState({})
   const [feedbackSent, setFeedbackSent] = useState(false)
   const [revisingWholePlan, setRevisingWholePlan] = useState(false)
+  const [rawTable, setRawTable] = useState(false)
+  const mode = useLayoutMode()
+  const toast = useToast()
 
+  /* Both of these used to be bare fetch() calls gated on `plan.id`. `plan` is
+     plan_json, which has no id — the DB id arrives as `planId` — so the toolbar
+     below was gated on undefined and never rendered. Fixing the gate is what
+     makes the feature exist at all; routing through lib/api.js is what makes it
+     send the session cookie, surface a {code,message,hint} error, and reach the
+     global 401 handler. */
   const handleFeedback = async (isGood) => {
-    if (!plan?.id || feedbackSent) return
+    if (!planId || feedbackSent) return
     setFeedbackSent(true)
     try {
-      await fetch(`/api/plans/${plan.id}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_good: isGood })
-      })
+      await api.planFeedback(planId, isGood)
+      toast.success(isGood ? 'Thanks — noted.' : 'Thanks. That helps tune the prompt.')
     } catch (e) {
-      console.error('Failed to submit feedback', e)
+      setFeedbackSent(false)
+      toast.apiError("Couldn't send that", e)
     }
   }
 
   const handleReviseWholePlan = async () => {
-    if (!plan?.id || revisingWholePlan) return
+    if (!planId || revisingWholePlan) return
     setRevisingWholePlan(true)
     try {
-      const res = await fetch(`/api/plans/${plan.id}/revise`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      if (!res.ok) throw new Error('Revise failed')
-      // The response body is the updated plan, but this component has no way to
-      // hand it upward — hence the reload prompt below. Left unread rather than
-      // assigned to a variable nothing uses.
-      alert('AI Revision complete! Please refresh the page to see the new plan.')
+      const row = await api.revisePlan(planId)
+      // The endpoint returns the updated row. Handing it upward is what replaces
+      // `alert('...please refresh the page')` — asking a teacher to reload as
+      // part of a normal, successful action is not a loading state, it's a bug
+      // with a dialog in front of it.
+      onPlanRevised?.(row)
+      toast.success('Revised', 'The week has been rewritten and the .docx rebuilt.')
     } catch (e) {
-      console.error('Failed to revise whole plan', e)
-      alert('Failed to revise the plan.')
+      toast.apiError("Couldn't revise the plan", e)
     } finally {
       setRevisingWholePlan(false)
     }
@@ -104,14 +100,7 @@ export function LessonPlanTable({
 
   if (!plan?.days?.length) return null
 
-  const byName = new Map(plan.days.map((d) => [d.name, d]))
-  const fallback =
-    missingDays === 'pending'
-      ? { pending: true }
-      : missingDays === 'incomplete'
-        ? { incomplete: true }
-        : { no_school: true }
-  const ordered = DAYS.map((name) => byName.get(name) || { name, ...fallback })
+  const ordered = orderedDays(plan, missingDays)
 
   const submit = (index, day) => {
     const feedback = (drafts[day.name] || '').trim()
@@ -123,36 +112,47 @@ export function LessonPlanTable({
 
   return (
     <div className="plan-doc">
-      <div className="plan-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="plan-head">
         <h2>{plan.week_of || 'Untitled week'}</h2>
-        {plan.id && (
-          <div className="plan-feedback" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        {/* Authoring — desktop only, decision 5. A phone is for reading the
+            week and downloading it, not for asking an LLM to rewrite it. */}
+        {planId && mode === 'desktop' ? (
+          <div className="plan-feedback">
             <button
+              type="button"
               className="btn"
-              disabled={revisingWholePlan}
+              disabled={revisingWholePlan || busy}
               onClick={handleReviseWholePlan}
             >
-              {revisingWholePlan ? 'Revising...' : 'AI Review & Revise'}
+              {revisingWholePlan ? 'Revising…' : 'AI review & revise'}
             </button>
-            <button 
-              className="btn-icon" 
-              disabled={feedbackSent} 
+            <button
+              type="button"
+              className="btn-icon"
+              disabled={feedbackSent}
               onClick={() => handleFeedback(true)}
-              title="Good plan"
+              aria-label="This plan is good"
+              title="This plan is good"
             >
-              <ThumbsUp size={16} />
+              <ThumbsUp size={16} aria-hidden="true" />
             </button>
-            <button 
-              className="btn-icon" 
-              disabled={feedbackSent} 
+            <button
+              type="button"
+              className="btn-icon"
+              disabled={feedbackSent}
               onClick={() => handleFeedback(false)}
-              title="Bad plan"
+              aria-label="This plan needs work"
+              title="This plan needs work"
             >
-              <ThumbsDown size={16} />
+              <ThumbsDown size={16} aria-hidden="true" />
             </button>
           </div>
-        )}
+        ) : null}
       </div>
+      {/* The stamped header: Teacher / Course / Period above a district-blue
+          rule, matching the .docx's own header. It is the moment a teacher
+          recognises the thing they hand in — so it stays on every screen, and
+          on a phone it is the only place that information appears. */}
       <div className="plan-meta">
         {plan.teacher ? (
           <span className="plan-meta-item">
@@ -171,6 +171,63 @@ export function LessonPlanTable({
         ) : null}
       </div>
 
+      {/* Below --lg, or on any width where a 860px table is a sideways scroll,
+          the day-card deck replaces the table — unless the teacher has asked to
+          see the district table itself, which they must always be able to do.
+          Only ever ONE in the DOM: rendering both and hiding one makes a screen
+          reader read the whole week twice. */}
+      {mode !== 'desktop' && !rawTable ? (
+        <>
+          <PlanDayCards plan={plan} groundedCodes={groundedCodes} missingDays={missingDays} />
+          <button type="button" className="btn plan-view-toggle" onClick={() => setRawTable(true)}>
+            View as the district table
+          </button>
+        </>
+      ) : (
+        <>
+          {mode !== 'desktop' ? (
+            <button
+              type="button"
+              className="btn plan-view-toggle"
+              onClick={() => setRawTable(false)}
+            >
+              Back to day view
+            </button>
+          ) : null}
+          <PlanTable
+            ordered={ordered}
+            groundedCodes={groundedCodes}
+            onReviseDay={onReviseDay}
+            busy={busy}
+            openDay={openDay}
+            setOpenDay={setOpenDay}
+            drafts={drafts}
+            setDrafts={setDrafts}
+            submit={submit}
+            showRevise={mode === 'desktop'}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+/* The district table itself — unchanged, and deliberately so. min-width: 860px
+   stays; this is the .docx mirror and its faithfulness is the product. */
+function PlanTable({
+  ordered,
+  groundedCodes,
+  onReviseDay,
+  busy,
+  openDay,
+  setOpenDay,
+  drafts,
+  setDrafts,
+  submit,
+  showRevise,
+}) {
+  return (
+    <>
       {/* tabIndex + role + label are not polish: a scroll container that only
           responds to pointer drag is a keyboard-access failure (WCAG 2.1.1). */}
       <div
@@ -264,7 +321,10 @@ export function LessonPlanTable({
               })}
             </tr>
           ))}
-          {onReviseDay ? (
+          {/* Authoring, so desktop only — decision 5. On a phone this row would
+              be five buttons that open a text field for a generation the screen
+              deliberately doesn't support. */}
+          {onReviseDay && showRevise ? (
             <tr>
               <th scope="row">Revise</th>
               {ordered.map((day) =>
@@ -338,6 +398,6 @@ export function LessonPlanTable({
             )
           })()
         : null}
-    </div>
+    </>
   )
 }
