@@ -1,0 +1,20 @@
+{
+  "name": "flexed-keepwarm",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-08",
+
+  // Every 10 minutes, 21:00-03:59 UTC, Sunday through Thursday.
+  // That is 4pm-10pm US Central — Sun-Thu evening, when a teacher is planning
+  // the week ahead. Cron is UTC, so the window wraps past midnight and needs
+  // two expressions rather than one.
+  "triggers": {
+    "crons": ["*/10 21-23 * * 0-4", "*/10 0-3 * * 1-5"]
+  },
+
+  "vars": {
+    // Replace with the Render URL once the service exists.
+    "APP_URL": "https://flexed-academy-backend.onrender.com"
+  },
+
+  "observability": { "enabled": true }
+}
