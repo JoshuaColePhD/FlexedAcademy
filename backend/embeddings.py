@@ -81,10 +81,28 @@ def _embed_batch(texts: list[str]) -> list[list[float]]:
 
 
 def embed_query(text: str) -> list[float]:
-    """A single query vector. One API call, ~50ms."""
+    """A single query vector. One API call."""
     if not text or not text.strip():
         raise AppError("empty_query", "Nothing to search for.", status=422)
     return _embed_batch([text])[0]
+
+
+def embed_queries(texts: list[str]) -> dict[str, list[float]]:
+    """Vectors for several queries in ONE API call, keyed by the query text.
+
+    Retrieval issues the same handful of query strings against five strata, and
+    retrieve_raw embedded on every call — 30 round trips for 6 distinct strings,
+    six seconds of a twenty-second generation spent re-embedding text the
+    process had already embedded moments earlier.
+
+    Deduplicated and batched: the embeddings endpoint takes an array, so 30
+    sequential requests become one. Returning a dict rather than a list is what
+    lets the caller look a vector up by text and stop caring about order.
+    """
+    uniq = [t for t in dict.fromkeys(t for t in texts if t and t.strip())]
+    if not uniq:
+        raise AppError("empty_query", "Nothing to search for.", status=422)
+    return dict(zip(uniq, _embed_batch(uniq)))
 
 
 def embed_texts(texts: list[str], *, on_progress=None) -> list[list[float]]:

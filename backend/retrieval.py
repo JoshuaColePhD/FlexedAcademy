@@ -32,6 +32,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -122,7 +123,7 @@ def scope_error(query: str, grades: list[int], corpus_grade: int = 11) -> AppErr
 
 # Query vectors come from the OpenAI embeddings API now (see backend/embeddings.py).
 # Re-exported under the old name so callers and scripts don't need to change.
-from .embeddings import EMBED_DIMS, EMBED_MODEL, embed_query  # noqa: E402,F401
+from .embeddings import EMBED_DIMS, EMBED_MODEL, embed_queries, embed_query  # noqa: E402,F401
 
 def load_chunks() -> list[dict]:
     """The full chunk records, straight from the *chunks.json files.
@@ -196,8 +197,19 @@ class RetrievalResult:
         return self.rejected[0] if self.rejected else None
 
 
-def retrieve_raw(query: str, n: int, course: str, grade: int, source_type: str | None = None) -> list[dict]:
-    query_vector = embed_query(query)
+def retrieve_raw(
+    query: str,
+    n: int,
+    course: str,
+    grade: int,
+    source_type: str | None = None,
+    query_vector: list[float] | None = None,
+) -> list[dict]:
+    # `query_vector` lets the caller embed once and search many times. Without
+    # it this embedded on every call, and retrieve_grounded calls it five times
+    # per query — so the same string went to the embeddings API five times over.
+    if query_vector is None:
+        query_vector = embed_query(query)
     from . import db
     
     sql = "SELECT id, document, metadata, embedding <=> %s::vector AS distance FROM chunks WHERE 1=1"
@@ -275,15 +287,38 @@ def retrieve_grounded(
             if prev is None or c["distance"] < prev["distance"]:
                 best[key] = c
 
-    for q in searches:
-        # Over-fetch then filter
-        consider(retrieve_raw(q, n=max(top_k * 3, top_k), course=subject_code, grade=grade, source_type=None))
-        # Then per stratum
-        for source_type in STRATA:
-            try:
-                consider(retrieve_raw(q, n=top_k, course=subject_code, grade=grade, source_type=source_type))
-            except Exception as e:
-                log.warning("stratified retrieval failed for %s: %s", source_type, e)
+    # Every vector we will need, in ONE embeddings call, before any searching.
+    # This used to be 30 sequential API round trips for 6 distinct strings —
+    # 58% of retrieval, and retrieval was 68% of the whole generation.
+    vectors = embed_queries(searches)
+
+    # Sequential on purpose. These are 30 independent reads and running them
+    # concurrently is the obvious move — but db._rows takes a single global lock
+    # around a single shared connection, so threads here only queue on that lock
+    # and the code would claim a parallelism it does not have. Measured: ~1.3s
+    # for all 30, which is not where the time goes.
+    #
+    # (The shared connection is worth revisiting for its own sake: it serialises
+    #  every request against every other request, which matters once more than
+    #  one teacher is using this at a time. That's a connection pool, not a
+    #  thread pool, and it belongs in db.py.)
+    jobs = [(q, max(top_k * 3, top_k), None) for q in searches]
+    jobs += [(q, top_k, st) for q in searches for st in STRATA]
+
+    for q, n, source_type in jobs:
+        try:
+            consider(
+                retrieve_raw(
+                    q,
+                    n=n,
+                    course=subject_code,
+                    grade=grade,
+                    source_type=source_type,
+                    query_vector=vectors[q],
+                )
+            )
+        except Exception as e:
+            log.warning("retrieval failed for %s/%s: %s", q[:40], source_type, e)
 
     raw = sorted(best.values(), key=lambda c: c["distance"])
 
