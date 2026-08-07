@@ -1958,26 +1958,43 @@
 
   /* The week and the class, above the transcript. Rule 1: no rule under it —
      the scroll of messages below is its own tone step. */
+  /* min-height, not height. At 54px fixed the week label and the course name
+     wrapped to two lines and spilled out of the box onto the first message —
+     on a phone the teacher's own question was sitting underneath the header. */
   .chat-head {
     display: flex;
-    height: 54px;
+    min-height: 54px;
     flex-shrink: 0;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--sp-2);
-    padding: 0 var(--gutter);
+    gap: 0 var(--sp-2);
+    padding: var(--sp-2) var(--gutter);
     font-size: var(--fs-md);
     color: var(--ink-faint);
+  }
+  /* The course is named in the rail and in the class switcher; on a phone it is
+     the half of this line that can go. */
+  @media (max-width: 767.98px) {
+    .chat-head span {
+      display: none;
+    }
   }
   .chat-head strong {
     font-weight: var(--fw-semibold);
     color: var(--ink);
   }
   @container (max-width: 30rem) {
-    .week-strip.is-loose .week-day-note {
-      display: none;
+    /* Two columns, NOT five with the titles hidden.
+       Hiding the note was written when it held a whole learning target; the
+       day now carries a two-to-four-word `title`, and five 90px columns with
+       the title suppressed left five empty labelled boxes — a verification
+       strip verifying nothing, which is worse than not showing it. Two columns
+       give the title room to be read, which is the entire point of it. */
+    .week-strip.is-loose {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .week-strip.is-loose .week-day {
-      min-height: 3rem;
+      min-height: 0;
     }
     /* Download drops to its own line rather than crushing the file name to
        "W…". It is the one control on this card that must not be dropped. */

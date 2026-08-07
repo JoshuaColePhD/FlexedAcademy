@@ -630,10 +630,17 @@ export function ChatPage() {
             isStreaming={busy}
             attachments={attachments}
             setAttachments={setAttachments}
+            /* The example is worth its length on a laptop and clipped on a
+               phone — the textarea is one row, so the second line of a wrapped
+               placeholder is simply cut off mid-word. */
             placeholder={
               artifact?.planId
-                ? 'What should change? — e.g. make Thursday a Socratic seminar'
-                : 'What do you need a lesson plan for?'
+                ? isPhone
+                  ? 'What should change?'
+                  : 'What should change? — e.g. make Thursday a Socratic seminar'
+                : isPhone
+                  ? 'What are you planning?'
+                  : 'What do you need a lesson plan for?'
             }
             sendLabel={artifact?.planId ? 'Revise the plan' : 'Build the lesson plan'}
           />
