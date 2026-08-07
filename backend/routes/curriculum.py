@@ -42,8 +42,27 @@ def get_curriculum_map(subject: str, user_id: str = Depends(get_current_user)):
 
 @router.post("/curriculum_map")
 async def upload_curriculum_map(
-    subject: str = Form(...), file: UploadFile = File(...), user_id: str = Depends(get_current_user)
+    subject: str = Form(...),
+    file: UploadFile = File(...),
+    # Both optional and both additive, so the pre-existing subject-scoped call
+    # keeps working. With a class_id the row is written against the CLASS, which
+    # is what GET /classes/{id}/documents reads — without it, every upload from
+    # My Classes landed with class_id NULL, the list could never match it, and
+    # the teacher got a success toast for a document that had vanished.
+    class_id: str | None = Form(default=None),
+    kind: str = Form(default="pacing_guide"),
+    user_id: str = Depends(get_current_user),
 ):
+    if class_id and not db.get_class(user_id, class_id):
+        raise AppError("not_found", "That class doesn't exist.", status=404)
+    if kind not in db.DOCUMENT_KINDS:
+        raise AppError(
+            "bad_document_kind",
+            f"{kind!r} is not a document type.",
+            status=400,
+            hint=f"Expected one of: {', '.join(db.DOCUMENT_KINDS)}.",
+        )
+
     original = Path(file.filename or "curriculum_map")
     ext = original.suffix.lower()
     if ext not in SUPPORTED_EXTS:
@@ -74,14 +93,31 @@ async def upload_curriculum_map(
     finally:
         spooled.unlink(missing_ok=True)
 
-    row = db.create_curriculum_map(
-        map_id=map_id,
-        user_id=user_id,
-        subject=subject,
-        original_name=original.name,
-        stored_path=str(stored_path),
-        chars=len(text),
-    )
+    # Scoped to the class when we have one. create_class_document deactivates
+    # only the previous document of the SAME kind for the SAME class, where
+    # create_curriculum_map deactivates every map for the subject — so under the
+    # old path uploading a syllabus silently retired the pacing guide, and two
+    # sections of one course clobbered each other.
+    if class_id:
+        row = db.create_class_document(
+            map_id=map_id,
+            user_id=user_id,
+            class_id=class_id,
+            subject=subject,
+            kind=kind,
+            original_name=original.name,
+            stored_path=str(stored_path),
+            chars=len(text),
+        )
+    else:
+        row = db.create_curriculum_map(
+            map_id=map_id,
+            user_id=user_id,
+            subject=subject,
+            original_name=original.name,
+            stored_path=str(stored_path),
+            chars=len(text),
+        )
 
     try:
         chunk_count = curriculum.embed_map(map_id, user_id, subject, text)

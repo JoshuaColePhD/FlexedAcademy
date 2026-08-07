@@ -33,12 +33,16 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
   const [draft, setDraft] = useState(message.content)
   const ref = useRef(null)
 
+  /* `draft.length` was a dependency, so this re-ran on every keystroke and
+     forced the caret back to the end — click into the middle of a prompt to fix
+     one word and every letter you typed teleported to the end of the line. It
+     should place the cursor ONCE, when the editor opens. */
   useEffect(() => {
-    if (editing) {
-      ref.current?.focus()
-      ref.current?.setSelectionRange(draft.length, draft.length)
-    }
-  }, [editing, draft.length])
+    if (!editing) return
+    const el = ref.current
+    el?.focus()
+    el?.setSelectionRange(el.value.length, el.value.length)
+  }, [editing])
 
   const isUser = message.role === 'user'
 
@@ -229,7 +233,11 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
           >
             {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
           </button>
-          {isUser ? (
+          {/* Guarded on onEdit, like the retry button beside it. Without the
+              guard this rendered on every user message even though no caller
+              supplied a handler, so the affordance was fully visible and
+              silently discarded the edit. */}
+          {isUser && onEdit ? (
             <button
               type="button"
               className="rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"

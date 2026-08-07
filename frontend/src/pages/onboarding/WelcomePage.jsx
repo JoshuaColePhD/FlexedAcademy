@@ -21,7 +21,17 @@ import { FrameworkPicker } from '../../components/FrameworkPicker'
  * and nothing needs typing except the teacher's own name.
  */
 
-const GRADES = ['9th', '10th', '11th', '12th']
+/* Value and label kept apart on purpose. The backend's _auto_name does
+   int(grade) to build "AP Language & Composition · 11th", and ClassPage's own
+   Add-a-class form sends a bare "11". Sending "11th" from here parsed to NaN, so
+   the very FIRST class a teacher created was the only one in their list that
+   rendered as "AP Language & Composition · NaNth". */
+const GRADES = [
+  { value: '9', label: '9th' },
+  { value: '10', label: '10th' },
+  { value: '11', label: '11th' },
+  { value: '12', label: '12th' },
+]
 
 export function WelcomePage() {
   const { user, refresh } = useAuth()
@@ -31,7 +41,7 @@ export function WelcomePage() {
 
   const [name, setName] = useState(user?.name || '')
   const [subject, setSubject] = useState('')
-  const [grade, setGrade] = useState('11th')
+  const [grade, setGrade] = useState('11')
   const [saving, setSaving] = useState(false)
 
   const { data: frameworks = [] } = useQuery({
@@ -54,7 +64,12 @@ export function WelcomePage() {
         qc.invalidateQueries({ queryKey: qk.classes }),
         refresh(),
       ])
-      navigate(`/c/${created.id}/calendar`, { replace: true })
+      /* The class root, which is the index route — a new plan, the thing the
+         app is for. This said `/calendar`, a route deleted with the week board
+         (see the comment on ClassRoutes in App.jsx), so EVERY new account
+         finished onboarding on "That address doesn't exist in this app." — and
+         `replace: true` meant the back button could not rescue them. */
+      navigate(`/c/${created.id}`, { replace: true })
     } catch (err) {
       toast.apiError('Could not set that up', err)
       setSaving(false)
@@ -110,7 +125,7 @@ export function WelcomePage() {
               className="min-h-touch rounded-lg border border-edge bg-paper px-2.5 py-2.5 text-sm text-ink outline-none focus:border-accent sm:w-24"
             >
               {GRADES.map((g) => (
-                <option key={g} value={g}>{g}</option>
+                <option key={g.value} value={g.value}>{g.label}</option>
               ))}
             </select>
           </div>

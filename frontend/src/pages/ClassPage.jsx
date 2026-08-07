@@ -9,6 +9,7 @@ import { qk } from '../lib/queryKeys'
 import { useActiveClass } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
+import { SkeletonText } from '../components/Skeleton'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 
 /* Your classes.
@@ -127,6 +128,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
    uploading a syllabus silently deactivated the pacing guide. */
 function ClassDocuments({ cls, onChanged }) {
   const toast = useToast()
+  const confirm = useConfirm()
   const fileRef = useRef(null)
   const [kind, setKind] = useState('pacing_guide')
   const [uploading, setUploading] = useState(false)
@@ -142,7 +144,8 @@ function ClassDocuments({ cls, onChanged }) {
     if (!file) return
     setUploading(true)
     try {
-      const res = await api.uploadCurriculumMap(cls.subject, file)
+      // classId and kind are what make the upload land where the list reads.
+      const res = await api.uploadCurriculumMap(cls.subject, file, { classId: cls.id, kind })
       toast.success(
         `${KIND_LABEL[kind]} saved`,
         res?.weeks_parsed ? `${res.weeks_parsed} weeks read from it.` : undefined
@@ -153,6 +156,23 @@ function ClassDocuments({ cls, onChanged }) {
       toast.apiError('Could not read that file', err)
     } finally {
       setUploading(false)
+    }
+  }
+
+  const removeDoc = async (doc) => {
+    const ok = await confirm({
+      title: `Remove “${doc.original_name}”?`,
+      body: 'Plans already built from it are unaffected.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await api.deleteCurriculumMap(doc.id)
+      docs.refetch()
+      onChanged?.()
+    } catch (err) {
+      toast.apiError('Could not remove that document', err)
     }
   }
 
@@ -171,9 +191,26 @@ function ClassDocuments({ cls, onChanged }) {
                   {KIND_LABEL[d.kind] || d.kind} · {(d.chars || 0).toLocaleString()} characters
                 </span>
               </span>
+              <button
+                type="button"
+                className="btn-icon shrink-0"
+                onClick={() => removeDoc(d)}
+                aria-label={`Remove ${d.original_name}`}
+                title="Remove this document"
+              >
+                <Trash2 size={13} aria-hidden="true" />
+              </button>
             </li>
           ))}
         </ul>
+      ) : docs.isLoading ? (
+        <p className="text-xs text-ink-muted">Loading documents…</p>
+      ) : docs.isError ? (
+        /* Was indistinguishable from "no documents": rows fell back to [] on
+           any error, so a failed request read as an empty class. */
+        <p className="text-xs text-mark">
+          Couldn’t load documents. {errorParts(docs.error).message}
+        </p>
       ) : (
         <p className="text-xs text-ink-muted">
           No documents yet. A pacing guide lets the week board name your units.
@@ -216,6 +253,7 @@ function ClassDocuments({ cls, onChanged }) {
 function ClassRow({ cls, frameworks, isActive, onChanged }) {
   const toast = useToast()
   const confirm = useConfirm()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(cls.name)
 
@@ -248,6 +286,13 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
       await api.deleteClass(cls.id)
       toast.success(`${cls.name} removed`)
       onChanged?.()
+      /* Removing the class you are currently IN leaves the URL pointing at a
+         class that no longer exists — nothing guards an unknown :classId, so
+         the switcher read "Choose a class", the queries kept asking about a
+         dead id, and RememberClass had already written it to localStorage.
+         Send them back through RootRedirect, which picks a live class or
+         onboarding. */
+      if (isActive) navigate('/', { replace: true })
     } catch (err) {
       toast.apiError('Could not remove that class', err)
     }
@@ -378,7 +423,7 @@ export function ClassPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { classes, activeClass } = useActiveClass()
+  const { classes, activeClass, isLoading: classesLoading } = useActiveClass()
 
   const frameworksState = useQuery({
     queryKey: qk.frameworks,
@@ -465,6 +510,13 @@ export function ClassPage() {
                   onChanged={reloadClasses}
                 />
               ))
+            ) : classesLoading ? (
+              /* Was the empty state. useClasses deliberately has no
+                 placeholderData, so a hard refresh here told a teacher with
+                 five preps that they had none, for the whole round trip. */
+              <li className="px-3 py-4">
+                <SkeletonText lines={2} />
+              </li>
             ) : (
               <li className="px-3 py-4 text-sm text-ink-muted">
                 No classes yet. Add one — its standards framework decides what your plans can cite.

@@ -52,8 +52,15 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
      different plan, and landing on it silently would be a lie. */
   const targetFor = (id) => {
     const tail = location.pathname.split('/').slice(3).join('/')
-    const kind = tail.startsWith('week') ? 'calendar' : tail || 'calendar'
-    return `/c/${id}/${kind}`
+    /* Only `class` survives a class switch. It used to fall back to `calendar`
+       — a route that no longer exists — so switching class from the DEFAULT
+       landing screen (/c/A, where `tail` is empty) went straight to a 404.
+
+       A chat id deliberately does not carry either: a conversation belongs to
+       one class, and re-labelling it under another would show the wrong prep's
+       transcript beneath the new class's heading. Everything else lands on the
+       class root, which is where you start a plan anyway. */
+    return tail === 'class' ? `/c/${id}/class` : `/c/${id}`
   }
 
   return (

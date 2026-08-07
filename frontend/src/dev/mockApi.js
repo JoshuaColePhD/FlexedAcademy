@@ -91,6 +91,7 @@ const state = {
     ],
   },
   plans: { plan1: makePlan('Week 03 — Aug 17-21, 2026') },
+  documents: [],
 }
 
 /* Per-endpoint latency, in ms. Tunable from the console at runtime so a race
@@ -135,14 +136,62 @@ export function installMockApi() {
     if (!url.startsWith('/api') && !url.includes('/api/')) return real(input, init)
     const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0]
     const method = (init.method || 'GET').toUpperCase()
-    const body = init.body ? JSON.parse(init.body) : null
+    // Only JSON bodies parse. Uploads send FormData, and JSON.parse on it threw
+    // before any route matched — so every upload failed inside the mock and the
+    // app dutifully reported "Could not read that file".
+    const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
     calls.push({ path, method, at: performance.now() })
 
     if (path === '/api/auth/me') return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org' })
-    if (path === '/api/classes')
+    if (path === '/api/classes' && method === 'GET')
       return json([{ id: 'c1', name: 'AP Language & Composition', subject: 'AP Lang', grade: '11' }])
-    if (path === '/api/classes/c1/documents')
-      return json([{ id: 'd1', original_name: 'AP Lang pacing guide.pdf', kind: 'pacing_guide' }])
+    if (path === '/api/frameworks')
+      // `chunks` and `verbatim_ok` are not optional — FrameworkPicker calls
+      // .toLocaleString() on chunks directly.
+      return json([
+        { subject: 'AP_Lang', label: 'AP English Language and Composition (2019)', chunks: 59, verbatim_ok: 59 },
+        { subject: 'ELA', label: 'Alabama Course of Study: ELA (2021)', chunks: 1240, verbatim_ok: 1180 },
+      ])
+    if (path === '/api/classes' && method === 'POST') {
+      await wait(200)
+      const id = uid('class')
+      // Mirrors _auto_name: int(grade) is what turns a bad grade into NaN-th.
+      const n = Number(body.grade)
+      return json({ id, name: `${body.subject} · ${Number.isFinite(n) ? `${n}th` : `${body.grade}th`}` })
+    }
+    if (path === '/api/me' && method === 'PATCH') { await wait(120); return json({ ok: true }) }
+
+    /* Class documents, faithful to the real thing: the upload only becomes
+       visible if it carried a class_id, which is the bug under test. */
+    if (path === '/api/curriculum_map' && method === 'POST') {
+      await wait(300)
+      const fd = init.body // FormData
+      const classId = fd.get?.('class_id')
+      const kind = fd.get?.('kind') || 'pacing_guide'
+      const f = fd.get?.('file')
+      const id = uid('doc')
+      if (classId) {
+        state.documents = state.documents.filter((d) => !(d.class_id === classId && d.kind === kind))
+        state.documents.push({ id, class_id: classId, kind, original_name: f?.name || 'upload.pdf', chars: 12345 })
+      }
+      return json({ id, weeks_parsed: 12 })
+    }
+    const docDel = path.match(/^\/api\/curriculum_map\/([^/]+)$/)
+    if (docDel && method === 'DELETE') {
+      await wait(200)
+      state.documents = state.documents.filter((d) => d.id !== docDel[1])
+      return new Response(null, { status: 204 })
+    }
+    const docList = path.match(/^\/api\/classes\/([^/]+)\/documents$/)
+    if (docList && method === 'GET') {
+      await wait(120)
+      return json(state.documents.filter((d) => d.class_id === docList[1]))
+    }
+    if (path === '/api/extract_text' && method === 'POST') {
+      await wait(200)
+      const f = init.body?.get?.('file')
+      return json({ filename: f?.name || 'syllabus.pdf', text: 'UNIT 2 PACING: weeks 3-6 cover voice and tone.', chars: 46 })
+    }
 
     /* ── chats ───────────────────────────────────────────────────────────── */
     if (path === '/api/chats' && method === 'GET') {
@@ -208,6 +257,10 @@ export function installMockApi() {
     }
 
     if (path === '/api/generate_stream') {
+      // Recorded so a test can assert what the MODEL received, as against what
+      // the transcript shows — the two are deliberately different once a file
+      // is attached.
+      state.lastPrompt = body?.query ?? null
       const planId = uid('plan')
       const label = `Week ${String(seq).padStart(2, '0')} — Aug 17-21, 2026`
       state.plans[planId] = makePlan(label)

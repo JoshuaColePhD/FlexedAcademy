@@ -51,6 +51,11 @@ const nextId = () => `m${++idSeq}`
 
 const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
 
+/* Per attached file. A pacing guide is a few thousand characters; a scanned
+   40-page PDF is hundreds of thousands, and the whole thing would ride into
+   every prompt in the conversation. */
+const ATTACHMENT_CHAR_CAP = 12000
+
 export function ChatPage() {
   const { classId, chatId } = useParams()
   const navigate = useNavigate()
@@ -244,15 +249,44 @@ export function ChatPage() {
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
     async (text) => {
-      const content = (text ?? query).trim()
-      if (!content || busy) return
+      const typed = (text ?? query).trim()
+
+      /* Attached files were extracted, confirmed with a toast reporting the
+         character count, and then never sent: `attachments` was written by the
+         Composer and read by nobody. The chip also stayed pinned after sending,
+         so it looked like the document was still in context for every later
+         message. It never was.
+
+         Capped, because a 40-page PDF is both a context-window and a bill
+         problem, and the truncation is stated in the text rather than silent. */
+      const docs = attachments
+        .map((a) => {
+          const body = String(a.text || '')
+          const clipped = body.length > ATTACHMENT_CHAR_CAP
+          return `--- ${a.filename}${clipped ? ' (truncated)' : ''} ---\n${
+            clipped ? `${body.slice(0, ATTACHMENT_CHAR_CAP)}\n…[truncated]` : body
+          }`
+        })
+        .join('\n\n')
+
+      const content = docs ? `${docs}\n\n---\n\n${typed}` : typed
+      // Guards on the COMBINED text, so an attachment with no typed message
+      // sends — the send button was already enabled for that and did nothing.
+      if (!content.trim() || busy) return
       setQuery('')
-      setMessages((prev) => [...prev, { id: nextId(), role: 'user', content }])
+      setAttachments([])
+      setMessages((prev) => [
+        ...prev,
+        // The transcript shows what was typed; the file goes to the model.
+        { id: nextId(), role: 'user', content: typed || `Sent ${attachments.length} file(s)` },
+      ])
 
       let activeChatId = chatId
       if (!activeChatId) {
         try {
-          const created = await api.createChat(content.slice(0, 80))
+          // `typed`, never `content`: titling a chat from an attached PDF
+          // would name it after the document's first 80 characters.
+          const created = await api.createChat((typed || attachments[0]?.filename || 'New plan').slice(0, 80))
           activeChatId = created.id
           // Claim it BEFORE navigating: the navigation is what fires the
           // loader, and the loader has to already know this transcript is ours.
@@ -263,7 +297,12 @@ export function ChatPage() {
           /* Keep working even if the conversation can't be saved. */
         }
       }
-      if (activeChatId) api.addMessage(activeChatId, { role: 'user', content }).catch(() => {})
+      /* The TRANSCRIPT stores what the teacher wrote, not the file they
+         attached — persisting `content` would replay an entire PDF as their
+         message every time the conversation is reopened. The model still gets
+         the full text below. */
+      const shown = typed || `Sent ${attachments.length} file(s)`
+      if (activeChatId) api.addMessage(activeChatId, { role: 'user', content: shown }).catch(() => {})
 
       // No plan in this chat yet -> build one. Otherwise -> revise it.
       if (!artifact?.planId) {
@@ -305,7 +344,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, busy, chatId, classId, artifact, stream, navigate, qc, toast]
+    [query, attachments, busy, chatId, classId, artifact, stream, navigate, qc, toast]
   )
 
   /* Per-cell revise, from clicking a cell in the document.
@@ -453,6 +492,10 @@ export function ChatPage() {
                 key={m.id}
                 message={m}
                 onOpenArtifact={m.planId ? () => openDocument() : undefined}
+                /* The pencil rendered unguarded while this was never passed, so
+                   clicking it opened a working editor whose "Send again" threw
+                   and silently reverted the text. */
+                onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
               />
             ))}
 

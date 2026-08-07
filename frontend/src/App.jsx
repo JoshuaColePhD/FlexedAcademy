@@ -103,10 +103,33 @@ function useLegacyImport() {
  *  class that no longer exists, the first class wins rather than the app
  *  rendering an empty year for a deleted prep. */
 function RootRedirect() {
-  const { data: classes = [], isLoading } = useClasses()
+  const { data: classes = [], isLoading, isError } = useClasses()
   useLegacyImport()
 
   if (isLoading) return <BootScreen />
+  /* "The request failed" is not "you have no classes". useClasses has
+     retry: false, so a single blip left `data` undefined, which read as zero
+     classes and sent a teacher with five preps into "Let's set up your year"
+     and asked them to create their first class. */
+  if (isError) {
+    return (
+      <div className="flex min-h-app w-full items-center justify-center bg-paper p-gutter">
+        <div className="flex max-w-measure-form flex-col gap-3 text-center">
+          <h1 className="text-lg font-semibold text-ink">Couldn’t load your classes</h1>
+          <p className="note">
+            The server didn’t answer. Your classes and plans are safe — this is just this screen.
+          </p>
+          <button
+            type="button"
+            className="btn mx-auto"
+            onClick={() => window.location.reload()}
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
   if (!classes.length) return <Navigate to="/welcome" replace />
 
   let hint = null
