@@ -107,6 +107,37 @@ class Settings(BaseSettings):
     # exactly what copying .env.example gives you, since every other setting there
     # uses "" for unset — raised JSONDecodeError and took the app down at import.
     retrieval_floors_raw: str = Field(default="", alias="RETRIEVAL_FLOORS")
+
+    # A SEPARATE, looser floor for the ACT companion stratum only.
+    #
+    # The floor above answers "is this query in our domain at all", and distance
+    # is the only signal it has. The ACT companion asks something different: of
+    # the ACT standards this course's students will actually be tested on, which
+    # is closest to this week? Subject correctness there is guaranteed
+    # STRUCTURALLY, by retrieval.act_sections_for() — a physics week can only
+    # ever see ACT Science — so distance is not carrying that weight and does not
+    # need to be tight.
+    #
+    # And a cross-walk alignment is semantically distant by nature. Measured
+    # 2026-08-06, best correctly-sectioned ACT match per course:
+    #
+    #     AP Physics 1     S.EMI.501  0.575      AP World History  R.ARG.401 0.664
+    #     AP Physics C     S.IOD.701  0.651      AP European Hist  R.ARG.701 0.683
+    #     Pre-AP Chemistry S.IOD.601  0.661      AP Calculus       M.IES.301 0.703
+    #     AP US History    R.ARG.301  0.709      AP Psychology     R.REL.501 0.726
+    #     AP Macroecon     R.ARG.601  0.757      AP Human Geog     R.ARG.601 0.777
+    #     Social Studies   R.IDT.201  0.805      AP Gov & Politics R.ARG.701 0.831
+    #
+    # Every one of those is apt — a document-sourcing week matching ACT Reading's
+    # Arguments strand, a related-rates week matching Integrating Essential
+    # Skills — and at 0.65 all but one were thrown away, leaving the ACT row
+    # empty for every history and social studies course. 0.85 admits them.
+    #
+    # This CANNOT re-open the off-domain hole the floor above closes: an ACT
+    # chunk is only ever kept alongside a primary standard that passed the
+    # strict floor (see retrieve_grounded). A chemistry query against AP Lang
+    # still retrieves nothing and is still refused.
+    act_max_distance: float = 0.85
     # Below this many surviving chunks, the generator is told to say so rather
     # than supply a code from memory.
     retrieval_thin_threshold: int = 3

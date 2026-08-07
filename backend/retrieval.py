@@ -83,11 +83,6 @@ _CODE_RE = re.compile(
 # ---------------------------------------------------------------------------
 # ACT companion scoping
 #
-# ACT standards are ingested per subject area (01b_ingest_act_standards.py maps
-# the sheet's Section onto courses): English/Reading/Writing -> AP_Lang + ELA,
-# Math -> Math, Science -> Science. Every ACT chunk therefore already carries a
-# course.
-#
 # retrieve_raw used to drop the course filter for the ACT strata on the theory
 # that "ACT is cross-course". It is not. The corpus holds 724 ELA-side ACT
 # chunks against 212 Math and 72 Science, and a lesson-plan query is prose
@@ -95,46 +90,74 @@ _CODE_RE = re.compile(
 # Measured symptom: an AP Physics 1 week whose ACT Alignment row cited R.WME.501
 # (ACT *Reading* — word meanings in a passage) on three of five days.
 #
-# A physics week's ACT companion is ACT Science, or it is nothing. The mapping
-# below is deterministic on purpose: course names here are free text (any AP
-# course the teacher types becomes its own `course` value), so this matches on
-# what the name says rather than trusting an embedding to notice the subject.
+# Scoping is by ACT SECTION rather than by the chunk's `course`, because the
+# chunk's course is not the right key. 01b_ingest_act_standards.py maps the
+# sheet's sections onto courses (English/Reading/Writing -> AP_Lang + ELA,
+# Math -> Math, Science -> Science), so ACT Reading exists ONLY under the two
+# ELA courses — there is no Social_Studies copy of it to filter to. Section
+# scoping reaches the same rows from any course without re-ingesting or
+# duplicating them, and it says what the rule actually is.
+#
+# The section is read off the code prefix, which is reliable across both ACT
+# sources we hold: the sheet publishes E./R./M./S./W. codes, and the older
+# act-english-standards.md publishes bare ACT English codes (TOD 602, SST 401)
+# which are English by definition.
+#
+# The mapping is deterministic on purpose: course names here are free text (any
+# AP course the teacher types becomes its own `course` value), so this matches
+# on what the name says rather than trusting an embedding to notice the subject.
 # ---------------------------------------------------------------------------
 
-# The `course` value the ACT chunks live under, per companion area.
-ACT_ELA = "AP_Lang"
-ACT_MATH = "Math"
-ACT_SCIENCE = "Science"
+# ACT section, by the letter its codes start with.
+ACT_ENGLISH = "E"
+ACT_READING = "R"
+ACT_WRITING = "W"
+ACT_MATH = "M"
+ACT_SCIENCE = "S"
 
-_ACT_COURSE_PATTERNS: tuple[tuple[str, str], ...] = (
+_ACT_SECTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     # Order matters: first match wins. "AP Computer Science A" must not read as
-    # science, and "AP Environmental Science" must not read as ELA via "AP".
-    (r"computer science|comp\s*sci|\bcsp?\b|programming|coding", ""),
+    # science, "AP Human Geography" must not read as science via "geo", and
+    # "AP Art History" must reach the history rule before the arts rule.
+    (r"computer science|comp\s*sci|\bcsp?\b|programming|coding|engineering|"
+     r"health|physical education|\bpe\b|band|choir|orchestra|counsel", ()),
+    # Social studies and humanities -> ACT Reading. The Reading section's
+    # passages are prose fiction, social science, humanities and natural
+    # science, so a history, government, economics, psychology or arts course
+    # aligns to Reading and to nothing else on the test.
+    (r"histor|government|civics|geograph|econom|psycholog|sociolog|"
+     r"social studies|humanities|\bart\b|arts|theatre|theater|music|visual",
+     (ACT_READING,)),
     (r"physics|chemistry|biology|anatomy|geolog|astronom|environmental|"
-     r"\bscience\b|\bsci\b", ACT_SCIENCE),
+     r"\bscience\b|\bsci\b", (ACT_SCIENCE,)),
     (r"math|algebra|geometry|calculus|statistic|precalc|pre-calc|trig|"
-     r"quantitative", ACT_MATH),
+     r"quantitative", (ACT_MATH,)),
+    # English gets all three ELA-side sections. An AP Lang week is rhetorical
+    # analysis (ACT Reading: R.ARG argument, R.TST text structure) and timed
+    # argument essays (ACT Writing: W.DEV, W.LANG) as much as it is grammar and
+    # usage (ACT English), and restricting it to the English section alone would
+    # leave a rhetorical-analysis week citing punctuation conventions.
     (r"english|language arts|\bela\b|\blang\b|literature|\blit\b|composition|"
-     r"reading|writing|rhetoric", ACT_ELA),
+     r"reading|writing|rhetoric", (ACT_ENGLISH, ACT_READING, ACT_WRITING)),
 )
 
 
-def act_course_for(subject_code: str | None) -> str | None:
-    """Which ACT subject area is a legitimate companion for this course.
+def act_sections_for(subject_code: str | None) -> tuple[str, ...]:
+    """Which ACT sections are a legitimate companion for this course.
 
-    Returns the ACT chunks' `course` value, or None when the ACT has no test
-    section for this subject (social studies, the arts, PE, world languages,
-    health, computer science, counseling). None means the generator gets no
-    COMPANION ACT STANDARDS block at all and must leave act_alignment empty —
-    an empty row is correct output where a borrowed ELA code is not.
+    Returns the section letters its codes start with, or () when the ACT tests
+    nothing this course teaches (computer science, health, PE, world languages,
+    counseling). Empty means the generator gets no COMPANION ACT STANDARDS block
+    at all and must leave act_alignment empty — an empty row is correct output
+    where a borrowed ELA code is not.
     """
     name = (subject_code or "").replace("_", " ").lower()
     if not name:
-        return None
-    for pattern, act_course in _ACT_COURSE_PATTERNS:
+        return ()
+    for pattern, sections in _ACT_SECTION_PATTERNS:
         if re.search(pattern, name):
-            return act_course or None
-    return None
+            return sections
+    return ()
 
 
 def _norm_code(code: str) -> str:
@@ -319,21 +342,29 @@ def retrieve_raw(
     params = [query_vector]
     
     if source_type == "act_standards":
-        # Course-scoped, not cross-course — see act_course_for(). A course with
-        # no ACT section gets no ACT standards rather than the nearest ELA one.
-        act_course = act_course_for(course)
-        if act_course is None:
+        # Section-scoped, not cross-course — see act_sections_for(). A course the
+        # ACT does not test gets no ACT standards rather than the nearest ELA one.
+        sections = act_sections_for(course)
+        if not sections:
             return []
-        sql += " AND metadata->>'source_type' = %s AND metadata->>'course' = %s"
-        params.extend([source_type, act_course])
+        # The section is the code's first letter for the sheet's E./R./M./S./W.
+        # codes; anything else came from act-english-standards.md and is English.
+        sql += (
+            " AND metadata->>'source_type' = %s"
+            " AND (CASE WHEN metadata->>'code' ~ '^[ERMSW]\\.'"
+            "           THEN left(metadata->>'code', 1) ELSE 'E' END) = ANY(%s)"
+        )
+        params.extend([source_type, list(sections)])
     elif source_type == "act_recurring":
         # R1-R7 are Alabama's ELA Recurring Standards for Grades 9-12 (see
         # scripts/01_parse_chunks.py._parse_recurring, which notes the
         # source_type is "a schema label, not a claim about ACT"). They are
         # ingested under AP_Lang only and they are ELA standards, so they belong
         # to ELA-family courses and nowhere else. Unscoped, R6 — grammar,
-        # mechanics and usage — was landing in a physics plan.
-        if act_course_for(course) != ACT_ELA:
+        # mechanics and usage — was landing in a physics plan. (A history course
+        # maps to ACT Reading, which does NOT make Alabama's ELA recurring
+        # standards its own; hence ACT_ENGLISH, not merely "reads Reading".)
+        if ACT_ENGLISH not in act_sections_for(course):
             return []
         sql += " AND metadata->>'source_type' = %s"
         params.append(source_type)
@@ -441,8 +472,20 @@ def retrieve_grounded(
 
     raw = sorted(best.values(), key=lambda c: c["distance"])
 
-    survivors = [c for c in raw if c["distance"] <= floor]
-    
+    def is_act(c: dict) -> bool:
+        return (c.get("metadata") or {}).get("source_type") == "act_standards"
+
+    survivors = [c for c in raw if c["distance"] <= floor and not is_act(c)]
+
+    # The ACT companion gets its own, looser floor — see settings.act_max_distance
+    # for the measurements. It is applied ONLY when a primary standard already
+    # cleared the strict floor, so this cannot answer an off-domain request: a
+    # chemistry query against AP Lang has no primary survivor, so it keeps no ACT
+    # chunk either, stays empty, and is still refused.
+    act_floor = settings.act_max_distance if max_distance is None else max_distance
+    if survivors:
+        survivors += [c for c in raw if is_act(c) and c["distance"] <= act_floor]
+        survivors.sort(key=lambda c: c["distance"])
 
     keep = survivors[:top_k]
     kept_ids = {c["id"] for c in keep}
@@ -457,13 +500,19 @@ def retrieve_grounded(
     # Distance ascending: nearest first. There is no rerank_score any more.
     keep.sort(key=lambda c: c["distance"])
 
-    drop = [{"id": c["id"], "distance": c["distance"]} for c in raw if c["distance"] > floor][:3]
+    kept_ids = {c["id"] for c in keep}
+    drop = [
+        {"id": c["id"], "distance": c["distance"]}
+        for c in raw
+        if c["id"] not in kept_ids and c["distance"] > (act_floor if is_act(c) else floor)
+    ][:3]
 
     log.info(
-        "retrieval query_len=%d kept=%d floor=%.2f best=%.3f",
+        "retrieval query_len=%d kept=%d floor=%.2f act_floor=%.2f best=%.3f",
         len(query),
         len(keep),
         floor,
+        act_floor,
         raw[0]["distance"] if raw else -1,
     )
     return RetrievalResult(chunks=keep, rejected=drop, floor=floor)
