@@ -3,7 +3,7 @@ import { ChevronsRight, Download, Loader2, RefreshCw } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
+import { PANEL_OVERLAY, useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
 import { LessonPlanTable } from './LessonPlanTable'
 import { Marginalia } from './Marginalia'
 
@@ -21,6 +21,12 @@ import { Marginalia } from './Marginalia'
  * The page fits the container and is never a fixed 900px sheet: a fixed page in
  * a narrow canvas clips its own title, which is the defect this replaces.
  */
+const VIEWS = [
+  { id: 'days', label: 'Days', hint: 'One card per day' },
+  { id: 'fit', label: 'Fit', hint: 'Fitted to this width' },
+  { id: 'print', label: 'Print', hint: 'The district table at its printed width' },
+]
+
 export function ArtifactPanel({
   artifact,
   onCollapse,
@@ -38,14 +44,18 @@ export function ArtifactPanel({
   const panelRef = useRef(null)
   const titleRef = useRef(null)
 
+  /* Two questions, two answers. `isOverlay` decides whether the document
+     COVERS the chat or docks beside it. `isPhone` decides what SHAPE the
+     document takes. They used to be the same flag, which is how the 480px
+     drawer ended up holding an 860px table. */
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
+  const isPhone = useLayoutMode() === 'phone'
 
-  /* Fit-width is right when the document has a column of its own — it is what
-     stops a fixed page clipping its own title. It is WRONG in the 480px overlay
-     drawer, where fitting five district columns into it gives one word per line.
-     So the default follows the canvas, and the toggle stays available either
-     way. Initial state only: a teacher who has picked a width keeps it. */
-  const [fitWidth, setFitWidth] = useState(!isOverlay)
+  /* One control, three views — see VIEWS below. Derived until the teacher
+     picks, then sticky. `useState(!isOverlay)` never re-evaluated, so a wrong
+     answer at mount time was permanent. */
+  const [chosen, setChosen] = useState(null)
+  const view = chosen ?? (isPhone ? 'days' : 'fit')
   /* Escape peels one layer at a time, innermost first: an open cell tweak, then
      the document. It has to be decided HERE rather than in the tweak input,
      because useFocusTrap binds a native listener on this container — which runs
@@ -100,30 +110,39 @@ export function ArtifactPanel({
           <span className="doc-sub">
             {planId ? 'Saved' : busy ? 'Drafting…' : 'Preview'}
             {artifact?.unit ? ` · ${artifact.unit}` : ''}
-            {planId && onReviseDay ? ' · click any cell to tweak' : ''}
+            {planId && onReviseDay && view !== 'days' ? ' · click any cell to tweak' : ''}
           </span>
         </span>
 
         <span className="flex-1" />
 
-        {/* A real toggle, not a label. Fit-width is the default because the
-            document has to survive a narrow canvas; the district's own 860px
-            column is one click away for anyone checking it against the .docx. */}
-        <button
-          type="button"
-          className="doc-fit"
-          aria-pressed={fitWidth}
-          onClick={() => setFitWidth((v) => !v)}
-          title={fitWidth ? 'Show the document at its printed width' : 'Fit the document to this column'}
-        >
-          {fitWidth ? 'Fit width' : 'Printed width'}
-        </button>
+        {/* One control where there were two — a `Fit width` button up here and
+            a `View as the district table` button down in the table, which
+            could contradict each other and which left the deck unreachable
+            above 1024px. */}
+        <div className="doc-views" role="group" aria-label="How to show the plan">
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              className="doc-view"
+              aria-pressed={view === v.id}
+              onClick={() => setChosen(v.id)}
+              title={v.hint}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
 
         {planId ? (
           <>
+            {/* Not on a phone: collapse + the view control + Download already
+                fill 375px, and Rebuild is a power action where Download is the
+                reason the app exists. */}
             <button
               type="button"
-              className="btn-icon"
+              className={`btn-icon${isPhone ? ' hidden' : ''}`}
               onClick={rebuild}
               disabled={rebuilding}
               aria-label="Rebuild the document from the saved plan"
@@ -161,7 +180,7 @@ export function ArtifactPanel({
               onPlanRevised={onPlanRevised}
               busy={busy}
               missingDays={missingDays}
-              fitWidth={fitWidth}
+              view={view}
               flashCells={flashCells}
               openTweak={openTweak}
               setOpenTweak={setOpenTweak}

@@ -62,6 +62,7 @@ export function ChatPage() {
   const toast = useToast()
   const qc = useQueryClient()
   const mode = useLayoutMode()
+  const isPhone = mode === 'phone'
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
   const { activeClass } = useActiveClass()
   const { data: chats = [] } = useChats()
@@ -459,7 +460,7 @@ export function ChatPage() {
       artifact={{ ...liveArtifact, plan: livePlan }}
       missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
       onCollapse={collapse}
-      onReviseDay={mode === 'desktop' && artifact?.planId ? reviseDay : undefined}
+      onReviseDay={!isPhone && artifact?.planId ? reviseDay : undefined}
       onPlanRevised={onPlanRevised}
       busy={busy}
       streamingText={stream.text}
@@ -537,6 +538,24 @@ export function ChatPage() {
         {stream.isStreaming ? 'Building the lesson plan.' : artifact?.planId ? 'Lesson plan ready.' : ''}
       </div>
 
+      {/* On a phone the 240px rail has nowhere to go, so the artifact becomes a
+          one-row bar above the composer. Without it the only way to the .docx
+          is the card inside the last assistant message, which scrolls out of
+          reach as the conversation grows.
+
+          A conditional, NOT wrapped in a fragment with the dock: React renders
+          `null` as a placeholder, so the dock below keeps its child position
+          and the Composer is never remounted. */}
+      {hasArtifact && isPhone && !expanded ? (
+        <ArtifactRail
+          artifact={{ ...liveArtifact, plan: livePlan }}
+          classId={classId}
+          onExpand={() => openDocument()}
+          busy={busy}
+          variant="bar"
+        />
+      ) : null}
+
       {/* The dock. Composer must stay in the SAME slot of the same parent across
           the empty/non-empty transition — it owns a MediaRecorder, a
           ResizeObserver and an autosized inline height, all of which die on
@@ -580,18 +599,21 @@ export function ChatPage() {
         {chatPane}
       </div>
 
-      {hasArtifact && !isOverlay ? (
-        docOpen ? (
-          artifactEl
-        ) : (
-          <ArtifactRail
-            artifact={{ ...liveArtifact, plan: livePlan }}
-            classId={classId}
-            onExpand={() => openDocument()}
-            busy={busy}
-          />
-        )
+      {/* The rail docks from 768 up, not 1280. Gating it on `!isOverlay` left
+          768–1279 with NO rail at all — no Download, no "Built from", no
+          grounding count — even though 240px fits easily there (chat is 528px
+          at 768 and 520px at 1024, both above the ~460px column this redesign
+          was correcting). Below 768 it is the bar inside chatPane instead. */}
+      {hasArtifact && !isPhone && !docOpen ? (
+        <ArtifactRail
+          artifact={{ ...liveArtifact, plan: livePlan }}
+          classId={classId}
+          onExpand={() => openDocument()}
+          busy={busy}
+        />
       ) : null}
+
+      {docOpen ? artifactEl : null}
 
       {/* Below --xl the document cannot sit beside the chat, so it overlays —
           and here the dialog semantics ArtifactPanel claims are actually true. */}

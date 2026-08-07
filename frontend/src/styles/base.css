@@ -486,16 +486,29 @@
      that rule, restored, and now the JS and the CSS finally agree.
 
      Rule 2 applies: this one IS floating, so it may have elevation. */
+  /* Full surface, not a 480px drawer.
+     ArtifactPanel sets role="dialog", aria-modal and traps focus below --xl, so
+     a 480px drawer was a modal wearing a panel's clothes — and it was holding
+     an 860px district table, ~44% of it off-canvas. Covering the surface makes
+     the semantics true and gives the fitted layout a canvas worth having. From
+     --lg the docked sidebar stays visible beside it. */
   .artifact-overlay {
     position: fixed;
-    inset: 0 0 0 auto;
+    inset: 0;
     z-index: 50;
     display: flex;
     flex-direction: column;
-    width: min(var(--artifact-w), 100%);
     background: var(--paper-raised);
     box-shadow: var(--shadow-panel);
     animation: artifact-slide-in var(--t-base) var(--ease-out) both;
+  }
+  @media (min-width: 1024px) {
+    .artifact-overlay {
+      left: var(--sidebar-w);
+    }
+    .artifact-overlay .doc-shell {
+      border-left: 1px solid var(--edge);
+    }
   }
 
   /* A phone gets a bottom sheet. A right-hand drawer at 375px is a full-screen
@@ -1343,6 +1356,34 @@
     background: var(--paper);
     padding: var(--sp-4) 14px;
   }
+  /* The phone form: one row above the composer, not a column beside the chat. */
+  .artifact-rail.is-bar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    overflow: visible;
+    border-left: none;
+    border-top: 1px solid var(--edge);
+    padding: var(--sp-2) var(--gutter);
+  }
+  .artifact-rail.is-bar .rail-group {
+    margin-bottom: 0;
+    width: 100%;
+  }
+  .artifact-rail.is-bar .rail-card {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2);
+  }
+  .artifact-rail.is-bar .rail-card-head {
+    min-width: 0;
+    flex: 1;
+  }
+  .artifact-rail.is-bar .rail-actions {
+    flex-shrink: 0;
+  }
+
   .rail-group {
     margin-bottom: 22px;
   }
@@ -1538,6 +1579,15 @@
     flex-direction: column;
     margin-left: var(--sp-1);
   }
+  /* On a phone the header's fixed items (collapse, the view control, Download)
+     leave the title about 40px, so it rendered as "We…" over "Save…". The sheet
+     immediately below states the week as its own heading, so this is the one
+     thing in the header that can go. */
+  @media (max-width: 767.98px) {
+    .doc-titles {
+      display: none;
+    }
+  }
   .doc-title {
     overflow: hidden;
     font-size: var(--fs-md);
@@ -1553,20 +1603,35 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .doc-fit {
+  /* Days | Fit | Print. Replaces a `Fit width` button here and a `View as the
+     district table` button inside the table — two controls answering the same
+     question, which could disagree and which between them left the day deck
+     unreachable above 1024px. */
+  .doc-views {
+    display: inline-flex;
     flex-shrink: 0;
-    padding: 0 var(--sp-2);
+    gap: 2px;
+    padding: 2px;
+    background: var(--paper-inset);
+    border-radius: var(--r-md);
+  }
+  .doc-view {
+    padding: 4px var(--sp-2);
     font-family: var(--font-mono);
-    font-size: var(--fs-xs);
+    font-size: var(--fs-2xs);
     color: var(--ink-muted);
     background: transparent;
     border: none;
+    border-radius: var(--r-sm);
     cursor: pointer;
-    transition: color var(--t-fast) var(--ease);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   }
-  .doc-fit:hover,
-  .doc-fit[aria-pressed='true'] {
+  .doc-view:hover {
     color: var(--ink);
+  }
+  .doc-view[aria-pressed='true'] {
+    color: var(--ink);
+    background: var(--paper-raised);
   }
   .doc-download {
     display: flex;
@@ -1611,7 +1676,7 @@
   .doc-sheet .marginalia {
     margin-top: var(--sp-5);
   }
-  @media (max-width: 1279.98px) {
+  @media (max-width: 767.98px) {
     .doc-sheet {
       padding: var(--sp-6) var(--sp-5);
     }

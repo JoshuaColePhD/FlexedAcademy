@@ -51,9 +51,14 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title }) {
   )
 }
 
-export function ArtifactRail({ artifact, classId, onExpand, busy }) {
+export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rail' }) {
   const plan = artifact?.plan
   const planId = artifact?.planId
+  /* On a phone there is no room for a 240px column, so the same component
+     becomes a one-row bar above the composer: the file and its Download, and
+     nothing else. "Built from" is dropped rather than squeezed — it already
+     travels in the message as the week strip and the grounding line. */
+  const isBar = variant === 'bar'
 
   /* Already fetched by ClassPage under the same key, so opening a chat after
      visiting My Classes costs nothing. Best-effort: a class with no uploaded
@@ -61,7 +66,8 @@ export function ArtifactRail({ artifact, classId, onExpand, busy }) {
   const { data: documents = [] } = useQuery({
     queryKey: qk.classDocuments(classId),
     queryFn: () => api.listClassDocuments(classId),
-    enabled: Boolean(classId),
+    // The bar does not render this group, so it does not fetch it.
+    enabled: Boolean(classId) && !isBar,
     retry: false,
     staleTime: 5 * 60_000,
   })
@@ -79,9 +85,9 @@ export function ArtifactRail({ artifact, classId, onExpand, busy }) {
   const teachingDays = 5 - closed.length
 
   return (
-    <aside className="artifact-rail" aria-label="Artifacts">
+    <aside className={`artifact-rail${isBar ? ' is-bar' : ''}`} aria-label="Artifacts">
       <div className="rail-group">
-        <span className="eyebrow">Artifacts</span>
+        {isBar ? null : <span className="eyebrow">Artifacts</span>}
 
         {planId ? (
           /* The whole card expands the panel. Download stops the event: the one
@@ -149,7 +155,7 @@ export function ArtifactRail({ artifact, classId, onExpand, busy }) {
         )}
       </div>
 
-      {planId ? (
+      {planId && !isBar ? (
         <div className="rail-group">
           <span className="eyebrow">Built from</span>
 

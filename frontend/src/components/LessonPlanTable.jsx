@@ -126,7 +126,13 @@ export function LessonPlanTable({
   onPlanRevised,
   busy,
   missingDays = 'no_school',
-  fitWidth = true,
+  /* 'days' | 'fit' | 'print'. The panel owns this now.
+     It used to be two separate controls that could contradict each other: a
+     `fitWidth` prop from the header and a `rawTable` toggle down here. Between
+     1024 and 1279 the deck was unreachable AND fitWidth defaulted false, so the
+     only thing you could get was the 860px district table inside a 480px
+     drawer. One value cannot disagree with itself. */
+  view = 'fit',
   flashCells,
   openTweak,
   setOpenTweak,
@@ -134,7 +140,6 @@ export function LessonPlanTable({
   const [draft, setDraft] = useState('')
   const [feedbackSent, setFeedbackSent] = useState(false)
   const [revisingWholePlan, setRevisingWholePlan] = useState(false)
-  const [rawTable, setRawTable] = useState(false)
   const mode = useLayoutMode()
   const toast = useToast()
 
@@ -180,7 +185,12 @@ export function LessonPlanTable({
 
   /* Authoring is desktop-only — decision 5. A phone is for reading the week and
      downloading it, not for asking an LLM to rewrite it. */
-  const canTweak = Boolean(onReviseDay) && mode === 'desktop'
+  /* Authoring is off on a PHONE — decision 5: a phone is for reading the week
+     and downloading it, not for asking an LLM to rewrite it. It used to be off
+     on tablets too, which meant in-cell editing silently disappeared at 1023px
+     with nothing saying why. From 768 up the real document is on screen, so the
+     cells are there to click. */
+  const canTweak = Boolean(onReviseDay) && mode !== 'phone'
 
   const openCell = (dayIndex, field) => {
     if (!canTweak) return
@@ -205,7 +215,7 @@ export function LessonPlanTable({
     <div className="plan-doc">
       <div className="plan-head">
         <h2>{plan.week_of || 'Untitled week'}</h2>
-        {planId && mode === 'desktop' ? (
+        {planId && mode !== 'phone' ? (
           <div className="plan-feedback">
             <button
               type="button"
@@ -260,72 +270,50 @@ export function LessonPlanTable({
         ) : null}
       </div>
 
-      {/* Below --lg, or on any width where the district table is a sideways
-          scroll, the day-card deck replaces the table — unless the teacher has
-          asked to see the district table itself, which they must always be able
-          to do. Only ever ONE in the DOM: rendering both and hiding one makes a
-          screen reader read the whole week twice. */}
-      {mode !== 'desktop' && !rawTable ? (
-        <>
-          <PlanDayCards plan={plan} groundedCodes={groundedCodes} missingDays={missingDays} />
-          <button type="button" className="btn plan-view-toggle" onClick={() => setRawTable(true)}>
-            View as the district table
-          </button>
-        </>
+      {/* THREE ways to read one week, chosen by a single control in the
+          document header. Only ever ONE in the DOM: rendering two and hiding
+          one makes a screen reader read the whole week twice.
+
+          DAYS  — one card per day. The phone default, and now reachable at
+                  every width; it used to be gated on `mode !== 'desktop'`, so
+                  from 1024px up it could not be opened at all.
+          FIT   — a compact grid for the one-line fields, then a per-day block
+                  at full width for the lesson narrative. do_now/during/
+                  assessment are most of the words, and the district shape
+                  gives them a fifth of the page.
+          PRINT — the district table itself, 5x6 at 860px, the exact shape of
+                  the .docx. The app's promise: a teacher must always be able
+                  to hold the screen against the printed page. */}
+      {view === 'days' ? (
+        <PlanDayCards plan={plan} groundedCodes={groundedCodes} missingDays={missingDays} />
+      ) : view === 'print' ? (
+        <PlanTable
+          ordered={ordered}
+          groundedCodes={groundedCodes}
+          busy={busy}
+          flashCells={flashCells}
+          canTweak={canTweak}
+          openTweak={canTweak ? openTweak : null}
+          openCell={openCell}
+          closeCell={closeCell}
+          applyTweak={applyTweak}
+          draft={draft}
+          setDraft={setDraft}
+        />
       ) : (
-        <>
-          {mode !== 'desktop' ? (
-            <button
-              type="button"
-              className="btn plan-view-toggle"
-              onClick={() => setRawTable(false)}
-            >
-              Back to day view
-            </button>
-          ) : null}
-          {/* Two ways to read the same week, and the toggle in the document
-              header picks between them.
-
-              PRINTED WIDTH is the district table: 5 rows x 6 columns at 860px,
-              the exact shape of the .docx. It is the app's promise — a teacher
-              must always be able to hold the screen next to the printed page.
-
-              FIT WIDTH splits it in two: a compact grid for the fields that are
-              a line each, then a per-day block for the lesson narrative. Those
-              three fields are 90% of the words and the district shape gives
-              them a fifth of the width, which is what made the document
-              unreadable in any canvas narrower than a monitor. Same content,
-              same order, no field dropped. */}
-          {fitWidth ? (
-            <FittedPlan
-              ordered={ordered}
-              groundedCodes={groundedCodes}
-              busy={busy}
-              flashCells={flashCells}
-              canTweak={canTweak}
-              openTweak={canTweak ? openTweak : null}
-              openCell={openCell}
-              closeCell={closeCell}
-              applyTweak={applyTweak}
-              draft={draft}
-              setDraft={setDraft}
-            />
-          ) : (
-            <PlanTable
-              ordered={ordered}
-              groundedCodes={groundedCodes}
-              busy={busy}
-              flashCells={flashCells}
-              canTweak={canTweak}
-              openTweak={canTweak ? openTweak : null}
-              openCell={openCell}
-              closeCell={closeCell}
-              applyTweak={applyTweak}
-              draft={draft}
-              setDraft={setDraft}
-            />
-          )}
-        </>
+        <FittedPlan
+          ordered={ordered}
+          groundedCodes={groundedCodes}
+          busy={busy}
+          flashCells={flashCells}
+          canTweak={canTweak}
+          openTweak={canTweak ? openTweak : null}
+          openCell={openCell}
+          closeCell={closeCell}
+          applyTweak={applyTweak}
+          draft={draft}
+          setDraft={setDraft}
+        />
       )}
     </div>
   )
