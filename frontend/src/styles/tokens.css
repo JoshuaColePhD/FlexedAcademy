@@ -191,6 +191,21 @@
   --accent-text-rgb: 47 95 191;
   --doc-blue-rgb: 109 158 235; /* the exact value printed in the .docx */
 
+  /* ── the marketing brand ─────────────────────────────────────────────────
+     Violet, and DELIBERATELY not --accent.
+
+     --accent is the district blue that is already printed in the .docx: it is
+     load-bearing, it means "this is the document you hand in", and it carries
+     every citation and every filled control in the product. The landing page is
+     not the product — it is the thing that convinces someone to try it — and it
+     is the one surface allowed a colour chosen for how it looks.
+
+     So the split is intentional: violet outside the door, district blue inside.
+     Used ONLY by .landing-* rules. If it ever shows up in the app, that is a
+     bug. */
+  --brand-rgb: 109 40 217;
+  --brand-ink-rgb: 255 255 255;
+
   --mark-rgb: 179 38 30;
   --mark-tint-rgb: 253 236 234;
 
@@ -229,6 +244,8 @@
   --accent-on: rgb(var(--ink-inverse-rgb));
   --accent-ring: rgb(var(--accent-rgb) / 0.32);
   --doc-blue: rgb(var(--doc-blue-rgb));
+  --brand: rgb(var(--brand-rgb));
+  --brand-ink: rgb(var(--brand-ink-rgb));
   --mark: rgb(var(--mark-rgb));
   --mark-tint: rgb(var(--mark-tint-rgb));
   --flag: rgb(var(--flag-rgb));
@@ -303,6 +320,10 @@
   --accent-tint-rgb: 26 39 63;
   --accent-text-rgb: 122 162 240;
   --doc-blue-rgb: 109 158 235;
+
+  /* Lifted for a dark ground; the 600 step reads muddy on #101216. */
+  --brand-rgb: 139 92 246;
+  --brand-ink-rgb: 16 18 22;
 
   --mark-rgb: 240 129 120;
   --mark-tint-rgb: 56 26 24;

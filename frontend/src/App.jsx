@@ -23,6 +23,7 @@ import { useClasses } from './hooks/useAppData'
 import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
+import { LandingPage } from './pages/LandingPage'
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -193,8 +194,15 @@ function Gate() {
     const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup'
     return (
       <Routes>
+        {/* The public front door. There wasn't one: every anonymous visitor,
+            including someone arriving from a link who had never seen the
+            product, was redirected straight to a password field. `/` is the
+            landing page when signed OUT and RootRedirect when signed in, which
+            is why it is declared in both trees. */}
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        {/* A deep link still round-trips through sign-in and comes back. */}
         <Route
           path="*"
           element={

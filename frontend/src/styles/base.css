@@ -2102,6 +2102,152 @@
     cursor: pointer;
   }
 
+  /* ══ THE LANDING PAGE ═════════════════════════════════════════════════════
+     The only surface in the app that uses --brand. Everything else here is the
+     same token set as the product, so the two cannot drift on ink, paper or
+     spacing — only on the accent, which is the deliberate part.
+
+     One screen, no scroll on a laptop: a claim, a sentence, a button. The type
+     does the work, so the size is fluid rather than stepped — a headline this
+     large has to be able to get small without a breakpoint fighting it. */
+  .landing {
+    display: flex;
+    min-height: var(--app-h);
+    flex-direction: column;
+    padding: 0 clamp(var(--sp-5), 5vw, var(--sp-16));
+    background: var(--paper-sunken);
+    color: var(--ink);
+  }
+
+  .landing-head {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    padding: clamp(var(--sp-4), 3vw, var(--sp-8)) 0;
+  }
+  .landing-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--tracking-tight);
+    color: var(--ink);
+  }
+  .landing-mark {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+    background: var(--brand);
+  }
+  .landing-signin {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-min);
+    padding: 0 var(--sp-6);
+    font-size: var(--fs-md);
+    font-weight: var(--fw-semibold);
+    color: var(--brand-ink);
+    background: var(--brand);
+    text-decoration: none;
+    transition: opacity var(--t-fast) var(--ease);
+  }
+  .landing-signin:hover {
+    opacity: 0.88;
+  }
+
+  /* Centred in what is left after the header and the footer, so the headline
+     sits on the optical middle of the page rather than the geometric one. */
+  .landing-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    padding: var(--sp-10) 0;
+  }
+  .landing-eyebrow {
+    margin-bottom: clamp(var(--sp-5), 3vw, var(--sp-8));
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  /* 800 and -0.04em: Inter needs both to read as a tight grotesque at this
+     size. `text-wrap: balance` keeps the two lines from breaking one word
+     short, which at 6rem is very visible. */
+  .landing-title {
+    max-width: 18ch;
+    font-size: clamp(2.75rem, 9vw, 7rem);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+  .landing-sub {
+    max-width: 34ch;
+    margin-top: clamp(var(--sp-6), 4vw, var(--sp-10));
+    font-size: var(--fs-lg);
+    line-height: var(--lh-relaxed);
+    color: var(--ink-muted);
+    text-wrap: pretty;
+  }
+
+  .landing-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-6);
+    margin-top: clamp(var(--sp-8), 4vw, var(--sp-12));
+  }
+  /* Ink, not brand. The violet is the identity; the one action on the page is
+     the thing you cannot miss, and on a violet-accented page the highest
+     contrast available is the ink itself. */
+  .landing-cta {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-min-lg);
+    padding: 0 var(--sp-8);
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-semibold);
+    color: var(--ink-inverse);
+    background: var(--ink);
+    text-decoration: none;
+    transition: background var(--t-fast) var(--ease);
+  }
+  .landing-cta:hover {
+    background: var(--ink-soft);
+  }
+  .landing-note {
+    font-family: var(--font-mono);
+    font-size: var(--fs-md);
+    color: var(--ink-faint);
+  }
+
+  .landing-foot {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--sp-3) var(--sp-8);
+    padding: var(--sp-6) 0 clamp(var(--sp-6), 3vw, var(--sp-10));
+    border-top: 1px solid var(--edge-strong);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--ink-faint);
+  }
+  @media (max-width: 767.98px) {
+    /* Three items across is two words per column on a phone. */
+    .landing-foot {
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+  }
+
   /* ══ MOTION ═══════════════════════════════════════════════════════════════
      One animation carries information — fa-flash, which answers "what changed?"
      without a diff view. Everything else is entry and touch feedback. All of it
