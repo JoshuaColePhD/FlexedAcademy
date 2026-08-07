@@ -109,10 +109,18 @@ def check(course: str, query: str, expect: tuple[str, ...]) -> None:
                 )
         else:
             primary_codes.append(code)
-            # A primary standard must belong to this course, or be a
-            # course-agnostic College Board / AP skills chunk for it.
-            if chunk_course != course:
+            # A primary standard must belong to this course. "Belong to" means
+            # any `course` value that IS this course — the College Board ingest
+            # files one course under several names taken from its source
+            # documents ("AP US History Key Concepts", "APHuG"), and
+            # course_variants() is what reunites them.
+            if chunk_course not in retrieval.course_variants(course):
                 foreign.append(f"{code}({chunk_course})")
+            # An AP course grounds in AP skills, not the state course of study.
+            if retrieval.is_ap_course(course) and st == "state_course_of_study":
+                failures.append(
+                    f"{course}: AP course cited state course of study {code}"
+                )
 
     if foreign:
         failures.append(f"{course}: primary standards from another course: {', '.join(foreign[:4])}")

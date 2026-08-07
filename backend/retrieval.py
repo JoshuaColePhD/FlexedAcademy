@@ -66,8 +66,15 @@ _CODE_RE = re.compile(
     # score band. e.g. E.CSE.301, R.WME.501, M.NCP.401, S.IOD.301, W.DEV.501
     r"[ERMSW]\.[A-Z]{2,4}\.\d{3}"
     # College Board: learning objectives, essential knowledge, science
-    # practices, enduring understandings. e.g. LO.3.A.3.1, EK 1.2.A.1, SP 4.2
-    r"|(?:LO|EK|EU|SP)[\s.]?\d+(?:\.[A-Za-z0-9]+)*"
+    # practices, enduring understandings, key concepts.
+    # e.g. LO.3.A.3.1, EK 1.2.A.1, SP 4.2, KC 5.3.I.B
+    r"|(?:LO|EK|EU|SP|KC)[\s.]?\d+(?:\.[A-Za-z0-9]+)*"
+    # College Board unit/idea codes, which are a letter prefix then a dash.
+    # e.g. KC-5.3.I.B, CHA-3.E.1, UNC-4.C, POL-1.F.2, PSO-2.F.1, AAP-1.A.4,
+    # DAT-1, OS-2. These carry the whole primary standards row for AP History,
+    # Government, Economics, Geography, Calculus and CS, and NONE of them were
+    # recognised before — so for those courses the audit saw nothing to check.
+    r"|[A-Z]{2,4}-\d+(?:\.[A-Za-z0-9]+)*"
     # Alabama CASE codes as published by ALSDE: a subject+year prefix, a grade or
     # course segment, then the standard. e.g. ELA21.11.R2, MA19.GDA.5,
     # SS24.11.3a, SCI23.9.1, CSC26.9-12.CD.3, ARTS24.HS.MU.1
@@ -75,6 +82,8 @@ _CODE_RE = re.compile(
     r"|Grade\d{1,2}-\d{1,2}[a-c]?"  # legacy ALCOS parse, e.g. Grade11-22a
     r"|(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\s?\d{3}"  # legacy ACT naming
     r"|R\d{1,2}"  # Alabama ELA recurring, e.g. R4
+    # Bare dotted AP topic codes, e.g. 2.2.B.1, 5.5.A.1.i, 3.8.A.1, 1.2
+    r"|\d+\.\d+(?:\.[A-Za-z0-9]+)*"
     r"|\d\.[A-C]"  # AP Lang skill, e.g. 2.A
     r")(?!\.?\w)"
 )
@@ -121,6 +130,12 @@ _ACT_SECTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     # "AP Art History" must reach the history rule before the arts rule.
     (r"computer science|comp\s*sci|\bcsp?\b|programming|coding|engineering|"
      r"health|physical education|\bpe\b|band|choir|orchestra|counsel", ()),
+    # World languages, BEFORE the English rule. "AP Spanish Literature and
+    # Culture" is a Spanish course, and the word "literature" in its title was
+    # matching the English rule and handing it ACT English/Reading/Writing —
+    # standards about reading English prose, in a class taught in Spanish.
+    (r"spanish|french|german|\blatin\b|japanese|chinese|italian|russian|"
+     r"world language", ()),
     # Social studies and humanities -> ACT Reading. The Reading section's
     # passages are prose fiction, social science, humanities and natural
     # science, so a history, government, economics, psychology or arts course
@@ -140,6 +155,109 @@ _ACT_SECTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (r"english|language arts|\bela\b|\blang\b|literature|\blit\b|composition|"
      r"reading|writing|rhetoric", (ACT_ENGLISH, ACT_READING, ACT_WRITING)),
 )
+
+
+# ---------------------------------------------------------------------------
+# Course identity
+#
+# Two separate problems, both about the `course` metadata value.
+#
+# (a) One course is filed under several `course` values. The College Board
+#     ingest takes the course name from each source document's own title, so
+#     "AP US History", "AP US History Key Concepts", "AP US History Key Concepts
+#     2019-2020" and "AP US History Themes 2014-2015" are four partitions of one
+#     course. Measured on the live corpus, selecting the plain name reaches 785
+#     of 1044 rows — 259 standards, a quarter of the course, unreachable by any
+#     query. Same for AP Human Geography (203 of 523 unreachable), AP Seminar,
+#     AP Environmental Science and AP Biology.
+#
+#     Resolved at QUERY time rather than by re-ingesting. The chunk text is
+#     unchanged either way, so a migration would mean re-embedding 26,555 rows —
+#     real money at the embeddings API — to fix a lookup problem. Matching the
+#     variants in the WHERE clause costs nothing and is reversible.
+#
+# (b) An AP course must ground in AP skills, not in the state course of study.
+#     Josh's rule, 2026-08-06: "If it's an AP class, I don't need regular
+#     standards. I only need the AP skills."
+# ---------------------------------------------------------------------------
+
+# Suffixes the College Board ingest appended from a document title. Stripping
+# them is what collapses the variants of one course onto one key. Deliberately a
+# fixed list of publication-artefact words: anything that distinguishes two real
+# courses ("AP Physics 1" vs "AP Physics 2" vs "AP Physics C") must survive it.
+_COURSE_SUFFIX_RE = re.compile(
+    r"\b("
+    r"key concepts|themes|subunits|updated ced standards|curriculum framework|"
+    r"curricular requirements|learning objectives|science practices|big ideas|"
+    r"course skills|topic outline|thematic|skills standards|"
+    r"\d{4}(?:-\d{2,4})?|grades? ?9-12"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Abbreviations and spelling variants that suffix-stripping alone cannot join.
+_COURSE_ALIASES = {
+    "aphug": "ap human geography",
+    "ap united states history": "ap us history",
+    "ap us government and politics": "ap us government & politics",
+    "ap english language and composition": "ap lang",
+    "ap english literature": "ap english literature and composition",
+}
+
+
+def normalize_course(course: str | None) -> str:
+    """The identity of a course, independent of which document a chunk came from."""
+    name = (course or "").replace("_", " ").strip().lower()
+    name = _COURSE_SUFFIX_RE.sub(" ", name)
+    name = re.sub(r"[-—/&]+", " ", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    return _COURSE_ALIASES.get(name, name)
+
+
+@functools.lru_cache(maxsize=1)
+def _courses_by_identity() -> dict[str, tuple[str, ...]]:
+    """Every `course` value in the corpus, grouped by normalize_course().
+
+    Built from the chunk files rather than the database so it costs no query and
+    cannot disagree with what 02_embed_store.py loaded.
+    """
+    groups: dict[str, set[str]] = {}
+    for c in load_chunks():
+        course = c.get("course")
+        if course:
+            groups.setdefault(normalize_course(course), set()).add(course)
+    return {k: tuple(sorted(v)) for k, v in groups.items()}
+
+
+def course_variants(subject_code: str | None) -> tuple[str, ...]:
+    """Every `course` value that is really this same course.
+
+    Always includes the requested value itself, so a course the corpus has never
+    heard of still behaves exactly as it did before — it just matches nothing.
+    """
+    if not subject_code:
+        return ()
+    found = _courses_by_identity().get(normalize_course(subject_code), ())
+    return tuple(dict.fromkeys((subject_code, *found)))
+
+
+_AP_COURSE_RE = re.compile(r"^(?:pre[-\s]?)?ap[\s_]", re.IGNORECASE)
+
+
+def is_ap_course(subject_code: str | None) -> bool:
+    """Does this course ground in College Board standards rather than the ALCOS?
+
+    An AP or Pre-AP course is taught to the College Board framework, so its
+    primary standard is an AP skill or learning objective and the Alabama course
+    of study is not cited alongside it.
+
+    For every AP course but one this is already true by accident: the ALCOS
+    chunks are filed under "Science", "Math", "Social_Studies" and so on, which
+    an AP course's own name never matches. AP_Lang is the exception — it holds
+    35 Grade 11 ELA course-of-study chunks as well as its 22 AP skills — so this
+    is what makes the rule uniform instead of incidental.
+    """
+    return bool(_AP_COURSE_RE.match((subject_code or "").strip()))
 
 
 def act_sections_for(subject_code: str | None) -> tuple[str, ...]:
@@ -251,7 +369,43 @@ def load_chunks() -> list[dict]:
 
 @functools.lru_cache(maxsize=1)
 def chunks_by_code() -> dict[str, dict]:
+    """Code -> one chunk, ignoring which course it belongs to.
+
+    Kept for the Standards browser, which looks a code up on its own. Do NOT use
+    it to decide whether a code is legitimate for a course — codes are not unique
+    across the corpus. See codes_for_course().
+    """
     return {_norm_code(c["code"]): c for c in load_chunks()}
+
+
+@functools.lru_cache(maxsize=1)
+def _codes_by_course() -> dict[str, frozenset[str]]:
+    groups: dict[str, set[str]] = {}
+    for c in load_chunks():
+        if c.get("course") and c.get("code"):
+            groups.setdefault(normalize_course(c["course"]), set()).add(_norm_code(c["code"]))
+    return {k: frozenset(v) for k, v in groups.items()}
+
+
+def codes_for_course(subject_code: str | None) -> frozenset[str]:
+    """Every standard code that exists FOR THIS COURSE.
+
+    audit_grounding used to ask chunks_by_code() whether a cited code existed
+    "in the corpus at all", which is the wrong question when codes are not
+    unique. 13,809 codes are shared across 26,555 chunks and that dict keeps
+    whichever course loaded last:
+
+        '3.A' -> AP_Lang            (3.A also exists in 8+ other courses)
+        '1'   -> AP Spanish Language and Culture
+        '2.C' -> AP Spanish Language and Culture
+
+    "2.C" is the specific fabrication this module's own STRATA comment cites —
+    "one run invented 2.C, a code 01_parse_chunks.py notes does not exist" — and
+    a corpus-wide lookup now finds a real AP Spanish standard by that name, so
+    that documented hallucination would be waved through in an AP Lang plan.
+    Scoping the check to the course is what makes it mean anything.
+    """
+    return _codes_by_course().get(normalize_course(subject_code), frozenset())
 
 
 # ---------------------------------------------------------------------------
@@ -364,22 +518,32 @@ def retrieve_raw(
         # mechanics and usage — was landing in a physics plan. (A history course
         # maps to ACT Reading, which does NOT make Alabama's ELA recurring
         # standards its own; hence ACT_ENGLISH, not merely "reads Reading".)
-        if ACT_ENGLISH not in act_sections_for(course):
+        #
+        # An AP course does not cite the state course of study at all, and these
+        # are state standards.
+        if ACT_ENGLISH not in act_sections_for(course) or is_ap_course(course):
             return []
         sql += " AND metadata->>'source_type' = %s"
         params.append(source_type)
     else:
-        sql += " AND metadata->>'course' = %s"
-        params.append(course)
-        
-        # The OR condition
+        # Every `course` value that is really this course — see course_variants().
+        sql += " AND metadata->>'course' = ANY(%s)"
+        params.append(list(course_variants(course)))
+
+        # College Board and AP skill chunks carry no meaningful grade (a CED
+        # covers the whole course), so they are exempt from the grade filter.
         sql += " AND ((metadata->>'grade')::int = %s OR metadata->>'source_type' IN ('college_board', 'ap_skills'))"
         params.append(grade)
-        
+
+        # An AP course grounds in AP skills, not in the state course of study.
+        if is_ap_course(course):
+            sql += " AND metadata->>'source_type' <> 'state_course_of_study'"
+
         if source_type:
             sql += " AND metadata->>'source_type' = %s"
             params.append(source_type)
-            
+
+
     sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
     params.extend([query_vector, n])
 
@@ -403,6 +567,64 @@ def retrieve_raw(
 # exist). Retrieving per source type means the codes it needs are actually on the
 # table, which prevents the fabrication rather than just flagging it afterwards.
 STRATA = ("ap_skills", "state_course_of_study", "act_standards", "act_recurring")
+
+
+def lookup_codes(query: str, course: str, grade: int) -> list[dict]:
+    """Chunks whose code the query names outright.
+
+    Vector search cannot do identifiers. Embeddings put "LO.3.A.3.1" and
+    "LO.3.A.2.1" within a hair of each other because they ARE nearly the same
+    string, so the nearest neighbour to a code is its siblings, not itself.
+    Measured before this existed, every direct code lookup missed:
+
+        "ELA21.11.R2" -> nothing at all
+        "LO.3.A.3.1"  -> LO.3.A.2.1, LO.1.A.5.1, LO.3.A.4.3
+        "SC23.PHYS.2" -> SC23.PHYS.3d, SC23.PHYS.3e, SC23.PHYS.6d
+
+    So when a teacher types a code — "plan week 3 around ELA21.11.R2" — the one
+    standard they named was the one thing retrieval could not hand them. _CODE_RE
+    already knows how to find codes in text; this looks up what it finds.
+
+    Scoped to the same course and grade as the vector search, so naming a code
+    cannot reach across into another subject's standards. Returned at distance
+    0.0: an exact identifier match is not an approximation, and it should sort
+    above everything the vector search found.
+    """
+    codes: set[str] = set()
+    for raw in _CODE_RE.findall(query or ""):
+        code = _norm_code(raw)
+        # The College Board sources spell the same key concept both ways —
+        # "KC 5.3.I.B" and "KC-5.3.I.B" are both in the corpus — so look for
+        # either separator regardless of which one the teacher typed.
+        codes.update({code, code.replace("-", " "), code.replace(" ", "-")})
+    if not codes:
+        return []
+    from . import db
+
+    sql = (
+        "SELECT id, document, metadata FROM chunks "
+        "WHERE upper(metadata->>'code') = ANY(%s) "
+        "AND metadata->>'course' = ANY(%s) "
+        "AND ((metadata->>'grade')::int = %s "
+        "     OR metadata->>'source_type' IN ('college_board', 'ap_skills', 'act_standards'))"
+    )
+    params: list = [sorted(codes), list(course_variants(course)), grade]
+    if is_ap_course(course):
+        sql += " AND metadata->>'source_type' <> 'state_course_of_study'"
+
+    try:
+        rows = db._rows(sql, tuple(params))
+    except Exception as e:  # noqa: BLE001 — an exact-match bonus must never break retrieval
+        log.warning("code lookup failed for %s: %s", sorted(codes), e)
+        return []
+
+    found = [
+        {"id": r["id"], "document": r["document"], "metadata": r["metadata"], "distance": 0.0}
+        for r in rows
+    ]
+    if found:
+        log.info("code lookup matched %d chunk(s) for %s", len(found), sorted(codes))
+    return found
 
 
 def retrieve_grounded(
@@ -454,6 +676,11 @@ def retrieve_grounded(
     #  thread pool, and it belongs in db.py.)
     jobs = [(q, max(top_k * 3, top_k), None) for q in searches]
     jobs += [(q, top_k, st) for q in searches for st in STRATA]
+
+    # Exact identifier matches first, so they win the per-code dedup in
+    # consider() against any approximate hit for the same standard.
+    for q in searches:
+        consider(lookup_codes(q, subject_code, grade))
 
     for q, n, source_type in jobs:
         try:
@@ -584,16 +811,31 @@ def no_grounded_standards_error(query: str, result: RetrievalResult) -> AppError
 # ---------------------------------------------------------------------------
 
 
-def audit_grounding(plan: dict, allowed: set[str]) -> list[str]:
+def audit_grounding(plan: dict, allowed: set[str], subject_code: str | None = None) -> list[str]:
     """Flag every standard code the plan cites that retrieval didn't supply.
 
     Warnings, not errors: the canonical example-week.json itself cites CLR 501,
     and a teacher may legitimately reference something by hand. But an
     ungroundable family gets called out by name, because that's a fabrication
     the docs explicitly predict.
+
+    `subject_code` scopes the "does this code exist" check to the course being
+    planned — see codes_for_course() for why a corpus-wide check is worse than
+    no check. It is optional so an older caller keeps working, but a caller that
+    omits it gets the weaker corpus-wide behaviour.
     """
     warnings: list[str] = []
-    known = chunks_by_code()
+    if subject_code:
+        known: frozenset[str] | dict[str, dict] = codes_for_course(subject_code)
+        # ACT standards are cross-course by design and are never filed under the
+        # course being planned, so they would all read as "not in this course".
+        known = known | {
+            _norm_code(c["code"])
+            for c in load_chunks()
+            if c.get("source_type") in ("act_standards", "act_recurring") and c.get("code")
+        }
+    else:
+        known = chunks_by_code()
 
     for day in plan.get("days", []):
         if day.get("no_school"):
@@ -613,8 +855,9 @@ def audit_grounding(plan: dict, allowed: set[str]) -> list[str]:
                     f"English/Writing only (see Known Gaps)."
                 )
             elif code not in allowed and code not in known:
+                where = f" for {subject_code}" if subject_code else " at all"
                 warnings.append(
-                    f"{name} cites {raw_code}, which does not appear in the standards corpus at all."
+                    f"{name} cites {raw_code}, which does not appear in the standards corpus{where}."
                 )
             elif code not in allowed:
                 warnings.append(
