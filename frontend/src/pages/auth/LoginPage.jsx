@@ -4,11 +4,6 @@ import { GoogleLogin } from '@react-oauth/google'
 import { useAuth } from '../../lib/authContext'
 import { AuthLayout, authInputClass } from './AuthLayout'
 
-/* One place to change it. This is the only address the product shows a locked-
-   out teacher, so it should be one you actually read — swap it for a support
-   alias the moment there is one. */
-const SUPPORT_EMAIL = 'jpcole@florencek12.org'
-
 export default function LoginPage() {
   const { login, loginWithGoogle } = useAuth()
   const [params] = useSearchParams()
@@ -126,33 +121,36 @@ export default function LoginPage() {
         </button>
       </form>
 
-      {/* There is no self-serve password reset — the backend has no way to send
-          email, so there is no link to deliver. Saying so is the whole point of
-          this block: without it a teacher who forgot their password had no
-          "Forgot password?" to click, no explanation, and no route back into
-          their own plans. An honest dead end with a way out beats a silent one.
+      {/* There is no self-serve password reset — the backend cannot send email,
+          so there is no link to deliver. Without this block a teacher who
+          forgot their password had no "Forgot password?" to click, no
+          explanation, and no route back into their own plans.
 
-          It also names the case that is NOT a dead end: anyone who signed up
-          with Google can just use the button above, and would otherwise sit
-          here typing a password they never set. */}
+          The first paragraph is a REAL recovery path, not a consolation:
+          routes/auth.py's /google handler looks the account up by EMAIL and
+          signs you into it whether or not it has a password_hash. So any
+          address that is a Google account — which for teachers usually means
+          their school Workspace one — recovers itself through the button
+          directly above. That covers most of the cases this page was silently
+          failing, and it needs no email infrastructure at all.
+
+          Deliberately no contact address here. This page is public, and a
+          personal inbox published on it is spam bait and hard to take back.
+          When there is a real support alias, or a token flow to deliver, that
+          is what belongs in the second paragraph. */}
       <details className="mt-5 text-sm">
         <summary className="cursor-pointer text-ink-muted underline underline-offset-4 hover:text-ink">
           Forgot your password?
         </summary>
         <div className="mt-2.5 flex flex-col gap-2 rounded-lg bg-paper-sunken p-3 text-ink-soft">
           <p>
-            If you signed up with Google, use <strong className="font-medium text-ink">Continue
-            with Google</strong> above — there’s no password on that account to remember.
+            If your email is a Google account — including a school one —{' '}
+            <strong className="font-medium text-ink">Continue with Google</strong> above will sign
+            you into the same account, password or not. Everything you’ve built is still there.
           </p>
           <p>
-            Otherwise there’s no self-serve reset yet. Email{' '}
-            <a
-              href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Flexed Academy — password reset')}`}
-              className="font-medium text-accent-text underline underline-offset-4"
-            >
-              {SUPPORT_EMAIL}
-            </a>{' '}
-            and I’ll sort it out. Your plans are safe either way.
+            If it isn’t, there’s no self-serve reset yet. Nothing has been lost — your plans stay
+            on your account until you can get back into it.
           </p>
         </div>
       </details>
