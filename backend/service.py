@@ -159,7 +159,9 @@ def finalize(
         plan, teacher=s["teacher"], course=s["course"], period=s["period"]
     )
 
-    warnings += retrieval.audit_grounding(plan, result.codes)
+    warnings += retrieval.audit_grounding(
+        plan, result.codes, subject_code=_subject_code(s.get("subject", ""))
+    )
 
     plan_id = db.new_id()
     out_path = docx_build.plan_output_path(plan, plan_id)
@@ -316,7 +318,7 @@ def revise_day(user_id: str, plan_id: str, day_index: int, feedback: str, bg_tas
     new_plan = {**plan, "days": new_days}
 
     allowed = set(row.get("retrieved_ids") or []) | result.codes
-    warnings += retrieval.audit_grounding(new_plan, allowed)
+    warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
 
     out_path = docx_build.plan_output_path(new_plan, plan_id)
 
