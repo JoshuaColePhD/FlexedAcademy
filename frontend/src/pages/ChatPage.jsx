@@ -400,6 +400,17 @@ export function ChatPage() {
           api.addMessage(saveTo, { role: 'assistant', content: reply, plan_id: row.id }).catch(() => {})
         }
       } catch (err) {
+        /* The "Revise Thursday's Do Now…" message above was appended AND
+           persisted before the request. With only a toast here, a failure left
+           a question with no reply — and because the question was saved and the
+           toast was not, it survived reload as an unanswered request nobody
+           could explain. The reply is persisted for the same reason. */
+        const failed = `Couldn’t revise ${label}. ${err.message}`
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: 'assistant', isError: true, content: failed, hint: err.hint },
+        ])
+        if (saveTo) api.addMessage(saveTo, { role: 'assistant', content: failed }).catch(() => {})
         toast.apiError(`Could not revise ${label}`, err)
       } finally {
         setRevising(false)
@@ -407,6 +418,27 @@ export function ChatPage() {
     },
     [artifact, toast, flash]
   )
+
+  /* Stopping used to say nothing at all: useLessonStream returns null on an
+     AbortError and fires no callback, so the transcript kept the question and
+     never acquired a reply. The teacher was left looking at their own message
+     with no indication anything had happened. */
+  const stopGenerating = useCallback(() => {
+    stream.stop()
+    const content = 'Stopped. Nothing was saved — ask again when you’re ready.'
+    setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content, isError: true }])
+    if (localFor.current) {
+      api.addMessage(localFor.current, { role: 'assistant', content }).catch(() => {})
+    }
+  }, [stream])
+
+  /* Rebuild the last plan from the same prompt. `onRetry` and `isLast` were
+     declared on Message and never passed, so the retry button could not render
+     and the only recovery from a failed build was retyping the whole prompt. */
+  const retryLast = useCallback(() => {
+    const lastAsk = [...messages].reverse().find((m) => m.role === 'user')
+    if (lastAsk) submit(lastAsk.content)
+  }, [messages, submit])
 
   const onPlanRevised = useCallback((row) => {
     if (!row) return
@@ -488,10 +520,12 @@ export function ChatPage() {
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className="chat-column mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
-            {messages.map((m) => (
+            {messages.map((m, i) => (
               <Message
                 key={m.id}
                 message={m}
+                isLast={i === messages.length - 1}
+                onRetry={m.isError && !busy ? retryLast : undefined}
                 onOpenArtifact={m.planId ? () => openDocument() : undefined}
                 /* The pencil rendered unguarded while this was never passed, so
                    clicking it opened a working editor whose "Send again" threw
@@ -566,7 +600,8 @@ export function ChatPage() {
             value={query}
             onChange={setQuery}
             onSubmit={submit}
-            onStop={stream.stop}
+            /* Only a real stream is abortable — see the Composer. */
+            onStop={stream.isStreaming ? stopGenerating : undefined}
             isStreaming={busy}
             attachments={attachments}
             setAttachments={setAttachments}

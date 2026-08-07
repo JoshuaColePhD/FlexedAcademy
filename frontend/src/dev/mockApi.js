@@ -283,6 +283,15 @@ export function installMockApi() {
       ])
     }
 
+    const revise = path.match(/^\/api\/plans\/([^/]+)\/revise$/)
+    if (revise && method === 'POST') {
+      // Slow on purpose: a revision is NOT abortable, and the composer's
+      // mid-revision state is the thing under test.
+      await wait(1500)
+      const p = state.plans[revise[1]] || Object.values(state.plans)[0]
+      return json({ id: revise[1], plan_json: p, warnings: WARNINGS, retrieved_ids: RETRIEVED, week_label: p.week_of })
+    }
+
     if (path === '/api/revise_day') {
       await wait(300)
       const p = state.plans[body.plan_id] || Object.values(state.plans)[0]

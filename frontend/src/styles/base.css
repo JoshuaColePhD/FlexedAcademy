@@ -1976,6 +1976,17 @@
     }
   }
 
+  /* A reply that is a failure, marked as one. Same apparatus as .marginalia:
+     a coloured left edge and a tinted ground, so it reads as an annotation on
+     the conversation rather than as the app's own voice. */
+  .msg-error {
+    padding: var(--sp-3) var(--sp-4);
+    color: var(--ink-soft);
+    background: var(--mark-tint);
+    border-left: 3px solid var(--mark);
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
+  }
+
   .grounding-line {
     display: flex;
     flex-wrap: wrap;

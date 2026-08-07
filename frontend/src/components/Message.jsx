@@ -122,11 +122,18 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
   return (
     <div className={`fa-rise group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex max-w-[92%] flex-col ${isUser ? 'items-end' : 'w-full items-start'}`}>
+        {/* An error reply used to render as ordinary assistant body copy, on
+            the same ruled lines as a real plan — `isError` only tinted the
+            hover-only icon row, so "The connection closed before the plan was
+            finished." read as a normal answer unless you happened to hover it.
+            Same marking as .marginalia uses for a grounding warning. */}
         <div
           className={
             isUser
               ? 'rounded-2xl bg-paper-sunken px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
-              : 'text-[0.9375rem] leading-relaxed text-ink'
+              : message.isError
+                ? 'msg-error text-[0.9375rem] leading-relaxed'
+                : 'text-[0.9375rem] leading-relaxed text-ink'
           }
         >
           <p className="m-0 whitespace-pre-wrap">

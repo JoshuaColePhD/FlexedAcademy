@@ -225,7 +225,12 @@ export function Composer({
               </button>
             )}
 
-            {isStreaming ? (
+            {/* Stop only when there is something abortable. `isStreaming` is
+                true during a revision too, but revisePlan/reviseDay have no
+                AbortController — so this rendered a Stop square that did
+                nothing for 20-40 seconds. Without onStop it's a spinner, which
+                is at least honest about being un-interruptible. */}
+            {isStreaming && onStop ? (
               <button
                 type="button"
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-ink-inverse transition-colors hover:bg-ink-soft"
@@ -234,6 +239,13 @@ export function Composer({
               >
                 <Square size={14} fill="currentColor" aria-hidden="true" />
               </button>
+            ) : isStreaming ? (
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-paper-sunken text-ink-faint"
+                title="Revising — this can't be interrupted"
+              >
+                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+              </span>
             ) : (
               <button
                 type="button"

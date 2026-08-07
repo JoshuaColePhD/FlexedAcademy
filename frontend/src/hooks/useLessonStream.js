@@ -56,10 +56,25 @@ export function useLessonStream({ onDone, onError } = {}) {
   onDoneRef.current = onDone
   onErrorRef.current = onError
 
+  /* Stopping CLEARS the half-written week.
+   *
+   * It used to abort and leave `text`, `preview` and `grounding` standing, and
+   * `reset` existed with no callers at all. So after Stop the rail went on
+   * showing the abandoned plan as though it were finished — with no planId, so
+   * nothing to download — and because `preview` sits outside the state the
+   * chat loader clears, it followed you into the NEXT chat: press Stop, click
+   * New plan, and the greeting appeared with the dead week docked beside it.
+   *
+   * Order matters: abort first, then clear, so the reader's `finally` cannot
+   * race a stale value back in. */
   const stop = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
     setIsStreaming(false)
+    setText('')
+    setPreview(null)
+    setGrounding(null)
+    groundingRef.current = null
   }, [])
 
   const reset = useCallback(() => {
