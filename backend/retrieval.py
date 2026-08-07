@@ -490,69 +490,83 @@ def retrieve_raw(
     source_type: str | None = None,
     query_vector: list[float] | None = None,
 ) -> list[dict]:
-    # `query_vector` lets the caller embed once and search many times. Without
-    # it this embedded on every call, and retrieve_grounded calls it five times
-    # per query — so the same string went to the embeddings API five times over.
+    # `query_vector` lets the caller embed once and search many times.
     if query_vector is None:
         query_vector = embed_query(query)
     from . import db
     
-    sql = "SELECT id, document, metadata, embedding <=> %s::vector AS distance FROM chunks WHERE 1=1"
-    params = [query_vector]
+    where_clause = "1=1"
+    params = []
     
     if source_type == "act_standards":
-        # Section-scoped, not cross-course — see act_sections_for(). A course the
-        # ACT does not test gets no ACT standards rather than the nearest ELA one.
+        # Section-scoped, not cross-course — see act_sections_for().
         sections = act_sections_for(course)
         if not sections:
             return []
-        # The section is the code's first letter for the sheet's E./R./M./S./W.
-        # codes; anything else came from act-english-standards.md and is English.
-        sql += (
+        where_clause += (
             " AND metadata->>'source_type' = %s"
             " AND (CASE WHEN metadata->>'code' ~ '^[ERMSW]\\.'"
             "           THEN left(metadata->>'code', 1) ELSE 'E' END) = ANY(%s)"
         )
         params.extend([source_type, list(sections)])
     elif source_type == "act_recurring":
-        # R1-R7 are Alabama's ELA Recurring Standards for Grades 9-12 (see
-        # scripts/01_parse_chunks.py._parse_recurring, which notes the
-        # source_type is "a schema label, not a claim about ACT"). They are
-        # ingested under AP_Lang only and they are ELA standards, so they belong
-        # to ELA-family courses and nowhere else. Unscoped, R6 — grammar,
-        # mechanics and usage — was landing in a physics plan. (A history course
-        # maps to ACT Reading, which does NOT make Alabama's ELA recurring
-        # standards its own; hence ACT_ENGLISH, not merely "reads Reading".)
-        #
-        # An AP course does not cite the state course of study at all, and these
-        # are state standards.
+        # R1-R7 are Alabama's ELA Recurring Standards for Grades 9-12
         if ACT_ENGLISH not in act_sections_for(course) or is_ap_course(course):
             return []
-        sql += " AND metadata->>'source_type' = %s"
+        where_clause += " AND metadata->>'source_type' = %s"
         params.append(source_type)
     else:
         # Every `course` value that is really this course — see course_variants().
-        sql += " AND metadata->>'course' = ANY(%s)"
+        where_clause += " AND metadata->>'course' = ANY(%s)"
         params.append(list(course_variants(course)))
 
-        # College Board and AP skill chunks carry no meaningful grade (a CED
-        # covers the whole course), so they are exempt from the grade filter.
-        sql += " AND ((metadata->>'grade')::int = %s OR metadata->>'source_type' IN ('college_board', 'ap_skills'))"
+        # College Board and AP skill chunks carry no meaningful grade
+        where_clause += " AND ((metadata->>'grade')::int = %s OR metadata->>'source_type' IN ('college_board', 'ap_skills'))"
         params.append(grade)
 
         # An AP course grounds in AP skills, not in the state course of study.
         if is_ap_course(course):
-            sql += " AND metadata->>'source_type' <> 'state_course_of_study'"
+            where_clause += " AND metadata->>'source_type' <> 'state_course_of_study'"
 
         if source_type:
-            sql += " AND metadata->>'source_type' = %s"
+            where_clause += " AND metadata->>'source_type' = %s"
             params.append(source_type)
 
+    sql = f"""
+    WITH semantic_search AS (
+        SELECT id, document, metadata, embedding <=> %s::vector AS distance,
+               ROW_NUMBER() OVER (ORDER BY embedding <=> %s::vector) AS semantic_rank
+        FROM chunks
+        WHERE {where_clause}
+        ORDER BY embedding <=> %s::vector LIMIT %s
+    ),
+    keyword_search AS (
+        SELECT id, document, metadata, embedding <=> %s::vector AS distance,
+               ts_rank(document_tsvector, websearch_to_tsquery('english', %s)) AS ts_score,
+               ROW_NUMBER() OVER (ORDER BY ts_rank(document_tsvector, websearch_to_tsquery('english', %s)) DESC) AS keyword_rank
+        FROM chunks
+        WHERE document_tsvector @@ websearch_to_tsquery('english', %s)
+        AND {where_clause}
+        ORDER BY ts_score DESC LIMIT %s
+    )
+    SELECT
+        COALESCE(s.id, k.id) AS id,
+        COALESCE(s.document, k.document) AS document,
+        COALESCE(s.metadata, k.metadata) AS metadata,
+        COALESCE(s.distance, k.distance) AS distance,
+        COALESCE(1.0 / (60 + s.semantic_rank), 0.0) +
+        COALESCE(1.0 / (60 + k.keyword_rank), 0.0) AS rrf_score
+    FROM semantic_search s
+    FULL OUTER JOIN keyword_search k ON s.id = k.id
+    ORDER BY rrf_score DESC
+    LIMIT %s
+    """
 
-    sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
-    params.extend([query_vector, n])
+    semantic_params = [query_vector, query_vector] + params + [query_vector, n]
+    keyword_params = [query_vector, query, query, query] + params + [n]
+    full_params = semantic_params + keyword_params + [n]
 
-    rows = db._rows(_ITERATIVE_SCAN + sql, tuple(params))
+    rows = db._rows(_ITERATIVE_SCAN + sql, tuple(full_params))
     
     out = []
     for r in rows:
@@ -669,16 +683,7 @@ def retrieve_grounded(
     # 58% of retrieval, and retrieval was 68% of the whole generation.
     vectors = embed_queries(searches)
 
-    # Sequential on purpose. These are 30 independent reads and running them
-    # concurrently is the obvious move — but db._rows takes a single global lock
-    # around a single shared connection, so threads here only queue on that lock
-    # and the code would claim a parallelism it does not have. Measured: ~1.3s
-    # for all 30, which is not where the time goes.
-    #
-    # (The shared connection is worth revisiting for its own sake: it serialises
-    #  every request against every other request, which matters once more than
-    #  one teacher is using this at a time. That's a connection pool, not a
-    #  thread pool, and it belongs in db.py.)
+    # db.py now has a ThreadedConnectionPool, so we execute these queries concurrently.
     jobs = [(q, max(top_k * 3, top_k), None) for q in searches]
     jobs += [(q, top_k, st) for q in searches for st in STRATA]
 
@@ -687,20 +692,18 @@ def retrieve_grounded(
     for q in searches:
         consider(lookup_codes(q, subject_code, grade))
 
-    for q, n, source_type in jobs:
-        try:
-            consider(
-                retrieve_raw(
-                    q,
-                    n=n,
-                    course=subject_code,
-                    grade=grade,
-                    source_type=source_type,
-                    query_vector=vectors[q],
-                )
-            )
-        except Exception as e:
-            log.warning("retrieval failed for %s/%s: %s", q[:40], source_type, e)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = []
+        for q, n, source_type in jobs:
+            futures.append(executor.submit(
+                retrieve_raw, q, n, subject_code, grade, source_type, vectors[q]
+            ))
+            
+        for future in futures:
+            try:
+                consider(future.result())
+            except Exception as e:
+                log.warning("retrieval failed: %s", e)
 
     raw = sorted(best.values(), key=lambda c: c["distance"])
 

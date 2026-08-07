@@ -96,11 +96,14 @@ def prepare(user_id: str, query: str) -> RetrievalResult:
     # Rephrase into standards register before searching — a teacher's own wording
     # ("Week 6, voice and tone with The Cask of Amontillado") embeds badly against
     # abstract skill statements. See llm.expand_query.
+    # Prepending the course and grade gives massive semantic context for the embeddings API.
+    contextual_query = f"Course: {subject_code}, Grade: {grade} - {query}"
+    
     result = retrieval.retrieve_grounded(
-        query, 
+        contextual_query, 
         subject_code=subject_code, 
         grade=grade, 
-        extra_queries=llm.expand_query(query)
+        extra_queries=llm.expand_query(contextual_query)
     )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
@@ -290,8 +293,10 @@ def revise_day(user_id: str, plan_id: str, day_index: int, feedback: str, bg_tas
 
     # Re-retrieve against the feedback so a revision can cite a standard the
     # original week didn't need, while still being grounded.
+    # Prepending context to align with vector chunks
+    contextual_feedback = f"Course: {subject_code}, Grade: {grade} - {feedback} {original.get('learning_targets', '')}"
     result = retrieval.retrieve_grounded(
-        f"{feedback} {original.get('learning_targets', '')}",
+        contextual_feedback,
         subject_code=subject_code,
         grade=grade
     )

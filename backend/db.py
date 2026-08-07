@@ -319,6 +319,11 @@ MIGRATIONS: list[str] = [
     ALTER TABLE chunks              ENABLE ROW LEVEL SECURITY;
     ALTER TABLE schema_version      ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 13: hybrid search tsvector ───────────────────────────────────────────
+    """
+    ALTER TABLE chunks ADD COLUMN IF NOT EXISTS document_tsvector tsvector GENERATED ALWAYS AS (to_tsvector('english', document)) STORED;
+    CREATE INDEX IF NOT EXISTS idx_chunks_tsvector ON chunks USING GIN (document_tsvector);
+    """,
 ]
 
 
