@@ -1,12 +1,6 @@
 [
   {
     "course": "AP_Lang",
-    "grade": 11,
-    "query": "Create a lesson plan that engages students in following technical instructions to successfully complete a specific task, emphasizing clarity and attention to detail.",
-    "expected_code": "Grade11-9"
-  },
-  {
-    "course": "AP_Lang",
     "grade": 10,
     "query": "Create a lesson plan that teaches students how to choose and use effective transitional sentences to enhance the flow between paragraphs in their writing.",
     "expected_code": "E.ORG.502"

@@ -9,7 +9,7 @@ Covers the four fixes made 2026-08-06 after the cross-subject ACT bug:
   3. audit_grounding checks a code against THIS course, not the whole corpus.
   4. A code named in the query retrieves itself.
 
-Run:  ./venv/bin/python scratch/test_course_identity_and_codes.py
+Run:  ./venv/bin/python eval/test_course_identity_and_codes.py
 """
 from __future__ import annotations
 
@@ -47,6 +47,10 @@ def main() -> int:
         ("AP Calculus AB & BC", ("M",)), ("AP Statistics", ("M",)),
         ("AP_Lang", ("E", "R", "W")), ("AP English Literature and Composition", ("E", "R", "W")),
         ("AP US History", ("R",)), ("AP Psychology", ("R",)),
+        # Both are taught as close reading of sources and argument from them,
+        # which is what the ACT Reading section tests.
+        ("AP Seminar", ("R",)), ("AP Research", ("R",)),
+        ("AP Seminar Curriculum Framework", ("R",)),
     ]:
         check(f"act_sections_for({course!r})", R.act_sections_for(course), want)
     # A world language is not an English course, whatever its title says.

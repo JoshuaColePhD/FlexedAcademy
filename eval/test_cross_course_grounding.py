@@ -7,7 +7,7 @@ recurring — grammar, mechanics and usage, sourced to alcos_ela.pdf). Neither i
 wrong-in-the-abstract; both are simply another subject's standards, retrieved
 because the ACT strata skipped course filtering entirely.
 
-Run:  ./venv/bin/python scratch/test_cross_course_grounding.py
+Run:  ./venv/bin/python eval/test_cross_course_grounding.py
 
 This talks to the live corpus and the embeddings API. It reads only.
 """

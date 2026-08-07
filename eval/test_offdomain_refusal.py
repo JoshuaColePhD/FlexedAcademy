@@ -10,7 +10,7 @@ strict floor.
 This test is that guard. If it fails, an off-domain query is being answered from
 an ACT standard and retrieval.no_grounded_standards_error() has stopped firing.
 
-Run:  ./venv/bin/python scratch/test_offdomain_refusal.py
+Run:  ./venv/bin/python eval/test_offdomain_refusal.py
 """
 from __future__ import annotations
 
@@ -34,10 +34,21 @@ OFF_DOMAIN = [
 ]
 
 # Must still be answered — the guard should not cost real coverage.
+#
+# The three copy-editing phrasings are the regression that made the guard
+# two-tier. When AP courses stopped citing the ALCOS, AP Lang's primary corpus
+# shrank to 59 chunks of AP skills and CED, and requiring a non-ACT survivor for
+# every ACT chunk meant these were refused outright — even though ACT English's
+# Topic Development and Conventions strands are exactly these skills, sitting at
+# distance 0.31-0.44. Copy-editing is the ACT's territory, not the AP
+# framework's, so an ACT standard under the strict floor now stands alone.
 IN_DOMAIN = [
     ("AP_Lang", "rhetorical analysis of Letter from Birmingham Jail"),
     ("AP Physics 1", "forces and free-body diagrams"),
     ("AP US History", "sourcing and corroborating primary documents"),
+    ("AP_Lang", "We are focusing on deleting irrelevant material in an essay."),
+    ("AP_Lang", "teaching transitions between paragraphs"),
+    ("AP_Lang", "comma splices and subordination in student drafts"),
 ]
 
 

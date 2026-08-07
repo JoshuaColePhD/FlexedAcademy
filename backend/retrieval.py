@@ -140,8 +140,13 @@ _ACT_SECTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     # passages are prose fiction, social science, humanities and natural
     # science, so a history, government, economics, psychology or arts course
     # aligns to Reading and to nothing else on the test.
+    # Social studies and humanities -> ACT Reading. AP Seminar and AP Research
+    # sit here too: both are taught as close reading of sources and building an
+    # argument from them, which is what the Reading section tests, and neither
+    # has a section of its own.
     (r"histor|government|civics|geograph|econom|psycholog|sociolog|"
-     r"social studies|humanities|\bart\b|arts|theatre|theater|music|visual",
+     r"social studies|humanities|\bart\b|arts|theatre|theater|music|visual|"
+     r"seminar|research",
      (ACT_READING,)),
     (r"physics|chemistry|biology|anatomy|geolog|astronom|environmental|"
      r"\bscience\b|\bsci\b", (ACT_SCIENCE,)),
@@ -704,15 +709,38 @@ def retrieve_grounded(
 
     survivors = [c for c in raw if c["distance"] <= floor and not is_act(c)]
 
-    # The ACT companion gets its own, looser floor — see settings.act_max_distance
-    # for the measurements. It is applied ONLY when a primary standard already
-    # cleared the strict floor, so this cannot answer an off-domain request: a
-    # chemistry query against AP Lang has no primary survivor, so it keeps no ACT
-    # chunk either, stays empty, and is still refused.
+    # An ACT standard that clears the STRICT floor stands on its own.
+    #
+    # Requiring a non-ACT survivor for every ACT chunk was too blunt, and it
+    # regressed a real AP Lang phrasing the moment AP courses stopped citing the
+    # ALCOS: "We are focusing on deleting irrelevant material in an essay"
+    # retrieved NOTHING and was refused outright, even though ACT English's
+    # Topic Development strand is exactly that skill, sitting at distance 0.306.
+    # AP Lang's primary corpus is 59 chunks of AP skills and CED; copy-editing
+    # is genuinely the ACT's territory, not the AP framework's.
+    #
+    # Measured for AP_Lang, nearest ACT standard:
+    #
+    #     in-domain    "deleting irrelevant material"   0.306   TOD 301
+    #                  "transitions between paragraphs" 0.344   ORG 601
+    #                  "comma splices and subordination" 0.435  E.CSE.501
+    #     off-domain   "asdf qwerty zxcv"               0.689   PUN 402
+    #                  "balancing chemical equations"   0.736   ORG 503
+    #                  "red-black tree rotation in Java" 0.794  R.REL.501
+    #                  "pizza recipe with sourdough"    0.825   PUN 603
+    #
+    # The strict floor separates those cleanly, so it can be trusted alone.
+    survivors += [c for c in raw if is_act(c) and c["distance"] <= floor]
+
+    # The LOOSE band (floor .. act_max_distance) is the one that needs a
+    # chaperone. That band exists so a cross-walk alignment at 0.709 can still
+    # fill the ACT row — see settings.act_max_distance — and it reaches into
+    # distances where off-domain matches live, so it only opens once something
+    # has already cleared the strict floor.
     act_floor = settings.act_max_distance if max_distance is None else max_distance
     if survivors:
-        survivors += [c for c in raw if is_act(c) and c["distance"] <= act_floor]
-        survivors.sort(key=lambda c: c["distance"])
+        survivors += [c for c in raw if is_act(c) and floor < c["distance"] <= act_floor]
+    survivors.sort(key=lambda c: c["distance"])
 
     keep = survivors[:top_k]
     kept_ids = {c["id"] for c in keep}
