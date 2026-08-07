@@ -130,6 +130,12 @@ _ACT_SECTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     # "AP Art History" must reach the history rule before the arts rule.
     (r"computer science|comp\s*sci|\bcsp?\b|programming|coding|engineering|"
      r"health|physical education|\bpe\b|band|choir|orchestra|counsel", ()),
+    # World languages, BEFORE the English rule. "AP Spanish Literature and
+    # Culture" is a Spanish course, and the word "literature" in its title was
+    # matching the English rule and handing it ACT English/Reading/Writing —
+    # standards about reading English prose, in a class taught in Spanish.
+    (r"spanish|french|german|\blatin\b|japanese|chinese|italian|russian|"
+     r"world language", ()),
     # Social studies and humanities -> ACT Reading. The Reading section's
     # passages are prose fiction, social science, humanities and natural
     # science, so a history, government, economics, psychology or arts course

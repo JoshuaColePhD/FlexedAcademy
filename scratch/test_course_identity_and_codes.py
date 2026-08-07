@@ -37,6 +37,23 @@ def main() -> int:
     for c in ("ELA", "Science", "Math", "Social_Studies", "PE", "Health", "Apex Learning"):
         check(f"is_ap_course({c!r})", R.is_ap_course(c), False)
 
+    print("\n--- 1b. an AP course still gets its ACT standards ---")
+    # Dropping the state course of study must not cost an AP course its ACT
+    # companion. Josh, 2026-08-06: "AP courses don't need to have ALCOS
+    # correlations, but they do need to be able to write lesson plans that also
+    # include their respective ACT standards."
+    for course, want in [
+        ("AP Physics 1", ("S",)), ("AP Chemistry", ("S",)), ("Pre-AP Biology", ("S",)),
+        ("AP Calculus AB & BC", ("M",)), ("AP Statistics", ("M",)),
+        ("AP_Lang", ("E", "R", "W")), ("AP English Literature and Composition", ("E", "R", "W")),
+        ("AP US History", ("R",)), ("AP Psychology", ("R",)),
+    ]:
+        check(f"act_sections_for({course!r})", R.act_sections_for(course), want)
+    # A world language is not an English course, whatever its title says.
+    for course in ("AP Spanish Literature and Culture", "AP Spanish Language and Culture",
+                   "AP Latin", "AP Japanese Language and Culture", "World_Languages"):
+        check(f"act_sections_for({course!r}) is empty", R.act_sections_for(course), ())
+
     print("\n--- 2. course identity: variants join, real courses stay apart ---")
     for course, must_include in [
         ("AP US History", {"AP US History Key Concepts", "AP United States History",
