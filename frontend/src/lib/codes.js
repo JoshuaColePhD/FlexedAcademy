@@ -16,16 +16,29 @@
    frameworks rendered as plain text: no citation, no popover, and no ungrounded
    mark — so the grounding apparatus was silently inert for every subject except
    AP Lang. */
+/* Kept in the SAME ORDER as backend/retrieval.py's _CODE_RE, alternative for
+   alternative, so the two can be diffed by eye.
+
+   They had silently drifted. The frontend was missing four shapes the backend
+   already audited, so an AP Lang plan citing RHS-2, CLE-4 and R.TST.701 showed
+   ONE citation on screen — the lone `4.B` — and the rail said "1 standard" for
+   a week grounded in six. Worse, an ungrounded RHS- code could not be marked,
+   because the screen could not see it was a code at all. The backend was right
+   the whole time; only the display was blind. */
 const SOURCE =
-  '(' +
+  '(?<![\\w.])(' +
   [
-    '\\d\\.[A-C]', // AP Lang skill, e.g. 2.A
-    'Grade\\d{1,2}-\\d{1,2}[a-c]?', // legacy ALCOS parse, e.g. Grade11-22a
+    '[ERMSW]\\.[A-Z]{2,4}\\.\\d{3}', // ACT reporting category, e.g. R.TST.701
+    '(?:LO|EK|EU|SP|KC)[\\s.]?\\d+(?:\\.[A-Za-z0-9]+)*', // College Board, e.g. LO.3.A.3.1
+    '[A-Z]{2,4}-\\d+(?:\\.[A-Za-z0-9]+)*', // AP course skill, e.g. RHS-2, RHS-2A, CLE-4
     '[A-Z]{2,5}\\d{2}(?:\\.[A-Za-z0-9-]+){1,4}', // Alabama CASE, e.g. ELA21.11.R2
-    'R\\d{1,2}', // ACT recurring, e.g. R4
+    'Grade\\d{1,2}-\\d{1,2}[a-c]?', // legacy ALCOS parse, e.g. Grade11-22a
     '(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\\s?\\d{3}', // ACT English/Writing
+    'R\\d{1,2}', // ACT recurring, e.g. R4
+    '\\d+\\.\\d+(?:\\.[A-Za-z0-9]+)*', // numeric, e.g. 1.2.3
+    '\\d\\.[A-C]', // AP Lang skill, e.g. 2.A
   ].join('|') +
-  ')'
+  ')(?!\\.?\\w)'
 
 /** A FRESH regex each time. A shared /g regex carries lastIndex between calls,
  *  so one matchAll would silently change what the next split returned. */
