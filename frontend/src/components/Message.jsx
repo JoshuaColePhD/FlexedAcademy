@@ -106,8 +106,17 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
      question, so this renders nothing until there is text. */
   if (message.streaming && !message.content) return null
 
+  /* fa-rise was written for exactly this and then never attached to anything,
+     so every message simply appeared — which is most of why the transcript felt
+     abrupt. CSS animations run once per mount, and React keeps existing
+     messages mounted when one is appended, so only the new message plays.
+
+     Deliberately NOT staggered per sibling. A stagger is computed from the
+     index, and the index of an appended message is large — so your own message
+     would sit invisible for hundreds of milliseconds before fading in, which is
+     worse than no animation at all. The entry reads fine without it. */
   return (
-    <div className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`fa-rise group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex max-w-[92%] flex-col ${isUser ? 'items-end' : 'w-full items-start'}`}>
         <div
           className={

@@ -112,49 +112,45 @@ export function useLessonStream({ onDone, onError } = {}) {
         // Read until the stream ends, keeping any trailing partial record.
         for (;;) {
           const { value, done } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
+          if (value) {
+            buffer += decoder.decode(value, { stream: !done })
 
-          const records = buffer.split('\n\n')
-          buffer = records.pop() ?? '' // incomplete record stays in the buffer
+            const records = buffer.split('\n\n')
+            buffer = records.pop() ?? '' // incomplete record stays in the buffer
 
-          for (const record of records) {
-            const line = record.split('\n').find((l) => l.startsWith(SSE_PREFIX))
-            if (!line) continue
+            for (const record of records) {
+              const line = record.split('\n').find((l) => l.startsWith(SSE_PREFIX))
+              if (!line) continue
 
-            let event
-            try {
-              event = JSON.parse(line.slice(SSE_PREFIX.length).trim())
-            } catch {
-              // A malformed control record is genuinely ignorable — but note
-              // this catch covers ONLY the envelope, never the payload below.
-              continue
-            }
-
-            if (event.error) {
-              throw new ApiError(event.error.message || 'Generation failed.', {
-                code: event.error.code || 'stream_error',
-                hint: event.error.hint,
-                extra: event.error,
-              })
-            }
-
-            if (event.grounding) {
-              setGrounding(event.grounding)
-              groundingRef.current = event.grounding
-            }
-
-            if (event.chunk) {
-              accumulated += event.chunk
-              setText(accumulated)
-              const parsed = usablePlan(parsePartialJson(accumulated))
-              if (parsed) setPreview(parsed)
-            }
-
-            if (event.done) {
-              finished = event
+              let event
+              try {
+                event = JSON.parse(line.slice(SSE_PREFIX.length).trim())
+              } catch {
+                continue
+              }
+              if (event.error) {
+                throw new ApiError(event.error.message || 'Generation failed.', {
+                  code: event.error.code || 'stream_error',
+                  hint: event.error.hint,
+                  extra: event.error,
+                })
+              }
+              if (event.grounding) {
+                setGrounding(event.grounding)
+                groundingRef.current = event.grounding
+              }
+              if (event.chunk) {
+                accumulated += event.chunk
+                setText(accumulated)
+                const parsed = usablePlan(parsePartialJson(accumulated))
+                if (parsed) setPreview(parsed)
+              }
+              if (event.done) {
+                finished = event
+              }
             }
           }
+          if (done) break
         }
 
         if (!finished) {

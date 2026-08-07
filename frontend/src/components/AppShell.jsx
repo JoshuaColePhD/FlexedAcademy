@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { GraduationCap, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
@@ -88,6 +88,7 @@ function ChatRow({ chat, classId, onDelete }) {
 
 function Rail({ onNavigate, onClose }) {
   const { classId } = useParams()
+  const location = useLocation()
   const { classes, activeClass } = useActiveClass()
   const { data: chats, isLoading } = useChats()
   const deleteChat = useDeleteChat()
@@ -106,7 +107,12 @@ function Rail({ onNavigate, onClose }) {
     if (!ok) return
     try {
       await deleteChat.mutateAsync(chat.id)
-      navigate(classPath)
+      /* Only leave if the chat that just went away is the one on screen.
+         This used to navigate unconditionally, so tidying up an old chat in
+         the sidebar closed the conversation you were in the middle of — the
+         plan you were reading disappeared and you were dropped on the greeting
+         screen, for deleting something else entirely. */
+      if (location.pathname.startsWith(`${classPath}/chat/${chat.id}`)) navigate(classPath)
     } catch (err) {
       toast.apiError('Could not delete that chat', err)
     }

@@ -91,6 +91,25 @@ export function ChatPage() {
     return () => setDocOpen(false)
   }, [expanded, isOverlay, setDocOpen])
 
+  /* Which chat the in-memory transcript currently belongs to.
+   *
+   * When it already matches the chat we are opening, LOCAL STATE IS THE TRUTH
+   * and re-reading the server is not merely redundant, it is destructive:
+   * submit() navigates to the new chat the moment it exists, which changes
+   * chatId and fires the loader below while the POST saving the first message
+   * is still in flight. The loader won, read back an empty conversation, and
+   * setMessages([]) over the message the teacher had just typed — so the
+   * question vanished, the transcript sat blank for about a second, and the
+   * answer arrived attached to nothing. Reproduced at 400ms of write latency;
+   * on a cold Render instance the window is far wider.
+   *
+   * A ref keyed to the CHAT, not a "we made this one" flag: leaving a chat you
+   * created and coming back must re-read the server like any other
+   * conversation, or you would be shown the transcript of wherever you had
+   * been in the meantime. Comparing ids makes the skip idempotent too, which
+   * matters because StrictMode double-invokes effects in dev. */
+  const localFor = useRef(null)
+
   /* ── load an existing conversation and whatever plan it produced ──────── */
   useEffect(() => {
     let cancelled = false
@@ -98,8 +117,21 @@ export function ChatPage() {
       setMessages([])
       setArtifact(null)
       setExpanded(false)
+      localFor.current = null
       return undefined
     }
+    // The transcript on screen is already this chat's — nothing to catch up on.
+    if (localFor.current === chatId) return undefined
+
+    /* Drop the previous conversation's artifact NOW, not when the fetch
+       resolves. Otherwise the rail and the open document keep showing the last
+       chat's week under the new chat's heading for as long as the round trip
+       takes — measured at ~100-200ms locally, and it reads as the app showing
+       you the wrong plan. */
+    setArtifact(null)
+    setOpenTweak(null)
+    setExpanded(false)
+
     api
       .getChat(chatId)
       .then(async (row) => {
@@ -111,6 +143,7 @@ export function ChatPage() {
           planId: m.plan_id || null,
         }))
         setMessages(loaded)
+        localFor.current = chatId
         const last = [...loaded].reverse().find((m) => m.planId)
         if (!last) {
           setArtifact(null)
@@ -165,18 +198,36 @@ export function ChatPage() {
         retrievedIds: done.retrieved_ids ?? done.grounding?.codes,
         unit: done.unit,
       })
+      const content = `Built ${done.plan?.week_of || 'the week'}. Tell me what to change and I'll revise it.`
       setMessages((prev) => [
         ...prev,
         {
           id: nextId(),
           role: 'assistant',
-          content: `Built ${done.plan?.week_of || 'the week'}. Tell me what to change and I'll revise it.`,
+          content,
           planId: done.plan_id,
           weekLabel: done.plan?.week_of,
           plan: done.plan,
           retrievedCodes: done.retrieved_ids ?? done.grounding?.codes,
         },
       ])
+      /* SAVE IT. This was missing, and it did not merely lose a line of chat.
+         The loader finds a conversation's plan by scanning its messages for a
+         plan_id — so with no assistant message written, reopening a chat that
+         had produced a week showed the question, no answer, and NO ARTIFACT:
+         the .docx became unreachable from the conversation that made it.
+         Confirmed against live data, where a freshly generated chat held one
+         message and no plan_id at all.
+
+         localFor.current, not chatId: for a chat created moments ago the route
+         param has not necessarily caught up, and this is the id we just wrote
+         the transcript under. */
+      const saveTo = localFor.current
+      if (saveTo) {
+        api
+          .addMessage(saveTo, { role: 'assistant', content, plan_id: done.plan_id })
+          .catch(() => {})
+      }
       qc.invalidateQueries({ queryKey: qk.chats })
     },
     onError: (err) => {
@@ -203,6 +254,9 @@ export function ChatPage() {
         try {
           const created = await api.createChat(content.slice(0, 80))
           activeChatId = created.id
+          // Claim it BEFORE navigating: the navigation is what fires the
+          // loader, and the loader has to already know this transcript is ours.
+          localFor.current = created.id
           qc.invalidateQueries({ queryKey: qk.chats })
           navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
         } catch {
@@ -265,10 +319,14 @@ export function ChatPage() {
     async (dayIndex, day, feedback, field = null) => {
       if (!artifact?.planId) return
       const label = field ? `${day.name}’s ${FIELD_LABELS[field] || field}` : day.name
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role: 'user', content: `Revise ${label}: ${feedback}` },
-      ])
+      const ask = `Revise ${label}: ${feedback}`
+      setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: ask }])
+      // Persisted for the same reason as the composer's own messages: a cell
+      // tweak is a real edit to the week, and the transcript is meant to be a
+      // complete record of what happened to the plan. It was writing to screen
+      // only, so every in-cell revision vanished on reload.
+      const saveTo = localFor.current
+      if (saveTo) api.addMessage(saveTo, { role: 'user', content: ask }).catch(() => {})
       setRevising(true)
       try {
         const row = await api.reviseDay({
@@ -284,18 +342,23 @@ export function ChatPage() {
           retrievedIds: row.retrieved_ids,
         }))
         flash(field ? [cellKey(dayIndex, field)] : [])
+        const reply = `Updated ${label} and rebuilt the document.`
         setMessages((prev) => [
           ...prev,
           {
             id: nextId(),
             role: 'assistant',
-            content: `Updated ${label} and rebuilt the document.`,
+            content: reply,
             planId: row.id,
             weekLabel: row.week_label,
             plan: row.plan_json,
             retrievedCodes: row.retrieved_ids,
           },
         ])
+        // Carries plan_id, so the conversation keeps its link to the document.
+        if (saveTo) {
+          api.addMessage(saveTo, { role: 'assistant', content: reply, plan_id: row.id }).catch(() => {})
+        }
       } catch (err) {
         toast.apiError(`Could not revise ${label}`, err)
       } finally {
