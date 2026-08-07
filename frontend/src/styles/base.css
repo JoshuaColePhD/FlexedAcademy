@@ -1730,8 +1730,11 @@
   /* The detail table has no header row, so its label column is set here. This
      is the whole point of the split: one wide column for the paragraphs that
      were being squeezed into a fifth of the page. */
-  .plan-table.is-detail tbody th {
+  /* The day column. On the <col>, because that is what fixed layout reads. */
+  .plan-detail-day {
     width: 8.5rem;
+  }
+  .plan-table.is-detail tbody th {
     vertical-align: top;
   }
   .plan-table.is-detail td {

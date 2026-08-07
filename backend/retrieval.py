@@ -75,7 +75,16 @@ _CODE_RE = re.compile(
     # DAT-1, OS-2. These carry the whole primary standards row for AP History,
     # Government, Economics, Geography, Calculus and CS, and NONE of them were
     # recognised before — so for those courses the audit saw nothing to check.
-    r"|[A-Z]{2,4}-\d+(?:\.[A-Za-z0-9]+)*"
+    #
+    # The trailing [A-Z] is AP LANG'S OWN essential-knowledge codes, and it was
+    # missing. The corpus holds RHS-1A..RHS-1E, RHS-2A, RHS-2B, CLE-* — and
+    # `RHS-1` matched while `RHS-1A` did not, because the (?!\.?\w) lookahead at
+    # the end rejects a trailing letter. Found in a live plan: it cited RHS-1A
+    # and the grounding line listed four codes for a week that cited five. The
+    # screen showed it as plain text and the audit could not see it at all, so
+    # an INVENTED RHS-3Z would have passed silently — in the flagship course,
+    # which is the one failure this whole apparatus exists to prevent.
+    r"|[A-Z]{2,4}-\d+[A-Z]?(?:\.[A-Za-z0-9]+)*"
     # Alabama CASE codes as published by ALSDE: a subject+year prefix, a grade or
     # course segment, then the standard. e.g. ELA21.11.R2, MA19.GDA.5,
     # SS24.11.3a, SCI23.9.1, CSC26.9-12.CD.3, ARTS24.HS.MU.1

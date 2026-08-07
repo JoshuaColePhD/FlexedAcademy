@@ -717,6 +717,17 @@ function FittedPlan({
         <>
           <p className="eyebrow plan-fit-eyebrow">Lesson detail</p>
           <table className="plan-table is-fit is-detail">
+            {/* An explicit colgroup, not a width on the first row's <th>.
+                Under table-layout:fixed the column widths come from the first
+                row, and this table has no <thead> to carry them — the width
+                declared on the cell was being ignored and the two columns split
+                50/50, so the day label sat in half the page with one word in
+                it while the lesson narrative got the other half. A colgroup is
+                the mechanism that actually binds under fixed layout. */}
+            <colgroup>
+              <col className="plan-detail-day" />
+              <col />
+            </colgroup>
             <caption className="visually-hidden">
               The lesson for each teaching day: Do Now, During and Assessment
             </caption>

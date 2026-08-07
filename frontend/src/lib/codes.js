@@ -30,7 +30,10 @@ const SOURCE =
   [
     '[ERMSW]\\.[A-Z]{2,4}\\.\\d{3}', // ACT reporting category, e.g. R.TST.701
     '(?:LO|EK|EU|SP|KC)[\\s.]?\\d+(?:\\.[A-Za-z0-9]+)*', // College Board, e.g. LO.3.A.3.1
-    '[A-Z]{2,4}-\\d+(?:\\.[A-Za-z0-9]+)*', // AP course skill, e.g. RHS-2, RHS-2A, CLE-4
+    // AP course skill. The trailing [A-Z] is AP Lang's essential-knowledge
+    // codes — RHS-1A..RHS-1E, RHS-2A, RHS-2B — which the lookahead below
+    // rejected, so `RHS-1` matched and `RHS-1A` did not. Seen in a live plan.
+    '[A-Z]{2,4}-\\d+[A-Z]?(?:\\.[A-Za-z0-9]+)*',
     '[A-Z]{2,5}\\d{2}(?:\\.[A-Za-z0-9-]+){1,4}', // Alabama CASE, e.g. ELA21.11.R2
     'Grade\\d{1,2}-\\d{1,2}[a-c]?', // legacy ALCOS parse, e.g. Grade11-22a
     '(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\\s?\\d{3}', // ACT English/Writing

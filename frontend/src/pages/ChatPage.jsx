@@ -529,7 +529,23 @@ export function ChatPage() {
       ) : null}
 
       {isEmpty ? (
-        <Greeting onPick={submit} onDraft={setQuery} className={activeClass?.name} />
+        <Greeting
+          onPick={submit}
+          /* Drafting a suggestion puts the caret where the teacher has to keep
+             typing. Without this, clicking "Build around a text" filled the
+             composer and left focus on the suggestion button, so the next
+             keystroke went nowhere and they had to click into the box to finish
+             the sentence the app had just started for them. */
+          onDraft={(text) => {
+            setQuery(text)
+            requestAnimationFrame(() => {
+              const el = document.getElementById('composer-input')
+              el?.focus()
+              el?.setSelectionRange(text.length, text.length)
+            })
+          }}
+          className={activeClass?.name}
+        />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className="chat-column mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">

@@ -30,6 +30,15 @@ PARSE_CASES = [
     ("M.IES.301", ["M.IES.301"]),
     ("W.DEV.501", ["W.DEV.501"]),
     ("3.C -- Justify or support a claim", ["3.C"]),
+    # AP Lang's own essential-knowledge codes. The trailing letter used to fail
+    # the closing lookahead, so RHS-1 matched and RHS-1A did not — and the
+    # corpus is mostly the lettered form (RHS-1A..1E, RHS-2A, RHS-2B). A live
+    # plan cited RHS-1A, the grounding line reported four codes for a week that
+    # cited five, and an invented one could not have been flagged.
+    ("RHS-1A -- Identify and describe components of the rhetorical situation", ["RHS-1A"]),
+    ("RHS-2B", ["RHS-2B"]),
+    ("CLE-4 -- Analyze and select evidence", ["CLE-4"]),
+    ("RHS-1", ["RHS-1"]),
     ("ELA21.11.R2", ["ELA21.11.R2"]),
     ("MA19.GDA.5", ["MA19.GDA.5"]),
     ("SC23.PHYS.2c", ["SC23.PHYS.2c"]),
