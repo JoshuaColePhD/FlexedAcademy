@@ -1433,6 +1433,17 @@
     flex-direction: column;
     gap: 1px;
   }
+  /* The card's real button — the title. Looks like text, behaves like the
+     control it is, and leaves Download and the eye as its siblings rather than
+     its descendants. */
+  .rail-open-title {
+    align-items: flex-start;
+    padding: 0;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
   .rail-title {
     overflow: hidden;
     font-size: var(--fs-sm);
@@ -2022,6 +2033,12 @@
     background: var(--paper-raised);
     border: none;
     border-radius: var(--r-lg);
+  }
+  /* Only the title button and Download are clickable, so the card itself does
+     NOT claim to be — it read as tappable across its whole surface and did
+     nothing on the icon or the padding, which on a phone is most of it. */
+  .artifact-card .artifact-card-title,
+  .artifact-card button {
     cursor: pointer;
   }
   .artifact-card-tile {

@@ -2,8 +2,29 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Copy, Download, FileText, Pencil, RotateCcw } from 'lucide-react'
 import { api } from '../lib/api'
 import { scanGrounding } from '../lib/grounding'
+import { dayTitle, orderedDays } from '../lib/planShape'
 import { Cite } from './Citation'
 import { WeekStrip } from './WeekStrip'
+
+/** What Copy puts on the clipboard: the reply, plus the week and the codes the
+ *  message is actually showing. */
+function copyableText(message, grounded, ungrounded) {
+  const parts = [message.content]
+  const days = message.plan?.days
+  if (days?.length) {
+    parts.push(
+      '',
+      ...orderedDays(message.plan, 'no_school').map(
+        (d) => `${d.name}: ${d.no_school ? 'No school' : dayTitle(d) || '—'}`
+      )
+    )
+  }
+  if (grounded?.length) parts.push('', `Grounded: ${grounded.join(', ')}`)
+  if (ungrounded?.length) {
+    parts.push(`Not retrieved: ${ungrounded.map((u) => `${u.code} (${u.dayName})`).join(', ')}`)
+  }
+  return parts.join('\n')
+}
 
 function useCopy() {
   const [copied, setCopied] = useState(false)
@@ -235,7 +256,12 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
           <button
             type="button"
             className="rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
-            onClick={() => copy(message.content)}
+            /* The week and its codes, not just the sentence.
+               An assistant reply's `content` is the fixed string "Built the
+               week of X. Tell me what to change…", while the message also
+               renders a full week strip and a grounding line. Pasting into an
+               email or an LMS produced one meaningless sentence. */
+            onClick={() => copy(copyableText(message, grounded, ungrounded))}
             aria-label={copied ? 'Copied' : 'Copy this message'}
           >
             {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}

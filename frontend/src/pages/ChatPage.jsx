@@ -485,6 +485,19 @@ export function ChatPage() {
   const collapse = useCallback(() => {
     setOpenTweak(null)
     setExpanded(false)
+    /* Put focus back on the card that opened it.
+       useFocusTrap captures the previously-focused element AFTER React has
+       committed, and opening the docked document unmounts the rail in that
+       same commit — so by then the trigger was already detached and the hook's
+       `document.contains(previous)` guard correctly declined to restore. The
+       result was focus on nothing: the next Tab started from "Skip to content"
+       at the top of the app. The overlay path never had this, because there
+       the trigger is a message button that stays mounted.
+
+       Deferred a frame, because the rail has to remount first. */
+    requestAnimationFrame(() => {
+      document.getElementById('rail-open-title')?.focus({ preventScroll: true })
+    })
   }, [])
 
   const artifactEl = (
@@ -516,7 +529,7 @@ export function ChatPage() {
       ) : null}
 
       {isEmpty ? (
-        <Greeting onPick={submit} className={activeClass?.name} />
+        <Greeting onPick={submit} onDraft={setQuery} className={activeClass?.name} />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className="chat-column mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
@@ -567,10 +580,6 @@ export function ChatPage() {
           </button>
         </div>
       ) : null}
-
-      <div className="visually-hidden" role="status" aria-live="polite">
-        {stream.isStreaming ? 'Building the lesson plan.' : artifact?.planId ? 'Lesson plan ready.' : ''}
-      </div>
 
       {/* On a phone the 240px rail has nowhere to go, so the artifact becomes a
           one-row bar above the composer. Without it the only way to the .docx
@@ -623,6 +632,21 @@ export function ChatPage() {
      survive that. */
   return (
     <div className="flex h-full w-full min-w-0">
+      {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
+          aria-modal="true" when overlaying — which tells assistive tech to
+          ignore everything outside the dialog, so on a phone with the document
+          open "Building the lesson plan." was never announced. "Revising" is in
+          here too; it was a plain <p> with no live semantics at all. */}
+      <div className="visually-hidden" role="status" aria-live="polite">
+        {stream.isStreaming
+          ? 'Building the lesson plan.'
+          : revising
+            ? 'Revising the plan.'
+            : artifact?.planId
+              ? 'Lesson plan ready.'
+              : ''}
+      </div>
+
       <div
         className="flex min-w-0 flex-col transition-[flex-basis] duration-300 ease-out"
         style={

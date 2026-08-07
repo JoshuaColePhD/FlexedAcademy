@@ -92,6 +92,19 @@ export function Composer({
     setIsRecording(false)
   }
 
+  /* The tracks are stopped inside recorder.onstop, which never runs if the
+     component goes away first — so starting to dictate and then clicking
+     another chat left the recorder orphaned and the browser's red recording
+     dot lit on the tab indefinitely. */
+  useEffect(
+    () => () => {
+      const rec = mediaRecorder.current
+      if (rec && rec.state !== 'inactive') rec.stop()
+      rec?.stream?.getTracks?.().forEach((t) => t.stop())
+    },
+    []
+  )
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -155,7 +168,7 @@ export function Composer({
           </label>
 
           <label
-            className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+            className="tap-target flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
             htmlFor="composer-file"
           >
             {isAttaching ? (
@@ -198,7 +211,7 @@ export function Composer({
             {isTranscribing ? (
               <button
                 type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted"
+                className="tap-target flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted"
                 disabled
                 aria-label="Transcribing"
               >
@@ -207,7 +220,7 @@ export function Composer({
             ) : isRecording ? (
               <button
                 type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint"
+                className="tap-target flex h-9 w-9 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint"
                 onClick={stopRecording}
                 aria-label="Stop recording"
               >
@@ -216,7 +229,7 @@ export function Composer({
             ) : (
               <button
                 type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
+                className="tap-target flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
                 onClick={startRecording}
                 disabled={isStreaming}
                 aria-label="Dictate"
@@ -233,7 +246,7 @@ export function Composer({
             {isStreaming && onStop ? (
               <button
                 type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-ink-inverse transition-colors hover:bg-ink-soft"
+                className="tap-target flex h-9 w-9 items-center justify-center rounded-full bg-ink text-ink-inverse transition-colors hover:bg-ink-soft"
                 onClick={onStop}
                 aria-label="Stop generating"
               >
@@ -241,7 +254,7 @@ export function Composer({
               </button>
             ) : isStreaming ? (
               <span
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-paper-sunken text-ink-faint"
+                className="tap-target flex h-9 w-9 items-center justify-center rounded-full bg-paper-sunken text-ink-faint"
                 title="Revising — this can't be interrupted"
               >
                 <Loader2 size={16} className="animate-spin" aria-hidden="true" />
@@ -249,7 +262,7 @@ export function Composer({
             ) : (
               <button
                 type="button"
-                className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
+                className={`tap-target flex h-9 w-9 items-center justify-center rounded-full transition-all ${
                   canSend
                     ? 'bg-ink text-ink-inverse hover:bg-ink-soft active:scale-95'
                     : 'cursor-not-allowed bg-paper-sunken text-ink-faint'

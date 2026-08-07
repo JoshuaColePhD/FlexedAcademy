@@ -93,29 +93,34 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
           /* The whole card expands the panel. Download stops the event: the one
              button a teacher came for must not also open a viewer they didn't
              ask for. */
-          <div
-            className="rail-card fa-lift"
-            role="button"
-            tabIndex={0}
-            onClick={onExpand}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onExpand()
-              }
-            }}
-            aria-label={`Open ${plan?.week_of || 'the lesson plan'}`}
-          >
+          /* NOT a role="button" wrapping a link and a button.
+             That is an ARIA structural violation, and it broke the keyboard
+             outright: the card's onKeyDown fired on Enter bubbling up from the
+             Download link and called preventDefault(), so tabbing to Download
+             and pressing Enter opened the document and downloaded nothing —
+             exactly the confusion the mouse handlers stopPropagation to avoid.
+             The card is a plain container; the title is the button. */
+          <div className="rail-card fa-lift" onClick={onExpand}>
             <span className="rail-card-head">
               <span className="rail-tile">
                 <FileText size={15} aria-hidden="true" />
               </span>
-              <span className="rail-text">
+              <button
+                type="button"
+                /* Stable id so ChatPage can put focus back here when the
+                   document closes — see the restore effect there. */
+                id="rail-open-title"
+                className="rail-text rail-open-title"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onExpand()
+                }}
+              >
                 <span className="rail-title">{plan?.week_of || 'Weekly lesson plan'}</span>
                 <span className="rail-sub">
                   .docx{artifact?.unit ? ` · ${artifact.unit}` : ''}
                 </span>
-              </span>
+              </button>
             </span>
             <span className="rail-actions">
               <a

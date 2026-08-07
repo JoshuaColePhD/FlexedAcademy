@@ -27,7 +27,7 @@ function hourGreeting() {
   return 'Good evening'
 }
 
-export function Greeting({ onPick, className: courseName }) {
+export function Greeting({ onPick, onDraft, className: courseName }) {
   const { classId } = useParams()
   const { data: me } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
   const { data: calendar } = useCalendar(classId)
@@ -52,6 +52,11 @@ export function Greeting({ onPick, className: courseName }) {
       label: 'Build around a text',
       detail: 'Name the book and it plans the week on it',
       prompt: 'Plan a week around a text — I\'ll name it: ',
+      /* The prompt is deliberately unfinished, so it goes into the composer for
+         the teacher to complete rather than straight to the model. It used to
+         submit on click: a suggestion whose own detail line says "Name the
+         book" started a 30-second generation with no book named. */
+      draft: true,
     },
   ].filter(Boolean)
 
@@ -73,7 +78,7 @@ export function Greeting({ onPick, className: courseName }) {
             <li key={s.label}>
               <button
                 type="button"
-                onClick={() => onPick(s.prompt)}
+                onClick={() => (s.draft && onDraft ? onDraft(s.prompt) : onPick(s.prompt))}
                 className="group flex min-h-touch w-full items-baseline gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-paper-sunken"
               >
                 <span className="text-sm font-medium text-ink">{s.label}</span>

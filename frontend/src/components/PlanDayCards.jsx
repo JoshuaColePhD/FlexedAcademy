@@ -115,12 +115,19 @@ export function PlanDayCards({ plan, groundedCodes, missingDays }) {
   const scrollerRef = useRef(null)
   const syncing = useRef(false)
 
+  /* Read the card's ACTUAL offset instead of computing i * clientWidth.
+     The scroller is a grid with `gap: var(--sp-3)`, so card i actually starts
+     at i * (clientWidth + 12) — the arithmetic version landed 48px short on
+     Friday and scroll-snap yanked it into place, which is the visible jump on
+     open and the mis-targeted animation when tapping a day. */
+  const offsetOf = (el, i) => el.children[i]?.offsetLeft ?? i * el.clientWidth
+
   const goTo = useCallback((i) => {
     const el = scrollerRef.current
     if (!el) return
     syncing.current = true
     setActive(i)
-    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' })
+    el.scrollTo({ left: offsetOf(el, i), behavior: 'smooth' })
     // Let the smooth scroll finish before onScroll is allowed to fight it.
     setTimeout(() => {
       syncing.current = false
@@ -130,7 +137,7 @@ export function PlanDayCards({ plan, groundedCodes, missingDays }) {
   // Open on the right day without animating there from Monday.
   useEffect(() => {
     const el = scrollerRef.current
-    if (el) el.scrollLeft = active * el.clientWidth
+    if (el) el.scrollLeft = offsetOf(el, active)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -138,22 +145,37 @@ export function PlanDayCards({ plan, groundedCodes, missingDays }) {
     if (syncing.current) return
     const el = scrollerRef.current
     if (!el?.clientWidth) return
-    const i = Math.round(el.scrollLeft / el.clientWidth)
-    if (i !== active) setActive(i)
+    // Nearest card by real offset, for the same reason as above.
+    let nearest = 0
+    let best = Infinity
+    for (let i = 0; i < el.children.length; i += 1) {
+      const d = Math.abs((el.children[i].offsetLeft || 0) - el.scrollLeft)
+      if (d < best) {
+        best = d
+        nearest = i
+      }
+    }
+    if (nearest !== active) setActive(nearest)
   }
 
   return (
     <div className="plan-deck">
-      <div className="plan-deck-tabs" role="tablist" aria-label="Days this week">
+      {/* A GROUP of buttons, not a tablist.
+          It declared role="tablist"/role="tab" with no aria-controls, no
+          tabpanel, no roving tabIndex and no arrow keys — and all five cards
+          are in the accessibility tree at once, so "selected" meant nothing to
+          a screen reader: it read the whole week regardless. These scroll a
+          scroller, which is what a button does. */}
+      <div className="plan-deck-tabs" role="group" aria-label="Jump to a day">
         {days.map((d, i) => {
           const state = dayState(d)
           return (
             <button
               key={d.name}
               type="button"
-              role="tab"
-              aria-selected={i === active}
-              aria-label={d.name}
+              aria-current={i === active ? 'true' : undefined}
+              // The closed state was carried by a hatch pattern alone.
+              aria-label={state === 'no_school' ? `${d.name} — no school` : d.name}
               onClick={() => goTo(i)}
               className={`plan-deck-tab ${i === active ? 'is-active' : ''} ${
                 state === 'no_school' ? 'is-closed' : ''
@@ -165,7 +187,17 @@ export function PlanDayCards({ plan, groundedCodes, missingDays }) {
         })}
       </div>
 
-      <div className="plan-deck-scroller" ref={scrollerRef} onScroll={onScroll}>
+      {/* tabIndex + role + label, as .plan-table-scroll and .doc-body already
+          have: a scroll region that only answers to a pointer drag is a
+          keyboard-access failure (WCAG 2.1.1). */}
+      <div
+        className="plan-deck-scroller"
+        ref={scrollerRef}
+        onScroll={onScroll}
+        tabIndex={0}
+        role="region"
+        aria-label="The week, one day per card — scrolls sideways"
+      >
         {days.map((d, i) => (
           <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} />
         ))}
