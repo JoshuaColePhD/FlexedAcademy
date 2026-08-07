@@ -74,3 +74,17 @@ for, so it is what the design foregrounds.
 All colours come from `tokens.css`. Both themes are defined there; `useTheme`
 resolves `system` itself and writes a concrete `data-theme` onto `<html>`, so the
 CSS needs only one dark selector.
+
+## Looking at the UI without a backend
+
+`preview.html` boots the real app against a canned API (`src/dev/mockApi.js`) —
+one class, one chat, one week with a deliberately ungrounded code in it. Use it
+to work on layout, theming and the in-cell tweak flow without pointing the app
+at the live Supabase database or spending OpenAI credits on a revision.
+
+```
+npm run dev        # then open http://localhost:5174/preview.html
+```
+
+Dev-only: Vite builds `index.html`, so nothing under `src/dev/` reaches the
+production bundle.

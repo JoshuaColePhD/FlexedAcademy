@@ -260,12 +260,35 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
         return db.update_plan(user_id, plan_id, docx_path=str(out_path))  # type: ignore[return-value]
 
 
-def revise_day(user_id: str, plan_id: str, day_index: int, feedback: str, bg_tasks: BackgroundTasks | None = None) -> dict:
+def revise_day(
+    user_id: str,
+    plan_id: str,
+    day_index: int,
+    feedback: str,
+    field: str | None = None,
+    bg_tasks: BackgroundTasks | None = None,
+) -> dict:
     """Rewrite one day, then REBUILD the document.
 
     The old flow updated React state only, so the already-built .docx went stale
     and the file the teacher downloaded no longer matched the plan on screen.
+
+    `field` narrows the rewrite to a single cell — what in-cell tweaking sends.
+    Without it this regenerates the whole day, which for "make the Do Now a
+    quickwrite" also re-rolls that day's standards and engagement tags and
+    silently re-decides the grounding audit. With it, exactly one key changes and
+    every sibling is byte-identical by construction. `field: None` behaves
+    exactly as it always has.
     """
+    if field is not None and field not in schema.REVISABLE_FIELDS:
+        # This string reaches a prompt as a schema key. It is never taken on trust.
+        raise AppError(
+            "bad_field",
+            f"{field!r} is not a revisable field.",
+            status=400,
+            hint=f"Expected one of: {', '.join(schema.REVISABLE_FIELDS)}.",
+        )
+
     row = db.get_plan(user_id, plan_id)
     if not row:
         raise AppError("plan_not_found", "No such plan.", status=404)
@@ -291,39 +314,68 @@ def revise_day(user_id: str, plan_id: str, day_index: int, feedback: str, bg_tas
 
     subject_code = _subject_code(subject)
 
-    # Re-retrieve against the feedback so a revision can cite a standard the
-    # original week didn't need, while still being grounded.
-    # Prepending context to align with vector chunks
-    contextual_feedback = f"Course: {subject_code}, Grade: {grade} - {feedback} {original.get('learning_targets', '')}"
-    result = retrieval.retrieve_grounded(
-        contextual_feedback,
-        subject_code=subject_code,
-        grade=grade
-    )
-    if result.empty:
-        # A revision is allowed to proceed ungrounded — it inherits the week's
-        # standards — but it must not invent new codes, and the audit will flag
-        # it if it does.
-        result = RetrievalResult(chunks=[], rejected=result.rejected, floor=result.floor)
+    # A tweak scoped to a field that cannot carry a standard code — do_now,
+    # during, learning_targets — has nothing to retrieve FOR. Re-retrieving
+    # would widen the allowed-code set on behalf of text that holds no codes,
+    # and re-running the audit would re-decide grounding the teacher never
+    # touched. Skipping both is the entire point of the scope.
+    needs_retrieval = field is None or field in schema.CODE_BEARING_FIELDS
+
+    if needs_retrieval:
+        # Re-retrieve against the feedback so a revision can cite a standard the
+        # original week didn't need, while still being grounded.
+        # Prepending context to align with vector chunks
+        contextual_feedback = f"Course: {subject_code}, Grade: {grade} - {feedback} {original.get('learning_targets', '')}"
+        result = retrieval.retrieve_grounded(
+            contextual_feedback,
+            subject_code=subject_code,
+            grade=grade
+        )
+        if result.empty:
+            # A revision is allowed to proceed ungrounded — it inherits the week's
+            # standards — but it must not invent new codes, and the audit will flag
+            # it if it does.
+            result = RetrievalResult(chunks=[], rejected=result.rejected, floor=result.floor)
+    else:
+        result = RetrievalResult()
 
     import json as _json
 
-    updated_raw = llm.rewrite_day(user_id, original, feedback, _json.dumps(plan, indent=2), result)
-    updated, warnings = schema.validate_day(updated_raw, path=f"days[{day_index}]")
+    if field is None:
+        updated_raw = llm.rewrite_day(user_id, original, feedback, _json.dumps(plan, indent=2), result)
+        updated, warnings = schema.validate_day(updated_raw, path=f"days[{day_index}]")
 
-    if updated["name"] != original.get("name"):
-        # Don't let a revision silently move a day to a different weekday.
-        updated["name"] = original["name"]
-        warnings.append(
-            f"The revision tried to rename the day; kept it as {original['name']}."
+        if updated["name"] != original.get("name"):
+            # Don't let a revision silently move a day to a different weekday.
+            updated["name"] = original["name"]
+            warnings.append(
+                f"The revision tried to rename the day; kept it as {original['name']}."
+            )
+    else:
+        value = llm.rewrite_day_field(
+            user_id, original, feedback, field, _json.dumps(plan, indent=2), result
         )
+        # Merge over ONE key. Every sibling comes through by identity, which is
+        # what makes "editing Wednesday's Do Now leaves Wednesday's standards
+        # alone" a property of the code rather than a hope about the prompt.
+        merged = {**original, field: value}
+        # Still validated: the merged day is what the .docx builder receives, and
+        # a scoped rewrite can just as easily return a learning target that
+        # doesn't start with "I can" or an off-list engagement strategy.
+        updated, warnings = schema.validate_day(merged, path=f"days[{day_index}]")
+        # validate_day normalizes (strips, collapses newlines), so re-assert the
+        # promise on the fields the teacher did not touch.
+        for key, was in original.items():
+            if key != field and key in updated:
+                updated[key] = was
 
     new_days = list(days)
     new_days[day_index] = updated
     new_plan = {**plan, "days": new_days}
 
     allowed = set(row.get("retrieved_ids") or []) | result.codes
-    warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
+    if needs_retrieval:
+        warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
 
     out_path = docx_build.plan_output_path(new_plan, plan_id)
 

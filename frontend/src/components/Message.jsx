@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { Check, Copy, FileText, Pencil, RotateCcw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Copy, Download, FileText, Pencil, RotateCcw } from 'lucide-react'
+import { api } from '../lib/api'
+import { scanGrounding } from '../lib/grounding'
+import { Cite } from './Citation'
+import { WeekStrip } from './WeekStrip'
 
 function useCopy() {
   const [copied, setCopied] = useState(false)
@@ -37,6 +41,13 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
   }, [editing, draft.length])
 
   const isUser = message.role === 'user'
+
+  /* Computed here rather than handed down, so a message that carries a plan
+     carries its own proof and nothing upstream has to remember to attach it. */
+  const { grounded, ungrounded } = useMemo(
+    () => scanGrounding(message.plan, message.retrievedCodes),
+    [message.plan, message.retrievedCodes]
+  )
 
   if (isUser && editing) {
     return (
@@ -130,24 +141,70 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
           </span>
         ) : null}
 
+        {/* THE VERIFICATION.
+            With the document closed by default, this is where proof lives: the
+            five days and what is on each, then which codes were retrieved and
+            which one wasn't. It is what makes a bad week catchable without
+            opening a viewer — and it is less UI than the panel it replaces. */}
+        {!isUser && message.plan?.days?.length ? (
+          <div className="mt-3 flex w-full flex-col gap-3.5">
+            <WeekStrip days={message.plan.days} loose />
+            {grounded.length || ungrounded.length ? (
+              <p className="grounding-line">
+                <span>Grounded:</span>
+                {grounded.map((c) => (
+                  <Cite key={c} code={c} grounded />
+                ))}
+                {ungrounded.length ? (
+                  <>
+                    <span className="grounding-line-sep" aria-hidden="true">
+                      ·
+                    </span>
+                    {/* The code and its verdict wrap as one unit. Split across
+                        a line break, a bare "4.C※" reads as just another
+                        citation and the warning loses its subject. */}
+                    {ungrounded.map((u) => (
+                      <span className="grounding-line-miss-group" key={u.code}>
+                        <Cite code={u.code} grounded={false} />
+                        <span className="grounding-line-miss">
+                          not retrieved — {u.dayName}
+                        </span>
+                      </span>
+                    ))}
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {message.planId || message.previewPlan ? (
-          <button
-            type="button"
-            className="mt-3 flex w-full max-w-sm items-center gap-3 rounded-xl bg-paper-sunken p-3 text-left transition-colors hover:bg-paper-inset"
-            onClick={() => onOpenArtifact(message)}
-          >
-            <span className="rounded-lg bg-paper-raised p-2 text-ink-muted">
-              <FileText size={18} aria-hidden="true" />
+          <div className="artifact-card fa-lift mt-3">
+            <span className="artifact-card-tile">
+              <FileText size={17} aria-hidden="true" />
             </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <strong className="truncate text-sm font-medium text-ink">
-                {message.weekLabel || 'Weekly lesson plan'}
-              </strong>
-              <small className="truncate text-xs text-ink-muted">
-                {message.planId ? 'Open to review, revise or download' : 'Drafting…'}
-              </small>
-            </span>
-          </button>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 flex-col items-start gap-0.5 bg-transparent text-left"
+              onClick={() => onOpenArtifact(message)}
+            >
+              <span className="artifact-card-title">
+                {message.weekLabel || message.plan?.week_of || 'Weekly lesson plan'}
+              </span>
+              <span className="artifact-card-sub">
+                {message.planId ? 'Word document · Florence template' : 'Drafting…'}
+              </span>
+            </button>
+            {message.planId ? (
+              <a
+                className="artifact-card-download fa-press"
+                href={api.planDownloadUrl(message.planId)}
+                download
+              >
+                <Download size={13} aria-hidden="true" /> Download
+              </a>
+            ) : null}
+          </div>
         ) : null}
 
         <div

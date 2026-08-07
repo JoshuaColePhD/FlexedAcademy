@@ -21,9 +21,9 @@ from openai import OpenAI
 from . import curriculum
 from .config import settings
 from .errors import AppError
-from .prompts import day_system_prompt, week_system_prompt
+from .prompts import day_field_system_prompt, day_system_prompt, week_system_prompt
 from .retrieval import RetrievalResult
-from .schema import DAY_JSON_SCHEMA, PLAN_JSON_SCHEMA, loads_lenient
+from .schema import DAY_JSON_SCHEMA, PLAN_JSON_SCHEMA, field_json_schema, loads_lenient
 from . import db
 
 log = logging.getLogger("aplang.llm")
@@ -146,6 +146,61 @@ def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, 
     msg = resp.choices[0].message
     _check_refusal(msg)
     return loads_lenient(msg.content or "")
+
+
+def rewrite_day_field(
+    user_id: str,
+    day: dict,
+    feedback: str,
+    field: str,
+    full_plan_context: str,
+    result: RetrievalResult,
+):
+    """Rewrite ONE field of one day. Returns just that field's value.
+
+    The counterpart to rewrite_day, and the reason in-cell tweaking is safe: the
+    model is handed a one-key schema, so it has no way to emit a replacement for
+    a sibling field even if the feedback tempts it to. The service merges the
+    returned value over a single key and leaves the rest byte-identical.
+
+    `field` MUST already be validated against schema.REVISABLE_FIELDS — it is
+    interpolated into the prompt and the response schema as a key name.
+    """
+    s = db.get_settings_row(user_id)
+    resp = client().chat.completions.create(
+        model=settings.openai_model,
+        temperature=0.3,
+        # One cell, not seven. The whole-day call needs 1600.
+        max_tokens=700,
+        response_format=_response_format(f"lesson_plan_day_{field}", field_json_schema(field)),
+        messages=[
+            {
+                "role": "system",
+                "content": day_field_system_prompt(
+                    result, full_plan_context, field, subject=s["subject"], grade=s["grade"]
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"The day as it stands:\n{json.dumps(day, indent=2)}\n\n"
+                    f"Rewrite only `{field}`.\n"
+                    f"Teacher's feedback: {feedback}"
+                ),
+            },
+        ],
+    )
+    msg = resp.choices[0].message
+    _check_refusal(msg)
+    payload = loads_lenient(msg.content or "")
+    if not isinstance(payload, dict) or field not in payload:
+        raise AppError(
+            "field_rewrite_empty",
+            f"The model did not return a new '{field}'.",
+            status=502,
+            hint="Try rephrasing the tweak, or revise the whole day instead.",
+        )
+    return payload[field]
 
 
 _CRITIQUE_PROMPT = """You are a master curriculum coordinator. Your job is to review a drafted lesson plan against the exact academic standards retrieved for it.

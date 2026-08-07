@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import { GraduationCap, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
+import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { NARROW, useMediaQuery } from '../hooks/useMediaQuery'
@@ -184,10 +185,15 @@ function Rail({ onNavigate, onClose }) {
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  /* Owned here, set by ChatPage — see lib/shellContext.js. The rail is the one
+     column with slack in it, so it gives up 48px while the document is open. */
+  const [docOpen, setDocOpen] = useState(false)
+  const shell = useMemo(() => ({ docOpen, setDocOpen }), [docOpen])
   const drawerRef = useRef(null)
   useFocusTrap(drawerRef, { active: drawerOpen, trap: drawerOpen, onEscape: () => setDrawerOpen(false) })
 
   return (
+    <ShellContext.Provider value={shell}>
     <div className="flex h-app w-full overflow-hidden bg-paper font-sans text-ink">
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
@@ -198,7 +204,10 @@ export function AppShell({ children }) {
 
       {/* docked */}
       {!isNarrow ? (
-        <div className="flex w-[264px] shrink-0 flex-col border-r border-edge bg-paper-sunken">
+        <div
+          className="flex shrink-0 flex-col overflow-hidden border-r border-edge bg-paper-sunken transition-[width] duration-300 ease-out"
+          style={{ width: docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)' }}
+        >
           <Rail />
         </div>
       ) : null}
@@ -237,5 +246,6 @@ export function AppShell({ children }) {
         <div className="min-h-0 flex-1">{children}</div>
       </div>
     </div>
+    </ShellContext.Provider>
   )
 }

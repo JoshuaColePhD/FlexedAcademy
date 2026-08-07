@@ -35,6 +35,13 @@ class ReviseDayRequest(BaseModel):
     plan_id: str = Field(min_length=1, max_length=64)
     day_index: int = Field(ge=0, le=4)
     feedback: str = Field(min_length=1, max_length=4000)
+    # Additive and backward compatible: absent means "regenerate the whole day",
+    # which is what every existing caller sends. Present means in-cell tweaking
+    # — one key rewritten, siblings untouched. Membership is checked in
+    # service.revise_day rather than by a Literal here, so the allowed set has
+    # exactly one definition (schema.REVISABLE_FIELDS) and the rejection arrives
+    # as the app's own {code,message,hint} envelope rather than a 422.
+    field: str | None = None
 
 
 def _sse(payload: dict) -> str:
@@ -174,8 +181,9 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
 
 @router.post("/revise_day")
 def revise_day(req: ReviseDayRequest, user_id: str = Depends(get_current_user)):
-    """Rewrite one day AND rebuild the .docx, so the file matches what's on screen."""
-    return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback)
+    """Rewrite one day — or one cell of it — AND rebuild the .docx, so the file
+    matches what's on screen."""
+    return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback, req.field)
 
 
 @router.post("/chats/{chat_id}/messages")

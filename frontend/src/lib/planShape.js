@@ -32,6 +32,20 @@ export const ROWS = [
   { label: 'Lesson', key: null },
 ]
 
+/* The human name for each plan-shape key. The keys are what the API takes and
+   what backend/schema.py validates against; these are what a teacher reads in
+   the transcript ("Updated Wednesday's Do Now"). Mirrors prompts.FIELD_LABELS —
+   one list of revisable fields, named the same way on both sides. */
+export const FIELD_LABELS = {
+  learning_targets: 'Learning Targets',
+  standards: 'Standards',
+  act_alignment: 'ACT Alignment',
+  engagement_strategy: 'Engagement Strategy',
+  do_now: 'Do Now',
+  during: 'During',
+  assessment: 'Assessment',
+}
+
 /* Field order for a PHONE, which is a different question.
  *
  * The six rows are not equal in phone value. The Lesson block is what a teacher
@@ -67,6 +81,23 @@ export function orderedDays(plan, missingDays = 'no_school') {
         ? { incomplete: true }
         : { no_school: true }
   return DAYS.map((name) => byName.get(name) || { name, ...fallback })
+}
+
+/** What the week strip puts under the day letters.
+ *
+ *  `title` is the two-to-four-word label the model now writes ("Ethos &
+ *  audience"). Plans built before that field existed have none, so this falls
+ *  back to the learning target with its mandatory "I can " lopped off — which
+ *  is still long, but it is the difference between a readable cell and four
+ *  clipped words of boilerplate repeated five times. */
+export function dayTitle(day) {
+  const title = String(day?.title || '').trim()
+  if (title) return title
+  if (day?.no_school) return 'No school'
+  const lt = String(day?.learning_targets || '').trim()
+  if (!lt) return ''
+  const stripped = lt.replace(/^I can\s+/i, '')
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1)
 }
 
 export const dayState = (d) =>

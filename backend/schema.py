@@ -68,6 +68,15 @@ DAY_JSON_SCHEMA = {
     "properties": {
         "name": {"type": "string", "enum": DAY_NAMES},
         "no_school": {"type": "boolean"},
+        # SCREEN ONLY — the district template has no such cell and the builder
+        # never reads it. It exists because the week strip in the chat has five
+        # columns about 90px wide, and "I can identify how a writer's ethos
+        # shapes an audience's trust" is not a thing you can read in one. A
+        # teacher scanning a built week wants "Ethos & audience".
+        "title": {
+            "type": "string",
+            "description": "Two to four words naming the day's focus, e.g. 'Ethos & audience' or 'Irony workshop'. Title case off. Not a sentence.",
+        },
         "learning_targets": {
             "type": "string",
             "description": 'Single line, must start with "I can" followed by a Bloom\'s taxonomy verb matched to the Depth of Knowledge (DOK). No newlines.',
@@ -92,7 +101,11 @@ DAY_JSON_SCHEMA = {
         },
         "assessment": {"type": "string", "description": "The evidence or artifact produced."},
     },
-    "required": ["name", "no_school", *DAY_CONTENT_FIELDS],
+    # Structured Outputs' strict mode requires every declared property to be
+    # required, so `title` is required OF THE MODEL. validate_day still treats
+    # it as optional, because plans generated before it existed do not have one
+    # and must keep opening.
+    "required": ["name", "no_school", "title", *DAY_CONTENT_FIELDS],
 }
 
 PLAN_JSON_SCHEMA = {
@@ -107,6 +120,44 @@ PLAN_JSON_SCHEMA = {
     },
     "required": ["week_of", "days"],
 }
+
+
+# ---------------------------------------------------------------------------
+# Field-scoped revision
+#
+# In-cell tweaking rewrites ONE cell. Regenerating the whole day for "make the
+# Do Now a quickwrite" also regenerates that day's standards and engagement
+# tags — which quietly re-rolls the grounding audit this app exists to
+# guarantee. So a scoped revise names its field, the model returns only that
+# field, and every sibling key stays byte-identical.
+# ---------------------------------------------------------------------------
+
+# The only keys a teacher may scope a revision to. Validated server-side: this
+# string reaches a prompt as a schema key, so it is never taken on trust.
+# `title` is in here even though it is screen-only — it is a cell a teacher can
+# click in the week strip, and rewriting it must not regenerate the day.
+REVISABLE_FIELDS = DAY_CONTENT_FIELDS + ("title",)
+
+# Fields whose text can carry a standard code. Editing one of these can
+# introduce a code retrieval never supplied, so these — and only these — force
+# the retrieval + grounding audit to re-run. Everything else skips it; that is
+# the entire point of the scope.
+CODE_BEARING_FIELDS = ("standards", "act_alignment")
+
+
+def field_json_schema(field: str) -> dict:
+    """Structured-output schema for a single-field rewrite.
+
+    Reuses the field's own definition out of DAY_JSON_SCHEMA rather than
+    restating it, so a scoped rewrite and a whole-day rewrite cannot describe
+    the same field differently.
+    """
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {field: DAY_JSON_SCHEMA["properties"][field]},
+        "required": [field],
+    }
 
 
 def plan_schema_snippet() -> str:
@@ -179,6 +230,11 @@ def normalize_day(day: dict, warnings: list[str] | None = None) -> dict:
         if isinstance(d.get(field), str):
             d[field] = d[field].strip()
 
+    # Screen-only, and deliberately NOT in DAY_CONTENT_FIELDS: a plan from
+    # before this field existed must still validate and still build.
+    if isinstance(d.get("title"), str):
+        d["title"] = _collapse(d["title"])
+
     return d
 
 
@@ -200,8 +256,12 @@ def validate_day(day: object, *, path: str = "day") -> tuple[dict, list[str]]:
 
     if day.get("no_school") is True:
         # Content is irrelevant for a no-school day; the builder stamps
-        # "No School" and blanks the rest.
-        return {"name": name, "no_school": True}, warnings
+        # "No School" and blanks the rest. The title survives, because the week
+        # strip still wants to say WHY — "Pep rally" beats a blank cell.
+        closed = {"name": name, "no_school": True}
+        if str(day.get("title") or "").strip():
+            closed["title"] = _collapse(str(day["title"]))
+        return closed, warnings
 
     d = normalize_day(day, warnings)
 

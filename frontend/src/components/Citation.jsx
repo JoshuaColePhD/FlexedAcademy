@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { PHONE, useMediaQuery } from '../hooks/useMediaQuery'
 import { api } from '../lib/api'
+import { codeRe, groundedSet, normalizeCode } from '../lib/codes'
 import { errorParts, isNotFound } from '../lib/apiError'
 
 /* THE SIGNATURE ELEMENT — the grounding apparatus.
@@ -13,28 +14,10 @@ import { errorParts, isNotFound } from '../lib/apiError'
    This is the app's actual differentiator made visible. Everything else in the
    design stays quiet so this can carry the weight. */
 
-/* Families and shapes present in the corpus, plus the two (CLR, IKI) that
-   KNOWN_GAPS.md says can never be grounded.
-
-   The `[A-Z]{2,5}\d{2}(\.…)+` alternative matches the Alabama CASE codes as ALSDE
-   publishes them — ELA21.11.R2, MA19.GDA.5, SS24.US2.4, SC23.CHEM.1e,
-   CSC26.9-12.CD.3. Without it, every standard from the eleven Course of Study
-   frameworks rendered as plain text: no citation, no popover, and no ungrounded
-   mark — so the grounding apparatus was silently inert for every subject except
-   AP Lang. Mirrors backend/retrieval.py's _CODE_RE, which the grounding audit
-   uses; the two should be changed together. */
-const CODE_RE = new RegExp(
-  '(' +
-    [
-      '\\d\\.[A-C]', // AP Lang skill, e.g. 2.A
-      'Grade\\d{1,2}-\\d{1,2}[a-c]?', // legacy ALCOS parse, e.g. Grade11-22a
-      '[A-Z]{2,5}\\d{2}(?:\\.[A-Za-z0-9-]+){1,4}', // Alabama CASE, e.g. ELA21.11.R2
-      'R\\d{1,2}', // ACT recurring, e.g. R4
-      '(?:TOD|ORG|KLA|SST|USG|PUN|CLR|IKI)\\s?\\d{3}', // ACT English/Writing
-    ].join('|') +
-    ')',
-  'g'
-)
+/* The code pattern moved to lib/codes.js — the grounding line in the chat
+   message and the marginalia "which cell cites this?" lookup need the same
+   recognition, and a second copy of that regex is how the screen and the
+   backend audit would drift. */
 
 const cache = new Map()
 
@@ -42,9 +25,7 @@ const cache = new Map()
    clicking three codes left three popovers stacked over each other. */
 let closeOpenPopover = null
 
-function normalize(code) {
-  return code.replace(/\s+/g, ' ').trim().toUpperCase()
-}
+const normalize = normalizeCode
 
 function Popover({ code, anchorRef, onClose, popoverId }) {
   const [record, setRecord] = useState(() => cache.get(normalize(code)))
@@ -157,7 +138,7 @@ function Popover({ code, anchorRef, onClose, popoverId }) {
 
 let citeSeq = 0
 
-function Cite({ code, grounded }) {
+export function Cite({ code, grounded }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const idRef = useRef(null)
@@ -171,7 +152,10 @@ function Cite({ code, grounded }) {
     ref.current?.focus?.({ preventScroll: true })
   }
 
-  const toggle = () => {
+  const toggle = (e) => {
+    /* The cell around this is now click-to-tweak. A click on a citation means
+       "show me the standard" and never "revise this cell", so it stops here. */
+    e.stopPropagation()
     if (open) {
       close()
       return
@@ -221,13 +205,11 @@ export function CitedText({ text, groundedCodes }) {
   // plan loaded from elsewhere may not be, and a case mismatch would falsely
   // brand a properly grounded code as invented — the worst possible direction for
   // this particular error to fail in.
-  const known = new Set(
-    [...(groundedCodes instanceof Set ? groundedCodes : groundedCodes || [])].map(normalize)
-  )
+  const known = groundedSet(groundedCodes)
   // No grounding info available (e.g. a stored plan) — don't cry wolf.
   const checking = known.size > 0
 
-  const parts = String(text).split(CODE_RE)
+  const parts = String(text).split(codeRe())
   return (
     <>
       {parts.map((part, i) =>

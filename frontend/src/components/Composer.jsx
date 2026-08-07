@@ -122,7 +122,7 @@ export function Composer({
   return (
     <div className="relative w-full">
       <div
-        className="relative flex w-full flex-col overflow-hidden rounded-xl border border-edge bg-paper-raised transition-colors focus-within:border-edge-strong"
+        className="composer-shell relative flex w-full flex-col overflow-hidden rounded-xl border border-edge bg-paper-raised transition-colors"
         ref={wrapperRef}
       >
         {attachments.length > 0 ? (
@@ -188,7 +188,7 @@ export function Composer({
                   : placeholder
             }
             title="Enter to send · Shift+Enter for a new line"
-            className="max-h-[220px] flex-1 resize-none overflow-y-auto border-none bg-transparent px-2 py-[0.9375rem] text-[0.9375rem] leading-relaxed text-ink outline-none placeholder:font-normal placeholder:text-ink-faint"
+            className="composer-input max-h-[220px] flex-1 resize-none overflow-y-auto border-none bg-transparent px-2 py-[0.9375rem] text-[0.9375rem] leading-relaxed text-ink outline-none placeholder:font-normal placeholder:text-ink-faint"
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
             disabled={isRecording || isTranscribing}

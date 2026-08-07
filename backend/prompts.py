@@ -10,13 +10,14 @@ disagree.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 import re
 from pathlib import Path
 
 from .config import settings
 from .retrieval import UNGROUNDABLE_FAMILIES, RetrievalResult, format_context
-from .schema import DAY_NAMES, day_schema_snippet, plan_schema_snippet
+from .schema import DAY_NAMES, day_schema_snippet, field_json_schema, plan_schema_snippet
 
 log = logging.getLogger("aplang.prompts")
 
@@ -153,6 +154,12 @@ teacher's saved settings, not by you. Include exactly {len(DAY_NAMES)} days, one
 per weekday, named exactly as listed. If a day is a holiday or in-service, set
 `no_school` to true for it and leave its content fields as empty strings.
 
+Every day also needs a `title`: two to four words naming that day's focus, the
+way a teacher would say it out loud — "Ethos & audience", "Diction & syntax",
+"Irony workshop", "Socratic seminar". It is a label, not a sentence, and it is
+not the learning target restated. A no-school day still gets one, naming the
+reason: "Pep rally", "Fall break", "In-service".
+
 Set `week_of` from the week date map above, in the form
 "Week 03 — Aug 17-21, 2026". If the request names a week number, use THAT week's
 row. If it names a topic instead, pick the week the unit map assigns to it. Mark
@@ -188,5 +195,68 @@ string. Every code you cite must come from the retrieved standards block.
 Return JSON for that one day matching this schema exactly:
 
 {day_schema_snippet()}""",
+    ]
+    return "\n\n---\n\n".join(b for b in blocks if b.strip())
+
+
+# Human names for the plan-shape keys, so the instruction reads as the cell a
+# teacher actually clicked rather than as a JSON path.
+FIELD_LABELS = {
+    "title": "Day title",
+    "learning_targets": "Learning Targets",
+    "standards": "Standards",
+    "act_alignment": "ACT Alignment",
+    "engagement_strategy": "Engagement Strategy",
+    "do_now": "Do Now",
+    "during": "During",
+    "assessment": "Assessment",
+}
+
+
+def day_field_system_prompt(
+    result: RetrievalResult,
+    full_plan_context: str,
+    field: str,
+    subject: str = "AP Language & Composition",
+    grade: str = "11",
+) -> str:
+    """Rewrite ONE cell of one day.
+
+    The teacher clicked a single cell, so the model is given a single key to
+    return. `field` is validated against schema.REVISABLE_FIELDS before it ever
+    reaches here — it is interpolated into a prompt as a schema key, and a
+    teacher-supplied string must never be.
+    """
+    rules = planning_rules() if subject == "AP Language & Composition" else ""
+    label = FIELD_LABELS.get(field, field)
+
+    codes_note = (
+        "This field carries standard codes. Every code you cite must appear in "
+        "the retrieved standards block above — do not recall one from memory."
+        if field in ("standards", "act_alignment")
+        else "Do NOT put a standard code in this field; it does not carry one."
+    )
+
+    blocks = [
+        f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
+        f"revising ONE FIELD — the '{label}' cell — of ONE day of an existing weekly "
+        "lesson plan, based on the teacher's feedback.",
+        grounding_constraints(subject, grade),
+        f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
+        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
+        "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
+        + (format_context(result) or "(none)"),
+        "THE FULL WEEK, for context only — do NOT rewrite any of it:\n\n" + full_plan_context,
+        f"""TASK:
+
+Rewrite ONLY the `{field}` value of the day given, applying the teacher's
+feedback. Every other field of that day is being kept exactly as it is and you
+must not restate, reference-edit, or attempt to change any of them — your output
+is merged over a single key. Keep the new value coherent with the day's other
+fields, which you can see. {codes_note}
+
+Return JSON with exactly one key:
+
+{json.dumps(field_json_schema(field), indent=2)}""",
     ]
     return "\n\n---\n\n".join(b for b in blocks if b.strip())

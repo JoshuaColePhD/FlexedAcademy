@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { ArrowUp, Sparkles, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useLayoutMode } from '../hooks/useMediaQuery'
-import { LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
+import { FIELD_LABELS, LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
 import { CitedText } from './Citation'
 import { PlanDayCards } from './PlanDayCards'
 import { SkeletonText } from './Skeleton'
@@ -23,17 +23,90 @@ import { SkeletonText } from './Skeleton'
    Duplicating the three-state no_school/pending/incomplete reasoning into a
    second view is exactly how the two would drift. */
 
-function LessonCell({ day }) {
+/* ── in-cell revision ──────────────────────────────────────────────────────
+   What this replaces: a "Revise" row of Sparkles buttons under the table plus
+   one shared .revise-box below it. That worked, but every revision it could
+   express was scoped to a WHOLE DAY — so "shorten the Do Now" regenerated
+   Wednesday's standards and engagement tags too, and quietly re-decided the
+   grounding audit the app exists to guarantee.
+
+   Clicking the cell instead scopes the revision to a day AND a field, which is
+   the contract backend/service.py's merge-one-key path now honours. This is a
+   relocation of an existing feature, not a new one; the submit handler and the
+   guards are the same. */
+
+/** Suggested tweaks, per field. A chip fills the input rather than firing the
+ *  revision outright: a stray click on a compliance document should not cost a
+ *  model call and a rebuilt .docx. */
+const CHIPS = {
+  learning_targets: ['Shorter', 'Lower the DOK', 'Make the verb measurable'],
+  standards: ['Use a different standard', 'Add a second code'],
+  act_alignment: ['Use a different ACT code', 'Leave it empty'],
+  engagement_strategy: ['Something more active', 'Fewer strategies'],
+  do_now: ['Shorter', 'More rigorous', 'Make it a quickwrite'],
+  during: ['Shorter', 'More rigorous', 'Add a group activity'],
+  assessment: ['Shorter', 'More rigorous', 'Make it written'],
+}
+
+const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
+
+/** The editor, rendered where the text was. */
+function CellTweak({ field, current, draft, setDraft, onApply, onCancel, busy }) {
   return (
     <>
-      {LESSON_PARTS.map(([label, key]) =>
-        day[key] ? (
-          <div className="plan-lesson-part" key={key}>
-            <b>{label}:</b>
-            {day[key]}
-          </div>
-        ) : null
-      )}
+      <div className="cell-tweak-current">
+        <b className="cell-tweak-label">{FIELD_LABELS[field] || field} · tweaking</b>
+        {current}
+      </div>
+      <div className="cell-tweak-row">
+        <label className="visually-hidden" htmlFor="cell-tweak-input">
+          What should change about this {FIELD_LABELS[field] || field}?
+        </label>
+        <input
+          id="cell-tweak-input"
+          className="input"
+          autoFocus
+          placeholder="What should change?"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onApply()
+            if (e.key === 'Escape') {
+              /* Stops here. ArtifactPanel's focus trap also listens for Escape
+                 and collapses the whole document — so without this, cancelling
+                 a two-word tweak threw away the document you were working in. */
+              e.stopPropagation()
+              onCancel()
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="cell-tweak-apply"
+          disabled={busy || !draft.trim()}
+          onClick={onApply}
+        >
+          Apply
+        </button>
+        <button type="button" className="btn-icon" onClick={onCancel} aria-label="Cancel this tweak">
+          <X size={14} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="cell-tweak-chips">
+        {(CHIPS[field] || []).map((chip) => (
+          <button
+            key={chip}
+            type="button"
+            className="cell-tweak-chip fa-press"
+            onClick={() => {
+              setDraft(chip)
+              document.getElementById('cell-tweak-input')?.focus()
+            }}
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
     </>
   )
 }
@@ -41,10 +114,10 @@ function LessonCell({ day }) {
 /* The plan document, in whichever form the screen can carry.
  *
  * Keeps its name and its props so nothing upstream changes: it is a router now.
- * Desktop gets the 860px district table, unchanged. Anything narrower gets the
- * day-card deck, with a toggle back to the real table — because the app's whole
- * promise is that the screen and the .docx agree, and a teacher must always be
- * able to check that, even sideways. */
+ * Desktop gets the district table. Anything narrower gets the day-card deck,
+ * with a toggle back to the real table — because the app's whole promise is that
+ * the screen and the .docx agree, and a teacher must always be able to check
+ * that, even sideways. */
 export function LessonPlanTable({
   plan,
   planId,
@@ -53,9 +126,12 @@ export function LessonPlanTable({
   onPlanRevised,
   busy,
   missingDays = 'no_school',
+  fitWidth = true,
+  flashCells,
+  openTweak,
+  setOpenTweak,
 }) {
-  const [openDay, setOpenDay] = useState(null)
-  const [drafts, setDrafts] = useState({})
+  const [draft, setDraft] = useState('')
   const [feedbackSent, setFeedbackSent] = useState(false)
   const [revisingWholePlan, setRevisingWholePlan] = useState(false)
   const [rawTable, setRawTable] = useState(false)
@@ -102,20 +178,33 @@ export function LessonPlanTable({
 
   const ordered = orderedDays(plan, missingDays)
 
-  const submit = (index, day) => {
-    const feedback = (drafts[day.name] || '').trim()
-    if (!feedback) return
-    onReviseDay?.(index, day, feedback)
-    setOpenDay(null)
-    setDrafts((d) => ({ ...d, [day.name]: '' }))
+  /* Authoring is desktop-only — decision 5. A phone is for reading the week and
+     downloading it, not for asking an LLM to rewrite it. */
+  const canTweak = Boolean(onReviseDay) && mode === 'desktop'
+
+  const openCell = (dayIndex, field) => {
+    if (!canTweak) return
+    setDraft('')
+    setOpenTweak({ dayIndex, field })
+  }
+
+  const closeCell = () => {
+    setDraft('')
+    setOpenTweak(null)
+  }
+
+  const applyTweak = () => {
+    const feedback = draft.trim()
+    if (!feedback || !openTweak) return
+    const { dayIndex, field } = openTweak
+    onReviseDay(dayIndex, ordered[dayIndex], feedback, field)
+    closeCell()
   }
 
   return (
     <div className="plan-doc">
       <div className="plan-head">
         <h2>{plan.week_of || 'Untitled week'}</h2>
-        {/* Authoring — desktop only, decision 5. A phone is for reading the
-            week and downloading it, not for asking an LLM to rewrite it. */}
         {planId && mode === 'desktop' ? (
           <div className="plan-feedback">
             <button
@@ -171,11 +260,11 @@ export function LessonPlanTable({
         ) : null}
       </div>
 
-      {/* Below --lg, or on any width where a 860px table is a sideways scroll,
-          the day-card deck replaces the table — unless the teacher has asked to
-          see the district table itself, which they must always be able to do.
-          Only ever ONE in the DOM: rendering both and hiding one makes a screen
-          reader read the whole week twice. */}
+      {/* Below --lg, or on any width where the district table is a sideways
+          scroll, the day-card deck replaces the table — unless the teacher has
+          asked to see the district table itself, which they must always be able
+          to do. Only ever ONE in the DOM: rendering both and hiding one makes a
+          screen reader read the whole week twice. */}
       {mode !== 'desktop' && !rawTable ? (
         <>
           <PlanDayCards plan={plan} groundedCodes={groundedCodes} missingDays={missingDays} />
@@ -194,51 +283,166 @@ export function LessonPlanTable({
               Back to day view
             </button>
           ) : null}
-          <PlanTable
-            ordered={ordered}
-            groundedCodes={groundedCodes}
-            onReviseDay={onReviseDay}
-            busy={busy}
-            openDay={openDay}
-            setOpenDay={setOpenDay}
-            drafts={drafts}
-            setDrafts={setDrafts}
-            submit={submit}
-            showRevise={mode === 'desktop'}
-          />
+          {/* Two ways to read the same week, and the toggle in the document
+              header picks between them.
+
+              PRINTED WIDTH is the district table: 5 rows x 6 columns at 860px,
+              the exact shape of the .docx. It is the app's promise — a teacher
+              must always be able to hold the screen next to the printed page.
+
+              FIT WIDTH splits it in two: a compact grid for the fields that are
+              a line each, then a per-day block for the lesson narrative. Those
+              three fields are 90% of the words and the district shape gives
+              them a fifth of the width, which is what made the document
+              unreadable in any canvas narrower than a monitor. Same content,
+              same order, no field dropped. */}
+          {fitWidth ? (
+            <FittedPlan
+              ordered={ordered}
+              groundedCodes={groundedCodes}
+              busy={busy}
+              flashCells={flashCells}
+              canTweak={canTweak}
+              openTweak={canTweak ? openTweak : null}
+              openCell={openCell}
+              closeCell={closeCell}
+              applyTweak={applyTweak}
+              draft={draft}
+              setDraft={setDraft}
+            />
+          ) : (
+            <PlanTable
+              ordered={ordered}
+              groundedCodes={groundedCodes}
+              busy={busy}
+              flashCells={flashCells}
+              canTweak={canTweak}
+              openTweak={canTweak ? openTweak : null}
+              openCell={openCell}
+              closeCell={closeCell}
+              applyTweak={applyTweak}
+              draft={draft}
+              setDraft={setDraft}
+            />
+          )}
         </>
       )}
     </div>
   )
 }
 
-/* The district table itself — unchanged, and deliberately so. min-width: 860px
-   stays; this is the .docx mirror and its faithfulness is the product. */
+/* One implementation of "what a clickable cell is", shared by both layouts.
+ *
+ * The district table and the fitted view show the same week in two shapes, and
+ * every one of these behaviours — which cells open, what flashes, how a
+ * keyboard reaches them — has to be identical in both or the two views quietly
+ * become two different editors. */
+function cellKit({
+  busy,
+  flashCells,
+  canTweak,
+  openTweak,
+  openCell,
+  closeCell,
+  applyTweak,
+  draft,
+  setDraft,
+}) {
+  const isOpen = (dayIndex, field) =>
+    openTweak?.dayIndex === dayIndex && openTweak?.field === field
+  const flashed = (dayIndex, field) => flashCells?.has(cellKey(dayIndex, field))
+
+  /* Deliberately NOT role="button" + tabIndex on the cell. Two of these contain
+     <Cite> buttons, and a button inside a button is a real screen-reader
+     failure, not a lint nit. The pointer affordance is the cell; the keyboard
+     affordance is the Trigger, which is off-screen until focused. */
+  const editableProps = (dayIndex, field) =>
+    canTweak
+      ? {
+          className: `is-editable${flashed(dayIndex, field) ? ' fa-flash' : ''}`,
+          onClick: () => openCell(dayIndex, field),
+        }
+      : { className: flashed(dayIndex, field) ? 'fa-flash' : undefined }
+
+  /** The keyboard path into a cell tweak. Invisible until it has focus, at
+   *  which point it becomes a visible pill — so tabbing through the document
+   *  never lands on something a sighted keyboard user cannot see. */
+  const Trigger = ({ dayIndex, field, dayName }) =>
+    canTweak ? (
+      <button
+        type="button"
+        className="cell-tweak-trigger"
+        onClick={(e) => {
+          e.stopPropagation()
+          openCell(dayIndex, field)
+        }}
+      >
+        Tweak {dayName}’s {FIELD_LABELS[field] || field}
+      </button>
+    ) : null
+
+  const tweakBody = (field, current) => (
+    <CellTweak
+      field={field}
+      current={current}
+      draft={draft}
+      setDraft={setDraft}
+      onApply={applyTweak}
+      onCancel={closeCell}
+      busy={busy}
+    />
+  )
+
+  return { isOpen, flashed, editableProps, Trigger, tweakBody }
+}
+
+/** The value a tweak editor shows as "what this says now". */
+const currentValue = (day, field) =>
+  field === 'engagement_strategy'
+    ? (Array.isArray(day[field]) ? day[field] : []).join(', ')
+    : day[field]
+
+/* The district table itself. It mirrors the .docx and its faithfulness is the
+   product, so the only thing in-cell editing is allowed to change is what
+   happens when you click — never the columns, the rows or the colours. */
 function PlanTable({
   ordered,
   groundedCodes,
-  onReviseDay,
   busy,
-  openDay,
-  setOpenDay,
-  drafts,
-  setDrafts,
-  submit,
-  showRevise,
+  flashCells,
+  canTweak,
+  openTweak,
+  openCell,
+  closeCell,
+  applyTweak,
+  draft,
+  setDraft,
 }) {
+  const { isOpen, flashed, editableProps, Trigger, tweakBody } = cellKit({
+    busy,
+    flashCells,
+    canTweak,
+    openTweak,
+    openCell,
+    closeCell,
+    applyTweak,
+    draft,
+    setDraft,
+  })
+
   return (
-    <>
-      {/* tabIndex + role + label are not polish: a scroll container that only
-          responds to pointer drag is a keyboard-access failure (WCAG 2.1.1). */}
-      <div
-        className="plan-table-scroll"
-        tabIndex={0}
-        role="region"
-        aria-label="Weekly lesson plan — scrolls horizontally on small screens"
-      >
-        <table className="plan-table">
+    /* tabIndex + role + label are not polish: a scroll container that only
+       responds to pointer drag is a keyboard-access failure (WCAG 2.1.1). */
+    <div
+      className="plan-table-scroll"
+      tabIndex={0}
+      role="region"
+      aria-label="Weekly lesson plan — scrolls horizontally on small screens"
+    >
+      <table className="plan-table">
         <caption className="visually-hidden">
           Weekly lesson plan, Monday to Friday, in the Florence City Schools template
+          {canTweak ? '. Click any cell to revise just that part of that day.' : ''}
         </caption>
         <thead>
           <tr>
@@ -253,52 +457,246 @@ function PlanTable({
           </tr>
         </thead>
         <tbody>
-          {ROWS.map((row) => (
-            <tr key={row.label}>
-              <th scope="row">{row.label}</th>
-              {ordered.map((day) => {
-                if (day.no_school) {
-                  // Only the first content row carries the stamp, matching the builder.
-                  return row.key === 'learning_targets' ? (
-                    <td key={day.name} className="is-no-school" rowSpan={ROWS.length}>
-                      No School
-                    </td>
-                  ) : null
-                }
-                if (day.pending) {
-                  // Same single-stamp shape as No School, so the column doesn't
-                  // shift when the real content replaces it.
-                  return row.key === 'learning_targets' ? (
-                    <td key={day.name} className="is-pending" rowSpan={ROWS.length}>
-                      <SkeletonText lines={3} />
-                      <span className="visually-hidden">
-                        {day.name} hasn’t been written yet
-                      </span>
-                    </td>
-                  ) : null
-                }
-                if (day.incomplete) {
-                  return row.key === 'learning_targets' ? (
-                    <td key={day.name} className="is-incomplete" rowSpan={ROWS.length}>
-                      Not generated
-                      <span className="visually-hidden">
-                        {' '}
-                        — generation stopped before {day.name} was written
-                      </span>
-                    </td>
-                  ) : null
-                }
-                if (row.key === null) {
+          {ROWS.map((row) => {
+            /* The row label goes accent-bordered too when a cell in this row is
+               being tweaked — the two halves of the frame in the design. */
+            const rowTweaking =
+              openTweak &&
+              (row.key === null
+                ? LESSON_PARTS.some(([, key]) => key === openTweak.field)
+                : row.key === openTweak.field)
+
+            return (
+              <tr key={row.label}>
+                <th scope="row" className={rowTweaking ? 'is-tweaking' : undefined}>
+                  {row.label}
+                </th>
+                {ordered.map((day, dayIndex) => {
+                  if (day.no_school) {
+                    // Only the first content row carries the stamp, matching the builder.
+                    return row.key === 'learning_targets' ? (
+                      <td key={day.name} className="is-no-school" rowSpan={ROWS.length}>
+                        No School
+                      </td>
+                    ) : null
+                  }
+                  if (day.pending) {
+                    // Same single-stamp shape as No School, so the column doesn't
+                    // shift when the real content replaces it.
+                    return row.key === 'learning_targets' ? (
+                      <td key={day.name} className="is-pending" rowSpan={ROWS.length}>
+                        <SkeletonText lines={3} />
+                        <span className="visually-hidden">
+                          {day.name} hasn’t been written yet
+                        </span>
+                      </td>
+                    ) : null
+                  }
+                  if (day.incomplete) {
+                    return row.key === 'learning_targets' ? (
+                      <td key={day.name} className="is-incomplete" rowSpan={ROWS.length}>
+                        Not generated
+                        <span className="visually-hidden">
+                          {' '}
+                          — generation stopped before {day.name} was written
+                        </span>
+                      </td>
+                    ) : null
+                  }
+
+                  /* The Lesson cell holds three separately-revisable parts. Each
+                     one is its own click target and its own field, so tweaking
+                     the Do Now does not put the During through a model. */
+                  if (row.key === null) {
+                    const openPart = LESSON_PARTS.find(([, key]) => isOpen(dayIndex, key))
+                    return (
+                      <td key={day.name} className={openPart ? 'is-tweaking' : undefined}>
+                        {LESSON_PARTS.map(([label, key]) =>
+                          isOpen(dayIndex, key) ? (
+                            <div key={key}>{tweakBody(key, day[key])}</div>
+                          ) : day[key] ? (
+                            <div
+                              className={`plan-lesson-part${
+                                canTweak ? ' is-editable' : ''
+                              }${flashed(dayIndex, key) ? ' fa-flash' : ''}`}
+                              key={key}
+                              onClick={canTweak ? () => openCell(dayIndex, key) : undefined}
+                            >
+                              <b>{label}:</b>
+                              {day[key]}
+                              <Trigger dayIndex={dayIndex} field={key} dayName={day.name} />
+                            </div>
+                          ) : null
+                        )}
+                      </td>
+                    )
+                  }
+
+                  if (isOpen(dayIndex, row.key)) {
+                    const current = row.tags
+                      ? (Array.isArray(day[row.key]) ? day[row.key] : []).join(', ')
+                      : day[row.key]
+                    return (
+                      <td key={day.name} className="is-tweaking">
+                        {tweakBody(row.key, current)}
+                      </td>
+                    )
+                  }
+
+                  if (row.tags) {
+                    const list = Array.isArray(day[row.key]) ? day[row.key] : []
+                    return (
+                      <td key={day.name} {...editableProps(dayIndex, row.key)}>
+                        <div className="strategy-tags">
+                          {list.map((s) => (
+                            <span className="strategy-tag" key={s}>
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                        <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
+                      </td>
+                    )
+                  }
+
                   return (
-                    <td key={day.name}>
-                      <LessonCell day={day} />
+                    <td key={day.name} {...editableProps(dayIndex, row.key)}>
+                      {row.cited ? (
+                        <CitedText text={day[row.key]} groundedCodes={groundedCodes} />
+                      ) : (
+                        day[row.key]
+                      )}
+                      <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/* The fitted view — the same week, reshaped to the width it actually has.
+ *
+ * The district table gives every field a fifth of the page. That is right for
+ * the printed document, where the page is 11 inches wide and the reader is
+ * holding it. It is wrong on screen: `do_now`, `during` and `assessment` are
+ * most of the words in a plan, and a fifth of a 700px canvas is 130px, which
+ * turns a paragraph into a column of single words.
+ *
+ * So the one-line fields keep the grid — that is what they are, five short
+ * answers to the same question — and the lesson narrative gets a row per day at
+ * full width. No field is dropped and the order is the document's order. The
+ * teacher who needs the literal .docx shape presses "Printed width".
+ */
+function FittedPlan({
+  ordered,
+  groundedCodes,
+  busy,
+  flashCells,
+  canTweak,
+  openTweak,
+  openCell,
+  closeCell,
+  applyTweak,
+  draft,
+  setDraft,
+}) {
+  const kit = cellKit({
+    busy,
+    flashCells,
+    canTweak,
+    openTweak,
+    openCell,
+    closeCell,
+    applyTweak,
+    draft,
+    setDraft,
+  })
+  const { isOpen, flashed, editableProps, Trigger, tweakBody } = kit
+
+  const summaryRows = ROWS.filter((r) => r.key !== null)
+  const teaching = ordered
+    .map((day, dayIndex) => ({ day, dayIndex }))
+    .filter(({ day }) => !day.no_school && !day.pending && !day.incomplete)
+
+  return (
+    <div className="plan-fit">
+      <table className="plan-table is-fit">
+        <caption className="visually-hidden">
+          Weekly lesson plan, Monday to Friday — targets, standards and strategy
+          {canTweak ? '. Click any cell to revise just that part of that day.' : ''}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">
+              <span className="visually-hidden">Lesson plan component</span>
+            </th>
+            {ordered.map((d) => (
+              <th scope="col" key={d.name}>
+                {d.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {summaryRows.map((row, rowIndex) => (
+            <tr key={row.label}>
+              <th
+                scope="row"
+                className={openTweak?.field === row.key ? 'is-tweaking' : undefined}
+              >
+                {row.label}
+              </th>
+              {ordered.map((day, dayIndex) => {
+                /* The stamp spans the summary rows only — the lesson detail
+                   below simply has no row for a day with no class. */
+                if (day.no_school || day.pending || day.incomplete) {
+                  if (rowIndex !== 0) return null
+                  const state = day.no_school
+                    ? 'is-no-school'
+                    : day.pending
+                      ? 'is-pending'
+                      : 'is-incomplete'
+                  return (
+                    <td key={day.name} className={state} rowSpan={summaryRows.length}>
+                      {day.no_school ? (
+                        'No School'
+                      ) : day.pending ? (
+                        <>
+                          <SkeletonText lines={2} />
+                          <span className="visually-hidden">
+                            {day.name} hasn’t been written yet
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          Not generated
+                          <span className="visually-hidden">
+                            {' '}
+                            — generation stopped before {day.name} was written
+                          </span>
+                        </>
+                      )}
                     </td>
                   )
                 }
+
+                if (isOpen(dayIndex, row.key)) {
+                  return (
+                    <td key={day.name} className="is-tweaking">
+                      {tweakBody(row.key, currentValue(day, row.key))}
+                    </td>
+                  )
+                }
+
                 if (row.tags) {
                   const list = Array.isArray(day[row.key]) ? day[row.key] : []
                   return (
-                    <td key={day.name}>
+                    <td key={day.name} {...editableProps(dayIndex, row.key)}>
                       <div className="strategy-tags">
                         {list.map((s) => (
                           <span className="strategy-tag" key={s}>
@@ -306,98 +704,68 @@ function PlanTable({
                           </span>
                         ))}
                       </div>
+                      <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
                     </td>
                   )
                 }
+
                 return (
-                  <td key={day.name}>
+                  <td key={day.name} {...editableProps(dayIndex, row.key)}>
                     {row.cited ? (
                       <CitedText text={day[row.key]} groundedCodes={groundedCodes} />
                     ) : (
                       day[row.key]
                     )}
+                    <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
                   </td>
                 )
               })}
             </tr>
           ))}
-          {/* Authoring, so desktop only — decision 5. On a phone this row would
-              be five buttons that open a text field for a generation the screen
-              deliberately doesn't support. */}
-          {onReviseDay && showRevise ? (
-            <tr>
-              <th scope="row">Revise</th>
-              {ordered.map((day) =>
-                /* pending/incomplete included: a live "Revise Tuesday" for a day
-                   that hasn't arrived would post a day_index the backend can't
-                   revise. */
-                day.no_school || day.pending || day.incomplete ? (
-                  <td key={day.name} />
-                ) : (
-                  <td key={day.name}>
-                    <div className="plan-day-actions">
-                      <button
-                        type="button"
-                        className="btn-icon"
-                        disabled={busy}
-                        aria-label={`Revise ${day.name}`}
-                        aria-expanded={openDay === day.name}
-                        onClick={() => setOpenDay(openDay === day.name ? null : day.name)}
-                      >
-                        <Sparkles size={13} aria-hidden="true" />
-                      </button>
-                    </div>
-                  </td>
-                )
-              )}
-            </tr>
-          ) : null}
         </tbody>
-        </table>
-      </div>
+      </table>
 
-      {openDay
-        ? (() => {
-            const index = ordered.findIndex((d) => d.name === openDay)
-            const day = ordered[index]
-            return (
-              <div className="revise-box">
-                <label className="visually-hidden" htmlFor="revise-input">
-                  What should change about {openDay}?
-                </label>
-                <input
-                  id="revise-input"
-                  className="input"
-                  autoFocus
-                  placeholder={`Change ${openDay} — e.g. make the Do Now a group activity`}
-                  value={drafts[openDay] || ''}
-                  onChange={(e) => setDrafts((d) => ({ ...d, [openDay]: e.target.value }))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submit(index, day)
-                    if (e.key === 'Escape') setOpenDay(null)
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn-send"
-                  disabled={busy || !(drafts[openDay] || '').trim()}
-                  onClick={() => submit(index, day)}
-                  aria-label={`Rewrite ${openDay}`}
-                >
-                  <ArrowUp size={15} strokeWidth={2.5} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="btn-icon"
-                  onClick={() => setOpenDay(null)}
-                  aria-label="Cancel revision"
-                >
-                  <X size={15} aria-hidden="true" />
-                </button>
-              </div>
-            )
-          })()
-        : null}
-    </>
+      {teaching.length ? (
+        <>
+          <p className="eyebrow plan-fit-eyebrow">Lesson detail</p>
+          <table className="plan-table is-fit is-detail">
+            <caption className="visually-hidden">
+              The lesson for each teaching day: Do Now, During and Assessment
+            </caption>
+            <tbody>
+              {teaching.map(({ day, dayIndex }) => {
+                const openPart = LESSON_PARTS.find(([, key]) => isOpen(dayIndex, key))
+                return (
+                  <tr key={day.name}>
+                    <th scope="row" className={openPart ? 'is-tweaking' : undefined}>
+                      {day.name}
+                    </th>
+                    <td className={openPart ? 'is-tweaking' : undefined}>
+                      {LESSON_PARTS.map(([label, key]) =>
+                        isOpen(dayIndex, key) ? (
+                          <div key={key}>{tweakBody(key, day[key])}</div>
+                        ) : day[key] ? (
+                          <div
+                            className={`plan-lesson-part${canTweak ? ' is-editable' : ''}${
+                              flashed(dayIndex, key) ? ' fa-flash' : ''
+                            }`}
+                            key={key}
+                            onClick={canTweak ? () => openCell(dayIndex, key) : undefined}
+                          >
+                            <b>{label}</b>
+                            {day[key]}
+                            <Trigger dayIndex={dayIndex} field={key} dayName={day.name} />
+                          </div>
+                        ) : null
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+    </div>
   )
 }

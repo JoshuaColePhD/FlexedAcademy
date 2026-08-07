@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
+import { useShell } from '../lib/shellContext'
 import { useLessonStream } from '../hooks/useLessonStream'
 import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useChats } from '../hooks/useAppData'
+import { FIELD_LABELS } from '../lib/planShape'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { Composer } from '../components/Composer'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
+import { ArtifactRail } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
 
@@ -33,10 +35,21 @@ import { Greeting } from '../components/Greeting'
  * which you meant would be wrong occasionally, and "occasionally regenerates
  * your week from scratch" is the worst failure this app has available. To start
  * something else, start a new chat.
+ *
+ * ── the artifact is a file, not a viewer ──────────────────────────────────
+ * The resizable panel is gone. It and the chat fought over the same pixels and
+ * both lost: a 460px message column, and a document squeezed until it clipped
+ * its own title. A lesson plan is downloaded, printed and handed in — it is not
+ * primarily read on screen — so it collapses to a 240px rail and the chat gets
+ * a real reading column. The proof that the week is right travels in the
+ * message (WeekStrip + grounding line), which is what makes closing the
+ * document safe. Click the file when you actually want the pages.
  */
 
 let idSeq = 0
 const nextId = () => `m${++idSeq}`
+
+const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
 
 export function ChatPage() {
   const { classId, chatId } = useParams()
@@ -47,14 +60,23 @@ export function ChatPage() {
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
   const { activeClass } = useActiveClass()
   const { data: chats = [] } = useChats()
+  const { setDocOpen } = useShell()
 
   const [messages, setMessages] = useState([])
   const [artifact, setArtifact] = useState(null)
   const [query, setQuery] = useState('')
   const [attachments, setAttachments] = useState([])
-  const [panelOpen, setPanelOpen] = useState(true)
+  /* Was `panelOpen`. The document is closed by default now — the rail and the
+     message carry enough that opening it is a choice, not a requirement. */
+  const [expanded, setExpanded] = useState(false)
   const [revising, setRevising] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
+
+  /* Which cell is being tweaked, and which cells just changed. `flashCells` is
+     the only animation in the app that carries information: it answers "what
+     changed?" without anyone having to build a diff view. */
+  const [openTweak, setOpenTweak] = useState(null)
+  const [flashCells, setFlashCells] = useState(() => new Set())
 
   const scrollRef = useRef(null)
   const endRef = useRef(null)
@@ -62,12 +84,20 @@ export function ChatPage() {
   const activeChat = chats.find((c) => c.id === chatId)
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
 
+  /* The nav rail tightens while the document is open — see lib/shellContext.js.
+     Reported rather than reached for: AppShell owns its own width. */
+  useEffect(() => {
+    setDocOpen(expanded && !isOverlay)
+    return () => setDocOpen(false)
+  }, [expanded, isOverlay, setDocOpen])
+
   /* ── load an existing conversation and whatever plan it produced ──────── */
   useEffect(() => {
     let cancelled = false
     if (!chatId) {
       setMessages([])
       setArtifact(null)
+      setExpanded(false)
       return undefined
     }
     api
@@ -88,15 +118,27 @@ export function ChatPage() {
         }
         try {
           const plan = await api.getPlan(last.planId)
-          if (!cancelled) {
-            setArtifact({
-              planId: plan.id,
-              plan: plan.plan_json,
-              warnings: plan.warnings,
-              retrievedIds: plan.retrieved_ids,
-              unit: plan.unit,
-            })
-          }
+          if (cancelled) return
+          setArtifact({
+            planId: plan.id,
+            plan: plan.plan_json,
+            warnings: plan.warnings,
+            retrievedIds: plan.retrieved_ids,
+            unit: plan.unit,
+          })
+          /* Attach the week to the message that produced it, so a reopened
+             conversation still carries its own verification rather than making
+             the teacher open the document to see what was built. Only the last
+             one: the earlier plan_json values are gone — the row is updated in
+             place — and inventing a week strip for them would be worse than
+             showing none. */
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === last.id
+                ? { ...m, plan: plan.plan_json, retrievedCodes: plan.retrieved_ids }
+                : m
+            )
+          )
         } catch {
           if (!cancelled) setArtifact(null)
         }
@@ -107,6 +149,13 @@ export function ChatPage() {
     }
   }, [chatId, toast])
 
+  /** Mark cells as just-changed. Cleared after the flash has finished playing. */
+  const flash = useCallback((keys) => {
+    if (!keys.length) return
+    setFlashCells(new Set(keys))
+    setTimeout(() => setFlashCells(new Set()), 2400)
+  }, [])
+
   const stream = useLessonStream({
     onDone: (done) => {
       setArtifact({
@@ -116,7 +165,6 @@ export function ChatPage() {
         retrievedIds: done.retrieved_ids ?? done.grounding?.codes,
         unit: done.unit,
       })
-      setPanelOpen(true)
       setMessages((prev) => [
         ...prev,
         {
@@ -125,6 +173,8 @@ export function ChatPage() {
           content: `Built ${done.plan?.week_of || 'the week'}. Tell me what to change and I'll revise it.`,
           planId: done.plan_id,
           weekLabel: done.plan?.week_of,
+          plan: done.plan,
+          retrievedCodes: done.retrieved_ids ?? done.grounding?.codes,
         },
       ])
       qc.invalidateQueries({ queryKey: qk.chats })
@@ -176,13 +226,14 @@ export function ChatPage() {
           warnings: row.warnings,
           retrievedIds: row.retrieved_ids,
         }))
-        setPanelOpen(true)
         const reply = {
           id: nextId(),
           role: 'assistant',
           content: 'Updated the week and rebuilt the document.',
           planId: row.id,
           weekLabel: row.week_label,
+          plan: row.plan_json,
+          retrievedCodes: row.retrieved_ids,
         }
         setMessages((prev) => [...prev, reply])
         if (activeChatId) {
@@ -203,39 +254,55 @@ export function ChatPage() {
     [query, busy, chatId, classId, artifact, stream, navigate, qc, toast]
   )
 
-  /* Per-day revise, from the Sparkles button in the table. Surgical, where the
-     composer is conversational — both end up in the transcript so the chat is a
-     complete record of what happened to the plan. */
+  /* Per-cell revise, from clicking a cell in the document.
+   *
+   * `field` is what makes this surgical rather than merely local: without it the
+   * backend regenerates the whole day, so "shorten the Do Now" also re-rolls
+   * that day's standards and re-decides the grounding audit. With it exactly one
+   * key changes. Both this and the composer end up in the transcript, so the
+   * chat stays a complete record of what happened to the plan. */
   const reviseDay = useCallback(
-    async (dayIndex, day, feedback) => {
+    async (dayIndex, day, feedback, field = null) => {
       if (!artifact?.planId) return
+      const label = field ? `${day.name}’s ${FIELD_LABELS[field] || field}` : day.name
       setMessages((prev) => [
         ...prev,
-        { id: nextId(), role: 'user', content: `Revise ${day.name}: ${feedback}` },
+        { id: nextId(), role: 'user', content: `Revise ${label}: ${feedback}` },
       ])
+      setRevising(true)
       try {
-        const row = await api.reviseDay({ plan_id: artifact.planId, day_index: dayIndex, feedback })
+        const row = await api.reviseDay({
+          plan_id: artifact.planId,
+          day_index: dayIndex,
+          feedback,
+          ...(field ? { field } : {}),
+        })
         setArtifact((a) => ({
           ...a,
           plan: row.plan_json,
           warnings: row.warnings,
           retrievedIds: row.retrieved_ids,
         }))
+        flash(field ? [cellKey(dayIndex, field)] : [])
         setMessages((prev) => [
           ...prev,
           {
             id: nextId(),
             role: 'assistant',
-            content: `Updated ${day.name} and rebuilt the document.`,
+            content: `Updated ${label} and rebuilt the document.`,
             planId: row.id,
             weekLabel: row.week_label,
+            plan: row.plan_json,
+            retrievedCodes: row.retrieved_ids,
           },
         ])
       } catch (err) {
-        toast.apiError(`Could not revise ${day.name}`, err)
+        toast.apiError(`Could not revise ${label}`, err)
+      } finally {
+        setRevising(false)
       }
     },
-    [artifact, toast]
+    [artifact, toast, flash]
   )
 
   const onPlanRevised = useCallback((row) => {
@@ -269,33 +336,60 @@ export function ChatPage() {
   )
 
   const isEmpty = messages.length === 0
-  const showPanel = panelOpen && liveArtifact && livePlan?.days?.length
+  const hasArtifact = Boolean(liveArtifact && livePlan?.days?.length)
+  /* Declared before chatPane, which reads it — the three-column layout at the
+     bottom of this component consumes it too. */
+  const docOpen = expanded && hasArtifact && !isOverlay
+
+  /** Opening the document from anywhere, optionally straight into a cell. */
+  const openDocument = useCallback((tweak = null) => {
+    setOpenTweak(tweak)
+    setExpanded(true)
+  }, [])
+
+  const collapse = useCallback(() => {
+    setOpenTweak(null)
+    setExpanded(false)
+  }, [])
 
   const artifactEl = (
     <ArtifactPanel
       artifact={{ ...liveArtifact, plan: livePlan }}
       missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
-      onClose={() => setPanelOpen(false)}
+      onCollapse={collapse}
       onReviseDay={mode === 'desktop' && artifact?.planId ? reviseDay : undefined}
       onPlanRevised={onPlanRevised}
       busy={busy}
       streamingText={stream.text}
-      framework={activeClass?.name}
+      openTweak={openTweak}
+      setOpenTweak={setOpenTweak}
+      flashCells={flashCells}
     />
   )
 
   const chatPane = (
     <div className="relative flex h-full min-h-0 flex-col bg-paper">
+      {/* What week am I in, and for which class. Two facts that were only
+          available by opening the document or reading the sidebar's highlight.
+          Hidden once the document opens — it says the same thing in its own
+          header two inches to the right. */}
+      {!isEmpty && !docOpen && (livePlan?.week_of || activeClass?.name) ? (
+        <div className="chat-head">
+          {livePlan?.week_of ? <strong>{livePlan.week_of}</strong> : null}
+          {activeClass?.name ? <span>· {activeClass.name}</span> : null}
+        </div>
+      ) : null}
+
       {isEmpty ? (
         <Greeting onPick={submit} className={activeClass?.name} />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
-          <div className="mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
+          <div className="chat-column mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
             {messages.map((m) => (
               <Message
                 key={m.id}
                 message={m}
-                onOpenArtifact={m.planId ? () => setPanelOpen(true) : undefined}
+                onOpenArtifact={m.planId ? () => openDocument() : undefined}
               />
             ))}
 
@@ -310,7 +404,7 @@ export function ChatPage() {
                 <WeekStrip days={stream.preview?.days} writing compact />
               </div>
             ) : revising ? (
-              <p className="eyebrow">Revising the week…</p>
+              <p className="eyebrow">Revising…</p>
             ) : null}
 
             <div ref={endRef} />
@@ -363,32 +457,49 @@ export function ChatPage() {
     </div>
   )
 
+  /* The chat pane keeps the SAME slot in the SAME parent in every state — only
+     its width changes. Moving it between containers would remount the Composer,
+     and the Composer owns a MediaRecorder and a ResizeObserver that do not
+     survive that. */
   return (
-    <PanelGroup orientation="horizontal" className="h-full w-full">
-      <Panel defaultSize={showPanel && !isOverlay ? 55 : 100} minSize={30} className="min-w-0">
+    <div className="flex h-full w-full min-w-0">
+      <div
+        className="flex min-w-0 flex-col transition-[flex-basis] duration-300 ease-out"
+        style={
+          docOpen
+            ? { flex: '0 0 var(--chat-w-narrow)' }
+            : { flex: '1 1 0%' }
+        }
+      >
         {chatPane}
-      </Panel>
+      </div>
 
-      {showPanel && !isOverlay ? (
-        <>
-          <PanelResizeHandle className="w-px shrink-0 cursor-col-resize bg-edge transition-colors hover:bg-edge-strong active:w-0.5 active:bg-accent" />
-          <Panel id="artifact" defaultSize={45} minSize={30} className="relative z-10 flex h-full flex-col bg-paper-raised">
-            {artifactEl}
-          </Panel>
-        </>
+      {hasArtifact && !isOverlay ? (
+        docOpen ? (
+          artifactEl
+        ) : (
+          <ArtifactRail
+            artifact={{ ...liveArtifact, plan: livePlan }}
+            classId={classId}
+            onExpand={() => openDocument()}
+            busy={busy}
+          />
+        )
       ) : null}
 
-      {showPanel && isOverlay ? (
+      {/* Below --xl the document cannot sit beside the chat, so it overlays —
+          and here the dialog semantics ArtifactPanel claims are actually true. */}
+      {expanded && hasArtifact && isOverlay ? (
         <>
           <button
             type="button"
             aria-label="Close lesson plan"
             className="fixed inset-0 z-40 bg-[var(--scrim)]"
-            onClick={() => setPanelOpen(false)}
+            onClick={collapse}
           />
           <div className="artifact-overlay">{artifactEl}</div>
         </>
       ) : null}
-    </PanelGroup>
+    </div>
   )
 }
