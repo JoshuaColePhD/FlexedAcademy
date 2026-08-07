@@ -1,0 +1,28 @@
+[
+  {
+    "course": "AP_Lang",
+    "grade": 11,
+    "query": "Create a lesson plan that engages students in following technical instructions to successfully complete a specific task, emphasizing clarity and attention to detail.",
+    "expected_code": "Grade11-9",
+    "retired": "2026-08-06",
+    "reason": "Alabama course-of-study code in an AP course. AP courses ground in AP skills only (Josh, 2026-08-06), so no ALCOS code is reachable from AP_Lang by design. Grade11-* chunks are filed under AP_Lang alone, so this code has no other course to move to; the current Alabama ELA standards live under the ELA course as ELA21.11.* and are covered by other cases."
+  },
+  {
+    "course": "AP_Lang",
+    "grade": 11,
+    "source": "scripts/05_eval_harness.py",
+    "query": "Students need practice synthesizing graphic texts like charts and dashboards.",
+    "expected_code": "Grade11-2",
+    "retired": "2026-08-06",
+    "reason": "Alabama course-of-study code in an AP course. AP courses ground in AP skills only (Josh, 2026-08-06), so no ALCOS code is reachable from AP_Lang by design."
+  },
+  {
+    "course": "AP_Lang",
+    "grade": 11,
+    "source": "scripts/05_eval_harness.py",
+    "query": "I need a lesson about evaluating tone and credibility through active listening.",
+    "expected_code": "Grade11-10",
+    "retired": "2026-08-06",
+    "reason": "Alabama course-of-study code in an AP course. AP courses ground in AP skills only (Josh, 2026-08-06), so no ALCOS code is reachable from AP_Lang by design."
+  }
+]

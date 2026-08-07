@@ -1,0 +1,8 @@
+{
+  "cases": 143,
+  "recall_at_5": 138,
+  "recall_at_60": 142,
+  "never_found": [
+    "AP Seminar Curricular Requirements:CR 1"
+  ]
+}

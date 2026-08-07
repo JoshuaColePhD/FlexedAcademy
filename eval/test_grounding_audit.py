@@ -10,7 +10,7 @@ carries no warning.
 Every case below is a real code shape from the live corpus, or a real failure
 observed in a generated plan.
 
-Run:  ./venv/bin/python scratch/test_grounding_audit.py   (no DB, no API)
+Run:  ./venv/bin/python eval/test_grounding_audit.py   (no DB, no API)
 """
 from __future__ import annotations
 
