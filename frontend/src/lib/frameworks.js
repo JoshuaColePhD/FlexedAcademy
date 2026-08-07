@@ -15,33 +15,52 @@
  * a framework that is ingested stays selectable.
  */
 
-export const GROUP_STATE = 'Alabama Course of Study'
-export const GROUP_AP = 'AP & Pre-AP courses'
-export const GROUP_OTHER = 'Other frameworks'
+export const GROUP_ENGLISH = 'English / Language Arts'
+export const GROUP_MATH = 'Mathematics'
+export const GROUP_SCIENCE = 'Science'
+export const GROUP_HISTORY = 'History / Social Studies'
+export const GROUP_WORLD_LANG = 'World Languages'
+export const GROUP_ARTS = 'Arts'
+export const GROUP_PE_HEALTH = 'PE & Health'
+export const GROUP_CS = 'Computer Science'
+export const GROUP_OTHER = 'Other'
 
-/* The state frameworks all carry an adoption year in their label —
- * "Science (2023)", "Mathematics (2019)". That is ALSDE's own convention and a
- * more reliable signal than an id allowlist, which would silently drop a
- * framework the next ingest adds. */
-const YEAR_IN_LABEL = /\((?:\d{4})(?:-\d{2,4})?\)/
+const GROUP_ORDER = [
+  GROUP_ENGLISH,
+  GROUP_MATH,
+  GROUP_SCIENCE,
+  GROUP_HISTORY,
+  GROUP_WORLD_LANG,
+  GROUP_ARTS,
+  GROUP_PE_HEALTH,
+  GROUP_CS,
+  GROUP_OTHER
+]
 
 function group(fw) {
-  if (YEAR_IN_LABEL.test(fw.label || '')) return GROUP_STATE
-  if (/^(AP|Pre-?\s?AP|Advanced)\b/i.test(fw.id) || /^AP\b/i.test(fw.label)) return GROUP_AP
+  const text = `${fw.id} ${fw.label}`.toLowerCase()
+  
+  if (/(world language|spanish|french|german|latin|chinese|japanese|italian)/.test(text)) return GROUP_WORLD_LANG
+  if (/(english|lang\b|ela\b|literature|composition|reading|writing|literacy)/.test(text)) return GROUP_ENGLISH
+  if (/(math|calculus|algebra|geometry|statistics|precalculus)/.test(text)) return GROUP_MATH
+  if (/(science|biology|chemistry|physics|environmental)/.test(text) && !/(computer|political)/.test(text)) return GROUP_SCIENCE
+  if (/(history|social studies|government|geography|economics|psychology|macroeconomics|microeconomics)/.test(text)) return GROUP_HISTORY
+  if (/(art\b|arts\b|music|theater|drama|drawing|2-d|3-d)/.test(text) && !/(language arts|liberal arts)/.test(text)) return GROUP_ARTS
+  if (/(physical education|health|pe\b)/.test(text)) return GROUP_PE_HEALTH
+  if (/(computer|digital|programming)/.test(text)) return GROUP_CS
+  
   return GROUP_OTHER
 }
 
-const GROUP_ORDER = [GROUP_STATE, GROUP_AP, GROUP_OTHER]
-
-/** Groups frameworks for display. Within a group, the ones carrying the most
- *  standards come first — a teacher scanning for their subject wants the real
- *  framework above the 19-chunk fragment that shares its name. */
+/** Groups frameworks for display. Within a group, they are sorted alphabetically 
+ *  so teachers can easily scroll and find their specific course. (The old chunk-based 
+ *  sorting is no longer needed since the database is clean of fragments). */
 export function groupFrameworks(frameworks = []) {
   const buckets = new Map(GROUP_ORDER.map((g) => [g, []]))
   for (const fw of frameworks) buckets.get(group(fw)).push(fw)
   return GROUP_ORDER.map((name) => ({
     name,
-    items: buckets.get(name).sort((a, b) => (b.chunks || 0) - (a.chunks || 0)),
+    items: buckets.get(name).sort((a, b) => (a.label || '').localeCompare(b.label || '')),
   })).filter((g) => g.items.length > 0)
 }
 
