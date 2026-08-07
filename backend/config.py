@@ -158,6 +158,23 @@ class Settings(BaseSettings):
     # I/O-bound on OpenAI rather than on Postgres.
     db_pool_size: int = 8
 
+    # How many retrieval queries may be IN FLIGHT at once.
+    #
+    # This is a MEMORY bound, not a throughput one. One generation issues ~30
+    # pgvector reads (6 query phrasings x 5 strata), and each in-flight hybrid
+    # query transiently holds 50-135MB while psycopg2 buffers the RRF join.
+    # At 8 that peaked at 550MB-1.0GB depending on how many happened to overlap
+    # — over Render's 512MB, so the worker was OOM-killed mid-stream and the
+    # browser saw a 502 with no error event. Measured 2026-08-07.
+    #
+    # Lower is also FASTER here: 30 jobs took 5.0s at 8 workers and 2.3s at 2,
+    # because the workers were contending for a pool of the same size and for
+    # Supabase's pooler behind it. Concurrency past the pool buys nothing.
+    # 2, not 3: the ceiling has to hold when two teachers generate at the SAME
+    # time, not just for one request in isolation. Raise it if the service moves
+    # off a 512MB instance.
+    retrieval_workers: int = 2
+
     session_secret: str = "dev-secret-do-not-use-in-production"
 
     # With this False, get_current_user() returns 'default_user' for any request

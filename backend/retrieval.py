@@ -32,6 +32,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 import re
 from dataclasses import dataclass, field
@@ -482,6 +483,20 @@ _ITERATIVE_SCAN = (
 )
 
 
+# How many hybrid queries may be in flight ACROSS THE WHOLE PROCESS.
+#
+# Deliberately process-wide and not per-request. Each in-flight query
+# transiently holds 50-135MB while psycopg2 buffers the RRF join, so the bound
+# that matters is the total, not the number one generation happens to issue. A
+# per-request cap alone still lets two teachers generating at the same time
+# multiply the peak and blow the same 512MB ceiling — which is the OOM this
+# exists to prevent, arriving later and harder to reproduce.
+#
+# Acquired BEFORE db.borrow(), and always in that order, so the two semaphores
+# cannot deadlock against each other.
+_INFLIGHT = threading.Semaphore(max(1, min(settings.retrieval_workers, settings.db_pool_size)))
+
+
 def retrieve_raw(
     query: str,
     n: int,
@@ -566,16 +581,26 @@ def retrieve_raw(
     keyword_params = [query_vector, query, query, query] + params + [n]
     full_params = semantic_params + keyword_params + [n]
 
-    rows = db._rows(_ITERATIVE_SCAN + sql, tuple(full_params))
-    
-    out = []
-    for r in rows:
-        out.append({
-            "id": r["id"],
-            "document": r["document"],
-            "metadata": r["metadata"],
-            "distance": float(r["distance"])
-        })
+    # The memory ceiling is held HERE, around the buffered fetch, rather than
+    # around the whole function: everything above is string building, and
+    # holding a slot through it would serialise work that costs nothing.
+    with _INFLIGHT:
+        rows = db._rows(_ITERATIVE_SCAN + sql, tuple(full_params))
+
+        out = []
+        for r in rows:
+            out.append({
+                "id": r["id"],
+                "document": r["document"],
+                "metadata": r["metadata"],
+                "distance": float(r["distance"])
+            })
+        # Drop the buffered result BEFORE the slot is released. `out` keeps only
+        # the four fields we need; `rows` is the full RealDictRow set and is the
+        # expensive half. Releasing the slot first would admit the next waiter
+        # while this one is still resident, which is the whole thing we are
+        # bounding.
+        del rows
     return out
 
 
@@ -692,7 +717,13 @@ def retrieve_grounded(
     for q in searches:
         consider(lookup_codes(q, subject_code, grade))
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    # Bounded by BOTH settings — never more in-flight queries than the pool has
+    # connections, because a worker past that just blocks in db.borrow() while
+    # holding a thread, and never more than the memory bound allows. See
+    # settings.retrieval_workers: at 8 this peaked over Render's 512MB and the
+    # worker was OOM-killed mid-stream.
+    workers = max(1, min(settings.retrieval_workers, settings.db_pool_size))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = []
         for q, n, source_type in jobs:
             futures.append(executor.submit(
