@@ -118,8 +118,12 @@ export const api = {
   putSettings: (payload) => request('/api/settings', { method: 'PUT', body: payload }),
   getFrameworks: ({ signal } = {}) => request('/api/frameworks', { signal }),
 
-  listChats: ({ signal } = {}) => request('/api/chats', { signal }),
-  createChat: (title) => request('/api/chats', { method: 'POST', body: { title } }),
+  /** `classId` scopes the sidebar to one prep. Omitted, the server returns
+   *  every chat, which is what this meant before. */
+  listChats: ({ classId, signal } = {}) =>
+    request(classId ? `/api/chats?class_id=${encodeURIComponent(classId)}` : '/api/chats', { signal }),
+  createChat: (title, classId) =>
+    request('/api/chats', { method: 'POST', body: { title, ...(classId ? { class_id: classId } : {}) } }),
   getChat: (id) => request(`/api/chats/${id}`),
   renameChat: (id, title) => request(`/api/chats/${id}`, { method: 'PATCH', body: { title } }),
   suggestChatTitle: (message) => request('/api/chats/title', { method: 'POST', body: { message } }),

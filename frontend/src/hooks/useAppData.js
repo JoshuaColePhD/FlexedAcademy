@@ -65,7 +65,12 @@ export function useCalendar(classId) {
 /* ── chats ───────────────────────────────────────────────────────────────── */
 
 export function useChats() {
-  return useQuery({ queryKey: qk.chats, queryFn: () => api.listChats() })
+  const { classId } = useParams()
+  return useQuery({
+    queryKey: qk.chats(classId),
+    queryFn: () => api.listChats({ classId }),
+    enabled: Boolean(classId),
+  })
 }
 
 export function useRenameChat() {
@@ -75,15 +80,16 @@ export function useRenameChat() {
     // Optimistic, because renaming is a text field the teacher is looking at:
     // a round trip before the label changes reads as the app ignoring them.
     onMutate: async ({ id, title }) => {
-      await qc.cancelQueries({ queryKey: qk.chats })
-      const prev = qc.getQueryData(qk.chats)
-      qc.setQueryData(qk.chats, (rows = []) =>
-        rows.map((c) => (c.id === id ? { ...c, title } : c))
+      await qc.cancelQueries({ queryKey: ['chats'] })
+      const prev = qc.getQueriesData({ queryKey: ['chats'] })
+      // Every cached class list, since only one of them holds this chat.
+      qc.setQueriesData({ queryKey: ['chats'] }, (rows) =>
+        Array.isArray(rows) ? rows.map((c) => (c.id === id ? { ...c, title } : c)) : rows
       )
       return { prev }
     },
-    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(qk.chats, ctx.prev),
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.chats }),
+    onError: (_e, _v, ctx) => ctx?.prev?.forEach(([key, data]) => qc.setQueryData(key, data)),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['chats'] }),
   })
 }
 
@@ -91,7 +97,7 @@ export function useDeleteChat() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.deleteChat(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.chats }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['chats'] }),
   })
 }
 

@@ -324,6 +324,32 @@ MIGRATIONS: list[str] = [
     ALTER TABLE chunks ADD COLUMN IF NOT EXISTS document_tsvector tsvector GENERATED ALWAYS AS (to_tsvector('english', document)) STORED;
     CREATE INDEX IF NOT EXISTS idx_chunks_tsvector ON chunks USING GIN (document_tsvector);
     """,
+    # ── 14: attribute existing chats to a class ──────────────────────────────
+    #
+    # chats.class_id has existed since migration 9 and was never written, so
+    # every chat is NULL and the sidebar shows every prep's conversations under
+    # all of them — a teacher with AP Lang and AP Physics 1 sees one undivided
+    # list relabelled to whichever class they happen to be in.
+    #
+    # A chat's plans DO know their class, so most of the history can be
+    # recovered rather than guessed. Whatever is left (a chat that never
+    # produced a plan) stays NULL on purpose: list_chats treats NULL as
+    # "belongs to no class in particular" and shows it everywhere, which is
+    # exactly today's behaviour. Nothing disappears from anyone's sidebar
+    # because of this migration.
+    #
+    # Idempotent: only touches rows that are still NULL, so a replay after a
+    # failed deploy is a no-op.
+    """
+    UPDATE chats SET class_id = (
+        SELECT p.class_id FROM plans p
+         WHERE p.chat_id = chats.id AND p.class_id IS NOT NULL
+         ORDER BY p.created_at DESC
+         LIMIT 1
+    )
+    WHERE class_id IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_chats_user_class ON chats(user_id, class_id);
+    """,
 ]
 
 
@@ -1147,12 +1173,15 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
 # ---------------------------------------------------------------------------
 
 
-def create_chat(user_id: str, title: str, chat_id: str | None = None) -> dict:
+def create_chat(user_id: str, title: str, chat_id: str | None = None, class_id: str | None = None) -> dict:
+    """`class_id` is what keeps one prep's conversations out of another's
+    sidebar. It was never passed, so every chat was written NULL — see the
+    backfill in migration 14."""
     cid = chat_id or new_id()
     ts = now()
     _write(
-        "INSERT INTO chats (id, user_id, title, created_at, updated_at) VALUES (?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
-        (cid, user_id, title[:200], ts, ts),
+        "INSERT INTO chats (id, user_id, title, class_id, created_at, updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
+        (cid, user_id, title[:200], class_id, ts, ts),
     )
     return get_chat(user_id, cid)  # type: ignore[return-value]
 
@@ -1167,11 +1196,21 @@ def get_chat(user_id: str, chat_id: str, with_messages: bool = False) -> dict | 
     return chat
 
 
-def list_chats(user_id: str, limit: int = 100) -> list[dict]:
+def list_chats(user_id: str, limit: int = 100, class_id: str | None = None) -> list[dict]:
+    """Scoped to one prep when asked.
+
+    `class_id IS NULL` rows are included deliberately: they are the chats that
+    predate scoping and could not be attributed from their plans, and hiding a
+    teacher's own history to tidy a list is the wrong trade. They surface in
+    every class, which is what they did before."""
+    where, params = "WHERE user_id = ?", [user_id]
+    if class_id:
+        where += " AND (class_id = ? OR class_id IS NULL)"
+        params.append(class_id)
     return [
         dict(r)
         for r in _rows(
-            "SELECT * FROM chats WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?", (user_id, limit)
+            f"SELECT * FROM chats {where} ORDER BY updated_at DESC LIMIT ?", tuple(params + [limit])
         )
     ]
 

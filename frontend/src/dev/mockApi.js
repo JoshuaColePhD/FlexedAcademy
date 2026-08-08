@@ -80,8 +80,11 @@ const uid = (p) => `${p}_${++seq}`
 
 const state = {
   chats: [
-    { id: 'seed1', title: 'Week 03 — voice and tone', updated_at: '2026-08-07' },
-    { id: 'stranded', title: 'plan week 12 on satire', updated_at: '2026-08-06' },
+    { id: 'seed1', title: 'Week 03 — voice and tone', class_id: 'c1', updated_at: '2026-08-07' },
+    { id: 'stranded', title: 'plan week 12 on satire', class_id: 'c1', updated_at: '2026-08-06' },
+    { id: 'physics', title: 'Kinematics week', class_id: 'c2', updated_at: '2026-08-05' },
+    // Never attributed — must appear under BOTH classes, not vanish.
+    { id: 'legacy', title: 'an old chat with no class', class_id: null, updated_at: '2026-08-01' },
   ],
   messages: {
     // The pre-fix shape: a plan was built, but no assistant message was ever
@@ -153,7 +156,10 @@ export function installMockApi() {
 
     if (path === '/api/auth/me') return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org' })
     if (path === '/api/classes' && method === 'GET')
-      return json([{ id: 'c1', name: 'AP Language & Composition', subject: 'AP Lang', grade: '11' }])
+      return json([
+        { id: 'c1', name: 'AP Language & Composition', subject: 'AP Lang', grade: '11' },
+        { id: 'c2', name: 'AP Physics 1', subject: 'Science', grade: '11' },
+      ])
     if (path === '/api/frameworks')
       // `chunks` and `verbatim_ok` are not optional — FrameworkPicker calls
       // .toLocaleString() on chunks directly.
@@ -205,7 +211,9 @@ export function installMockApi() {
     /* ── chats ───────────────────────────────────────────────────────────── */
     if (path === '/api/chats' && method === 'GET') {
       await wait(latency.listChats)
-      return json(state.chats)
+      const cid = new URL(url, location.origin).searchParams.get('class_id')
+      // Mirrors db.list_chats: scoped, but NULL belongs to everyone.
+      return json(cid ? state.chats.filter((c) => c.class_id === cid || c.class_id == null) : state.chats)
     }
     if (path === '/api/chats/title' && method === 'POST') {
       // Stands in for the model: returns something that is NOT the raw prompt,
@@ -216,7 +224,7 @@ export function installMockApi() {
     if (path === '/api/chats' && method === 'POST') {
       await wait(latency.createChat)
       const id = uid('chat')
-      state.chats.unshift({ id, title: body.title, updated_at: 'now' })
+      state.chats.unshift({ id, title: body.title, class_id: body.class_id ?? null, updated_at: 'now' })
       state.messages[id] = []
       return json({ id, title: body.title })
     }

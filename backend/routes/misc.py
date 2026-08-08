@@ -205,6 +205,8 @@ def put_settings(body: SettingsBody, user_id: str = Depends(get_current_user)):
 
 class ChatBody(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+    # Optional so an older client still creates a working (unscoped) chat.
+    class_id: str | None = Field(default=None, max_length=64)
 
 
 class TitleRequest(BaseModel):
@@ -225,13 +227,16 @@ def suggest_chat_title(body: TitleRequest, user_id: str = Depends(get_current_us
 
 
 @router.get("/chats")
-def list_chats(user_id: str = Depends(get_current_user)):
-    return db.list_chats(user_id)
+def list_chats(class_id: str | None = None, user_id: str = Depends(get_current_user)):
+    """Scoped to one prep when class_id is given. Omitting it returns
+    everything, which is what /api/chats meant before and what any caller
+    without a class in hand still wants."""
+    return db.list_chats(user_id, class_id=class_id)
 
 
 @router.post("/chats")
 def create_chat(body: ChatBody, user_id: str = Depends(get_current_user)):
-    return db.create_chat(user_id, body.title)
+    return db.create_chat(user_id, body.title, class_id=body.class_id)
 
 
 @router.get("/chats/{chat_id}")

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { CalendarDays, FileCheck2, Quote } from 'lucide-react'
 
 /* The frame both sign-in and sign-up render into.
@@ -38,7 +39,14 @@ export function AuthLayout({ title, subtitle, children, footer }) {
     <div className="flex min-h-app w-full items-center justify-center bg-paper p-gutter">
       <div className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-edge bg-paper-raised shadow-lg md:grid-cols-[1.1fr_1fr]">
         <div className="flex flex-col justify-center gap-7 border-b border-edge bg-paper-sunken p-8 md:border-b-0 md:border-r md:p-10">
-          <div className="flex items-center gap-2.5">
+          {/* The way back. Once you clicked "Start a week free" there was no
+              route to the landing page except the browser's own back button —
+              the wordmark is where everyone looks for it, and it was inert. */}
+          <Link
+            to="/"
+            className="flex w-fit items-center gap-2.5 rounded-md transition-opacity hover:opacity-80"
+            aria-label="Flexed Academy — back to the home page"
+          >
             {/* --ink, not --accent. Rule 4 reserves blue for "something is
                 waiting for you"; a logo mark is not waiting for anything, and
                 spending the accent here is what makes it stop meaning anything
@@ -50,7 +58,7 @@ export function AuthLayout({ title, subtitle, children, footer }) {
               F
             </span>
             <span className="text-sm font-semibold tracking-tight text-ink">Flexed Academy</span>
-          </div>
+          </Link>
 
           <h1 className="text-2xl font-semibold leading-snug tracking-tight text-ink">
             A week of lesson plans,

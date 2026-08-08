@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
-import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
 import { useShell } from '../lib/shellContext'
 import { useLessonStream } from '../hooks/useLessonStream'
@@ -264,7 +263,7 @@ export function ChatPage() {
           .addMessage(saveTo, { role: 'assistant', content, plan_id: done.plan_id })
           .catch(() => {})
       }
-      qc.invalidateQueries({ queryKey: qk.chats })
+      qc.invalidateQueries({ queryKey: ['chats'] })
     },
     onError: (err) => {
       setMessages((prev) => [
@@ -291,7 +290,7 @@ export function ChatPage() {
         if (saveTo) {
           api.addMessage(saveTo, { role: 'assistant', content: result.text }).catch(() => {})
         }
-        qc.invalidateQueries({ queryKey: qk.chats })
+        qc.invalidateQueries({ queryKey: ['chats'] })
       }
     },
     onError: (err) => {
@@ -343,10 +342,10 @@ export function ChatPage() {
       let activeChatId = chatId
       if (!activeChatId) {
         try {
-          const created = await api.createChat((typed || attachments[0]?.filename || 'New plan').slice(0, 80))
+          const created = await api.createChat((typed || attachments[0]?.filename || 'New plan').slice(0, 80), classId)
           activeChatId = created.id
           localFor.current = created.id
-          qc.invalidateQueries({ queryKey: qk.chats })
+          qc.invalidateQueries({ queryKey: ['chats'] })
           navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
 
           /* Then give it a real name.
@@ -366,7 +365,7 @@ export function ChatPage() {
             api
               .suggestChatTitle(basis)
               .then(({ title }) => title && api.renameChat(created.id, title))
-              .then(() => qc.invalidateQueries({ queryKey: qk.chats }))
+              .then(() => qc.invalidateQueries({ queryKey: ['chats'] }))
               .catch(() => {})
           }
         } catch {}

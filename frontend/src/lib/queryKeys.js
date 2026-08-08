@@ -22,7 +22,9 @@ export const qk = {
   /** The year for one class. THE most-shared entry in the app. */
   calendar: (classId) => ['calendar', classId ?? null],
 
-  chats: ['chats'],
+  /* Per class: the sidebar shows one prep's conversations, so two classes are
+     two different lists and must not share a cache entry. */
+  chats: (classId) => ['chats', classId ?? null],
   chat: (id) => ['chat', id],
 
   plan: (id) => ['plan', id],

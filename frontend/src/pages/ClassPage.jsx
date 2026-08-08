@@ -261,6 +261,8 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
 
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
+  // What POST /api/classes would have named this class. See the row below.
+  const derivedLabel = `${shortLabel(fw, cls.subject)} · ${gradeLabel(cls.grade)}`
 
   const commitName = async () => {
     const next = name.trim()
@@ -328,9 +330,14 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
           className="min-w-0 flex-1 truncate rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors hover:bg-paper-sunken focus:bg-paper-sunken"
         />
 
-        <span className="hidden shrink-0 text-xs text-ink-muted sm:block">
-          {shortLabel(fw, cls.subject)} · {gradeLabel(cls.grade)}
-        </span>
+        {/* Only when it adds something. POST /api/classes auto-names a class
+            from exactly these two fields, so an unrenamed class printed
+            "AP English Language and Composition · 11th" in the input and then
+            again right beside it. The label earns its place the moment the
+            teacher renames the class to "3rd period" — and not before. */}
+        {cls.name.trim() === derivedLabel ? null : (
+          <span className="hidden shrink-0 text-xs text-ink-muted sm:block">{derivedLabel}</span>
+        )}
 
         <button
           type="button"
