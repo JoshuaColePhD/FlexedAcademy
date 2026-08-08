@@ -116,10 +116,19 @@ export function BillingProvider({ children }) {
       return
     }
 
+    /* `navigate()` above strips the marker from the URL, which changes
+       location.search and re-triggers THIS SAME EFFECT — the new run sees
+       outcome=null and no-ops, but its cleanup used to fire against a `timer`
+       variable that was still null at that exact instant (poll()'s first
+       `await` hadn't resolved yet), so clearTimeout(null) cleared nothing and
+       every retry scheduled afterward was orphaned from any effect's
+       lifecycle. `cancelled` is checked on every tick instead of depending on
+       a timer id existing at the moment cleanup happens to run. */
+    let cancelled = false
     let attempts = 0
-    let timer = null
     const poll = async () => {
       const u = await refresh().catch(() => null)
+      if (cancelled) return
       if (u?.entitlement?.subscribed) {
         setOpen(false)
         toast.success('You’re subscribed. Build away.')
@@ -129,10 +138,12 @@ export function BillingProvider({ children }) {
         toast.info('Payment received — access will unlock in a moment. Reload if it doesn’t.')
         return
       }
-      timer = setTimeout(poll, RETRY_MS)
+      setTimeout(poll, RETRY_MS)
     }
     poll()
-    return () => clearTimeout(timer)
+    return () => {
+      cancelled = true
+    }
     // location.search is the trigger; the callbacks are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search])

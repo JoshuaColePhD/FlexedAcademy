@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { CreditCard, LogOut, Settings, Sparkles, User } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 import { ThemeToggle } from './ThemeToggle'
 
 /* The rail footer, and the home of the control that did not exist.
@@ -20,20 +21,31 @@ export function AccountMenu({ classPath }) {
   const { entitlement, billingEnabled, openPaywall, manage } = useBilling()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const popoverRef = useRef(null)
 
   useEffect(() => {
     if (!open) return
     const onDown = (e) => {
       if (!ref.current?.contains(e.target)) setOpen(false)
     }
-    const onKey = (e) => e.key === 'Escape' && setOpen(false)
     document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
+    return () => document.removeEventListener('mousedown', onDown)
   }, [open])
+
+  /* This claimed role="menu"/role="menuitem" — real ARIA menu semantics,
+     which come with a contract: arrow keys move between items, Home/End jump
+     to the ends, focus moves in on open. None of that existed; opening it
+     left focus on the trigger button and only Tab/Shift+Tab walked through,
+     so a screen reader announced a widget that then didn't behave like one.
+     Same call already made elsewhere in this app for a fake tablist: drop
+     the claim rather than half-implement the pattern. It's an ordinary
+     disclosure — a button that reveals more buttons and links — and plain
+     elements already carry the right semantics for that with no role at all.
+     useFocusTrap adds the part a disclosure still owes a keyboard user: focus
+     moves to the first item on open, Escape closes it, focus returns to the
+     trigger on close. `trap: false` — same as the artifact panel's docked
+     case — because this sits beside a still-live app, not over a modal. */
+  useFocusTrap(popoverRef, { active: open, trap: false, onEscape: () => setOpen(false) })
 
   const name = user?.name || user?.email || 'Signed in'
 
@@ -44,7 +56,6 @@ export function AccountMenu({ classPath }) {
         className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-paper-inset"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        aria-haspopup="menu"
       >
         <span
           aria-hidden="true"
@@ -59,7 +70,8 @@ export function AccountMenu({ classPath }) {
 
       {open ? (
         <div
-          role="menu"
+          ref={popoverRef}
+          tabIndex={-1}
           className="absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-lg border border-edge bg-paper-raised py-1 shadow-lg"
         >
           {user?.email ? (
@@ -72,7 +84,6 @@ export function AccountMenu({ classPath }) {
             entitlement?.subscribed ? (
               <button
                 type="button"
-                role="menuitem"
                 onClick={() => {
                   setOpen(false)
                   manage()
@@ -84,7 +95,6 @@ export function AccountMenu({ classPath }) {
             ) : (
               <button
                 type="button"
-                role="menuitem"
                 onClick={() => {
                   setOpen(false)
                   openPaywall()
@@ -103,7 +113,6 @@ export function AccountMenu({ classPath }) {
           ) : null}
           <Link
             to={`${classPath}/class`}
-            role="menuitem"
             onClick={() => setOpen(false)}
             className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
           >
@@ -111,7 +120,6 @@ export function AccountMenu({ classPath }) {
           </Link>
           <button
             type="button"
-            role="menuitem"
             onClick={() => {
               setOpen(false)
               logout()

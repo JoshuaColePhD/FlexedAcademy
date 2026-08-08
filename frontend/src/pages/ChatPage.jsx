@@ -123,6 +123,16 @@ export function ChatPage() {
   /* ── load an existing conversation and whatever plan it produced ──────── */
   useEffect(() => {
     let cancelled = false
+    /* Neither stream aborts on its own when the chat under it changes — only
+       on unmount or an explicit Stop click. Navigate away from a chat mid-
+       generation (sidebar click, "New plan") and the old fetch keeps running;
+       when it eventually resolves, onDone still fires and writes into
+       whatever `messages`/`artifact` state is on screen BY THEN, and persists
+       via `localFor.current`, which has already moved to the new chat. A week
+       built for chat A lands in chat B's transcript and database row. Both
+       are safe no-ops when nothing was in flight. */
+    stream.stop()
+    chatStream.stop()
     if (!chatId) {
       setMessages([])
       setArtifact(null)
@@ -219,6 +229,10 @@ export function ChatPage() {
     return () => {
       cancelled = true
     }
+    // stream/chatStream deliberately excluded: their .stop() is a stable
+    // useCallback closed over a ref, so even this closure's "stale" copy
+    // still aborts whatever is actually in flight — see useLessonStream.js.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, toast])
 
   /** Mark cells as just-changed. Cleared after the flash has finished playing. */
@@ -345,11 +359,16 @@ export function ChatPage() {
       // sends — the send button was already enabled for that and did nothing.
       if (!content.trim() || busy) return
       setQuery('')
+      // The chip has to clear here, before any request goes out — the sent
+      // files are captured in `content` below and folded into this turn's
+      // payload; leaving the chip pinned implied they were still in context
+      // for every later message, which was never true even before this fix.
+      setAttachments([])
       const nextMessages = [
         ...messages,
         { id: nextId(), role: 'user', content: typed || `Sent ${attachments.length} file(s)` }
       ]
-      
+
       setMessages(nextMessages)
 
       let activeChatId = chatId
@@ -387,9 +406,16 @@ export function ChatPage() {
       const shown = typed || `Sent ${attachments.length} file(s)`
       if (activeChatId) api.addMessage(activeChatId, { role: 'user', content: shown }).catch(() => {})
 
-      // 1. Pass the full chat history to the chat model
-      // Strip IDs, just send role and content
-      const payloadMessages = nextMessages.map(m => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || "" }))
+      // 1. Pass the full chat history to the chat model.
+      // The LAST turn sends `content` (typed text plus any attached document
+      // text), not the short `typed`-only string the transcript displays —
+      // that split is what makes the chip clearable above: the full text
+      // still reaches the model this one time, it just doesn't have to live
+      // in the visible bubble forever.
+      const payloadMessages = [
+        ...messages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+        { role: 'user', content },
+      ]
       const chatResult = await chatStream.start(payloadMessages, { chatId: activeChatId })
 
       if (!chatResult || !chatResult.toolCalled) {
@@ -399,8 +425,12 @@ export function ChatPage() {
 
       // 2. The AI called generate_lesson_plan. Combine history for the prompt.
       // We append any introductory text the AI just streamed ("I'll get right on that!")
-      // so it's in the combined history.
-      let combinedHistory = nextMessages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')
+      // so it's in the combined history. Same split as above: the last turn
+      // carries the attachment text, everything before it is the transcript.
+      let combinedHistory = [
+        ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+        `USER: ${content}`,
+      ].join('\n\n')
       if (chatResult.text?.trim()) {
         combinedHistory += `\n\nASSISTANT: ${chatResult.text}`
       }
@@ -550,6 +580,19 @@ export function ChatPage() {
       api.addMessage(localFor.current, { role: 'assistant', content }).catch(() => {})
     }
   }, [stream])
+
+  /* useChatStream.stop() has worked since it was written; nothing ever called
+     it. The composer's own fallback — a spinner captioned "this can't be
+     interrupted" — was therefore lying specifically about the conversational
+     reply, which is interruptible and just wasn't wired. */
+  const stopChatting = useCallback(() => {
+    chatStream.stop()
+    const content = 'Stopped. Nothing was saved — ask again when you’re ready.'
+    setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content, isError: true }])
+    if (localFor.current) {
+      api.addMessage(localFor.current, { role: 'assistant', content }).catch(() => {})
+    }
+  }, [chatStream])
 
   /* Rebuild the last plan from the same prompt. `onRetry` and `isLast` were
      declared on Message and never passed, so the retry button could not render
@@ -758,8 +801,10 @@ export function ChatPage() {
             value={query}
             onChange={setQuery}
             onSubmit={submit}
-            /* Only a real stream is abortable — see the Composer. */
-            onStop={stream.isStreaming ? stopGenerating : undefined}
+            /* Only a real stream is abortable — see the Composer. Revising has
+               no AbortController yet, so `busy` without either flag correctly
+               falls through to the composer's "can't be interrupted" spinner. */
+            onStop={stream.isStreaming ? stopGenerating : chatStream.isStreaming ? stopChatting : undefined}
             isStreaming={busy}
             attachments={attachments}
             setAttachments={setAttachments}

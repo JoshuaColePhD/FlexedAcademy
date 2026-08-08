@@ -45,15 +45,37 @@ export function useFocusTrap(
   const onEscapeRef = useRef(onEscape)
   onEscapeRef.current = onEscape
 
+  /* Focus-in and restore, keyed on `active` ALONE. This used to also depend
+     on `trap` and `restoreFocus`, sharing one effect with the keydown
+     listener below — so the artifact panel's overlay/docked switch on resize
+     (which flips `trap`, not `active`) tore this effect down and reran it: it
+     captured a fresh `document.activeElement` (wherever the teacher's focus
+     actually was — e.g. a cell-tweak input) and immediately yanked focus away
+     from it to the first tabbable element. An activation should move focus in
+     exactly once; anything after that is the teacher's to control until this
+     closes. */
   useEffect(() => {
     const container = containerRef.current
     if (!active || !container) return undefined
 
     const previous = document.activeElement
-
     const target = initialFocus?.current || tabbable(container)[0] || container
     // Needs tabIndex={-1} on the container for the last fallback to take.
     target?.focus?.({ preventScroll: true })
+
+    return () => {
+      if (restoreFocus && previous instanceof HTMLElement && document.contains(previous)) {
+        previous.focus({ preventScroll: true })
+      }
+    }
+    // restoreFocus intentionally excluded — it's a fixed choice per caller,
+    // not something that should re-run the focus-in step if it ever changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!active || !container) return undefined
 
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
@@ -84,12 +106,8 @@ export function useFocusTrap(
     }
 
     container.addEventListener('keydown', onKeyDown)
-    return () => {
-      container.removeEventListener('keydown', onKeyDown)
-      if (restoreFocus && previous instanceof HTMLElement && document.contains(previous)) {
-        previous.focus({ preventScroll: true })
-      }
-    }
+    return () => container.removeEventListener('keydown', onKeyDown)
+    // containerRef is a ref object — stable identity, safe to omit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, trap, restoreFocus])
+  }, [active, trap])
 }

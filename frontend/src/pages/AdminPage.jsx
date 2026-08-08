@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
+import { useConfirm } from '../lib/confirmContext'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 /* Account management, as a page instead of a Supabase SQL editor tab.
@@ -47,6 +48,7 @@ function StatusPill({ status }) {
 export function AdminPage() {
   useDocumentTitle('Accounts')
   const toast = useToast()
+  const confirm = useConfirm()
   const qc = useQueryClient()
   const [pending, setPending] = useState(null)
 
@@ -59,6 +61,19 @@ export function AdminPage() {
 
   const toggleComp = async (account) => {
     const nextComped = account.subscription_status !== 'comped'
+    // This fired on click with no confirmation at all — a misclick on the
+    // wrong row changed someone else's billing status instantly, with no
+    // undo but the same button in reverse. The rest of the app already has a
+    // confirm dialog for exactly this weight of action (deleting a chat).
+    const ok = await confirm({
+      title: nextComped ? `Grant ${account.email} unlimited access?` : `Revoke ${account.email}'s unlimited access?`,
+      body: nextComped
+        ? 'They will never hit the free-week limit until this is revoked.'
+        : 'They will fall back to the ordinary one-week-free limit.',
+      confirmLabel: nextComped ? 'Grant' : 'Revoke',
+      tone: nextComped ? 'default' : 'danger',
+    })
+    if (!ok) return
     setPending(account.id)
     try {
       await api.adminSetComped(account.id, nextComped)

@@ -66,6 +66,13 @@ export function Greeting({ onPick, onDraft, className: courseName }) {
   // two not-yet-planned rows are "what's next" and "what's after that".
   const upcoming = (progress?.weeks ?? []).filter((w) => !w.has_plan)
   const fromGuide = upcoming.slice(0, 2).map(pacingSuggestion)
+  // A unit commonly spans more than one week, so both suggestions can read
+  // "Continue Unit 2" with nothing but a much smaller detail line telling them
+  // apart — reads as a duplicated/broken row. Disambiguate the second by its
+  // own week label when that happens.
+  if (fromGuide.length === 2 && fromGuide[0].label === fromGuide[1].label) {
+    fromGuide[1] = { ...fromGuide[1], label: `${fromGuide[1].label} (${upcoming[1].week_label})` }
+  }
 
   const GENERIC = [
     {
@@ -113,8 +120,12 @@ export function Greeting({ onPick, onDraft, className: courseName }) {
         </p>
 
         <ul className="mt-6 flex flex-col gap-1.5">
-          {suggestions.map((s) => (
-            <li key={s.label}>
+          {suggestions.map((s, i) => (
+            // Index, not s.label: two pacing-guide suggestions can still land
+            // on the same unit name even after the disambiguation above (e.g.
+            // no week_label at all), and a duplicate key is a React error, not
+            // just a cosmetic one.
+            <li key={i}>
               <button
                 type="button"
                 onClick={() => (s.draft && onDraft ? onDraft(s.prompt) : onPick(s.prompt))}
