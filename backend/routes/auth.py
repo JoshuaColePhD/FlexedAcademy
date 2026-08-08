@@ -52,6 +52,7 @@ def _public_user(user: dict) -> dict:
         "id": user["id"],
         "email": user["email"],
         "name": user["name"],
+        "is_admin": bool(user.get("is_admin")),
         "entitlement": entitlement(user["id"]).as_dict(),
     }
 

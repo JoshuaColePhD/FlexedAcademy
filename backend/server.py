@@ -16,7 +16,7 @@ from . import db
 from .config import settings
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
-from .routes import auth, billing, classes, curriculum, generate, misc, plans, standards
+from .routes import admin, auth, billing, classes, curriculum, generate, misc, plans, standards
 from .schema import SchemaError
 
 logging.basicConfig(
@@ -92,6 +92,7 @@ app.include_router(curriculum.router)
 
 app.include_router(classes.router)
 app.include_router(billing.router)
+app.include_router(admin.router)
 import os
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles

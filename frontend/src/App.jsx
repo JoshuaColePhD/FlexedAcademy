@@ -24,6 +24,7 @@ import { useClasses } from './hooks/useAppData'
 import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
+import { AdminPage } from './pages/AdminPage'
 import { LandingPage } from './pages/LandingPage'
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
@@ -226,6 +227,10 @@ function Gate() {
       <Route path="/login" element={<AfterAuthRedirect />} />
       <Route path="/signup" element={<AfterAuthRedirect />} />
       <Route path="/c/:classId/*" element={<ClassRoutes />} />
+      {/* Gated again server-side by every request the page makes — reaching
+          this route with a non-admin session gets the page shell and then a
+          403 from /api/admin/accounts, not real data. */}
+      <Route path="/admin" element={<AdminPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )

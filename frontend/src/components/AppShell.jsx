@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { GraduationCap, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { GraduationCap, PanelLeft, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
+import { useAuth } from '../lib/authContext'
 import { NARROW, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { ClassSwitcher } from './ClassSwitcher'
@@ -95,6 +96,7 @@ function Rail({ onNavigate, onClose }) {
   const confirm = useConfirm()
   const toast = useToast()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const classPath = `/c/${classId}`
 
   const remove = async (chat) => {
@@ -171,6 +173,22 @@ function Rail({ onNavigate, onClose }) {
       </nav>
 
       <div className="shrink-0 border-t border-edge">
+        {/* Only rendered for is_admin accounts — everyone else never sees this
+            link exists. The route and every request it makes are gated again
+            server-side, so this is convenience, not the security boundary. */}
+        {user?.is_admin ? (
+          <NavLink
+            to="/admin"
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
+                isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
+              }`
+            }
+          >
+            <ShieldCheck size={15} aria-hidden="true" /> Admin
+          </NavLink>
+        ) : null}
         <NavLink
           to={`${classPath}/class`}
           onClick={onNavigate}

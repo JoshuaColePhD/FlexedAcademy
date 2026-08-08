@@ -179,6 +179,14 @@ export const api = {
   /** Public — the landing page has to be able to say what a subscription
    *  costs before anyone has an account. */
   publicPrice: ({ signal } = {}) => request('/api/billing/price', { signal }),
+
+  /* ── admin ────────────────────────────────────────────────────────────────
+     Gated server-side by is_admin (see deps.get_current_admin) — a non-admin
+     account gets the normal 403 envelope, not a hidden feature that merely
+     isn't linked to. */
+  adminListAccounts: ({ signal } = {}) => request('/api/admin/accounts', { signal }),
+  adminSetComped: (accountId, comped) =>
+    request(`/api/admin/accounts/${accountId}/comp`, { method: 'POST', body: { comped } }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 

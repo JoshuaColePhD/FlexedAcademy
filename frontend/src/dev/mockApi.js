@@ -102,6 +102,14 @@ const state = {
           free_remaining: 0,
           billing_enabled: true,
         },
+  accounts: [
+    { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true,
+      created_at: '2026-08-06T21:54:36+00:00', plans_built: 7, last_plan_at: '2026-08-08T01:44:46+00:00' },
+    { id: 'u2', email: 'trial.teacher@example.com', name: 'Trial Teacher', subscription_status: null, is_admin: false,
+      created_at: '2026-08-07T12:00:00+00:00', plans_built: 1, last_plan_at: '2026-08-07T12:30:00+00:00' },
+    { id: 'u3', email: 'paying.teacher@example.com', name: 'Paying Teacher', subscription_status: 'active', is_admin: false,
+      created_at: '2026-08-01T09:00:00+00:00', plans_built: 12, last_plan_at: '2026-08-08T08:00:00+00:00' },
+  ],
   chats: [
     { id: 'seed1', title: 'Week 03 — voice and tone', class_id: 'c1', updated_at: '2026-08-07' },
     { id: 'stranded', title: 'plan week 12 on satire', class_id: 'c1', updated_at: '2026-08-06' },
@@ -183,7 +191,14 @@ export function installMockApi() {
            status: null, plans_used: 1, free_allowance: 1, free_remaining: 0,
            billing_enabled: true } */
     if (path === '/api/auth/me')
-      return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', entitlement: state.entitlement })
+      return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', is_admin: true, entitlement: state.entitlement })
+    if (path === '/api/admin/accounts') return json({ accounts: state.accounts })
+    const compMatch = path.match(/^\/api\/admin\/accounts\/([^/]+)\/comp$/)
+    if (compMatch && method === 'POST') {
+      const acct = state.accounts.find((a) => a.id === compMatch[1])
+      if (acct) acct.subscription_status = body?.comped ? 'comped' : null
+      return json({ account: acct || null })
+    }
     if (path === '/api/billing/price')
       return json({ price: { amount: 1000, currency: 'USD', interval: 'month', interval_count: 1 }, free_allowance: 1 })
     if (path === '/api/billing')

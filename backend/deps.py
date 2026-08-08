@@ -7,8 +7,9 @@ Replaced with the real signed session cookie set by routes/auth.py.
 """
 from __future__ import annotations
 
-from fastapi import Cookie
+from fastapi import Cookie, Depends
 
+from . import db
 from .auth import verify_session_token
 from .config import settings
 from .errors import AppError
@@ -41,3 +42,13 @@ def get_current_user_optional(aplang_session: str | None = Cookie(default=None, 
     when logged out rather than refusing outright (there are none of these
     yet, but /api/auth/me and future public routes want this shape)."""
     return verify_session_token(aplang_session) if aplang_session else None
+
+
+def get_current_admin(user_id: str = Depends(get_current_user)) -> str:
+    """Same session cookie, plus the is_admin column. A normal teacher's
+    session token grants them nothing extra here — admin is a row in the
+    database, not a scope encoded in the token, so revoking it takes effect
+    on the very next request rather than waiting out a session's lifetime."""
+    if not db.is_admin(user_id):
+        raise AppError("forbidden", "Not authorized.", status=403)
+    return user_id

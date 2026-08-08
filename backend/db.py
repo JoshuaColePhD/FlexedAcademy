@@ -371,6 +371,16 @@ MIGRATIONS: list[str] = [
     UPDATE users SET subscription_status = 'comped' WHERE subscription_status IS NULL;
     CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);
     """,
+    # ── 16: admin ────────────────────────────────────────────────────────────
+    # Managing accounts by hand-written SQL against production doesn't scale
+    # past "the one person building this app". is_admin gates a real in-app
+    # page instead. Seeded onto the two accounts that exist today; every
+    # account after this migration starts as a normal (non-admin) teacher.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+    UPDATE users SET is_admin = true
+      WHERE email IN ('joshuacolephd@gmail.com', 'jpcole@florencek12.org');
+    """,
 ]
 
 
@@ -1336,8 +1346,42 @@ def set_subscription(user_id: str, *, customer_id: str | None = None, status: st
     _write(f"UPDATE users SET {', '.join(sets)} WHERE id = ?", tuple(params))
 
 
+def clear_subscription_status(user_id: str) -> None:
+    """Revoke comped access (or any status) back to NULL — "no subscription",
+    the same state a brand-new signup starts in. Separate from
+    set_subscription because that function treats status=None as "don't
+    touch"; there was no way to ask it for an actual NULL."""
+    _write("UPDATE users SET subscription_status = NULL WHERE id = ?", (user_id,))
+
+
 def get_user_by_stripe_customer(customer_id: str) -> dict | None:
     return _row("SELECT * FROM users WHERE stripe_customer_id = ?", (customer_id,))
+
+
+def is_admin(user_id: str) -> bool:
+    row = _row("SELECT is_admin FROM users WHERE id = ?", (user_id,))
+    return bool(row and row["is_admin"])
+
+
+def list_accounts_with_stats() -> list[dict]:
+    """Every account, its billing state, and what it's actually built.
+
+    Exists so managing accounts is a page in the app rather than SQL run by
+    hand against production. One query, not N+1 — plans_built and
+    last_plan_at are aggregated in the same round trip."""
+    rows = _rows(
+        """
+        SELECT u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
+               COUNT(p.id) AS plans_built,
+               MAX(p.created_at) AS last_plan_at
+        FROM users u
+        LEFT JOIN plans p ON p.user_id = u.id
+        GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at
+        ORDER BY u.created_at DESC
+        """,
+        (),
+    )
+    return [dict(r) for r in rows]
 
 
 def create_user(email: str, name: str, password_hash: str) -> dict:
