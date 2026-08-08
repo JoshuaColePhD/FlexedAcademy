@@ -1444,7 +1444,12 @@
     border: none;
     cursor: pointer;
   }
+  /* max-width, because .rail-open-title is align-items:flex-start — its
+     children size to their content rather than stretching, so the ellipsis had
+     nothing to trigger against and a long week label was simply sliced off
+     mid-date ("Week 05 — Aug 31-Sep 4, 2"). */
   .rail-title {
+    max-width: 100%;
     overflow: hidden;
     font-size: var(--fs-sm);
     font-weight: var(--fw-medium);
@@ -1453,8 +1458,12 @@
     white-space: nowrap;
   }
   .rail-sub {
+    max-width: 100%;
+    overflow: hidden;
     font-size: var(--fs-2xs);
     color: var(--ink-faint);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .rail-sub.is-flag {
     color: var(--flag);

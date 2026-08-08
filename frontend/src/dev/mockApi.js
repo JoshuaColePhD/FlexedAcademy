@@ -198,6 +198,12 @@ export function installMockApi() {
       await wait(latency.listChats)
       return json(state.chats)
     }
+    if (path === '/api/chats/title' && method === 'POST') {
+      // Stands in for the model: returns something that is NOT the raw prompt,
+      // so a test can tell the suggestion apart from the placeholder.
+      await wait(250)
+      return json({ title: 'Gatsby — symbolism week' })
+    }
     if (path === '/api/chats' && method === 'POST') {
       await wait(latency.createChat)
       const id = uid('chat')

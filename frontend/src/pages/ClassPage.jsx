@@ -366,11 +366,24 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
   )
 }
 
-/* Last, and shut. For whoever is debugging the app, not for a teacher planning
-   a week. */
+/* For whoever is debugging the app, not for a teacher planning a week — and it
+   is a teacher who was being shown the model name, the plans directory, the
+   builder's path on disk and whether the API key is set. "Shut by default" is
+   not the same as "not there".
+
+   Dev builds only. In production the same payload is one authenticated curl of
+   /api/health, which is where a person debugging the app actually is; the
+   unauthenticated answer is now liveness alone (see routes/misc.py). */
 function Diagnostics() {
-  const health = useQuery({ queryKey: ['health'], queryFn: () => api.health(), retry: false })
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn: () => api.health(),
+    retry: false,
+    enabled: import.meta.env.DEV,
+  })
   const h = health.data
+
+  if (!import.meta.env.DEV) return null
 
   return (
     <details className="mt-2 overflow-hidden rounded-xl border border-edge">

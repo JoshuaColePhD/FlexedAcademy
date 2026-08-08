@@ -319,6 +319,27 @@ export function ChatPage() {
           localFor.current = created.id
           qc.invalidateQueries({ queryKey: qk.chats })
           navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
+
+          /* Then give it a real name.
+             The placeholder is the first 80 characters of whatever was typed,
+             which is why the sidebar filled with rows reading "let's plan week
+             2 of ap lang" twice over and "Plan a week around a text — I'll name
+             it:" — the boilerplate, never the part that identifies the week.
+             /api/chats/title exists precisely for this and had no callers; its
+             own docstring describes being "called after the chat is already
+             created with a truncated placeholder title".
+
+             Deliberately not awaited: it is a second model call, it is purely
+             cosmetic, and nothing about sending the first message should wait
+             on it. Failure leaves the placeholder, which is what we have today. */
+          const basis = typed || attachments[0]?.filename
+          if (basis) {
+            api
+              .suggestChatTitle(basis)
+              .then(({ title }) => title && api.renameChat(created.id, title))
+              .then(() => qc.invalidateQueries({ queryKey: qk.chats }))
+              .catch(() => {})
+          }
         } catch {}
       }
 
