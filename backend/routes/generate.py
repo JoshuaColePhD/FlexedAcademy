@@ -134,32 +134,33 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
             
             system_prompt = (
                 f"You are an expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
-                "The teacher is preparing to generate a weekly lesson plan, but wants to brainstorm or clarify first. "
+                "The teacher is preparing to generate or revise a weekly lesson plan. "
             )
             
             if req.mode == "interview":
                 system_prompt += (
                 "Your job is to INTERVIEW the teacher to figure out what they want to teach. "
                 "Ask inquisitive, guiding questions one at a time. Be conversational, exactly like Claude does when asked to interview a user. "
-                "Once you feel you have a solid idea of what they want to do for the 5-day week, tell them they can click the Generate Lesson Plan button."
+                "When you have enough information to build the 5-day week, call the `generate_lesson_plan` tool."
                 )
             elif req.mode == "standards":
                 system_prompt += (
                     "Your job is to help the teacher find the perfect academic standards for their upcoming week. "
-                    "Suggest broad topics and narrow down what standards they should focus on."
+                    "Suggest broad topics and narrow down what standards they should focus on. "
+                    "When they are ready to build the plan, call the `generate_lesson_plan` tool."
                 )
             else:
                 system_prompt += (
-                    "Have a natural back-and-forth conversation to brainstorm ideas for their upcoming week. "
+                    "Have a natural back-and-forth conversation to brainstorm ideas for their upcoming week, or discuss revisions to an existing week. "
                     "Keep your responses concise and helpful. "
-                    "Once you feel you have a solid idea of what they want to do for the 5-day week, tell them they can click the Generate Lesson Plan button."
+                    "When you have enough information and the user is ready to build or revise the plan, call the `generate_lesson_plan` tool."
                 )
             
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
             
-            for delta in llm.stream_chat(messages):
-                yield _sse({"chunk": delta})
+            for event in llm.stream_chat(messages):
+                yield _sse(event)
                 
             yield _sse({"done": True})
         except Exception as e:

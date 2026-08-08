@@ -795,6 +795,20 @@ def retrieve_grounded(
         if best_stratum and best_stratum["id"] not in kept_ids:
             keep.append(best_stratum)
             kept_ids.add(best_stratum["id"])
+            
+    # Always include at least one ACT Writing (W) and English (E) standard if this course uses them.
+    # This prevents them from being crowded out by Reading standards when the query focuses on theme.
+    allowed_sections = act_sections_for(subject_code)
+    for forced_sec in (ACT_ENGLISH, ACT_WRITING):
+        if forced_sec in allowed_sections:
+            best_sec = next(
+                (c for c in survivors if is_act(c) and str((c.get("metadata") or {}).get("code", "E")).startswith(forced_sec)),
+                None,
+            )
+            if best_sec and best_sec["id"] not in kept_ids:
+                keep.append(best_sec)
+                kept_ids.add(best_sec["id"])
+
     # Distance ascending: nearest first. There is no rerank_score any more.
     keep.sort(key=lambda c: c["distance"])
 

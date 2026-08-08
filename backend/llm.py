@@ -378,17 +378,26 @@ def transcribe(path: str) -> str:
     return result.text
 
 
-def stream_chat(messages: list[dict]) -> Iterator[str]:
-    """Conversational streaming. Returns standard text, not JSON schema.
+def stream_chat(messages: list[dict]) -> Iterator[dict]:
+    """Conversational streaming. Yields dicts with 'chunk' or 'tool_call'.
     
     The first message should be the system prompt.
     """
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "generate_lesson_plan",
+            "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
+        }
+    }]
+    
     stream = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.7,
         max_tokens=4000,
         messages=messages,
         stream=True,
+        tools=tools,
     )
     for chunk in stream:
         if not chunk.choices:
@@ -398,6 +407,11 @@ def stream_chat(messages: list[dict]) -> Iterator[str]:
             raise AppError(
                 "model_refusal", f"The model declined this request: {delta.refusal}", status=422
             )
+        
+        if getattr(delta, "tool_calls", None):
+            yield {"tool_call": "generate_lesson_plan"}
+            break
+            
         if delta.content:
-            yield delta.content
+            yield {"chunk": delta.content}
 

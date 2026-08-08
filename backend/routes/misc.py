@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from .. import db, docx_build, llm, retrieval, service
 from ..config import settings
-from ..deps import get_current_user
+from ..deps import get_current_user, get_current_user_optional
 from ..errors import AppError
 
 log = logging.getLogger("aplang.misc")
@@ -24,11 +24,26 @@ TEXT_EXTS = {".txt", ".md", ".csv"}
 
 # ---------------------------------------------------------------------------
 # Health — makes every misconfiguration in the app diagnosable in one curl.
+#
+# TWO payloads, because it was serving one and it was the detailed one, to
+# ANYONE. There is no auth dependency on this route, so a stranger could read
+# the model, the on-disk paths of the plans directory and the builder, the
+# retrieval thresholds, the corpus size and the length of DATABASE_URL. None of
+# that is a credential, but none of it is a stranger's business either, and
+# filesystem paths are the first thing anyone probing a host wants.
+#
+# Liveness has to stay public — Render's health check and any uptime monitor
+# call it with no cookie, and a 401 there reads as "the service is down". So
+# the public answer is reduced to exactly that: is it up.
 # ---------------------------------------------------------------------------
 
 
 @router.get("/health")
-def health():
+def health(user_id: str | None = Depends(get_current_user_optional)):
+    # Unauthenticated: liveness only. Enough for a monitor, useless to a prober.
+    if not user_id:
+        return {"ok": True}
+
     out: dict = {
         "ok": True,
         "model": settings.openai_model,

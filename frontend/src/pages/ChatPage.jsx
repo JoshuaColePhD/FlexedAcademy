@@ -7,6 +7,7 @@ import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
 import { useShell } from '../lib/shellContext'
 import { useLessonStream } from '../hooks/useLessonStream'
+import { useChatStream } from '../hooks/useChatStream'
 import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useChats } from '../hooks/useAppData'
 import { FIELD_LABELS } from '../lib/planShape'
@@ -245,7 +246,35 @@ export function ChatPage() {
     },
   })
 
-  const busy = stream.isStreaming || revising
+  const chatStream = useChatStream({
+    onDone: (result) => {
+      // If the chat model just had a conversation (no tool call), we save the text.
+      // If it called the tool, we save the text (e.g. "I'll make that plan now!") and then
+      // trigger the actual plan build from the submit function.
+      if (result?.text?.trim()) {
+        const reply = {
+          id: nextId(),
+          role: 'assistant',
+          content: result.text,
+        }
+        setMessages((prev) => [...prev, reply])
+        const saveTo = localFor.current
+        if (saveTo) {
+          api.addMessage(saveTo, { role: 'assistant', content: result.text }).catch(() => {})
+        }
+        qc.invalidateQueries({ queryKey: qk.chats })
+      }
+    },
+    onError: (err) => {
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
+      ])
+      toast.apiError("Chat failed", err)
+    },
+  })
+
+  const busy = stream.isStreaming || revising || chatStream.isStreaming
 
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
@@ -275,45 +304,54 @@ export function ChatPage() {
       // sends — the send button was already enabled for that and did nothing.
       if (!content.trim() || busy) return
       setQuery('')
-      setAttachments([])
-      setMessages((prev) => [
-        ...prev,
-        // The transcript shows what was typed; the file goes to the model.
-        { id: nextId(), role: 'user', content: typed || `Sent ${attachments.length} file(s)` },
-      ])
+      const nextMessages = [
+        ...messages,
+        { id: nextId(), role: 'user', content: typed || `Sent ${attachments.length} file(s)` }
+      ]
+      
+      setMessages(nextMessages)
 
       let activeChatId = chatId
       if (!activeChatId) {
         try {
-          // `typed`, never `content`: titling a chat from an attached PDF
-          // would name it after the document's first 80 characters.
           const created = await api.createChat((typed || attachments[0]?.filename || 'New plan').slice(0, 80))
           activeChatId = created.id
-          // Claim it BEFORE navigating: the navigation is what fires the
-          // loader, and the loader has to already know this transcript is ours.
           localFor.current = created.id
           qc.invalidateQueries({ queryKey: qk.chats })
           navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
-        } catch {
-          /* Keep working even if the conversation can't be saved. */
-        }
+        } catch {}
       }
-      /* The TRANSCRIPT stores what the teacher wrote, not the file they
-         attached — persisting `content` would replay an entire PDF as their
-         message every time the conversation is reopened. The model still gets
-         the full text below. */
+
       const shown = typed || `Sent ${attachments.length} file(s)`
       if (activeChatId) api.addMessage(activeChatId, { role: 'user', content: shown }).catch(() => {})
 
+      // 1. Pass the full chat history to the chat model
+      // Strip IDs, just send role and content
+      const payloadMessages = nextMessages.map(m => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || "" }))
+      const chatResult = await chatStream.start(payloadMessages, { chatId: activeChatId })
+
+      if (!chatResult || !chatResult.toolCalled) {
+        // AI decided to just converse, no plan generation/revision needed.
+        return
+      }
+
+      // 2. The AI called generate_lesson_plan. Combine history for the prompt.
+      // We append any introductory text the AI just streamed ("I'll get right on that!")
+      // so it's in the combined history.
+      let combinedHistory = nextMessages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')
+      if (chatResult.text?.trim()) {
+        combinedHistory += `\n\nASSISTANT: ${chatResult.text}`
+      }
+
       // No plan in this chat yet -> build one. Otherwise -> revise it.
       if (!artifact?.planId) {
-        stream.start(content, { chatId: activeChatId }).catch(() => {})
+        stream.start(combinedHistory, { chatId: activeChatId }).catch(() => {})
         return
       }
 
       setRevising(true)
       try {
-        const row = await api.revisePlan(artifact.planId, content)
+        const row = await api.revisePlan(artifact.planId, combinedHistory)
         setArtifact((a) => ({
           ...a,
           plan: row.plan_json,
@@ -345,7 +383,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, navigate, qc, toast]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast]
   )
 
   /* Per-cell revise, from clicking a cell in the document.
