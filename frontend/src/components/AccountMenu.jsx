@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { LogOut, Settings, User } from 'lucide-react'
+import { CreditCard, LogOut, Settings, Sparkles, User } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
+import { useBilling } from '../lib/billingContext'
 import { ThemeToggle } from './ThemeToggle'
 
 /* The rail footer, and the home of the control that did not exist.
@@ -16,6 +17,7 @@ import { ThemeToggle } from './ThemeToggle'
  * look for it. */
 export function AccountMenu({ classPath }) {
   const { user, logout } = useAuth()
+  const { entitlement, billingEnabled, openPaywall, manage } = useBilling()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -62,6 +64,42 @@ export function AccountMenu({ classPath }) {
         >
           {user?.email ? (
             <p className="truncate px-3 py-1.5 text-2xs text-ink-faint">{user.email}</p>
+          ) : null}
+          {/* Subscription. Hidden entirely while billing is unconfigured — an
+              account menu offering to manage a subscription that cannot exist
+              is worse than no row at all. */}
+          {billingEnabled ? (
+            entitlement?.subscribed ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false)
+                  manage()
+                }}
+                className="flex min-h-touch w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <CreditCard size={14} aria-hidden="true" /> Manage subscription
+              </button>
+            ) : (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false)
+                  openPaywall()
+                }}
+                className="flex min-h-touch w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <Sparkles size={14} aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">Subscribe</span>
+                {entitlement && entitlement.free_remaining > 0 ? (
+                  <span className="shrink-0 text-2xs text-ink-faint">
+                    {entitlement.free_remaining} free left
+                  </span>
+                ) : null}
+              </button>
+            )
           ) : null}
           <Link
             to={`${classPath}/class`}

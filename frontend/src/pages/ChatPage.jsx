@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
+import { useAuth } from '../lib/authContext'
+import { useBilling } from '../lib/billingContext'
 import { useShell } from '../lib/shellContext'
 import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
@@ -61,6 +63,8 @@ export function ChatPage() {
   const navigate = useNavigate()
   const toast = useToast()
   const qc = useQueryClient()
+  const { refresh: refreshAuth } = useAuth()
+  const { mayGenerate, openPaywall } = useBilling()
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
@@ -264,12 +268,21 @@ export function ChatPage() {
           .catch(() => {})
       }
       qc.invalidateQueries({ queryKey: ['chats'] })
+      // A week was just used. Re-read the entitlement so the next submit knows.
+      refreshAuth()
     },
     onError: (err) => {
       setMessages((prev) => [
         ...prev,
         { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
       ])
+      // The server is the authority; if it refused on entitlement, show the
+      // offer rather than only a toast the teacher can't act on.
+      if (err.code === 'subscription_required') {
+        refreshAuth()
+        openPaywall()
+        return
+      }
       toast.apiError("Couldn't build that", err)
     },
   })
@@ -394,6 +407,25 @@ export function ChatPage() {
 
       // No plan in this chat yet -> build one. Otherwise -> revise it.
       if (!artifact?.planId) {
+        /* The paywall, asked before the 30-second wait rather than after it.
+           The server enforces the same rule (routes/generate.py) — this exists
+           so a blocked teacher sees the offer immediately instead of watching a
+           progress indicator that was always going to end in a 402. Revising,
+           the branch below, is never gated. */
+        if (!mayGenerate) {
+          openPaywall()
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'assistant',
+              isError: true,
+              content: 'You’ve used your free week.',
+              hint: 'Subscribe to build new weeks — everything you’ve already made stays yours.',
+            },
+          ])
+          return
+        }
         stream.start(combinedHistory, { chatId: activeChatId }).catch(() => {})
         return
       }
@@ -432,7 +464,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall]
   )
 
   /* Per-cell revise, from clicking a cell in the document.

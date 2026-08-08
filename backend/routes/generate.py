@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from .. import db, llm, service
 from ..config import settings
 from ..deps import get_current_user
+from ..entitlement import entitlement
 from ..errors import AppError
 from ..schema import SchemaError
 
@@ -48,8 +49,30 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
+
+def _require_entitlement(user_id: str) -> None:
+    """The paywall, in one place, on the only two doors that make a new week.
+
+    Revising is deliberately NOT gated. "A week free" means a week of lesson
+    plans; a teacher fixing Thursday is still working on the week they already
+    have, and taking that away would make the free week a demo rather than a
+    thing they can actually use. Downloads are never gated at all.
+    """
+    ent = entitlement(user_id)
+    if ent.may_generate:
+        return
+    raise AppError(
+        "subscription_required",
+        "You’ve used your free week. Subscribe to keep building.",
+        status=402,
+        hint="Everything you’ve already built stays yours — open it, revise it, download it.",
+        extra={"entitlement": ent.as_dict()},
+    )
+
+
 @router.post("/generate")
 def generate(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
+    _require_entitlement(user_id)
     return service.generate(user_id, req.query, chat_id=req.chat_id, bg_tasks=bg_tasks)
 
 
@@ -60,6 +83,10 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
     Every terminal event carries an `error` object with the same {code, message,
     hint} shape as the REST errors, so the client has one path for both.
     """
+    # Before the stream opens, so a blocked request is an ordinary 402 with the
+    # normal error envelope rather than an SSE frame the reader has to special-
+    # case. useLessonStream already reads a non-200 body through apiErrorFromBody.
+    _require_entitlement(user_id)
 
     def event_stream():
         chunks: list[str] = []

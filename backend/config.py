@@ -45,6 +45,29 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     common_standards_api_key: str = ""
 
+    # ── billing ──────────────────────────────────────────────────────────────
+    # One week of plans free, then a subscription. The rule lives in exactly one
+    # place: backend/entitlement.py.
+    #
+    # The gate is INERT until all three are set. That is not caution for its own
+    # sake: the moment a gate ships without a way through it, every existing
+    # account is locked out of an app they were using — this one already has an
+    # account with seven plans. No keys, no gate, and the app behaves exactly as
+    # it does today.
+    #
+    # The price is never hardcoded in the UI. It is read from Stripe at runtime
+    # (routes/billing.py) so the number a teacher sees is the number that will
+    # be charged, and changing it is a Stripe dashboard edit, not a deploy.
+    stripe_secret_key: str = ""
+    stripe_price_id: str = ""
+    stripe_webhook_secret: str = ""
+    # Where Stripe sends them back to. Empty = derive from the request.
+    billing_return_url: str = ""
+
+    # How many plans a teacher may build before subscribing. "A week free" is
+    # one week of lesson plans; revising that week is not a second week.
+    free_plan_allowance: int = 1
+
     database_url: str = ""
     curriculum_maps_dir: Path = PROJECT_ROOT / "data" / "curriculum_maps"
     plans_dir: Path = PROJECT_ROOT / "plans"
@@ -235,6 +258,17 @@ class Settings(BaseSettings):
     @property
     def has_api_key(self) -> bool:
         return bool(self.openai_api_key) and self.openai_api_key != "your-api-key-here"
+
+    @property
+    def billing_enabled(self) -> bool:
+        """Whether the paywall is live.
+
+        All three, because a gate you cannot pay through is just a broken app:
+        the secret key to talk to Stripe, the price to charge, and the webhook
+        secret to hear back that they paid. Missing any one of them and
+        entitlement() lets everyone through.
+        """
+        return bool(self.stripe_secret_key and self.stripe_price_id and self.stripe_webhook_secret)
 
     def floor_for(self, course: str | None) -> float:
         """The relevance floor for one course, falling back to the global one."""

@@ -79,6 +79,29 @@ let seq = 0
 const uid = (p) => `${p}_${++seq}`
 
 const state = {
+  // Default: billing live, one free week already spent — i.e. the paywall
+  // state, because that is the one worth being able to look at. Flip
+  // may_generate back to true (or billing_enabled to false) to leave it.
+  entitlement:
+    typeof sessionStorage !== 'undefined' && sessionStorage.getItem('mock.subscribed')
+      ? {
+          may_generate: true,
+          subscribed: true,
+          status: 'active',
+          plans_used: 1,
+          free_allowance: 1,
+          free_remaining: 0,
+          billing_enabled: true,
+        }
+      : {
+          may_generate: false,
+          subscribed: false,
+          status: null,
+          plans_used: 1,
+          free_allowance: 1,
+          free_remaining: 0,
+          billing_enabled: true,
+        },
   chats: [
     { id: 'seed1', title: 'Week 03 — voice and tone', class_id: 'c1', updated_at: '2026-08-07' },
     { id: 'stranded', title: 'plan week 12 on satire', class_id: 'c1', updated_at: '2026-08-06' },
@@ -154,7 +177,23 @@ export function installMockApi() {
     const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
     calls.push({ path, method, at: performance.now() })
 
-    if (path === '/api/auth/me') return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org' })
+    /* The entitlement rides on /me exactly as it does in production, so the
+       paywall can be driven here. Tune it live:
+         window.__mock.entitlement = { may_generate: false, subscribed: false,
+           status: null, plans_used: 1, free_allowance: 1, free_remaining: 0,
+           billing_enabled: true } */
+    if (path === '/api/auth/me')
+      return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', entitlement: state.entitlement })
+    if (path === '/api/billing')
+      return json({ ...state.entitlement, price: { amount: 1200, currency: 'USD', interval: 'month', interval_count: 1 } })
+    if (path === '/api/billing/checkout' || path === '/api/billing/portal') {
+      // Stripe redirects the browser, so the app reloads and this module's
+      // state is rebuilt from scratch — the way it would be in production,
+      // where the webhook is what actually changed something. sessionStorage
+      // stands in for the webhook so the return-from-checkout path is drivable.
+      sessionStorage.setItem('mock.subscribed', '1')
+      return json({ url: `${window.location.origin}/preview.html?checkout=success` })
+    }
     if (path === '/api/classes' && method === 'GET')
       return json([
         { id: 'c1', name: 'AP Language & Composition', subject: 'AP Lang', grade: '11' },
@@ -312,6 +351,27 @@ export function installMockApi() {
           latency.stream / 3,
         ],
       ])
+    }
+
+    /* The conversational model in front of generation. A message asking for a
+       week calls the tool (which is what makes ChatPage go on to build);
+       anything else just talks back, so both branches are drivable. */
+    if (path === '/api/chat_stream') {
+      const last = [...(body?.messages || [])].reverse().find((m) => m.role === 'user')?.content || ''
+      const wantsPlan = /\b(plan|week|build|unit|lesson)\b/i.test(last)
+      return sse(
+        wantsPlan
+          ? [
+              [{ chunk: 'On it — building that week now.' }, 120],
+              [{ tool_call: 'generate_lesson_plan' }, 120],
+              [{ done: true }, 60],
+            ]
+          : [
+              [{ chunk: 'Happy to talk it through. ' }, 120],
+              [{ chunk: 'What are you hoping they walk away with?' }, 120],
+              [{ done: true }, 60],
+            ]
+      )
     }
 
     const revise = path.match(/^\/api\/plans\/([^/]+)\/revise$/)

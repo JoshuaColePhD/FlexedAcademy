@@ -170,6 +170,15 @@ export const api = {
 
   reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload }),
 
+  /* ── billing ──────────────────────────────────────────────────────────────
+     `billing` carries the entitlement AND the price, read from Stripe at
+     request time — the price is never a number typed into this codebase.
+     `checkout`/`portal` each return { url } to a Stripe-hosted page; the app
+     never handles a card. */
+  billing: ({ signal } = {}) => request('/api/billing', { signal }),
+  checkout: () => request('/api/billing/checkout', { method: 'POST' }),
+  billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
+
   listStandards: ({ signal, ...params } = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')

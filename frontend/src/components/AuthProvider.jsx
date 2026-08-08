@@ -12,10 +12,14 @@ export function AuthProvider({ children }) {
       .then((u) => {
         setUser(u)
         setStatus('authed')
+        // Returned, not swallowed: callers that need the *fresh* answer (the
+        // return-from-checkout poll) can read it without racing React state.
+        return u
       })
       .catch(() => {
         setUser(null)
         setStatus('anon')
+        return null
       })
   }, [])
 

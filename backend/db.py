@@ -350,6 +350,27 @@ MIGRATIONS: list[str] = [
     WHERE class_id IS NULL;
     CREATE INDEX IF NOT EXISTS idx_chats_user_class ON chats(user_id, class_id);
     """,
+    # ── 15: subscriptions ────────────────────────────────────────────────────
+    #
+    # One week of plans free, then a subscription. The count of free weeks used
+    # is COUNT(plans) — deliberately not a counter column, because a counter is
+    # a second source of truth that can drift from the thing it counts, and the
+    # plans are the thing being sold.
+    #
+    # `status` mirrors Stripe's subscription status ('active', 'trialing',
+    # 'past_due', 'canceled', …) plus one of our own, 'comped'.
+    #
+    # EVERY EXISTING ACCOUNT IS COMPED. They signed up when the app was free and
+    # some already hold more plans than the free allowance, so any other
+    # default would lock them out of work they had already done the moment this
+    # deployed. Comped is permanent and free; it is not a trial.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_period_end TEXT;
+    UPDATE users SET subscription_status = 'comped' WHERE subscription_status IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);
+    """,
 ]
 
 
@@ -1288,6 +1309,35 @@ def get_user_by_email(email: str) -> dict | None:
 def get_user_by_id(user_id: str) -> dict | None:
     row = _row("SELECT * FROM users WHERE id = ?", (user_id,))
     return dict(row) if row else None
+
+
+def count_plans(user_id: str) -> int:
+    """How many weeks this teacher has built. The free allowance is measured
+    against this rather than a counter column, so it cannot drift from the
+    thing it counts."""
+    row = _row("SELECT COUNT(*) AS n FROM plans WHERE user_id = ?", (user_id,))
+    return int(row["n"]) if row else 0
+
+
+def set_subscription(user_id: str, *, customer_id: str | None = None, status: str | None = None,
+                     period_end: str | None = None) -> None:
+    """Write back whatever Stripe just told us. Only the fields provided, so a
+    webhook carrying a status doesn't blank a customer id."""
+    sets, params = [], []
+    if customer_id is not None:
+        sets.append("stripe_customer_id = ?"); params.append(customer_id)
+    if status is not None:
+        sets.append("subscription_status = ?"); params.append(status)
+    if period_end is not None:
+        sets.append("subscription_period_end = ?"); params.append(period_end)
+    if not sets:
+        return
+    params.append(user_id)
+    _write(f"UPDATE users SET {', '.join(sets)} WHERE id = ?", tuple(params))
+
+
+def get_user_by_stripe_customer(customer_id: str) -> dict | None:
+    return _row("SELECT * FROM users WHERE stripe_customer_id = ?", (customer_id,))
 
 
 def create_user(email: str, name: str, password_hash: str) -> dict:

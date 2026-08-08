@@ -48,6 +48,33 @@ services:
       - key: VITE_GOOGLE_CLIENT_ID
         sync: false
 
+      # ── billing (Stripe) ─────────────────────────────────────────────────
+      # The subscription gate is INERT until all three of these are set, so
+      # the app runs perfectly well with them blank — that is deliberate, not
+      # a half-finished state. Set them together or not at all; two out of
+      # three leaves the gate closed and no way through it.
+      #
+      #   STRIPE_SECRET_KEY      sk_live_… (Developers → API keys)
+      #   STRIPE_PRICE_ID        price_…   the recurring price, NOT the product
+      #   STRIPE_WEBHOOK_SECRET  whsec_…   shown when the endpoint is created
+      #
+      # The webhook endpoint is https://<host>/api/billing/webhook and must be
+      # subscribed to: checkout.session.completed, customer.subscription.created,
+      # customer.subscription.updated, customer.subscription.deleted. Without
+      # the subscription events a cancellation never reaches this app and the
+      # account stays entitled forever.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Where Stripe sends the browser back to. Without it the app falls back
+      # to the request's own origin, which is right locally and wrong behind
+      # any proxy that rewrites Host.
+      - key: BILLING_RETURN_URL
+        value: "https://flexedacademy.com"
+
       # ── generated once by Render, then held ──────────────────────────────
       # Login is on in production and session cookies are signed with this.
       # Unset, config.py falls back to a known dev string and every session

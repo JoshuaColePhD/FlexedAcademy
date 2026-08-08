@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 from .. import auth, db
 from ..config import settings
 from ..deps import COOKIE_NAME, get_current_user
+from ..entitlement import entitlement
 from ..errors import AppError
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -41,7 +42,18 @@ def _cookie_kwargs(request: Request) -> dict:
 
 
 def _public_user(user: dict) -> dict:
-    return {"id": user["id"], "email": user["email"], "name": user["name"]}
+    """What the browser is allowed to know about the signed-in account.
+
+    `entitlement` rides along so the app never has to guess whether the Build
+    button will work — one server-side answer, read by the paywall, the
+    composer and the account menu alike.
+    """
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "entitlement": entitlement(user["id"]).as_dict(),
+    }
 
 
 def _log_in(request: Request, response: Response, user: dict) -> dict:

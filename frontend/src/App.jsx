@@ -16,6 +16,7 @@ import { ToastProvider } from './components/ToastProvider'
 import { ConfirmProvider } from './components/ConfirmProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './components/AuthProvider'
+import { BillingProvider } from './components/BillingProvider'
 import { useAuth } from './lib/authContext'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
@@ -278,8 +279,11 @@ export default function App() {
             <ToastProvider>
               <ConfirmProvider>
                 <AuthProvider>
-                  <CommandK />
-                  <Gate />
+                  {/* Inside AuthProvider: the entitlement rides on the user. */}
+                  <BillingProvider>
+                    <CommandK />
+                    <Gate />
+                  </BillingProvider>
                 </AuthProvider>
               </ConfirmProvider>
             </ToastProvider>
