@@ -126,11 +126,6 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
     )
   }
 
-  /* While a plan is streaming, ChatPage shows the week strip filling in day by
-     day. A second "thinking" indicator here would be two answers to one
-     question, so this renders nothing until there is text. */
-  if (message.streaming && !message.content) return null
-
   /* fa-rise was written for exactly this and then never attached to anything,
      so every message simply appeared — which is most of why the transcript felt
      abrupt. CSS animations run once per mount, and React keeps existing

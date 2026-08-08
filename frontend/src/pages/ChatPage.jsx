@@ -682,6 +682,20 @@ export function ChatPage() {
               />
             ))}
 
+            {/* The conversational reply (chat_stream, ahead of any tool call)
+                had no on-screen presence at all until its first token — the
+                accumulating chatStream.text was tracked in state and never
+                rendered. From a submit to either a reply or the plan-generation
+                progress below, the screen just sat blank. Message already
+                understands a `streaming` message (a blinking cursor, used
+                elsewhere) — this is that, fed live text as it arrives instead
+                of only the finished string once onDone fires. */}
+            {chatStream.isStreaming && !stream.isStreaming ? (
+              <Message
+                message={{ id: 'chat-stream-live', role: 'assistant', content: chatStream.text, streaming: true }}
+              />
+            ) : null}
+
             {/* Progress is the week filling in, not three bouncing dots — a
                 teacher can see which day is being written and how many are
                 left, which is the only thing worth knowing while waiting. */}

@@ -53,7 +53,15 @@ def _check_refusal(message) -> None:
         raise AppError("model_refusal", f"The model declined this request: {refusal}", status=422)
 
 
-def _map_context_for(user_id: str, subject: str, query: str) -> str:
+def map_context_for(user_id: str, subject: str, query: str) -> str:
+    """Snippets from the teacher's own active pacing guide, relevant to `query`.
+
+    Public (not `_`-prefixed) because the conversational chat model needs this
+    exact same lookup — the brainstorming assistant was answering "I don't
+    have access to your settings or any attachments" to a teacher who HAD
+    uploaded a pacing guide, because chat_stream never called this at all.
+    Only the plan-writing calls below did.
+    """
     active = db.get_active_curriculum_map(user_id, subject)
     return curriculum.retrieve_map_context(active["id"], query) if active else ""
 
@@ -61,7 +69,7 @@ def _map_context_for(user_id: str, subject: str, query: str) -> str:
 def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
     """Non-streaming week generation. Returns parsed (not yet validated) JSON."""
     s = db.get_settings_row(user_id)
-    map_context = _map_context_for(user_id, s["subject"], query)
+    map_context = map_context_for(user_id, s["subject"], query)
     resp = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.2,
@@ -90,7 +98,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
 def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[str]:
     """Yield raw content deltas. The caller accumulates and validates."""
     s = db.get_settings_row(user_id)
-    map_context = _map_context_for(user_id, s["subject"], query)
+    map_context = map_context_for(user_id, s["subject"], query)
     stream = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.2,

@@ -216,6 +216,31 @@ export function installMockApi() {
         { id: 'c1', name: 'AP Language & Composition', subject: 'AP Lang', grade: '11' },
         { id: 'c2', name: 'AP Physics 1', subject: 'Science', grade: '11' },
       ])
+    if (
+      path === '/api/curriculum_progress' &&
+      new URL(url, location.origin).searchParams.get('subject') !== 'AP Lang'
+    )
+      return json({ map: null, weeks: [], summary: null })
+    if (path === '/api/curriculum_progress') {
+      // A pacing guide on file for AP Lang (c1) — two weeks not yet planned,
+      // so Greeting's second and third suggestions should pull from here
+      // instead of the generic fallback pair.
+      const weeks = [
+        { week_label: 'Week 03', unit: 'Voice, Tone & Rhetorical Devices', target_start: '2026-08-17',
+          target_end: '2026-08-21', standards: ['RHS-2A'], notes: '', has_plan: true, status: 'done' },
+        { week_label: 'Week 04', unit: 'Voice, Tone & Rhetorical Devices', target_start: '2026-08-24',
+          target_end: '2026-08-28', standards: ['RHS-2B'], notes: "The Cask of Amontillado — irony",
+          has_plan: false, status: 'current' },
+        { week_label: 'Week 05', unit: 'Power of Language', target_start: '2026-08-31',
+          target_end: '2026-09-04', standards: [], notes: 'Begin Gatsby, ch. 1-3',
+          has_plan: false, status: 'upcoming' },
+      ]
+      return json({
+        map: { id: 'map1', original_name: 'AP Lang pacing guide.pdf', uploaded_at: '2026-08-01T00:00:00+00:00' },
+        weeks,
+        summary: { total: weeks.length, done: 1, behind: 0, current_week_label: 'Week 04', on_pace: true },
+      })
+    }
     if (path === '/api/frameworks')
       // `chunks` and `verbatim_ok` are not optional — FrameworkPicker calls
       // .toLocaleString() on chunks directly.

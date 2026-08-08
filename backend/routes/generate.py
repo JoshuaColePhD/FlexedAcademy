@@ -158,12 +158,33 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
             s = db.get_settings_row(user_id)
             subject = s.get("subject", "AP Language & Composition")
             grade = s.get("grade", "11")
-            
+
             system_prompt = (
                 f"You are an expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
                 "The teacher is preparing to generate or revise a weekly lesson plan. "
             )
-            
+
+            # The pacing guide a teacher uploads in settings was only ever read
+            # by the plan-WRITING calls (llm.generate_plan / stream_plan) — this
+            # conversational model had no path to it at all, so a teacher who
+            # said "I attached my pacing guide" got "I don't have access to your
+            # settings or any attachments", true of the code but wrong about the
+            # product: the document exists and the plan writer already uses it.
+            # Queried on the latest user turn, same as plan generation queries on
+            # a single string rather than the whole transcript.
+            last_user = next(
+                (m.content for m in reversed(req.messages) if m.role == "user"), ""
+            )
+            map_context = llm.map_context_for(user_id, subject, last_user) if last_user else ""
+            if map_context:
+                system_prompt += (
+                    "\n\nTHE TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — relevant excerpts below. "
+                    "Use it to ground this conversation in their actual sequencing, unit, and any texts "
+                    "or milestones it names. It carries no standard codes of its own; when the plan is "
+                    "built, standards still come only from retrieval, not from this document.\n\n"
+                    + map_context
+                )
+
             if req.mode == "interview":
                 system_prompt += (
                 "Your job is to INTERVIEW the teacher to figure out what they want to teach. "
