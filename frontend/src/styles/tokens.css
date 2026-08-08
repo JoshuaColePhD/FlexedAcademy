@@ -48,10 +48,18 @@
   color-scheme: light dark;
 
   /* ── type ──────────────────────────────────────────────────────────────── */
-  /* One sans, plus mono for standard codes. No display face — the serif
-     greeting it was for went with the week board. */
+  /* One sans, plus mono for standard codes. No display face in the product —
+     the serif greeting it was for went with the week board. */
   --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Landing-page-only, same rule as --brand: a confident grotesque for the
+     headline (a display voice, not Inter stretched large), and a serif for
+     quoted document text — the one place the page is literally reproducing
+     an excerpt of a real paper standard, which earns a different, bookish
+     register than the interface chrome around it. */
+  --font-display: 'Bricolage Grotesque', var(--font-ui);
+  --font-serif: 'Source Serif 4', Georgia, serif;
 
   --fs-2xs: 0.6875rem;
   --fs-xs: 0.75rem;
@@ -201,10 +209,37 @@
      is the one surface allowed a colour chosen for how it looks.
 
      So the split is intentional: violet outside the door, district blue inside.
-     Used ONLY by .landing-* rules. If it ever shows up in the app, that is a
-     bug. */
-  --brand-rgb: 109 40 217;
-  --brand-ink-rgb: 255 255 255;
+     Used ONLY by .land-* rules (the landing page). If it ever shows up in the
+     app, that is a bug.
+
+     The landing page is a fixed brand world, not a themed surface: it does not
+     follow data-theme, light or dark. The logo mark is a violet seal glowing
+     on near-black — that is the product's real native habitat, at every hour,
+     for every visitor, not something that should flip to a white background
+     because a visitor's OS is in light mode. */
+  --brand-rgb: 36 16 71; /* deep ink-violet ground, the hero's dominant field */
+  --brand-ink-rgb: 237 230 251; /* pale lavender body text on the violet ground */
+  --brand-muted-rgb: 176 163 212; /* secondary/quiet text on the violet ground */
+
+  /* The verification seal — gold, not violet. Two colors carry the landing
+     page on purpose: violet is the door's identity (the ground, the logo),
+     gold is reserved for the one recurring signature — the seal that marks a
+     claim as checked — so it stays legible as "this was verified" rather than
+     blurring into general brand decoration. */
+  --land-gold-rgb: 212 167 60;
+  --land-gold-bright-rgb: 232 193 104;
+  /* Both of the above measure under 3:1 against --land-paper (2.1:1 and
+     1.6:1) — fine as a fill under white text, a failure as a stroke or text
+     color on the paper section. This is the same gold, darkened until it
+     clears text contrast there (5.1:1). */
+  --land-gold-ink-rgb: 138 98 21;
+
+  /* Warm document paper — landing-only, deliberately distinct from the app's
+     cool --paper. The proof section is showing an excerpt of an actual paper
+     standards document; it earns a warmer, paper-toned surface exactly there,
+     not as the page's whole palette (that would be the cream-serif default
+     this build is avoiding). */
+  --land-paper-rgb: 250 247 242;
 
   --mark-rgb: 179 38 30;
   --mark-tint-rgb: 253 236 234;
@@ -246,6 +281,11 @@
   --doc-blue: rgb(var(--doc-blue-rgb));
   --brand: rgb(var(--brand-rgb));
   --brand-ink: rgb(var(--brand-ink-rgb));
+  --brand-muted: rgb(var(--brand-muted-rgb));
+  --land-gold: rgb(var(--land-gold-rgb));
+  --land-gold-bright: rgb(var(--land-gold-bright-rgb));
+  --land-gold-ink: rgb(var(--land-gold-ink-rgb));
+  --land-paper: rgb(var(--land-paper-rgb));
   --mark: rgb(var(--mark-rgb));
   --mark-tint: rgb(var(--mark-tint-rgb));
   --flag: rgb(var(--flag-rgb));
@@ -321,9 +361,10 @@
   --accent-text-rgb: 122 162 240;
   --doc-blue-rgb: 109 158 235;
 
-  /* Lifted for a dark ground; the 600 step reads muddy on #101216. */
-  --brand-rgb: 139 92 246;
-  --brand-ink-rgb: 16 18 22;
+  /* No dark-mode override: the landing page is a fixed brand world (see the
+     light-mode comment above --brand-rgb), so --brand, --brand-ink,
+     --brand-muted, --land-gold*, and --land-paper stay constant regardless of
+     data-theme. */
 
   --mark-rgb: 240 129 120;
   --mark-tint-rgb: 56 26 24;

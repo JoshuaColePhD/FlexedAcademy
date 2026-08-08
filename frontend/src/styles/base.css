@@ -2027,6 +2027,30 @@
     border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
   }
 
+  /* The assistant's own words, not a plan cell — the model writes markdown
+     (bold day labels, numbered lists) and it used to render as literal
+     asterisks because nothing parsed it. */
+  .msg-markdown p {
+    margin: var(--sp-3) 0;
+  }
+  .msg-markdown p:first-child {
+    margin-top: 0;
+  }
+  .msg-markdown p:last-child {
+    margin-bottom: 0;
+  }
+  .msg-markdown ul,
+  .msg-markdown ol {
+    margin: var(--sp-2) 0;
+    padding-left: 1.25em;
+  }
+  .msg-markdown li {
+    margin: var(--sp-1) 0;
+  }
+  .msg-markdown strong {
+    font-weight: var(--fw-semibold);
+  }
+
   .grounding-line {
     display: flex;
     flex-wrap: wrap;
@@ -2131,156 +2155,421 @@
     cursor: pointer;
   }
 
-  /* ══ THE LANDING PAGE ═════════════════════════════════════════════════════
-     The only surface in the app that uses --brand. Everything else here is the
-     same token set as the product, so the two cannot drift on ink, paper or
-     spacing — only on the accent, which is the deliberate part.
+  /* ══ THE LANDING PAGE — A VERIFIED SEAL ON VIOLET ═══════════════════════
+     The only surface in the app with its own fixed palette and type voice.
+     It does not follow data-theme: the logo mark is a violet seal glowing on
+     near-black, and that is this product's real habitat at every hour, for
+     every visitor — not something that flips to a white background because a
+     visitor's OS prefers light mode.
 
-     One screen, no scroll on a laptop: a claim, a sentence, a button. The type
-     does the work, so the size is fluid rather than stepped — a headline this
-     large has to be able to get small without a breakpoint fighting it. */
-  .landing {
-    display: flex;
-    min-height: var(--app-h);
-    flex-direction: column;
-    padding: 0 clamp(var(--sp-5), 5vw, var(--sp-16));
-    background: var(--paper-sunken);
-    color: var(--ink);
+     Two colors, each with one job. Violet is the ground and the identity —
+     the hero, the pipeline, the footer all sit on it. Gold is reserved for
+     exactly one recurring signature, the verification seal: a claim is
+     "sealed" only where it has actually been checked against a real source,
+     so gold never appears as generic decoration. The one paper-toned section
+     (the excerpt) is warm on purpose — it is showing an actual paper
+     document — while the rest of the page stays violet, so that warmth reads
+     as "real document," not as the page's whole personality. */
+  .land {
+    height: var(--app-h);
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--brand);
+    color: var(--brand-ink);
   }
 
-  .landing-head {
+  .land-bar,
+  .land-hero,
+  .land-proof,
+  .land-pipeline,
+  .land-foot {
+    padding-left: clamp(var(--sp-5), 6vw, var(--sp-16));
+    padding-right: clamp(var(--sp-5), 6vw, var(--sp-16));
+  }
+
+  .land-bar {
     display: flex;
-    flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
     gap: var(--sp-4);
-    padding: clamp(var(--sp-4), 3vw, var(--sp-8)) 0;
+    padding-top: var(--sp-5);
+    padding-bottom: var(--sp-5);
   }
-  .landing-brand {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
+  /* Text-only wordmark — the supplied logo file rendered as a hard white-
+     cornered square against the violet ground (it's a flat opaque PNG with no
+     alpha channel, converted from a JPEG source) rather than blending in, so
+     it's dropped per direct request rather than patched. */
+  .land-brand {
+    font-family: var(--font-display);
     font-size: var(--fs-lg);
-    font-weight: var(--fw-bold);
-    letter-spacing: var(--tracking-tight);
-    color: var(--ink);
-  }
-  .landing-mark {
-    width: 1.125rem;
-    height: 1.125rem;
-    flex-shrink: 0;
-    background: var(--brand);
-  }
-  .landing-signin {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--touch-min);
-    padding: 0 var(--sp-6);
-    font-size: var(--fs-md);
     font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
     color: var(--brand-ink);
-    background: var(--brand);
-    text-decoration: none;
-    transition: opacity var(--t-fast) var(--ease);
   }
-  .landing-signin:hover {
-    opacity: 0.88;
+  /* Text, not a filled button — the page has exactly one filled action (the
+     CTA), and a second button here would compete with it for attention. */
+  .land-signin {
+    position: relative;
+    padding: var(--sp-2) 0;
+    font-size: var(--fs-md);
+    font-weight: var(--fw-medium);
+    color: var(--brand-muted);
+    text-decoration: none;
+    transition: color var(--t-fast) var(--ease);
+  }
+  .land-signin::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1.5px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform var(--t-base) var(--ease);
+  }
+  .land-signin:hover,
+  .land-signin:focus-visible {
+    color: var(--brand-ink);
+  }
+  .land-signin:hover::after,
+  .land-signin:focus-visible::after {
+    transform: scaleX(1);
+    transform-origin: left;
   }
 
-  /* Centred in what is left after the header and the footer, so the headline
-     sits on the optical middle of the page rather than the geometric one. */
-  .landing-main {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    justify-content: center;
-    padding: var(--sp-10) 0;
+  /* ── hero ─────────────────────────────────────────────────────────────── */
+  .land-hero {
+    position: relative;
+    padding-top: clamp(var(--sp-12), 10vw, var(--sp-16));
+    padding-bottom: clamp(var(--sp-14), 10vw, var(--sp-16));
+    overflow: hidden;
+    /* Its own compositing layer + containing block, so a WebKit webview can't
+       fold this element's paint into the scrolling ancestor's — see the note
+       on .land-glow below for the bug this avoids. */
+    isolation: isolate;
+    contain: paint;
   }
-  .landing-eyebrow {
-    margin-bottom: clamp(var(--sp-5), 3vw, var(--sp-8));
-    font-family: var(--font-mono);
-    font-size: var(--fs-sm);
-    font-weight: var(--fw-medium);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-    color: var(--brand);
+  /* The one atmosphere effect on the page: a soft violet-and-gold bloom
+     behind the headline, echoing the logo mark's own glow. The radial
+     gradient already fades to transparent on its own; it does NOT also carry
+     filter: blur(). A large, absolutely-positioned, blurred element inside a
+     scrolling+overflow:hidden ancestor is a known WebKit compositing bug
+     (reported as horizontally tiled/duplicated page content in iOS Safari and
+     WKWebView-based in-app browsers, Claude's mobile in-app browser among
+     them) — the blur filter forces a backing layer that gets mis-tiled on
+     scroll. Removing the filter removes the trigger; the gradient alone reads
+     as soft, it just isn't Gaussian-blurred on top of that. */
+  .land-glow {
+    position: absolute;
+    top: -20%;
+    right: -10%;
+    width: min(60vw, 620px);
+    height: min(60vw, 620px);
+    background: radial-gradient(
+      circle,
+      rgb(var(--land-gold-rgb) / 0.18) 0%,
+      rgb(var(--land-gold-rgb) / 0.05) 45%,
+      transparent 72%
+    );
+    pointer-events: none;
   }
-  /* 800 and -0.04em: Inter needs both to read as a tight grotesque at this
-     size. `text-wrap: balance` keeps the two lines from breaking one word
-     short, which at 6rem is very visible. */
-  .landing-title {
-    max-width: 18ch;
-    font-size: clamp(2.75rem, 9vw, 7rem);
+  /* Plain block, not flex — the seal is an inline sibling of the text node so
+     it wraps WITH the words and lands immediately after "sources", the claim
+     it is actually marking. A flex row here pinned it beside line one instead,
+     which read as an unrelated icon rather than a mark on the headline. */
+  .land-title {
+    position: relative;
+    max-width: 16ch;
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 7vw, 5.5rem);
     font-weight: 800;
-    line-height: 0.95;
-    letter-spacing: -0.04em;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
     text-wrap: balance;
-    color: var(--ink);
+    color: var(--brand-ink);
   }
-  .landing-sub {
-    max-width: 34ch;
-    margin-top: clamp(var(--sp-6), 4vw, var(--sp-10));
+  .land-seal {
+    display: inline-block;
+    color: var(--land-gold);
+    vertical-align: -0.08em;
+    margin-left: var(--sp-3);
+  }
+  .land-seal--hero {
+    width: clamp(28px, 4.5vw, 42px);
+    height: clamp(28px, 4.5vw, 42px);
+  }
+  .land-seal-ring {
+    stroke-dasharray: 170;
+    stroke-dashoffset: 170;
+    animation: land-seal-draw 700ms var(--ease-out) 500ms both;
+  }
+  .land-seal-check {
+    stroke-dasharray: 34;
+    stroke-dashoffset: 34;
+    animation: land-seal-draw 400ms var(--ease-out) 950ms both;
+  }
+  .land-sub {
+    max-width: 36ch;
+    margin-top: clamp(var(--sp-6), 4vw, var(--sp-8));
     font-size: var(--fs-lg);
     line-height: var(--lh-relaxed);
-    color: var(--ink-muted);
+    color: var(--brand-muted);
     text-wrap: pretty;
   }
-
-  .landing-actions {
+  .land-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-6);
-    margin-top: clamp(var(--sp-8), 4vw, var(--sp-12));
+    margin-top: clamp(var(--sp-8), 4vw, var(--sp-10));
   }
-  /* Ink, not brand. The violet is the identity; the one action on the page is
-     the thing you cannot miss, and on a violet-accented page the highest
-     contrast available is the ink itself. */
-  .landing-cta {
+  .land-cta {
     display: inline-flex;
     align-items: center;
     min-height: var(--touch-min-lg);
     padding: 0 var(--sp-8);
+    border-radius: var(--r-sm);
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
-    color: var(--ink-inverse);
-    background: var(--ink);
+    color: var(--brand);
+    background: var(--land-gold);
     text-decoration: none;
-    transition: background var(--t-fast) var(--ease);
+    transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease-out);
   }
-  .landing-cta:hover {
-    background: var(--ink-soft);
+  .land-cta:hover {
+    background: var(--land-gold-bright);
+    transform: translateY(-1px);
   }
-  .landing-note {
+  .land-cta:focus-visible,
+  .land-signin:focus-visible,
+  .land-foot-cta:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+  .land-arrow {
+    margin-left: var(--sp-2);
+    vertical-align: -1px;
+  }
+  .land-note {
     font-family: var(--font-mono);
     font-size: var(--fs-md);
-    color: var(--ink-faint);
+    color: var(--brand-muted);
   }
-  /* Quiet on purpose. The price is owed to the visitor, not sold to them —
-     it sits below the action at the weight of a footnote. */
-  .landing-price {
-    margin-top: var(--sp-6);
+  .land-price {
+    margin-top: var(--sp-5);
     font-size: var(--fs-md);
-    color: var(--ink-faint);
+    color: var(--brand-muted);
   }
 
-  .landing-foot {
+  /* ── proof: the one warm, paper-toned section ────────────────────────── */
+  .land-proof {
+    background: var(--land-paper);
+    color: rgb(var(--brand-rgb));
+    padding-top: clamp(var(--sp-12), 8vw, var(--sp-14));
+    padding-bottom: clamp(var(--sp-12), 8vw, var(--sp-14));
+  }
+  .land-heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--tracking-tight);
+  }
+  .land-excerpt {
+    display: grid;
+    grid-template-columns: 1fr 64px 1fr;
+    align-items: center;
+    margin-top: clamp(var(--sp-8), 5vw, var(--sp-10));
+  }
+  .land-excerpt-plan,
+  .land-excerpt-source {
     display: flex;
-    flex-shrink: 0;
+    gap: var(--sp-4);
+  }
+  .land-excerpt-source {
+    align-items: flex-start;
+  }
+  /* --land-gold measures 2.1:1 against --land-paper — fine as the hero's
+     fill-under-white-text, a failure as a stroke here. --land-gold-ink is
+     the same hue darkened to clear 3:1 for a graphical object. */
+  .land-proof .land-seal {
+    color: var(--land-gold-ink);
+  }
+  .land-seal--source {
+    width: 32px;
+    height: 32px;
+  }
+  /* The connector only draws once the section has scrolled into view — the
+     page's one scroll-triggered reveal, proving the same mechanism the copy
+     describes rather than just stating it. */
+  .land-connector {
+    width: 100%;
+    height: 90px;
+    color: rgb(var(--brand-rgb) / 0.35);
+  }
+  .land-connector path {
+    stroke-dasharray: 260;
+    stroke-dashoffset: 260;
+    transition: stroke-dashoffset 900ms var(--ease-out) 200ms;
+  }
+  .land-proof.is-inview .land-connector path {
+    stroke-dashoffset: 0;
+  }
+  .land-tag {
+    display: block;
+    margin-bottom: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+  .land-quote {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: var(--fs-lg);
+    line-height: var(--lh-relaxed);
+  }
+  .land-cite {
+    color: var(--land-gold-ink);
+    font-style: normal;
+    font-weight: var(--fw-bold);
+  }
+  .land-loc {
+    display: block;
+    margin-top: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    opacity: 0.6;
+  }
+
+  /* ── pipeline: a thread, not a card grid ─────────────────────────────── */
+  .land-pipeline {
+    padding-top: clamp(var(--sp-12), 7vw, var(--sp-14));
+    padding-bottom: clamp(var(--sp-10), 6vw, var(--sp-12));
+  }
+  .land-thread {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-8);
+  }
+  .land-thread-line {
+    position: absolute;
+    top: 5px;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    color: rgb(var(--brand-ink-rgb) / 0.18);
+  }
+  .land-thread-line line {
+    stroke-dasharray: 600;
+    stroke-dashoffset: 600;
+    transition: stroke-dashoffset 1100ms var(--ease-out) 100ms;
+  }
+  .land-pipeline.is-inview .land-thread-line line {
+    stroke-dashoffset: 0;
+  }
+  .land-node {
+    position: relative;
+    padding-top: var(--sp-6);
+  }
+  .land-node-dot {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: var(--r-full);
+    background: var(--land-gold);
+    transform: scale(0);
+    transition: transform var(--t-base) var(--ease-out) 900ms;
+  }
+  .land-pipeline.is-inview .land-node-dot {
+    transform: scale(1);
+  }
+  .land-stage {
+    display: block;
+    margin-bottom: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--land-gold);
+  }
+  .land-node p {
+    font-size: var(--fs-md);
+    line-height: var(--lh-relaxed);
+    color: var(--brand-muted);
+  }
+  .land-scope {
+    margin-top: clamp(var(--sp-8), 5vw, var(--sp-10));
+    font-size: var(--fs-sm);
+    color: rgb(var(--brand-ink-rgb) / 0.5);
+  }
+
+  /* ── footer ───────────────────────────────────────────────────────────── */
+  .land-foot {
+    display: flex;
     flex-wrap: wrap;
+    align-items: center;
     justify-content: space-between;
     gap: var(--sp-3) var(--sp-8);
-    padding: var(--sp-6) 0 clamp(var(--sp-6), 3vw, var(--sp-10));
-    border-top: 1px solid var(--edge-strong);
+    padding-top: var(--sp-6);
+    padding-bottom: clamp(var(--sp-8), 5vw, var(--sp-12));
     font-family: var(--font-mono);
     font-size: var(--fs-sm);
-    color: var(--ink-faint);
+    color: rgb(var(--brand-ink-rgb) / 0.5);
   }
+  .land-foot-cta {
+    display: inline-flex;
+    align-items: center;
+    font-weight: var(--fw-semibold);
+    color: var(--land-gold);
+    text-decoration: none;
+  }
+  .land-foot-cta:hover {
+    color: var(--land-gold-bright);
+  }
+
   @media (max-width: 767.98px) {
-    /* Three items across is two words per column on a phone. */
-    .landing-foot {
+    .land-title {
+      max-width: none;
+    }
+    .land-excerpt {
+      grid-template-columns: 1fr;
+      gap: var(--sp-6);
+    }
+    .land-connector {
+      display: none;
+    }
+    .land-excerpt-source {
+      position: relative;
+      padding-top: var(--sp-5);
+    }
+    .land-excerpt-source::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 28px;
+      height: 1.5px;
+      background: rgb(var(--brand-rgb) / 0.3);
+    }
+    .land-thread {
+      grid-template-columns: 1fr;
+      gap: var(--sp-8);
+    }
+    .land-thread-line {
+      display: none;
+    }
+    .land-foot {
       flex-direction: column;
-      gap: var(--sp-2);
+      align-items: flex-start;
+      gap: var(--sp-3);
     }
   }
 
@@ -2353,6 +2642,14 @@
   }
   100% {
     background: transparent;
+  }
+}
+/* The hero's verification seal draws itself in once, on load — a stamp being
+   set rather than an icon fading up. Ring first, then the check, so it reads
+   as one continuous gesture rather than two unrelated shapes appearing. */
+@keyframes land-seal-draw {
+  to {
+    stroke-dashoffset: 0;
   }
 }
 
