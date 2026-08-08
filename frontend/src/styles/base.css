@@ -2256,6 +2256,13 @@
     font-size: var(--fs-md);
     color: var(--ink-faint);
   }
+  /* Quiet on purpose. The price is owed to the visitor, not sold to them —
+     it sits below the action at the weight of a footnote. */
+  .landing-price {
+    margin-top: var(--sp-6);
+    font-size: var(--fs-md);
+    color: var(--ink-faint);
+  }
 
   .landing-foot {
     display: flex;

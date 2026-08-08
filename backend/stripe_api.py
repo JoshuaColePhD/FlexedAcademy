@@ -90,6 +90,13 @@ def _flatten(data: dict, prefix: str = "") -> list[tuple[str, str]]:
     return out
 
 
+# The price changes about never, and the public landing page asks for it on
+# every anonymous visit. Cached so a crawler cannot turn a marketing page into
+# a Stripe rate-limit problem.
+_PRICE_CACHE: dict[str, tuple[float, dict]] = {}
+PRICE_TTL_S = 600
+
+
 def get_price(price_id: str) -> dict:
     """Read the price from Stripe rather than hardcoding it in the UI.
 
@@ -97,14 +104,19 @@ def get_price(price_id: str) -> dict:
     number that goes stale the first time the price changes, and a paywall
     quoting the wrong figure is a promise the checkout page then breaks.
     """
+    hit = _PRICE_CACHE.get(price_id)
+    if hit and time.time() - hit[0] < PRICE_TTL_S:
+        return hit[1]
     p = _call("GET", f"/prices/{price_id}")
     recurring = p.get("recurring") or {}
-    return {
+    out = {
         "amount": p.get("unit_amount"),
         "currency": (p.get("currency") or "usd").upper(),
         "interval": recurring.get("interval"),
         "interval_count": recurring.get("interval_count") or 1,
     }
+    _PRICE_CACHE[price_id] = (time.time(), out)
+    return out
 
 
 def create_checkout_session(*, price_id: str, customer_id: str | None, email: str,

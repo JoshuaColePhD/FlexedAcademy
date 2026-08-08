@@ -184,6 +184,8 @@ export function installMockApi() {
            billing_enabled: true } */
     if (path === '/api/auth/me')
       return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', entitlement: state.entitlement })
+    if (path === '/api/billing/price')
+      return json({ price: { amount: 1000, currency: 'USD', interval: 'month', interval_count: 1 }, free_allowance: 1 })
     if (path === '/api/billing')
       return json({ ...state.entitlement, price: { amount: 1200, currency: 'USD', interval: 'month', interval_count: 1 } })
     if (path === '/api/billing/checkout' || path === '/api/billing/portal') {

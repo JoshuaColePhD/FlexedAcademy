@@ -176,6 +176,9 @@ export const api = {
      `checkout`/`portal` each return { url } to a Stripe-hosted page; the app
      never handles a card. */
   billing: ({ signal } = {}) => request('/api/billing', { signal }),
+  /** Public — the landing page has to be able to say what a subscription
+   *  costs before anyone has an account. */
+  publicPrice: ({ signal } = {}) => request('/api/billing/price', { signal }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 
