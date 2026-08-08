@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Check, ChevronsUpDown, Plus } from 'lucide-react'
+import { classColor } from '../lib/classColor'
 
 /* Which prep you're planning for. Sits at the top of the rail because it scopes
    everything under it — the year, the week, the chats, and the class a new plan
@@ -40,8 +41,13 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
 
   if (classes.length === 1) {
     return (
-      <p className="truncate px-3 pb-1 text-sm font-medium text-ink" title={classes[0].name}>
-        {classes[0].name}
+      <p className="flex items-center gap-2 truncate px-3 pb-1 text-sm font-medium text-ink" title={classes[0].name}>
+        <span
+          className="class-dot"
+          aria-hidden="true"
+          style={{ '--class-dot-color': `rgb(${classColor(classes[0].id).rgb})` }}
+        />
+        <span className="min-w-0 flex-1 truncate">{classes[0].name}</span>
       </p>
     )
   }
@@ -72,6 +78,13 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
         aria-expanded={open}
         className="flex min-h-touch w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-paper-inset"
       >
+        {activeClass ? (
+          <span
+            className="class-dot"
+            aria-hidden="true"
+            style={{ '--class-dot-color': `rgb(${classColor(activeClass.id).rgb})` }}
+          />
+        ) : null}
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
           {activeClass?.name || 'Choose a class'}
         </span>
@@ -100,6 +113,11 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
                     : 'text-ink-soft hover:bg-paper-sunken'
                 }`}
               >
+                <span
+                  className="class-dot"
+                  aria-hidden="true"
+                  style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
+                />
                 <span className="min-w-0 flex-1 truncate">{c.name}</span>
                 {c.id === activeClass?.id ? (
                   <Check size={13} aria-hidden="true" className="shrink-0 text-ok" />

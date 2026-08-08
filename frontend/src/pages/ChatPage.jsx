@@ -665,6 +665,7 @@ export function ChatPage() {
   const artifactEl = (
     <ArtifactPanel
       artifact={{ ...liveArtifact, plan: livePlan }}
+      classId={classId}
       missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
       onCollapse={collapse}
       onReviseDay={!isPhone && artifact?.planId ? reviseDay : undefined}

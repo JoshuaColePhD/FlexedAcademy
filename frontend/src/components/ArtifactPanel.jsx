@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
+import { classColor } from '../lib/classColor'
 import { LessonPlanTable } from './LessonPlanTable'
 import { Marginalia } from './Marginalia'
 
@@ -29,6 +30,7 @@ const VIEWS = [
 
 export function ArtifactPanel({
   artifact,
+  classId,
   onCollapse,
   onReviseDay,
   onPlanRevised,
@@ -43,6 +45,7 @@ export function ArtifactPanel({
   const toast = useToast()
   const panelRef = useRef(null)
   const titleRef = useRef(null)
+  const color = classColor(classId)
 
   /* Two questions, two answers. `isOverlay` decides whether the document
      COVERS the chat or docks beside it. `isPhone` decides what SHAPE the
@@ -94,7 +97,7 @@ export function ArtifactPanel({
       role={isOverlay ? 'dialog' : undefined}
       aria-modal={isOverlay ? 'true' : undefined}
     >
-      <div className="doc-head">
+      <div className="doc-head" style={{ '--doc-head-accent': `rgb(${color.rgb})` }}>
         <button
           type="button"
           className="doc-collapse fa-press"

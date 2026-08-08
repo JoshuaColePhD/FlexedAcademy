@@ -293,6 +293,14 @@
   --ok: rgb(var(--ok-rgb));
   --ok-tint: rgb(var(--ok-tint-rgb));
   --scrim: rgb(var(--scrim-rgb) / 0.28);
+  --rail-paper: rgb(var(--rail-paper-rgb));
+  --rail-pop: rgb(var(--rail-pop-rgb));
+  --rail-pop-tint: rgb(var(--rail-pop-tint-rgb));
+  --class-coral: rgb(var(--class-coral-rgb));
+  --class-rose: rgb(var(--class-rose-rgb));
+  --class-lime: rgb(var(--class-lime-rgb));
+  --class-cyan: rgb(var(--class-cyan-rgb));
+  --class-amber: rgb(var(--class-amber-rgb));
 
   --focus-ring: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent-ring);
 
@@ -313,6 +321,44 @@
     transparent 0 5px,
     rgb(var(--ink-faint-rgb) / 0.14) 5px 6px
   );
+
+  /* ── the rail's one warm note ─────────────────────────────────────────────
+     First pass here fully remapped the surface, ink, edge and accent
+     primitives inside .app-rail into a dark "spine", fixed regardless of
+     data-theme. Josh's call: keep every panel light, put the colour on the
+     rail's own EDGE instead — a strip, plus a frosted-glass material
+     (.app-glow, base.css) — and reserve this warm note for the one
+     interactive thing that earns colorize.md's "rarity gives an accent
+     force": the "New plan" CTA, the logo mark, and the glass's own diffused
+     glow. Distinct from --land-gold on purpose (the One Door Rule: gold
+     means "verified", landing-only) and from --flag's warning amber.
+     --rail-paper is reused as the mark's letter colour precisely because it
+     stays legible on --rail-pop regardless of data-theme — a fixed dark
+     value paired with a fixed accent. */
+  --rail-paper-rgb: 14 30 36;
+  --rail-pop-rgb: 255 138 101;
+  --rail-pop-tint-rgb: 61 38 32;
+
+  /* ── per-class colour ─────────────────────────────────────────────────────
+     Five swatches, assigned by a hash of the class id (lib/classColor.js) —
+     decoration with a job: telling two preps apart at a glance in a list that
+     is otherwise identical rows of text. Never the only signal; the class
+     name is always the text beside the dot. Declared here too (not only in
+     JS) so CSS-only contexts — the empty-state illustration's default stroke —
+     have one to reach for without importing JS into a stylesheet. */
+  --class-coral-rgb: 255 122 89;
+  --class-rose-rgb: 240 98 146;
+  --class-lime-rgb: 184 214 63;
+  --class-cyan-rgb: 56 209 224;
+  --class-amber-rgb: 255 167 38;
+
+  /* Per-instance custom properties, set inline by the component that knows
+     the actual value (a class's colour, a document's colour) — these are the
+     base declarations check-tokens.mjs wants for every property CSS
+     references, not the values that render. See .class-dot and .doc-head. */
+  --class-dot-color: var(--ink-faint);
+  --class-dot-size: 7px;
+  --doc-head-accent: transparent;
 }
 
 /* dvh where it exists. Declared after :root so it wins, and as its own block so

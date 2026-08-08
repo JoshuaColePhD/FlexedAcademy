@@ -123,9 +123,13 @@ function Rail({ onNavigate, onClose }) {
   return (
     <>
       <div className="flex h-14 shrink-0 items-center gap-2 px-3">
+        {/* The rail's one warm note carried straight onto the mark, instead of
+            the flat bg-ink/text-ink-inverse pairing every icon badge in the
+            app otherwise shares. */}
         <span
           aria-hidden="true"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-ink text-[0.75rem] font-bold text-ink-inverse"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[0.75rem] font-bold"
+          style={{ background: 'var(--rail-pop)', color: 'var(--rail-paper)' }}
         >
           F
         </span>
@@ -142,14 +146,18 @@ function Rail({ onNavigate, onClose }) {
       <ClassSwitcher classes={classes} activeClass={activeClass} classPath={classPath} />
 
       <div className="px-2 pb-1 pt-1">
+        {/* The one thing a teacher opens this app to do. Rarity is the whole
+            strategy for --rail-pop (colorize.md) — it earns the warm note
+            because this is the single most-pressed control in the rail, not
+            because a button needed decorating. */}
         <Link
           to={classPath}
           onClick={onNavigate}
-          className="flex min-h-touch items-center gap-2 rounded-lg bg-paper-inset px-3 text-sm font-medium text-ink transition-colors hover:bg-edge"
+          className="rail-cta flex min-h-touch items-center gap-2 rounded-lg px-3 text-sm font-medium"
         >
           <Plus size={15} aria-hidden="true" />
           <span className="flex-1">New plan</span>
-          <kbd className="font-mono text-2xs text-ink-faint">⌘K</kbd>
+          <kbd className="font-mono text-2xs">⌘K</kbd>
         </Link>
       </div>
 
@@ -226,10 +234,16 @@ export function AppShell({ children }) {
         Skip to content
       </a>
 
+      {/* Fixed, blurred, behind everything — the thing .app-rail's
+          backdrop-filter actually has to diffuse. A frosted-glass panel over a
+          flat colour is not glass, it's just translucent; this is what makes
+          the rail read as material rather than an opacity slider. */}
+      <div className="app-glow" aria-hidden="true" />
+
       {/* docked */}
       {!isNarrow ? (
         <div
-          className="flex shrink-0 flex-col overflow-hidden border-r border-edge bg-paper-sunken transition-[width] duration-300 ease-out"
+          className="app-rail flex shrink-0 flex-col overflow-hidden transition-[width] duration-300 ease-out"
           style={{ width: docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)' }}
         >
           <Rail />
@@ -247,7 +261,7 @@ export function AppShell({ children }) {
           />
           <div
             ref={drawerRef}
-            className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col bg-paper-sunken shadow-lg"
+            className="app-rail fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col shadow-lg"
           >
             <Rail onNavigate={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} />
           </div>

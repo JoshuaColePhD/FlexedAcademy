@@ -102,6 +102,84 @@
     color: var(--ink-muted);
   }
 
+  /* ══ THE RAIL'S OWN GROUND ═══════════════════════════════════════════════
+     A remap, not a repaint: overriding the generic surface/ink/edge/accent
+     variables here re-themes every Tailwind utility already written inside
+     it (bg-paper-inset, text-ink-soft, border-edge, text-accent-text, …) —
+     ClassSwitcher, the chat list, and AccountMenu need zero changes to read
+     correctly against this ground. See tokens.css for why the values are
+     fixed regardless of data-theme. */
+  /* A dark, fully-remapped ground was the first pass here — Josh's call was
+     to keep every panel light and put the colour on the rail's OWN edge
+     instead: a strip, not a wash. So this is now the border only; the rail
+     keeps the plain bg-paper-sunken it always had (see AppShell.jsx), and
+     nothing inside it needs to change at all. */
+  /* Fixed, low-opacity, blurred at the SOURCE (filter, not backdrop-filter) —
+     .app-rail's own backdrop-filter is what turns this into the visible wash
+     behind its glass. Sized and positioned to sit mostly behind the rail; it
+     bleeds a little past that edge on purpose, the way light does. */
+  .app-glow {
+    position: fixed;
+    top: -140px;
+    left: -140px;
+    z-index: 0;
+    height: 460px;
+    width: 460px;
+    border-radius: var(--r-full);
+    background: radial-gradient(
+      circle,
+      rgb(var(--rail-pop-rgb) / 0.4) 0%,
+      rgb(var(--class-cyan-rgb) / 0.28) 55%,
+      transparent 78%
+    );
+    filter: blur(20px);
+    pointer-events: none;
+  }
+
+  /* Liquid Glass: translucent, not flat-with-a-border — .app-glow above is
+     what the blur actually diffuses. `saturate` is doing real work here, not
+     just blur: backdrop-filter blur alone on a mostly-white panel muddies
+     colour toward gray, and saturate(1.4) is what keeps the diffused glow
+     looking like glass over colour rather than glass over fog. The strip is
+     the one hard edge Josh asked for — everything else about this material
+     stays soft. */
+  .app-rail {
+    position: relative;
+    z-index: 1;
+    border-right: 3px solid var(--rail-pop);
+    background: rgb(var(--paper-rgb) / 0.72);
+    backdrop-filter: blur(28px) saturate(1.4);
+    -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  }
+
+  /* Per-class colour, decoration with a job — see lib/classColor.js. Sized by
+     a CSS custom property rather than a Tailwind class per instance, since the
+     colour itself is already inline (`style`) and a size modifier is cheaper
+     than a second inline style object at every call site. */
+  .class-dot {
+    display: inline-block;
+    height: var(--class-dot-size, 7px);
+    width: var(--class-dot-size, 7px);
+    flex-shrink: 0;
+    border-radius: var(--r-full);
+    background: var(--class-dot-color, var(--ink-faint));
+  }
+
+  /* "New plan" — the rail's one CTA, see the comment beside its call site. */
+  .rail-cta {
+    color: var(--rail-pop);
+    background: var(--rail-pop-tint);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  }
+  .rail-cta:hover {
+    color: var(--rail-paper);
+    background: var(--rail-pop);
+  }
+  .rail-cta kbd {
+    color: inherit;
+    opacity: 0.65;
+  }
+
   .eyebrow {
     font-family: var(--font-ui);
     font-size: var(--fs-2xs);
@@ -1545,10 +1623,19 @@
     background: var(--paper-raised);
   }
   .rail-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-3);
     padding: 11px 13px;
     font-size: var(--fs-xs);
     line-height: var(--lh-relaxed);
     color: var(--ink-muted);
+  }
+  .rail-empty-art {
+    height: 40px;
+    width: 54px;
+    opacity: 0.8;
   }
 
   /* ══ THE EXPANDED DOCUMENT ════════════════════════════════════════════════
@@ -1569,13 +1656,26 @@
   .artifact-overlay .doc-shell {
     border-left: none;
   }
+  /* The one thread that carries a document's class-colour up from the
+     collapsed rail's tinted file tile (see ArtifactRail.jsx) into the expanded
+     panel — a 2px rule, not a fill, so it reads as a mark of whose document
+     this is rather than a colour the .doc-sheet itself (the printed page
+     simulation) ever touches. */
   .doc-head {
+    position: relative;
     display: flex;
     height: 54px;
     flex-shrink: 0;
     align-items: center;
     gap: var(--sp-2);
     padding: 0 18px;
+  }
+  .doc-head::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    background: var(--doc-head-accent, transparent);
   }
   .doc-collapse {
     display: grid;

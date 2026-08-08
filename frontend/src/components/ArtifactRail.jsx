@@ -4,6 +4,34 @@ import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { orderedDays } from '../lib/planShape'
+import { classColor } from '../lib/classColor'
+
+/* A quiet line-art sketch for the one moment the rail has nothing to show —
+   an open notebook, not a stock "empty box" glyph. Authored, not a Unicode
+   glyph standing in for an icon (craft-floor's own ban); currentColor so it
+   themes with whatever wraps it rather than carrying its own hex. */
+function EmptyRailArt({ color }) {
+  return (
+    <svg
+      viewBox="0 0 64 48"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="rail-empty-art"
+      style={{ color: `rgb(${color})` }}
+    >
+      <path d="M32 10 C27 6 19 5 10 6 L10 38 C19 37 27 38 32 42 C37 38 45 37 54 38 L54 6 C45 5 37 6 32 10 Z" />
+      <path d="M32 10 L32 42" />
+      <path d="M15 15 L26 14" opacity="0.55" />
+      <path d="M15 21 L25 20" opacity="0.55" />
+      <path d="M38 14 L49 15" opacity="0.55" />
+      <path d="M39 20 L49 21" opacity="0.55" />
+    </svg>
+  )
+}
 
 /* The artifact rail — 240px, and the default.
  *
@@ -59,6 +87,7 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
      nothing else. "Built from" is dropped rather than squeezed — it already
      travels in the message as the week strip and the grounding line. */
   const isBar = variant === 'bar'
+  const color = classColor(classId)
 
   /* Already fetched by ClassPage under the same key, so opening a chat after
      visiting My Classes costs nothing. Best-effort: a class with no uploaded
@@ -102,7 +131,16 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
              The card is a plain container; the title is the button. */
           <div className="rail-card fa-lift" onClick={onExpand}>
             <span className="rail-card-head">
-              <span className="rail-tile">
+              {/* Tinted by the class's own colour (lib/classColor.js) rather
+                  than the flat --paper-inset + --accent-text every artifact
+                  used to share — a teacher with three preps could not tell
+                  which class's rail they were looking at without reading the
+                  text. Background at low alpha keeps it a tint, not a fill;
+                  the icon carries the full colour. */}
+              <span
+                className="rail-tile"
+                style={{ background: `rgb(${color.rgb} / 0.16)`, color: `rgb(${color.rgb})` }}
+              >
                 <FileText size={15} aria-hidden="true" />
               </span>
               <button
@@ -156,7 +194,12 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
             </span>
           </div>
         ) : (
-          <p className="rail-empty">Nothing built yet. Describe a week in the chat.</p>
+          <div className="rail-empty">
+            {/* No room for it in the one-row phone bar — same reasoning as
+                dropping "Built from" a few lines up. */}
+            {!isBar ? <EmptyRailArt color={color.rgb} /> : null}
+            <p>Nothing built yet. Describe a week in the chat.</p>
+          </div>
         )}
       </div>
 
