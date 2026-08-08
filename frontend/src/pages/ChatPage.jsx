@@ -152,10 +152,39 @@ export function ChatPage() {
         setMessages(loaded)
         localFor.current = chatId
         const last = [...loaded].reverse().find((m) => m.planId)
+
         if (!last) {
-          setArtifact(null)
+          /* No message names a plan — but the chat may still HAVE one.
+             Until the assistant message started being persisted, generation
+             wrote the plan (with its chat_id) and nothing else, so every week
+             built before that fix was stranded: the conversation reopened with
+             no artifact, no rail and no way to the .docx, even though the row
+             was sitting in the database the whole time. The plan knows which
+             chat it came from, so ask it directly. */
+          try {
+            const { items = [] } = await api.listPlans({ chat_id: chatId, limit: 1 })
+            if (cancelled) return
+            if (!items[0]) {
+              setArtifact(null)
+              return
+            }
+            // The list view drops plan_json (db.list_plans pops it), so the
+            // week itself still has to be fetched by id.
+            const plan = await api.getPlan(items[0].id)
+            if (cancelled) return
+            setArtifact({
+              planId: plan.id,
+              plan: plan.plan_json,
+              warnings: plan.warnings,
+              retrievedIds: plan.retrieved_ids,
+              unit: plan.unit,
+            })
+          } catch {
+            if (!cancelled) setArtifact(null)
+          }
           return
         }
+
         try {
           const plan = await api.getPlan(last.planId)
           if (cancelled) return

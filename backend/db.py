@@ -742,11 +742,22 @@ def get_plan(user_id: str, plan_id: str) -> dict | None:
     return _hydrate_plan(row) if row else None
 
 
-def list_plans(user_id: str, *, limit: int = 50, offset: int = 0, q: str | None = None, class_id: str | None = None) -> dict:
+def list_plans(
+    user_id: str,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    q: str | None = None,
+    class_id: str | None = None,
+    chat_id: str | None = None,
+) -> dict:
     where, params = "WHERE user_id = ?", [user_id]
     if class_id:
         where += " AND class_id = ?"
         params.append(class_id)
+    if chat_id:
+        where += " AND chat_id = ?"
+        params.append(chat_id)
     if q:
         where += " AND (week_label LIKE ? OR query LIKE ? OR unit LIKE ?)"
         like = f"%{q}%"

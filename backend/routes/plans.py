@@ -53,9 +53,17 @@ def list_plans(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=200),
+    # Which plan did THIS conversation produce?
+    #
+    # The UI answers that by scanning the chat's messages for one carrying a
+    # plan_id — and for every chat created before the assistant message was
+    # persisted, there is no such message. The plan itself is fine and has
+    # carried chat_id all along; it was only unreachable. This is the lookup
+    # that recovers those.
+    chat_id: str | None = Query(None, max_length=64),
     user_id: str = Depends(get_current_user),
 ):
-    return db.list_plans(user_id, limit=limit, offset=offset, q=q)
+    return db.list_plans(user_id, limit=limit, offset=offset, q=q, chat_id=chat_id)
 
 
 @router.get("/{plan_id}")

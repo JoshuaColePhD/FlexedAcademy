@@ -79,8 +79,16 @@ let seq = 0
 const uid = (p) => `${p}_${++seq}`
 
 const state = {
-  chats: [{ id: 'seed1', title: 'Week 03 — voice and tone', updated_at: '2026-08-07' }],
+  chats: [
+    { id: 'seed1', title: 'Week 03 — voice and tone', updated_at: '2026-08-07' },
+    { id: 'stranded', title: 'plan week 12 on satire', updated_at: '2026-08-06' },
+  ],
   messages: {
+    // The pre-fix shape: a plan was built, but no assistant message was ever
+    // persisted, so nothing in the transcript names it. Only plans.chat_id knows.
+    stranded: [
+      { role: 'user', content: 'plan week 12 on satire', plan_id: null },
+    ],
     seed1: [
       { role: 'user', content: 'Plan Week 03 — voice and tone with "The Cask of Amontillado."' },
       {
@@ -90,7 +98,8 @@ const state = {
       },
     ],
   },
-  plans: { plan1: makePlan('Week 03 — Aug 17-21, 2026') },
+  plans: { plan1: makePlan('Week 03 — Aug 17-21, 2026'), planOrphan: makePlan('Week 12 — Oct 19-23, 2026') },
+  planChat: { plan1: 'seed1', planOrphan: 'stranded' },
   documents: [],
 }
 
@@ -244,6 +253,14 @@ export function installMockApi() {
         plan_id: body.plan_id || null,
       })
       return json({ ok: true })
+    }
+
+    if (path === '/api/plans' && method === 'GET') {
+      await wait(latency.getPlan)
+      const chatId = new URL(url, location.origin).searchParams.get('chat_id')
+      const ids = Object.keys(state.plans).filter((id) => !chatId || state.planChat[id] === chatId)
+      // Mirrors db.list_plans: the list view drops plan_json.
+      return json({ items: ids.map((id) => ({ id, week_label: state.plans[id].week_of })), total: ids.length })
     }
 
     /* ── plans ───────────────────────────────────────────────────────────── */
