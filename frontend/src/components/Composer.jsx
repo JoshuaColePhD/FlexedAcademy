@@ -223,18 +223,7 @@ export function Composer({
                   ? 'text-accent-text hover:bg-accent-tint'
                   : 'text-ink-muted hover:bg-paper-sunken hover:text-ink'
               }`}
-              onClick={() => {
-                const turningOn = !voice.enabled
-                voice.toggle()
-                // A bare icon toggle has no hover tooltip on a phone, and this
-                // is the one control in the app with no other on-screen state
-                // to confirm it did anything — so the confirmation has to be
-                // the toggle's own feedback, not implicit in a later screen.
-                toast.success(
-                  turningOn ? 'Spoken replies on' : 'Spoken replies off',
-                  turningOn ? "I'll read new answers out loud." : undefined
-                )
-              }}
+              onClick={voice.toggle}
               aria-pressed={voice.enabled}
               aria-label={voice.enabled ? 'Turn off spoken replies' : 'Turn on spoken replies'}
               title={voice.enabled ? 'Spoken replies: on' : 'Spoken replies: off'}
