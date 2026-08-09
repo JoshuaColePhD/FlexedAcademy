@@ -1,11 +1,11 @@
 ---
 name: Flexed Academy
-description: Cool-paper, district-blue lesson planner; a verified seal on violet at the door.
+description: Warm-paper, district-blue lesson planner; a verified seal on violet at the door.
 colors:
-  paper: "#fbfbfc"
+  paper: "#f6f4ec"
   ink: "#14161a"
   ink-muted: "#666d78"
-  edge-strong: "#cdd1d9"
+  edge-strong: "#c3bdac"
   accent-district-blue: "#2f5fbf"
   brand-violet-ground: "#241047"
   brand-ink-lavender: "#EDE6FB"
@@ -66,7 +66,7 @@ components:
 
 **Creative North Star (marketing door only): "The Verified Seal"**
 
-The product itself is a plain, cool-neutral document tool: paper and ink, one district blue that means something because it is the exact color printed on the .docx a teacher hands in. The landing page is the one deliberate exception: it commits to a violet-ground brand world — always, regardless of the visitor's OS light/dark setting — rather than a thin violet accent on white.
+The product itself is a plain, warm-neutral document tool: paper and ink, one district blue that means something because it is the exact color printed on the .docx a teacher hands in. (The app's paper was cool-neutral through an earlier iteration; it's warm now, closer to Claude's own palette, per direct product direction — see the header of tokens.css.) The landing page is the one deliberate exception: it commits to a violet-ground brand world — always, regardless of the visitor's OS light/dark setting — rather than a thin violet accent on white.
 
 The original direction took its cue from a supplied logo mark (a violet gem glowing on near-black), but that file turned out to be a flat opaque PNG with no alpha channel — it rendered as a hard white-cornered square against the violet ground rather than blending in, and was removed at Josh's request. The header is text-only ("Flexed Academy") until a transparent-background version of the mark exists; the violet-ground world itself stands on its own and doesn't require the mark to justify it.
 
@@ -93,7 +93,7 @@ A first pass at this page (a steel-and-glass "glazier's wall" metaphor, bordered
 - **Document Paper** (`#FAF7F2`, `--land-paper`): the one warm section, holding the real-document excerpt only.
 
 ### Neutral (product)
-- **Paper** (`#fbfbfc` light / `#101216` dark, `--paper`), **Ink** (`#14161a` / `#eaedf2`, `--ink`), **Ink Muted** (`#666d78`, `--ink-muted`), **Edge Strong** (`#cdd1d9`, `--edge-strong`).
+- **Paper** (`#f6f4ec` light / `#1f1d1b` dark, `--paper`), **Ink** (`#14161a` / `#eaedf2`, `--ink`), **Ink Muted** (`#666d78`, `--ink-muted`), **Edge Strong** (`#c3bdac`, `--edge-strong`).
 
 ### Status
 - **Mark** (`#b3261e`), **Flag** (`#a15c07`), **Ok** (`#1f6a45`) — destructive / grounding-warning / confirmed, unchanged from the product.
