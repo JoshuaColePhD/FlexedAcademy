@@ -124,16 +124,6 @@ function Rail({ onNavigate, onClose }) {
   return (
     <>
       <div className="flex h-14 shrink-0 items-center gap-2 px-3">
-        {/* The rail's one warm note carried straight onto the mark, instead of
-            the flat bg-ink/text-ink-inverse pairing every icon badge in the
-            app otherwise shares. */}
-        <span
-          aria-hidden="true"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[0.75rem] font-bold"
-          style={{ background: 'var(--rail-pop)', color: 'var(--rail-paper)' }}
-        >
-          F
-        </span>
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-ink">
           Flexed Academy
         </span>

@@ -58,16 +58,6 @@ export function AuthLayout({ title, subtitle, children, footer }) {
             className="flex w-fit items-center gap-2.5 rounded-md transition-opacity hover:opacity-80"
             aria-label="Flexed Academy — back to the home page"
           >
-            {/* --ink, not --accent. Rule 4 reserves blue for "something is
-                waiting for you"; a logo mark is not waiting for anything, and
-                spending the accent here is what makes it stop meaning anything
-                on the calendar. */}
-            <span
-              aria-hidden="true"
-              className="grid h-7 w-7 place-items-center rounded-md bg-ink text-[0.8125rem] font-bold text-ink-inverse"
-            >
-              F
-            </span>
             <span className="text-sm font-semibold tracking-tight text-ink">Flexed Academy</span>
           </Link>
 

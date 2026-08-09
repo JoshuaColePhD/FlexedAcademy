@@ -15,12 +15,6 @@ export function BootScreen() {
       {/* the rail */}
       <div className="hidden w-[264px] shrink-0 flex-col gap-4 border-r border-edge bg-paper-sunken p-4 lg:flex">
         <div className="flex items-center gap-2.5">
-          <span
-            aria-hidden="true"
-            className="grid h-7 w-7 place-items-center rounded-md bg-ink text-[0.8125rem] font-bold text-ink-inverse"
-          >
-            F
-          </span>
           <span className="text-sm font-semibold tracking-tight text-ink">Flexed Academy</span>
         </div>
         <div className="mt-2 flex flex-col gap-2">
