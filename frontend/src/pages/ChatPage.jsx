@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
+import { useVoice } from '../lib/voiceContext'
 import { useShell } from '../lib/shellContext'
 import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
@@ -68,6 +69,7 @@ export function ChatPage() {
   const qc = useQueryClient()
   const { refresh: refreshAuth } = useAuth()
   const { mayGenerate, openPaywall } = useBilling()
+  const voice = useVoice()
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
@@ -145,6 +147,13 @@ export function ChatPage() {
    * matters because StrictMode double-invokes effects in dev. */
   const localFor = useRef(null)
 
+  /* The last message id VoiceProvider has already spoken (or been told to
+     skip, on history load — see below). Primed to the newly-loaded
+     transcript's own last id the moment a conversation opens, so opening an
+     old chat with ten messages doesn't queue up ten replies of audio; only a
+     message that arrives AFTER that point — a live reply — gets spoken. */
+  const lastSpokenRef = useRef(null)
+
   /* ── load an existing conversation and whatever plan it produced ──────── */
   useEffect(() => {
     let cancelled = false
@@ -165,6 +174,7 @@ export function ChatPage() {
       setRailOpen(false)
       setSelectedWeek(null)
       localFor.current = null
+      lastSpokenRef.current = null
       return undefined
     }
     // The transcript on screen is already this chat's — nothing to catch up on.
@@ -192,6 +202,7 @@ export function ChatPage() {
         }))
         setMessages(loaded)
         localFor.current = chatId
+        lastSpokenRef.current = loaded.length ? loaded[loaded.length - 1].id : null
         const last = [...loaded].reverse().find((m) => m.planId)
 
         if (!last) {
@@ -658,6 +669,22 @@ export function ChatPage() {
   useEffect(() => {
     if (atBottom) endRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, atBottom])
+
+  /* Voice mode's other half — see VoiceProvider for the mic button's. One
+     effect watching `messages` catches every assistant reply this component
+     creates (build confirmations, revision confirmations, errors, the whole
+     handful of call sites in submit() below) without having to thread
+     voice.speak() through each of them individually and risk a future one
+     going quiet by omission. Guarded on the message's OWN id, not a count,
+     so a load-more or a deleted message can't cause a stale reply to be
+     spoken again. */
+  useEffect(() => {
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || last.streaming) return
+    if (lastSpokenRef.current === last.id) return
+    lastSpokenRef.current = last.id
+    if (voice.enabled) voice.speak(last.content)
+  }, [messages, voice])
 
   const livePlan = artifact?.plan || stream.preview
   const liveArtifact = useMemo(

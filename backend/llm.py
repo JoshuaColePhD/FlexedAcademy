@@ -386,6 +386,17 @@ def transcribe(path: str) -> str:
     return result.text
 
 
+def synthesize_speech(text: str) -> bytes:
+    """The other half of transcribe() above — text in, spoken audio out."""
+    resp = client().audio.speech.create(
+        model=settings.tts_model,
+        voice=settings.tts_voice,
+        input=text,
+        response_format="mp3",
+    )
+    return resp.content
+
+
 def stream_chat(messages: list[dict]) -> Iterator[dict]:
     """Conversational streaming. Yields dicts with 'chunk' or 'tool_call'.
     

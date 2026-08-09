@@ -213,6 +213,26 @@ export const api = {
     fd.append('audio', blob, 'recording.webm')
     return upload('/api/transcribe', fd, { signal })
   },
+  /* The other direction from transcribe() above — text in, an audio Blob
+     out. Not routed through request(): that helper always calls res.json(),
+     and this response is audio/mpeg bytes, not JSON. */
+  synthesizeSpeech: async (text, { signal } = {}) => {
+    let res
+    try {
+      res = await fetch(`${API_BASE}/api/tts`, {
+        method: 'POST',
+        signal,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+    } catch (err) {
+      if (err.name === 'AbortError') throw err
+      throw new ApiError('Can’t reach the server.', { code: 'network_error' })
+    }
+    if (!res.ok) throw await toError(res)
+    return res.blob()
+  },
   extractText: (file, { signal } = {}) => {
     const fd = new FormData()
     fd.append('file', file)

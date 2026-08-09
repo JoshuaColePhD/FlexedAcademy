@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     common_standards_api_key: str = ""
 
+    # ── voice replies ────────────────────────────────────────────────────────
+    # tts-1, not tts-1-hd: these are short chat confirmations, not narration,
+    # and the standard model is noticeably cheaper and lower-latency for the
+    # same intelligibility at that length.
+    tts_model: str = "tts-1"
+    tts_voice: str = "alloy"
+    # A chat reply is a sentence or two by construction (see ChatPage's
+    # "Built {week}. Tell me what to change…"). This is a cost/abuse floor,
+    # not a real limit anything should ever hit.
+    max_tts_chars: int = 2000
+
     # ── billing ──────────────────────────────────────────────────────────────
     # One week of plans free, then a subscription. The rule lives in exactly one
     # place: backend/entitlement.py.

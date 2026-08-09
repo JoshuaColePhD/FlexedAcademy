@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowUp, FileText, Loader2, Mic, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, FileText, Loader2, Mic, Paperclip, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
+import { useVoice } from '../lib/voiceContext'
 
 const MAX_H = 220
 
@@ -22,6 +23,7 @@ export function Composer({
   sendLabel = 'Send',
 }) {
   const toast = useToast()
+  const voice = useVoice()
   const textareaRef = useRef(null)
   const wrapperRef = useRef(null)
   const mediaRecorder = useRef(null)
@@ -208,6 +210,27 @@ export function Composer({
           />
 
           <div className="flex shrink-0 items-center gap-1 pb-0.5">
+            {/* The mic button is speech IN (dictation, into the text field);
+                this is speech OUT — the assistant's replies read aloud. Off
+                by default and toggled here rather than always-on: audio that
+                starts talking on its own the moment a plan finishes is fine
+                alone at a desk, not fine in a workroom with colleagues
+                around. */}
+            <button
+              type="button"
+              className={`tap-target flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+                voice.enabled
+                  ? 'text-accent-text hover:bg-accent-tint'
+                  : 'text-ink-muted hover:bg-paper-sunken hover:text-ink'
+              }`}
+              onClick={voice.toggle}
+              aria-pressed={voice.enabled}
+              aria-label={voice.enabled ? 'Turn off spoken replies' : 'Turn on spoken replies'}
+              title={voice.enabled ? 'Spoken replies: on' : 'Spoken replies: off'}
+            >
+              {voice.enabled ? <Volume2 size={18} aria-hidden="true" /> : <VolumeX size={18} aria-hidden="true" />}
+            </button>
+
             {isTranscribing ? (
               <button
                 type="button"

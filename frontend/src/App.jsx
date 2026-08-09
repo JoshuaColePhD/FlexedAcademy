@@ -17,6 +17,7 @@ import { ConfirmProvider } from './components/ConfirmProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './components/AuthProvider'
 import { BillingProvider } from './components/BillingProvider'
+import { VoiceProvider } from './components/VoiceProvider'
 import { useAuth, EXPLICIT_SIGNOUT_KEY } from './lib/authContext'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
@@ -318,8 +319,10 @@ export default function App() {
                 <AuthProvider>
                   {/* Inside AuthProvider: the entitlement rides on the user. */}
                   <BillingProvider>
-                    <CommandK />
-                    <Gate />
+                    <VoiceProvider>
+                      <CommandK />
+                      <Gate />
+                    </VoiceProvider>
                   </BillingProvider>
                 </AuthProvider>
               </ConfirmProvider>

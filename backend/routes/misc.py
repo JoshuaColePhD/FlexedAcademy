@@ -9,6 +9,7 @@ from pathlib import Path
 from collections import Counter
 
 from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .. import db, docx_build, llm, retrieval, service
@@ -310,6 +311,20 @@ async def transcribe(audio: UploadFile = File(...)):
         return {"text": llm.transcribe(str(path))}
     finally:
         path.unlink(missing_ok=True)
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=settings.max_tts_chars)
+
+
+@router.post("/tts")
+def synthesize_speech(req: TTSRequest, user_id: str = Depends(get_current_user)):
+    """The assistant's chat replies, spoken aloud. Authenticated like every
+    other OpenAI-backed route — this bills the same API key transcribe()
+    already does, and a public speech-synthesis endpoint is a free relay for
+    anyone who finds it."""
+    audio = llm.synthesize_speech(req.text)
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 def read_text_from_path(path: Path, ext: str) -> str:
