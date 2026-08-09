@@ -132,7 +132,11 @@ export function Greeting({ onPick, onDraft, className: courseName }) {
                 className="group flex min-h-touch w-full items-baseline gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-paper-sunken"
               >
                 <span className="text-sm font-medium text-ink">{s.label}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-2xs tabular-nums text-ink-faint">
+                {/* --ink-muted, not --ink-faint: this is the week's actual dates
+                    or a real pacing-guide note, not decoration — --ink-faint
+                    reads under 3:1 against --paper in light mode, well short of
+                    the 4.5:1 small text needs. */}
+                <span className="min-w-0 flex-1 truncate font-mono text-2xs tabular-nums text-ink-muted">
                   {s.detail}
                 </span>
                 <span

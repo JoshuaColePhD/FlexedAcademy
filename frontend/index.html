@@ -24,7 +24,7 @@
     <!-- Value is written by the pre-paint script below so it follows data-theme
          rather than the system scheme; a teacher who forced light mode on a dark
          phone should not get a dark status bar. -->
-    <meta name="theme-color" content="#fbfbfc" />
+    <meta name="theme-color" content="#f6f4ec" />
     <meta
       name="description"
       content="Build a week of lesson plans for your class, grounded in the Alabama Course of Study and delivered in the Florence City Schools template."
@@ -63,7 +63,7 @@
         // Literal hex because a meta tag can't read a custom property; these are
         // the two --paper-rgb values in tokens.css.
         var tc = document.querySelector('meta[name="theme-color"]')
-        if (tc) tc.setAttribute('content', dark ? '#101216' : '#fbfbfc')
+        if (tc) tc.setAttribute('content', dark ? '#1f1d1b' : '#f6f4ec')
       } catch (e) {
         document.documentElement.setAttribute('data-theme', 'light')
       }

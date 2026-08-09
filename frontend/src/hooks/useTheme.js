@@ -36,7 +36,7 @@ export function useTheme() {
       // tag cannot read a custom property — these are --paper-rgb in tokens.css.
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', next === 'dark' ? '#101216' : '#fbfbfc')
+        ?.setAttribute('content', next === 'dark' ? '#1f1d1b' : '#f6f4ec')
     }
     apply()
 

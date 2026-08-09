@@ -74,8 +74,10 @@ export function AccountMenu({ classPath }) {
           tabIndex={-1}
           className="absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-lg border border-edge bg-paper-raised py-1 shadow-lg"
         >
+          {/* --ink-muted: an email address is identity, not decoration —
+              --ink-faint reads under 3:1 against --paper in light mode. */}
           {user?.email ? (
-            <p className="truncate px-3 py-1.5 text-2xs text-ink-faint">{user.email}</p>
+            <p className="truncate px-3 py-1.5 text-2xs text-ink-muted">{user.email}</p>
           ) : null}
           {/* Subscription. Hidden entirely while billing is unconfigured — an
               account menu offering to manage a subscription that cannot exist
@@ -104,7 +106,7 @@ export function AccountMenu({ classPath }) {
                 <Sparkles size={14} aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">Subscribe</span>
                 {entitlement && entitlement.free_remaining > 0 ? (
-                  <span className="shrink-0 text-2xs text-ink-faint">
+                  <span className="shrink-0 text-2xs text-ink-muted">
                     {entitlement.free_remaining} free left
                   </span>
                 ) : null}

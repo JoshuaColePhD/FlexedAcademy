@@ -107,7 +107,7 @@ export function AdminPage() {
         <div className="overflow-hidden rounded-xl border border-edge">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-faint">
+              <tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted">
                 <th className="px-3 py-2 font-medium">Account</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Plans built</th>
@@ -121,7 +121,7 @@ export function AdminPage() {
                 <tr key={a.id} className="border-b border-edge last:border-0">
                   <td className="px-3 py-2">
                     <div className="font-medium text-ink">{a.name}</div>
-                    <div className="text-2xs text-ink-faint">
+                    <div className="text-2xs text-ink-muted">
                       {a.email}
                       {a.is_admin ? ' · admin' : ''}
                     </div>
@@ -149,7 +149,10 @@ export function AdminPage() {
         </div>
       )}
 
-      <p className="mt-4 text-2xs text-ink-faint">
+      {/* --ink-muted, not --ink-faint: this explains real behavior (what
+          the buttons above actually do), not a decorative caption —
+          --ink-faint reads under 3:1 against --paper in light mode. */}
+      <p className="mt-4 text-2xs text-ink-muted">
         "Grant unlimited" sets the account to comped — the same status your own account has. It bypasses
         the free-week limit entirely and never expires on its own; use "Revoke unlimited" to put an
         account back on the ordinary free week.

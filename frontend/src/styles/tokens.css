@@ -174,15 +174,17 @@
 
   /* ══ LIGHT ═══════════════════════════════════════════════════════════════ */
 
-  /* surfaces — cool neutrals, a half-step apart */
-  --paper-rgb: 251 251 252;
-  --paper-raised-rgb: 255 255 255;
-  --paper-sunken-rgb: 243 244 246;
-  --paper-inset-rgb: 232 234 238;
+  /* surfaces — warm neutrals, a half-step apart. Was a cool, faintly blue
+     251/251/252 — closer to a hospital whiteboard than the warm paper/putty
+     tone the product's own name and every printed .docx are going for. */
+  --paper-rgb: 246 244 236;
+  --paper-raised-rgb: 253 251 246;
+  --paper-sunken-rgb: 236 233 223;
+  --paper-inset-rgb: 224 220 207;
 
   /* hairlines */
-  --edge-rgb: 227 229 234;
-  --edge-strong-rgb: 205 209 217;
+  --edge-rgb: 221 217 205;
+  --edge-strong-rgb: 195 189 172;
 
   /* ink — very slightly blue, so it sits with the accent rather than against it */
   --ink-rgb: 20 22 26;
@@ -383,21 +385,23 @@
   :root { --gutter: var(--sp-8); }
 }
 
-/* ══ DARK — cooled the same way ══════════════════════════════════════════════════════════════════
+/* ══ DARK — warmed the same way ══════════════════════════════════════════════════════════════════
    Warm neutrals taken down rather than inverted, so the app reads as the same
    product at night. The accent holds its hue; --accent-text lightens, because
    the dark surface flips which end of the ramp is readable.
-   Measured against --paper (#1E1D1B, L=0.0136): --ink 16.4:1, --ink-soft 9.5:1,
-   --ink-muted 5.2:1, --accent-text 7.1:1, --mark 6.6:1, --flag 8.6:1.
-   ======================================================================== */
+   This used to be a cool, faintly blue 16/18/22 — the comment above already
+   claimed "warm neutrals" while the actual values were anything but; #1F1D1B
+   below is what makes that true.
+   Measured against --paper (#1F1D1B, L=0.0146): --ink 14.3:1, --ink-soft 8.7:1,
+   --ink-muted 5.5:1, --accent-text 6.6:1. */
 :root[data-theme='dark'] {
-  --paper-rgb: 16 18 22;
-  --paper-raised-rgb: 24 27 32;
-  --paper-sunken-rgb: 12 14 17;
-  --paper-inset-rgb: 34 38 45;
+  --paper-rgb: 31 29 27;
+  --paper-raised-rgb: 41 39 36;
+  --paper-sunken-rgb: 24 22 20;
+  --paper-inset-rgb: 48 45 41;
 
-  --edge-rgb: 38 42 49;
-  --edge-strong-rgb: 56 62 71;
+  --edge-rgb: 54 50 45;
+  --edge-strong-rgb: 79 73 64;
 
   --ink-rgb: 234 237 242;
   --ink-soft-rgb: 180 187 196;
