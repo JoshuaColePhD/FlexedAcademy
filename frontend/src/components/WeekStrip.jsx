@@ -37,9 +37,62 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
       ? 'No days written yet'
       : `${written.length} of 5 days`
 
+  // The chat-reply form (loose=true), on request: a neomorphic bulleted list
+  // instead of the five-card grid below. Scoped to THIS variant only — the
+  // grid stays the signature element everywhere else (the artifact header,
+  // the generation-progress indicator) — because voice-neo's soft, low-
+  // contrast edges are a tradeoff worth making for one decorative element
+  // inside a reply, not for the document header a teacher actually verifies
+  // standards against.
+  if (loose) {
+    return (
+      <div className={className}>
+        <ul
+          className="voice-neo neo-panel flex flex-col gap-1 rounded-2xl bg-paper-raised p-2"
+          role="group"
+          aria-label={label}
+        >
+          {DAYS.map((name) => {
+            const day = byName.get(name)
+            const isOff = day?.no_school
+            const isWriting = writing && name === nextUnwritten
+            const title = day ? dayTitle(day) : null
+
+            return (
+              <li key={name} className="flex items-center gap-3 px-3 py-2">
+                <span
+                  aria-hidden="true"
+                  className={`neo-inset grid h-8 w-8 shrink-0 place-items-center rounded-full text-2xs font-semibold ${
+                    isOff ? 'text-ink-faint' : day ? 'text-accent-text' : 'text-ink-muted'
+                  }`}
+                >
+                  {SHORT[name].slice(0, 2).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                  {isOff ? (
+                    <span className="text-ink-faint">{title || 'No school'}</span>
+                  ) : day ? (
+                    title || <span className="text-ink-faint">Written</span>
+                  ) : isWriting ? (
+                    <span className="text-ink-muted">Writing…</span>
+                  ) : (
+                    <span className="text-ink-faint">Not written yet</span>
+                  )}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+        <p className="visually-hidden" role="status">
+          {label}
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className={className}>
-      <div className={`week-strip${loose ? ' is-loose' : ''}`} role="group" aria-label={label}>
+      <div className="week-strip" role="group" aria-label={label}>
         {DAYS.map((name) => {
           const day = byName.get(name)
           const isOff = day?.no_school

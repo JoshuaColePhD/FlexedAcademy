@@ -2272,26 +2272,10 @@
 
   /* ══ VERIFICATION IN THE MESSAGE ══════════════════════════════════════════
      The honest cost of closing the viewer is that you can no longer see whether
-     Thursday is right. So the message carries the proof: five days, what is on
-     each, which codes were retrieved, and which one wasn't. */
-  .week-strip.is-loose {
-    gap: 5px;
-    background: none;
-    border: none;
-    border-radius: 0;
-    overflow: visible;
-  }
-  .week-strip.is-loose .week-day {
-    min-height: 0;
-    gap: 5px;
-    padding: 10px 11px;
-    border-radius: var(--r-lg);
-  }
-  /* Tone alone can't say "school is shut" as against "this surface is sunken",
-     and on a week strip that difference is the whole point. */
-  .week-strip.is-loose .week-day.is-off {
-    background-image: var(--hatch-closed);
-  }
+     Thursday is right. So the message carries the proof — now WeekStrip's own
+     loose=true branch (a neomorphic bulleted list, on request), not CSS here;
+     the grid rules below stay for the non-loose uses (artifact header,
+     generation-progress indicator) only. */
   /* When the document opens, the chat drops to 322px and five columns of
      learning target become four clipped words each. A CONTAINER query, not a
      viewport one: it is the column that narrowed, not the screen. The day
@@ -2350,18 +2334,6 @@
     color: var(--ink);
   }
   @container (max-width: 30rem) {
-    /* Two columns, NOT five with the titles hidden.
-       Hiding the note was written when it held a whole learning target; the
-       day now carries a two-to-four-word `title`, and five 90px columns with
-       the title suppressed left five empty labelled boxes — a verification
-       strip verifying nothing, which is worse than not showing it. Two columns
-       give the title room to be read, which is the entire point of it. */
-    .week-strip.is-loose {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .week-strip.is-loose .week-day {
-      min-height: 0;
-    }
     /* Download drops to its own line rather than crushing the file name to
        "W…". It is the one control on this card that must not be dropped. */
     .artifact-card {
