@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { VoiceContext } from '../lib/voiceContext'
 import { api } from '../lib/api'
+import { useToast } from '../lib/toastContext'
 
 const KEY = 'aplang.voice'
 
@@ -44,10 +45,18 @@ function stripMarkdown(text) {
  * has to be a choice, not a default.
  */
 export function VoiceProvider({ children }) {
+  const toast = useToast()
   const [enabled, setEnabled] = useState(readEnabled)
   const [speaking, setSpeaking] = useState(false)
   const audioRef = useRef(null)
   const urlRef = useRef(null)
+  // Once per page load, not once per toggle-on: `enabled` persists across a
+  // reload (localStorage), but the <audio> element is recreated fresh every
+  // mount and has never had a play() call land inside a real user gesture
+  // THIS load — only toggling it off and back on this same session did that.
+  // Every other load, autoplay silently blocked every reply, forever, with
+  // the toggle already showing "on" the whole time.
+  const unlockedRef = useRef(false)
 
   useEffect(() => {
     const el = new Audio()
@@ -73,6 +82,38 @@ export function VoiceProvider({ children }) {
     el.currentTime = 0
   }, [])
 
+  /* Mobile Safari (and Chrome on Android) only starts audio when .play() is
+     the DIRECT, SYNCHRONOUS result of a user gesture — a reply arriving
+     seconds later inside speak()'s async fetch doesn't count, and the
+     browser blocks it with no error surfaced (speak()'s own catch used to
+     swallow exactly that). Playing a near-silent clip HERE, inside a real
+     click, unlocks the shared <audio> element for the rest of the page's
+     life — later async .play() calls on the SAME element are then allowed.
+
+     Called from toggle() (turning it on) AND from the composer's Send button
+     on every submit — toggling on is a real gesture but only happens on the
+     ONE load where you flip the switch; every reload after that, `enabled`
+     is already true from localStorage and nothing calls this at all unless
+     something else also tries. Idempotent via unlockedRef, so spamming Send
+     doesn't replay silence on every message once it's already unlocked. */
+  const unlock = useCallback(() => {
+    if (unlockedRef.current) return
+    const el = audioRef.current
+    if (!el) return
+    unlockedRef.current = true
+    el.src = UNLOCK_WAV
+    // Reported, not swallowed: if the browser blocks even THIS — the one
+    // play() call that's supposed to be bulletproof, since it's synchronous
+    // inside the tap that requested it — every later reply is guaranteed
+    // silent too, and that's worth knowing immediately instead of guessing
+    // from "it never talks back." Un-set the flag on failure so the next
+    // gesture gets another attempt rather than giving up for the session.
+    el.play().catch((err) => {
+      unlockedRef.current = false
+      toast.error('Couldn’t enable spoken replies', err?.message || String(err))
+    })
+  }, [toast])
+
   const toggle = useCallback(() => {
     setEnabled((prev) => {
       const next = !prev
@@ -81,29 +122,11 @@ export function VoiceProvider({ children }) {
       } catch {
         /* not persisted */
       }
-      if (next) {
-        /* Mobile Safari (and Chrome on Android) only starts audio when
-           .play() is the DIRECT, SYNCHRONOUS result of a user gesture — a
-           reply arriving seconds later inside speak()'s async fetch doesn't
-           count, and the browser blocks it with no error surfaced, because
-           speak()'s catch swallows exactly that. Every wire before this was
-           correct and nothing was ever audible on a phone.
-
-           Playing a near-silent clip HERE, inside the click that turned this
-           on, unlocks the shared <audio> element for the rest of the page's
-           life — later async .play() calls on the SAME element are then
-           allowed. This is the one gesture that exists to spend on it. */
-        const el = audioRef.current
-        if (el) {
-          el.src = UNLOCK_WAV
-          el.play().catch(() => {})
-        }
-      } else {
-        stop()
-      }
+      if (next) unlock()
+      else stop()
       return next
     })
-  }, [stop])
+  }, [stop, unlock])
 
   const speak = useCallback(
     async (text) => {
@@ -111,27 +134,45 @@ export function VoiceProvider({ children }) {
       if (!clean) return
       const el = audioRef.current
       if (!el) return
+      let blob
       try {
-        const blob = await api.synthesizeSpeech(clean)
+        blob = await api.synthesizeSpeech(clean)
+      } catch (err) {
+        // The /api/tts request itself failed — network, auth, or the
+        // backend's own OPENAI_API_KEY/TTS config. This used to be silent on
+        // purpose (a missed reply is a smaller loss than a toast interrupting
+        // the conversation, and the text is already on screen either way) —
+        // but "silent" and "the feature has never once worked for anyone" are
+        // indistinguishable without this, so it's reported until proven
+        // reliable.
+        toast.error('Couldn’t speak that reply', err?.message || String(err))
+        return
+      }
+      try {
         // Stop and release the PREVIOUS clip only after the new one is ready —
-        // swapping src earlier leaves a silent gap (or nothing at all, if the
-        // fetch fails) where the old audio had already been torn down.
+        // swapping src earlier leaves a silent gap where the old audio had
+        // already been torn down.
         el.pause()
         if (urlRef.current) URL.revokeObjectURL(urlRef.current)
         const url = URL.createObjectURL(blob)
         urlRef.current = url
         el.src = url
         await el.play()
-      } catch {
-        // A missed reply is a smaller loss than a toast interrupting the
-        // conversation to announce that the conversation didn't happen —
-        // the text version is already on screen either way.
+      } catch (err) {
+        // The fetch worked; playback itself was blocked or failed. Distinct
+        // from the network case above because the fix is different — this
+        // means the autoplay-unlock in toggle() didn't hold, not that the
+        // server is misconfigured.
+        toast.error('Got the reply, but couldn’t play it', err?.message || String(err))
       }
     },
-    []
+    [toast]
   )
 
-  const value = useMemo(() => ({ enabled, toggle, speaking, speak, stop }), [enabled, toggle, speaking, speak, stop])
+  const value = useMemo(
+    () => ({ enabled, toggle, speaking, speak, stop, unlock }),
+    [enabled, toggle, speaking, speak, stop, unlock]
+  )
 
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
 }

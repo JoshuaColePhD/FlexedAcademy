@@ -127,10 +127,18 @@ export function Composer({
 
   const canSend = (value.trim() || attachments.length > 0) && !isStreaming && !isRecording && !isTranscribing
 
+  const submit = () => {
+    // A keydown is as much a real user gesture as a click — see the Send
+    // button's own onClick for why this has to run somewhere other than
+    // just voice's toggle.
+    if (voice.enabled) voice.unlock()
+    onSubmit()
+  }
+
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (canSend) onSubmit()
+      if (canSend) submit()
     }
   }
 
@@ -299,7 +307,7 @@ export function Composer({
                     ? 'bg-accent text-ink-inverse hover:bg-accent-hover active:scale-95'
                     : 'cursor-not-allowed bg-paper-sunken text-ink-faint'
                 }`}
-                onClick={() => onSubmit()}
+                onClick={submit}
                 disabled={!canSend}
                 aria-label={sendLabel}
               >
