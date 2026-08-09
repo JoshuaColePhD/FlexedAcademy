@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AuthContext } from '../lib/authContext'
+import { AuthContext, EXPLICIT_SIGNOUT_KEY } from '../lib/authContext'
 import { api } from '../lib/api'
 
 export function AuthProvider({ children }) {
@@ -61,6 +61,19 @@ export function AuthProvider({ children }) {
   }, [])
 
   const logout = useCallback(async () => {
+    /* A flag, not a navigate() call: navigate() and the status flip below
+       land in separate commits (the router's own location state and React's
+       don't actually batch together), so Gate would render once with the new
+       status but the OLD location, and its wildcard route already redirects
+       to /login?next=<that old path> before the location update ever lands.
+       Gate reads this flag itself once it sees status go anon — see Gate in
+       App.jsx — which sidesteps the ordering question entirely. */
+    try {
+      sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, '1')
+    } catch {
+      /* Not available — worst case this falls back to the next-preserving
+         redirect, same as a session that expired mid-use. */
+    }
     try {
       await api.logout()
     } finally {

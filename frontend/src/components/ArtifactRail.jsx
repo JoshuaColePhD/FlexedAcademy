@@ -33,7 +33,9 @@ function EmptyRailArt({ color }) {
   )
 }
 
-/* The artifact rail — 240px, and the default.
+/* The artifact rail — the content that fills the drawer once it's open (see
+ * ArtifactDrawer at the bottom of this file for the always-mounted shell
+ * around it).
  *
  * A lesson plan is not a thing you read on a screen. It is a thing you
  * download, print and hand in. So the always-open document viewer that used to
@@ -52,8 +54,14 @@ function EmptyRailArt({ color }) {
  * version history in a compliance document is the worst kind of decoration.
  */
 
-/** The one row shape the rail's secondary lines share. */
-function RailRow({ icon: Icon, label, sub, flag, onClick, title }) {
+/** The one row shape the rail's secondary lines share.
+ *  `index` drives a staggered entrance — "Built from" fills in one line at a
+ *  time rather than appearing as a block, which is the one place this rail
+ *  can honestly gesture at the living-document framing: the calendar, the
+ *  documents and the standards really did resolve in roughly that order, even
+ *  though the stagger itself is a fixed 60ms, not a trace of real timing. */
+function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
+  const style = { animationDelay: `${index * 60}ms` }
   const body = (
     <>
       <span className="rail-row-tile">
@@ -67,13 +75,19 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title }) {
   )
   if (!onClick) {
     return (
-      <div className="rail-row" title={title}>
+      <div className="rail-row fa-rise" style={style} title={title}>
         {body}
       </div>
     )
   }
   return (
-    <button type="button" className="rail-row is-interactive fa-press" onClick={onClick} title={title}>
+    <button
+      type="button"
+      className="rail-row is-interactive fa-press fa-rise"
+      style={style}
+      onClick={onClick}
+      title={title}
+    >
       {body}
     </button>
   )
@@ -208,6 +222,7 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
           <span className="eyebrow">Built from</span>
 
           <RailRow
+            index={0}
             icon={Calendar}
             label="School calendar"
             sub={
@@ -218,9 +233,10 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
             title="The plan's no-school days come from the school calendar"
           />
 
-          {documents.map((doc) => (
+          {documents.map((doc, i) => (
             <RailRow
               key={doc.id}
+              index={i + 1}
               icon={FileText}
               label={doc.original_name}
               sub={artifact?.unit || doc.kind?.replace(/_/g, ' ') || 'course document'}
@@ -229,6 +245,7 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
           ))}
 
           <RailRow
+            index={documents.length + 1}
             icon={BookOpen}
             label={
               checking
@@ -248,5 +265,42 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
         </div>
       ) : null}
     </aside>
+  )
+}
+
+/* The persistent shell around ArtifactRail — always mounted, always showing
+ * at least the coloured handle, whether or not this chat has built anything
+ * yet. Kept separate from ArtifactRail itself rather than folded in: the
+ * "bar" variant (phone, rendered inline above the composer) never goes
+ * through a drawer at all, and mixing that concern into the same component
+ * would mean every prop here needing an isBar escape hatch.
+ *
+ * Auto-opens the moment a build starts or a plan exists (ChatPage owns that
+ * effect); afterward it is the teacher's to open or close, and closing it
+ * once does not get silently overridden on the next render.
+ */
+export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps }) {
+  return (
+    <div className={`artifact-drawer${open ? ' is-open' : ''}`}>
+      <button
+        type="button"
+        className={`artifact-drawer-handle tap-target${busy ? ' is-busy' : ''}`}
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={open ? 'Collapse the artifacts drawer' : 'Open the artifacts drawer'}
+        title={
+          open
+            ? 'Collapse'
+            : hasArtifact || busy
+              ? 'See what this week was built from'
+              : 'Artifacts will appear here'
+        }
+      />
+      {open ? (
+        <div className="artifact-drawer-body">
+          <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
+        </div>
+      ) : null}
+    </div>
   )
 }

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { GraduationCap, PanelLeft, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
@@ -222,6 +223,7 @@ export function AppShell({ children }) {
   const [docOpen, setDocOpen] = useState(false)
   const shell = useMemo(() => ({ docOpen, setDocOpen }), [docOpen])
   const drawerRef = useRef(null)
+  const drawerExit = useExitTransition(drawerOpen, 130)
   useFocusTrap(drawerRef, { active: drawerOpen, trap: drawerOpen, onEscape: () => setDrawerOpen(false) })
 
   return (
@@ -243,25 +245,29 @@ export function AppShell({ children }) {
       {/* docked */}
       {!isNarrow ? (
         <div
-          className="app-rail flex shrink-0 flex-col overflow-hidden transition-[width] duration-300 ease-out"
-          style={{ width: docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)' }}
+          className="app-rail flex shrink-0 flex-col overflow-hidden transition-[width]"
+          style={{
+            width: docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
+            transitionDuration: 'var(--t-base)',
+            transitionTimingFunction: 'var(--ease-out)',
+          }}
         >
           <Rail />
         </div>
       ) : null}
 
       {/* drawer */}
-      {isNarrow && drawerOpen ? (
+      {isNarrow && drawerExit.mounted ? (
         <>
           <button
             type="button"
-            className="fixed inset-0 z-40 bg-[var(--scrim)]"
+            className={`panel-scrim${drawerExit.closing ? ' is-closing' : ''}`}
             aria-label="Close menu"
             onClick={() => setDrawerOpen(false)}
           />
           <div
             ref={drawerRef}
-            className="app-rail fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col shadow-lg"
+            className={`app-rail rail-drawer${drawerExit.closing ? ' is-closing' : ''} fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col shadow-lg`}
           >
             <Rail onNavigate={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} />
           </div>

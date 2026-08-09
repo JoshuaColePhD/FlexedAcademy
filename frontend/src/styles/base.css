@@ -158,6 +158,32 @@
     backdrop-filter: blur(28px) saturate(1.4);
     -webkit-backdrop-filter: blur(28px) saturate(1.4);
   }
+  /* On a phone, .app-rail is the drawer's own panel — and had no motion of
+     its own at all: it appeared and vanished with the conditional render
+     that mounted/unmounted it, a hard cut in both directions. A drawer
+     without a slide reads as a bug the first time someone watches for it. */
+  .app-rail.rail-drawer {
+    animation: rail-drawer-in var(--t-base) var(--ease-out) both;
+  }
+  .app-rail.rail-drawer.is-closing {
+    animation: rail-drawer-out var(--t-fast) var(--ease) both;
+  }
+  @keyframes rail-drawer-in {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes rail-drawer-out {
+    from {
+      transform: none;
+    }
+    to {
+      transform: translateX(-100%);
+    }
+  }
 
   /* Per-class colour, decoration with a job — see lib/classColor.js. Sized by
      a CSS custom property rather than a Tailwind class per instance, since the
@@ -622,6 +648,33 @@
   @keyframes artifact-sheet-in {
     from { transform: translateY(16px); opacity: 0; }
     to { transform: none; opacity: 1; }
+  }
+
+  /* The mirror of the two entrances above — every overlay in this app
+     animated IN and vanished instantly on close, because conditional render
+     unmounts the node the instant it's told to, before any exit animation
+     has a chance to play. useExitTransition keeps the node around for one
+     more tick specifically so `.is-closing` gets to run. Faster than the
+     entrance (`--t-fast`, not `--t-base`) — a closing gesture reads as
+     confirmed the moment it starts; lingering on the way out just delays the
+     next thing. */
+  .artifact-overlay.is-closing {
+    animation-name: artifact-slide-out;
+    animation-duration: var(--t-fast);
+    animation-timing-function: var(--ease);
+  }
+  @keyframes artifact-slide-out {
+    from { transform: none; opacity: 1; }
+    to { transform: translateX(12px); opacity: 0; }
+  }
+  @media (max-width: 767.98px) {
+    .artifact-overlay.is-closing {
+      animation-name: artifact-sheet-out;
+    }
+  }
+  @keyframes artifact-sheet-out {
+    from { transform: none; opacity: 1; }
+    to { transform: translateY(16px); opacity: 0; }
   }
 
   /* Keeps its border where cards lost theirs: this table mirrors the printed
@@ -1326,6 +1379,30 @@
     }
   }
 
+  /* The nav drawer's scrim and the artifact overlay's scrim were each a bare
+     Tailwind arbitrary-value string (bg-[var(--scrim)]) with no fade at
+     all — not even on the way in, let alone out. One shared class, animated
+     both directions, for both. z-40 — one tier below .dialog-scrim's 90,
+     since a dialog opened from inside a panel has to sit above it. */
+  .panel-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: var(--scrim);
+    animation: scrim-in var(--t-fast) var(--ease-out) both;
+  }
+  .panel-scrim.is-closing {
+    animation: scrim-out var(--t-fast) var(--ease) both;
+  }
+  @keyframes scrim-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
   .dialog {
     width: min(420px, 100%);
     padding: var(--sp-6);
@@ -1424,18 +1501,115 @@
     gap: var(--sp-2);
   }
 
+  /* ══ THE ARTIFACT DRAWER ══════════════════════════════════════════════════
+     Was conditionally rendered — present at 240px whenever an artifact
+     existed, absent entirely otherwise, a hard cut in both directions. Josh's
+     call: a persistent presence, always mounted, always showing at least a
+     coloured edge — "this is where things will appear" — that pulls open to
+     roughly a sixth of the page the moment a build starts, and stays a plain
+     click away from collapsing again afterward. The handle is a real button,
+     not a CSS-only affordance: .tap-target grows its hit area to the
+     accessibility floor without widening what's actually drawn. */
+  .artifact-drawer {
+    display: flex;
+    flex-shrink: 0;
+    width: 14px;
+    transition: width var(--t-base) var(--ease-out);
+  }
+  .artifact-drawer.is-open {
+    /* Approximating "15% of the page" with a floor and a ceiling — a bare
+       15vw would go unreadably narrow on a laptop split three ways and
+       absurdly wide on an ultrawide monitor. */
+    width: clamp(220px, 15vw, 320px);
+  }
+  .artifact-drawer-handle {
+    flex-shrink: 0;
+    width: 14px;
+    align-self: stretch;
+    background: var(--rail-pop);
+    border: none;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity var(--t-fast) var(--ease);
+    /* A plain rectangle read as a scrollbar left behind by mistake. Angling
+       the top and bottom in — a trapezoid on its side, the flat edge at top
+       and bottom instead of left and right — is what makes it read as a
+       deliberate handle instead. */
+    clip-path: polygon(
+      30% 0%,
+      70% 0%,
+      100% 10px,
+      100% calc(100% - 10px),
+      70% 100%,
+      30% 100%,
+      0% calc(100% - 10px),
+      0% 10px
+    );
+  }
+  .artifact-drawer-handle:hover,
+  .artifact-drawer.is-open .artifact-drawer-handle {
+    opacity: 1;
+  }
+  /* While a week is being built or revised, the thin edge is the only sign
+     of it for a teacher who hasn't opened the drawer — so it gets the one
+     moment of real motion in the whole rail: a gradient between the rail's
+     two accents drifting along the strip, breathing in opacity, the same
+     read as a Google spinner's colours circulating around its ring but
+     drawn along a line instead of a circle. */
+  .artifact-drawer-handle.is-busy {
+    opacity: 1;
+    background: linear-gradient(
+      180deg,
+      var(--rail-pop) 0%,
+      var(--rail-pop-2) 30%,
+      var(--rail-pop) 60%,
+      var(--rail-pop-2) 90%,
+      var(--rail-pop) 120%
+    );
+    background-size: 100% 240%;
+    animation:
+      drawer-pulse-flow 2.8s linear infinite,
+      drawer-pulse-breathe 1.7s ease-in-out infinite;
+  }
+  @keyframes drawer-pulse-flow {
+    from {
+      background-position: 0% 0%;
+    }
+    to {
+      background-position: 0% 100%;
+    }
+  }
+  @keyframes drawer-pulse-breathe {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  .artifact-drawer-body {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
   /* ══ THE ARTIFACT RAIL ════════════════════════════════════════════════════
      A lesson plan is downloaded, printed and handed in — it is not primarily
      read on screen. So the chat is the app, the artifact is a file, and the
-     panel that used to fight the chat for horizontal space collapses to a
-     240px rail listing what exists. Verification travels in the message (week
-     strip + grounding line), not in an always-open viewer.
+     panel that used to fight the chat for horizontal space fills the open
+     drawer above with what exists, rather than sharing width with the chat.
+     Verification travels in the message (week strip + grounding line), not
+     in an always-open viewer.
 
      The rail expands into a working document on click; the document collapses
      back with the double chevron in its header. */
   .artifact-rail {
     display: flex;
-    width: var(--rail-w);
+    /* Was a fixed --rail-w (240px) — now sized by whatever wraps it.
+       .artifact-drawer-body owns the width; the bar variant below still
+       owns its own 100%. */
+    width: 100%;
     flex-shrink: 0;
     flex-direction: column;
     overflow-y: auto;

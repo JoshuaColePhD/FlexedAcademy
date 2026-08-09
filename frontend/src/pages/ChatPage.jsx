@@ -13,10 +13,11 @@ import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQu
 import { useActiveClass, useChats } from '../hooks/useAppData'
 import { FIELD_LABELS } from '../lib/planShape'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
+import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
-import { ArtifactRail } from '../components/ArtifactRail'
+import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
 
@@ -79,6 +80,12 @@ export function ChatPage() {
   /* Was `panelOpen`. The document is closed by default now — the rail and the
      message carry enough that opening it is a choice, not a requirement. */
   const [expanded, setExpanded] = useState(false)
+  /* The drawer's own open/closed state — separate from `expanded`, which is
+     the FULL docked/overlay document. Starts closed (just the handle) for
+     every chat; the effect below pulls it open the moment there's a reason
+     to, and only that transition forces it — closing it again afterward is
+     never overridden by a render where nothing changed. */
+  const [railOpen, setRailOpen] = useState(false)
   const [revising, setRevising] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
 
@@ -137,6 +144,7 @@ export function ChatPage() {
       setMessages([])
       setArtifact(null)
       setExpanded(false)
+      setRailOpen(false)
       localFor.current = null
       return undefined
     }
@@ -151,6 +159,7 @@ export function ChatPage() {
     setArtifact(null)
     setOpenTweak(null)
     setExpanded(false)
+    setRailOpen(false)
 
     api
       .getChat(chatId)
@@ -637,6 +646,16 @@ export function ChatPage() {
   /* Declared before chatPane, which reads it — the three-column layout at the
      bottom of this component consumes it too. */
   const docOpen = expanded && hasArtifact && !isOverlay
+  const overlayOpen = expanded && hasArtifact && isOverlay
+  const overlayExit = useExitTransition(overlayOpen, 130)
+
+  /* Auto-opens the drawer the moment a build starts or a plan exists; after
+     that it is the teacher's to open or close, and closing it once does not
+     get silently overridden on the next render (busy/hasArtifact going false
+     again is not in this effect's deps). */
+  useEffect(() => {
+    if (busy || hasArtifact) setRailOpen(true)
+  }, [busy, hasArtifact])
 
   /** Opening the document from anywhere, optionally straight into a cell. */
   const openDocument = useCallback((tweak = null) => {
@@ -850,11 +869,11 @@ export function ChatPage() {
       </div>
 
       <div
-        className="flex min-w-0 flex-col transition-[flex-basis] duration-300 ease-out"
+        className="flex min-w-0 flex-col transition-[flex-basis]"
         style={
           docOpen
-            ? { flex: '0 0 var(--chat-w-narrow)' }
-            : { flex: '1 1 0%' }
+            ? { flex: '0 0 var(--chat-w-narrow)', transitionDuration: 'var(--t-base)', transitionTimingFunction: 'var(--ease-out)' }
+            : { flex: '1 1 0%', transitionDuration: 'var(--t-base)', transitionTimingFunction: 'var(--ease-out)' }
         }
       >
         {chatPane}
@@ -865,8 +884,11 @@ export function ChatPage() {
           grounding count — even though 240px fits easily there (chat is 528px
           at 768 and 520px at 1024, both above the ~460px column this redesign
           was correcting). Below 768 it is the bar inside chatPane instead. */}
-      {hasArtifact && !isPhone && !docOpen ? (
-        <ArtifactRail
+      {!isPhone && !docOpen ? (
+        <ArtifactDrawer
+          open={railOpen}
+          onToggle={() => setRailOpen((o) => !o)}
+          hasArtifact={hasArtifact}
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
           onExpand={() => openDocument()}
@@ -878,15 +900,17 @@ export function ChatPage() {
 
       {/* Below --xl the document cannot sit beside the chat, so it overlays —
           and here the dialog semantics ArtifactPanel claims are actually true. */}
-      {expanded && hasArtifact && isOverlay ? (
+      {overlayExit.mounted ? (
         <>
           <button
             type="button"
             aria-label="Close lesson plan"
-            className="fixed inset-0 z-40 bg-[var(--scrim)]"
+            className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
             onClick={collapse}
           />
-          <div className="artifact-overlay">{artifactEl}</div>
+          <div className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}>
+            {artifactEl}
+          </div>
         </>
       ) : null}
     </div>

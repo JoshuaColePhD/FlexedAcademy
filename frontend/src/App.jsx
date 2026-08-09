@@ -17,7 +17,7 @@ import { ConfirmProvider } from './components/ConfirmProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './components/AuthProvider'
 import { BillingProvider } from './components/BillingProvider'
-import { useAuth } from './lib/authContext'
+import { useAuth, EXPLICIT_SIGNOUT_KEY } from './lib/authContext'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
 import { useClasses } from './hooks/useAppData'
@@ -188,12 +188,38 @@ function ClassRoutes() {
 function Gate() {
   const { status } = useAuth()
   const location = useLocation()
+  /* Cleared in an effect keyed on `status`, not read-and-cleared inline: a
+     removeItem during render would make the render depend on its own prior
+     call, and StrictMode double-invokes this function body every commit —
+     the second call would see the first call's clear and lose the flag
+     before Gate ever returns. Reading it is a plain get, safe to repeat;
+     removeItem is idempotent, safe to repeat too — so the effect just clears
+     it once real per transition into 'anon' and the double-invoke is a
+     non-issue either way. */
+  useEffect(() => {
+    if (status !== 'anon') return
+    try {
+      sessionStorage.removeItem(EXPLICIT_SIGNOUT_KEY)
+    } catch {
+      /* not available */
+    }
+  }, [status])
 
   if (status === 'loading') return <BootScreen />
 
   if (status === 'anon') {
     const here = location.pathname + location.search
     const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup'
+    /* Explicit sign-out lands on the homepage, not back at a password field —
+       AuthProvider.logout() sets this right before the status flip that gets
+       us here. Anything else that reaches status==='anon' off an app URL (an
+       expired cookie mid-use) still gets `next=` so it round-trips back. */
+    let explicitSignout = false
+    try {
+      explicitSignout = sessionStorage.getItem(EXPLICIT_SIGNOUT_KEY) === '1'
+    } catch {
+      /* not available */
+    }
     return (
       <Routes>
         {/* The public front door. There wasn't one: every anonymous visitor,
@@ -209,7 +235,13 @@ function Gate() {
           path="*"
           element={
             <Navigate
-              to={isAuthRoute ? '/login' : `/login?next=${encodeURIComponent(here)}`}
+              to={
+                explicitSignout
+                  ? '/'
+                  : isAuthRoute
+                    ? '/login'
+                    : `/login?next=${encodeURIComponent(here)}`
+              }
               replace
             />
           }
