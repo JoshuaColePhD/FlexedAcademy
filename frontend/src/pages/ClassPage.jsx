@@ -344,6 +344,94 @@ function ClassWeeks({ cls }) {
   )
 }
 
+/* ── change password ───────────────────────────────────────────────────────
+   Hidden for a Google-only account (no password_hash — see /api/auth/me's
+   has_password) rather than shown and left to fail on "current password":
+   there's nothing correct to type into that field, and the real recovery
+   path for those accounts is the Google button on /login, not this form. */
+function ChangePassword() {
+  const toast = useToast()
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (next.length < 8) {
+      toast.error('Use at least 8 characters for the new password.')
+      return
+    }
+    if (next !== confirm) {
+      toast.error('Those two don’t match.')
+      return
+    }
+    setSaving(true)
+    try {
+      await api.changePassword(current, next)
+      toast.success('Password changed')
+      setCurrent('')
+      setNext('')
+      setConfirm('')
+    } catch (err) {
+      toast.apiError('Could not change your password', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-2 flex flex-wrap items-end gap-2">
+      <div className="min-w-0 flex-1 basis-40">
+        <label className="mb-1 block text-xs text-ink-muted" htmlFor="current-password">
+          Current password
+        </label>
+        <input
+          id="current-password"
+          type="password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          className="w-full rounded-lg border border-edge bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+        />
+      </div>
+      <div className="min-w-0 flex-1 basis-40">
+        <label className="mb-1 block text-xs text-ink-muted" htmlFor="new-password-settings">
+          New password
+        </label>
+        <input
+          id="new-password-settings"
+          type="password"
+          autoComplete="new-password"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+          className="w-full rounded-lg border border-edge bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+        />
+      </div>
+      <div className="min-w-0 flex-1 basis-40">
+        <label className="mb-1 block text-xs text-ink-muted" htmlFor="confirm-password-settings">
+          Confirm new password
+        </label>
+        <input
+          id="confirm-password-settings"
+          type="password"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          className="w-full rounded-lg border border-edge bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={saving || !current || !next}
+        className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {saving ? 'Saving…' : 'Change password'}
+      </button>
+    </form>
+  )
+}
+
 /* ── one class ─────────────────────────────────────────────────────────────── */
 function ClassRow({ cls, frameworks, isActive, onChanged }) {
   const toast = useToast()
@@ -618,6 +706,18 @@ export function ClassPage() {
               className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-faint hover:bg-paper-sunken focus:bg-paper-sunken"
             />
           </div>
+
+          {/* ── password ─────────────────────────────────────────────────── */}
+          {meState.data && meState.data.has_password ? (
+            <div className="mt-5">
+              <h2 className="text-sm font-semibold text-ink">Password</h2>
+              <ChangePassword />
+            </div>
+          ) : meState.data ? (
+            <p className="mt-5 text-xs text-ink-muted">
+              This account signs in with Google — there’s no password to change here.
+            </p>
+          ) : null}
 
           {/* ── the classes ─────────────────────────────────────────────── */}
           <div className="mt-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

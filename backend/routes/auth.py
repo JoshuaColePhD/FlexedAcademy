@@ -1,14 +1,18 @@
 """Signup, login, logout — see backend/auth.py for the hashing/cookie mechanics."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from .. import auth, db
+from .. import auth, db, mail
 from ..config import settings
 from ..deps import COOKIE_NAME, get_current_user
 from ..entitlement import entitlement
 from ..errors import AppError
+
+log = logging.getLogger("aplang.auth")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -32,6 +36,16 @@ def _is_https(request: Request) -> bool:
     return (proto or request.url.scheme) == "https"
 
 
+def _frontend_url(request: Request) -> str:
+    """Where the reset link should point. Same reasoning as billing.py's own
+    `_return_url`: a configured value wins (so a request header an attacker
+    controls can't redirect the link), falling back to the request's own
+    origin for local dev with nothing extra to set."""
+    if settings.billing_return_url:
+        return settings.billing_return_url.rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
 def _cookie_kwargs(request: Request) -> dict:
     return dict(
         httponly=True,
@@ -53,6 +67,10 @@ def _public_user(user: dict) -> dict:
         "email": user["email"],
         "name": user["name"],
         "is_admin": bool(user.get("is_admin")),
+        # Never the hash itself — just whether one exists, so the settings
+        # page can decide between "change password" and "this account signs
+        # in with Google" without guessing from anything else client-side.
+        "has_password": bool(user.get("password_hash")),
         "entitlement": entitlement(user["id"]).as_dict(),
     }
 
@@ -142,3 +160,94 @@ def me(user_id: str = Depends(get_current_user)):
     if not user:
         raise AppError("not_authenticated", "Not logged in.", status=401)
     return _public_user(user)
+
+
+class ForgotPasswordBody(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordBody(BaseModel):
+    token: str = Field(min_length=1)
+    password: str = Field(min_length=8, max_length=200)
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
+
+
+_RESET_EMAIL_HTML = """\
+<p>Someone asked to reset the password on this Flexed Academy account.</p>
+<p><a href="{link}">Set a new password</a></p>
+<p>This link works once, for one hour. If you didn't ask for this, nothing
+happens — your password stays what it was.</p>
+"""
+
+_GOOGLE_ACCOUNT_EMAIL_HTML = """\
+<p>Someone asked to reset the password on this Flexed Academy account, but
+this account signs in with Google — there's no password to reset.</p>
+<p>Use "Continue with Google" on the sign-in page instead.</p>
+"""
+
+
+@router.post("/forgot-password")
+def forgot_password(body: ForgotPasswordBody, request: Request):
+    """Deliberately the same response whether or not the email has an
+    account — the status code and body can't be the tell that reveals which
+    addresses are registered. What actually happens (nothing / a reset link /
+    a "use Google instead" nudge) is decided here, invisibly to the caller."""
+    user = db.get_user_by_email(body.email)
+    if user and user.get("password_hash"):
+        token = auth.create_reset_token(user["id"], user["password_hash"])
+        link = f"{_frontend_url(request)}/reset-password?token={token}"
+        mail.send(
+            to=user["email"],
+            subject="Reset your Flexed Academy password",
+            html=_RESET_EMAIL_HTML.format(link=link),
+        )
+    elif user:
+        # Exists, but Google-only. Telling THEM this is fine — it's the
+        # single most useful thing to say, and it's their own inbox — it just
+        # can't be visible in the API response to the anonymous caller.
+        mail.send(
+            to=user["email"],
+            subject="About your Flexed Academy password",
+            html=_GOOGLE_ACCOUNT_EMAIL_HTML,
+        )
+    else:
+        log.info("forgot-password requested for an email with no account")
+    return {"ok": True}
+
+
+@router.post("/reset-password")
+def reset_password(body: ResetPasswordBody, request: Request, response: Response):
+    """No `user_id = Depends(get_current_user)` — this IS the logged-out
+    recovery path; the token in the body is the credential, not the cookie."""
+    payload = auth.decode_reset_token(body.token)
+    user = db.get_user_by_id(payload["uid"]) if payload else None
+    if not user or not auth.verify_reset_fingerprint(payload, user["password_hash"]):
+        raise AppError(
+            "invalid_reset_token",
+            "That reset link is invalid or has expired.",
+            status=400,
+            hint="Request a new one from the sign-in page.",
+        )
+    db.update_password(user["id"], auth.hash_password(body.password))
+    return _log_in(request, response, db.get_user_by_id(user["id"]))
+
+
+@router.post("/change-password")
+def change_password(body: ChangePasswordBody, user_id: str = Depends(get_current_user)):
+    user = db.get_user_by_id(user_id)
+    if not user:
+        raise AppError("not_authenticated", "Not logged in.", status=401)
+    if not user.get("password_hash"):
+        raise AppError(
+            "no_password",
+            "This account signs in with Google — there's no password to change.",
+            status=400,
+        )
+    if not auth.verify_password(body.current_password, user["password_hash"]):
+        raise AppError("invalid_credentials", "That current password is incorrect.", status=401)
+    db.update_password(user_id, auth.hash_password(body.new_password))
+    return {"ok": True}

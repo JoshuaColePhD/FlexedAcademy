@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { GoogleLogin } from '@react-oauth/google'
 import { useAuth } from '../lib/authContext'
+import { api } from '../lib/api'
 import { authInputClass } from '../pages/auth/AuthLayout'
 
 /* The actual sign-in mechanics — Google button, divider, email/password
@@ -25,6 +26,9 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetSent, setResetSent] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
 
   // Preserved across the round trip so a bookmarked /c/x/week/12 with an expired
   // cookie lands back on that week instead of dumping the teacher at the top.
@@ -45,6 +49,23 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
       setError(err.message || 'That email and password didn’t match an account.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault()
+    if (!resetEmail) return
+    setResetLoading(true)
+    try {
+      await api.forgotPassword(resetEmail)
+    } catch {
+      // The backend already answers the same {ok:true} whether or not the
+      // email has an account — a request-level failure (network, 500) is the
+      // only thing that reaches here, and it isn't worth a different message
+      // than the success one: either way there's nothing more to click.
+    } finally {
+      setResetLoading(false)
+      setResetSent(true)
     }
   }
 
@@ -124,13 +145,12 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
         </button>
       </form>
 
-      {/* There is no self-serve password reset — the backend cannot send email,
-          so there is no link to deliver. The first paragraph is a REAL
-          recovery path, not a consolation: routes/auth.py's /google handler
-          looks the account up by EMAIL and signs you into it whether or not
-          it has a password_hash — any address that's a Google account (a
-          school Workspace one, usually) recovers itself through the button
-          above, no email infrastructure required.
+      {/* Two real recovery paths, not one consolation. The first paragraph:
+          routes/auth.py's /google handler looks the account up by EMAIL and
+          signs you into it whether or not it has a password_hash — any
+          address that's a Google account (a school Workspace one, usually)
+          recovers itself through the button above, no email required. The
+          second is the actual reset link, via Resend — see backend/mail.py.
 
           Deliberately no contact address here. This form is public, and a
           personal inbox published on it is spam bait and hard to take back. */}
@@ -144,10 +164,38 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
             <strong className="font-medium text-ink">Continue with Google</strong> above will sign
             you into the same account, password or not. Everything you’ve built is still there.
           </p>
-          <p>
-            If it isn’t, there’s no self-serve reset yet. Nothing has been lost — your plans stay
-            on your account until you can get back into it.
-          </p>
+          {resetSent ? (
+            <p>
+              If <strong className="font-medium text-ink">{resetEmail}</strong> has an account,
+              we’ve sent a link to reset its password. It works for one hour.
+            </p>
+          ) : (
+            <form onSubmit={handleForgotPassword} className="flex flex-col gap-2">
+              <p>Otherwise, get a reset link emailed to you:</p>
+              <div className="flex gap-2">
+                <label className="sr-only" htmlFor={`${idPrefix}reset-email`}>
+                  Email address
+                </label>
+                <input
+                  id={`${idPrefix}reset-email`}
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="Email address"
+                  className={`${authInputClass} flex-1`}
+                />
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="shrink-0 rounded-lg bg-ink px-3 text-sm font-medium text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {resetLoading ? 'Sending…' : 'Send link'}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </details>
 

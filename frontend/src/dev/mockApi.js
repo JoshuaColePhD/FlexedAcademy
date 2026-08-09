@@ -252,7 +252,17 @@ export function installMockApi() {
            status: null, plans_used: 4, tokens_used: 150000, token_cap: 150000,
            tokens_remaining: 0, usage_window_days: 7, billing_enabled: true } */
     if (path === '/api/auth/me')
-      return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', is_admin: true, entitlement: state.entitlement })
+      return json({
+        id: 'u1',
+        name: 'Josh Cole',
+        email: 'jc@x.org',
+        is_admin: true,
+        has_password: true,
+        entitlement: state.entitlement,
+      })
+    if (path === '/api/auth/forgot-password') return json({ ok: true })
+    if (path === '/api/auth/reset-password') return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', is_admin: true, has_password: true, entitlement: state.entitlement })
+    if (path === '/api/auth/change-password') return json({ ok: true })
     if (path === '/api/admin/accounts') return json({ accounts: state.accounts })
     const compMatch = path.match(/^\/api\/admin\/accounts\/([^/]+)\/comp$/)
     if (compMatch && method === 'POST') {

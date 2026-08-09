@@ -1472,3 +1472,11 @@ def claim_user(user_id: str, name: str, password_hash: str) -> dict:
         (name.strip(), password_hash, user_id),
     )
     return get_user_by_id(user_id)  # type: ignore[return-value]
+
+
+def update_password(user_id: str, password_hash: str) -> None:
+    """The generic case claim_user() explicitly is not: setting a password on
+    an account that already has one (forgot-password, change-password in
+    settings). Unconditional on the existing hash — the caller has already
+    verified either the old password or a valid reset token before this runs."""
+    _write("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))

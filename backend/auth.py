@@ -85,6 +85,69 @@ def verify_session_token(token: str) -> str | None:
         return None
     return str(payload["uid"])
 
+RESET_TOKEN_MAX_AGE_SECONDS = 60 * 60  # 1 hour — a reset link is not a session
+
+
+def _password_fingerprint(password_hash: str | None) -> str:
+    """A short fingerprint of the CURRENT password hash, embedded in the
+    token. Verifying it still matches on redemption is what makes a reset
+    link single-use and self-invalidating on any other password change,
+    without a database column to mark tokens spent: the moment the password
+    actually changes, every other outstanding link for that account stops
+    verifying, because the hash it was signed against no longer exists."""
+    return hashlib.sha256((password_hash or "none").encode("utf-8")).hexdigest()[:16]
+
+
+def create_reset_token(user_id: str, password_hash: str | None) -> str:
+    payload = json.dumps(
+        {
+            "uid": user_id,
+            "exp": int(time.time()) + RESET_TOKEN_MAX_AGE_SECONDS,
+            "pwfp": _password_fingerprint(password_hash),
+            "purpose": "reset",
+        }
+    ).encode("utf-8")
+    payload_b64 = _b64encode(payload)
+    sig = hmac.new(settings.session_secret.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{sig}"
+
+
+def decode_reset_token(token: str) -> dict | None:
+    """Verifies the signature, expiry, and that this is a reset token
+    specifically (not a session token wandering in) — everything checkable
+    WITHOUT knowing who the account's current password hash belongs to.
+    Returns the payload ({uid, pwfp, ...}) so the caller can look the user up
+    and finish the check with verify_reset_fingerprint below."""
+    try:
+        payload_b64, sig = token.split(".", 1)
+    except ValueError:
+        return None
+    expected_sig = hmac.new(
+        settings.session_secret.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(sig, expected_sig):
+        return None
+    try:
+        payload = json.loads(_b64decode(payload_b64))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("purpose") != "reset":
+        return None
+    if "uid" not in payload or "exp" not in payload:
+        return None
+    if int(payload["exp"]) < int(time.time()):
+        return None
+    return payload
+
+
+def verify_reset_fingerprint(payload: dict, current_password_hash: str | None) -> bool:
+    """The other half of decode_reset_token: does the token's embedded
+    fingerprint still match the account's CURRENT hash? False the instant the
+    password changes any other way — this is what makes a reset link
+    single-use without a database column to mark it spent."""
+    return payload.get("pwfp") == _password_fingerprint(current_password_hash)
+
+
 def verify_google_token(token: str) -> dict | None:
     """Verifies a Google OAuth ID token and returns the payload if valid."""
     if not settings.google_client_id:

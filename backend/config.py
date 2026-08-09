@@ -56,6 +56,17 @@ class Settings(BaseSettings):
     # not a real limit anything should ever hit.
     max_tts_chars: int = 2000
 
+    # ── email (password reset) ────────────────────────────────────────────────
+    # Resend's HTTP API — no SDK, just a POST via `requests`, which is already
+    # a dependency. Inert until the key is set: forgot-password degrades to
+    # "no email actually sent" (logged, not raised) rather than a 500 — the
+    # same inert-until-configured shape Stripe uses below.
+    resend_api_key: str = ""
+    # Resend's own sandbox address. Works with zero setup, but only delivers
+    # to the inbox that owns the API key until a real sending domain is
+    # verified in the Resend dashboard and this is pointed at it.
+    email_from: str = "Flexed Academy <onboarding@resend.dev>"
+
     # ── billing ──────────────────────────────────────────────────────────────
     # Unlimited plans; the free tier is capped on actual API spend instead. The
     # rule lives in exactly one place: backend/entitlement.py.

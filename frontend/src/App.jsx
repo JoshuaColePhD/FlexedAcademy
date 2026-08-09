@@ -29,6 +29,7 @@ import { AdminPage } from './pages/AdminPage'
 import { LandingPage } from './pages/LandingPage'
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
+import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import './styles/base.css'
 
@@ -210,7 +211,10 @@ function Gate() {
 
   if (status === 'anon') {
     const here = location.pathname + location.search
-    const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup'
+    const isAuthRoute =
+      location.pathname === '/login' ||
+      location.pathname === '/signup' ||
+      location.pathname === '/reset-password'
     /* Explicit sign-out lands on the homepage, not back at a password field —
        AuthProvider.logout() sets this right before the status flip that gets
        us here. Anything else that reaches status==='anon' off an app URL (an
@@ -231,6 +235,7 @@ function Gate() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         {/* A deep link still round-trips through sign-in and comes back. */}
         <Route
           path="*"
@@ -259,6 +264,9 @@ function Gate() {
           sign-in form to someone who is signed in. */}
       <Route path="/login" element={<AfterAuthRedirect />} />
       <Route path="/signup" element={<AfterAuthRedirect />} />
+      {/* Already signed in — the emailed link's job (log them in) is already
+          done, and change-password now lives in settings. */}
+      <Route path="/reset-password" element={<AfterAuthRedirect />} />
       <Route path="/c/:classId/*" element={<ClassRoutes />} />
       {/* Gated again server-side by every request the page makes — reaching
           this route with a non-admin session gets the page shell and then a

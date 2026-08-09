@@ -60,6 +60,17 @@ export function AuthProvider({ children }) {
     return u
   }, [])
 
+  // /api/auth/reset-password logs the account in directly (same cookie the
+  // login route sets) — a reset link that dropped you into a second sign-in
+  // form would be one more thing standing between "forgot password" and
+  // actually building a plan.
+  const resetPassword = useCallback(async (token, password) => {
+    const u = await api.resetPassword(token, password)
+    setUser(u)
+    setStatus('authed')
+    return u
+  }, [])
+
   const logout = useCallback(async () => {
     /* A flag, not a navigate() call: navigate() and the status flip below
        land in separate commits (the router's own location state and React's
@@ -83,7 +94,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ status, user, login, loginWithGoogle, signup, logout, refresh }}>
+    <AuthContext.Provider
+      value={{ status, user, login, loginWithGoogle, signup, resetPassword, logout, refresh }}
+    >
       {children}
     </AuthContext.Provider>
   )
