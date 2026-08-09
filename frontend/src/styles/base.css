@@ -2559,6 +2559,83 @@
     transform: scaleX(1);
     transform-origin: left;
   }
+  .land-signin[aria-expanded='true'] {
+    color: var(--brand-ink);
+  }
+  .land-signin[aria-expanded='true']::after {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+
+  /* The anchor for the popover below — just a positioning context, nothing
+     drawn here. */
+  .land-signin-wrap {
+    position: relative;
+  }
+  /* A light paper card floating on the violet bar, not a violet one: the
+     form inside it (SignInForm) is built against the app's own paper/ink/
+     accent tokens, the same call the proof section already made for its
+     warm-paper excerpt. Right-aligned to the bar's edge rather than
+     centered under the trigger — the trigger sits at the bar's right end,
+     and a centered popover would hang half off the viewport on a phone. */
+  .land-signin-pop {
+    /* Every app/ink/accent token this popover (and SignInForm inside it) is
+       styled with, pinned to its LIGHT value — redeclared here rather than
+       left to inherit from :root[data-theme='dark'], because this popover
+       lives on the landing page, and the landing page is a fixed world that
+       does not follow data-theme (see the file header and --brand-rgb's own
+       comment above). Without this, a visitor who last used the app in dark
+       mode got a near-black card floating on the violet bar — technically
+       legible, but exactly the inconsistency the rest of this page goes out
+       of its way to avoid. */
+    --paper-rgb: 246 244 236;
+    --paper-raised-rgb: 253 251 246;
+    --paper-sunken-rgb: 236 233 223;
+    --paper-inset-rgb: 224 220 207;
+    --edge-rgb: 221 217 205;
+    --edge-strong-rgb: 195 189 172;
+    --ink-rgb: 20 22 26;
+    --ink-soft-rgb: 58 63 71;
+    --ink-muted-rgb: 102 109 120;
+    --ink-faint-rgb: 154 161 171;
+    --ink-inverse-rgb: 255 255 255;
+    --accent-rgb: 47 95 191;
+    --accent-hover-rgb: 36 74 154;
+    --accent-tint-rgb: 233 239 250;
+    --accent-text-rgb: 47 95 191;
+    --mark-rgb: 179 38 30;
+    --mark-tint-rgb: 253 236 234;
+
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 20;
+    width: min(340px, calc(100vw - 2 * var(--sp-5)));
+    max-height: calc(100vh - 100%);
+    overflow-y: auto;
+    padding: var(--sp-5);
+    border-radius: var(--r-lg);
+    /* Each primitive channel triplet directly, not the edge/paper-raised/ink
+       ALIASES: those are declared once at root and inherit their value
+       already resolved at that declaration site, not re-resolved against
+       the redeclared primitives above — the same alias-vs-primitive gap
+       the rail's frosted glass hit earlier. */
+    border: 1px solid rgb(var(--edge-rgb));
+    background: rgb(var(--paper-raised-rgb));
+    color: rgb(var(--ink-rgb));
+    box-shadow: var(--shadow-lg);
+    animation: land-signin-pop-in var(--t-fast) var(--ease-out) both;
+  }
+  @keyframes land-signin-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 
   /* ── hero ─────────────────────────────────────────────────────────────── */
   .land-hero {

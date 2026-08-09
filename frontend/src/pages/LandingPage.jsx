@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { api } from '../lib/api'
+import { SignInForm } from '../components/SignInForm'
 
 /* The public front door — a verification seal on violet, not a bordered grid.
  * The logo mark is a violet gem glowing on near-black; the page commits to
@@ -110,6 +111,76 @@ function ArrowIcon() {
   )
 }
 
+/* Was a plain <Link to="/login">, so the one click a visitor is likeliest to
+ * make on this page — "I already have an account" — cost a full navigation
+ * away from the world this page just spent a screen convincing them of. Now
+ * it opens right where they're already looking: hover on desktop (a nav
+ * dropdown is the pattern everyone already knows), click for touch/keyboard,
+ * closes on Escape, an outside click, or a successful sign-in (Gate swaps
+ * the whole route tree the moment status flips to 'authed', which unmounts
+ * this page — nothing left to close).
+ *
+ * The panel itself is a light paper card, not violet — same call the proof
+ * section already made for its warm-paper excerpt: the sign-in FORM is
+ * borrowed from the app's own world (paper/ink/accent tokens), not the
+ * landing page's fixed brand one, because that's the palette its inputs and
+ * focus rings are actually built against. */
+function SignInPopover() {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+  const closeTimer = useRef(null)
+
+  const openNow = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current)
+      closeTimer.current = null
+    }
+    setOpen(true)
+  }
+  // A short delay, not instant-close-on-mouseleave: the trigger and the
+  // panel aren't touching (there's a gap for the panel to drop into), so
+  // crossing that gap on the way from one to the other would otherwise
+  // close it before the pointer ever reaches the form.
+  const closeSoon = () => {
+    closeTimer.current = setTimeout(() => setOpen(false), 200)
+  }
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (e) => e.key === 'Escape' && setOpen(false)
+    const onDocClick = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDocClick)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDocClick)
+    }
+  }, [open])
+
+  useEffect(() => () => closeTimer.current && clearTimeout(closeTimer.current), [])
+
+  return (
+    <div ref={wrapRef} className="land-signin-wrap" onMouseEnter={openNow} onMouseLeave={closeSoon}>
+      <button
+        type="button"
+        className="land-signin"
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen((o) => !o)}
+      >
+        Sign in
+      </button>
+      {open ? (
+        <div className="land-signin-pop" role="dialog" aria-label="Sign in">
+          <SignInForm compact idPrefix="land-" />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function LandingPage() {
   useDocumentTitle('Lesson planning, grounded')
   const [pricing, setPricing] = useState(null)
@@ -131,9 +202,7 @@ export function LandingPage() {
     <div className="land">
       <header className="land-bar">
         <span className="land-brand">Flexed Academy</span>
-        <Link to="/login" className="land-signin">
-          Sign in
-        </Link>
+        <SignInPopover />
       </header>
 
       <section className="land-hero">
