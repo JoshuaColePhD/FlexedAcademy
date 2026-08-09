@@ -102,18 +102,25 @@
     color: var(--ink-muted);
   }
 
-  /* ══ THE RAIL'S OWN GROUND ═══════════════════════════════════════════════
-     A remap, not a repaint: overriding the generic surface/ink/edge/accent
-     variables here re-themes every Tailwind utility already written inside
-     it (bg-paper-inset, text-ink-soft, border-edge, text-accent-text, …) —
-     ClassSwitcher, the chat list, and AccountMenu need zero changes to read
-     correctly against this ground. See tokens.css for why the values are
-     fixed regardless of data-theme. */
-  /* A dark, fully-remapped ground was the first pass here — Josh's call was
-     to keep every panel light and put the colour on the rail's OWN edge
-     instead: a strip, not a wash. So this is now the border only; the rail
-     keeps the plain bg-paper-sunken it always had (see AppShell.jsx), and
-     nothing inside it needs to change at all. */
+  /* A fine paper grain over the app's base white — Josh's call, so the
+     "white" isn't a flat, digital-feeling fill. feTurbulence rendered once as
+     a tiny tiled SVG rather than a canvas/JS generator: it costs nothing at
+     runtime and never repaints. Kept deliberately faint (the rect's own
+     opacity, not a CSS opacity on the whole layer, so it never touches text
+     contrast above it) — this is texture, not a visible pattern. */
+  .app-texture {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 120px 120px;
+  }
+
+  /* ══ THE RAIL'S FROSTED SPINE ═════════════════════════════════════════════
+     A remap, not a repaint, was the first pass here: overriding the generic
+     surface/ink/edge/accent variables re-themed every Tailwind utility
+     already written inside the rail. Josh's call moved the colour to the
+     rail's own EDGE instead — a strip, plus a frosted-glass material — so
+     none of that remap survives; the rail keeps the plain bg-paper-sunken it
+     always had (see AppShell.jsx). */
   /* Fixed, low-opacity, blurred at the SOURCE (filter, not backdrop-filter) —
      .app-rail's own backdrop-filter is what turns this into the visible wash
      behind its glass. Sized and positioned to sit mostly behind the rail; it
@@ -129,7 +136,7 @@
     background: radial-gradient(
       circle,
       rgb(var(--rail-pop-rgb) / 0.4) 0%,
-      rgb(var(--class-cyan-rgb) / 0.28) 55%,
+      rgb(var(--rail-pop-2-rgb) / 0.28) 55%,
       transparent 78%
     );
     filter: blur(20px);
@@ -171,9 +178,12 @@
     background: var(--rail-pop-tint);
     transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   }
+  /* Purple at rest, light blue once it's the thing you're about to press —
+     the two accents doing two different jobs rather than one repeated
+     twice. */
   .rail-cta:hover {
     color: var(--rail-paper);
-    background: var(--rail-pop);
+    background: var(--rail-pop-2);
   }
   .rail-cta kbd {
     color: inherit;

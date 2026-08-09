@@ -295,6 +295,7 @@
   --scrim: rgb(var(--scrim-rgb) / 0.28);
   --rail-paper: rgb(var(--rail-paper-rgb));
   --rail-pop: rgb(var(--rail-pop-rgb));
+  --rail-pop-2: rgb(var(--rail-pop-2-rgb));
   --rail-pop-tint: rgb(var(--rail-pop-tint-rgb));
   --class-coral: rgb(var(--class-coral-rgb));
   --class-rose: rgb(var(--class-rose-rgb));
@@ -322,22 +323,25 @@
     rgb(var(--ink-faint-rgb) / 0.14) 5px 6px
   );
 
-  /* ── the rail's one warm note ─────────────────────────────────────────────
-     First pass here fully remapped the surface, ink, edge and accent
-     primitives inside .app-rail into a dark "spine", fixed regardless of
-     data-theme. Josh's call: keep every panel light, put the colour on the
-     rail's own EDGE instead — a strip, plus a frosted-glass material
-     (.app-glow, base.css) — and reserve this warm note for the one
-     interactive thing that earns colorize.md's "rarity gives an accent
-     force": the "New plan" CTA, the logo mark, and the glass's own diffused
-     glow. Distinct from --land-gold on purpose (the One Door Rule: gold
-     means "verified", landing-only) and from --flag's warning amber.
-     --rail-paper is reused as the mark's letter colour precisely because it
-     stays legible on --rail-pop regardless of data-theme — a fixed dark
-     value paired with a fixed accent. */
+  /* ── the rail's two accents ───────────────────────────────────────────────
+     Was one warm coral note; Josh's call is two bright, deliberately
+     electric colours instead — purple as the resting/structural accent
+     (the strip, the logo mark, the CTA's idle state), light blue as the
+     "activated" one (the CTA's hover fill, the glow's second stop). Neither
+     is --brand: that violet is the landing page's fixed dark GROUND
+     (#241047, the One Door Rule — reserved, never inside the app); this is a
+     brighter, more saturated purple used only as a small accent, the same
+     relationship --accent has to --brand already established for the
+     district blue. --rail-paper is reused as the logo mark's letter colour
+     and the CTA's hover text because it stays legible on both accents
+     regardless of data-theme — a fixed dark value paired with fixed
+     accents; --rail-pop-tint is a dark tint of the same purple, so the
+     bright fill colour itself reads at 4.3:1 as the CTA's own resting
+     text. */
   --rail-paper-rgb: 14 30 36;
-  --rail-pop-rgb: 255 138 101;
-  --rail-pop-tint-rgb: 61 38 32;
+  --rail-pop-rgb: 168 85 247;
+  --rail-pop-2-rgb: 56 189 248;
+  --rail-pop-tint-rgb: 36 18 58;
 
   /* ── per-class colour ─────────────────────────────────────────────────────
      Five swatches, assigned by a hash of the class id (lib/classColor.js) —

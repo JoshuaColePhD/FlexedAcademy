@@ -226,7 +226,7 @@ export function AppShell({ children }) {
 
   return (
     <ShellContext.Provider value={shell}>
-    <div className="flex h-app w-full overflow-hidden bg-paper font-sans text-ink">
+    <div className="app-texture flex h-app w-full overflow-hidden bg-paper font-sans text-ink">
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
         href="#main"
