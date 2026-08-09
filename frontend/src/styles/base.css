@@ -1519,8 +1519,14 @@
   .artifact-drawer.is-open {
     /* Approximating "15% of the page" with a floor and a ceiling — a bare
        15vw would go unreadably narrow on a laptop split three ways and
-       absurdly wide on an ultrawide monitor. */
-    width: clamp(220px, 15vw, 320px);
+       absurdly wide on an ultrawide monitor. The floor is 254px, not a
+       rounder 220: the old fixed rail this replaced was 240px of CONTENT,
+       and this width also has to cover the 14px handle before
+       ArtifactRail ever sees a pixel — 220 total left only ~206px of
+       content, which is what was truncating "Week 03…" to "We…" and
+       "School calendar" to "Scho…" at ordinary laptop widths (15vw is
+       under 220px from roughly 1024–1466px wide, i.e. most laptops). */
+    width: clamp(254px, 16vw, 320px);
   }
   .artifact-drawer-handle {
     flex-shrink: 0;

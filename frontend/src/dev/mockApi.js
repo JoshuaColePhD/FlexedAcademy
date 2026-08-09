@@ -74,6 +74,46 @@ const makePlan = (label) => ({
 const RETRIEVED = ['ELA21.11.R2', 'RHS-2', 'CLE-4', 'R.TST.701', 'ORG 403']
 const WARNINGS = ['Wednesday cites 4.C, which retrieval never supplied — swap in a grounded code.']
 
+/* Keyed by the same normalized form Citation.jsx uses (lib/codes.js) — one
+   entry per RETRIEVED code, each with its own real-looking text. This used to
+   be a single canned response returned for EVERY code, so every citation
+   popover — grounded or not — showed identical "Analyze how an author
+   develops a point of view" text. That made the one thing this app is
+   supposed to prove (a citation shows what it actually says) untestable in
+   the mock: 4.C's popover looked exactly as trustworthy as ELA21.11.R2's. */
+const STANDARDS = {
+  'ELA21.11.R2': {
+    description: 'Analyze how an author develops and refines a point of view.',
+    source_document: 'Alabama Course of Study: ELA (2021)',
+    source_page_or_section: 'Grade 11, R2',
+    verbatim_ok: true,
+  },
+  'RHS-2': {
+    description: 'Make strategic use of digital media in presentations to add interest and enhance understanding.',
+    source_document: 'Alabama Course of Study: ELA (2021)',
+    source_page_or_section: 'Grade 11, RHS-2',
+    verbatim_ok: true,
+  },
+  'CLE-4': {
+    description: 'Analyze and select evidence to develop a claim, distinguishing it from opposing claims.',
+    source_document: 'Alabama Course of Study: ELA (2021)',
+    source_page_or_section: 'Grade 11, CLE-4',
+    verbatim_ok: true,
+  },
+  'R.TST.701': {
+    description: 'Cite strong and thorough textual evidence to support analysis of what a text says explicitly and inferentially.',
+    source_document: 'ACT College & Career Readiness Standards',
+    source_page_or_section: 'Reading, 701',
+    verbatim_ok: true,
+  },
+  'ORG 403': {
+    description: 'Use transitions to clarify the relationships between ideas and claims.',
+    source_document: 'ACT College & Career Readiness Standards',
+    source_page_or_section: 'English, 403',
+    verbatim_ok: true,
+  },
+}
+
 /* ── in-memory state ─────────────────────────────────────────────────────── */
 let seq = 0
 const uid = (p) => `${p}_${++seq}`
@@ -439,13 +479,14 @@ export function installMockApi() {
       })
     }
 
-    if (path.startsWith('/api/standards/'))
-      return json({
-        description: 'Analyze how an author develops and refines a point of view.',
-        source_document: 'Alabama Course of Study: ELA (2021)',
-        source_page_or_section: 'Grade 11, R2',
-        verbatim_ok: true,
-      })
+    if (path.startsWith('/api/standards/') && path !== '/api/standards/stats') {
+      const code = decodeURIComponent(path.slice('/api/standards/'.length)).replace(/\s+/g, ' ').trim().toUpperCase()
+      const record = STANDARDS[code]
+      // 4.C falls here — same as the real backend does for a code retrieval
+      // never supplied, and the one path Citation.jsx's "Not in the standards
+      // corpus" copy exists for but nothing was ever exercising.
+      return record ? json(record) : new Response('{}', { status: 404 })
+    }
 
     return json({})
   }
