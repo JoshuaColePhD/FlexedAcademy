@@ -85,7 +85,7 @@ export function useLessonStream({ onDone, onError } = {}) {
   }, [])
 
   const start = useCallback(
-    async (query, { chatId } = {}) => {
+    async (query, { chatId, weekNumber } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -102,7 +102,7 @@ export function useLessonStream({ onDone, onError } = {}) {
         const res = await fetch(api.streamUrl(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, chat_id: chatId ?? null }),
+          body: JSON.stringify({ query, chat_id: chatId ?? null, week_number: weekNumber ?? null }),
           signal: controller.signal,
           credentials: 'include',
         })

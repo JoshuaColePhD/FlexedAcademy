@@ -10,8 +10,9 @@ import { useShell } from '../lib/shellContext'
 import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
 import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
-import { useActiveClass, useChats } from '../hooks/useAppData'
+import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
 import { FIELD_LABELS } from '../lib/planShape'
+import { firstUnplanned } from '../lib/queue'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -20,6 +21,7 @@ import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
+import { WeekPicker } from '../components/WeekPicker'
 
 /* One chat, one plan.
  *
@@ -71,12 +73,19 @@ export function ChatPage() {
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
   const { activeClass } = useActiveClass()
   const { data: chats = [] } = useChats()
+  const { data: calendar } = useCalendar(classId)
   const { setDocOpen } = useShell()
 
   const [messages, setMessages] = useState([])
   const [artifact, setArtifact] = useState(null)
   const [query, setQuery] = useState('')
   const [attachments, setAttachments] = useState([])
+  /* Which week a NEW plan will be built for. Null means "auto" — the same
+     next-unplanned week the Greeting suggestion already names — until the
+     teacher overrides it. Without this the teacher found out which week they
+     got only after a 30-second generation, from the finished document's own
+     header; there was no way to see it, let alone change it, beforehand. */
+  const [selectedWeek, setSelectedWeek] = useState(null)
   /* Was `panelOpen`. The document is closed by default now — the rail and the
      message carry enough that opening it is a choice, not a requirement. */
   const [expanded, setExpanded] = useState(false)
@@ -100,6 +109,15 @@ export function ChatPage() {
 
   const activeChat = chats.find((c) => c.id === chatId)
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
+
+  // Every week worth offering in the picker: not a week the school is
+  // shut, not one that's already gone by.
+  const weekOptions = useMemo(
+    () => (calendar?.weeks || []).filter((w) => !w.no_school && !w.is_past),
+    [calendar]
+  )
+  const autoWeek = useMemo(() => firstUnplanned(calendar?.weeks), [calendar])
+  const effectiveWeek = selectedWeek ?? autoWeek?.week ?? null
 
   /* The nav rail tightens while the document is open — see lib/shellContext.js.
      Reported rather than reached for: AppShell owns its own width. */
@@ -145,6 +163,7 @@ export function ChatPage() {
       setArtifact(null)
       setExpanded(false)
       setRailOpen(false)
+      setSelectedWeek(null)
       localFor.current = null
       return undefined
     }
@@ -415,36 +434,14 @@ export function ChatPage() {
       const shown = typed || `Sent ${attachments.length} file(s)`
       if (activeChatId) api.addMessage(activeChatId, { role: 'user', content: shown }).catch(() => {})
 
-      // 1. Pass the full chat history to the chat model.
-      // The LAST turn sends `content` (typed text plus any attached document
-      // text), not the short `typed`-only string the transcript displays —
-      // that split is what makes the chip clearable above: the full text
-      // still reaches the model this one time, it just doesn't have to live
-      // in the visible bubble forever.
-      const payloadMessages = [
-        ...messages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
-        { role: 'user', content },
-      ]
-      const chatResult = await chatStream.start(payloadMessages, { chatId: activeChatId })
-
-      if (!chatResult || !chatResult.toolCalled) {
-        // AI decided to just converse, no plan generation/revision needed.
-        return
-      }
-
-      // 2. The AI called generate_lesson_plan. Combine history for the prompt.
-      // We append any introductory text the AI just streamed ("I'll get right on that!")
-      // so it's in the combined history. Same split as above: the last turn
-      // carries the attachment text, everything before it is the transcript.
-      let combinedHistory = [
-        ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
-        `USER: ${content}`,
-      ].join('\n\n')
-      if (chatResult.text?.trim()) {
-        combinedHistory += `\n\nASSISTANT: ${chatResult.text}`
-      }
-
-      // No plan in this chat yet -> build one. Otherwise -> revise it.
+      /* No plan in this chat yet -> build one, directly. This used to go
+         through chat_stream first and only built if the model chose to call
+         generate_lesson_plan — which reintroduced exactly the guessing this
+         app exists to avoid (see the file header: "intent routing is
+         deliberately dumb"). A fully-specified prompt like "plan a week on
+         Gatsby, chapters 3-4, rhetorical analysis" got an outline and "want me
+         to proceed?" instead of the week the composer promised. There is no
+         mode picker in this UI — every message here is asking for a plan. */
       if (!artifact?.planId) {
         /* The paywall, asked before the 30-second wait rather than after it.
            The server enforces the same rule (routes/generate.py) — this exists
@@ -465,8 +462,39 @@ export function ChatPage() {
           ])
           return
         }
-        stream.start(combinedHistory, { chatId: activeChatId }).catch(() => {})
+        const combinedHistory = [
+          ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+          `USER: ${content}`,
+        ].join('\n\n')
+        stream.start(combinedHistory, { chatId: activeChatId, weekNumber: effectiveWeek }).catch(() => {})
         return
+      }
+
+      // A plan already exists, so this message is ambiguous between "just
+      // talking about it" and "revise it" — that's the one case worth asking
+      // the model to route, since a bare follow-up ("why Thursday?") shouldn't
+      // silently rebuild the week.
+      const payloadMessages = [
+        ...messages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+        { role: 'user', content },
+      ]
+      const chatResult = await chatStream.start(payloadMessages, { chatId: activeChatId })
+
+      if (!chatResult || !chatResult.toolCalled) {
+        // AI decided to just converse, no revision needed.
+        return
+      }
+
+      // The AI called generate_lesson_plan. Combine history for the prompt.
+      // We append any introductory text the AI just streamed ("I'll get right on that!")
+      // so it's in the combined history. Same split as above: the last turn
+      // carries the attachment text, everything before it is the transcript.
+      let combinedHistory = [
+        ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+        `USER: ${content}`,
+      ].join('\n\n')
+      if (chatResult.text?.trim()) {
+        combinedHistory += `\n\nASSISTANT: ${chatResult.text}`
       }
 
       setRevising(true)
@@ -503,7 +531,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek]
   )
 
   /* Per-cell revise, from clicking a cell in the document.
@@ -737,7 +765,6 @@ export function ChatPage() {
                 message={m}
                 isLast={i === messages.length - 1}
                 onRetry={m.isError && !busy ? retryLast : undefined}
-                onOpenArtifact={m.planId ? () => openDocument() : undefined}
                 /* The pencil rendered unguarded while this was never passed, so
                    clicking it opened a working editor whose "Send again" threw
                    and silently reverted the text. */
@@ -817,6 +844,14 @@ export function ChatPage() {
           remount. Only the wrapper's className may change. */}
       <div className="shrink-0 border-t border-edge bg-paper px-gutter pb-5 pt-3">
         <div className="mx-auto w-full max-w-measure">
+          {/* Which week this is about to become. Shown only before a plan
+              exists in this chat — once one does, the chat-head above already
+              names its week, and a plan already built is not up for a silent
+              re-target. Without this, the teacher found out which week they got
+              only after a 30-second generation finished. */}
+          {isEmpty ? (
+            <WeekPicker options={weekOptions} value={effectiveWeek} onChange={setSelectedWeek} />
+          ) : null}
           <Composer
             value={query}
             onChange={setQuery}

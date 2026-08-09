@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { PHONE, useMediaQuery } from '../hooks/useMediaQuery'
 import { api } from '../lib/api'
 import { codeRe, groundedSet, normalizeCode } from '../lib/codes'
@@ -85,7 +86,15 @@ function Popover({ code, anchorRef, onClose, popoverId }) {
     }
   }, [onClose, anchorRef])
 
-  return (
+  /* Portaled straight to <body>. `position: fixed` only measures against the
+     viewport when nothing in its ancestor chain runs a transform — and Message
+     wraps every bubble in `.fa-rise`, a transform-based entrance animation.
+     Chrome keeps the compositing layer that animation creates even once it has
+     finished (fill-mode: both), so a popover left in that subtree inherited a
+     containing block hundreds of pixels off from the viewport instead of the
+     anchor it was measured against. Escaping the subtree is the fix; trimming
+     the animation would only move the bug to the next transform someone adds. */
+  return createPortal(
     /* Deliberately NOT role="dialog". It used to claim that while never being
        focused, trapped, or restoring focus — a dialog a screen reader is never
        moved into is worse than a plain disclosure. It holds no focusable content,
@@ -132,7 +141,8 @@ function Popover({ code, anchorRef, onClose, popoverId }) {
           </div>
         </>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }
 

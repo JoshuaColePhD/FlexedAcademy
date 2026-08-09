@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from .. import db, llm, service
+from .. import db, llm, schoolcal, service
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import entitlement
@@ -22,6 +22,24 @@ router = APIRouter(prefix="/api", tags=["generate"])
 class GenerateRequest(BaseModel):
     query: str = Field(min_length=1, max_length=settings.max_query_chars)
     chat_id: str | None = None
+    # Set only when the teacher picked a week explicitly (the new-plan week
+    # picker). Left unset, week_system_prompt's own fallback ("If it names a
+    # topic instead, pick the week the unit map assigns to it") is a MODEL
+    # GUESS with nothing forcing it to agree with itself between requests —
+    # confirmed against live data, where two unscoped prompts in the same
+    # class landed on Week 12 and then Week 05. Resolving the week here, once,
+    # and naming it explicitly in the query text is what makes `week_of`
+    # deterministic instead of a coin flip.
+    week_number: int | None = None
+
+
+def _with_week(query: str, week_number: int | None) -> str:
+    if week_number is None:
+        return query
+    week = next((w for w in schoolcal.school_weeks() if w["week"] == week_number), None)
+    if not week:
+        return query
+    return f"Build this for {schoolcal.label_for(week)}. {query}"
 
 class ChatMessage(BaseModel):
     role: str
@@ -73,7 +91,8 @@ def _require_entitlement(user_id: str) -> None:
 @router.post("/generate")
 def generate(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     _require_entitlement(user_id)
-    return service.generate(user_id, req.query, chat_id=req.chat_id, bg_tasks=bg_tasks)
+    query = _with_week(req.query, req.week_number)
+    return service.generate(user_id, query, chat_id=req.chat_id, bg_tasks=bg_tasks)
 
 
 @router.post("/generate_stream")
@@ -87,11 +106,12 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
     # normal error envelope rather than an SSE frame the reader has to special-
     # case. useLessonStream already reads a non-200 body through apiErrorFromBody.
     _require_entitlement(user_id)
+    query = _with_week(req.query, req.week_number)
 
     def event_stream():
         chunks: list[str] = []
         try:
-            result = service.prepare(user_id, req.query)
+            result = service.prepare(user_id, query)
             yield _sse(
                 {
                     "grounding": {
@@ -102,7 +122,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
                     }
                 }
             )
-            for delta in llm.stream_plan(user_id, req.query, result):
+            for delta in llm.stream_plan(user_id, query, result):
                 chunks.append(delta)
                 yield _sse({"chunk": delta})
 
@@ -111,7 +131,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
             row = service.finalize(
                 user_id=user_id,
                 plan_raw=loads_lenient("".join(chunks)),
-                query=req.query,
+                query=query,
                 result=result,
                 chat_id=req.chat_id,
                 bg_tasks=bg_tasks,

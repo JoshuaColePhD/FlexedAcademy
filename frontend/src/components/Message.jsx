@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy, Download, FileText, Pencil, RotateCcw } from 'lucide-react'
-import { api } from '../lib/api'
+import { Check, Copy, Pencil, RotateCcw } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { scanGrounding } from '../lib/grounding'
 import { dayTitle, orderedDays } from '../lib/planShape'
 import { Cite } from './Citation'
@@ -48,7 +48,7 @@ function useCopy() {
  * so it gets no bubble and no avatar. The previous version gave the assistant a
  * greyscale logo avatar and a rounded chat bubble, which framed a document tool
  * as a messaging app. */
-export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
+export function Message({ message, onRetry, onEdit, isLast }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -152,15 +152,19 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
                 : 'text-[0.9375rem] leading-relaxed text-ink'
           }
         >
-          <p className="m-0 whitespace-pre-wrap">
-            {message.content}
-            {message.streaming ? (
-              <span
-                className="ml-1 inline-block h-4 w-1.5 animate-pulse bg-accent align-middle"
-                aria-hidden="true"
-              />
-            ) : null}
-          </p>
+          {isUser ? (
+            <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+          ) : (
+            <div className="msg-markdown">
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+              {message.streaming ? (
+                <span
+                  className="ml-1 inline-block h-4 w-1.5 animate-pulse bg-accent align-middle"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </div>
+          )}
           {message.hint ? (
             <small className="mt-2 block rounded-md bg-mark-tint p-2 text-xs text-mark">
               {message.hint}
@@ -186,7 +190,7 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
           <div className="mt-3 flex w-full flex-col gap-3.5">
             <WeekStrip days={message.plan.days} loose />
             {grounded.length || ungrounded.length ? (
-              <p className="grounding-line">
+              <div className="grounding-line">
                 <span>Grounded:</span>
                 {grounded.map((c) => (
                   <Cite key={c} code={c} grounded />
@@ -209,36 +213,7 @@ export function Message({ message, onOpenArtifact, onRetry, onEdit, isLast }) {
                     ))}
                   </>
                 ) : null}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {message.planId || message.previewPlan ? (
-          <div className="artifact-card fa-lift mt-3">
-            <span className="artifact-card-tile">
-              <FileText size={17} aria-hidden="true" />
-            </span>
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 flex-col items-start gap-0.5 bg-transparent text-left"
-              onClick={() => onOpenArtifact(message)}
-            >
-              <span className="artifact-card-title">
-                {message.weekLabel || message.plan?.week_of || 'Weekly lesson plan'}
-              </span>
-              <span className="artifact-card-sub">
-                {message.planId ? 'Word document · Florence template' : 'Drafting…'}
-              </span>
-            </button>
-            {message.planId ? (
-              <a
-                className="artifact-card-download fa-press"
-                href={api.planDownloadUrl(message.planId)}
-                download
-              >
-                <Download size={13} aria-hidden="true" /> Download
-              </a>
+              </div>
             ) : null}
           </div>
         ) : null}

@@ -27,8 +27,12 @@ import { findFramework, verifiedPct } from '../lib/frameworks'
 
 const GRADES = [9, 10, 11, 12]
 
+// Grade is nullable — a class saved before grade was collected has none.
+// Number(null) coerces to NaN, so this used to print "NaNth" instead of
+// leaving the grade off the label.
 function gradeLabel(g) {
   const n = Number(g)
+  if (!Number.isFinite(n)) return null
   const suffix = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'
   return `${n}${suffix}`
 }
@@ -262,7 +266,8 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
   // What POST /api/classes would have named this class. See the row below.
-  const derivedLabel = `${shortLabel(fw, cls.subject)} · ${gradeLabel(cls.grade)}`
+  const grade = gradeLabel(cls.grade)
+  const derivedLabel = grade ? `${shortLabel(fw, cls.subject)} · ${grade}` : shortLabel(fw, cls.subject)
 
   const commitName = async () => {
     const next = name.trim()
