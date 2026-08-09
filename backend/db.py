@@ -1150,11 +1150,11 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
     # unplanned.
     if cls:
         rows = _rows(
-            "SELECT week_label, week_number, id, unit, class_id, course FROM plans WHERE user_id = ? AND (class_id = ? OR (class_id IS NULL AND course = ?))",
+            "SELECT week_label, week_number, id, unit, class_id, course, chat_id FROM plans WHERE user_id = ? AND (class_id = ? OR (class_id IS NULL AND course = ?))",
             (user_id, cls["id"], cls["name"]),
         )
     else:
-        rows = _rows("SELECT week_label, week_number, id, unit, class_id, course FROM plans WHERE user_id = ?", (user_id,))
+        rows = _rows("SELECT week_label, week_number, id, unit, class_id, course, chat_id FROM plans WHERE user_id = ?", (user_id,))
 
     from .units import week_number
 
@@ -1165,7 +1165,9 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
         # found nothing.
         n = r.get("week_number") or week_number(r["week_label"] or "")
         if n is not None:
-            by_week.setdefault(n, {"plan_id": r["id"], "week_label": r["week_label"], "unit": r.get("unit")})
+            by_week.setdefault(
+                n, {"plan_id": r["id"], "week_label": r["week_label"], "unit": r.get("unit"), "chat_id": r.get("chat_id")}
+            )
 
     today = now()[:10]
     current = schoolcal.week_for()
@@ -1183,6 +1185,10 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
                 "days": days,
                 "teaching_days": sum(1 for d in days if d["is_school"]),
                 "plan_id": (plan or {}).get("plan_id"),
+                # The chat that produced (or last revised) this week's plan —
+                # so a built week can be opened straight into its own
+                # conversation instead of only being known to exist.
+                "chat_id": (plan or {}).get("chat_id"),
                 # What the week is ABOUT. The board shows this instead of
                 # repeating the date that is already in the row's date column.
                 "unit": (plan or {}).get("unit"),

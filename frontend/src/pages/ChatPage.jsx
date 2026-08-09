@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
@@ -65,6 +65,7 @@ const ATTACHMENT_CHAR_CAP = 12000
 export function ChatPage() {
   const { classId, chatId } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const toast = useToast()
   const qc = useQueryClient()
   const { refresh: refreshAuth } = useAuth()
@@ -88,6 +89,7 @@ export function ChatPage() {
      got only after a 30-second generation, from the finished document's own
      header; there was no way to see it, let alone change it, beforehand. */
   const [selectedWeek, setSelectedWeek] = useState(null)
+
   /* Was `panelOpen`. The document is closed by default now — the rail and the
      message carry enough that opening it is a choice, not a requirement. */
   const [expanded, setExpanded] = useState(false)
@@ -282,6 +284,30 @@ export function ChatPage() {
     // still aborts whatever is actually in flight — see useLessonStream.js.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, toast])
+
+  /* ClassPage's week list links an unplanned week here as `?week=N` — the
+     same override WeekPicker sets by hand, just arriving from a click
+     instead of a dropdown. One-shot: consumed into state and stripped from
+     the URL immediately, so it can't go stale sitting in a bookmark or the
+     back button, and doesn't fight WeekPicker for who owns the value.
+
+     Declared AFTER the conversation loader above, not before: that effect
+     resets selectedWeek to null on every mount with no chatId, and effects
+     fire in declaration order — before this one moved down here, that reset
+     ran on the same mount and clobbered the value this effect had just set. */
+  useEffect(() => {
+    const weekParam = searchParams.get('week')
+    if (chatId || !weekParam) return
+    setSelectedWeek(Number(weekParam))
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('week')
+        return next
+      },
+      { replace: true }
+    )
+  }, [chatId, searchParams, setSearchParams])
 
   /** Mark cells as just-changed. Cleared after the flash has finished playing. */
   const flash = useCallback((keys) => {

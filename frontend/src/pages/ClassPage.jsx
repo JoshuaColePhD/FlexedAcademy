@@ -4,13 +4,14 @@ import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
-import { useActiveClass } from '../hooks/useAppData'
+import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
 import { findFramework, verifiedPct } from '../lib/frameworks'
+import { shortRange } from '../lib/dates'
 
 /* Your classes.
  *
@@ -253,12 +254,104 @@ function ClassDocuments({ cls, onChanged }) {
   )
 }
 
+/* ── the semester, one row per week ────────────────────────────────────────
+   Each week is a project: built or not, in the past or still ahead. This is
+   the one thing GET /api/weeks always knew (plan_id, chat_id, is_current,
+   is_past — db.week_board) with nowhere on screen it was shown as a whole —
+   only two rows of it, on the Greeting screen's "Continue…" suggestions. */
+const WEEK_STATUS = {
+  closed: { dot: 'bg-ink-faint', label: 'No school' },
+  built: { dot: 'bg-ok', label: 'Built' },
+  current: { dot: 'bg-accent', label: 'This week' },
+  missed: { dot: 'bg-flag', label: 'Not built' },
+  upcoming: { dot: 'bg-ink-faint', label: 'Upcoming' },
+}
+
+function weekStatus(w) {
+  if (w.no_school) return 'closed'
+  if (w.has_plan) return 'built'
+  if (w.is_current) return 'current'
+  if (w.is_past) return 'missed'
+  return 'upcoming'
+}
+
+function ClassWeeks({ cls }) {
+  const { data: calendar, isLoading, isError } = useCalendar(cls.id)
+  const currentRef = useRef(null)
+  const weeks = calendar?.weeks || []
+
+  // A school year is ~36 weeks; opening straight to the one that matters
+  // beats scrolling from Week 01 every single time.
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ block: 'center' })
+  }, [weeks.length])
+
+  if (isLoading) return <p className="mt-2 text-xs text-ink-muted">Loading weeks…</p>
+  if (isError) return <p className="mt-2 text-xs text-mark">Couldn’t load the calendar.</p>
+  if (!weeks.length) {
+    return <p className="mt-2 text-xs text-ink-muted">No school calendar on file.</p>
+  }
+
+  return (
+    <ul className="mt-2 max-h-72 divide-y divide-edge overflow-y-auto rounded-lg bg-paper-sunken">
+      {weeks.map((w) => {
+        const status = weekStatus(w)
+        const { dot, label } = WEEK_STATUS[status]
+        // Built weeks with an orphaned chat_id (written before chat_id was
+        // tracked) fall back to plain text — nowhere to send that click.
+        const openable = status === 'built' && w.chat_id
+        const content = (
+          <>
+            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-ink">
+                Week {String(w.week).padStart(2, '0')}
+                {w.unit ? ` — ${w.unit}` : ''}
+              </span>
+              <span className="block text-xs text-ink-muted">
+                {shortRange(w.start, w.end)} · {label}
+              </span>
+            </span>
+          </>
+        )
+        return (
+          <li key={w.week} ref={w.is_current ? currentRef : undefined}>
+            {openable ? (
+              <Link
+                to={`/c/${cls.id}/chat/${w.chat_id}`}
+                className="flex min-h-touch items-center gap-2.5 px-3 py-2 transition-colors hover:bg-paper-inset"
+              >
+                {content}
+              </Link>
+            ) : status === 'closed' || status === 'built' ? (
+              // Closed weeks have nothing to open; built-but-orphaned weeks
+              // (no chat_id) have a plan but nowhere for this click to go —
+              // a "plan this week" link there would claim the week was
+              // still open when it's already built.
+              <div className="flex min-h-touch items-center gap-2.5 px-3 py-2 opacity-60">{content}</div>
+            ) : (
+              <Link
+                to={`/c/${cls.id}?week=${w.week}`}
+                className="flex min-h-touch items-center gap-2.5 px-3 py-2 transition-colors hover:bg-paper-inset"
+              >
+                {content}
+              </Link>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 /* ── one class ─────────────────────────────────────────────────────────────── */
 function ClassRow({ cls, frameworks, isActive, onChanged }) {
   const toast = useToast()
   const confirm = useConfirm()
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
+  // Which panel is open below the row, if any — the two are mutually
+  // exclusive, both toggled the same way "Documents" alone used to be.
+  const [panel, setPanel] = useState(null)
   const [name, setName] = useState(cls.name)
 
   useEffect(() => setName(cls.name), [cls.name])
@@ -346,11 +439,19 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
 
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
+          onClick={() => setPanel((p) => (p === 'weeks' ? null : 'weeks'))}
+          aria-expanded={panel === 'weeks'}
           className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
         >
-          {open ? 'Done' : 'Documents'}
+          {panel === 'weeks' ? 'Done' : 'Weeks'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setPanel((p) => (p === 'documents' ? null : 'documents'))}
+          aria-expanded={panel === 'documents'}
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+        >
+          {panel === 'documents' ? 'Done' : 'Documents'}
         </button>
         <button
           type="button"
@@ -362,7 +463,11 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
         </button>
       </div>
 
-      {open ? (
+      {panel === 'weeks' ? (
+        <div className="px-3 pb-3 pl-10">
+          <ClassWeeks cls={cls} />
+        </div>
+      ) : panel === 'documents' ? (
         <div className="px-3 pb-3 pl-10">
           {/* Verification is not uniform — ELA is 100%, PE 61% — and it matters
               before trusting a plan built on this framework. */}

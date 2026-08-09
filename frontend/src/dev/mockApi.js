@@ -175,6 +175,21 @@ const state = {
   plans: { plan1: makePlan('Week 03 — Aug 17-21, 2026'), planOrphan: makePlan('Week 12 — Oct 19-23, 2026') },
   planChat: { plan1: 'seed1', planOrphan: 'stranded' },
   documents: [],
+  // GET /api/weeks — db.week_board()'s shape. Week 03 is built and links to
+  // seed1 (the has_plan-and-openable case); week 12 is built but with no
+  // chat_id (the pre-chat_id-tracking orphan case, plain text not a link);
+  // week 02 is past and never built (the "missed" case); the rest are
+  // upcoming, and week 06 is a whole-week closure.
+  weeks: [
+    { week: 1, start: '2026-08-03', end: '2026-08-07', no_school: false, has_plan: false, is_current: false, is_past: true, plan_id: null, chat_id: null, unit: null },
+    { week: 2, start: '2026-08-10', end: '2026-08-14', no_school: false, has_plan: false, is_current: false, is_past: true, plan_id: null, chat_id: null, unit: null },
+    { week: 3, start: '2026-08-17', end: '2026-08-21', no_school: false, has_plan: true, is_current: true, is_past: false, plan_id: 'plan1', chat_id: 'seed1', unit: 'Voice, Tone & Rhetorical Devices' },
+    { week: 4, start: '2026-08-24', end: '2026-08-28', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
+    { week: 5, start: '2026-08-31', end: '2026-09-04', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
+    { week: 6, start: '2026-09-07', end: '2026-09-11', no_school: true, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
+    { week: 7, start: '2026-09-14', end: '2026-09-18', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
+    { week: 12, start: '2026-10-19', end: '2026-10-23', no_school: false, has_plan: true, is_current: false, is_past: false, plan_id: 'planOrphan', chat_id: null, unit: 'Satire' },
+  ],
 }
 
 /* Per-endpoint latency, in ms. Tunable from the console at runtime so a race
@@ -256,6 +271,8 @@ export function installMockApi() {
         { id: 'c1', name: 'AP Language & Composition', subject: 'AP Lang', grade: '11' },
         { id: 'c2', name: 'AP Physics 1', subject: 'Science', grade: '11' },
       ])
+    if (path === '/api/weeks')
+      return json({ class: null, weeks: state.weeks, current_week: 3 })
     if (
       path === '/api/curriculum_progress' &&
       new URL(url, location.origin).searchParams.get('subject') !== 'AP Lang'
