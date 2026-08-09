@@ -36,8 +36,19 @@ export const authInputClass =
 
 export function AuthLayout({ title, subtitle, children, footer }) {
   return (
-    <div className="flex min-h-app w-full items-center justify-center bg-paper p-gutter">
-      <div className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-edge bg-paper-raised shadow-lg md:grid-cols-[1.1fr_1fr]">
+    // h-app, not min-h-app: index.html's <body> is overflow-hidden — every
+    // other screen in the app manages its own scroll region instead of
+    // relying on the page to scroll, and this is the one screen that didn't.
+    // The card below is that region now.
+    <div className="flex h-app w-full items-center justify-center bg-paper p-gutter">
+      {/* overflow-y-auto + max-h-full, not the old plain overflow-hidden: on
+          the stacked mobile layout (claims panel THEN the form, both full
+          width below md) the card ran taller than the viewport with no
+          scroll container anywhere in its ancestry — the sign-in button was
+          there, just permanently below the fold. overflow-x stays hidden so
+          the rounded corners still clip the left panel's own background the
+          way plain overflow-hidden did. */}
+      <div className="grid max-h-full w-full max-w-4xl overflow-y-auto overflow-x-hidden rounded-2xl border border-edge bg-paper-raised shadow-lg md:grid-cols-[1.1fr_1fr]">
         <div className="flex flex-col justify-center gap-7 border-b border-edge bg-paper-sunken p-8 md:border-b-0 md:border-r md:p-10">
           {/* The way back. Once you clicked "Start a week free" there was no
               route to the landing page except the browser's own back button —
@@ -85,8 +96,18 @@ export function AuthLayout({ title, subtitle, children, footer }) {
         </div>
 
         <div className="flex flex-col justify-center p-8 md:p-10">
-          <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
-          {subtitle ? <p className="mt-1 text-sm text-ink-muted">{subtitle}</p> : null}
+          {/* Sticky, because the card itself is what scrolls now (see above) —
+              on a long mobile form (Google button, divider, two fields, the
+              submit button, the "Forgot your password?" disclosure) "Sign in"
+              or "Create an account" would otherwise scroll away first, and a
+              teacher scrolled halfway down loses which form they're in. The
+              negative margins bleed it back out to the panel's own edges so
+              the sticky background covers corner-to-corner instead of leaving
+              the panel's side padding see-through above it. */}
+          <div className="sticky top-0 z-10 -mx-8 -mt-8 bg-paper-raised px-8 pb-3 pt-8 md:-mx-10 md:-mt-10 md:px-10 md:pt-10">
+            <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
+            {subtitle ? <p className="mt-1 text-sm text-ink-muted">{subtitle}</p> : null}
+          </div>
           {children}
           {footer ? <div className="mt-6 text-center text-sm text-ink-muted">{footer}</div> : null}
         </div>
