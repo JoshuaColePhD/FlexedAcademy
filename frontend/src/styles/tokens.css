@@ -329,24 +329,27 @@
   );
 
   /* ── the rail's two accents ───────────────────────────────────────────────
-     Was one warm coral note; Josh's call is two bright, deliberately
-     electric colours instead — purple as the resting/structural accent
-     (the strip, the logo mark, the CTA's idle state), light blue as the
-     "activated" one (the CTA's hover fill, the glow's second stop). Neither
+     Was one warm coral note, then a purple/light-blue pair; Josh's later call
+     was to drop the purple and use the exact cyan from the per-class palette
+     below instead (--rail-pop now equals SWATCHES.cyan in lib/classColor.js,
+     56 209 224) — the strip, the artifact drawer's handle, the logo mark and
+     the CTA's idle state all read as "this app's own colour" rather than a
+     class's colour by coincidence. Light blue stays the "activated" second
+     accent (the CTA's hover fill, the glow's second stop, the drawer
+     handle's busy-pulse partner) — already close in hue to the new cyan, so
+     the pair reads as one family instead of two competing accents. Neither
      is --brand: that violet is the landing page's fixed dark GROUND
-     (#241047, the One Door Rule — reserved, never inside the app); this is a
-     brighter, more saturated purple used only as a small accent, the same
-     relationship --accent has to --brand already established for the
-     district blue. --rail-paper is reused as the logo mark's letter colour
-     and the CTA's hover text because it stays legible on both accents
-     regardless of data-theme — a fixed dark value paired with fixed
-     accents; --rail-pop-tint is a dark tint of the same purple, so the
-     bright fill colour itself reads at 4.3:1 as the CTA's own resting
+     (#241047, the One Door Rule — reserved, never inside the app) and is
+     untouched by this. --rail-paper is reused as the logo mark's letter
+     colour and the CTA's hover text because it stays legible on both
+     accents regardless of data-theme — a fixed dark value paired with fixed
+     accents; --rail-pop-tint is a dark teal tint matching the new cyan, so
+     the bright fill colour itself reads at 9.3:1 as the CTA's own resting
      text. */
   --rail-paper-rgb: 14 30 36;
-  --rail-pop-rgb: 168 85 247;
+  --rail-pop-rgb: 56 209 224;
   --rail-pop-2-rgb: 56 189 248;
-  --rail-pop-tint-rgb: 36 18 58;
+  --rail-pop-tint-rgb: 6 30 34;
 
   /* ── per-class colour ─────────────────────────────────────────────────────
      Five swatches, assigned by a hash of the class id (lib/classColor.js) —
