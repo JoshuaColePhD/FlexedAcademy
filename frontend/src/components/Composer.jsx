@@ -296,16 +296,21 @@ export function Composer({
             ) : (
               <button
                 type="button"
+                /* bg-accent, not bg-ink: the district blue is the app's own
+                   established "this is the primary action" color (see the
+                   filled buttons on ClassPage) — a plain black circle here
+                   just wasn't reading as the one button that matters on the
+                   whole bar. */
                 className={`tap-target flex h-9 w-9 items-center justify-center rounded-full transition-all ${
                   canSend
-                    ? 'bg-ink text-ink-inverse hover:bg-ink-soft active:scale-95'
+                    ? 'bg-accent text-ink-inverse hover:bg-accent-hover active:scale-95'
                     : 'cursor-not-allowed bg-paper-sunken text-ink-faint'
                 }`}
                 onClick={() => onSubmit()}
                 disabled={!canSend}
                 aria-label={sendLabel}
               >
-                <ArrowUp size={16} strokeWidth={2.5} aria-hidden="true" />
+                <ArrowUp size={18} strokeWidth={3} aria-hidden="true" />
               </button>
             )}
           </div>
