@@ -229,8 +229,12 @@ export function AppShell({ children }) {
       {/* Fixed, blurred, behind everything — the thing .app-rail's
           backdrop-filter actually has to diffuse. A frosted-glass panel over a
           flat colour is not glass, it's just translucent; this is what makes
-          the rail read as material rather than an opacity slider. */}
-      <div className="app-glow" aria-hidden="true" />
+          the rail read as material rather than an opacity slider. Two of
+          them — top-left and bottom-left — so the glass reads as lit from
+          both ends of the rail instead of just where the wordmark sits; the
+          account menu at the bottom got none of it before. */}
+      <div className="app-glow app-glow-top" aria-hidden="true" />
+      <div className="app-glow app-glow-bottom" aria-hidden="true" />
 
       {/* docked */}
       {!isNarrow ? (
@@ -264,7 +268,13 @@ export function AppShell({ children }) {
         </>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden" id="main">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden" id="main">
+        {/* Same wash as the rail's two glows, scoped to this pane instead of
+            the viewport — the chat column read as a flat, unlit rectangle
+            next to the rail's lit glass. z-index: -1 keeps it under #main's
+            own content (the header bar and children below) without needing
+            to touch either of those. */}
+        <div className="chat-glow" aria-hidden="true" />
         {isNarrow ? (
           <div className="flex h-12 shrink-0 items-center gap-1 border-b border-edge px-2">
             <button

@@ -124,10 +124,12 @@
   /* Fixed, low-opacity, blurred at the SOURCE (filter, not backdrop-filter) —
      .app-rail's own backdrop-filter is what turns this into the visible wash
      behind its glass. Sized and positioned to sit mostly behind the rail; it
-     bleeds a little past that edge on purpose, the way light does. */
+     bleeds a little past that edge on purpose, the way light does. Two
+     instances — top and bottom — so the glass is lit at both ends of the
+     rail; the account menu at the bottom used to sit on plain glass with
+     none of it. */
   .app-glow {
     position: fixed;
-    top: -140px;
     left: -140px;
     z-index: 0;
     height: 460px;
@@ -137,6 +139,35 @@
       circle,
       rgb(var(--rail-pop-rgb) / 0.4) 0%,
       rgb(var(--rail-pop-2-rgb) / 0.28) 55%,
+      transparent 78%
+    );
+    filter: blur(20px);
+    pointer-events: none;
+  }
+  .app-glow-top {
+    top: -140px;
+  }
+  .app-glow-bottom {
+    bottom: -140px;
+  }
+
+  /* Same wash, scoped to the chat pane rather than the viewport — see
+     AppShell.jsx's #main. Smaller and lower-opacity than the rail's: this
+     sits directly on the pane's own flat background rather than being
+     diffused through a glass surface, so it reads as ambient tint rather
+     than the rail's lit-glass material if it's turned up any brighter. */
+  .chat-glow {
+    position: absolute;
+    top: -120px;
+    left: -80px;
+    z-index: -1;
+    height: 380px;
+    width: 380px;
+    border-radius: var(--r-full);
+    background: radial-gradient(
+      circle,
+      rgb(var(--rail-pop-rgb) / 0.22) 0%,
+      rgb(var(--rail-pop-2-rgb) / 0.14) 55%,
       transparent 78%
     );
     filter: blur(20px);
