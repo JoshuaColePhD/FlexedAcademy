@@ -276,7 +276,7 @@ export function AppShell({ children }) {
             to touch either of those. */}
         <div className="chat-glow" aria-hidden="true" />
         {isNarrow ? (
-          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
+          <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button
               type="button"
               className="btn-icon"
@@ -288,8 +288,11 @@ export function AppShell({ children }) {
             {/* The drawer carries the same wordmark (see Rail, above), but with
                 the rail closed by default on a phone there was nothing on
                 screen naming the app at all — just a browser tab bar showing
-                the bare domain. */}
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-ink">
+                the bare domain. Absolutely centered on the bar itself, not
+                the leftover space beside the menu button — flex-1 centered
+                it against the wrong span and it read as off-center next to
+                a button with no matching weight on the right. */}
+            <span className="pointer-events-none absolute inset-x-0 truncate text-center text-sm font-semibold tracking-tight text-ink">
               Flexed Academy
             </span>
           </div>

@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
+import { AudioLines } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { useActiveClass, useCalendar } from '../hooks/useAppData'
+import { useVoice } from '../lib/voiceContext'
 import { shortRange } from '../lib/dates'
 import { firstUnplanned } from '../lib/queue'
 
@@ -46,6 +48,7 @@ function hourGreeting() {
 
 export function Greeting({ onPick, onDraft, className: courseName }) {
   const { classId } = useParams()
+  const voice = useVoice()
   const { activeClass } = useActiveClass()
   const { data: me } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
   const { data: calendar } = useCalendar(classId)
@@ -149,6 +152,25 @@ export function Greeting({ onPick, onDraft, className: courseName }) {
             </li>
           ))}
         </ul>
+
+        {/* Phone only — on a desktop the composer's own waveform icon sits
+            right there next to Send; on a phone it's a small icon buried at
+            the end of the dock, easy to never notice. This is the same
+            control (voice.toggle), just given the room to be found. */}
+        <button
+          type="button"
+          onClick={voice.toggle}
+          aria-pressed={voice.enabled}
+          aria-label={voice.enabled ? 'Turn off Chat' : 'Turn on Chat'}
+          className={`mt-4 flex min-h-touch w-full items-center justify-center gap-2.5 rounded-full px-5 py-3.5 text-sm font-medium transition-colors md:hidden ${
+            voice.enabled
+              ? 'bg-accent-tint text-accent-text'
+              : 'bg-paper-sunken text-ink-soft hover:bg-paper-inset hover:text-ink'
+          }`}
+        >
+          <AudioLines size={18} aria-hidden="true" />
+          {voice.enabled ? 'Chat on' : 'Chat'}
+        </button>
       </div>
     </div>
   )

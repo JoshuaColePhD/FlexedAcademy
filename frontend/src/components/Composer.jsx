@@ -225,8 +225,8 @@ export function Composer({
               }`}
               onClick={voice.toggle}
               aria-pressed={voice.enabled}
-              aria-label={voice.enabled ? 'Turn off spoken replies' : 'Turn on spoken replies'}
-              title={voice.enabled ? 'Spoken replies: on' : 'Spoken replies: off'}
+              aria-label={voice.enabled ? 'Turn off Chat' : 'Turn on Chat'}
+              title={voice.enabled ? 'Chat: on' : 'Chat: off'}
             >
               {/* One icon, not two — a shape swap (speaker vs. muted-speaker)
                   read as "something changed" but not as "this is the voice
