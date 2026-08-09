@@ -238,11 +238,12 @@
      clears text contrast there (5.1:1). */
   --land-gold-ink-rgb: 138 98 21;
 
-  /* Warm document paper — landing-only, deliberately distinct from the app's
-     cool --paper. The proof section is showing an excerpt of an actual paper
-     standards document; it earns a warmer, paper-toned surface exactly there,
-     not as the page's whole palette (that would be the cream-serif default
-     this build is avoiding). */
+  /* Warm document paper — landing-only. The proof section is showing an
+     excerpt of an actual paper standards document; it earns a paper-toned
+     surface exactly there. (--paper itself is warm too now, and lands close
+     to this value — see the file header. That coincidence is fine: this
+     token still exists because the landing page's own palette is fixed
+     regardless of data-theme, --paper isn't.) */
   --land-paper-rgb: 250 247 242;
 
   --mark-rgb: 179 38 30;
