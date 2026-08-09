@@ -10,15 +10,23 @@ export function WeekPicker({ options, value, onChange }) {
   if (!options.length) return null
 
   return (
-    <div className="mb-2 flex items-center gap-2 text-xs text-ink-muted">
+    <div className="mb-2 flex min-w-0 items-center gap-2 text-xs text-ink-muted">
       <label htmlFor="week-picker" className="shrink-0">
         Planning for
       </label>
+      {/* min-w-0 alone doesn't stop a native <select> sizing itself to its
+          longest option's text — that's the box's intrinsic content width,
+          which flex-shrink doesn't reliably override for form controls on
+          mobile Safari. A real unit name plus " (already planned)" is long
+          enough to blow the WHOLE PAGE past 100vw once that happens: not a
+          clipped select, a horizontally scrolling app shell. flex-1 forces
+          the box itself to claim the remaining row space instead of its
+          content's width, so the OS clips the rendered text instead. */}
       <select
         id="week-picker"
         value={value ?? ''}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="min-w-0 rounded-md border border-edge bg-paper-raised px-2 py-1 font-medium text-ink outline-none focus:border-accent"
+        className="min-w-0 flex-1 rounded-md border border-edge bg-paper-raised px-2 py-1 font-medium text-ink outline-none focus:border-accent"
       >
         {options.map((w) => (
           <option key={w.week} value={w.week}>
