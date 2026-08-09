@@ -1,15 +1,16 @@
 /* ============================================================================
-   Design tokens — cool paper, district blue
+   Design tokens — warm paper, district blue
    ----------------------------------------------------------------------------
    The accent is the Florence City Schools blue that is already printed in the
    .docx this app produces (#6d9eeb, deepened to #2f5fbf so it can carry text).
    That is the whole argument for it: the screen and the document agree, and the
    colour means something rather than being picked.
 
-   It replaces a warm cream + burnt orange palette that was, accurately, read as
-   a copy of the Claude desktop app. Warm neutrals and #d97757 are that product's
-   signature; borrowing them made a lesson planner look like someone else's chat
-   client. The neutrals here are cooled to match the blue.
+   The neutrals are warm on purpose — a direct product call to read closer to
+   Claude's own palette, not an accident of picking colours in isolation. An
+   earlier version of this file cooled them specifically to avoid that
+   resemblance; that call has been reversed. If a future session is tempted to
+   "fix" the paper back toward blue-white, don't — check with Josh first.
 
    FOUR RULES. Everything below applies these; a change that breaks one is the
    change that is wrong.
@@ -23,21 +24,22 @@
 
    3. ONE measure. Everything in the main column shares --measure.
 
-   4. --accent carries text at 5.6:1, so unlike the orange it replaces it may be
-      used as a label colour AND as a fill behind --ink-inverse. --accent-strong
-      is the hover/pressed step. Reserve it for what is actionable; a week that
-      needs planning is the only thing on the board allowed to be blue.
+   4. --accent carries text at 5.4:1, so unlike the orange it replaced early on
+      it may be used as a label colour AND as a fill behind --ink-inverse.
+      --accent-strong is the hover/pressed step. Reserve it for what is
+      actionable; a week that needs planning is the only thing on the board
+      allowed to be blue.
 
-   Contrast against --paper (#fbfbfc, L=0.968), measured 2026-08-04:
+   Contrast against --paper (#f6f4ec, L=0.904), measured 2026-08-09:
 
-     --ink         #14161a   17.9:1   body, headings
-     --ink-soft    #3a3f47   10.2:1   secondary
-     --ink-muted   #666d78    5.2:1   labels, meta
-     --ink-faint   #9aa1ab    2.8:1   NOT text. Dividers, disabled marks.
-     --accent      #2f5fbf    5.6:1   links, actions, filled buttons (white on it: 5.4:1)
+     --ink         #14161a   16.4:1   body, headings
+     --ink-soft    #3a3f47    9.6:1   secondary
+     --ink-muted   #666d78    4.7:1   labels, meta — the floor for real content
+     --ink-faint   #9aa1ab    2.4:1   NOT text. Dividers, disabled marks, icons.
+     --accent      #2f5fbf    5.4:1   links, actions, filled buttons (white on it: 6.0:1)
      --mark        #b3261e    5.9:1   destructive
-     --flag        #a15c07    4.6:1   grounding warnings only
-     --ok          #1f6a45    5.7:1
+     --flag        #a15c07    4.7:1   grounding warnings only
+     --ok          #1f6a45    5.9:1
 
    Channels, not hex, are the source of truth. Tailwind composes each as an
    rgb() with an alpha slot, so `bg-paper/50` works; the plain aliases below are
