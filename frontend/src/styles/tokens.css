@@ -204,7 +204,7 @@
   --doc-blue-rgb: 109 158 235; /* the exact value printed in the .docx */
 
   /* ── the marketing brand ─────────────────────────────────────────────────
-     Violet, and DELIBERATELY not --accent.
+     Cyan, and DELIBERATELY not --accent.
 
      --accent is the district blue that is already printed in the .docx: it is
      load-bearing, it means "this is the document you hand in", and it carries
@@ -212,18 +212,26 @@
      not the product — it is the thing that convinces someone to try it — and it
      is the one surface allowed a colour chosen for how it looks.
 
-     So the split is intentional: violet outside the door, district blue inside.
-     Used ONLY by .land-* rules (the landing page). If it ever shows up in the
-     app, that is a bug.
+     So the split is intentional: this cyan outside the door, district blue
+     inside. Used by .land-* (the landing page) AND .auth-ground (the /login,
+     /signup pages) — no longer landing-only. That second surface is a
+     deliberate rule change (2026-08-09, Josh's direct call): sign-in used to
+     borrow the app's own light paper/ink tokens, but now shares the door's
+     fixed dark world instead, so the first thing a visitor sees and the form
+     they sign into read as one place. If this ever shows up somewhere that
+     isn't one of those two surfaces, that's a bug.
 
-     The landing page is a fixed brand world, not a themed surface: it does not
-     follow data-theme, light or dark. The logo mark is a violet seal glowing
-     on near-black — that is the product's real native habitat, at every hour,
-     for every visitor, not something that should flip to a white background
-     because a visitor's OS is in light mode. */
-  --brand-rgb: 36 16 71; /* deep ink-violet ground, the hero's dominant field */
-  --brand-ink-rgb: 237 230 251; /* pale lavender body text on the violet ground */
-  --brand-muted-rgb: 176 163 212; /* secondary/quiet text on the violet ground */
+     Was deep ink-violet (#241047) until this same call. The hue changed to
+     match the app's own established cyan (--rail-pop, the sidebar strip/CTA
+     colour = the exact 56 209 224 below) rather than inventing a second brand
+     colour — one cyan, not a violet door plus a cyan rail. Still a fixed
+     brand world, not a themed surface: it does not follow data-theme, light
+     or dark. The logo mark's ground and the sign-in ground are both this
+     colour at every hour, for every visitor, regardless of the visitor's OS
+     theme. */
+  --brand-rgb: 6 30 34; /* deep ink-teal ground, the hero's dominant field — equals --rail-pop-tint */
+  --brand-ink-rgb: 224 247 250; /* pale ice-cyan body text on the teal ground */
+  --brand-muted-rgb: 130 175 180; /* secondary/quiet text on the teal ground */
 
   /* The verification seal — gold, not violet. Two colors carry the landing
      page on purpose: violet is the door's identity (the ground, the logo),
@@ -421,10 +429,10 @@
   --accent-text-rgb: 122 162 240;
   --doc-blue-rgb: 109 158 235;
 
-  /* No dark-mode override: the landing page is a fixed brand world (see the
-     light-mode comment above --brand-rgb), so --brand, --brand-ink,
-     --brand-muted, --land-gold*, and --land-paper stay constant regardless of
-     data-theme. */
+  /* No dark-mode override: the landing page and the /login, /signup pages are
+     both a fixed brand world (see the light-mode comment above --brand-rgb),
+     so --brand, --brand-ink, --brand-muted, --land-gold*, and --land-paper
+     stay constant regardless of data-theme. */
 
   --mark-rgb: 240 129 120;
   --mark-tint-rgb: 56 26 24;

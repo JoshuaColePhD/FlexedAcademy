@@ -2971,6 +2971,57 @@
     }
   }
 
+  /* ══ AUTH GROUND ══════════════════════════════════════════════════════════
+     /login and /signup (AuthLayout.jsx) used to render on the app's own
+     light paper/ink tokens — a plain themed surface like everything else in
+     the product. Josh's direct call (2026-08-09): sign-in now shares the
+     landing page's fixed dark brand world instead, so the door and the form
+     you actually sign into read as one place, not two. This is the SECOND
+     surface allowed to break out of data-theme (see --brand-rgb's comment in
+     tokens.css) — deliberately, not an oversight.
+
+     Mechanism: redeclare the primitive -rgb custom properties (not the
+     --paper/--ink/etc ALIASES — those resolve at their :root declaration
+     site and do not pick up a redeclared primitive here, the same gap the
+     rail's frosted glass and .land-signin-pop above both hit) on one wrapper
+     class around AuthLayout's root. Every Tailwind utility already reads the
+     primitive directly (see tailwind.config.js's `c()`), so bg-paper-raised,
+     text-ink, border-edge, text-ink-muted, text-accent-text, bg-mark-tint —
+     every class AuthLayout.jsx, SignInForm.jsx and SignupPage.jsx already use
+     — repaints for free. No component file needed its class names touched.
+
+     Tone ladder mirrors the app's own paper/paper-raised/paper-sunken/
+     paper-inset relationship, just teal-tinted to match --brand instead of
+     warm-neutral: --paper is the page ground (darkest), --paper-raised is
+     the floating card + its inputs (one step up, same tone as the light
+     theme's "card sits on inputs' own tone, separated by a border" rule),
+     --paper-sunken is the left claims panel (recessed relative to the card).
+     ink/accent/mark all get a matching pass — --accent and --accent-text
+     become the app's own rail cyan (--rail-pop, 56 209 224) rather than the
+     district blue, since this world isn't the product surface --accent's
+     rule reserves that blue for. --mark stays hue-red (errors are red
+     everywhere) but lightened and its tint darkened to read on a dark card
+     instead of the light one it was tuned for. */
+  .auth-ground {
+    --paper-rgb: 4 14 16;
+    --paper-raised-rgb: 14 36 40;
+    --paper-sunken-rgb: 8 24 27;
+    --paper-inset-rgb: 3 10 12;
+    --edge-rgb: 40 68 72;
+    --edge-strong-rgb: 62 100 105;
+    --ink-rgb: 226 246 248;
+    --ink-soft-rgb: 176 208 211;
+    --ink-muted-rgb: 130 175 180;
+    --ink-faint-rgb: 74 110 114;
+    --ink-inverse-rgb: 6 20 23;
+    --accent-rgb: 56 209 224;
+    --accent-hover-rgb: 56 189 248;
+    --accent-tint-rgb: 8 40 45;
+    --accent-text-rgb: 56 209 224;
+    --mark-rgb: 255 138 128;
+    --mark-tint-rgb: 46 20 20;
+  }
+
   /* ══ MOTION ═══════════════════════════════════════════════════════════════
      One animation carries information — fa-flash, which answers "what changed?"
      without a diff view. Everything else is entry and touch feedback. All of it

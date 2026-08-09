@@ -65,7 +65,7 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
         <GoogleLogin
           onSuccess={handleGoogleSuccess}
           onError={() => setError('Google sign-in didn’t complete. Try again.')}
-          theme="outline"
+          theme={compact ? 'outline' : 'filled_black'}
           size={compact ? 'medium' : 'large'}
           width="100%"
           text="continue_with"
