@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { ArrowLeft, Play, Sparkles, User, X } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
 
@@ -22,15 +22,87 @@ import { api } from '../lib/api'
  *   pauses entirely until both clear — otherwise the mic would pick up the
  *   assistant's own TTS output through the speaker and the panel would
  *   talk to itself.
+ *
+ * Layout is a phone-first full-screen takeover (a reference the user
+ * supplied — a music player's big circular art + a docked mini-bar below —
+ * mapped onto this: the "art" is a pulsing orb standing in for album
+ * artwork, the mini-bar is the status/close row). Rendered flat in the
+ * app's own accent color rather than literally neomorphic — soft-shadow UI
+ * is low-contrast by construction, which fights the accessible, high-
+ * contrast look the rest of this app was built with. Desktop keeps the
+ * smaller centered-dialog treatment; the full takeover is what "might work
+ * best on mobile" actually meant it for.
  */
 
 const SPEECH_THRESHOLD = 0.06 // fraction of full scale; tune against real use
 const SILENCE_MS = 900
 const MIN_UTTERANCE_MS = 300
 const MAX_UTTERANCE_MS = 30_000
-const BAR_COUNT = 28
 
-export function VoiceModePanel({ onClose, onUtterance, busy, isSpeaking }) {
+/* The transcript, styled after a music-app library list (another reference
+ * the user supplied): a small round avatar, a title/subtitle pair, and one
+ * round action per row. There's no per-row play/pause state — this is
+ * "replay," not a transport control, so every assistant row always shows
+ * Play; clicking it just calls voice.speak() again on that message's own
+ * text. Desktop only, in the left column — on a phone the transcript is
+ * still one swipe away underneath this panel, and there's no room for a
+ * second column at that width anyway. */
+function Transcript({ messages, onReplay }) {
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-paper-raised">
+      <div className="shrink-0 border-b border-edge px-4 py-3">
+        <p className="text-sm font-semibold text-ink">This conversation</p>
+      </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+        {messages.length ? (
+          messages.map((m) => {
+            const isUser = m.role === 'user'
+            return (
+              <li key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+                <span
+                  aria-hidden="true"
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${
+                    isUser ? 'bg-paper-sunken text-ink-soft' : 'bg-accent-tint text-accent-text'
+                  }`}
+                >
+                  {isUser ? <User size={15} /> : <Sparkles size={15} />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-ink">
+                    {isUser ? 'You' : 'Assistant'}
+                  </span>
+                  <span className="block truncate text-xs text-ink-muted">{m.content}</span>
+                </span>
+                {isUser ? null : (
+                  <button
+                    type="button"
+                    onClick={() => onReplay(m.content)}
+                    aria-label="Replay this reply"
+                    className="tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper-sunken text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink"
+                  >
+                    <Play size={14} aria-hidden="true" fill="currentColor" />
+                  </button>
+                )}
+              </li>
+            )
+          })
+        ) : (
+          <li className="px-4 py-3 text-sm text-ink-muted">Say something to get started.</li>
+        )}
+      </ul>
+    </div>
+  )
+}
+
+export function VoiceModePanel({
+  onClose,
+  onUtterance,
+  busy,
+  isSpeaking,
+  isPhone,
+  messages = [],
+  onReplay,
+}) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
   const panelRef = useRef(null)
@@ -127,35 +199,42 @@ export function VoiceModePanel({ onClose, onUtterance, busy, isSpeaking }) {
 
     // Canvas's fillStyle parser doesn't resolve CSS var() — it isn't part of
     // the cascade — so the actual accent color has to be read out as a
-    // concrete value once, not passed through as a custom property.
+    // concrete value once, not passed through as a custom property. Same
+    // primitive the CSS .voice-glow behind this canvas reads, so a future
+    // retint can't make the two silently disagree.
     const accentRgb =
       getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() ||
       '47 95 191'
 
+    // A pulsing orb, not a bar chart — the reference layout's "album art" is
+    // a single focal circle, and a lone breathing shape reads as "alive"
+    // more than a row of bars does at a glance across a full-screen mobile
+    // takeover. Three concentric layers (outermost = faintest) is the
+    // cheapest way to fake depth without an actual soft-shadow/neomorphic
+    // treatment, which is low-contrast by construction — see the file
+    // header on why that look isn't used here.
     const draw = (level) => {
       const canvas = canvasRef.current
       if (!canvas) return
       const ctx = canvas.getContext('2d')
       const { width, height } = canvas
       ctx.clearRect(0, 0, width, height)
-      const barWidth = width / BAR_COUNT
-      const mid = height / 2
-      // Bars further from center read as quieter than the center ones for
-      // the same input level — a still-recognizable "waveform" silhouette
-      // instead of a flat row of identical bars, without analysing
-      // per-frequency-bin data (which reacts more to pitch than to
-      // "are you talking," the thing this actually needs to show).
-      for (let i = 0; i < BAR_COUNT; i++) {
-        const distance = Math.abs(i - (BAR_COUNT - 1) / 2) / (BAR_COUNT / 2)
-        const falloff = 1 - distance * 0.6
-        const barLevel = pausedRef.current ? 0.04 : Math.max(0.04, level * falloff)
-        const barHeight = Math.max(2, barLevel * height)
-        const x = i * barWidth + barWidth * 0.2
-        const w = barWidth * 0.6
-        ctx.fillStyle = pausedRef.current ? 'rgba(150,150,150,0.35)' : `rgb(${accentRgb})`
+      const cx = width / 2
+      const cy = height / 2
+      const base = Math.min(width, height) * 0.16
+      const extra = Math.min(width, height) * 0.22
+      const effectiveLevel = pausedRef.current ? 0.05 : Math.max(0.05, level)
+      const rgb = pausedRef.current ? '150 150 150' : accentRgb
+      const layers = [
+        { mult: 1, alpha: 0.16 },
+        { mult: 0.7, alpha: 0.28 },
+        { mult: 0.42, alpha: 0.9 },
+      ]
+      for (const { mult, alpha } of layers) {
+        const r = base * mult + extra * mult * effectiveLevel
         ctx.beginPath()
-        if (ctx.roundRect) ctx.roundRect(x, mid - barHeight / 2, w, barHeight, w / 2)
-        else ctx.rect(x, mid - barHeight / 2, w, barHeight)
+        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.fillStyle = `rgb(${rgb} / ${alpha})`
         ctx.fill()
       }
     }
@@ -246,32 +325,92 @@ export function VoiceModePanel({ onClose, onUtterance, busy, isSpeaking }) {
               ? 'Got it — one sec…'
               : 'Listening…'
 
-  return (
-    <div className="dialog-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+  const orb = (
+    <div className="relative flex aspect-square w-full max-w-[280px] items-center justify-center">
+      <div className="voice-glow" aria-hidden="true" />
+      <canvas ref={canvasRef} width={280} height={280} className="h-full w-full" />
+    </div>
+  )
+
+  if (isPhone) {
+    return (
       <div
         ref={panelRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Voice conversation"
-        className="dialog flex w-full max-w-sm flex-col items-center gap-6 !p-8 text-center"
+        className="fixed inset-0 z-50 flex flex-col bg-paper"
       >
-        <div className="relative flex w-full items-center justify-center">
-          <div className="voice-glow" aria-hidden="true" />
-          <canvas ref={canvasRef} width={320} height={96} className="h-24 w-full" />
+        <div className="flex h-14 shrink-0 items-center px-2">
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="End voice conversation"
+            className="tap-target flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
+          >
+            <ArrowLeft size={20} aria-hidden="true" />
+          </button>
         </div>
-        <p aria-live="polite" className="min-h-[1.5em] text-sm text-ink-soft">
-          {label}
-        </p>
-        <button
-          ref={closeRef}
-          type="button"
-          onClick={onClose}
-          aria-label="End voice conversation"
-          className="tap-target flex h-11 w-11 items-center justify-center rounded-full bg-paper-sunken text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink"
+
+        <div className="flex flex-1 items-center justify-center px-gutter">{orb}</div>
+
+        {/* The reference's docked mini-player bar — here it carries the
+            live status instead of a track name, since that's the one thing
+            actually changing turn to turn. */}
+        <div className="shrink-0 px-gutter pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          <div className="flex min-h-touch items-center justify-between gap-3 rounded-full border border-edge bg-paper-raised px-5 py-3 shadow-lg">
+            <p aria-live="polite" className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+              {label}
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="End voice conversation"
+              className="tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper-sunken text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="dialog-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      {/* items-stretch, not the scrim's own align-items:center — the
+          transcript column matches the card's height instead of centering
+          independently at whatever height its own content happens to want. */}
+      <div className="flex max-h-[560px] w-full max-w-3xl items-stretch gap-4">
+        {messages.length ? (
+          <div className="hidden w-72 shrink-0 md:block">
+            <Transcript messages={messages} onReplay={onReplay} />
+          </div>
+        ) : null}
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Voice conversation"
+          className="dialog flex min-w-0 flex-1 flex-col items-center justify-center gap-6 !p-8 text-center"
         >
-          <X size={18} aria-hidden="true" />
-        </button>
+          {orb}
+          <p aria-live="polite" className="min-h-[1.5em] text-sm text-ink-soft">
+            {label}
+          </p>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="End voice conversation"
+            className="tap-target flex h-11 w-11 items-center justify-center rounded-full bg-paper-sunken text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </div>
   )

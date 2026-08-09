@@ -1074,6 +1074,9 @@ export function ChatPage() {
           onUtterance={submit}
           busy={busy}
           isSpeaking={voice.speaking}
+          isPhone={isPhone}
+          messages={messages}
+          onReplay={(text) => voice.speak(text)}
         />
       ) : null}
     </div>
