@@ -26,12 +26,16 @@ import { api } from '../lib/api'
  * Layout is a phone-first full-screen takeover (a reference the user
  * supplied — a music player's big circular art + a docked mini-bar below —
  * mapped onto this: the "art" is a pulsing orb standing in for album
- * artwork, the mini-bar is the status/close row). Rendered flat in the
- * app's own accent color rather than literally neomorphic — soft-shadow UI
- * is low-contrast by construction, which fights the accessible, high-
- * contrast look the rest of this app was built with. Desktop keeps the
- * smaller centered-dialog treatment; the full takeover is what "might work
- * best on mobile" actually meant it for.
+ * artwork, the mini-bar is the status/close row). Desktop keeps the smaller
+ * centered-dialog treatment; the full takeover is what "might work best on
+ * mobile" actually meant it for.
+ *
+ * Rendered in the .voice-neo world (base.css) — soft embossed "neomorphic"
+ * surfaces on request, matching the reference images directly rather than
+ * translating them into this app's normal flat, high-contrast look. That
+ * tradeoff (faint edges, low contrast) is real and is scoped to this one
+ * opt-in screen on purpose — see .voice-neo's own comment for why it's fine
+ * here and would not be fine as a default anywhere else in the app.
  */
 
 const SPEECH_THRESHOLD = 0.06 // fraction of full scale; tune against real use
@@ -49,20 +53,23 @@ const MAX_UTTERANCE_MS = 30_000
  * second column at that width anyway. */
 function Transcript({ messages, onReplay }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-paper-raised">
-      <div className="shrink-0 border-b border-edge px-4 py-3">
+    <div className="neo-panel flex h-full flex-col overflow-hidden rounded-[28px] bg-paper-raised">
+      <div className="shrink-0 px-5 py-4">
         <p className="text-sm font-semibold text-ink">This conversation</p>
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+      <ul className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         {messages.length ? (
           messages.map((m) => {
             const isUser = m.role === 'user'
             return (
-              <li key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+              <li key={m.id} className="flex items-center gap-3 px-2 py-2">
+                {/* Inset, not raised — a display element, not something to
+                    tap, and neomorphism's usual way of telling the two
+                    apart at a glance. */}
                 <span
                   aria-hidden="true"
-                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${
-                    isUser ? 'bg-paper-sunken text-ink-soft' : 'bg-accent-tint text-accent-text'
+                  className={`neo-inset grid h-10 w-10 shrink-0 place-items-center rounded-full ${
+                    isUser ? 'text-ink-soft' : 'text-accent-text'
                   }`}
                 >
                   {isUser ? <User size={15} /> : <Sparkles size={15} />}
@@ -78,7 +85,7 @@ function Transcript({ messages, onReplay }) {
                     type="button"
                     onClick={() => onReplay(m.content)}
                     aria-label="Replay this reply"
-                    className="tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper-sunken text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink"
+                    className="neo-raised tap-target flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-accent-text"
                   >
                     <Play size={14} aria-hidden="true" fill="currentColor" />
                   </button>
@@ -87,7 +94,7 @@ function Transcript({ messages, onReplay }) {
             )
           })
         ) : (
-          <li className="px-4 py-3 text-sm text-ink-muted">Say something to get started.</li>
+          <li className="px-3 py-3 text-sm text-ink-muted">Say something to get started.</li>
         )}
       </ul>
     </div>
@@ -199,20 +206,21 @@ export function VoiceModePanel({
 
     // Canvas's fillStyle parser doesn't resolve CSS var() — it isn't part of
     // the cascade — so the actual accent color has to be read out as a
-    // concrete value once, not passed through as a custom property. Same
-    // primitive the CSS .voice-glow behind this canvas reads, so a future
-    // retint can't make the two silently disagree.
-    const accentRgb =
-      getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() ||
-      '47 95 191'
+    // concrete value once, not passed through as a custom property.
+    //
+    // Read from the CANVAS element, not document.documentElement: this
+    // panel lives inside .voice-neo, which redeclares --accent-rgb to its
+    // own rose rather than the app's blue, and that override only takes
+    // effect for elements actually inside the scope. Reading from the root
+    // would silently get the wrong color the moment .voice-neo disagrees
+    // with :root, which is the entire point of it existing. Read once, here
+    // — the canvas is already mounted by the time an effect body runs — not
+    // per frame, which would force a style recalculation at 60fps.
+    const accentRgb = canvasRef.current
+      ? getComputedStyle(canvasRef.current).getPropertyValue('--accent-rgb').trim()
+      : ''
+    const resolvedAccentRgb = accentRgb || '47 95 191'
 
-    // A pulsing orb, not a bar chart — the reference layout's "album art" is
-    // a single focal circle, and a lone breathing shape reads as "alive"
-    // more than a row of bars does at a glance across a full-screen mobile
-    // takeover. Three concentric layers (outermost = faintest) is the
-    // cheapest way to fake depth without an actual soft-shadow/neomorphic
-    // treatment, which is low-contrast by construction — see the file
-    // header on why that look isn't used here.
     const draw = (level) => {
       const canvas = canvasRef.current
       if (!canvas) return
@@ -224,7 +232,7 @@ export function VoiceModePanel({
       const base = Math.min(width, height) * 0.16
       const extra = Math.min(width, height) * 0.22
       const effectiveLevel = pausedRef.current ? 0.05 : Math.max(0.05, level)
-      const rgb = pausedRef.current ? '150 150 150' : accentRgb
+      const rgb = pausedRef.current ? '150 150 150' : resolvedAccentRgb
       const layers = [
         { mult: 1, alpha: 0.16 },
         { mult: 0.7, alpha: 0.28 },
@@ -325,8 +333,11 @@ export function VoiceModePanel({
               ? 'Got it — one sec…'
               : 'Listening…'
 
+  // The "album art" disc itself: a big raised, ringed circle standing in
+  // for the reference's cover art, with the pulsing accent circles (drawn
+  // in the effect above) glowing inside it.
   const orb = (
-    <div className="relative flex aspect-square w-full max-w-[280px] items-center justify-center">
+    <div className="neo-raised neo-ring relative flex aspect-square w-full max-w-[280px] items-center justify-center rounded-full">
       <div className="voice-glow" aria-hidden="true" />
       <canvas ref={canvasRef} width={280} height={280} className="h-full w-full" />
     </div>
@@ -340,15 +351,15 @@ export function VoiceModePanel({
         role="dialog"
         aria-modal="true"
         aria-label="Voice conversation"
-        className="fixed inset-0 z-50 flex flex-col bg-paper"
+        className="voice-neo fixed inset-0 z-50 flex flex-col bg-paper"
       >
-        <div className="flex h-14 shrink-0 items-center px-2">
+        <div className="flex h-14 shrink-0 items-center px-4">
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="End voice conversation"
-            className="tap-target flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
+            className="neo-raised tap-target flex h-10 w-10 items-center justify-center rounded-full text-ink-soft"
           >
             <ArrowLeft size={20} aria-hidden="true" />
           </button>
@@ -360,7 +371,7 @@ export function VoiceModePanel({
             live status instead of a track name, since that's the one thing
             actually changing turn to turn. */}
         <div className="shrink-0 px-gutter pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <div className="flex min-h-touch items-center justify-between gap-3 rounded-full border border-edge bg-paper-raised px-5 py-3 shadow-lg">
+          <div className="neo-panel flex min-h-touch items-center justify-between gap-3 rounded-full bg-paper-raised px-5 py-3">
             <p aria-live="polite" className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
               {label}
             </p>
@@ -368,7 +379,7 @@ export function VoiceModePanel({
               type="button"
               onClick={onClose}
               aria-label="End voice conversation"
-              className="tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper-sunken text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink"
+              className="neo-raised tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-soft"
             >
               <X size={16} aria-hidden="true" />
             </button>
@@ -379,7 +390,10 @@ export function VoiceModePanel({
   }
 
   return (
-    <div className="dialog-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="voice-neo dialog-scrim"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       {/* items-stretch, not the scrim's own align-items:center — the
           transcript column matches the card's height instead of centering
           independently at whatever height its own content happens to want. */}
@@ -395,7 +409,7 @@ export function VoiceModePanel({
           role="dialog"
           aria-modal="true"
           aria-label="Voice conversation"
-          className="dialog flex min-w-0 flex-1 flex-col items-center justify-center gap-6 !p-8 text-center"
+          className="neo-panel flex min-w-0 flex-1 flex-col items-center justify-center gap-6 rounded-[28px] bg-paper-raised p-8 text-center"
         >
           {orb}
           <p aria-live="polite" className="min-h-[1.5em] text-sm text-ink-soft">
@@ -406,7 +420,7 @@ export function VoiceModePanel({
             type="button"
             onClick={onClose}
             aria-label="End voice conversation"
-            className="tap-target flex h-11 w-11 items-center justify-center rounded-full bg-paper-sunken text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink"
+            className="neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink-soft"
           >
             <X size={18} aria-hidden="true" />
           </button>

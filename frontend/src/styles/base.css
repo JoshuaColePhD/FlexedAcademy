@@ -3058,6 +3058,75 @@
     --mark-tint-rgb: 46 20 20;
   }
 
+  /* ══ VOICE PANEL: NEOMORPHISM ═══════════════════════════════════════════
+     A fixed third world, same technique as .auth-ground above: redeclare the
+     primitives so every existing bg-paper/text-ink/border-edge utility just
+     works here unchanged, rather than inventing parallel component classes.
+     Unconditional — no :root[data-theme='dark'] variant — because the whole
+     point is a specific, calibrated cream base with matching light/dark
+     shadow tones; the panel stays this look regardless of the app's own
+     theme, the same way the landing page's dark violet-then-teal ground
+     never followed data-theme either.
+
+     Soft-shadow "neomorphic" UI is a real accessibility tradeoff — edges
+     are deliberately faint, which is the opposite of the high-contrast look
+     the REST of this app was built on (see tokens.css's own comments on AA
+     contrast floors). Scoped to one opt-in screen, on the user's explicit
+     ask to match a supplied reference image, that tradeoff is theirs to
+     make; it must never leak into any token the rest of the app reads. */
+  .voice-neo {
+    --paper-rgb: 241 239 235;
+    --paper-raised-rgb: 241 239 235;
+    --paper-sunken-rgb: 234 231 226;
+    --paper-inset-rgb: 234 231 226;
+    --edge-rgb: 223 219 213;
+    --edge-strong-rgb: 208 203 196;
+    --ink-rgb: 82 44 48;
+    --ink-soft-rgb: 124 92 94;
+    --ink-muted-rgb: 158 142 139;
+    --ink-faint-rgb: 191 179 175;
+    --ink-inverse-rgb: 255 255 255;
+    --accent-rgb: 216 84 120;
+    --accent-hover-rgb: 197 68 104;
+    --accent-tint-rgb: 250 231 236;
+    --accent-text-rgb: 197 68 104;
+    --mark-rgb: 199 62 62;
+    --mark-tint-rgb: 250 231 231;
+    /* The emboss itself — a light/dark pair with no equivalent among the
+       tokens above, because nothing else in this app draws a shadow FROM a
+       surface's own background color. */
+    --neo-light-rgb: 255 255 255;
+    --neo-dark-rgb: 199 194 188;
+    background: rgb(var(--paper-rgb));
+  }
+  .neo-raised {
+    box-shadow:
+      6px 6px 14px rgb(var(--neo-dark-rgb) / 0.7),
+      -6px -6px 14px rgb(var(--neo-light-rgb) / 0.9);
+    transition: box-shadow var(--t-fast) var(--ease);
+  }
+  /* A raised button that presses IN on tap reads as a physical control in a
+     way color feedback alone doesn't — the whole point of embossing a
+     surface in the first place. */
+  .neo-raised:active {
+    box-shadow:
+      inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.65),
+      inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.85);
+  }
+  .neo-inset {
+    box-shadow:
+      inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.65),
+      inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.85);
+  }
+  .neo-panel {
+    box-shadow:
+      12px 12px 28px rgb(var(--neo-dark-rgb) / 0.55),
+      -12px -12px 28px rgb(var(--neo-light-rgb) / 0.85);
+  }
+  .neo-ring {
+    border: 3px solid rgb(var(--accent-rgb) / 0.35);
+  }
+
   /* ══ MOTION ═══════════════════════════════════════════════════════════════
      One animation carries information — fa-flash, which answers "what changed?"
      without a diff view. Everything else is entry and touch feedback. All of it
