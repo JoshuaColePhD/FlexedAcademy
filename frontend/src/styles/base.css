@@ -1457,6 +1457,42 @@
     }
   }
 
+  /* The voice panel's ambient glow, behind its waveform canvas. Deliberately
+     NOT driven by the live audio level (that's the canvas's own job, redrawn
+     every frame from the AnalyserNode) — this is a slow, constant breathing
+     independent of whether anyone is talking, the difference between "a
+     meter" and "a room with some light in it." rgb(var(--accent-rgb)), the
+     primitive, not --accent-tint or any other alias: this sits behind a
+     canvas painted from the SAME primitive read via getComputedStyle in
+     VoiceModePanel.jsx, and the two have to agree on where the color comes
+     from or a future retint of one silently stops matching the other. */
+  .voice-glow {
+    position: absolute;
+    inset: -35%;
+    z-index: -1;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgb(var(--accent-rgb) / 0.4), transparent 70%);
+    filter: blur(28px);
+    animation: voice-glow-pulse 4.5s var(--ease) infinite;
+    pointer-events: none;
+  }
+  @keyframes voice-glow-pulse {
+    0%, 100% {
+      opacity: 0.35;
+      transform: scale(0.9);
+    }
+    50% {
+      opacity: 0.7;
+      transform: scale(1.08);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .voice-glow {
+      animation: none;
+      opacity: 0.5;
+    }
+  }
+
   .dialog h2 {
     margin: 0;
     font-size: var(--fs-lg);

@@ -256,7 +256,10 @@ export function VoiceModePanel({ onClose, onUtterance, busy, isSpeaking }) {
         aria-label="Voice conversation"
         className="dialog flex w-full max-w-sm flex-col items-center gap-6 !p-8 text-center"
       >
-        <canvas ref={canvasRef} width={320} height={96} className="h-24 w-full" />
+        <div className="relative flex w-full items-center justify-center">
+          <div className="voice-glow" aria-hidden="true" />
+          <canvas ref={canvasRef} width={320} height={96} className="h-24 w-full" />
+        </div>
         <p aria-live="polite" className="min-h-[1.5em] text-sm text-ink-soft">
           {label}
         </p>
