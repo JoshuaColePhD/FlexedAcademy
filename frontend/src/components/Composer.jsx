@@ -178,14 +178,21 @@ export function Composer({
             Describe the week you want to plan
           </label>
 
+          {/* h-11/w-11 (44px, Apple/Android's own touch-target minimum)
+              below md, dropping to the desktop-density h-9 at md and up —
+              .tap-target already padded an INVISIBLE hit area out to 44px
+              at the smaller size, but a 36px glyph in a sea of empty
+              composer space still reads as small and crowded on a phone;
+              this makes the actual button that size instead of just its
+              hit box. */}
           <label
-            className="tap-target flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+            className="tap-target flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
             htmlFor="composer-file"
           >
             {isAttaching ? (
-              <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+              <Loader2 size={19} className="animate-spin md:size-[18px]" aria-hidden="true" />
             ) : (
-              <Paperclip size={18} aria-hidden="true" />
+              <Paperclip size={19} className="md:size-[18px]" aria-hidden="true" />
             )}
             <span className="sr-only">Attach a PDF or text file</span>
           </label>
@@ -218,7 +225,10 @@ export function Composer({
             disabled={isRecording || isTranscribing}
           />
 
-          <div className="flex shrink-0 items-center gap-1 pb-0.5">
+          {/* gap-1.5, not gap-1 — at 44px buttons the tighter gap read as
+              the icons overlapping their own tap targets. md:gap-1 restores
+              the denser desktop spacing these were tuned for. */}
+          <div className="flex shrink-0 items-center gap-1.5 pb-0.5 md:gap-1">
             {/* The mic button is speech IN (dictation, into the text field,
                 sent manually); this opens live voice mode — continuous
                 listening, spoken replies, a real back-and-forth (see
@@ -228,42 +238,42 @@ export function Composer({
             {onOpenVoice ? (
               <button
                 type="button"
-                className="tap-target flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
                 onClick={onOpenVoice}
                 aria-label="Start a voice conversation"
                 title="Talk instead of type"
               >
-                <AudioLines size={18} aria-hidden="true" />
+                <AudioLines size={19} className="md:size-[18px]" aria-hidden="true" />
               </button>
             ) : null}
 
             {isTranscribing ? (
               <button
                 type="button"
-                className="tap-target flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted"
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted md:h-9 md:w-9"
                 disabled
                 aria-label="Transcribing"
               >
-                <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+                <Loader2 size={19} className="animate-spin md:size-[18px]" aria-hidden="true" />
               </button>
             ) : isRecording ? (
               <button
                 type="button"
-                className="tap-target flex h-9 w-9 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint"
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint md:h-9 md:w-9"
                 onClick={stopRecording}
                 aria-label="Stop recording"
               >
-                <Square size={16} fill="currentColor" aria-hidden="true" />
+                <Square size={17} className="md:size-4" fill="currentColor" aria-hidden="true" />
               </button>
             ) : (
               <button
                 type="button"
-                className="tap-target flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50 md:h-9 md:w-9"
                 onClick={startRecording}
                 disabled={isStreaming}
                 aria-label="Dictate"
               >
-                <Mic size={18} aria-hidden="true" />
+                <Mic size={19} className="md:size-[18px]" aria-hidden="true" />
               </button>
             )}
 
@@ -275,18 +285,18 @@ export function Composer({
             {isStreaming && onStop ? (
               <button
                 type="button"
-                className="tap-target flex h-9 w-9 items-center justify-center rounded-full bg-ink text-ink-inverse transition-colors hover:bg-ink-soft"
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-full bg-ink text-ink-inverse transition-colors hover:bg-ink-soft md:h-9 md:w-9"
                 onClick={onStop}
                 aria-label="Stop generating"
               >
-                <Square size={14} fill="currentColor" aria-hidden="true" />
+                <Square size={15} className="md:size-3.5" fill="currentColor" aria-hidden="true" />
               </button>
             ) : isStreaming ? (
               <span
-                className="tap-target flex h-9 w-9 items-center justify-center rounded-full bg-paper-sunken text-ink-faint"
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-full bg-paper-sunken text-ink-faint md:h-9 md:w-9"
                 title="Revising — this can't be interrupted"
               >
-                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                <Loader2 size={17} className="animate-spin md:size-4" aria-hidden="true" />
               </span>
             ) : (
               <button
@@ -296,7 +306,7 @@ export function Composer({
                    filled buttons on ClassPage) — a plain black circle here
                    just wasn't reading as the one button that matters on the
                    whole bar. */
-                className={`tap-target flex h-9 w-9 items-center justify-center rounded-full transition-all ${
+                className={`tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
                   canSend
                     ? 'bg-accent text-ink-inverse hover:bg-accent-hover active:scale-95'
                     : 'cursor-not-allowed bg-paper-sunken text-ink-faint'
@@ -305,7 +315,7 @@ export function Composer({
                 disabled={!canSend}
                 aria-label={sendLabel}
               >
-                <ArrowUp size={18} strokeWidth={3} aria-hidden="true" />
+                <ArrowUp size={19} className="md:size-[18px]" strokeWidth={3} aria-hidden="true" />
               </button>
             )}
           </div>
