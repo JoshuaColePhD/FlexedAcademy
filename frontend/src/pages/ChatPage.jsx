@@ -99,6 +99,15 @@ export function ChatPage() {
   const [railOpen, setRailOpen] = useState(false)
   const [revising, setRevising] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
+  /* True from the instant submit() is called until either stream/chatStream
+     picks up the busy flag on its own (both flip isStreaming synchronously
+     the moment they're invoked) or submit bails out. This exists because
+     submit's FIRST await, for a brand-new chat, is api.createChat — and on a
+     cold Render instance or a flaky phone connection that round trip can run
+     long, with `busy` still false the entire time. The teacher's message
+     appeared, and then nothing: no spinner, no "Building…", nothing to show
+     the app had even heard them. */
+  const [preparing, setPreparing] = useState(false)
 
   /* Which cell is being tweaked, and which cells just changed. `flashCells` is
      the only animation in the app that carries information: it answers "what
@@ -368,7 +377,7 @@ export function ChatPage() {
     },
   })
 
-  const busy = stream.isStreaming || revising || chatStream.isStreaming
+  const busy = stream.isStreaming || revising || chatStream.isStreaming || preparing
 
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
@@ -397,6 +406,7 @@ export function ChatPage() {
       // Guards on the COMBINED text, so an attachment with no typed message
       // sends — the send button was already enabled for that and did nothing.
       if (!content.trim() || busy) return
+      setPreparing(true)
       setQuery('')
       // The chip has to clear here, before any request goes out — the sent
       // files are captured in `content` below and folded into this turn's
@@ -439,7 +449,24 @@ export function ChatPage() {
               .then(() => qc.invalidateQueries({ queryKey: ['chats'] }))
               .catch(() => {})
           }
-        } catch {}
+        } catch (err) {
+          // Silently continuing here used to mean a failed chat creation left
+          // the message sitting on screen with no reply and no explanation —
+          // indistinguishable from the app having simply not heard the teacher.
+          setPreparing(false)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'assistant',
+              isError: true,
+              content: "Couldn't reach the server to start that.",
+              hint: err?.hint || 'Check your connection and try again.',
+            },
+          ])
+          toast.apiError("Couldn't send that", err)
+          return
+        }
       }
 
       const shown = typed || `Sent ${attachments.length} file(s)`
@@ -460,6 +487,7 @@ export function ChatPage() {
            progress indicator that was always going to end in a 402. Revising,
            the branch below, is never gated. */
         if (!mayGenerate) {
+          setPreparing(false)
           openPaywall()
           setMessages((prev) => [
             ...prev,
@@ -477,7 +505,10 @@ export function ChatPage() {
           ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
           `USER: ${content}`,
         ].join('\n\n')
+        // stream.start() flips stream.isStreaming synchronously before its
+        // first await, so busy is already covered by the time preparing drops.
         stream.start(combinedHistory, { chatId: activeChatId, weekNumber: effectiveWeek }).catch(() => {})
+        setPreparing(false)
         return
       }
 
@@ -489,6 +520,10 @@ export function ChatPage() {
         ...messages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
         { role: 'user', content },
       ]
+      // Same handoff as above: chatStream.start() sets chatStream.isStreaming
+      // synchronously, so busy stays continuously true across this call even
+      // though we're about to `await` its whole run rather than fire-and-forget.
+      setPreparing(false)
       const chatResult = await chatStream.start(payloadMessages, { chatId: activeChatId })
 
       if (!chatResult || !chatResult.toolCalled) {
@@ -825,6 +860,13 @@ export function ChatPage() {
               </div>
             ) : revising ? (
               <p className="eyebrow">Revising…</p>
+            ) : preparing ? (
+              // The gap this covers: submit()'s first await, for a brand-new
+              // chat, is api.createChat — which can run long on a cold Render
+              // instance or a slow phone connection, and none of the other
+              // busy flags exist yet. Without this line the message just sent
+              // sat on screen with literally nothing happening beneath it.
+              <p className="eyebrow">Sending…</p>
             ) : null}
 
             <div ref={endRef} />
@@ -925,9 +967,11 @@ export function ChatPage() {
           ? 'Building the lesson plan.'
           : revising
             ? 'Revising the plan.'
-            : artifact?.planId
-              ? 'Lesson plan ready.'
-              : ''}
+            : preparing
+              ? 'Sending.'
+              : artifact?.planId
+                ? 'Lesson plan ready.'
+                : ''}
       </div>
 
       <div
