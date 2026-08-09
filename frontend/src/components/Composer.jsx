@@ -14,6 +14,7 @@ export function Composer({
   isStreaming,
   attachments,
   setAttachments,
+  onOpenVoice,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
@@ -218,30 +219,23 @@ export function Composer({
           />
 
           <div className="flex shrink-0 items-center gap-1 pb-0.5">
-            {/* The mic button is speech IN (dictation, into the text field);
-                this is speech OUT — the assistant's replies read aloud. Off
-                by default and toggled here rather than always-on: audio that
-                starts talking on its own the moment a plan finishes is fine
-                alone at a desk, not fine in a workroom with colleagues
-                around. */}
-            <button
-              type="button"
-              className={`tap-target flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
-                voice.enabled
-                  ? 'text-accent-text hover:bg-accent-tint'
-                  : 'text-ink-muted hover:bg-paper-sunken hover:text-ink'
-              }`}
-              onClick={voice.toggle}
-              aria-pressed={voice.enabled}
-              aria-label={voice.enabled ? 'Turn off Chat' : 'Turn on Chat'}
-              title={voice.enabled ? 'Chat: on' : 'Chat: off'}
-            >
-              {/* One icon, not two — a shape swap (speaker vs. muted-speaker)
-                  read as "something changed" but not as "this is the voice
-                  control." A waveform, colored on/muted off, is the mark
-                  people already read as voice from ChatGPT's own button. */}
-              <AudioLines size={18} aria-hidden="true" />
-            </button>
+            {/* The mic button is speech IN (dictation, into the text field,
+                sent manually); this opens live voice mode — continuous
+                listening, spoken replies, a real back-and-forth (see
+                VoiceModePanel). Used to be a quiet on/off toggle for spoken
+                replies alone; that control didn't match what tapping a
+                waveform icon actually reads as. */}
+            {onOpenVoice ? (
+              <button
+                type="button"
+                className="tap-target flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+                onClick={onOpenVoice}
+                aria-label="Start a voice conversation"
+                title="Talk instead of type"
+              >
+                <AudioLines size={18} aria-hidden="true" />
+              </button>
+            ) : null}
 
             {isTranscribing ? (
               <button

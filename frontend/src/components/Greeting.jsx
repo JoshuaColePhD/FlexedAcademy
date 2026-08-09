@@ -4,7 +4,6 @@ import { AudioLines } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { useActiveClass, useCalendar } from '../hooks/useAppData'
-import { useVoice } from '../lib/voiceContext'
 import { shortRange } from '../lib/dates'
 import { firstUnplanned } from '../lib/queue'
 
@@ -46,9 +45,8 @@ function hourGreeting() {
   return 'Good evening'
 }
 
-export function Greeting({ onPick, onDraft, className: courseName }) {
+export function Greeting({ onPick, onDraft, onOpenVoice, className: courseName }) {
   const { classId } = useParams()
-  const voice = useVoice()
   const { activeClass } = useActiveClass()
   const { data: me } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
   const { data: calendar } = useCalendar(classId)
@@ -155,22 +153,19 @@ export function Greeting({ onPick, onDraft, className: courseName }) {
 
         {/* Phone only — on a desktop the composer's own waveform icon sits
             right there next to Send; on a phone it's a small icon buried at
-            the end of the dock, easy to never notice. This is the same
-            control (voice.toggle), just given the room to be found. */}
-        <button
-          type="button"
-          onClick={voice.toggle}
-          aria-pressed={voice.enabled}
-          aria-label={voice.enabled ? 'Turn off Chat' : 'Turn on Chat'}
-          className={`mx-auto mt-4 flex min-h-touch w-2/3 items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium transition-colors md:hidden ${
-            voice.enabled
-              ? 'bg-accent-tint text-accent-text'
-              : 'bg-paper-sunken text-ink-soft hover:bg-paper-inset hover:text-ink'
-          }`}
-        >
-          <AudioLines size={18} aria-hidden="true" />
-          {voice.enabled ? 'Chat on' : 'Chat'}
-        </button>
+            the end of the dock, easy to never notice. Opens the same live
+            voice conversation (VoiceModePanel) that icon does, just given
+            the room to be found. */}
+        {onOpenVoice ? (
+          <button
+            type="button"
+            onClick={onOpenVoice}
+            className="mx-auto mt-4 flex min-h-touch w-2/3 items-center justify-center gap-2.5 rounded-full bg-paper-sunken px-8 py-3 text-sm font-medium text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink md:hidden"
+          >
+            <AudioLines size={18} aria-hidden="true" />
+            Chat
+          </button>
+        ) : null}
       </div>
     </div>
   )

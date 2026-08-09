@@ -23,6 +23,7 @@ import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
 import { WeekPicker } from '../components/WeekPicker'
+import { VoiceModePanel } from '../components/VoiceModePanel'
 
 /* One chat, one plan.
  *
@@ -110,6 +111,10 @@ export function ChatPage() {
      appeared, and then nothing: no spinner, no "Building…", nothing to show
      the app had even heard them. */
   const [preparing, setPreparing] = useState(false)
+  // Whether the live voice-conversation overlay is open. What "Chat" opens
+  // now, everywhere it appears (Composer's icon, Greeting's pill) — see
+  // VoiceModePanel for why this replaced a quiet on/off toggle.
+  const [voiceOpen, setVoiceOpen] = useState(false)
 
   /* Which cell is being tweaked, and which cells just changed. `flashCells` is
      the only animation in the app that carries information: it answers "what
@@ -404,6 +409,17 @@ export function ChatPage() {
   })
 
   const busy = stream.isStreaming || revising || chatStream.isStreaming || preparing
+
+  /* Opening the panel is itself a real click — the one gesture VoiceProvider
+     needs to unlock playback on THIS page load (see its own comment on
+     unlock()). Turning spoken replies on here too, unconditionally: opening
+     a voice conversation and not hearing it back would be the single most
+     confusing state this feature could land in. */
+  const openVoice = useCallback(() => {
+    if (!voice.enabled) voice.toggle()
+    else voice.unlock()
+    setVoiceOpen(true)
+  }, [voice])
 
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
@@ -847,6 +863,7 @@ export function ChatPage() {
             })
           }}
           className={activeClass?.name}
+          onOpenVoice={openVoice}
         />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
@@ -962,6 +979,7 @@ export function ChatPage() {
             isStreaming={busy}
             attachments={attachments}
             setAttachments={setAttachments}
+            onOpenVoice={openVoice}
             /* The example is worth its length on a laptop and clipped on a
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */
@@ -1048,6 +1066,15 @@ export function ChatPage() {
             {artifactEl}
           </div>
         </>
+      ) : null}
+
+      {voiceOpen ? (
+        <VoiceModePanel
+          onClose={() => setVoiceOpen(false)}
+          onUtterance={submit}
+          busy={busy}
+          isSpeaking={voice.speaking}
+        />
       ) : null}
     </div>
   )
