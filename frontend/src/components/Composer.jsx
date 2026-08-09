@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowUp, FileText, Loader2, Mic, Paperclip, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Square, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useVoice } from '../lib/voiceContext'
@@ -228,7 +228,11 @@ export function Composer({
               aria-label={voice.enabled ? 'Turn off spoken replies' : 'Turn on spoken replies'}
               title={voice.enabled ? 'Spoken replies: on' : 'Spoken replies: off'}
             >
-              {voice.enabled ? <Volume2 size={18} aria-hidden="true" /> : <VolumeX size={18} aria-hidden="true" />}
+              {/* One icon, not two — a shape swap (speaker vs. muted-speaker)
+                  read as "something changed" but not as "this is the voice
+                  control." A waveform, colored on/muted off, is the mark
+                  people already read as voice from ChatGPT's own button. */}
+              <AudioLines size={18} aria-hidden="true" />
             </button>
 
             {isTranscribing ? (
