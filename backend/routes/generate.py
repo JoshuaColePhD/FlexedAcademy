@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from .. import db, llm, schoolcal, service
 from ..config import settings
 from ..deps import get_current_user
-from ..entitlement import entitlement
+from ..entitlement import require_entitlement
 from ..errors import AppError
 from ..schema import SchemaError
 
@@ -68,29 +68,9 @@ def _sse(payload: dict) -> str:
 
 
 
-def _require_entitlement(user_id: str) -> None:
-    """The paywall, in one place, on the only two doors that make a new week.
-
-    Revising is deliberately NOT gated. "A week free" means a week of lesson
-    plans; a teacher fixing Thursday is still working on the week they already
-    have, and taking that away would make the free week a demo rather than a
-    thing they can actually use. Downloads are never gated at all.
-    """
-    ent = entitlement(user_id)
-    if ent.may_generate:
-        return
-    raise AppError(
-        "subscription_required",
-        "You’ve used your free week. Subscribe to keep building.",
-        status=402,
-        hint="Everything you’ve already built stays yours — open it, revise it, download it.",
-        extra={"entitlement": ent.as_dict()},
-    )
-
-
 @router.post("/generate")
 def generate(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
-    _require_entitlement(user_id)
+    require_entitlement(user_id)
     query = _with_week(req.query, req.week_number)
     return service.generate(user_id, query, chat_id=req.chat_id, bg_tasks=bg_tasks)
 
@@ -105,7 +85,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
     # Before the stream opens, so a blocked request is an ordinary 402 with the
     # normal error envelope rather than an SSE frame the reader has to special-
     # case. useLessonStream already reads a non-200 body through apiErrorFromBody.
-    _require_entitlement(user_id)
+    require_entitlement(user_id)
     query = _with_week(req.query, req.week_number)
 
     def event_stream():
@@ -171,6 +151,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
 @router.post("/chat_stream")
 def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)):
     """Stream a standard conversational response, not a JSON schema."""
+    require_entitlement(user_id)
 
     def event_stream():
         try:
@@ -227,7 +208,7 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
             
-            for event in llm.stream_chat(messages):
+            for event in llm.stream_chat(user_id, messages):
                 yield _sse(event)
                 
             yield _sse({"done": True})
@@ -252,6 +233,7 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
 def revise_day(req: ReviseDayRequest, user_id: str = Depends(get_current_user)):
     """Rewrite one day — or one cell of it — AND rebuild the .docx, so the file
     matches what's on screen."""
+    require_entitlement(user_id)
     return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback, req.field)
 
 

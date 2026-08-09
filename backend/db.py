@@ -381,6 +381,31 @@ MIGRATIONS: list[str] = [
     UPDATE users SET is_admin = true
       WHERE email IN ('joshuacolephd@gmail.com', 'jpcole@florencek12.org');
     """,
+    # ── 17: usage-based free tier ────────────────────────────────────────────
+    #
+    # Replaces "one free plan, ever" (migration 15). That gated on plan COUNT,
+    # so a teacher who revised the same week fifteen times paid nothing extra
+    # while one who built two short weeks was locked out — the thing actually
+    # being protected (API spend) was never what was being measured.
+    #
+    # This measures it directly: every model call this app makes records its
+    # real input/output tokens here (db.record_usage), and entitlement.py sums
+    # the trailing 7 days of them against a weekly cap instead of counting
+    # plans. One row per call, not a running counter column, for the same
+    # reason migration 15 counted plans instead of a counter — a sum over the
+    # actual events can't drift from what it's summing.
+    """
+    CREATE TABLE IF NOT EXISTS usage_events (
+        id         TEXT PRIMARY KEY,
+        user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        tokens_in  INTEGER NOT NULL DEFAULT 0,
+        tokens_out INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_usage_events_user_time ON usage_events(user_id, created_at);
+    ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -1328,10 +1353,35 @@ def get_user_by_id(user_id: str) -> dict | None:
 
 
 def count_plans(user_id: str) -> int:
-    """How many weeks this teacher has built. The free allowance is measured
-    against this rather than a counter column, so it cannot drift from the
-    thing it counts."""
+    """How many weeks this teacher has built. Informational now — the free
+    tier no longer gates on this (see migration 17) — but still worth showing
+    on the account menu and to admins."""
     row = _row("SELECT COUNT(*) AS n FROM plans WHERE user_id = ?", (user_id,))
+    return int(row["n"]) if row else 0
+
+
+def record_usage(user_id: str, kind: str, tokens_in: int, tokens_out: int) -> None:
+    """One row per model call. Metering must never be why the call it's
+    metering fails — a teacher's plan should not error out because logging
+    its cost did."""
+    try:
+        _write(
+            "INSERT INTO usage_events (id, user_id, created_at, kind, tokens_in, tokens_out) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (new_id(), user_id, now(), kind, int(tokens_in or 0), int(tokens_out or 0)),
+        )
+    except Exception:
+        log.exception("failed to record usage user_id=%s kind=%s", user_id, kind)
+
+
+def tokens_used_since(user_id: str, since_iso: str) -> int:
+    """Total input+output tokens this account has spent since `since_iso` —
+    what entitlement.py caps against instead of a plan count."""
+    row = _row(
+        "SELECT COALESCE(SUM(tokens_in + tokens_out), 0) AS n FROM usage_events "
+        "WHERE user_id = ? AND created_at >= ?",
+        (user_id, since_iso),
+    )
     return int(row["n"]) if row else 0
 
 

@@ -57,8 +57,8 @@ class Settings(BaseSettings):
     max_tts_chars: int = 2000
 
     # ── billing ──────────────────────────────────────────────────────────────
-    # One week of plans free, then a subscription. The rule lives in exactly one
-    # place: backend/entitlement.py.
+    # Unlimited plans; the free tier is capped on actual API spend instead. The
+    # rule lives in exactly one place: backend/entitlement.py.
     #
     # The gate is INERT until all three are set. That is not caution for its own
     # sake: the moment a gate ships without a way through it, every existing
@@ -75,9 +75,25 @@ class Settings(BaseSettings):
     # Where Stripe sends them back to. Empty = derive from the request.
     billing_return_url: str = ""
 
-    # How many plans a teacher may build before subscribing. "A week free" is
-    # one week of lesson plans; revising that week is not a second week.
-    free_plan_allowance: int = 1
+    # Replaces "one free plan, ever": that gated on plan COUNT, so revising the
+    # same week fifteen times cost nothing extra while building two short weeks
+    # used the whole allowance — the thing actually being protected (API spend)
+    # was never what was being measured. This measures it directly: every
+    # model call records its real input+output tokens (db.record_usage), and
+    # entitlement.py sums the trailing 7 days of them against one of these two
+    # caps — the same shape ChatGPT/Claude free tiers use, just not surfaced to
+    # a teacher as a raw token count.
+    #
+    # ~150k tokens/week is generous headroom for normal use — a full week
+    # generation plus its retrieval context runs well under 10k tokens, so
+    # this covers a dozen-plus builds and revisions before it bites, not "one
+    # week, ever." Rough ceiling at gpt-4o's own pricing: well under $5/week
+    # even maxed out.
+    free_weekly_token_cap: int = 150_000
+    # A safety net for a paying account, not a real limit anything should hit —
+    # normal weekly use for even several classes is a fraction of this. Exists
+    # to catch a compromised account or a runaway bug, not a teacher planning.
+    subscriber_weekly_token_cap: int = 2_000_000
 
     database_url: str = ""
     curriculum_maps_dir: Path = PROJECT_ROOT / "data" / "curriculum_maps"

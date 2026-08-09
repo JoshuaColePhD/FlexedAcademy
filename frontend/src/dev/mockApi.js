@@ -119,27 +119,33 @@ let seq = 0
 const uid = (p) => `${p}_${++seq}`
 
 const state = {
-  // Default: billing live, one free week already spent — i.e. the paywall
+  // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
+  // Shape matches entitlement.Entitlement.as_dict() — token-capped, not
+  // plan-counted (backend/entitlement.py).
   entitlement:
     typeof sessionStorage !== 'undefined' && sessionStorage.getItem('mock.subscribed')
       ? {
           may_generate: true,
           subscribed: true,
           status: 'active',
-          plans_used: 1,
-          free_allowance: 1,
-          free_remaining: 0,
+          plans_used: 6,
+          tokens_used: 40_000,
+          token_cap: 2_000_000,
+          tokens_remaining: 1_960_000,
+          usage_window_days: 7,
           billing_enabled: true,
         }
       : {
           may_generate: false,
           subscribed: false,
           status: null,
-          plans_used: 1,
-          free_allowance: 1,
-          free_remaining: 0,
+          plans_used: 4,
+          tokens_used: 150_000,
+          token_cap: 150_000,
+          tokens_remaining: 0,
+          usage_window_days: 7,
           billing_enabled: true,
         },
   accounts: [
@@ -242,9 +248,9 @@ export function installMockApi() {
 
     /* The entitlement rides on /me exactly as it does in production, so the
        paywall can be driven here. Tune it live:
-         window.__mock.entitlement = { may_generate: false, subscribed: false,
-           status: null, plans_used: 1, free_allowance: 1, free_remaining: 0,
-           billing_enabled: true } */
+         window.__mock.state.entitlement = { may_generate: false, subscribed: false,
+           status: null, plans_used: 4, tokens_used: 150000, token_cap: 150000,
+           tokens_remaining: 0, usage_window_days: 7, billing_enabled: true } */
     if (path === '/api/auth/me')
       return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', is_admin: true, entitlement: state.entitlement })
     if (path === '/api/admin/accounts') return json({ accounts: state.accounts })
@@ -255,7 +261,10 @@ export function installMockApi() {
       return json({ account: acct || null })
     }
     if (path === '/api/billing/price')
-      return json({ price: { amount: 1000, currency: 'USD', interval: 'month', interval_count: 1 }, free_allowance: 1 })
+      return json({
+        price: { amount: 1000, currency: 'USD', interval: 'month', interval_count: 1 },
+        free_weekly_token_cap: 150_000,
+      })
     if (path === '/api/billing')
       return json({ ...state.entitlement, price: { amount: 1200, currency: 'USD', interval: 'month', interval_count: 1 } })
     if (path === '/api/billing/checkout' || path === '/api/billing/portal') {

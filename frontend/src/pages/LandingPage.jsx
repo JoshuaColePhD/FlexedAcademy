@@ -32,6 +32,11 @@ import { SignInForm } from '../components/SignInForm'
  * -->
  */
 
+// Plans are unlimited on the free tier now (a rolling weekly usage cap
+// replaced "one free plan, ever" — see backend/entitlement.py). A raw token
+// number means nothing to a teacher deciding whether to sign up, so this
+// stays qualitative — the same choice ChatGPT/Claude make for their own free
+// tiers — rather than printing free_weekly_token_cap here.
 function priceLine(data) {
   const p = data?.price
   if (!p?.amount) return null
@@ -42,8 +47,7 @@ function priceLine(data) {
   }).format(p.amount / 100)
   const every =
     p.interval_count > 1 ? `${p.interval_count} ${p.interval}s` : p.interval || 'month'
-  const weeks = data.free_allowance === 1 ? 'Your first week is free' : `Your first ${data.free_allowance} weeks are free`
-  return `${weeks}, then ${money} a ${every}. Cancel any time.`
+  return `Free to start, no limit on how many weeks you build. ${money} a ${every} unlocks a much higher usage ceiling. Cancel any time.`
 }
 
 function useInView() {

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from .. import db, docx_build, schema, service, units
 from ..config import settings
 from ..deps import get_current_user
+from ..entitlement import require_entitlement
 from ..errors import AppError
 
 router = APIRouter(prefix="/api/plans", tags=["plans"])
@@ -128,7 +129,8 @@ def revise_whole_plan(
 ):
     """Revise the whole plan, on the teacher's instruction or by self-critique."""
     from .. import llm, retrieval
-    
+
+    require_entitlement(user_id)
     row = _require_plan(user_id, plan_id)
     retrieved_ids = row.get("retrieved_ids") or []
     if not retrieved_ids:

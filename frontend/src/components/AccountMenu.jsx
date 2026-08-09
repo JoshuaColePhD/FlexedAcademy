@@ -105,10 +105,12 @@ export function AccountMenu({ classPath }) {
               >
                 <Sparkles size={14} aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">Subscribe</span>
-                {entitlement && entitlement.free_remaining > 0 ? (
-                  <span className="shrink-0 text-2xs text-ink-muted">
-                    {entitlement.free_remaining} free left
-                  </span>
+                {/* Plans are unlimited on the free tier now (see
+                    entitlement.py) — nothing left to count down, so this only
+                    has something to say once the weekly usage cap is
+                    actually hit, not on every ordinary week of use. */}
+                {entitlement && !entitlement.may_generate ? (
+                  <span className="shrink-0 text-2xs text-mark">Limit reached</span>
                 ) : null}
               </button>
             )

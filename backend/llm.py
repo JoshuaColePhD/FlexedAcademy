@@ -53,6 +53,18 @@ def _check_refusal(message) -> None:
         raise AppError("model_refusal", f"The model declined this request: {refusal}", status=422)
 
 
+def _record(user_id: str, kind: str, usage) -> None:
+    """The other half of entitlement.py's weekly cap — every real model call
+    reports what it actually spent here. Never worth failing the call over,
+    which is why db.record_usage already swallows its own errors; this just
+    skips the call entirely if OpenAI didn't hand back a usage object."""
+    if not usage:
+        return
+    db.record_usage(
+        user_id, kind, getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0
+    )
+
+
 def map_context_for(user_id: str, subject: str, query: str) -> str:
     """Snippets from the teacher's own active pacing guide, relevant to `query`.
 
@@ -87,11 +99,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
     )
     msg = resp.choices[0].message
     _check_refusal(msg)
-    log.info(
-        "generate_plan tokens_in=%s tokens_out=%s",
-        resp.usage.prompt_tokens if resp.usage else "?",
-        resp.usage.completion_tokens if resp.usage else "?",
-    )
+    _record(user_id, "generate_plan", resp.usage)
     return loads_lenient(msg.content or "")
 
 
@@ -114,17 +122,32 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[s
             {"role": "user", "content": query},
         ],
         stream=True,
+        # A streamed response has no single .usage the way a plain
+        # completion does — without this the whole most expensive call this
+        # app makes (4000 max_tokens, run on every generate) went unmetered.
+        # The usage-bearing chunk has choices=[], so it survives the
+        # `if not chunk.choices: continue` below only because it's checked
+        # first.
+        stream_options={"include_usage": True},
     )
-    for chunk in stream:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        if getattr(delta, "refusal", None):
-            raise AppError(
-                "model_refusal", f"The model declined this request: {delta.refusal}", status=422
-            )
-        if delta.content:
-            yield delta.content
+    try:
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                _record(user_id, "stream_plan", chunk.usage)
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if getattr(delta, "refusal", None):
+                raise AppError(
+                    "model_refusal", f"The model declined this request: {delta.refusal}", status=422
+                )
+            if delta.content:
+                yield delta.content
+    finally:
+        # Releases the underlying HTTP connection if the caller stops
+        # iterating early (Stop clicked mid-stream) rather than leaving it to
+        # the SDK's own GC-triggered cleanup.
+        stream.close()
 
 
 def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, result: RetrievalResult) -> dict:
@@ -153,6 +176,7 @@ def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, 
     )
     msg = resp.choices[0].message
     _check_refusal(msg)
+    _record(user_id, "rewrite_day", resp.usage)
     return loads_lenient(msg.content or "")
 
 
@@ -200,6 +224,7 @@ def rewrite_day_field(
     )
     msg = resp.choices[0].message
     _check_refusal(msg)
+    _record(user_id, "rewrite_day_field", resp.usage)
     payload = loads_lenient(msg.content or "")
     if not isinstance(payload, dict) or field not in payload:
         raise AppError(
@@ -268,6 +293,7 @@ def critique_and_revise(
     )
     msg = resp.choices[0].message
     _check_refusal(msg)
+    _record(user_id, "critique_and_revise", resp.usage)
     return loads_lenient(msg.content or "")
 
 
@@ -299,7 +325,7 @@ would actually teach — reading analysis, writing, language conventions, speaki
 and listening — one query each, so different families of standards can match."""
 
 
-def expand_query(query: str) -> list[str]:
+def expand_query(user_id: str, query: str) -> list[str]:
     """Rephrase a teacher's request into standards-register search queries.
 
     Measured effect: AP skill chunks for "Week 6 voice and tone with The Cask of
@@ -319,6 +345,7 @@ def expand_query(query: str) -> list[str]:
                 {"role": "user", "content": query[:2000]},
             ],
         )
+        _record(user_id, "expand_query", resp.usage)
         data = json.loads(resp.choices[0].message.content or "{}")
         out = [q.strip() for q in data.get("queries", []) if isinstance(q, str) and q.strip()]
         log.info("expanded query into %d searches", len(out))
@@ -351,7 +378,7 @@ summarize the actual request in plain words instead. No quotes, no trailing
 punctuation."""
 
 
-def generate_chat_title(message: str) -> str:
+def generate_chat_title(user_id: str, message: str) -> str:
     """A short descriptive title for a new chat, replacing a truncated first line.
 
     Teachers' opening messages are often identical boilerplate ("I want you to
@@ -371,6 +398,7 @@ def generate_chat_title(message: str) -> str:
                 {"role": "user", "content": message[:2000]},
             ],
         )
+        _record(user_id, "generate_chat_title", resp.usage)
         title = json.loads(resp.choices[0].message.content or "{}").get("title", "").strip()
         if title:
             return title[:80]
@@ -380,13 +408,20 @@ def generate_chat_title(message: str) -> str:
     return first_line[:40] + ("…" if len(first_line) > 40 else "")
 
 
-def transcribe(path: str) -> str:
+def transcribe(user_id: str, path: str) -> str:
     with open(path, "rb") as f:
         result = client().audio.transcriptions.create(model="whisper-1", file=f)
+    # Whisper and TTS bill per minute / per character, not per token, so
+    # there's no real usage.prompt_tokens to read — without SOME charge here
+    # they'd be a free channel outside the cap this whole feature exists to
+    # enforce. ~1200 is Whisper's per-minute cost ($0.006) converted to
+    # gpt-4o-equivalent tokens at that model's own blended rate, assuming a
+    # generous one-minute clip — approximate on purpose, not a real invoice.
+    db.record_usage(user_id, "transcribe", 1200, 0)
     return result.text
 
 
-def synthesize_speech(text: str) -> bytes:
+def synthesize_speech(user_id: str, text: str) -> bytes:
     """The other half of transcribe() above — text in, spoken audio out."""
     resp = client().audio.speech.create(
         model=settings.tts_model,
@@ -394,12 +429,16 @@ def synthesize_speech(text: str) -> bytes:
         input=text,
         response_format="mp3",
     )
+    # Same reasoning as transcribe(): TTS bills per character ($0.015/1K),
+    # converted to a gpt-4o-equivalent token count so it draws from the same
+    # cap rather than being a free channel.
+    db.record_usage(user_id, "synthesize_speech", len(text) * 3, 0)
     return resp.content
 
 
-def stream_chat(messages: list[dict]) -> Iterator[dict]:
+def stream_chat(user_id: str, messages: list[dict]) -> Iterator[dict]:
     """Conversational streaming. Yields dicts with 'chunk' or 'tool_call'.
-    
+
     The first message should be the system prompt.
     """
     tools = [{
@@ -409,7 +448,7 @@ def stream_chat(messages: list[dict]) -> Iterator[dict]:
             "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
         }
     }]
-    
+
     stream = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.7,
@@ -417,20 +456,28 @@ def stream_chat(messages: list[dict]) -> Iterator[dict]:
         messages=messages,
         stream=True,
         tools=tools,
+        # See stream_plan's identical option — without it this call, which
+        # runs on every non-generating chat turn too, went unmetered.
+        stream_options={"include_usage": True},
     )
-    for chunk in stream:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        if getattr(delta, "refusal", None):
-            raise AppError(
-                "model_refusal", f"The model declined this request: {delta.refusal}", status=422
-            )
-        
-        if getattr(delta, "tool_calls", None):
-            yield {"tool_call": "generate_lesson_plan"}
-            break
-            
-        if delta.content:
-            yield {"chunk": delta.content}
+    try:
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                _record(user_id, "stream_chat", chunk.usage)
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if getattr(delta, "refusal", None):
+                raise AppError(
+                    "model_refusal", f"The model declined this request: {delta.refusal}", status=422
+                )
+
+            if getattr(delta, "tool_calls", None):
+                yield {"tool_call": "generate_lesson_plan"}
+                break
+
+            if delta.content:
+                yield {"chunk": delta.content}
+    finally:
+        stream.close()
 

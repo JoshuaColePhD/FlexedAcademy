@@ -103,7 +103,7 @@ def prepare(user_id: str, query: str) -> RetrievalResult:
         contextual_query, 
         subject_code=subject_code, 
         grade=grade, 
-        extra_queries=llm.expand_query(contextual_query)
+        extra_queries=llm.expand_query(user_id, contextual_query)
     )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)

@@ -508,10 +508,14 @@ export function ChatPage() {
          mode picker in this UI — every message here is asking for a plan. */
       if (!artifact?.planId) {
         /* The paywall, asked before the 30-second wait rather than after it.
-           The server enforces the same rule (routes/generate.py) — this exists
-           so a blocked teacher sees the offer immediately instead of watching a
-           progress indicator that was always going to end in a 402. Revising,
-           the branch below, is never gated. */
+           The server enforces the same rule (entitlement.require_entitlement,
+           called from every model-calling route now, not just this one) — this
+           exists so a blocked teacher sees the offer immediately here instead
+           of watching a progress indicator that was always going to end in a
+           402. The revise/chat branch below has no equivalent pre-check, but
+           it's gated server-side too now — a blocked revise still surfaces
+           through the ordinary onError -> toast.apiError path, just without
+           the immediate, pre-wait version of this. */
         if (!mayGenerate) {
           setPreparing(false)
           openPaywall()
@@ -521,8 +525,8 @@ export function ChatPage() {
               id: nextId(),
               role: 'assistant',
               isError: true,
-              content: 'You’ve used your free week.',
-              hint: 'Subscribe to build new weeks — everything you’ve already made stays yours.',
+              content: 'You’ve reached this week’s usage limit.',
+              hint: 'Subscribe for a much higher limit, or wait for it to reset — everything you’ve already built stays yours.',
             },
           ])
           return

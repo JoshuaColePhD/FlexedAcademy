@@ -169,14 +169,15 @@ export function BillingProvider({ children }) {
             aria-labelledby="paywall-title"
             aria-describedby="paywall-body"
           >
-            <h2 id="paywall-title">That’s your free week</h2>
+            <h2 id="paywall-title">You’ve reached this week’s usage limit</h2>
             <p id="paywall-body">
-              Subscribe to keep building new weeks{priceLabel ? ` — ${priceLabel}` : ''}. Everything
-              you’ve already made stays yours either way.
+              It resets on a rolling week, or subscribe now for a much higher
+              limit{priceLabel ? ` — ${priceLabel}` : ''}. Everything you’ve already
+              made stays yours either way.
             </p>
             <ul className="mb-4 mt-1 space-y-1.5 text-xs text-ink-soft">
               {[
-                'Unlimited weeks, every class you teach',
+                'A much higher weekly usage limit',
                 'Grounded in your standards and your pacing guide',
                 'Cancel any time, from your account',
               ].map((line) => (

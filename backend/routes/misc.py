@@ -224,7 +224,7 @@ def suggest_chat_title(body: TitleRequest, user_id: str = Depends(get_current_us
     it doesn't touch the requester's data — an anonymous caller shouldn't be
     able to spend the shared OpenAI budget.
     """
-    return {"title": llm.generate_chat_title(body.message)}
+    return {"title": llm.generate_chat_title(user_id, body.message)}
 
 
 @router.get("/chats")
@@ -304,11 +304,15 @@ def _spool(upload: UploadFile, suffix: str, max_bytes: int) -> Path:
 
 
 @router.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
+async def transcribe(audio: UploadFile = File(...), user_id: str = Depends(get_current_user)):
+    """Was unauthenticated — every other OpenAI-backed route here requires
+    login (see /tts's own comment), but this one didn't, which made it a free
+    relay for anyone who found it: no account to attribute the cost to, and
+    nothing for entitlement.py's cap to apply against."""
     suffix = Path(audio.filename or "recording.webm").suffix or ".webm"
     path = _spool(audio, suffix, settings.max_audio_bytes)
     try:
-        return {"text": llm.transcribe(str(path))}
+        return {"text": llm.transcribe(user_id, str(path))}
     finally:
         path.unlink(missing_ok=True)
 
@@ -323,7 +327,7 @@ def synthesize_speech(req: TTSRequest, user_id: str = Depends(get_current_user))
     other OpenAI-backed route — this bills the same API key transcribe()
     already does, and a public speech-synthesis endpoint is a free relay for
     anyone who finds it."""
-    audio = llm.synthesize_speech(req.text)
+    audio = llm.synthesize_speech(user_id, req.text)
     return Response(content=audio, media_type="audio/mpeg")
 
 

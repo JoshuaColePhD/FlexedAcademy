@@ -56,23 +56,23 @@ def _return_url(request: Request) -> str:
 def public_price():
     """What a subscription costs, readable without an account.
 
-    The landing page invites a signup, so it has to be able to say what
-    happens after the free week — and it cannot say it by hardcoding a number
-    that goes stale the first time the price changes. Deliberately public and
-    deliberately narrow: the price and the free allowance, no entitlement, no
-    account state. Both are already printed on the Checkout page anyway.
+    The landing page invites a signup, so it has to be able to say what a
+    subscription costs — and it cannot say it by hardcoding a number that goes
+    stale the first time the price changes. Deliberately public and narrow:
+    the price and the free tier's weekly token cap, no entitlement, no
+    account state. The price is already printed on the Checkout page anyway.
 
     Before Stripe is configured this returns price: null and the page simply
     says nothing about money, which is the honest thing to say when there is
     no price yet.
     """
     if not settings.billing_enabled:
-        return {"price": None, "free_allowance": settings.free_plan_allowance}
+        return {"price": None, "free_weekly_token_cap": settings.free_weekly_token_cap}
     try:
         price = stripe_api.get_price(settings.stripe_price_id)
     except AppError:
         price = None
-    return {"price": price, "free_allowance": settings.free_plan_allowance}
+    return {"price": price, "free_weekly_token_cap": settings.free_weekly_token_cap}
 
 
 @router.get("")
