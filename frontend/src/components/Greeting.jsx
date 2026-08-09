@@ -162,7 +162,7 @@ export function Greeting({ onPick, onDraft, className: courseName }) {
           onClick={voice.toggle}
           aria-pressed={voice.enabled}
           aria-label={voice.enabled ? 'Turn off Chat' : 'Turn on Chat'}
-          className={`mx-auto mt-4 flex min-h-touch w-fit items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium transition-colors md:hidden ${
+          className={`mx-auto mt-4 flex min-h-touch w-2/3 items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium transition-colors md:hidden ${
             voice.enabled
               ? 'bg-accent-tint text-accent-text'
               : 'bg-paper-sunken text-ink-soft hover:bg-paper-inset hover:text-ink'
