@@ -4,6 +4,11 @@ import { api } from '../lib/api'
 
 const KEY = 'aplang.voice'
 
+/* A few milliseconds of silence, just to have SOMETHING playable to unlock
+   with — see toggle() below. */
+const UNLOCK_WAV =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+
 function readEnabled() {
   try {
     return localStorage.getItem(KEY) === '1'
@@ -76,7 +81,26 @@ export function VoiceProvider({ children }) {
       } catch {
         /* not persisted */
       }
-      if (!next) stop()
+      if (next) {
+        /* Mobile Safari (and Chrome on Android) only starts audio when
+           .play() is the DIRECT, SYNCHRONOUS result of a user gesture — a
+           reply arriving seconds later inside speak()'s async fetch doesn't
+           count, and the browser blocks it with no error surfaced, because
+           speak()'s catch swallows exactly that. Every wire before this was
+           correct and nothing was ever audible on a phone.
+
+           Playing a near-silent clip HERE, inside the click that turned this
+           on, unlocks the shared <audio> element for the rest of the page's
+           life — later async .play() calls on the SAME element are then
+           allowed. This is the one gesture that exists to spend on it. */
+        const el = audioRef.current
+        if (el) {
+          el.src = UNLOCK_WAV
+          el.play().catch(() => {})
+        }
+      } else {
+        stop()
+      }
       return next
     })
   }, [stop])
