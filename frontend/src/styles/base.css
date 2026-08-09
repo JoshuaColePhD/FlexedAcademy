@@ -114,42 +114,12 @@
     background-size: 120px 120px;
   }
 
-  /* ══ THE RAIL'S FROSTED SPINE ═════════════════════════════════════════════
-     A remap, not a repaint, was the first pass here: overriding the generic
-     surface/ink/edge/accent variables re-themed every Tailwind utility
-     already written inside the rail. Josh's call moved the colour to the
-     rail's own EDGE instead — a strip, plus a frosted-glass material — so
-     none of that remap survives; the rail keeps the plain bg-paper-sunken it
-     always had (see AppShell.jsx). */
-  /* Fixed, low-opacity, blurred at the SOURCE (filter, not backdrop-filter) —
-     .app-rail's own backdrop-filter is what turns this into the visible wash
-     behind its glass. Sized and positioned to sit mostly behind the rail; it
-     bleeds a little past that edge on purpose, the way light does. Two
-     instances — top and bottom — so the glass is lit at both ends of the
-     rail; the account menu at the bottom used to sit on plain glass with
-     none of it. */
-  .app-glow {
-    position: fixed;
-    left: -140px;
-    z-index: 0;
-    height: 460px;
-    width: 460px;
-    border-radius: var(--r-full);
-    background: radial-gradient(
-      circle,
-      rgb(var(--rail-pop-rgb) / 0.4) 0%,
-      rgb(var(--rail-pop-2-rgb) / 0.28) 55%,
-      transparent 78%
-    );
-    filter: blur(20px);
-    pointer-events: none;
-  }
-  .app-glow-top {
-    top: -140px;
-  }
-  .app-glow-bottom {
-    bottom: -140px;
-  }
+  /* ══ THE RAIL ═════════════════════════════════════════════════════════════
+     Was frosted glass (a blur, lit by .app-glow behind it) until the rail
+     went neomorphic (.neo-world, on request) — an opaque emboss and a
+     translucent blur are two different materials, and the opaque one won.
+     .app-glow existed only to light that glass; removed along with it
+     rather than left as a blurred blob with nothing left to diffuse. */
 
   /* Same wash, scoped to the chat pane rather than the viewport — see
      AppShell.jsx's #main. Smaller and lower-opacity than the rail's: this
@@ -189,6 +159,15 @@
     backdrop-filter: blur(28px) saturate(1.4);
     -webkit-backdrop-filter: blur(28px) saturate(1.4);
   }
+  /* Neomorphism computes an emboss FROM an opaque background — .neo-world's
+     own opaque fill already wins the cascade (declared later) and quietly
+     defeats the backdrop-filter above (nothing translucent left to blur),
+     but the hard teal edge is --rail-pop, a token .neo-world doesn't touch,
+     and a bright cyan stripe on a soft cream/rose panel reads as a mistake
+     rather than a second accent. Cut cleanly instead of half-keeping it. */
+  .app-rail.neo-world {
+    border-right: none;
+  }
   /* On a phone, .app-rail is the drawer's own panel — and had no motion of
      its own at all: it appeared and vanished with the conditional render
      that mounted/unmounted it, a hard cut in both directions. A drawer
@@ -227,24 +206,6 @@
     flex-shrink: 0;
     border-radius: var(--r-full);
     background: var(--class-dot-color, var(--ink-faint));
-  }
-
-  /* "New plan" — the rail's one CTA, see the comment beside its call site. */
-  .rail-cta {
-    color: var(--rail-pop);
-    background: var(--rail-pop-tint);
-    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
-  }
-  /* Purple at rest, light blue once it's the thing you're about to press —
-     the two accents doing two different jobs rather than one repeated
-     twice. */
-  .rail-cta:hover {
-    color: var(--rail-paper);
-    background: var(--rail-pop-2);
-  }
-  .rail-cta kbd {
-    color: inherit;
-    opacity: 0.65;
   }
 
   .eyebrow {
@@ -3030,23 +2991,28 @@
     --mark-tint-rgb: 46 20 20;
   }
 
-  /* ══ VOICE PANEL: NEOMORPHISM ═══════════════════════════════════════════
-     A fixed third world, same technique as .auth-ground above: redeclare the
+  /* ══ NEOMORPHISM ══════════════════════════════════════════════════════════
+     A fixed world, same technique as .auth-ground above: redeclare the
      primitives so every existing bg-paper/text-ink/border-edge utility just
-     works here unchanged, rather than inventing parallel component classes.
-     Unconditional — no :root[data-theme='dark'] variant — because the whole
-     point is a specific, calibrated cream base with matching light/dark
-     shadow tones; the panel stays this look regardless of the app's own
-     theme, the same way the landing page's dark violet-then-teal ground
-     never followed data-theme either.
+     works unchanged wherever this is applied, rather than inventing parallel
+     component classes per surface. Unconditional — no :root[data-theme='dark']
+     variant — because the whole point is a specific, calibrated cream base
+     with matching light/dark shadow tones; every surface wearing this stays
+     this look regardless of the app's own theme, the same way the landing
+     page's dark violet-then-teal ground never followed data-theme either.
+
+     Started scoped to the voice panel alone; now also the in-chat week
+     strip and the main nav rail, each opted in by request one at a time —
+     .neo-world itself stays surface-agnostic, just the cream base + emboss
+     primitives, so wherever it lands next doesn't need a new class.
 
      Soft-shadow "neomorphic" UI is a real accessibility tradeoff — edges
      are deliberately faint, which is the opposite of the high-contrast look
      the REST of this app was built on (see tokens.css's own comments on AA
-     contrast floors). Scoped to one opt-in screen, on the user's explicit
-     ask to match a supplied reference image, that tradeoff is theirs to
-     make; it must never leak into any token the rest of the app reads. */
-  .voice-neo {
+     contrast floors). Every surface it's applied to is opt-in, on the
+     user's explicit ask; it must never leak into any token the rest of the
+     app reads. */
+  .neo-world {
     --paper-rgb: 241 239 235;
     --paper-raised-rgb: 241 239 235;
     --paper-sunken-rgb: 234 231 226;

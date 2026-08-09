@@ -59,8 +59,13 @@ function ChatRow({ chat, classId, onDelete }) {
       <NavLink
         to={`/c/${classId}/chat/${chat.id}`}
         className={({ isActive }) =>
+          /* neo-inset, not a background tint — "pressed in" is what already
+             means "selected" in this world (see every neo-raised button's
+             own :active state), so the active row reads as a permanent
+             version of that same press instead of a third, unrelated
+             signal. */
           `flex min-h-touch items-center rounded-md px-2 pr-14 text-sm transition-colors ${
-            isActive ? 'bg-paper-inset text-ink' : 'text-ink-soft hover:bg-paper-inset/60'
+            isActive ? 'neo-inset text-ink' : 'text-ink-soft hover:bg-paper-inset/60'
           }`
         }
       >
@@ -137,14 +142,17 @@ function Rail({ onNavigate, onClose }) {
       <ClassSwitcher classes={classes} activeClass={activeClass} classPath={classPath} />
 
       <div className="px-2 pb-1 pt-1">
-        {/* The one thing a teacher opens this app to do. Rarity is the whole
-            strategy for --rail-pop (colorize.md) — it earns the warm note
-            because this is the single most-pressed control in the rail, not
-            because a button needed decorating. */}
+        {/* The one thing a teacher opens this app to do. Was .rail-cta's own
+            --rail-pop teal (colorize.md) — a token .neo-world doesn't
+            redeclare, so it rendered as a mismatched accent against the
+            rose/cream palette here. neo-raised + the redeclared --accent
+            tokens makes it the one floating, emphasized control in the
+            rail instead — still the rarest warm note, just this world's
+            warm note. */}
         <Link
           to={classPath}
           onClick={onNavigate}
-          className="rail-cta flex min-h-touch items-center gap-2 rounded-lg px-3 text-sm font-medium"
+          className="neo-raised flex min-h-touch items-center gap-2 rounded-lg bg-accent-tint px-3 text-sm font-medium text-accent-text"
         >
           <Plus size={15} aria-hidden="true" />
           <span className="flex-1">New plan</span>
@@ -226,20 +234,10 @@ export function AppShell({ children }) {
         Skip to content
       </a>
 
-      {/* Fixed, blurred, behind everything — the thing .app-rail's
-          backdrop-filter actually has to diffuse. A frosted-glass panel over a
-          flat colour is not glass, it's just translucent; this is what makes
-          the rail read as material rather than an opacity slider. Two of
-          them — top-left and bottom-left — so the glass reads as lit from
-          both ends of the rail instead of just where the wordmark sits; the
-          account menu at the bottom got none of it before. */}
-      <div className="app-glow app-glow-top" aria-hidden="true" />
-      <div className="app-glow app-glow-bottom" aria-hidden="true" />
-
       {/* docked */}
       {!isNarrow ? (
         <div
-          className="app-rail flex shrink-0 flex-col overflow-hidden transition-[width]"
+          className="app-rail neo-world flex shrink-0 flex-col overflow-hidden transition-[width]"
           style={{
             width: docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
@@ -261,7 +259,7 @@ export function AppShell({ children }) {
           />
           <div
             ref={drawerRef}
-            className={`app-rail rail-drawer${drawerExit.closing ? ' is-closing' : ''} fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col shadow-lg`}
+            className={`app-rail neo-world rail-drawer${drawerExit.closing ? ' is-closing' : ''} fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col shadow-lg`}
           >
             <Rail onNavigate={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} />
           </div>

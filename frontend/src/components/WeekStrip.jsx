@@ -40,7 +40,7 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
   // The chat-reply form (loose=true), on request: a neomorphic bulleted list
   // instead of the five-card grid below. Scoped to THIS variant only — the
   // grid stays the signature element everywhere else (the artifact header,
-  // the generation-progress indicator) — because voice-neo's soft, low-
+  // the generation-progress indicator) — because neo-world's soft, low-
   // contrast edges are a tradeoff worth making for one decorative element
   // inside a reply, not for the document header a teacher actually verifies
   // standards against.
@@ -48,7 +48,7 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
     return (
       <div className={className}>
         <ul
-          className="voice-neo neo-panel flex flex-col gap-1 rounded-2xl bg-paper-raised p-2"
+          className="neo-world neo-panel flex flex-col gap-1 rounded-2xl bg-paper-raised p-2"
           role="group"
           aria-label={label}
         >

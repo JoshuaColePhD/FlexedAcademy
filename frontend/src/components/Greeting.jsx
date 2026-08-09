@@ -157,17 +157,17 @@ export function Greeting({ onPick, onDraft, onOpenVoice, className: courseName }
             voice conversation (VoiceModePanel) that icon does, just given
             the room to be found.
 
-            voice-neo + neo-raised, same as every surface INSIDE the panel
+            neo-world + neo-raised, same as every surface INSIDE the panel
             this opens — the button is the doorway to that world, so it
             should already look like it. Applied to the button itself, not
-            a wrapping div: .voice-neo sets its own background, so the
+            a wrapping div: .neo-world sets its own background, so the
             button reads as a floating embossed pill regardless of the
             (unstyled, ordinary) page behind it, with no seam to manage. */}
         {onOpenVoice ? (
           <button
             type="button"
             onClick={onOpenVoice}
-            className="voice-neo neo-raised mx-auto mt-4 flex min-h-touch w-2/3 items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium text-accent-text md:hidden"
+            className="neo-world neo-raised mx-auto mt-4 flex min-h-touch w-2/3 items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium text-accent-text md:hidden"
           >
             <AudioLines size={18} aria-hidden="true" />
             Chat

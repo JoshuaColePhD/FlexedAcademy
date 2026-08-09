@@ -30,11 +30,11 @@ import { api } from '../lib/api'
  * centered-dialog treatment; the full takeover is what "might work best on
  * mobile" actually meant it for.
  *
- * Rendered in the .voice-neo world (base.css) — soft embossed "neomorphic"
+ * Rendered in the .neo-world world (base.css) — soft embossed "neomorphic"
  * surfaces on request, matching the reference images directly rather than
  * translating them into this app's normal flat, high-contrast look. That
  * tradeoff (faint edges, low contrast) is real and is scoped to this one
- * opt-in screen on purpose — see .voice-neo's own comment for why it's fine
+ * opt-in screen on purpose — see .neo-world's own comment for why it's fine
  * here and would not be fine as a default anywhere else in the app.
  */
 
@@ -209,10 +209,10 @@ export function VoiceModePanel({
     // concrete value once, not passed through as a custom property.
     //
     // Read from the CANVAS element, not document.documentElement: this
-    // panel lives inside .voice-neo, which redeclares --accent-rgb to its
+    // panel lives inside .neo-world, which redeclares --accent-rgb to its
     // own rose rather than the app's blue, and that override only takes
     // effect for elements actually inside the scope. Reading from the root
-    // would silently get the wrong color the moment .voice-neo disagrees
+    // would silently get the wrong color the moment .neo-world disagrees
     // with :root, which is the entire point of it existing. Read once, here
     // — the canvas is already mounted by the time an effect body runs — not
     // per frame, which would force a style recalculation at 60fps.
@@ -351,7 +351,7 @@ export function VoiceModePanel({
         role="dialog"
         aria-modal="true"
         aria-label="Voice conversation"
-        className="voice-neo fixed inset-0 z-50 flex flex-col bg-paper"
+        className="neo-world fixed inset-0 z-50 flex flex-col bg-paper"
       >
         <div className="flex h-14 shrink-0 items-center px-4">
           <button
@@ -391,7 +391,7 @@ export function VoiceModePanel({
 
   return (
     <div
-      className="voice-neo dialog-scrim"
+      className="neo-world dialog-scrim"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* items-stretch, not the scrim's own align-items:center — the
