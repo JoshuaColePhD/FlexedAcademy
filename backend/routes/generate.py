@@ -202,7 +202,12 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                 system_prompt += (
                     "Have a natural back-and-forth conversation to brainstorm ideas for their upcoming week, or discuss revisions to an existing week. "
                     "Keep your responses concise and helpful. "
-                    "When you have enough information and the user is ready to build or revise the plan, call the `generate_lesson_plan` tool."
+                    "When you have enough information and the user is ready to build or revise the plan, call the `generate_lesson_plan` tool. "
+                    "If their request is genuinely too vague to build a specific week from — e.g. \"I want to make a lesson\" "
+                    "or \"help me plan next week\" with no text, topic, or skill named — call `ask_clarifying_questions` "
+                    "INSTEAD, with 2-4 short questions and a few clickable options each. Only do this once per request; "
+                    "a request that already names a text/topic and a rough shape has enough to build from immediately, "
+                    "and once the teacher has answered a round of questions, build the plan next rather than asking more."
                 )
             
             messages = [{"role": "system", "content": system_prompt}]

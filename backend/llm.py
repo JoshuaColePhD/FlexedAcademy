@@ -441,13 +441,60 @@ def stream_chat(user_id: str, messages: list[dict]) -> Iterator[dict]:
 
     The first message should be the system prompt.
     """
-    tools = [{
-        "type": "function",
-        "function": {
-            "name": "generate_lesson_plan",
-            "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
-        }
-    }]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_lesson_plan",
+                "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "ask_clarifying_questions",
+                # Call this INSTEAD of generate_lesson_plan, not before it —
+                # the two are alternatives, not a required first step. A
+                # request that already names a text/topic and a rough shape
+                # ("plan a week on Gatsby ch 3-4, rhetorical analysis") has
+                # enough to build from immediately; this is for the genuinely
+                # vague ones ("I want to make a lesson"), and only once — an
+                # answered round of questions goes straight to building next,
+                # never a second round.
+                "description": (
+                    "Call this INSTEAD of generate_lesson_plan when the teacher's request is too vague to "
+                    "build a specific week from. Ask 2-4 short, concrete questions, each with a few "
+                    "clickable options, so the teacher can tap through rather than type a paragraph. Use "
+                    "this at most once per request — once they've answered, build from what they picked."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "questions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 4,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string", "description": "A short, stable slug, e.g. 'text' or 'skill'."},
+                                    "text": {"type": "string", "description": "The question itself, one sentence."},
+                                    "options": {
+                                        "type": "array",
+                                        "minItems": 2,
+                                        "maxItems": 5,
+                                        "items": {"type": "string"},
+                                    },
+                                },
+                                "required": ["id", "text", "options"],
+                            },
+                        }
+                    },
+                    "required": ["questions"],
+                },
+            },
+        },
+    ]
 
     stream = client().chat.completions.create(
         model=settings.openai_model,
@@ -460,20 +507,47 @@ def stream_chat(user_id: str, messages: list[dict]) -> Iterator[dict]:
         # runs on every non-generating chat turn too, went unmetered.
         stream_options={"include_usage": True},
     )
+    # generate_lesson_plan carries no arguments worth waiting on — the plan
+    # itself comes from a separate call once the client sees that signal, not
+    # from parsing this tool's own payload, so it still fires on the first
+    # sighting like before. ask_clarifying_questions is the opposite: its
+    # arguments ARE the entire payload, streamed as fragments of a JSON
+    # string across several chunks, so it has to accumulate until the model
+    # actually finishes the call before there's anything valid to parse.
+    tool_name = None
+    tool_args = ""
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
                 _record(user_id, "stream_chat", chunk.usage)
             if not chunk.choices:
                 continue
-            delta = chunk.choices[0].delta
+            choice = chunk.choices[0]
+            delta = choice.delta
             if getattr(delta, "refusal", None):
                 raise AppError(
                     "model_refusal", f"The model declined this request: {delta.refusal}", status=422
                 )
 
             if getattr(delta, "tool_calls", None):
-                yield {"tool_call": "generate_lesson_plan"}
+                call = delta.tool_calls[0]
+                fn = getattr(call, "function", None)
+                if fn and getattr(fn, "name", None):
+                    tool_name = fn.name
+                if fn and getattr(fn, "arguments", None):
+                    tool_args += fn.arguments
+                if tool_name == "generate_lesson_plan":
+                    yield {"tool_call": "generate_lesson_plan"}
+                    break
+                continue
+
+            if choice.finish_reason == "tool_calls" and tool_name == "ask_clarifying_questions":
+                try:
+                    questions = json.loads(tool_args).get("questions") or []
+                except ValueError:
+                    questions = []
+                if questions:
+                    yield {"tool_call": "ask_clarifying_questions", "questions": questions}
                 break
 
             if delta.content:

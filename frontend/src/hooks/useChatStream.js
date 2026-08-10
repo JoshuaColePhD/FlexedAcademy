@@ -58,6 +58,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan } = {}) {
         let buffer = ''
         let finished = null
         let toolCalled = false
+        let questions = null
 
         for (;;) {
           const { value, done } = await reader.read()
@@ -90,7 +91,17 @@ export function useChatStream({ onDone, onError, onGeneratePlan } = {}) {
                 toolCalled = true
                 onGeneratePlanRef.current?.(accumulated)
               }
-              
+
+              // The clarifying-questions alternative — see backend/llm.py's
+              // ask_clarifying_questions tool. Its arguments (the questions
+              // themselves) are the entire payload, so unlike
+              // generate_lesson_plan there's no separate call afterward to
+              // fetch anything from; the event already carries the finished
+              // array.
+              if (event.tool_call === 'ask_clarifying_questions') {
+                questions = event.questions || []
+              }
+
               if (event.chunk) {
                 accumulated += event.chunk
                 setText(accumulated)
@@ -111,7 +122,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan } = {}) {
           })
         }
 
-        const result = { text: accumulated, toolCalled }
+        const result = { text: accumulated, toolCalled, questions }
         onDoneRef.current?.(result)
         return result
       } catch (err) {

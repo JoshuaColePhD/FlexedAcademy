@@ -5,6 +5,7 @@ import { scanGrounding } from '../lib/grounding'
 import { dayTitle, orderedDays } from '../lib/planShape'
 import { Cite } from './Citation'
 import { WeekStrip } from './WeekStrip'
+import { LessonQuestions } from './LessonQuestions'
 
 /** What Copy puts on the clipboard: the reply, plus the week and the codes the
  *  message is actually showing. */
@@ -48,7 +49,7 @@ function useCopy() {
  * so it gets no bubble and no avatar. The previous version gave the assistant a
  * greyscale logo avatar and a rounded chat bubble, which framed a document tool
  * as a messaging app. */
-export function Message({ message, onRetry, onEdit, isLast }) {
+export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -171,6 +172,19 @@ export function Message({ message, onRetry, onEdit, isLast }) {
             </small>
           ) : null}
         </div>
+
+        {/* The guided alternative to typing — see LessonQuestions. Only ever
+            on the most recent assistant turn in practice (answering submits
+            the next message immediately), but not restricted to isLast: a
+            reload's history should show what was asked even once it's moot. */}
+        {!isUser && message.questions?.length && onAnswerQuestions ? (
+          <div className="mt-3 w-full max-w-sm">
+            <LessonQuestions
+              questions={message.questions}
+              onSubmit={(text) => onAnswerQuestions(message, text)}
+            />
+          </div>
+        ) : null}
 
         {message.unsaved ? (
           <span

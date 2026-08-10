@@ -382,6 +382,27 @@ export function ChatPage() {
 
   const chatStream = useChatStream({
     onDone: (result) => {
+      // The guided alternative to typing — see LessonQuestions and
+      // backend/llm.py's ask_clarifying_questions tool. Rendered as its own
+      // message (Message.jsx reads `questions` off it) rather than routed
+      // through submit()'s caller: this can fire from the very first message
+      // in a chat, before there's any other branch left to react to it.
+      // Persisted as plain text (the interactive cards are session-local,
+      // same tradeoff as the week-strip-only persistence elsewhere) so
+      // reopening the chat still shows what was asked, even though it's no
+      // longer clickable.
+      if (result?.questions?.length) {
+        const intro = result.text?.trim() || 'A couple of quick questions to get this right:'
+        const reply = { id: nextId(), role: 'assistant', content: intro, questions: result.questions }
+        setMessages((prev) => [...prev, reply])
+        const saveTo = localFor.current
+        if (saveTo) {
+          const asText = result.questions.map((q) => `• ${q.text}`).join('\n')
+          api.addMessage(saveTo, { role: 'assistant', content: `${intro}\n\n${asText}` }).catch(() => {})
+        }
+        qc.invalidateQueries({ queryKey: ['chats'] })
+        return
+      }
       // If the chat model just had a conversation (no tool call), we save the text.
       // If it called the tool, we save the text (e.g. "I'll make that plan now!") and then
       // trigger the actual plan build from the submit function.
@@ -520,24 +541,26 @@ export function ChatPage() {
       const shown = typed || `Sent ${attachments.length} file(s)`
       if (activeChatId) api.addMessage(activeChatId, { role: 'user', content: shown }).catch(() => {})
 
-      /* No plan in this chat yet -> build one, directly. This used to go
-         through chat_stream first and only built if the model chose to call
-         generate_lesson_plan — which reintroduced exactly the guessing this
-         app exists to avoid (see the file header: "intent routing is
-         deliberately dumb"). A fully-specified prompt like "plan a week on
-         Gatsby, chapters 3-4, rhetorical analysis" got an outline and "want me
-         to proceed?" instead of the week the composer promised. There is no
-         mode picker in this UI — every message here is asking for a plan. */
+      /* No plan in this chat yet -> build one. Used to skip chat_stream
+         entirely and go straight to generation (see git history: "intent
+         routing is deliberately dumb" — reintroducing a model choice here
+         once regressed a fully-specified prompt into "want me to proceed?"
+         instead of the week the composer promised). Reintroduced now, on
+         request, but narrower than that earlier version: the model has
+         exactly two ways to respond to a first message, generate_lesson_plan
+         or ask_clarifying_questions (see backend/llm.py), and the system
+         prompt is explicit that a request which already names a text/topic
+         and a rough shape has enough to build from immediately — the same
+         speed as before for anything specific enough to deserve it. Only a
+         genuinely vague message ("I want to make a lesson") should ever see
+         the clarifying-questions branch below instead of a plan appearing. */
       if (!artifact?.planId) {
-        /* The paywall, asked before the 30-second wait rather than after it.
-           The server enforces the same rule (entitlement.require_entitlement,
-           called from every model-calling route now, not just this one) — this
-           exists so a blocked teacher sees the offer immediately here instead
-           of watching a progress indicator that was always going to end in a
-           402. The revise/chat branch below has no equivalent pre-check, but
-           it's gated server-side too now — a blocked revise still surfaces
-           through the ordinary onError -> toast.apiError path, just without
-           the immediate, pre-wait version of this. */
+        /* The paywall, asked before the wait rather than after it. The
+           server enforces the same rule (entitlement.require_entitlement,
+           called from every model-calling route now, including chat_stream)
+           — this exists so a blocked teacher sees the offer immediately here
+           instead of watching a progress indicator that was always going to
+           end in a 402. */
         if (!mayGenerate) {
           setPreparing(false)
           openPaywall()
@@ -553,13 +576,37 @@ export function ChatPage() {
           ])
           return
         }
-        const combinedHistory = [
+
+        const firstPayload = [
+          ...messages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+          { role: 'user', content },
+        ]
+        setPreparing(false)
+        const firstResult = await chatStream.start(firstPayload, { chatId: activeChatId })
+
+        // Asked instead of building — onDone (above) already rendered the
+        // question cards as their own message. Nothing left to do here
+        // until the teacher answers, which re-enters submit() as a normal
+        // message and lands right back in this same branch.
+        if (firstResult?.questions?.length) return
+
+        if (!firstResult || !firstResult.toolCalled) {
+          // The model just replied (a clarifying remark, not a question
+          // card) with no tool call at all — onDone already rendered that
+          // text. Nothing to build yet.
+          return
+        }
+
+        let firstHistory = [
           ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
           `USER: ${content}`,
         ].join('\n\n')
+        if (firstResult.text?.trim()) {
+          firstHistory += `\n\nASSISTANT: ${firstResult.text}`
+        }
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
-        stream.start(combinedHistory, { chatId: activeChatId, weekNumber: effectiveWeek }).catch(() => {})
+        stream.start(firstHistory, { chatId: activeChatId, weekNumber: effectiveWeek }).catch(() => {})
         setPreparing(false)
         return
       }
@@ -736,6 +783,19 @@ export function ChatPage() {
     const lastAsk = [...messages].reverse().find((m) => m.role === 'user')
     if (lastAsk) submit(lastAsk.content)
   }, [messages, submit])
+
+  /* LessonQuestions' own Continue button, once every question has an answer.
+     Clears `questions` off the message it came from (so the cards can't be
+     re-clicked into a second, contradictory answer) and feeds the synthesized
+     text straight back into the normal submit path — the model sees it as
+     just another user turn, no different from having typed it. */
+  const onAnswerQuestions = useCallback(
+    (message, text) => {
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, questions: null } : m)))
+      submit(text)
+    },
+    [submit]
+  )
 
   const onPlanRevised = useCallback((row) => {
     if (!row) return
@@ -965,6 +1025,7 @@ export function ChatPage() {
                    clicking it opened a working editor whose "Send again" threw
                    and silently reverted the text. */
                 onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
+                onAnswerQuestions={onAnswerQuestions}
               />
             ))}
 

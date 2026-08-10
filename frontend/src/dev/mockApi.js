@@ -477,18 +477,33 @@ export function installMockApi() {
     if (path === '/api/chat_stream') {
       const last = [...(body?.messages || [])].reverse().find((m) => m.role === 'user')?.content || ''
       const wantsPlan = /\b(plan|week|build|unit|lesson)\b/i.test(last)
+      // Vague, on purpose: enough words to want a plan at all, but nothing
+      // naming what the week is actually about — no text/topic, no skill, no
+      // chapter/unit number. Real routing is the model's own judgment call
+      // (backend/llm.py's system prompt); this is just enough of a stand-in
+      // to drive the ask_clarifying_questions branch in the mock harness.
+      const isVague = wantsPlan && last.trim().split(/\s+/).length <= 8 && !/\d|ch\.|chapter/i.test(last)
       return sse(
-        wantsPlan
+        isVague
           ? [
-              [{ chunk: 'On it — building that week now.' }, 120],
-              [{ tool_call: 'generate_lesson_plan' }, 120],
+              [{ tool_call: 'ask_clarifying_questions', questions: [
+                { id: 'text', text: 'What are you teaching this week?', options: ['A text we’re reading', 'A skill, no text yet', 'Test/exam prep'] },
+                { id: 'skill', text: 'What should the week build toward?', options: ['Rhetorical analysis', 'Argument & evidence', 'Close reading', 'Writing craft'] },
+                { id: 'length', text: 'How many teaching days do you have?', options: ['5', '4', '3'] },
+              ] }, 300],
               [{ done: true }, 60],
             ]
-          : [
-              [{ chunk: 'Happy to talk it through. ' }, 120],
-              [{ chunk: 'What are you hoping they walk away with?' }, 120],
-              [{ done: true }, 60],
-            ]
+          : wantsPlan
+            ? [
+                [{ chunk: 'On it — building that week now.' }, 120],
+                [{ tool_call: 'generate_lesson_plan' }, 120],
+                [{ done: true }, 60],
+              ]
+            : [
+                [{ chunk: 'Happy to talk it through. ' }, 120],
+                [{ chunk: 'What are you hoping they walk away with?' }, 120],
+                [{ done: true }, 60],
+              ]
       )
     }
 
