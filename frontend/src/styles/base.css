@@ -1596,11 +1596,19 @@
     flex-shrink: 0;
     width: 14px;
     align-self: stretch;
-    background: var(--rail-pop);
+    /* Was the rail's own cyan (--rail-pop) — a leftover from the frosted-glass
+       rail this app no longer has (see AppShell.jsx and .app-rail, both now
+       neomorphic). A flat cyan strip next to an embossed cream/rose world
+       read as a stray thread, not an accent. --accent is this world's own
+       "something needs your attention" colour (see the New plan button),
+       so the handle now pulls from the same well instead of a second one. */
+    background: rgb(var(--accent-rgb) / 0.55);
     border: none;
     cursor: pointer;
     opacity: 0.5;
-    transition: opacity var(--t-fast) var(--ease);
+    transition:
+      opacity var(--t-fast) var(--ease),
+      background-color var(--t-fast) var(--ease);
     /* A plain rectangle read as a scrollbar left behind by mistake. Angling
        the top and bottom in — a trapezoid on its side, the flat edge at top
        and bottom instead of left and right — is what makes it read as a
@@ -1622,19 +1630,20 @@
   }
   /* While a week is being built or revised, the thin edge is the only sign
      of it for a teacher who hasn't opened the drawer — so it gets the one
-     moment of real motion in the whole rail: a gradient between the rail's
-     two accents drifting along the strip, breathing in opacity, the same
-     read as a Google spinner's colours circulating around its ring but
-     drawn along a line instead of a circle. */
+     moment of real motion in the whole rail: a gradient drifting along the
+     strip, breathing in opacity, the same read as a Google spinner's colours
+     circulating around its ring but drawn along a line instead of a circle.
+     Was the rail's two cyans (--rail-pop/--rail-pop-2); now the same accent
+     pair as the rest of this world, at rest and on hover. */
   .artifact-drawer-handle.is-busy {
     opacity: 1;
     background: linear-gradient(
       180deg,
-      var(--rail-pop) 0%,
-      var(--rail-pop-2) 30%,
-      var(--rail-pop) 60%,
-      var(--rail-pop-2) 90%,
-      var(--rail-pop) 120%
+      rgb(var(--accent-rgb)) 0%,
+      rgb(var(--accent-hover-rgb)) 30%,
+      rgb(var(--accent-rgb)) 60%,
+      rgb(var(--accent-hover-rgb)) 90%,
+      rgb(var(--accent-rgb)) 120%
     );
     background-size: 100% 240%;
     animation:
