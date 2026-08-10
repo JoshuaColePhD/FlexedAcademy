@@ -414,7 +414,13 @@ export function ChatPage() {
      needs to unlock playback on THIS page load (see its own comment on
      unlock()). Turning spoken replies on here too, unconditionally: opening
      a voice conversation and not hearing it back would be the single most
-     confusing state this feature could land in. */
+     confusing state this feature could land in.
+
+     Not called anywhere right now — both its callers (Composer's
+     onOpenVoice, Greeting's "Chat" pill) are commented out below, voice mode
+     isn't working. Kept, not deleted: restoring those two props is the whole
+     fix once it is. */
+  // eslint-disable-next-line no-unused-vars
   const openVoice = useCallback(() => {
     if (!voice.enabled) voice.toggle()
     else voice.unlock()
@@ -863,7 +869,9 @@ export function ChatPage() {
             })
           }}
           className={activeClass?.name}
-          onOpenVoice={openVoice}
+          /* See the Composer's own onOpenVoice, below — same reason, same fix
+             later. */
+          // onOpenVoice={openVoice}
         />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
@@ -979,7 +987,12 @@ export function ChatPage() {
             isStreaming={busy}
             attachments={attachments}
             setAttachments={setAttachments}
-            onOpenVoice={openVoice}
+            /* Voice mode isn't working right now — not wiring this back up
+               is what turns it off. Composer's own onOpenVoice branch,
+               Greeting's "Chat" pill, openVoice/VoiceModePanel/VoiceProvider
+               below are all untouched, so this is the one line to restore
+               (here and in Greeting, just below) once it's fixed. */
+            // onOpenVoice={openVoice}
             /* The example is worth its length on a laptop and clipped on a
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */
