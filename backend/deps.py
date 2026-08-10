@@ -17,6 +17,25 @@ from .errors import AppError
 COOKIE_NAME = "aplang_session"
 
 
+def _verify_current(aplang_session: str | None) -> str | None:
+    """The uid a session cookie names, or None — checking not just the
+    signature/expiry (verify_session_token's job) but that the token's "sv"
+    still matches the account's CURRENT session_version. This is the other
+    half of "sign out of all devices" (db.bump_session_version): that call
+    only changes one column, so every already-issued cookie has to be
+    rechecked against it here, on every request, for the change to mean
+    anything."""
+    if not aplang_session:
+        return None
+    payload = verify_session_token(aplang_session)
+    if not payload:
+        return None
+    user = db.get_user_by_id(payload["uid"])
+    if not user or int(user.get("session_version", 0)) != payload["sv"]:
+        return None
+    return payload["uid"]
+
+
 def get_current_user(aplang_session: str | None = Cookie(default=None, alias=COOKIE_NAME)) -> str:
     """The logged-in user's id, or a 401 if there isn't one. Use on every route
     that reads or writes a teacher's own data.
@@ -25,7 +44,7 @@ def get_current_user(aplang_session: str | None = Cookie(default=None, alias=COO
     cookie resolves to 'default_user' instead of failing — a temporary,
     single-flag bypass, not a design decision.
     """
-    user_id = verify_session_token(aplang_session) if aplang_session else None
+    user_id = _verify_current(aplang_session)
     if not user_id:
         if not settings.require_login:
             return "default_user"
@@ -41,7 +60,7 @@ def get_current_user_optional(aplang_session: str | None = Cookie(default=None, 
     """Same, but None instead of a 401 — for routes that behave differently
     when logged out rather than refusing outright (there are none of these
     yet, but /api/auth/me and future public routes want this shape)."""
-    return verify_session_token(aplang_session) if aplang_session else None
+    return _verify_current(aplang_session)
 
 
 def get_current_admin(user_id: str = Depends(get_current_user)) -> str:

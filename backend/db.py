@@ -406,6 +406,24 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_usage_events_user_time ON usage_events(user_id, created_at);
     ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 18: sign out of all devices ──────────────────────────────────────────
+    #
+    # Sessions are a stateless signed cookie (auth.py) — {uid, exp}, HMAC'd,
+    # nothing stored server-side. That means there was no way to revoke ONE
+    # account's sessions short of rotating settings.session_secret, which
+    # invalidates every account's at once (see auth.py's own header comment).
+    #
+    # This column, embedded in every new token as "sv" and checked against the
+    # account's CURRENT value on every request (deps.get_current_user), is
+    # what makes a per-account revocation possible without a sessions table to
+    # garbage-collect: "sign out everywhere" is just incrementing this one
+    # integer, which is enough to make every previously-issued cookie for that
+    # account fail the comparison on its very next use. Same idiom this file
+    # already uses for password-reset tokens (auth._password_fingerprint) —
+    # sign a value, recheck it against current DB state at redemption time.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 
@@ -1350,6 +1368,18 @@ def get_user_by_email(email: str) -> dict | None:
 def get_user_by_id(user_id: str) -> dict | None:
     row = _row("SELECT * FROM users WHERE id = ?", (user_id,))
     return dict(row) if row else None
+
+
+def bump_session_version(user_id: str) -> int:
+    """Sign out of every device at once, for this one account. See migration
+    18: every session token carries the version it was issued under, and
+    deps.get_current_user rejects any token whose version doesn't match this
+    column's CURRENT value — so incrementing it here is the entire mechanism,
+    no sessions table to also clear. Returns the new value, mostly so a test
+    can assert it moved."""
+    _write("UPDATE users SET session_version = session_version + 1 WHERE id = ?", (user_id,))
+    row = _row("SELECT session_version FROM users WHERE id = ?", (user_id,))
+    return int(row["session_version"]) if row else 0
 
 
 def count_plans(user_id: str) -> int:

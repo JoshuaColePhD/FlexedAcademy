@@ -76,7 +76,7 @@ def _public_user(user: dict) -> dict:
 
 
 def _log_in(request: Request, response: Response, user: dict) -> dict:
-    token = auth.create_session_token(user["id"])
+    token = auth.create_session_token(user["id"], user.get("session_version", 0))
     response.set_cookie(COOKIE_NAME, token, **_cookie_kwargs(request))
     return _public_user(user)
 
@@ -151,6 +151,20 @@ def logout(request: Request, response: Response):
     response.delete_cookie(
         COOKIE_NAME, httponly=True, samesite="lax", secure=_is_https(request)
     )
+    return {"ok": True}
+
+
+@router.post("/sign_out_everywhere")
+def sign_out_everywhere(request: Request, response: Response, user_id: str = Depends(get_current_user)):
+    """Ends every session for THIS account — the one thing rotating the
+    global session_secret would do to every account at once (see auth.py).
+    db.bump_session_version is the whole mechanism; deps.get_current_user
+    rechecks it on every request, so the device that just clicked this is
+    logged out on its very next request same as any other — deleting its
+    own cookie here just means that happens immediately instead of on the
+    next round trip."""
+    db.bump_session_version(user_id)
+    response.delete_cookie(COOKIE_NAME, httponly=True, samesite="lax", secure=_is_https(request))
     return {"ok": True}
 
 

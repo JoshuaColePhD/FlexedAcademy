@@ -16,6 +16,7 @@ import {
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
+import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
@@ -751,6 +752,56 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
   )
 }
 
+/* Sign out of all devices — the one control this needs today. Export/delete
+ * land in later work; this section is where they'll join it. */
+function AccountSafety() {
+  const { signOutEverywhere } = useAuth()
+  const confirm = useConfirm()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+
+  const doSignOutEverywhere = async () => {
+    const ok = await confirm({
+      title: 'Sign out of every device?',
+      body: 'This ends every session on every device signed into this account — including this one. You’ll need to log in again here too.',
+      confirmLabel: 'Sign out everywhere',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setBusy(true)
+    try {
+      await signOutEverywhere()
+    } catch (err) {
+      toast.apiError('Could not sign out of your other devices', err)
+      setBusy(false)
+    }
+    // On success there is no "finally" to reach — signOutEverywhere() flips
+    // auth status to anon, which unmounts this whole page.
+  }
+
+  return (
+    <div className="mt-5">
+      <h2 className="text-sm font-semibold text-ink">Account safety</h2>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-edge bg-paper-raised p-3">
+        <div>
+          <p className="text-sm font-medium text-ink">Sign out of all devices</p>
+          <p className="text-xs text-ink-muted">
+            Forgot a shared computer, or think someone else has access? This ends every session at once.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={doSignOutEverywhere}
+          disabled={busy}
+          className="shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? 'Signing out…' : 'Sign out everywhere'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /* For whoever is debugging the app, not for a teacher planning a week — and it
    is a teacher who was being shown the model name, the plans directory, the
    builder's path on disk and whether the API key is set. "Shut by default" is
@@ -997,6 +1048,8 @@ export function ClassPage() {
               year, alongside school_calendar.md (which the prompt quotes and the
               week board reads). Three sources, two of which could drift. The
               year now lives on the calendar page, where it is the point. */}
+
+          <AccountSafety />
 
           <Diagnostics />
         </div>

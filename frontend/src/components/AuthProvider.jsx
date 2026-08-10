@@ -93,9 +93,36 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  /* Same shape as logout — this device's cookie stops working too (its "sv"
+     no longer matches, per backend/deps.py), so it has to end up in the same
+     anon state, not just "every OTHER device." */
+  const signOutEverywhere = useCallback(async () => {
+    try {
+      sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, '1')
+    } catch {
+      /* Not available — same fallback as logout() above. */
+    }
+    try {
+      await api.signOutEverywhere()
+    } finally {
+      setUser(null)
+      setStatus('anon')
+    }
+  }, [])
+
   return (
     <AuthContext.Provider
-      value={{ status, user, login, loginWithGoogle, signup, resetPassword, logout, refresh }}
+      value={{
+        status,
+        user,
+        login,
+        loginWithGoogle,
+        signup,
+        resetPassword,
+        logout,
+        signOutEverywhere,
+        refresh,
+      }}
     >
       {children}
     </AuthContext.Provider>

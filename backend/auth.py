@@ -5,12 +5,14 @@ teachers, not a target worth a new dependency's worth of attack surface.
 PBKDF2-SHA256 (via hashlib, which wraps OpenSSL) is what Django used as its
 default password hasher for years for exactly this kind of app.
 
-Sessions are a signed, stateless cookie (uid + expiry + HMAC), not a server-side
-session table: nothing to garbage-collect, and correct as long as
-`settings.session_secret` is kept secret. The cost is that there is no way to
-revoke one session early short of rotating the secret (which invalidates
-every session at once) — acceptable for a few-dozen-teacher internal tool,
-not for anything handling higher-stakes accounts.
+Sessions are a signed, stateless cookie (uid + expiry + sv + HMAC), not a
+server-side session table: nothing to garbage-collect, and correct as long as
+`settings.session_secret` is kept secret. Rotating that secret still
+invalidates every session for every account at once — there is no way around
+that short of a real session table. What "sv" (session_version) buys instead
+is per-ACCOUNT revocation: db.bump_session_version + deps.get_current_user's
+comparison against it is "sign out of all devices" for the one account that
+asked for it, without touching anyone else's.
 """
 from __future__ import annotations
 
@@ -57,15 +59,25 @@ def _b64decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + padding)
 
 
-def create_session_token(user_id: str) -> str:
-    payload = json.dumps({"uid": user_id, "exp": int(time.time()) + SESSION_MAX_AGE_SECONDS}).encode("utf-8")
+def create_session_token(user_id: str, session_version: int = 0) -> str:
+    payload = json.dumps(
+        {"uid": user_id, "exp": int(time.time()) + SESSION_MAX_AGE_SECONDS, "sv": int(session_version)}
+    ).encode("utf-8")
     payload_b64 = _b64encode(payload)
     sig = hmac.new(settings.session_secret.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
     return f"{payload_b64}.{sig}"
 
 
-def verify_session_token(token: str) -> str | None:
-    """Returns the user_id if the token is validly signed and unexpired, else None."""
+def verify_session_token(token: str) -> dict | None:
+    """Returns {"uid", "sv"} if the token is validly signed and unexpired, else
+    None. Signature/expiry only — deps.get_current_user is what checks "sv"
+    against the account's CURRENT session_version, since that's a DB read and
+    this module deliberately has no DB dependency (see module docstring).
+
+    "sv" defaults to 0 for tokens issued before this field existed, matching
+    session_version's own column default — an old, still-unexpired token
+    keeps working exactly as it did, right up until sign-out-everywhere is
+    used for the first time on that account."""
     try:
         payload_b64, sig = token.split(".", 1)
     except ValueError:
@@ -83,7 +95,7 @@ def verify_session_token(token: str) -> str | None:
         return None
     if int(payload["exp"]) < int(time.time()):
         return None
-    return str(payload["uid"])
+    return {"uid": str(payload["uid"]), "sv": int(payload.get("sv", 0))}
 
 RESET_TOKEN_MAX_AGE_SECONDS = 60 * 60  # 1 hour — a reset link is not a session
 

@@ -113,6 +113,7 @@ export const api = {
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
   loginWithGoogle: (credential) => request('/api/auth/google', { method: 'POST', body: { credential } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
+  signOutEverywhere: () => request('/api/auth/sign_out_everywhere', { method: 'POST' }),
   forgotPassword: (email) => request('/api/auth/forgot-password', { method: 'POST', body: { email } }),
   resetPassword: (token, password) =>
     request('/api/auth/reset-password', { method: 'POST', body: { token, password } }),
