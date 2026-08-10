@@ -871,7 +871,6 @@ export function ChatPage() {
       return null
     }
   })
-  const [resizing, setResizing] = useState(false)
   const splitRef = useRef(null)
   const chatPaneWrapRef = useRef(null)
 
@@ -895,18 +894,31 @@ export function ChatPage() {
   const onResizePointerDown = useCallback(
     (e) => {
       e.preventDefault()
+      const el = chatPaneWrapRef.current
+      if (!el) return
       const startX = e.clientX
-      const startWidth = chatPaneWrapRef.current?.getBoundingClientRect().width ?? 322
-      setResizing(true)
-      const onMove = (ev) => setChatWidthPx(clampChatWidth(startWidth + (ev.clientX - startX)))
+      const startWidth = el.getBoundingClientRect().width
+      let latest = startWidth
+      // Written straight to the DOM, not through setChatWidthPx, for the
+      // whole drag — every pixel of pointermove was re-rendering all of
+      // ChatPage (the message list, the full document table, everything),
+      // which is what made this feel jittery instead of smooth. The
+      // longhand, not the `transition` shorthand — React's own style object
+      // sets transitionDuration/transitionTimingFunction directly (see the
+      // JSX below), and setChatWidthPx's re-render at drop reasserts both,
+      // so this only ever needs to win for the drag itself. React only
+      // finds out once, at drop, via setChatWidthPx below.
+      el.style.transitionDuration = '0s'
+      const onMove = (ev) => {
+        latest = clampChatWidth(startWidth + (ev.clientX - startX))
+        el.style.flexBasis = `${latest}px`
+      }
       const onUp = () => {
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
-        setResizing(false)
-        setChatWidthPx((w) => {
-          if (w != null) persistChatWidth(w)
-          return w
-        })
+        el.style.transitionDuration = ''
+        setChatWidthPx(latest)
+        persistChatWidth(latest)
       }
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
@@ -1182,7 +1194,7 @@ export function ChatPage() {
 
       <div
         ref={chatPaneWrapRef}
-        className={`flex min-w-0 flex-col${resizing ? '' : ' transition-[flex-basis]'}`}
+        className="flex min-w-0 flex-col transition-[flex-basis]"
         style={
           docOpen
             ? {
