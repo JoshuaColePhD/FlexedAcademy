@@ -22,7 +22,6 @@ import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
-import { WeekPicker } from '../components/WeekPicker'
 import { VoiceModePanel } from '../components/VoiceModePanel'
 
 /* One chat, one plan.
@@ -128,12 +127,6 @@ export function ChatPage() {
   const activeChat = chats.find((c) => c.id === chatId)
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
 
-  // Every week worth offering in the picker: not a week the school is
-  // shut, not one that's already gone by.
-  const weekOptions = useMemo(
-    () => (calendar?.weeks || []).filter((w) => !w.no_school && !w.is_past),
-    [calendar]
-  )
   const autoWeek = useMemo(() => firstUnplanned(calendar?.weeks), [calendar])
   const effectiveWeek = selectedWeek ?? autoWeek?.week ?? null
 
@@ -290,11 +283,11 @@ export function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, toast])
 
-  /* ClassPage's week list links an unplanned week here as `?week=N` — the
-     same override WeekPicker sets by hand, just arriving from a click
-     instead of a dropdown. One-shot: consumed into state and stripped from
-     the URL immediately, so it can't go stale sitting in a bookmark or the
-     back button, and doesn't fight WeekPicker for who owns the value.
+  /* ClassPage's week list links an unplanned week here as `?week=N`, the one
+     way left to target a specific week rather than the auto-detected next
+     unplanned one. One-shot: consumed into state and stripped from the URL
+     immediately, so it can't go stale sitting in a bookmark or the back
+     button.
 
      Declared AFTER the conversation loader above, not before: that effect
      resets selectedWeek to null on every mount with no chatId, and effects
@@ -435,13 +428,7 @@ export function ChatPage() {
      needs to unlock playback on THIS page load (see its own comment on
      unlock()). Turning spoken replies on here too, unconditionally: opening
      a voice conversation and not hearing it back would be the single most
-     confusing state this feature could land in.
-
-     Not called anywhere right now — both its callers (Composer's
-     onOpenVoice, Greeting's "Chat" pill) are commented out below, voice mode
-     isn't working. Kept, not deleted: restoring those two props is the whole
-     fix once it is. */
-  // eslint-disable-next-line no-unused-vars
+     confusing state this feature could land in. */
   const openVoice = useCallback(() => {
     if (!voice.enabled) voice.toggle()
     else voice.unlock()
@@ -825,18 +812,16 @@ export function ChatPage() {
      so a load-more or a deleted message can't cause a stale reply to be
      spoken again.
 
-     Disabled for now, same as the two onOpenVoice props above: this fires
-     off `voice.enabled` alone, which persists across sessions — so with
-     every button that TURNS IT ON now disabled too, anyone whose toggle was
-     already on from before still got every finished plan read aloud with no
-     way to have caused it this session. Restore alongside those two props,
-     not before. */
+     Fires off `voice.enabled` alone, which persists across sessions — restored
+     together with the two onOpenVoice props above, per the reasoning that
+     used to live here: a stray autoplay with no click this session is only a
+     risk if the entry points that turn it on are ALSO still disabled. */
   useEffect(() => {
     const last = messages[messages.length - 1]
     if (!last || last.role !== 'assistant' || last.streaming) return
     if (lastSpokenRef.current === last.id) return
     lastSpokenRef.current = last.id
-    // if (voice.enabled) voice.speak(last.content)
+    if (voice.enabled) voice.speak(last.content)
   }, [messages, voice])
 
   const livePlan = artifact?.plan || stream.preview
@@ -1002,12 +987,7 @@ export function ChatPage() {
       ) : null}
 
       {isEmpty ? (
-        <Greeting
-          className={activeClass?.name}
-          /* See the Composer's own onOpenVoice, below — same reason, same fix
-             later. */
-          // onOpenVoice={openVoice}
-        />
+        <Greeting className={activeClass?.name} onOpenVoice={openVoice} />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className="chat-column mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
@@ -1124,18 +1104,6 @@ export function ChatPage() {
             value={query}
             onChange={setQuery}
             onSubmit={submit}
-            /* Which week this is about to become, shown inside the composer's
-               own header strip so it reads as one control rather than a
-               second box stacked above it. Shown only before a plan exists in
-               this chat — once one does, the chat-head above already names
-               its week, and a plan already built is not up for a silent
-               re-target. Without this, the teacher found out which week they
-               got only after a 30-second generation finished. */
-            topSlot={
-              isEmpty ? (
-                <WeekPicker options={weekOptions} value={effectiveWeek} onChange={setSelectedWeek} />
-              ) : null
-            }
             /* Only a real stream is abortable — see the Composer. Revising has
                no AbortController yet, so `busy` without either flag correctly
                falls through to the composer's "can't be interrupted" spinner. */
@@ -1143,12 +1111,7 @@ export function ChatPage() {
             isStreaming={busy}
             attachments={attachments}
             setAttachments={setAttachments}
-            /* Voice mode isn't working right now — not wiring this back up
-               is what turns it off. Composer's own onOpenVoice branch,
-               Greeting's "Chat" pill, openVoice/VoiceModePanel/VoiceProvider
-               below are all untouched, so this is the one line to restore
-               (here and in Greeting, just below) once it's fixed. */
-            // onOpenVoice={openVoice}
+            onOpenVoice={openVoice}
             /* The example is worth its length on a laptop and clipped on a
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */

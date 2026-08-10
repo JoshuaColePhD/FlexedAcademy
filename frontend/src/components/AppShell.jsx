@@ -1,9 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { FileText, PanelLeft, Pencil, Plus, Search, ShieldCheck, Trash2, X } from 'lucide-react'
+import { FileText, PanelLeft, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
-import { groupByDate } from '../lib/dateBuckets'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
@@ -21,7 +20,7 @@ import { SkeletonText } from './Skeleton'
  * 264px nav. The one PanelGroup left splits the chat from the plan.
  */
 
-function ChatRow({ chat, classId, onDelete, editMode, selected, onSelectToggle }) {
+function ChatRow({ chat, classId, onDelete }) {
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(chat.title)
@@ -59,12 +58,6 @@ function ChatRow({ chat, classId, onDelete, editMode, selected, onSelectToggle }
     <li className="group relative px-2">
       <NavLink
         to={`/c/${classId}/chat/${chat.id}`}
-        onClick={(e) => {
-          if (editMode) {
-            e.preventDefault()
-            onSelectToggle(chat.id)
-          }
-        }}
         className={({ isActive }) =>
           /* neo-inset, not a background tint — "pressed in" is what already
              means "selected" in this world (see every neo-raised button's
@@ -72,52 +65,32 @@ function ChatRow({ chat, classId, onDelete, editMode, selected, onSelectToggle }
              version of that same press instead of a third, unrelated
              signal. */
           `flex min-h-touch items-center rounded-md px-2 pr-14 text-sm transition-colors ${
-            (editMode && selected) || (!editMode && isActive) ? 'neo-inset text-ink' : 'text-ink-soft hover:bg-paper-inset/60'
+            isActive ? 'neo-inset text-ink' : 'text-ink-soft hover:bg-paper-inset/60'
           }`
         }
       >
-        {editMode ? (
-          <span className={`shrink-0 mr-2 flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${selected ? 'border-ink bg-ink text-paper' : 'border-ink-soft'}`}>
-            {selected && <svg viewBox="0 0 14 14" fill="none" className="h-2.5 w-2.5"><path d="M3 7.5L5.5 10L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-          </span>
-        ) : null}
         <span className="truncate">{chat.title}</span>
       </NavLink>
-      {!editMode ? (
-        <span className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-          <button
-            type="button"
-            className="btn-icon"
-            aria-label={`Rename ${chat.title}`}
-            onClick={() => setEditing(true)}
-          >
-            <Pencil size={13} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="btn-icon"
-            aria-label={`Delete ${chat.title}`}
-            onClick={() => onDelete(chat)}
-          >
-            <Trash2 size={13} aria-hidden="true" />
-          </button>
-        </span>
-      ) : null}
+      <span className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <button
+          type="button"
+          className="btn-icon"
+          aria-label={`Rename ${chat.title}`}
+          onClick={() => setEditing(true)}
+        >
+          <Pencil size={13} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="btn-icon"
+          aria-label={`Delete ${chat.title}`}
+          onClick={() => onDelete(chat)}
+        >
+          <Trash2 size={13} aria-hidden="true" />
+        </button>
+      </span>
     </li>
   )
-}
-
-// Search threshold: below this, scrolling a flat list is fine and a search
-// box would be pure clutter for the one thing it would ever filter.
-const SEARCH_THRESHOLD = 8
-
-// Same case-/separator-insensitive substring match lib/frameworks.js's
-// matchesFramework() already uses for the 72-framework picker, applied to a
-// chat's title instead of a framework's label/id.
-function matchesSearch(chat, query) {
-  const q = query.trim().toLowerCase().replace(/[\s_-]+/g, '')
-  if (!q) return true
-  return (chat.title || '').toLowerCase().replace(/[\s_-]+/g, '').includes(q)
 }
 
 function Rail({ onNavigate, onClose }) {
@@ -131,49 +104,6 @@ function Rail({ onNavigate, onClose }) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const classPath = `/c/${classId}`
-
-  const [isEditing, setIsEditing] = useState(false)
-  const [selectedIds, setSelectedIds] = useState(new Set())
-  const [isDeletingBulk, setIsDeletingBulk] = useState(false)
-  const [search, setSearch] = useState('')
-
-  const filteredChats = search.trim() ? (chats || []).filter((c) => matchesSearch(c, search)) : chats
-  const chatGroups = groupByDate(filteredChats || [])
-
-  const toggleSelect = (id) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const deleteSelected = async () => {
-    if (selectedIds.size === 0) return
-    const ok = await confirm({
-      title: `Delete ${selectedIds.size} chat${selectedIds.size === 1 ? '' : 's'}?`,
-      body: 'The lesson plans they produced are kept.',
-      confirmLabel: 'Delete',
-      tone: 'danger',
-    })
-    if (!ok) return
-
-    setIsDeletingBulk(true)
-    try {
-      await Promise.all(Array.from(selectedIds).map(id => deleteChat.mutateAsync(id)))
-      setSelectedIds(new Set())
-      setIsEditing(false)
-      const currentChatId = location.pathname.match(/\/chat\/([^/]+)/)?.[1]
-      if (currentChatId && selectedIds.has(currentChatId)) {
-        navigate(classPath)
-      }
-    } catch (err) {
-      toast.apiError('Could not delete some chats', err)
-    } finally {
-      setIsDeletingBulk(false)
-    }
-  }
 
   const remove = async (chat) => {
     const ok = await confirm({
@@ -230,101 +160,47 @@ function Rail({ onNavigate, onClose }) {
         </Link>
       </div>
 
+      {/* Every plan this class has ever built, not just the chats that built
+          them — "Recent" below is conversations, and a plan that hasn't been
+          revisited since scrolls out of it. Top of the rail, right under the
+          one other thing that matters this much, rather than buried in the
+          footer below a scrolling chat list. */}
+      <div className="px-2 pb-2">
+        <NavLink
+          to={`${classPath}/plans`}
+          onClick={onNavigate}
+          className={({ isActive }) =>
+            `flex min-h-touch items-center gap-2.5 rounded-lg px-3 text-sm transition-colors ${
+              isActive ? 'neo-inset text-ink' : 'text-ink-soft hover:bg-paper-inset/60'
+            }`
+          }
+        >
+          <FileText size={15} aria-hidden="true" /> My plans
+        </NavLink>
+      </div>
+
       <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
-        <div className="flex items-center justify-between px-4 pb-1">
-          <p className="eyebrow">Recent</p>
-          {chats?.length > 0 && (
-            <button
-              type="button"
-              className="text-xs text-ink-soft hover:text-ink transition-colors"
-              onClick={() => {
-                setIsEditing(!isEditing)
-                setSelectedIds(new Set())
-              }}
-            >
-              {isEditing ? 'Done' : 'Edit'}
-            </button>
-          )}
-        </div>
-        {/* Only past the point a flat list stops being scannable — below
-            SEARCH_THRESHOLD this would be a box with nothing worth typing
-            into. Same icon+input treatment as FrameworkPicker's own search
-            row, just inline instead of inside a popover. */}
-        {chats?.length > SEARCH_THRESHOLD ? (
-          <div className="mx-4 mb-1 flex items-center gap-2 rounded-lg bg-paper-sunken px-2.5 py-1.5">
-            <Search size={13} aria-hidden="true" className="shrink-0 text-ink-muted" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search chats"
-              aria-label="Search chats"
-              className="w-full bg-transparent text-xs text-ink outline-none placeholder:text-ink-muted"
-            />
-          </div>
-        ) : null}
+        <p className="eyebrow px-4 pb-1">Recent</p>
         <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="px-4 py-2">
             <SkeletonText lines={4} />
           </div>
-        ) : chatGroups.length ? (
-          chatGroups.map((group) => (
-            <div key={group.name}>
-              <p className="eyebrow px-4 pb-1 pt-2 first:pt-0">{group.name}</p>
-              <ul className="flex flex-col gap-0.5">
-                {group.items.map((c) => (
-                  <ChatRow
-                    key={c.id}
-                    chat={c}
-                    classId={classId}
-                    onDelete={remove}
-                    editMode={isEditing}
-                    selected={selectedIds.has(c.id)}
-                    onSelectToggle={toggleSelect}
-                  />
-                ))}
-              </ul>
-            </div>
-          ))
         ) : chats?.length ? (
-          <p className="px-4 py-2 text-xs text-ink-muted">No chats match “{search}”.</p>
+          <ul className="flex flex-col gap-0.5">
+            {chats.map((c) => (
+              <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} />
+            ))}
+          </ul>
         ) : (
           <p className="px-4 py-2 text-xs text-ink-muted">
             Nothing yet. Describe a week to get started.
           </p>
         )}
         </div>
-        {isEditing && selectedIds.size > 0 && (
-          <div className="shrink-0 p-2 border-t border-edge/50">
-            <button
-              type="button"
-              onClick={deleteSelected}
-              disabled={isDeletingBulk}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-danger/10 px-2 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/20 disabled:opacity-50"
-            >
-              <Trash2 size={14} />
-              Delete {selectedIds.size}
-            </button>
-          </div>
-        )}
       </nav>
 
       <div className="shrink-0 border-t border-edge">
-        {/* Every plan this class has ever built, not just the chats that
-            built them — "Recent" above is conversations, and a plan that
-            hasn't been revisited since scrolls out of it. */}
-        <NavLink
-          to={`${classPath}/plans`}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
-              isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
-            }`
-          }
-        >
-          <FileText size={15} aria-hidden="true" /> My plans
-        </NavLink>
         {/* Only rendered for is_admin accounts — everyone else never sees this
             link exists. The route and every request it makes are gated again
             server-side, so this is convenience, not the security boundary. */}

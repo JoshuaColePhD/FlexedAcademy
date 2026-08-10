@@ -125,6 +125,19 @@ export function VoiceModePanel({
   const vadStateRef = useRef('idle') // idle | recording
   const silenceStartRef = useRef(null)
   const speechStartRef = useRef(null)
+  // MediaRecorder's default mimeType varies by browser (webm/opus on
+  // Chrome/Firefox, mp4/aac on Safari/iOS — the exact platform this app's
+  // own screenshots keep coming from). handleUtteranceReady used to hardcode
+  // 'audio/webm' on the reconstructed Blob no matter what was actually
+  // recorded, which defeats api.transcribe()'s own blob.type-based extension
+  // detection — every Safari utterance was uploaded mislabeled as .webm,
+  // Whisper's decoder disagreed with the real container, and transcription
+  // failed silently (handleUtteranceReady's catch swallows it on purpose —
+  // see its own comment). Captured here, at start time, because by the time
+  // the recorder's `stop` event fires and hands off to handleUtteranceReady,
+  // recorderRef.current has already been nulled — there is no other way to
+  // read back what the recorder actually used.
+  const mimeTypeRef = useRef('audio/webm')
   // Mirrors the busy/isSpeaking props into the animation loop without
   // re-subscribing the loop itself to React's render cycle — read every
   // frame, written only when the props actually change.
@@ -199,6 +212,7 @@ export function VoiceModePanel({
     if (!stream) return
     chunksRef.current = []
     const rec = new MediaRecorder(stream)
+    mimeTypeRef.current = rec.mimeType || 'audio/webm'
     rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data)
     rec.onstop = handleUtteranceReady
     recorderRef.current = rec
@@ -209,7 +223,7 @@ export function VoiceModePanel({
   }
 
   const handleUtteranceReady = async () => {
-    const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+    const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current })
     chunksRef.current = []
     const started = speechStartRef.current
     vadStateRef.current = 'idle'

@@ -22,13 +22,6 @@ export function Composer({
      generates a document. */
   placeholder = 'What are you teaching?',
   sendLabel = 'Send',
-  /* Optional context rendered inside the same bordered shell, above the input
-     row — e.g. the week picker on an empty chat. Defaults to null so nothing
-     about the shell's layout changes when there's nothing to show, and this
-     component's own lifecycle-sensitive internals (MediaRecorder,
-     ResizeObserver, autosize) never see a remount as the slot's content
-     comes and goes. */
-  topSlot = null,
 }) {
   const toast = useToast()
   const voice = useVoice()
@@ -79,7 +72,14 @@ export function Composer({
       recorder.ondataavailable = (e) => e.data.size > 0 && audioChunks.current.push(e.data)
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
-        const blob = new Blob(audioChunks.current, { type: 'audio/webm' })
+        // recorder.mimeType, not a hardcoded 'audio/webm' — MediaRecorder's
+        // default container varies by browser (webm/opus on Chrome/Firefox,
+        // mp4/aac on Safari/iOS), and api.transcribe() picks the upload
+        // extension from this Blob's own `type`. Hardcoding it here meant
+        // every Safari recording was uploaded mislabeled as .webm regardless
+        // of what was actually recorded, and Whisper's decoder disagreed
+        // with the real container.
+        const blob = new Blob(audioChunks.current, { type: recorder.mimeType || 'audio/webm' })
         setIsTranscribing(true)
         try {
           const { text } = await api.transcribe(blob)
@@ -157,9 +157,6 @@ export function Composer({
         className="composer-shell relative flex w-full flex-col overflow-hidden rounded-xl border border-edge bg-paper-raised transition-colors"
         ref={wrapperRef}
       >
-        {topSlot ? (
-          <div className="border-b border-edge/70 bg-paper-sunken/40 px-3 py-1.5">{topSlot}</div>
-        ) : null}
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-3 pt-2.5">
             {attachments.map((f, i) => (
