@@ -126,7 +126,8 @@ export function Composer({
     }
   }
 
-  const canSend = (value.trim() || attachments.length > 0) && !isStreaming && !isRecording && !isTranscribing
+  const hasContent = value.trim().length > 0 || attachments.length > 0
+  const canSend = hasContent && !isStreaming && !isRecording && !isTranscribing
 
   const submit = () => {
     // A keydown is as much a real user gesture as a click — see the Send
@@ -229,24 +230,6 @@ export function Composer({
               the icons overlapping their own tap targets. md:gap-1 restores
               the denser desktop spacing these were tuned for. */}
           <div className="flex shrink-0 items-center gap-1.5 pb-0.5 md:gap-1">
-            {/* The mic button is speech IN (dictation, into the text field,
-                sent manually); this opens live voice mode — continuous
-                listening, spoken replies, a real back-and-forth (see
-                VoiceModePanel). Used to be a quiet on/off toggle for spoken
-                replies alone; that control didn't match what tapping a
-                waveform icon actually reads as. */}
-            {onOpenVoice ? (
-              <button
-                type="button"
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
-                onClick={onOpenVoice}
-                aria-label="Start a voice conversation"
-                title="Talk instead of type"
-              >
-                <AudioLines size={19} className="md:size-[18px]" aria-hidden="true" />
-              </button>
-            ) : null}
-
             {isTranscribing ? (
               <button
                 type="button"
@@ -298,6 +281,23 @@ export function Composer({
               >
                 <Loader2 size={17} className="animate-spin md:size-4" aria-hidden="true" />
               </span>
+            ) : !hasContent && onOpenVoice ? (
+              /* The send slot's idle form. Nothing typed yet means there is
+                 nothing TO send — Gemini's own composer makes the same call,
+                 showing the live-voice entry point here instead of a greyed-
+                 out arrow with nothing to do. The instant there's a
+                 character (or an attachment) this same slot becomes the real
+                 Send button below; it never sits alongside it as a second,
+                 separate icon. */
+              <button
+                type="button"
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
+                onClick={onOpenVoice}
+                aria-label="Start a voice conversation"
+                title="Talk instead of type"
+              >
+                <AudioLines size={19} className="md:size-[18px]" aria-hidden="true" />
+              </button>
             ) : (
               <button
                 type="button"
