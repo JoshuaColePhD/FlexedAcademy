@@ -457,15 +457,19 @@ def stream_chat(user_id: str, messages: list[dict]) -> Iterator[dict]:
                 # the two are alternatives, not a required first step. A
                 # request that already names a text/topic and a rough shape
                 # ("plan a week on Gatsby ch 3-4, rhetorical analysis") has
-                # enough to build from immediately; this is for the genuinely
-                # vague ones ("I want to make a lesson"), and only once — an
-                # answered round of questions goes straight to building next,
-                # never a second round.
+                # enough to build from immediately. Not limited to the first
+                # message of a request anymore — any turn where the teacher's
+                # last message is too vague to act on (a brand-new request, a
+                # follow-up brainstorm, or "can you revise this" with no
+                # specifics on what to change) is fair game, tapping through
+                # options beats typing a paragraph either way.
                 "description": (
-                    "Call this INSTEAD of generate_lesson_plan when the teacher's request is too vague to "
-                    "build a specific week from. Ask 2-4 short, concrete questions, each with a few "
-                    "clickable options, so the teacher can tap through rather than type a paragraph. Use "
-                    "this at most once per request — once they've answered, build from what they picked."
+                    "Call this INSTEAD of generate_lesson_plan when the teacher's most recent message is too "
+                    "vague to build or revise a specific week from — whether that's the start of a new "
+                    "request, a follow-up in an ongoing brainstorm, or a revision ask with no specifics "
+                    "('can you change Thursday?' with no hint of how). Ask 2-4 short, concrete questions, "
+                    "each with a few clickable options, so the teacher can tap through rather than type a "
+                    "paragraph. Don't ask again about something they already answered or already specified."
                 ),
                 "parameters": {
                     "type": "object",
