@@ -78,6 +78,12 @@ function useInView() {
 function VerifySeal({ className }) {
   return (
     <svg viewBox="0 0 64 64" width="40" height="40" aria-hidden="true" className={className}>
+      {/* A stamped seal is a raised, physical object, not a flat outline —
+          this disc is the same material as whatever's behind it (its own
+          fill matches the ground, see .land-seal-disc), embossed via the
+          two-shadow filter on .land-seal itself. The ring and check stay
+          exactly as before, just drawn on top of something with depth now. */}
+      <circle cx="32" cy="32" r="29" className="land-seal-disc" />
       <circle
         cx="32"
         cy="32"

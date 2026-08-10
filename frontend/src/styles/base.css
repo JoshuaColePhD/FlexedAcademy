@@ -2811,10 +2811,26 @@
     color: var(--land-gold);
     vertical-align: -0.08em;
     margin-left: var(--sp-3);
+    /* drop-shadow, not box-shadow: this shadows the actual rendered SVG
+       shape (the disc below), not the element's own rectangular box, and
+       two chained instances give the same light/dark emboss pair every
+       other raised surface on this page now carries. Reads .land's own
+       dark-world pair here; .land-proof overrides both further down for
+       the small source-citation seal sitting on its warm paper instead. */
+    filter: drop-shadow(2px 2px 3px rgb(var(--neo-dark-rgb) / 0.85))
+      drop-shadow(-2px -2px 3px rgb(var(--neo-light-rgb) / 0.6));
   }
   .land-seal--hero {
     width: clamp(28px, 4.5vw, 42px);
     height: clamp(28px, 4.5vw, 42px);
+  }
+  /* Same material as whatever's behind it — the emboss is entirely the
+     filter's doing, not a fill that reads as a different surface. */
+  .land-seal-disc {
+    fill: var(--brand);
+  }
+  .land-proof .land-seal-disc {
+    fill: var(--land-paper);
   }
   .land-seal-ring {
     stroke-dasharray: 170;
@@ -2857,15 +2873,19 @@
        embossed control. Uses .land's own dark-world --neo-light/--neo-dark
        (declared above), not .neo-raised's class (that reads .neo-world's
        cream-calibrated pair, which was never in scope here). */
-    box-shadow: 5px 5px 12px rgb(var(--neo-dark-rgb) / 0.7), -5px -5px 12px rgb(var(--neo-light-rgb) / 0.5);
+    /* The .neo-panel-scale pair (bigger blur/offset than a button normally
+       gets), because this is the one thing on the whole page that needs to
+       read as unmistakably raised — bumped further on request. */
+    box-shadow: 9px 9px 20px rgb(var(--neo-dark-rgb) / 0.85), -9px -9px 20px rgb(var(--neo-light-rgb) / 0.7);
     transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease);
   }
   .land-cta:hover {
     background: var(--land-gold-bright);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 12px 12px 26px rgb(var(--neo-dark-rgb) / 0.9), -7px -7px 18px rgb(var(--neo-light-rgb) / 0.75);
   }
   .land-cta:active {
-    box-shadow: inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.65), inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.45);
+    box-shadow: inset 5px 5px 11px rgb(var(--neo-dark-rgb) / 0.7), inset -5px -5px 11px rgb(var(--neo-light-rgb) / 0.5);
     transform: translateY(0);
   }
   .land-cta:focus-visible,
@@ -3283,6 +3303,51 @@
       12px 12px 28px rgb(var(--neo-dark-rgb) / 0.55),
       -12px -12px 28px rgb(var(--neo-light-rgb) / 0.85);
   }
+
+  :root[data-theme='dark'] .neo-world {
+    --paper-rgb: 31 29 27;
+    --paper-raised-rgb: 41 39 36;
+    --paper-sunken-rgb: 24 22 20;
+    --paper-inset-rgb: 48 45 41;
+    --edge-rgb: 54 50 45;
+    --edge-strong-rgb: 79 73 64;
+    --ink-rgb: 234 237 242;
+    --ink-soft-rgb: 180 187 196;
+    --ink-muted-rgb: 140 148 159;
+    --ink-faint-rgb: 98 105 115;
+    --ink-inverse-rgb: 16 18 22;
+    --accent-rgb: 122 162 240;
+    --accent-hover-rgb: 154 187 248;
+    --accent-tint-rgb: 26 39 63;
+    --accent-text-rgb: 122 162 240;
+    --mark-rgb: 240 129 120;
+    --mark-tint-rgb: 56 26 24;
+
+    /* Dark mode emboss */
+    --neo-light-rgb: 45 42 40;
+    --neo-dark-rgb: 15 14 12;
+
+    background: rgb(var(--paper-rgb));
+    --paper: rgb(var(--paper-rgb));
+    --paper-raised: rgb(var(--paper-raised-rgb));
+    --paper-sunken: rgb(var(--paper-sunken-rgb));
+    --paper-inset: rgb(var(--paper-inset-rgb));
+    --edge: rgb(var(--edge-rgb));
+    --edge-strong: rgb(var(--edge-strong-rgb));
+    --ink: rgb(var(--ink-rgb));
+    --ink-soft: rgb(var(--ink-soft-rgb));
+    --ink-muted: rgb(var(--ink-muted-rgb));
+    --ink-faint: rgb(var(--ink-faint-rgb));
+    --ink-inverse: rgb(var(--ink-inverse-rgb));
+    --accent: rgb(var(--accent-rgb));
+    --accent-hover: rgb(var(--accent-hover-rgb));
+    --accent-tint: rgb(var(--accent-tint-rgb));
+    --accent-text: rgb(var(--accent-text-rgb));
+    --accent-ring: rgb(var(--accent-rgb) / 0.32);
+    --mark: rgb(var(--mark-rgb));
+    --mark-tint: rgb(var(--mark-tint-rgb));
+  }
+
   .neo-raised {
     box-shadow:
       6px 6px 14px rgb(var(--neo-dark-rgb) / 0.7),
