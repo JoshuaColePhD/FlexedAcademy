@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Check,
   CreditCard,
+  Download,
   FileText,
   Loader2,
   Pencil,
@@ -752,8 +753,8 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
   )
 }
 
-/* Sign out of all devices — the one control this needs today. Export/delete
- * land in later work; this section is where they'll join it. */
+/* Download my data, sign out of all devices — delete-my-account lands in
+ * later work, joining these two in the same section. */
 function AccountSafety() {
   const { signOutEverywhere } = useAuth()
   const confirm = useConfirm()
@@ -782,21 +783,38 @@ function AccountSafety() {
   return (
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">Account safety</h2>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-edge bg-paper-raised p-3">
-        <div>
-          <p className="text-sm font-medium text-ink">Sign out of all devices</p>
-          <p className="text-xs text-ink-muted">
-            Forgot a shared computer, or think someone else has access? This ends every session at once.
-          </p>
+      <div className="mt-2 divide-y divide-edge rounded-xl border border-edge bg-paper-raised">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3">
+          <div>
+            <p className="text-sm font-medium text-ink">Download my data</p>
+            <p className="text-xs text-ink-muted">
+              Every plan, chat, class and pacing guide you’ve put in, as one JSON file.
+            </p>
+          </div>
+          <a
+            href={api.accountExportUrl()}
+            download
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent-tint"
+          >
+            <Download size={14} aria-hidden="true" /> Download
+          </a>
         </div>
-        <button
-          type="button"
-          onClick={doSignOutEverywhere}
-          disabled={busy}
-          className="shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? 'Signing out…' : 'Sign out everywhere'}
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3">
+          <div>
+            <p className="text-sm font-medium text-ink">Sign out of all devices</p>
+            <p className="text-xs text-ink-muted">
+              Forgot a shared computer, or think someone else has access? This ends every session at once.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={doSignOutEverywhere}
+            disabled={busy}
+            className="shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? 'Signing out…' : 'Sign out everywhere'}
+          </button>
+        </div>
       </div>
     </div>
   )

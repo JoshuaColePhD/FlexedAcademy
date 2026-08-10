@@ -1382,6 +1382,48 @@ def bump_session_version(user_id: str) -> int:
     return int(row["session_version"]) if row else 0
 
 
+def export_user_data(user_id: str) -> dict:
+    """Everything this teacher put into the app, as one JSON-able dict — for
+    self-service data export. Scoped to what they created, not internal
+    telemetry (usage_events, the token-metering table entitlement.py reads)
+    or the derived retrieval index (curriculum_chunks: their own pacing
+    guide's text, re-chunked with embeddings) — both are either not theirs
+    to read back or already covered by the original file curriculum_maps
+    points at.
+
+    messages has no user_id column of its own — it was always scoped through
+    chat_id, so this filters through the same chat ids `chats` returns
+    rather than repeating that join logic differently in two places.
+    """
+    user = get_user_by_id(user_id) or {}
+    chats = _rows("SELECT * FROM chats WHERE user_id = ? ORDER BY created_at", (user_id,))
+    chat_ids = [c["id"] for c in chats]
+    messages = _rows("SELECT * FROM messages WHERE chat_id = ANY(?) ORDER BY chat_id, id", (chat_ids,))
+    plans = _rows("SELECT * FROM plans WHERE user_id = ? ORDER BY created_at", (user_id,))
+    plan_feedback = _rows("SELECT * FROM plan_feedback WHERE user_id = ? ORDER BY id", (user_id,))
+    classes = _rows("SELECT * FROM classes WHERE user_id = ? ORDER BY sort_order", (user_id,))
+    settings = _rows("SELECT * FROM settings WHERE user_id = ?", (user_id,))
+    curriculum_maps = _rows("SELECT * FROM curriculum_maps WHERE user_id = ? ORDER BY uploaded_at", (user_id,))
+    curriculum_progress = _rows(
+        "SELECT * FROM curriculum_progress WHERE user_id = ? ORDER BY subject, sort_order", (user_id,)
+    )
+    return {
+        "account": {
+            "email": user.get("email"),
+            "name": user.get("name"),
+            "created_at": user.get("created_at"),
+        },
+        "settings": settings,
+        "classes": classes,
+        "chats": chats,
+        "messages": messages,
+        "plans": plans,
+        "plan_feedback": plan_feedback,
+        "curriculum_maps": curriculum_maps,
+        "curriculum_progress": curriculum_progress,
+    }
+
+
 def count_plans(user_id: str) -> int:
     """How many weeks this teacher has built. Informational now — the free
     tier no longer gates on this (see migration 17) — but still worth showing
