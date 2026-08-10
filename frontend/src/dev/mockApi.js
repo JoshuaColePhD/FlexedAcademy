@@ -168,6 +168,15 @@ const state = {
     { id: 'physics', title: 'Kinematics week', class_id: 'c2', updated_at: '2026-08-05' },
     // Never attributed — must appear under BOTH classes, not vanish.
     { id: 'legacy', title: 'an old chat with no class', class_id: null, updated_at: '2026-08-01' },
+    // Padding past SEARCH_THRESHOLD (AppShell.jsx) and spanning every date
+    // bucket (Today/Yesterday/This week/Older) — the four chats above alone
+    // never exercised either the search box or the Today/Yesterday buckets.
+    { id: 'gatsby1', title: 'Gatsby — symbolism week', class_id: 'c1', updated_at: '2026-08-10' },
+    { id: 'gatsby2', title: 'Gatsby — the green light', class_id: 'c1', updated_at: '2026-08-10' },
+    { id: 'rhetoric1', title: 'Rhetorical triangle intro', class_id: 'c1', updated_at: '2026-08-09' },
+    { id: 'cask1', title: 'Cask of Amontillado — irony', class_id: 'c1', updated_at: '2026-08-08' },
+    { id: 'unit4', title: 'Unit 4 kickoff planning', class_id: 'c1', updated_at: '2026-07-20' },
+    { id: 'satire2', title: 'Satire — A Modest Proposal', class_id: 'c1', updated_at: '2026-07-18' },
   ],
   messages: {
     // The pre-fix shape: a plan was built, but no assistant message was ever

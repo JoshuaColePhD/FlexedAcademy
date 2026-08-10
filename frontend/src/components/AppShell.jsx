@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { GraduationCap, PanelLeft, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
+import { GraduationCap, PanelLeft, Pencil, Plus, Search, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
+import { groupByDate } from '../lib/dateBuckets'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
@@ -93,6 +94,19 @@ function ChatRow({ chat, classId, onDelete }) {
   )
 }
 
+// Search threshold: below this, scrolling a flat list is fine and a search
+// box would be pure clutter for the one thing it would ever filter.
+const SEARCH_THRESHOLD = 8
+
+// Same case-/separator-insensitive substring match lib/frameworks.js's
+// matchesFramework() already uses for the 72-framework picker, applied to a
+// chat's title instead of a framework's label/id.
+function matchesSearch(chat, query) {
+  const q = query.trim().toLowerCase().replace(/[\s_-]+/g, '')
+  if (!q) return true
+  return (chat.title || '').toLowerCase().replace(/[\s_-]+/g, '').includes(q)
+}
+
 function Rail({ onNavigate, onClose }) {
   const { classId } = useParams()
   const location = useLocation()
@@ -104,6 +118,10 @@ function Rail({ onNavigate, onClose }) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const classPath = `/c/${classId}`
+
+  const [search, setSearch] = useState('')
+  const filteredChats = search.trim() ? (chats || []).filter((c) => matchesSearch(c, search)) : chats
+  const chatGroups = groupByDate(filteredChats || [])
 
   const remove = async (chat) => {
     const ok = await confirm({
@@ -162,16 +180,40 @@ function Rail({ onNavigate, onClose }) {
 
       <nav className="min-h-0 flex-1 overflow-y-auto pt-2" aria-label="Your plans">
         <p className="eyebrow px-4 pb-1">Recent</p>
+        {/* Only past the point a flat list stops being scannable — below
+            SEARCH_THRESHOLD this would be a box with nothing worth typing
+            into. Same icon+input treatment as FrameworkPicker's own search
+            row, just inline instead of inside a popover. */}
+        {chats?.length > SEARCH_THRESHOLD ? (
+          <div className="mx-4 mb-1 flex items-center gap-2 rounded-lg bg-paper-sunken px-2.5 py-1.5">
+            <Search size={13} aria-hidden="true" className="shrink-0 text-ink-muted" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search chats"
+              aria-label="Search chats"
+              className="w-full bg-transparent text-xs text-ink outline-none placeholder:text-ink-muted"
+            />
+          </div>
+        ) : null}
         {isLoading ? (
           <div className="px-4 py-2">
             <SkeletonText lines={4} />
           </div>
+        ) : chatGroups.length ? (
+          chatGroups.map((group) => (
+            <div key={group.name}>
+              <p className="eyebrow px-4 pb-1 pt-2 first:pt-0">{group.name}</p>
+              <ul className="flex flex-col gap-0.5">
+                {group.items.map((c) => (
+                  <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} />
+                ))}
+              </ul>
+            </div>
+          ))
         ) : chats?.length ? (
-          <ul className="flex flex-col gap-0.5">
-            {chats.map((c) => (
-              <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} />
-            ))}
-          </ul>
+          <p className="px-4 py-2 text-xs text-ink-muted">No chats match “{search}”.</p>
         ) : (
           <p className="px-4 py-2 text-xs text-ink-muted">
             Nothing yet. Describe a week to get started.
