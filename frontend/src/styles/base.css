@@ -2597,6 +2597,19 @@
     overflow-x: hidden;
     background: var(--brand);
     color: var(--brand-ink);
+    /* Neomorphic on request, without giving up the teal ground for the app's
+       own cream one (that's .neo-world's job elsewhere — this page stays a
+       fixed world of its own either way, see the file header). --neo-light/
+       --neo-dark are .neo-raised/.neo-panel/.neo-inset's own two primitives
+       (base.css, search NEOMORPHISM), calibrated here for THIS surface
+       instead: a lighter tint of the same teal for the highlight edge, near-
+       black for the shadow edge — same light-from-top-left illusion the
+       cream world computes, just against a dark field so the values run in
+       the opposite direction. Cascades to every .land-* descendant; .land-
+       proof below overrides both for its own warm-paper section, where the
+       math runs the normal light-world direction again. */
+    --neo-light-rgb: 42 92 100;
+    --neo-dark-rgb: 0 8 10;
   }
 
   .land-bar,
@@ -2839,11 +2852,21 @@
     color: var(--brand);
     background: var(--land-gold);
     text-decoration: none;
-    transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease-out);
+    /* The page's one filled action gets the page's one raised surface — same
+       reasoning as the app-side "New plan" button being the rail's only
+       embossed control. Uses .land's own dark-world --neo-light/--neo-dark
+       (declared above), not .neo-raised's class (that reads .neo-world's
+       cream-calibrated pair, which was never in scope here). */
+    box-shadow: 5px 5px 12px rgb(var(--neo-dark-rgb) / 0.7), -5px -5px 12px rgb(var(--neo-light-rgb) / 0.5);
+    transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease);
   }
   .land-cta:hover {
     background: var(--land-gold-bright);
     transform: translateY(-1px);
+  }
+  .land-cta:active {
+    box-shadow: inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.65), inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.45);
+    transform: translateY(0);
   }
   .land-cta:focus-visible,
   .land-signin:focus-visible,
@@ -2872,6 +2895,12 @@
     color: rgb(var(--brand-rgb));
     padding-top: clamp(var(--sp-12), 8vw, var(--sp-14));
     padding-bottom: clamp(var(--sp-12), 8vw, var(--sp-14));
+    /* Overrides .land's own dark pair — this section's ground (--land-paper,
+       250/247/242) is warm-light, not teal-dark, so the emboss math has to
+       flip direction the same way .neo-world's does against its own cream:
+       a near-white highlight, a soft warm-grey shadow. */
+    --neo-light-rgb: 255 255 255;
+    --neo-dark-rgb: 214 208 196;
   }
   .land-heading {
     font-family: var(--font-display);
@@ -2885,10 +2914,19 @@
     align-items: center;
     margin-top: clamp(var(--sp-8), 5vw, var(--sp-10));
   }
+  /* Were plain text-and-icon rows with no box of their own — the two pieces
+     of evidence this whole section exists to show side by side, otherwise
+     floating loose on the page. A real embossed card each, in the section's
+     own paper (not a second tone), is what makes them read as two things
+     being compared rather than one paragraph with a footnote. */
   .land-excerpt-plan,
   .land-excerpt-source {
     display: flex;
     gap: var(--sp-4);
+    padding: var(--sp-5);
+    border-radius: var(--r-lg);
+    background: var(--land-paper);
+    box-shadow: 6px 6px 14px rgb(var(--neo-dark-rgb) / 0.5), -6px -6px 14px rgb(var(--neo-light-rgb) / 0.8);
   }
   .land-excerpt-source {
     align-items: flex-start;
@@ -2987,6 +3025,10 @@
     height: 12px;
     border-radius: var(--r-full);
     background: var(--land-gold);
+    /* Small enough that a wide blur just muddies into a glow — tight offset
+       and blur instead, the same emboss everything else on this page now
+       carries, scaled to a 12px mark rather than a button. */
+    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.7), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.5);
     transform: scale(0);
     transition: transform var(--t-base) var(--ease-out) 900ms;
   }
@@ -3157,14 +3199,30 @@
     --edge-strong-rgb: 208 203 196;
     --ink-rgb: 82 44 48;
     --ink-soft-rgb: 124 92 94;
-    --ink-muted-rgb: 158 142 139;
-    --ink-faint-rgb: 191 179 175;
+    /* ink-muted and ink-faint were originally 158/142/139 and 191/179/175 —
+       2.7:1 and 1.8:1 against --paper-rgb, both well under even the 3:1 AA
+       floor for large text/UI components, let alone the 4.5:1 normal-text
+       one. Fine as a decorative accent color living behind a glowing panel;
+       real trouble as a placeholder or hint someone is expected to actually
+       read (an autofilled login field's own text made this obvious — see
+       git history). Same hue, darkened until they clear the bars they're
+       each meant to hold: muted lands at ~4.6:1 (AA normal text), faint at
+       ~3.3:1 (the large-text/UI floor, appropriate for something that's
+       deliberately the least emphasized tone here, not invisible). */
+    --ink-muted-rgb: 130 100 102;
+    --ink-faint-rgb: 150 126 126;
     --ink-inverse-rgb: 255 255 255;
     --accent-rgb: 216 84 120;
     --accent-hover-rgb: 197 68 104;
     --accent-tint-rgb: 250 231 236;
-    --accent-text-rgb: 197 68 104;
-    --mark-rgb: 199 62 62;
+    /* Was 197/68/104 — 4.16:1 against --paper-rgb, just under the 4.5:1 AA
+       floor for the normal-weight link/label text this actually renders as
+       (the "Create an account" link, citation labels). Same hue, darkened
+       to ~5.1:1. */
+    --accent-text-rgb: 182 52 88;
+    /* Was 199/62/62 — 4.37:1, same reasoning as accent-text above. Darkened
+       to ~5.3:1. */
+    --mark-rgb: 182 48 48;
     --mark-tint-rgb: 250 231 231;
     /* The emboss itself — a light/dark pair with no equivalent among the
        tokens above, because nothing else in this app draws a shadow FROM a

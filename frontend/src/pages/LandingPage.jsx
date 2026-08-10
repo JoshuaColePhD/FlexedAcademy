@@ -133,6 +133,9 @@ function SignInPopover() {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
   const closeTimer = useRef(null)
+  // Once a field inside the panel has ever had focus, the mouse-driven timer
+  // below (closeSoon) permanently stands down — see its own comment for why.
+  const engagedRef = useRef(false)
 
   const openNow = () => {
     if (closeTimer.current) {
@@ -146,16 +149,19 @@ function SignInPopover() {
   // crossing that gap on the way from one to the other would otherwise
   // close it before the pointer ever reaches the form.
   //
-  // Checked again once the delay actually fires, not just at the moment the
-  // pointer left: typing into the email or password field doesn't move the
-  // mouse, but it also doesn't PREVENT the mouse from having drifted off the
-  // panel a moment earlier (trackpad micro-movement, or just resting the
-  // pointer somewhere else while both hands are on the keyboard) — that was
-  // enough to start this timer and, 200ms later, close the form out from
-  // under whatever was being typed. A field inside the panel actually having
-  // focus is a stronger, typing-proof signal than "is the pointer still
-  // over it," so it wins outright.
+  // Disabled outright once engagedRef is set — a field has had focus at
+  // least once. Rechecking focus when the delay fires (rather than at the
+  // moment the pointer left) already covers plain typing: a stray drift of
+  // the mouse doesn't un-focus the field. But a saved-password suggestion or
+  // the browser's own autofill dropdown is UA chrome, not a page element —
+  // choosing one can report the pointer leaving to nothing at all (no
+  // element to be "inside" wrapRef), which no amount of rechecking focus at
+  // fire-time can tell apart from a genuine mouseleave if the click also
+  // races a blur. Once the panel is actually being used, only a real signal
+  // — an outside click, Escape, or focus handing off to a concrete element
+  // elsewhere (below) — closes it; the pointer stops being consulted at all.
   const closeSoon = () => {
+    if (engagedRef.current) return
     closeTimer.current = setTimeout(() => {
       if (!wrapRef.current?.contains(document.activeElement)) setOpen(false)
     }, 200)
@@ -166,9 +172,20 @@ function SignInPopover() {
   // right there), and losing focus to somewhere outside the panel — Tab past
   // the last field, not just a stray click — should close it the same way an
   // outside click already does.
-  const onFocusWithin = () => openNow()
+  // Guarded on a REAL relatedTarget, not just "focus left" — autofill/the
+  // password manager blur the field toward UA chrome with no relatedTarget
+  // at all (it isn't a DOM node), and that used to read as "left the panel"
+  // and close it out from under the very suggestion being clicked. Tab and
+  // a real click elsewhere both hand off to an actual element, so this
+  // still catches those.
+  const onFocusWithin = () => {
+    engagedRef.current = true
+    openNow()
+  }
   const onBlurWithin = (e) => {
-    if (!wrapRef.current?.contains(e.relatedTarget)) closeSoon()
+    if (e.relatedTarget && !wrapRef.current?.contains(e.relatedTarget)) {
+      closeTimer.current = setTimeout(() => setOpen(false), 200)
+    }
   }
 
   useEffect(() => {
