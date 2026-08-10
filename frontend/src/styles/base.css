@@ -2597,19 +2597,58 @@
     overflow-x: hidden;
     background: var(--brand);
     color: var(--brand-ink);
-    /* Neomorphic on request, without giving up the teal ground for the app's
-       own cream one (that's .neo-world's job elsewhere — this page stays a
-       fixed world of its own either way, see the file header). --neo-light/
-       --neo-dark are .neo-raised/.neo-panel/.neo-inset's own two primitives
-       (base.css, search NEOMORPHISM), calibrated here for THIS surface
-       instead: a lighter tint of the same teal for the highlight edge, near-
-       black for the shadow edge — same light-from-top-left illusion the
-       cream world computes, just against a dark field so the values run in
-       the opposite direction. Cascades to every .land-* descendant; .land-
-       proof below overrides both for its own warm-paper section, where the
-       math runs the normal light-world direction again. */
-    --neo-light-rgb: 42 92 100;
-    --neo-dark-rgb: 0 8 10;
+    /* Recolored on request: the dark teal-and-gold identity (tokens.css's
+       own defaults for the --brand and --land-gold families, unchanged for
+       any future surface that isn't THIS page reading them, since nothing
+       else currently does) read as a second, disconnected product next to
+       the cream/rose world
+       every other screen in the app now wears — the door should open onto
+       the same place, not a different one. Redeclared here rather than in
+       tokens.css, same reasoning as .neo-world/.auth-ground: a fixed world
+       override, scoped to what actually wears it, not a global rename of
+       tokens other surfaces might still reasonably want their own value
+       for. --brand-ink flips from light-on-dark to dark-on-light along with
+       everything else; wherever a rule further down reused THIS token as a
+       stand-in for "dark text on the light section" (assuming brand were
+       still the dark one) has its own fix at that rule instead of here. */
+    --brand-rgb: 241 239 235;
+    --brand-ink-rgb: 82 44 48;
+    --brand-muted-rgb: 130 100 102;
+    /* --land-gold(-bright/-ink) become this world's rose instead of gold —
+       same three-tier split as before (fill / hover-fill / small-text-or-
+       stroke), just a different hue and, since the fill tier used to pair
+       with dark text on a light-teal-adjacent gold and now needs to pair
+       with something readable on a saturated rose instead, swapped which
+       of the two fill tones is the resting one: the darker rose is the
+       resting fill (pairs with white text at ~4.8:1), the brighter one is
+       the hover lift, not the other way around. */
+    --land-gold-rgb: 197 68 104;
+    --land-gold-bright-rgb: 216 84 120;
+    --land-gold-ink-rgb: 182 52 88;
+    /* The primitives above do nothing on their own for any rule reading
+       var(--brand)/var(--brand-ink)/var(--land-gold) etc — tokens.css's own
+       ALIASES ("for hand-written CSS") are declared once at :root, wrapping
+       their matching primitive in rgb(), and that computed value freezes at
+       :root's own declaration site; every .land-* rule below reaches for the
+       alias, not the primitive. Exact same gap .neo-world's own comment
+       documents for --paper/--ink — redeclaring the aliases too, from THESE
+       primitives, is what actually makes any of the above take effect. */
+    --brand: rgb(var(--brand-rgb));
+    --brand-ink: rgb(var(--brand-ink-rgb));
+    --brand-muted: rgb(var(--brand-muted-rgb));
+    --land-gold: rgb(var(--land-gold-rgb));
+    --land-gold-bright: rgb(var(--land-gold-bright-rgb));
+    --land-gold-ink: rgb(var(--land-gold-ink-rgb));
+    /* --neo-light/--neo-dark are .neo-raised/.neo-panel/.neo-inset's own two
+       primitives (base.css, search NEOMORPHISM) — now calibrated for a
+       light ground, the same values .neo-world itself uses, since this
+       page's ground is the same cream now. .land-proof below no longer
+       needs its own override for this reason (its paper is close enough to
+       this one that the same pair still reads correctly), though it keeps
+       one anyway for the small difference between --land-paper and this
+       ground. */
+    --neo-light-rgb: 255 255 255;
+    --neo-dark-rgb: 199 194 188;
   }
 
   .land-bar,
@@ -2865,7 +2904,13 @@
     border-radius: var(--r-sm);
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
-    color: var(--brand);
+    /* Was var(--brand) — dark-on-gold, correct while --brand was the dark
+       teal reused as a stand-in ink color. --brand is the page's ground now
+       (light), so that reference would read as barely-there cream text on a
+       saturated rose fill; a literal white clears ~4.8:1 against the
+       resting fill below instead. Not var(--ink-inverse) — that one still
+       follows data-theme, and this page deliberately doesn't. */
+    color: rgb(255 255 255);
     background: var(--land-gold);
     text-decoration: none;
     /* The page's one filled action gets the page's one raised surface — same
@@ -2912,7 +2957,11 @@
   /* ── proof: the one warm, paper-toned section ────────────────────────── */
   .land-proof {
     background: var(--land-paper);
-    color: rgb(var(--brand-rgb));
+    /* Was rgb(var(--brand-rgb)) — dark-on-light while --brand was the dark
+       teal reused as a stand-in ink color for this one light section.
+       --brand is the page's own ground now, so this needs the ACTUAL ink
+       token instead of that old coincidence. */
+    color: rgb(var(--brand-ink-rgb));
     padding-top: clamp(var(--sp-12), 8vw, var(--sp-14));
     padding-bottom: clamp(var(--sp-12), 8vw, var(--sp-14));
     /* Overrides .land's own dark pair — this section's ground (--land-paper,
@@ -2967,7 +3016,10 @@
   .land-connector {
     width: 100%;
     height: 90px;
-    color: rgb(var(--brand-rgb) / 0.35);
+    /* Was --brand-rgb — same fix as .land-proof just above: needs the ink
+       token now that --brand is this page's light ground, not a stand-in
+       dark color anymore. */
+    color: rgb(var(--brand-ink-rgb) / 0.35);
   }
   .land-connector path {
     stroke-dasharray: 260;
@@ -3122,7 +3174,8 @@
       left: 0;
       width: 28px;
       height: 1.5px;
-      background: rgb(var(--brand-rgb) / 0.3);
+      /* Same fix as .land-connector above — the mobile stand-in for it. */
+      background: rgb(var(--brand-ink-rgb) / 0.3);
     }
     .land-thread {
       grid-template-columns: 1fr;
