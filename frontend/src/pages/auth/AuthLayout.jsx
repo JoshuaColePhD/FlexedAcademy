@@ -15,7 +15,12 @@ import { CalendarDays, FileCheck2, Quote } from 'lucide-react'
  * `auth-ground` (base.css) puts this on the landing page's fixed dark brand
  * ground instead of the app's own light paper — a deliberate second break
  * from data-theme, so the door and the form you sign into read as one place.
- */
+ *
+ * `neo-world` layered on top of that (on request, once the rest of the app
+ * went neomorphic): its own primitives are declared LATER in base.css than
+ * auth-ground's, so they win the cascade outright rather than blending with
+ * it — the door now opens onto the same cream/rose embossed world as
+ * everything past it, not a separate dark one. */
 
 const CLAIMS = [
   {
@@ -36,7 +41,7 @@ const CLAIMS = [
 ]
 
 export const authInputClass =
-  'block w-full rounded-lg border border-edge bg-paper-raised px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent'
+  'block w-full rounded-lg border border-edge bg-paper-raised px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent neo-inset'
 
 export function AuthLayout({ title, subtitle, children, footer }) {
   return (
@@ -44,7 +49,7 @@ export function AuthLayout({ title, subtitle, children, footer }) {
     // other screen in the app manages its own scroll region instead of
     // relying on the page to scroll, and this is the one screen that didn't.
     // The card below is that region now.
-    <div className="auth-ground flex h-app w-full items-center justify-center bg-paper p-gutter">
+    <div className="auth-ground neo-world flex h-app w-full items-center justify-center bg-paper p-gutter">
       {/* overflow-y-auto + max-h-full, not the old plain overflow-hidden: on
           the stacked mobile layout (claims panel THEN the form, both full
           width below md) the card ran taller than the viewport with no
@@ -76,7 +81,7 @@ export function AuthLayout({ title, subtitle, children, footer }) {
               <li className="flex items-start gap-3" key={t}>
                 <span
                   aria-hidden="true"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-paper-raised text-ink-soft"
+                  className="neo-raised grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-paper-raised text-ink-soft"
                 >
                   <Icon size={16} />
                 </span>

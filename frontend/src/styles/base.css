@@ -2648,7 +2648,12 @@
        comment above). Without this, a visitor who last used the app in dark
        mode got a near-black card floating on the violet bar — technically
        legible, but exactly the inconsistency the rest of this page goes out
-       of its way to avoid. */
+       of its way to avoid. Also wears .neo-world now (on request): its
+       primitives are declared LATER in this file, so they win outright over
+       the light values just below — this popover ends up in the same
+       cream/rose embossed world as the rest of the app, box-shadow: var(
+       --shadow-lg) included, rather than the plain drop-shadow it had before
+       neo-world existed to redeclare that token. */
     --paper-rgb: 246 244 236;
     --paper-raised-rgb: 253 251 246;
     --paper-sunken-rgb: 236 233 223;

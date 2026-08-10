@@ -139,7 +139,7 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
         <button
           type="submit"
           disabled={loading}
-          className="mt-1 min-h-touch w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+          className="neo-raised mt-1 min-h-touch w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
@@ -189,7 +189,7 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
                 <button
                   type="submit"
                   disabled={resetLoading}
-                  className="shrink-0 rounded-lg bg-ink px-3 text-sm font-medium text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+                  className="neo-raised shrink-0 rounded-lg bg-ink px-3 text-sm font-medium text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {resetLoading ? 'Sending…' : 'Send link'}
                 </button>
