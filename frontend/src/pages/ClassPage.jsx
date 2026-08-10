@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, FileText, Loader2, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Check, CreditCard, FileText, Loader2, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
+import { useBilling } from '../lib/billingContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
@@ -432,6 +433,72 @@ function ChangePassword() {
   )
 }
 
+function formatRenewal(iso) {
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  } catch {
+    return null
+  }
+}
+
+/* Subscription state and usage, pulled onto the settings page rather than left
+ * only in the avatar-menu popover (AccountMenu.jsx) — the same entitlement, the
+ * same subscribe()/manage() calls, just room for a usage bar and a renewal
+ * date beside them instead of one line in a dropdown. Hidden entirely while
+ * billing is unconfigured, same reasoning as AccountMenu's own version. */
+function BillingSection() {
+  const { entitlement, billingEnabled, openPaywall, manage, busy } = useBilling()
+
+  if (!billingEnabled || !entitlement) return null
+
+  const pct = entitlement.token_cap
+    ? Math.min(100, Math.round((entitlement.tokens_used / entitlement.token_cap) * 100))
+    : 0
+  const renews = entitlement.subscribed && entitlement.period_end ? formatRenewal(entitlement.period_end) : null
+
+  return (
+    <div className="mt-5">
+      <h2 className="text-sm font-semibold text-ink">Billing</h2>
+      <div className="mt-2 rounded-xl border border-edge bg-paper-raised p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-ink">
+              {entitlement.subscribed ? 'Subscribed' : 'Free'}
+            </p>
+            {renews ? <p className="text-xs text-ink-muted">Renews {renews}</p> : null}
+          </div>
+          <button
+            type="button"
+            onClick={entitlement.subscribed ? manage : openPaywall}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {entitlement.subscribed ? (
+              <CreditCard size={14} aria-hidden="true" />
+            ) : (
+              <Sparkles size={14} aria-hidden="true" />
+            )}
+            {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
+          </button>
+        </div>
+
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-xs text-ink-muted">
+            <span>
+              {entitlement.tokens_used.toLocaleString()} / {entitlement.token_cap.toLocaleString()} tokens
+              this week
+            </span>
+            {!entitlement.may_generate ? <span className="text-mark">Limit reached</span> : null}
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-paper-sunken">
+            <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── one class ─────────────────────────────────────────────────────────────── */
 function ClassRow({ cls, frameworks, isActive, onChanged }) {
   const toast = useToast()
@@ -718,6 +785,9 @@ export function ClassPage() {
               This account signs in with Google — there’s no password to change here.
             </p>
           ) : null}
+
+          {/* ── billing ──────────────────────────────────────────────────── */}
+          <BillingSection />
 
           {/* ── the classes ─────────────────────────────────────────────── */}
           <div className="mt-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

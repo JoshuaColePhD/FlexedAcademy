@@ -136,6 +136,7 @@ const state = {
           tokens_remaining: 1_960_000,
           usage_window_days: 7,
           billing_enabled: true,
+          period_end: '2026-09-12T14:00:00+00:00',
         }
       : {
           may_generate: false,
@@ -147,6 +148,7 @@ const state = {
           tokens_remaining: 0,
           usage_window_days: 7,
           billing_enabled: true,
+          period_end: null,
         },
   accounts: [
     { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true,

@@ -53,6 +53,7 @@ class Entitlement:
     tokens_used: int
     token_cap: int
     billing_enabled: bool
+    period_end: str | None = None
 
     @property
     def tokens_remaining(self) -> int:
@@ -69,6 +70,7 @@ class Entitlement:
             "tokens_remaining": self.tokens_remaining,
             "usage_window_days": USAGE_WINDOW_DAYS,
             "billing_enabled": self.billing_enabled,
+            "period_end": self.period_end,
         }
 
 
@@ -93,6 +95,7 @@ def entitlement(user_id: str) -> Entitlement:
         tokens_used=tokens_used,
         token_cap=cap,
         billing_enabled=settings.billing_enabled,
+        period_end=user.get("subscription_period_end"),
     )
 
 
