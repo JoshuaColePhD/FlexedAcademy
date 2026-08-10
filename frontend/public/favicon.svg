@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- One mark, not five bars — a checkmark reads at 16px where a bar chart
+       muddies into noise. It's also not a generic UI glyph borrowed for the
+       occasion: this app's whole pitch is standards quoted and grounded, not
+       guessed, and a check is what that verification actually looks like
+       everywhere else in the product (the landing page's own claims list,
+       WeekStrip's finished days). Colors are the base light-theme tokens
+       (tokens.css's paper and accent primitives), not the neomorphic
+       override, so the tab icon stays the one identity that's always true
+       regardless of in-app theme. -->
+  <rect width="32" height="32" rx="7" fill="#F6F4EC" />
+  <path
+    d="M9 16.5l4.5 4.5L23 11"
+    fill="none"
+    stroke="#2F5FBF"
+    stroke-width="3.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
