@@ -145,8 +145,30 @@ function SignInPopover() {
   // panel aren't touching (there's a gap for the panel to drop into), so
   // crossing that gap on the way from one to the other would otherwise
   // close it before the pointer ever reaches the form.
+  //
+  // Checked again once the delay actually fires, not just at the moment the
+  // pointer left: typing into the email or password field doesn't move the
+  // mouse, but it also doesn't PREVENT the mouse from having drifted off the
+  // panel a moment earlier (trackpad micro-movement, or just resting the
+  // pointer somewhere else while both hands are on the keyboard) — that was
+  // enough to start this timer and, 200ms later, close the form out from
+  // under whatever was being typed. A field inside the panel actually having
+  // focus is a stronger, typing-proof signal than "is the pointer still
+  // over it," so it wins outright.
   const closeSoon = () => {
-    closeTimer.current = setTimeout(() => setOpen(false), 200)
+    closeTimer.current = setTimeout(() => {
+      if (!wrapRef.current?.contains(document.activeElement)) setOpen(false)
+    }, 200)
+  }
+  // The other half: focus itself should keep the panel open independent of
+  // the pointer (clicking a field, then moving the mouse away to type,
+  // shouldn't be distinguishable from clicking it and leaving the mouse
+  // right there), and losing focus to somewhere outside the panel — Tab past
+  // the last field, not just a stray click — should close it the same way an
+  // outside click already does.
+  const onFocusWithin = () => openNow()
+  const onBlurWithin = (e) => {
+    if (!wrapRef.current?.contains(e.relatedTarget)) closeSoon()
   }
 
   useEffect(() => {
@@ -166,7 +188,14 @@ function SignInPopover() {
   useEffect(() => () => closeTimer.current && clearTimeout(closeTimer.current), [])
 
   return (
-    <div ref={wrapRef} className="land-signin-wrap" onMouseEnter={openNow} onMouseLeave={closeSoon}>
+    <div
+      ref={wrapRef}
+      className="land-signin-wrap"
+      onMouseEnter={openNow}
+      onMouseLeave={closeSoon}
+      onFocus={onFocusWithin}
+      onBlur={onBlurWithin}
+    >
       <button
         type="button"
         className="land-signin"
