@@ -798,6 +798,78 @@ export function ChatPage() {
   const overlayOpen = expanded && hasArtifact && isOverlay
   const overlayExit = useExitTransition(overlayOpen, 130)
 
+  /* The docked split's own width, draggable via the handle rendered between
+     the two panes below. null means "use --chat-w-narrow, the CSS default";
+     a teacher who drags it gets a number instead, kept in localStorage so it
+     survives a reload rather than snapping back to 322px every time. Only
+     meaningful while docOpen — the overlay and phone layouts don't split. */
+  const [chatWidthPx, setChatWidthPx] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem('aplang.chatWidthPx'))
+      return Number.isFinite(saved) && saved > 0 ? saved : null
+    } catch {
+      return null
+    }
+  })
+  const [resizing, setResizing] = useState(false)
+  const splitRef = useRef(null)
+  const chatPaneWrapRef = useRef(null)
+
+  // Floors on both sides, not just the chat's: dragging the document down to
+  // a sliver would leave a lesson plan's own table unreadable, which is a
+  // worse failure than the drag simply stopping short of where the pointer is.
+  const clampChatWidth = useCallback((w) => {
+    const containerWidth = splitRef.current?.clientWidth ?? Infinity
+    const max = Math.max(containerWidth - 420, 320)
+    return Math.min(Math.max(w, 320), max)
+  }, [])
+
+  const persistChatWidth = useCallback((w) => {
+    try {
+      localStorage.setItem('aplang.chatWidthPx', String(w))
+    } catch {
+      /* not persisted */
+    }
+  }, [])
+
+  const onResizePointerDown = useCallback(
+    (e) => {
+      e.preventDefault()
+      const startX = e.clientX
+      const startWidth = chatPaneWrapRef.current?.getBoundingClientRect().width ?? 322
+      setResizing(true)
+      const onMove = (ev) => setChatWidthPx(clampChatWidth(startWidth + (ev.clientX - startX)))
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        setResizing(false)
+        setChatWidthPx((w) => {
+          if (w != null) persistChatWidth(w)
+          return w
+        })
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    },
+    [clampChatWidth, persistChatWidth]
+  )
+
+  // Keyboard equivalent — a drag handle with no keyboard path is a mouse-only
+  // control wearing role="separator", which WAI-ARIA's own separator pattern
+  // says must respond to the arrow keys.
+  const onResizeKeyDown = useCallback(
+    (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      e.preventDefault()
+      const step = e.key === 'ArrowLeft' ? -24 : 24
+      const current = chatWidthPx ?? chatPaneWrapRef.current?.getBoundingClientRect().width ?? 322
+      const next = clampChatWidth(current + step)
+      setChatWidthPx(next)
+      persistChatWidth(next)
+    },
+    [chatWidthPx, clampChatWidth, persistChatWidth]
+  )
+
   /* Auto-opens the drawer the moment a build starts or a plan exists; after
      that it is the teacher's to open or close, and closing it once does not
      get silently overridden on the next render (busy/hasArtifact going false
@@ -1029,7 +1101,7 @@ export function ChatPage() {
      and the Composer owns a MediaRecorder and a ResizeObserver that do not
      survive that. */
   return (
-    <div className="flex h-full w-full min-w-0">
+    <div className="flex h-full w-full min-w-0" ref={splitRef}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document
@@ -1048,10 +1120,15 @@ export function ChatPage() {
       </div>
 
       <div
-        className="flex min-w-0 flex-col transition-[flex-basis]"
+        ref={chatPaneWrapRef}
+        className={`flex min-w-0 flex-col${resizing ? '' : ' transition-[flex-basis]'}`}
         style={
           docOpen
-            ? { flex: '0 0 var(--chat-w-narrow)', transitionDuration: 'var(--t-base)', transitionTimingFunction: 'var(--ease-out)' }
+            ? {
+                flex: `0 0 ${chatWidthPx ? `${chatWidthPx}px` : 'var(--chat-w-narrow)'}`,
+                transitionDuration: 'var(--t-base)',
+                transitionTimingFunction: 'var(--ease-out)',
+              }
             : { flex: '1 1 0%', transitionDuration: 'var(--t-base)', transitionTimingFunction: 'var(--ease-out)' }
         }
       >
@@ -1072,6 +1149,19 @@ export function ChatPage() {
           classId={classId}
           onExpand={() => openDocument()}
           busy={busy}
+        />
+      ) : null}
+
+      {docOpen ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the chat and document panels"
+          aria-valuenow={Math.round(chatWidthPx ?? 322)}
+          tabIndex={0}
+          className="panel-resize-handle"
+          onPointerDown={onResizePointerDown}
+          onKeyDown={onResizeKeyDown}
         />
       ) : null}
 
