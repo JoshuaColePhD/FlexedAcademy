@@ -262,11 +262,9 @@ export function LandingPage() {
       </header>
 
       <section className="land-hero">
-        <div className="land-glow" aria-hidden="true" />
-        <h1 className="land-title">
-          A week of plans that cite their sources
-          <VerifySeal className="land-seal land-seal--hero" />
-        </h1>
+        <div className="land-blob" aria-hidden="true" />
+        <span className="land-eyebrow">Cited, not recalled</span>
+        <h1 className="land-title">A week of plans that cite their sources</h1>
         <p className="land-sub">
           Written from the verbatim text of the Alabama Course of Study — not a model's
           memory of it. Downloads as your district's own .docx.
@@ -300,7 +298,7 @@ export function LandingPage() {
           <div className="land-excerpt-source">
             <VerifySeal className="land-seal land-seal--source" />
             <div>
-              <span className="land-tag">Cited standard</span>
+              <span className="land-tag land-tag--cited">Cited standard</span>
               <p className="land-quote">
                 AP Lang Skill 4.B — Reading: explain how word choice and syntax convey tone.
               </p>

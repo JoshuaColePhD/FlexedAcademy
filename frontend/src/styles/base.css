@@ -2576,55 +2576,46 @@
     cursor: pointer;
   }
 
-  /* ══ THE LANDING PAGE — A VERIFIED SEAL ON VIOLET ═══════════════════════
+  /* ══ THE LANDING PAGE — A VERIFIED SEAL, SLEEK AND WHITE ═══════════════
      The only surface in the app with its own fixed palette and type voice.
-     It does not follow data-theme: the logo mark is a violet seal glowing on
-     near-black, and that is this product's real habitat at every hour, for
-     every visitor — not something that flips to a white background because a
-     visitor's OS prefers light mode.
+     It does not follow data-theme: this page is white-on-near-black-ink at
+     every hour, for every visitor — not something that flips dark because a
+     visitor's OS prefers dark mode.
 
-     Two colors, each with one job. Violet is the ground and the identity —
-     the hero, the pipeline, the footer all sit on it. Gold is reserved for
-     exactly one recurring signature, the verification seal: a claim is
-     "sealed" only where it has actually been checked against a real source,
-     so gold never appears as generic decoration. The one paper-toned section
-     (the excerpt) is warm on purpose — it is showing an actual paper
-     document — while the rest of the page stays violet, so that warmth reads
-     as "real document," not as the page's whole personality. */
+     Repainted again on request, away from the cream/rose world, toward a
+     sleeker, OpenAI-style hero: a white ground, near-black ink, and one
+     quiet violet accent that does the same recurring job gold/rose used to
+     — the pipeline stage labels, the footer CTA, the proof section's
+     citation mark. The one atmosphere effect is a soft multi-hue "aurora"
+     wash behind the headline (see .land-blob below) rather than a single-hue
+     glow. Every raised surface (the CTA, the excerpt cards, the pipeline
+     dot) keeps the soft embossed/neomorphic treatment the rest of the app
+     uses, recalibrated for a white ground instead of cream. */
   .land {
     height: var(--app-h);
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--brand);
     color: var(--brand-ink);
-    /* Recolored on request: the dark teal-and-gold identity (tokens.css's
-       own defaults for the --brand and --land-gold families, unchanged for
-       any future surface that isn't THIS page reading them, since nothing
-       else currently does) read as a second, disconnected product next to
-       the cream/rose world
-       every other screen in the app now wears — the door should open onto
-       the same place, not a different one. Redeclared here rather than in
-       tokens.css, same reasoning as .neo-world/.auth-ground: a fixed world
-       override, scoped to what actually wears it, not a global rename of
-       tokens other surfaces might still reasonably want their own value
-       for. --brand-ink flips from light-on-dark to dark-on-light along with
-       everything else; wherever a rule further down reused THIS token as a
-       stand-in for "dark text on the light section" (assuming brand were
-       still the dark one) has its own fix at that rule instead of here. */
-    --brand-rgb: 241 239 235;
-    --brand-ink-rgb: 82 44 48;
-    --brand-muted-rgb: 130 100 102;
-    /* --land-gold(-bright/-ink) become this world's rose instead of gold —
-       same three-tier split as before (fill / hover-fill / small-text-or-
-       stroke), just a different hue and, since the fill tier used to pair
-       with dark text on a light-teal-adjacent gold and now needs to pair
-       with something readable on a saturated rose instead, swapped which
-       of the two fill tones is the resting one: the darker rose is the
-       resting fill (pairs with white text at ~4.8:1), the brighter one is
-       the hover lift, not the other way around. */
-    --land-gold-rgb: 197 68 104;
-    --land-gold-bright-rgb: 216 84 120;
-    --land-gold-ink-rgb: 182 52 88;
+    /* Recolored on request, same mechanism as before: redeclared here
+       rather than in tokens.css, same reasoning as .neo-world/.auth-ground —
+       a fixed world override, scoped to what actually wears it, not a
+       global rename of tokens other surfaces might still reasonably want
+       their own value for. */
+    --brand-rgb: 255 255 255;
+    --brand-ink-rgb: 13 13 13;
+    --brand-muted-rgb: 82 82 82;
+    /* --land-gold(-bright/-ink) become this world's violet instead of gold/
+       rose — same three-tier split as before (fill / hover-fill / small-
+       text-or-stroke), now the one signature accent color on an otherwise
+       black-and-white page. */
+    --land-gold-rgb: 124 58 237;
+    --land-gold-bright-rgb: 147 90 246;
+    --land-gold-ink-rgb: 91 33 182;
+    /* The proof section's paper goes from warm cream to a barely-there
+       off-white — still one step off the page's pure-white ground, just
+       not warm-toned now that the rest of the page isn't either. */
+    --land-paper-rgb: 250 250 250;
     /* The primitives above do nothing on their own for any rule reading
        var(--brand)/var(--brand-ink)/var(--land-gold) etc — tokens.css's own
        ALIASES ("for hand-written CSS") are declared once at :root, wrapping
@@ -2639,16 +2630,14 @@
     --land-gold: rgb(var(--land-gold-rgb));
     --land-gold-bright: rgb(var(--land-gold-bright-rgb));
     --land-gold-ink: rgb(var(--land-gold-ink-rgb));
+    --land-paper: rgb(var(--land-paper-rgb));
     /* --neo-light/--neo-dark are .neo-raised/.neo-panel/.neo-inset's own two
-       primitives (base.css, search NEOMORPHISM) — now calibrated for a
-       light ground, the same values .neo-world itself uses, since this
-       page's ground is the same cream now. .land-proof below no longer
-       needs its own override for this reason (its paper is close enough to
-       this one that the same pair still reads correctly), though it keeps
-       one anyway for the small difference between --land-paper and this
-       ground. */
+       primitives (base.css, search NEOMORPHISM) — recalibrated here for a
+       near-white ground: a near-white highlight is barely distinguishable
+       from the ground itself, so the "light" side leans on pure white and
+       the "dark" side is a soft neutral grey rather than cream's warm one. */
     --neo-light-rgb: 255 255 255;
-    --neo-dark-rgb: 199 194 188;
+    --neo-dark-rgb: 214 214 219;
   }
 
   .land-bar,
@@ -2797,46 +2786,71 @@
   /* ── hero ─────────────────────────────────────────────────────────────── */
   .land-hero {
     position: relative;
-    padding-top: clamp(var(--sp-12), 10vw, var(--sp-16));
-    padding-bottom: clamp(var(--sp-14), 10vw, var(--sp-16));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding-top: clamp(var(--sp-14), 11vw, calc(var(--sp-16) * 1.3));
+    padding-bottom: clamp(var(--sp-14), 9vw, var(--sp-16));
     overflow: hidden;
     /* Its own compositing layer + containing block, so a WebKit webview can't
        fold this element's paint into the scrolling ancestor's — see the note
-       on .land-glow below for the bug this avoids. */
+       on .land-blob below for the bug this avoids. */
     isolation: isolate;
     contain: paint;
   }
-  /* The one atmosphere effect on the page: a soft violet-and-gold bloom
-     behind the headline, echoing the logo mark's own glow. The radial
-     gradient already fades to transparent on its own; it does NOT also carry
-     filter: blur(). A large, absolutely-positioned, blurred element inside a
-     scrolling+overflow:hidden ancestor is a known WebKit compositing bug
-     (reported as horizontally tiled/duplicated page content in iOS Safari and
-     WKWebView-based in-app browsers, Claude's mobile in-app browser among
-     them) — the blur filter forces a backing layer that gets mis-tiled on
-     scroll. Removing the filter removes the trigger; the gradient alone reads
-     as soft, it just isn't Gaussian-blurred on top of that. */
-  .land-glow {
+  /* The one atmosphere effect on the page: a soft multi-hue "aurora" behind
+     the headline — the modern gradient-mesh hero, not a single-brand-color
+     glow. Layered radial gradients, each already fading to transparent on
+     its own, stand in for a blurred blob; none of them carry filter: blur().
+     A large, absolutely-positioned, blurred element inside a scrolling+
+     overflow:hidden ancestor is a known WebKit compositing bug (reported as
+     horizontally tiled/duplicated page content in iOS Safari and WKWebView-
+     based in-app browsers, Claude's mobile in-app browser among them) — the
+     blur filter forces a backing layer that gets mis-tiled on scroll. Do not
+     "fix" the soft edges here by adding filter: blur() back in. */
+  .land-blob {
     position: absolute;
-    top: -20%;
-    right: -10%;
-    width: min(60vw, 620px);
-    height: min(60vw, 620px);
-    background: radial-gradient(
-      circle,
-      rgb(var(--land-gold-rgb) / 0.18) 0%,
-      rgb(var(--land-gold-rgb) / 0.05) 45%,
-      transparent 72%
-    );
+    top: -8%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(72vw, 720px);
+    height: min(72vw, 720px);
+    /* Explicit pixel radii well under half the box's own smaller dimension,
+       not the "circle"/"farthest-corner" default: that default sizes the
+       circle to reach the box's farthest corner, so on the box's short axis
+       the color never gets a chance to fade before hitting the edge — it
+       reads as a hard-edged rectangle instead of a soft wash. Keeping each
+       radius small relative to the (roughly square) box leaves a genuinely
+       transparent margin all the way around for the fade to land inside. */
+    background: radial-gradient(circle 150px at 30% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
+      radial-gradient(circle 140px at 58% 20%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
+      radial-gradient(circle 140px at 74% 42%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle 145px at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle 140px at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
     pointer-events: none;
   }
-  /* Plain block, not flex — the seal is an inline sibling of the text node so
-     it wraps WITH the words and lands immediately after "sources", the claim
-     it is actually marking. A flex row here pinned it beside line one instead,
-     which read as an unrelated icon rather than a mark on the headline. */
+  .land-eyebrow {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-5);
+    padding: var(--sp-2) var(--sp-4);
+    border-radius: var(--r-full);
+    background: rgb(var(--brand-ink-rgb) / 0.05);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--brand-muted);
+  }
   .land-title {
     position: relative;
     max-width: 16ch;
+    margin: 0;
     font-family: var(--font-display);
     font-size: clamp(2.5rem, 7vw, 5.5rem);
     font-weight: 800;
@@ -2851,24 +2865,19 @@
     vertical-align: -0.08em;
     margin-left: var(--sp-3);
     /* drop-shadow, not box-shadow: this shadows the actual rendered SVG
-       shape (the disc below), not the element's own rectangular box, and
-       two chained instances give the same light/dark emboss pair every
-       other raised surface on this page now carries. Reads .land's own
-       dark-world pair here; .land-proof overrides both further down for
-       the small source-citation seal sitting on its warm paper instead. */
-    filter: drop-shadow(2px 2px 3px rgb(var(--neo-dark-rgb) / 0.85))
+       shape (the disc below), not the element's own rectangular box — the
+       same light/dark emboss pair every other raised surface on this page
+       carries, just calibrated to the white ground now (see .land's own
+       --neo-light/--neo-dark above). */
+    filter: drop-shadow(2px 2px 3px rgb(var(--neo-dark-rgb) / 0.8))
       drop-shadow(-2px -2px 3px rgb(var(--neo-light-rgb) / 0.6));
   }
-  .land-seal--hero {
-    width: clamp(28px, 4.5vw, 42px);
-    height: clamp(28px, 4.5vw, 42px);
-  }
   /* Same material as whatever's behind it — the emboss is entirely the
-     filter's doing, not a fill that reads as a different surface. */
+     filter's doing, not a fill that reads as a different surface. The seal
+     only appears in the proof section now (dropped from the hero title), so
+     this reaches straight for --land-paper rather than keeping a --brand
+     fallback for a context that no longer renders it. */
   .land-seal-disc {
-    fill: var(--brand);
-  }
-  .land-proof .land-seal-disc {
     fill: var(--land-paper);
   }
   .land-seal-ring {
@@ -2882,17 +2891,22 @@
     animation: land-seal-draw 400ms var(--ease-out) 950ms both;
   }
   .land-sub {
-    max-width: 36ch;
-    margin-top: clamp(var(--sp-6), 4vw, var(--sp-8));
+    position: relative;
+    z-index: 1;
+    max-width: 38ch;
+    margin: clamp(var(--sp-6), 4vw, var(--sp-8)) auto 0;
     font-size: var(--fs-lg);
     line-height: var(--lh-relaxed);
     color: var(--brand-muted);
     text-wrap: pretty;
   }
   .land-actions {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: center;
     gap: var(--sp-6);
     margin-top: clamp(var(--sp-8), 4vw, var(--sp-10));
   }
@@ -2901,36 +2915,26 @@
     align-items: center;
     min-height: var(--touch-min-lg);
     padding: 0 var(--sp-8);
-    border-radius: var(--r-sm);
+    border-radius: var(--r-full);
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
-    /* Was var(--brand) — dark-on-gold, correct while --brand was the dark
-       teal reused as a stand-in ink color. --brand is the page's ground now
-       (light), so that reference would read as barely-there cream text on a
-       saturated rose fill; a literal white clears ~4.8:1 against the
-       resting fill below instead. Not var(--ink-inverse) — that one still
-       follows data-theme, and this page deliberately doesn't. */
-    color: rgb(255 255 255);
-    background: var(--land-gold);
+    color: var(--brand);
+    background: var(--brand-ink);
     text-decoration: none;
     /* The page's one filled action gets the page's one raised surface — same
        reasoning as the app-side "New plan" button being the rail's only
-       embossed control. Uses .land's own dark-world --neo-light/--neo-dark
-       (declared above), not .neo-raised's class (that reads .neo-world's
-       cream-calibrated pair, which was never in scope here). */
-    /* The .neo-panel-scale pair (bigger blur/offset than a button normally
-       gets), because this is the one thing on the whole page that needs to
-       read as unmistakably raised — bumped further on request. */
-    box-shadow: 9px 9px 20px rgb(var(--neo-dark-rgb) / 0.85), -9px -9px 20px rgb(var(--neo-light-rgb) / 0.7);
-    transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease);
+       embossed control. Uses .land's own --neo-light/--neo-dark (declared
+       above), not .neo-raised's class (that reads .neo-world's cream-
+       calibrated pair, which was never in scope here). */
+    box-shadow: 9px 9px 20px rgb(var(--neo-dark-rgb) / 0.9), -9px -9px 20px rgb(var(--neo-light-rgb) / 0.85);
+    transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease);
   }
   .land-cta:hover {
-    background: var(--land-gold-bright);
     transform: translateY(-2px);
-    box-shadow: 12px 12px 26px rgb(var(--neo-dark-rgb) / 0.9), -7px -7px 18px rgb(var(--neo-light-rgb) / 0.75);
+    box-shadow: 12px 12px 26px rgb(var(--neo-dark-rgb) / 0.95), -7px -7px 18px rgb(var(--neo-light-rgb) / 0.9);
   }
   .land-cta:active {
-    box-shadow: inset 5px 5px 11px rgb(var(--neo-dark-rgb) / 0.7), inset -5px -5px 11px rgb(var(--neo-light-rgb) / 0.5);
+    box-shadow: inset 5px 5px 11px rgb(var(--neo-dark-rgb) / 0.8), inset -5px -5px 11px rgb(var(--neo-light-rgb) / 0.6);
     transform: translateY(0);
   }
   .land-cta:focus-visible,
@@ -2944,32 +2948,29 @@
     vertical-align: -1px;
   }
   .land-note {
+    position: relative;
+    z-index: 1;
     font-family: var(--font-mono);
     font-size: var(--fs-md);
     color: var(--brand-muted);
   }
   .land-price {
+    position: relative;
+    z-index: 1;
     margin-top: var(--sp-5);
     font-size: var(--fs-md);
     color: var(--brand-muted);
   }
 
-  /* ── proof: the one warm, paper-toned section ────────────────────────── */
+  /* ── proof: one shade off the page's white ground ───────────────────── */
   .land-proof {
     background: var(--land-paper);
-    /* Was rgb(var(--brand-rgb)) — dark-on-light while --brand was the dark
-       teal reused as a stand-in ink color for this one light section.
-       --brand is the page's own ground now, so this needs the ACTUAL ink
-       token instead of that old coincidence. */
     color: rgb(var(--brand-ink-rgb));
     padding-top: clamp(var(--sp-12), 8vw, var(--sp-14));
     padding-bottom: clamp(var(--sp-12), 8vw, var(--sp-14));
-    /* Overrides .land's own dark pair — this section's ground (--land-paper,
-       250/247/242) is warm-light, not teal-dark, so the emboss math has to
-       flip direction the same way .neo-world's does against its own cream:
-       a near-white highlight, a soft warm-grey shadow. */
-    --neo-light-rgb: 255 255 255;
-    --neo-dark-rgb: 214 208 196;
+    /* No emboss override needed here anymore — --land-paper (250/250/250)
+       sits close enough to --brand (255/255/255) that .land's own
+       --neo-light/--neo-dark pair still reads correctly on it. */
   }
   .land-heading {
     font-family: var(--font-display);
@@ -3029,15 +3030,28 @@
   .land-proof.is-inview .land-connector path {
     stroke-dashoffset: 0;
   }
+  /* Was a plain uppercase label with no box — now a quiet pill, so the two
+     excerpt cards read as tagged/categorized rather than just captioned.
+     Neutral by default; .land-tag--cited below is the one place this
+     borrows the page's violet accent, marking the side that's actually been
+     checked against a source. */
   .land-tag {
-    display: block;
+    display: inline-flex;
+    align-items: center;
     margin-bottom: var(--sp-2);
+    padding: var(--sp-1) var(--sp-3);
+    border-radius: var(--r-full);
+    background: rgb(var(--brand-ink-rgb) / 0.06);
+    color: var(--brand-muted);
     font-family: var(--font-mono);
     font-size: var(--fs-xs);
     font-weight: var(--fw-medium);
     letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
-    opacity: 0.6;
+  }
+  .land-tag--cited {
+    background: rgb(var(--land-gold-rgb) / 0.12);
+    color: var(--land-gold-ink);
   }
   .land-quote {
     font-family: var(--font-serif);
