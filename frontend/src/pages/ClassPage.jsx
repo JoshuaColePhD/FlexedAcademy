@@ -28,6 +28,7 @@ import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
+import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 
 /* Your classes.
  *
@@ -275,22 +276,6 @@ function ClassDocuments({ cls, onChanged }) {
    the one thing GET /api/weeks always knew (plan_id, chat_id, is_current,
    is_past — db.week_board) with nowhere on screen it was shown as a whole —
    only two rows of it, on the Greeting screen's "Continue…" suggestions. */
-const WEEK_STATUS = {
-  closed: { dot: 'bg-ink-faint', label: 'No school' },
-  built: { dot: 'bg-ok', label: 'Built' },
-  current: { dot: 'bg-accent', label: 'This week' },
-  missed: { dot: 'bg-flag', label: 'Not built' },
-  upcoming: { dot: 'bg-ink-faint', label: 'Upcoming' },
-}
-
-function weekStatus(w) {
-  if (w.no_school) return 'closed'
-  if (w.has_plan) return 'built'
-  if (w.is_current) return 'current'
-  if (w.is_past) return 'missed'
-  return 'upcoming'
-}
-
 function ClassWeeks({ cls }) {
   const { data: calendar, isLoading, isError } = useCalendar(cls.id)
   const currentRef = useRef(null)

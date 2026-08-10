@@ -1933,6 +1933,17 @@
     width: 54px;
     opacity: 0.8;
   }
+  /* One added line under "Nothing built yet" — a next-action hint, not a
+     second block. Same font-size/color as the paragraph above it, so it
+     reads as a continuation, only with the accent that says "clickable." */
+  .rail-empty-hint {
+    color: var(--accent-text);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-fast);
+  }
+  .rail-empty-hint:hover {
+    color: var(--accent-hover);
+  }
 
   /* The docked split's own divider — role="separator", not a button, so a
      screen reader gets the WAI-ARIA separator pattern (which is also why

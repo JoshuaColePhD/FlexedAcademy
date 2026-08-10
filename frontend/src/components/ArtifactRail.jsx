@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { BookOpen, Calendar, Download, Eye, FileText, Loader2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { orderedDays } from '../lib/planShape'
 import { classColor } from '../lib/classColor'
+import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
    an open notebook, not a stock "empty box" glyph. Authored, not a Unicode
@@ -93,6 +95,62 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
   )
 }
 
+/** The 2-3 weeks nearest "now" for this class, collapsed by default — a peek,
+ *  not a duplicate of ClassPage.jsx's own full-semester Weeks panel, which
+ *  this links out to for the rest. Starts at the current week if the
+ *  calendar has one, else the first week that isn't already past. */
+function OtherWeeks({ classId, weeks }) {
+  const builtCount = weeks.filter((w) => w.has_plan).length
+  const openCount = weeks.length - builtCount
+  const startIdx = weeks.findIndex((w) => w.is_current || !w.is_past)
+  const nearest = weeks.slice(startIdx >= 0 ? startIdx : 0, (startIdx >= 0 ? startIdx : 0) + 3)
+
+  if (!nearest.length) return null
+
+  return (
+    <details className="rail-group">
+      <summary className="eyebrow cursor-pointer">
+        Other weeks — {builtCount} built, {openCount} open
+      </summary>
+      <div className="mt-1 flex flex-col gap-0.5">
+        {nearest.map((w) => {
+          const status = weekStatus(w)
+          const { dot, label } = WEEK_STATUS[status]
+          const openable = status === 'built' && w.chat_id
+          const row = (
+            <>
+              <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+              <span className="rail-text">
+                <span className="rail-row-label">
+                  Week {String(w.week).padStart(2, '0')}
+                  {w.unit ? ` — ${w.unit}` : ''}
+                </span>
+                <span className="rail-sub">{label}</span>
+              </span>
+            </>
+          )
+          return openable ? (
+            <Link
+              key={w.week}
+              to={`/c/${classId}/chat/${w.chat_id}`}
+              className="rail-row is-interactive fa-press"
+            >
+              {row}
+            </Link>
+          ) : (
+            <div key={w.week} className="rail-row">
+              {row}
+            </div>
+          )
+        })}
+      </div>
+      <Link to={`/c/${classId}/class`} className="mt-1 block px-1 text-xs text-ink-muted hover:text-ink">
+        See all weeks →
+      </Link>
+    </details>
+  )
+}
+
 export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rail' }) {
   const plan = artifact?.plan
   const planId = artifact?.planId
@@ -114,6 +172,20 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
     retry: false,
     staleTime: 5 * 60_000,
   })
+
+  /* Same key ClassPage.jsx's own Weeks panel already queries under — visiting
+     one costs nothing extra after the other. Powers both the "N weeks not yet
+     planned" empty-state hint and the populated state's "Other weeks"
+     disclosure below. */
+  const { data: calendar } = useQuery({
+    queryKey: qk.calendar(classId),
+    queryFn: () => api.getWeeks(classId),
+    enabled: Boolean(classId) && !isBar,
+    retry: false,
+    staleTime: 5 * 60_000,
+  })
+  const weeks = (calendar?.weeks || []).filter((w) => !w.no_school)
+  const unplannedCount = weeks.filter((w) => !w.has_plan && !w.is_past).length
 
   const retrieved = artifact?.grounding?.codes || artifact?.retrievedIds || []
   const { grounded, ungrounded, checking } = scanGrounding(plan, retrieved)
@@ -213,6 +285,11 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
                 dropping "Built from" a few lines up. */}
             {!isBar ? <EmptyRailArt color={color.rgb} /> : null}
             <p>Nothing built yet. Describe a week in the chat.</p>
+            {!isBar && unplannedCount > 0 ? (
+              <Link to={`/c/${classId}/class`} className="rail-empty-hint">
+                {unplannedCount} week{unplannedCount === 1 ? '' : 's'} not yet planned →
+              </Link>
+            ) : null}
           </div>
         )}
       </div>
@@ -264,6 +341,8 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
           />
         </div>
       ) : null}
+
+      {planId && !isBar ? <OtherWeeks classId={classId} weeks={weeks} /> : null}
     </aside>
   )
 }
