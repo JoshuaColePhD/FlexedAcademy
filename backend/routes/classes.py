@@ -56,16 +56,26 @@ def _auto_name(subject: str, grade: str) -> str:
 
 
 class MeBody(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    # Global custom instructions, like Claude's own — applied to every
+    # generation and chat (backend/prompts.py), not per class.
+    custom_instructions: str | None = Field(default=None, max_length=2000)
 
 
 @router.patch("/me")
 def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> dict:
-    """Set the teacher's name once, rather than per class."""
-    user = db.update_user_name(user_id, body.name)
+    """Set the teacher's name and/or custom instructions — whichever the
+    caller sent, independently (db.update_user's own whitelist)."""
+    fields = body.model_dump(exclude_none=True)
+    user = db.update_user(user_id, **fields) if fields else db.get_user_by_id(user_id)
     if not user:
         raise AppError("not_found", "No such user.", status=404)
-    return {"id": user["id"], "name": user["name"], "email": user["email"]}
+    return {
+        "id": user["id"],
+        "name": user["name"],
+        "email": user["email"],
+        "custom_instructions": user.get("custom_instructions"),
+    }
 
 
 @router.get("/classes")

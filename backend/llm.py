@@ -78,6 +78,15 @@ def map_context_for(user_id: str, subject: str, query: str) -> str:
     return curriculum.retrieve_map_context(active["id"], query) if active else ""
 
 
+def custom_instructions_for(user_id: str) -> str | None:
+    """A teacher's global custom instructions (settings page) — one column
+    on `users`, read alongside settings by every prompt-building call below.
+    Public for the same reason map_context_for is: chat_stream (generate.py)
+    needs this exact same lookup too."""
+    user = db.get_user_by_id(user_id)
+    return user.get("custom_instructions") if user else None
+
+
 def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
     """Non-streaming week generation. Returns parsed (not yet validated) JSON."""
     s = db.get_settings_row(user_id)
@@ -91,7 +100,11 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
             {
                 "role": "system",
                 "content": week_system_prompt(
-                    result, subject=s["subject"], grade=s["grade"], map_context=map_context
+                    result,
+                    subject=s["subject"],
+                    grade=s["grade"],
+                    map_context=map_context,
+                    custom_instructions=custom_instructions_for(user_id),
                 ),
             },
             {"role": "user", "content": query},
@@ -116,7 +129,11 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[s
             {
                 "role": "system",
                 "content": week_system_prompt(
-                    result, subject=s["subject"], grade=s["grade"], map_context=map_context
+                    result,
+                    subject=s["subject"],
+                    grade=s["grade"],
+                    map_context=map_context,
+                    custom_instructions=custom_instructions_for(user_id),
                 ),
             },
             {"role": "user", "content": query},
@@ -164,7 +181,16 @@ def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, 
         max_tokens=1600,
         response_format=_response_format("lesson_plan_day", DAY_JSON_SCHEMA),
         messages=[
-            {"role": "system", "content": day_system_prompt(result, full_plan_context, subject=s["subject"], grade=s["grade"])},
+            {
+                "role": "system",
+                "content": day_system_prompt(
+                    result,
+                    full_plan_context,
+                    subject=s["subject"],
+                    grade=s["grade"],
+                    custom_instructions=custom_instructions_for(user_id),
+                ),
+            },
             {
                 "role": "user",
                 "content": (
@@ -209,7 +235,12 @@ def rewrite_day_field(
             {
                 "role": "system",
                 "content": day_field_system_prompt(
-                    result, full_plan_context, field, subject=s["subject"], grade=s["grade"]
+                    result,
+                    full_plan_context,
+                    field,
+                    subject=s["subject"],
+                    grade=s["grade"],
+                    custom_instructions=custom_instructions_for(user_id),
                 ),
             },
             {

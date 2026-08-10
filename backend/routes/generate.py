@@ -186,6 +186,17 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                     + map_context
                 )
 
+            # Same field llm.py's plan-writing prompts read (settings page,
+            # like Claude's own custom instructions) — appended once here,
+            # mode-agnostically, since none of the three modes below have any
+            # retrieval-grounding language for it to need to sit after.
+            custom_instructions = llm.custom_instructions_for(user_id)
+            if custom_instructions:
+                system_prompt += (
+                    "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only:\n\n"
+                    + custom_instructions
+                )
+
             if req.mode == "interview":
                 system_prompt += (
                 "Your job is to INTERVIEW the teacher to figure out what they want to teach. "

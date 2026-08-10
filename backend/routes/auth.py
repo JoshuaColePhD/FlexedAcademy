@@ -71,6 +71,10 @@ def _public_user(user: dict) -> dict:
         # page can decide between "change password" and "this account signs
         # in with Google" without guessing from anything else client-side.
         "has_password": bool(user.get("password_hash")),
+        # Global custom instructions (backend/prompts.py) — read here, not a
+        # separate GET, since /api/auth/me is already the one place the
+        # frontend refetches the account from after any settings change.
+        "custom_instructions": user.get("custom_instructions"),
         "entitlement": entitlement(user["id"]).as_dict(),
     }
 

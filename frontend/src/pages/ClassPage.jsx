@@ -345,6 +345,74 @@ function ClassWeeks({ cls }) {
   )
 }
 
+const CUSTOM_INSTRUCTIONS_MAX = 2000
+
+/* ── global custom instructions ────────────────────────────────────────────
+   Like Claude's own — free text applied to every generation and chat
+   (backend/prompts.py, spliced in right after the grounding rules that
+   still govern it), not scoped to one class. An explicit Save rather than
+   blur-to-save like the name field above: losing half a paragraph to an
+   accidental blur matters more here than losing one retyped word. */
+function CustomInstructions({ value, onSaved }) {
+  const toast = useToast()
+  const [text, setText] = useState(value || '')
+  const [saved, setSaved] = useState(value || '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setText(value || '')
+    setSaved(value || '')
+  }, [value])
+
+  const dirty = text !== saved
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await api.updateMe({ customInstructions: text })
+      setSaved(text)
+      toast.success('Saved')
+      onSaved?.()
+    } catch (err) {
+      toast.apiError('Could not save your instructions', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-5">
+      <h2 className="text-sm font-semibold text-ink">Custom instructions</h2>
+      <p className="mt-1 text-xs text-ink-muted">
+        Style and format preferences applied to every plan and chat — how you like activities
+        phrased, a tone to avoid, a format quirk your district expects. Standards still come only
+        from retrieval; this can’t add or change a code.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        maxLength={CUSTOM_INSTRUCTIONS_MAX}
+        rows={4}
+        placeholder="e.g. Keep Do Now activities under 5 minutes. Avoid group work on Fridays."
+        className="mt-2 w-full resize-y rounded-lg border border-edge bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+      />
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-2xs text-ink-muted">
+          {text.length} / {CUSTOM_INSTRUCTIONS_MAX}
+        </span>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /* ── change password ───────────────────────────────────────────────────────
    Hidden for a Google-only account (no password_hash — see /api/auth/me's
    has_password) rather than shown and left to fail on "current password":
@@ -963,7 +1031,7 @@ export function ClassPage() {
     const next = teacher.trim()
     if (!next || next === savedName) return setTeacher(savedName)
     try {
-      await api.updateMe(next)
+      await api.updateMe({ name: next })
       setSavedName(next)
       toast.success('Saved')
       qc.invalidateQueries({ queryKey: qk.me })
@@ -1023,6 +1091,12 @@ export function ClassPage() {
               className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-faint hover:bg-paper-sunken focus:bg-paper-sunken"
             />
           </div>
+
+          {/* ── custom instructions ─────────────────────────────────────── */}
+          <CustomInstructions
+            value={meState.data?.custom_instructions}
+            onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+          />
 
           {/* ── password ─────────────────────────────────────────────────── */}
           {meState.data && meState.data.has_password ? (

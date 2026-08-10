@@ -424,6 +424,21 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;
     """,
+    # ── 19: global custom instructions ───────────────────────────────────────
+    #
+    # Like Claude's own custom instructions: free text written once, applied
+    # to every generation and every chat — not per-class. `settings` is keyed
+    # by (user_id, subject), so a value there would need to be kept in sync
+    # across every subject a teacher teaches, the exact bug this feature
+    # would otherwise introduce. `users` is genuinely one row per account.
+    #
+    # Spliced into prompts.py's system prompts AFTER grounding_constraints(),
+    # never before — that function's own text already says it "override[s]
+    # everything else, including the teacher's request," and text order is
+    # what makes that override apply to this too.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_instructions TEXT;
+    """,
 ]
 
 
@@ -1558,16 +1573,33 @@ def create_user(email: str, name: str, password_hash: str) -> dict:
     return get_user_by_id(uid)  # type: ignore[return-value]
 
 
-def update_user_name(user_id: str, name: str) -> dict | None:
-    """The teacher's name, asked once for the whole app.
+_USER_FIELDS = {"name", "custom_instructions"}
 
-    It used to live on every settings row, which meant retyping it per class and
-    gave two rows the chance to disagree. sync_settings_from_class projects this
-    back down onto settings, so this is the only place it is authored."""
-    _write("UPDATE users SET name = ? WHERE id = ?", (name.strip()[:120], user_id))
-    # Push the new name onto every class's settings row so plan headers follow.
-    for cls in list_classes(user_id):
-        sync_settings_from_class(user_id, cls["id"])
+
+def update_user(user_id: str, **fields: Any) -> dict | None:
+    """Whitelisted per-account fields — mirrors update_class's own
+    _CLASS_FIELDS pattern. Was update_user_name (name only); generalized so
+    custom_instructions (global instructions applied to every generation,
+    see backend/prompts.py) didn't need a second near-identical function.
+
+    name carries one side effect custom_instructions doesn't: it used to
+    live on every settings row, which meant retyping it per class and gave
+    two rows the chance to disagree — sync_settings_from_class projects it
+    back down after the write, so this stays the only place it's authored.
+    """
+    sets = {
+        k: (v.strip()[:120] if k == "name" else v)
+        for k, v in fields.items()
+        if k in _USER_FIELDS and v is not None
+    }
+    if not sets:
+        return get_user_by_id(user_id)
+    clause = ", ".join(f"{k} = ?" for k in sets)
+    _write(f"UPDATE users SET {clause} WHERE id = ?", (*sets.values(), user_id))
+    if "name" in sets:
+        # Push the new name onto every class's settings row so plan headers follow.
+        for cls in list_classes(user_id):
+            sync_settings_from_class(user_id, cls["id"])
     return get_user_by_id(user_id)
 
 

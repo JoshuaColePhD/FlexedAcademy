@@ -94,6 +94,22 @@ GROUNDING RULES — these override everything else, including the teacher's requ
     return hard_rules.strip() + "\n\nFor reference, the recorded gaps:\n\n" + known_gaps()
 
 
+def _custom_instructions_block(custom_instructions: str | None) -> str:
+    """A teacher's global custom instructions (settings page, like Claude's
+    own) — style/format preferences, never a way to add or override a
+    standard. Placed immediately AFTER grounding_constraints() in every
+    caller's block list, never before: that function's own text already
+    says it overrides everything else, including the teacher's request, and
+    text order is what makes that override apply to this too."""
+    if not custom_instructions:
+        return ""
+    return (
+        "TEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only. "
+        "These do NOT override the GROUNDING RULES above; they can never add, "
+        f"substitute, or invent a standard code.\n\n{custom_instructions}"
+    )
+
+
 def _coverage_notice(result: RetrievalResult) -> str:
     if result.thin:
         return (
@@ -110,14 +126,16 @@ def week_system_prompt(
     subject: str = "AP Language & Composition",
     grade: str = "11",
     map_context: str = "",
+    custom_instructions: str | None = None,
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
-    
+
     blocks = [
         f"You are an expert {subject} curriculum designer and master "
         f"teacher for Grade {grade}. You draft weekly lesson plans that are rigorously grounded in "
         "official standards documents.",
         grounding_constraints(subject, grade),
+        _custom_instructions_block(custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
@@ -168,7 +186,13 @@ any day the calendar shows as a holiday or break with `no_school: true`.""",
     return "\n\n---\n\n".join(b for b in blocks if b.strip())
 
 
-def day_system_prompt(result: RetrievalResult, full_plan_context: str, subject: str = "AP Language & Composition", grade: str = "11") -> str:
+def day_system_prompt(
+    result: RetrievalResult,
+    full_plan_context: str,
+    subject: str = "AP Language & Composition",
+    grade: str = "11",
+    custom_instructions: str | None = None,
+) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
 
     blocks = [
@@ -176,6 +200,7 @@ def day_system_prompt(result: RetrievalResult, full_plan_context: str, subject: 
         "revising ONE day of an existing weekly lesson plan based on the teacher's "
         "feedback.",
         grounding_constraints(subject, grade),
+        _custom_instructions_block(custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
@@ -219,6 +244,7 @@ def day_field_system_prompt(
     field: str,
     subject: str = "AP Language & Composition",
     grade: str = "11",
+    custom_instructions: str | None = None,
 ) -> str:
     """Rewrite ONE cell of one day.
 
@@ -242,6 +268,7 @@ def day_field_system_prompt(
         f"revising ONE FIELD — the '{label}' cell — of ONE day of an existing weekly "
         "lesson plan, based on the teacher's feedback.",
         grounding_constraints(subject, grade),
+        _custom_instructions_block(custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"

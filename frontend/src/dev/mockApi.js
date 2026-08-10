@@ -119,6 +119,7 @@ let seq = 0
 const uid = (p) => `${p}_${++seq}`
 
 const state = {
+  me: { name: 'Josh Cole', custom_instructions: '' },
   // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
@@ -269,10 +270,11 @@ export function installMockApi() {
     if (path === '/api/auth/me')
       return json({
         id: 'u1',
-        name: 'Josh Cole',
+        name: state.me.name,
         email: 'jc@x.org',
         is_admin: true,
         has_password: true,
+        custom_instructions: state.me.custom_instructions,
         entitlement: state.entitlement,
       })
     if (path === '/api/auth/forgot-password') return json({ ok: true })
@@ -367,7 +369,12 @@ export function installMockApi() {
       state.classes = state.classes.filter((c) => c.id !== classPatch[1])
       return new Response(null, { status: 204 })
     }
-    if (path === '/api/me' && method === 'PATCH') { await wait(120); return json({ ok: true }) }
+    if (path === '/api/me' && method === 'PATCH') {
+      await wait(120)
+      if (body?.name != null) state.me.name = body.name
+      if (body?.custom_instructions != null) state.me.custom_instructions = body.custom_instructions
+      return json({ id: 'u1', email: 'jc@x.org', name: state.me.name, custom_instructions: state.me.custom_instructions })
+    }
 
     /* Class documents, faithful to the real thing: the upload only becomes
        visible if it carried a class_id, which is the bug under test. */
