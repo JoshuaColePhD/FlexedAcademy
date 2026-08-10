@@ -150,6 +150,10 @@ const state = {
           billing_enabled: true,
           period_end: null,
         },
+  classes: [
+    { id: 'c1', name: 'AP Language & Composition', subject: 'AP_Lang', grade: '11', sort_order: 0 },
+    { id: 'c2', name: 'AP Physics 1', subject: 'Science', grade: '11', sort_order: 1 },
+  ],
   accounts: [
     { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true,
       created_at: '2026-08-06T21:54:36+00:00', plans_built: 7, last_plan_at: '2026-08-08T01:44:46+00:00' },
@@ -288,10 +292,7 @@ export function installMockApi() {
       return json({ url: `${window.location.origin}/preview.html?checkout=success` })
     }
     if (path === '/api/classes' && method === 'GET')
-      return json([
-        { id: 'c1', name: 'AP Language & Composition', subject: 'AP Lang', grade: '11' },
-        { id: 'c2', name: 'AP Physics 1', subject: 'Science', grade: '11' },
-      ])
+      return json([...state.classes].sort((a, b) => a.sort_order - b.sort_order))
     if (path === '/api/weeks')
       return json({ class: null, weeks: state.weeks, current_week: 3 })
     if (
@@ -321,17 +322,41 @@ export function installMockApi() {
     }
     if (path === '/api/frameworks')
       // `chunks` and `verbatim_ok` are not optional — FrameworkPicker calls
-      // .toLocaleString() on chunks directly.
+      // .toLocaleString() on chunks directly. Keyed by `id` (findFramework's
+      // own lookup field, lib/frameworks.js) — matching /api/routes/misc.py's
+      // real shape, not the `subject` name a class row carries.
       return json([
-        { subject: 'AP_Lang', label: 'AP English Language and Composition (2019)', chunks: 59, verbatim_ok: 59 },
-        { subject: 'ELA', label: 'Alabama Course of Study: ELA (2021)', chunks: 1240, verbatim_ok: 1180 },
+        { id: 'AP_Lang', label: 'AP English Language and Composition (2019)', chunks: 59, verbatim_ok: 59 },
+        { id: 'ELA', label: 'Alabama Course of Study: ELA (2021)', chunks: 1240, verbatim_ok: 1180 },
       ])
     if (path === '/api/classes' && method === 'POST') {
       await wait(200)
       const id = uid('class')
       // Mirrors _auto_name: int(grade) is what turns a bad grade into NaN-th.
       const n = Number(body.grade)
-      return json({ id, name: `${body.subject} · ${Number.isFinite(n) ? `${n}th` : `${body.grade}th`}` })
+      const name = `${body.subject} · ${Number.isFinite(n) ? `${n}th` : `${body.grade}th`}`
+      const sort_order = Math.max(-1, ...state.classes.map((c) => c.sort_order)) + 1
+      const created = { id, name, subject: body.subject, grade: body.grade, sort_order }
+      state.classes.push(created)
+      return json(created)
+    }
+    const classPatch = path.match(/^\/api\/classes\/([^/]+)$/)
+    if (classPatch && method === 'PATCH') {
+      await wait(150)
+      const cls = state.classes.find((c) => c.id === classPatch[1])
+      if (!cls) {
+        return new Response(
+          JSON.stringify({ error: { code: 'not_found', message: 'That class doesn’t exist.' } }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      Object.assign(cls, body)
+      return json(cls)
+    }
+    if (classPatch && method === 'DELETE') {
+      await wait(150)
+      state.classes = state.classes.filter((c) => c.id !== classPatch[1])
+      return new Response(null, { status: 204 })
     }
     if (path === '/api/me' && method === 'PATCH') { await wait(120); return json({ ok: true }) }
 

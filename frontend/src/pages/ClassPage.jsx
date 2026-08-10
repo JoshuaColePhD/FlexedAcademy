@@ -1,5 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, CreditCard, FileText, Loader2, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  CreditCard,
+  FileText,
+  Loader2,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -500,16 +513,27 @@ function BillingSection() {
 }
 
 /* ── one class ─────────────────────────────────────────────────────────────── */
-function ClassRow({ cls, frameworks, isActive, onChanged }) {
+function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, canMoveDown }) {
   const toast = useToast()
   const confirm = useConfirm()
   const navigate = useNavigate()
-  // Which panel is open below the row, if any — the two are mutually
-  // exclusive, both toggled the same way "Documents" alone used to be.
+  // Which panel is open below the row, if any — mutually exclusive, all
+  // toggled the same way "Documents" alone used to be.
   const [panel, setPanel] = useState(null)
   const [name, setName] = useState(cls.name)
+  // The framework and grade a class is created with used to be locked in
+  // forever — PATCH /api/classes/{id} already accepted subject/grade, the
+  // frontend just never sent them. Draft state so Cancel can discard a
+  // half-made pick without touching the class until Save commits it.
+  const [editSubject, setEditSubject] = useState(cls.subject)
+  const [editGrade, setEditGrade] = useState(cls.grade || '11')
+  const [savingDetails, setSavingDetails] = useState(false)
 
   useEffect(() => setName(cls.name), [cls.name])
+  useEffect(() => {
+    setEditSubject(cls.subject)
+    setEditGrade(cls.grade || '11')
+  }, [cls.subject, cls.grade])
 
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
@@ -526,6 +550,20 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
     } catch (err) {
       toast.apiError('Could not rename that class', err)
       setName(cls.name)
+    }
+  }
+
+  const saveDetails = async () => {
+    if (!editSubject) return
+    setSavingDetails(true)
+    try {
+      await api.updateClass(cls.id, { subject: editSubject, grade: editGrade })
+      onChanged?.()
+      setPanel(null)
+    } catch (err) {
+      toast.apiError('Could not update that class', err)
+    } finally {
+      setSavingDetails(false)
     }
   }
 
@@ -592,6 +630,36 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
           <span className="hidden shrink-0 text-xs text-ink-muted sm:block">{derivedLabel}</span>
         )}
 
+        <div className="flex shrink-0 flex-col">
+          <button
+            type="button"
+            onClick={() => onMove?.(-1)}
+            disabled={!canMoveUp}
+            aria-label={`Move ${cls.name} up`}
+            className="rounded-sm p-0.5 text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ArrowUp size={11} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onMove?.(1)}
+            disabled={!canMoveDown}
+            aria-label={`Move ${cls.name} down`}
+            className="rounded-sm p-0.5 text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ArrowDown size={11} aria-hidden="true" />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setPanel((p) => (p === 'edit' ? null : 'edit'))}
+          aria-expanded={panel === 'edit'}
+          aria-label={`Edit ${cls.name}’s framework and grade`}
+          className="shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink"
+        >
+          <Pencil size={13} aria-hidden="true" />
+        </button>
         <button
           type="button"
           onClick={() => setPanel((p) => (p === 'weeks' ? null : 'weeks'))}
@@ -618,7 +686,52 @@ function ClassRow({ cls, frameworks, isActive, onChanged }) {
         </button>
       </div>
 
-      {panel === 'weeks' ? (
+      {panel === 'edit' ? (
+        <div className="flex flex-col gap-2 px-3 pb-3 pl-10 sm:flex-row sm:items-start">
+          <div className="min-w-0 flex-1">
+            <FrameworkPicker
+              frameworks={frameworks}
+              value={editSubject}
+              onChange={setEditSubject}
+              id={`edit-framework-${cls.id}`}
+            />
+          </div>
+          <select
+            aria-label={`Grade for ${cls.name}`}
+            value={editGrade}
+            onChange={(e) => setEditGrade(e.target.value)}
+            className="rounded-lg border border-edge bg-paper-raised px-2.5 py-2.5 text-sm text-ink outline-none focus:border-accent sm:w-24"
+          >
+            {GRADES.map((g) => (
+              <option key={g} value={g}>
+                {gradeLabel(g)}
+              </option>
+            ))}
+          </select>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={saveDetails}
+              disabled={!editSubject || savingDetails}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {savingDetails ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditSubject(cls.subject)
+                setEditGrade(cls.grade || '11')
+                setPanel(null)
+              }}
+              className="rounded-lg px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : panel === 'weeks' ? (
         <div className="px-3 pb-3 pl-10">
           <ClassWeeks cls={cls} />
         </div>
@@ -747,6 +860,28 @@ export function ClassPage() {
 
   const list = classes || []
 
+  // Writes canonical sort_order values from the list's CURRENT position
+  // (index), rather than trusting the two rows' stored values verbatim —
+  // classes created before sort_order existed all default to 0, and
+  // swapping two equal stored values would do nothing. list's order already
+  // came from db.list_classes' own `ORDER BY sort_order, created_at`, so
+  // index is a faithful stand-in and self-heals that legacy duplicate case
+  // the first time a teacher reorders anything.
+  const moveClass = async (index, dir) => {
+    const other = list[index + dir]
+    const cur = list[index]
+    if (!other) return
+    try {
+      await Promise.all([
+        api.updateClass(cur.id, { sort_order: index + dir }),
+        api.updateClass(other.id, { sort_order: index }),
+      ])
+      reloadClasses()
+    } catch (err) {
+      toast.apiError('Could not reorder your classes', err)
+    }
+  }
+
   return (
     <div className="column">
       <header className="flex h-14 shrink-0 items-center px-gutter">
@@ -801,13 +936,16 @@ export function ClassPage() {
 
           <ul className="mt-2 overflow-hidden rounded-xl border border-edge bg-paper-raised">
             {list.length ? (
-              list.map((c) => (
+              list.map((c, i) => (
                 <ClassRow
                   key={c.id}
                   cls={c}
                   frameworks={frameworks}
                   isActive={c.id === activeClass?.id}
                   onChanged={reloadClasses}
+                  onMove={(dir) => moveClass(i, dir)}
+                  canMoveUp={i > 0}
+                  canMoveDown={i < list.length - 1}
                 />
               ))
             ) : classesLoading ? (
