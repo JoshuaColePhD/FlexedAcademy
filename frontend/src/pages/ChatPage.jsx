@@ -764,13 +764,20 @@ export function ChatPage() {
      voice.speak() through each of them individually and risk a future one
      going quiet by omission. Guarded on the message's OWN id, not a count,
      so a load-more or a deleted message can't cause a stale reply to be
-     spoken again. */
+     spoken again.
+
+     Disabled for now, same as the two onOpenVoice props above: this fires
+     off `voice.enabled` alone, which persists across sessions — so with
+     every button that TURNS IT ON now disabled too, anyone whose toggle was
+     already on from before still got every finished plan read aloud with no
+     way to have caused it this session. Restore alongside those two props,
+     not before. */
   useEffect(() => {
     const last = messages[messages.length - 1]
     if (!last || last.role !== 'assistant' || last.streaming) return
     if (lastSpokenRef.current === last.id) return
     lastSpokenRef.current = last.id
-    if (voice.enabled) voice.speak(last.content)
+    // if (voice.enabled) voice.speak(last.content)
   }, [messages, voice])
 
   const livePlan = artifact?.plan || stream.preview
@@ -905,13 +912,18 @@ export function ChatPage() {
 
             {/* Progress is the week filling in, not three bouncing dots — a
                 teacher can see which day is being written and how many are
-                left, which is the only thing worth knowing while waiting. */}
+                left, which is the only thing worth knowing while waiting.
+                loose, not compact: a vertical neomorphic list has room for a
+                distinct in-progress row (a spinner, not just a blank line)
+                that the five-across grid never did, and each row's own
+                fa-rise plays the instant that day actually lands, not on a
+                fixed stagger. */}
             {stream.isStreaming ? (
               <div className="w-full">
                 <p className="eyebrow mb-2">
                   {stream.preview?.days?.length ? 'Writing the week' : 'Retrieving standards'}
                 </p>
-                <WeekStrip days={stream.preview?.days} writing compact />
+                <WeekStrip days={stream.preview?.days} writing loose className="max-w-xs" />
               </div>
             ) : revising ? (
               <p className="eyebrow">Revising…</p>

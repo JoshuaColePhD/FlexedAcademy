@@ -9,6 +9,7 @@
  * Deliberately not a percentage bar. "3 of 5 days written, Thursday in
  * progress" is the fact a teacher wants; "62%" is not. */
 
+import { Check, Loader2 } from 'lucide-react'
 import { dayTitle } from '../lib/planShape'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
@@ -37,13 +38,14 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
       ? 'No days written yet'
       : `${written.length} of 5 days`
 
-  // The chat-reply form (loose=true), on request: a neomorphic bulleted list
-  // instead of the five-card grid below. Scoped to THIS variant only — the
-  // grid stays the signature element everywhere else (the artifact header,
-  // the generation-progress indicator) — because neo-world's soft, low-
-  // contrast edges are a tradeoff worth making for one decorative element
-  // inside a reply, not for the document header a teacher actually verifies
-  // standards against.
+  // The chat-reply form (loose=true), on request: a neomorphic vertical list
+  // instead of the five-card grid below. Also what the generation-progress
+  // indicator uses now (ChatPage passes writing+loose together) — a vertical
+  // stack has room for a distinct in-progress row the horizontal grid never
+  // did, and neo-world's soft edges are no longer a tradeoff unique to one
+  // surface now that the whole authenticated app wears them. The document
+  // header (the one place a teacher verifies standards against) is the sole
+  // holdout, kept on the plain grid below for full contrast.
   if (loose) {
     return (
       <div className={className}>
@@ -57,16 +59,43 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
             const isOff = day?.no_school
             const isWriting = writing && name === nextUnwritten
             const title = day ? dayTitle(day) : null
+            // A day's own status, not a fixed index — the row that just
+            // finished replays its entrance the instant IT arrives, not on a
+            // synthetic stagger (compare RailRow's fixed 60ms one, which has
+            // to fake that pacing because nothing there is actually arriving
+            // over time). Real generation timing IS the timing, so the key
+            // just has to change when the status does, for React to remount
+            // the row and let fa-rise play again.
+            const status = day ? 'done' : isWriting ? 'writing' : 'pending'
 
             return (
-              <li key={name} className="flex items-center gap-3 px-3 py-2">
+              <li
+                key={`${name}-${status}`}
+                className={`flex items-center gap-3 px-3 py-2 ${status === 'done' ? 'fa-rise' : ''}`}
+              >
                 <span
                   aria-hidden="true"
-                  className={`neo-inset grid h-8 w-8 shrink-0 place-items-center rounded-full text-2xs font-semibold ${
-                    isOff ? 'text-ink-faint' : day ? 'text-accent-text' : 'text-ink-muted'
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-2xs font-semibold transition-shadow ${
+                    isWriting
+                      ? 'neo-raised text-accent-text'
+                      : `neo-inset ${isOff ? 'text-ink-faint' : day ? 'text-accent-text' : 'text-ink-muted'}`
                   }`}
                 >
-                  {SHORT[name].slice(0, 2).toUpperCase()}
+                  {/* Check/spinner only while writing — three distinct states
+                      (done/active/pending) that carry real information about
+                      a week still being built. On a FINISHED plan every row
+                      is "done", so a checkmark on all five would say nothing
+                      a teacher doesn't already know from it being attached to
+                      a reply at all — the day-of-week initial is what that
+                      view actually needs (this is evidence FOR a specific
+                      day, not a progress report). */}
+                  {writing && day ? (
+                    <Check size={14} aria-hidden="true" />
+                  ) : isWriting ? (
+                    <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    SHORT[name].slice(0, 2).toUpperCase()
+                  )}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm text-ink">
                   {isOff ? (
