@@ -151,22 +151,21 @@
      looking like glass over colour rather than glass over fog. The strip is
      the one hard edge Josh asked for — everything else about this material
      stays soft. */
+  /* Was frosted glass (a translucent background + backdrop-filter, lit by
+     .app-glow behind it, edged with a hard --rail-pop stripe) until the
+     whole app went neomorphic (.neo-world on AppShell's own root, applied
+     once, not per-surface). An opaque emboss and a translucent blur are two
+     different materials that can't both apply here, so the blur/glow/stripe
+     are removed outright rather than left doing nothing. --paper-rgb itself
+     is a custom property, which DOES cascade to .app-rail as a descendant —
+     but `background` is not an inherited CSS property, so .neo-world's own
+     opaque fill (set on the root it's applied to) never reaches this
+     drawer/docked panel; without its own background it rendered see-through
+     over whatever sits behind it. */
   .app-rail {
     position: relative;
     z-index: 1;
-    border-right: 3px solid var(--rail-pop);
-    background: rgb(var(--paper-rgb) / 0.72);
-    backdrop-filter: blur(28px) saturate(1.4);
-    -webkit-backdrop-filter: blur(28px) saturate(1.4);
-  }
-  /* Neomorphism computes an emboss FROM an opaque background — .neo-world's
-     own opaque fill already wins the cascade (declared later) and quietly
-     defeats the backdrop-filter above (nothing translucent left to blur),
-     but the hard teal edge is --rail-pop, a token .neo-world doesn't touch,
-     and a bright cyan stripe on a soft cream/rose panel reads as a mistake
-     rather than a second accent. Cut cleanly instead of half-keeping it. */
-  .app-rail.neo-world {
-    border-right: none;
+    background: rgb(var(--paper-rgb));
   }
   /* On a phone, .app-rail is the drawer's own panel — and had no motion of
      its own at all: it appeared and vanished with the conditional render
@@ -1021,6 +1020,23 @@
     opacity: 0.4;
     cursor: not-allowed;
   }
+  /* .neo-world is global now (AppShell's own root), so --neo-dark-rgb/
+     --neo-light-rgb are always in scope here — same light/dark pair
+     .neo-raised uses, applied directly rather than requiring every one of
+     this app's many .btn-icon call sites to add the class by hand. A
+     permanent flat icon button reads as inert once its neighbours (other
+     buttons, cards, the rail) are all embossed; this makes it match at
+     rest instead of only on hover. */
+  .btn-icon:not(:disabled) {
+    box-shadow:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
+      -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
+  }
+  .btn-icon:active:not(:disabled) {
+    box-shadow:
+      inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
+      inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
+  }
 
   .btn-send {
     display: inline-flex;
@@ -1041,6 +1057,16 @@
   .btn-send:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+  .btn-send:not(:disabled) {
+    box-shadow:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
+      -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
+  }
+  .btn-send:active:not(:disabled) {
+    box-shadow:
+      inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
+      inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
   }
 
   /* ── the general button ─────────────────────────────────────────────────
@@ -1076,6 +1102,16 @@
   .btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+  .btn:not(:disabled) {
+    box-shadow:
+      4px 4px 9px rgb(var(--neo-dark-rgb) / 0.55),
+      -4px -4px 9px rgb(var(--neo-light-rgb) / 0.8);
+  }
+  .btn:active:not(:disabled) {
+    box-shadow:
+      inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.55),
+      inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.8);
   }
 
   /* Ink ground, not accent: --accent is 3.1:1 and fails AA behind a label.
@@ -2260,6 +2296,14 @@
     box-shadow: none;
     border-radius: 0;
   }
+  /* The composer as its own raised surface, the same emboss every panel in
+     the overhaul gets — .neo-world being global means this resolves
+     everywhere, not just where it was written for. */
+  .composer-shell {
+    box-shadow:
+      6px 6px 14px rgb(var(--neo-dark-rgb) / 0.6),
+      -6px -6px 14px rgb(var(--neo-light-rgb) / 0.85);
+  }
   /* The signal that replaces it. A full tone step on the border, not a hairline
      nudge, because it is now the only non-caret indication that typing will go
      here (WCAG 2.4.7). */
@@ -3036,6 +3080,24 @@
     --neo-light-rgb: 255 255 255;
     --neo-dark-rgb: 199 194 188;
     background: rgb(var(--paper-rgb));
+    /* The overhaul's actual leverage: --shadow-xs through --shadow-pop are
+       plain drop-shadows (tokens.css) that .dialog, .toast, .artifact-card,
+       the citation popover and everything else already reference by name.
+       Redeclaring the five names here — not inventing five new ones —
+       upgrades every one of those to the emboss with no per-component edit
+       at all, the same trick .neo-raised/.neo-panel do explicitly, just
+       riding tokens that already have callers everywhere. */
+    --shadow-xs:
+      2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
+    --shadow-sm:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55), -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
+    --shadow-md:
+      6px 6px 14px rgb(var(--neo-dark-rgb) / 0.6), -6px -6px 14px rgb(var(--neo-light-rgb) / 0.85);
+    --shadow-lg:
+      9px 9px 20px rgb(var(--neo-dark-rgb) / 0.6), -9px -9px 20px rgb(var(--neo-light-rgb) / 0.85);
+    --shadow-pop:
+      12px 12px 28px rgb(var(--neo-dark-rgb) / 0.55),
+      -12px -12px 28px rgb(var(--neo-light-rgb) / 0.85);
   }
   .neo-raised {
     box-shadow:

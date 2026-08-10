@@ -226,7 +226,15 @@ export function AppShell({ children }) {
 
   return (
     <ShellContext.Provider value={shell}>
-    <div className="app-texture flex h-app w-full overflow-hidden bg-paper font-sans text-ink">
+    {/* neo-world here, not per-surface: this is the one root every
+        authenticated screen (chat, class page, the rail, every dialog and
+        toast rendered inside them) already mounts under, and every one of
+        them already reads bg-paper/text-ink/etc. through Tailwind — the
+        whole complete-overhaul ask, from a single class. Public pages
+        (landing, login/signup) keep their own separate fixed world
+        (.auth-ground) — a different deliberate brand system, not this
+        one, and AppShell never wraps them anyway. */}
+    <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper font-sans text-ink">
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
         href="#main"
@@ -237,7 +245,7 @@ export function AppShell({ children }) {
       {/* docked */}
       {!isNarrow ? (
         <div
-          className="app-rail neo-world flex shrink-0 flex-col overflow-hidden transition-[width]"
+          className="app-rail flex shrink-0 flex-col overflow-hidden transition-[width]"
           style={{
             width: docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
@@ -259,7 +267,7 @@ export function AppShell({ children }) {
           />
           <div
             ref={drawerRef}
-            className={`app-rail neo-world rail-drawer${drawerExit.closing ? ' is-closing' : ''} fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col shadow-lg`}
+            className={`app-rail rail-drawer${drawerExit.closing ? ' is-closing' : ''} fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col shadow-lg`}
           >
             <Rail onNavigate={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} />
           </div>

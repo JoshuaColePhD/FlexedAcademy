@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { ToastContext } from '../lib/toastContext'
 import { errorParts } from '../lib/apiError'
@@ -20,6 +21,12 @@ const DEDUPE_MS = 2000
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const timersRef = useRef(new Map())
+  /* Same reasoning as ConfirmProvider: this sits above <Gate/>, so a toast is
+     AppShell's sibling, not its descendant, and never sees .neo-world's
+     redeclared tokens on its own. Scope by route to the same /c/* boundary
+     AppShell itself uses. */
+  const location = useLocation()
+  const isNeo = location.pathname.startsWith('/c/')
 
   const dismiss = useCallback((id) => {
     const t = timersRef.current.get(id)
@@ -92,7 +99,7 @@ export function ToastProvider({ children }) {
   const others = toasts.filter((t) => t.tone !== 'error')
 
   const renderToast = (t) => (
-    <div key={t.id} className={`toast is-${t.tone}`}>
+    <div key={t.id} className={`toast is-${t.tone}${isNeo ? ' neo-world' : ''}`}>
       <div className="toast-body">
         <strong>{t.title}</strong>
         {t.detail ? <small>{t.detail}</small> : null}

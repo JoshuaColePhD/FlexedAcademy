@@ -149,6 +149,14 @@ export function BillingProvider({ children }) {
   }, [location.search])
 
   const priceLabel = formatPrice(price)
+  /* Same reasoning as ConfirmProvider/ToastProvider: this sits above <Gate/>
+     (see App.jsx), so the paywall renders as AppShell's sibling and never
+     sees .neo-world's redeclared tokens on its own — scope by the same
+     /c/* boundary AppShell itself uses. The paywall can only ever open from
+     inside the authenticated app anyway (openPaywall has no other caller),
+     but the route check keeps this consistent with the other two providers
+     rather than assuming that stays true. */
+  const isNeo = location.pathname.startsWith('/c/')
 
   return (
     <BillingContext.Provider
@@ -161,7 +169,7 @@ export function BillingProvider({ children }) {
           onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}
         >
           <div
-            className="dialog"
+            className={`dialog${isNeo ? ' neo-world' : ''}`}
             ref={dialogRef}
             tabIndex={-1}
             role="dialog"

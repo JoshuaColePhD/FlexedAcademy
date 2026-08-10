@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { ConfirmContext } from '../lib/confirmContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 
@@ -15,6 +16,15 @@ export function ConfirmProvider({ children }) {
   const resolveRef = useRef(null)
   const dialogRef = useRef(null)
   const cancelRef = useRef(null)
+  /* ConfirmProvider sits above <Gate/> (see App.jsx) so its dialog renders as
+     AppShell's SIBLING, not its descendant — .neo-world's redeclared tokens
+     live on AppShell's own root and never reach a sibling subtree no matter
+     how deep. Reading the route here is the cheapest way to know which world
+     this particular confirm() call belongs to: /c/* is everything AppShell
+     wraps (the authenticated app), matching the scope neo-world already
+     committed to — landing/login/admin dialogs stay in the plain palette. */
+  const location = useLocation()
+  const isNeo = location.pathname.startsWith('/c/')
 
   const confirm = useCallback(
     (opts) =>
@@ -54,7 +64,7 @@ export function ConfirmProvider({ children }) {
       {request ? (
         <div className="dialog-scrim" onMouseDown={(e) => e.target === e.currentTarget && settle(false)}>
           <div
-            className="dialog"
+            className={`dialog${isNeo ? ' neo-world' : ''}`}
             ref={dialogRef}
             tabIndex={-1}
             role="dialog"
