@@ -466,49 +466,34 @@ function BillingSection() {
 
   if (!billingEnabled || !entitlement) return null
 
-  const pct = entitlement.token_cap
-    ? Math.min(100, Math.round((entitlement.tokens_used / entitlement.token_cap) * 100))
-    : 0
+  // Usage (tokens_used/token_cap) moved to the admin accounts panel — one
+  // place to see who's using what, not a number every teacher's own
+  // settings page has to carry.
   const renews = entitlement.subscribed && entitlement.period_end ? formatRenewal(entitlement.period_end) : null
 
   return (
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">Billing</h2>
-      <div className="mt-2 rounded-xl border border-edge bg-paper-raised p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-sm font-medium text-ink">
-              {entitlement.subscribed ? 'Subscribed' : 'Free'}
-            </p>
-            {renews ? <p className="text-xs text-ink-muted">Renews {renews}</p> : null}
-          </div>
-          <button
-            type="button"
-            onClick={entitlement.subscribed ? manage : openPaywall}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {entitlement.subscribed ? (
-              <CreditCard size={14} aria-hidden="true" />
-            ) : (
-              <Sparkles size={14} aria-hidden="true" />
-            )}
-            {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
-          </button>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-edge bg-paper-raised p-3">
+        <div>
+          <p className="text-sm font-medium text-ink">
+            {entitlement.subscribed ? 'Subscribed' : 'Free'}
+          </p>
+          {renews ? <p className="text-xs text-ink-muted">Renews {renews}</p> : null}
         </div>
-
-        <div className="mt-3">
-          <div className="flex items-center justify-between text-xs text-ink-muted">
-            <span>
-              {entitlement.tokens_used.toLocaleString()} / {entitlement.token_cap.toLocaleString()} tokens
-              this week
-            </span>
-            {!entitlement.may_generate ? <span className="text-mark">Limit reached</span> : null}
-          </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-paper-sunken">
-            <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={entitlement.subscribed ? manage : openPaywall}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {entitlement.subscribed ? (
+            <CreditCard size={14} aria-hidden="true" />
+          ) : (
+            <Sparkles size={14} aria-hidden="true" />
+          )}
+          {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
+        </button>
       </div>
     </div>
   )

@@ -25,7 +25,7 @@ from pgvector.psycopg2 import register_vector
 import threading
 from contextlib import contextmanager
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -1516,19 +1516,35 @@ def list_accounts_with_stats() -> list[dict]:
     """Every account, its billing state, and what it's actually built.
 
     Exists so managing accounts is a page in the app rather than SQL run by
-    hand against production. One query, not N+1 — plans_built and
-    last_plan_at are aggregated in the same round trip."""
+    hand against production. One query, not N+1 — plans_built, last_plan_at
+    and tokens_used are all aggregated in the same round trip.
+
+    tokens_used mirrors entitlement.py's own trailing-window usage figure —
+    same 7-day literal, duplicated rather than imported (entitlement.py
+    already imports this module, so the reverse import would be circular).
+    It's what moved this number OFF the per-teacher settings page and onto
+    this admin table instead: one place to see who's using what, not a
+    number every teacher stares at on their own account.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
     rows = _rows(
         """
         SELECT u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
                COUNT(p.id) AS plans_built,
-               MAX(p.created_at) AS last_plan_at
+               MAX(p.created_at) AS last_plan_at,
+               COALESCE(ue.tokens_used, 0) AS tokens_used
         FROM users u
         LEFT JOIN plans p ON p.user_id = u.id
-        GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at
+        LEFT JOIN (
+            SELECT user_id, SUM(tokens_in + tokens_out) AS tokens_used
+            FROM usage_events
+            WHERE created_at >= ?
+            GROUP BY user_id
+        ) ue ON ue.user_id = u.id
+        GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at, ue.tokens_used
         ORDER BY u.created_at DESC
         """,
-        (),
+        (since,),
     )
     return [dict(r) for r in rows]
 

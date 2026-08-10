@@ -156,11 +156,11 @@ const state = {
   ],
   accounts: [
     { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true,
-      created_at: '2026-08-06T21:54:36+00:00', plans_built: 7, last_plan_at: '2026-08-08T01:44:46+00:00' },
+      created_at: '2026-08-06T21:54:36+00:00', plans_built: 7, last_plan_at: '2026-08-08T01:44:46+00:00', tokens_used: 812_400 },
     { id: 'u2', email: 'trial.teacher@example.com', name: 'Trial Teacher', subscription_status: null, is_admin: false,
-      created_at: '2026-08-07T12:00:00+00:00', plans_built: 1, last_plan_at: '2026-08-07T12:30:00+00:00' },
+      created_at: '2026-08-07T12:00:00+00:00', plans_built: 1, last_plan_at: '2026-08-07T12:30:00+00:00', tokens_used: 148_900 },
     { id: 'u3', email: 'paying.teacher@example.com', name: 'Paying Teacher', subscription_status: 'active', is_admin: false,
-      created_at: '2026-08-01T09:00:00+00:00', plans_built: 12, last_plan_at: '2026-08-08T08:00:00+00:00' },
+      created_at: '2026-08-01T09:00:00+00:00', plans_built: 12, last_plan_at: '2026-08-08T08:00:00+00:00', tokens_used: 1_204_600 },
   ],
   chats: [
     { id: 'seed1', title: 'Week 03 — voice and tone', class_id: 'c1', updated_at: '2026-08-07' },
