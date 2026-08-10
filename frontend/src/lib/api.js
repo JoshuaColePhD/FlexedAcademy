@@ -114,6 +114,8 @@ export const api = {
   loginWithGoogle: (credential) => request('/api/auth/google', { method: 'POST', body: { credential } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   signOutEverywhere: () => request('/api/auth/sign_out_everywhere', { method: 'POST' }),
+  deleteAccount: (password) =>
+    request('/api/auth/delete_account', { method: 'POST', body: { password: password || null } }),
   // Same shape as planDownloadUrl below — a plain URL for an <a href download>,
   // not a fetch: the browser sends the session cookie on that navigation same
   // as any other same-origin GET, no Blob/createObjectURL dance needed.

@@ -753,13 +753,14 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
   )
 }
 
-/* Download my data, sign out of all devices — delete-my-account lands in
- * later work, joining these two in the same section. */
 function AccountSafety() {
-  const { signOutEverywhere } = useAuth()
+  const { user, signOutEverywhere, deleteAccount } = useAuth()
   const confirm = useConfirm()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const doSignOutEverywhere = async () => {
     const ok = await confirm({
@@ -778,6 +779,21 @@ function AccountSafety() {
     }
     // On success there is no "finally" to reach — signOutEverywhere() flips
     // auth status to anon, which unmounts this whole page.
+  }
+
+  // An inline panel, not useConfirm() — this is the one confirm that needs a
+  // form field (the re-entered password), which the generic yes/no dialog
+  // has no room for. Same click-to-reveal shape as ClassRow's edit panel.
+  const doDelete = async () => {
+    setDeleting(true)
+    try {
+      await deleteAccount(deletePassword || undefined)
+    } catch (err) {
+      toast.apiError('Could not delete your account', err)
+      setDeleting(false)
+    }
+    // On success: same as sign-out-everywhere, deleteAccount() itself flips
+    // auth status to anon and this page unmounts.
   }
 
   return (
@@ -814,6 +830,66 @@ function AccountSafety() {
           >
             {busy ? 'Signing out…' : 'Sign out everywhere'}
           </button>
+        </div>
+        <div className="flex flex-col gap-3 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-mark">Delete my account</p>
+              <p className="text-xs text-ink-muted">
+                Every plan, class, chat and document — gone for good. This can’t be undone.
+              </p>
+            </div>
+            {deleteOpen ? null : (
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="btn btn-danger shrink-0"
+              >
+                Delete my account
+              </button>
+            )}
+          </div>
+          {deleteOpen ? (
+            <div className="flex flex-wrap items-end gap-2">
+              {user?.has_password ? (
+                <div className="min-w-0 flex-1 basis-40">
+                  <label className="mb-1 block text-xs text-ink-muted" htmlFor="delete-account-password">
+                    Current password
+                  </label>
+                  <input
+                    id="delete-account-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    className="w-full rounded-lg border border-edge bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-ink-muted">
+                  This account signs in with Google — no password needed, just confirm below.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={doDelete}
+                disabled={deleting || (user?.has_password && !deletePassword)}
+                className="btn btn-danger disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {deleting ? 'Deleting…' : 'Permanently delete'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteOpen(false)
+                  setDeletePassword('')
+                }}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

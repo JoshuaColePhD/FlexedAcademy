@@ -1424,6 +1424,27 @@ def export_user_data(user_id: str) -> dict:
     }
 
 
+def delete_user_account(user_id: str) -> None:
+    """Permanently deletes this account and everything scoped to it — a hard
+    delete, unlike classes' soft-archive (delete_class): "delete my account"
+    carries a real expectation of being gone, not archived.
+
+    Deletes in an order that lets each table's own ON DELETE CASCADE take
+    the rest of its subtree with it: curriculum_maps takes
+    curriculum_progress and curriculum_chunks; plans takes plan_feedback;
+    chats takes messages. usage_events cascades from the users row itself
+    (the one table that already declared a real FK to users, per migration
+    17). Nothing here is reversible — routes/auth.py's delete_account is
+    what gates reaching this behind re-entering a password.
+    """
+    _write("DELETE FROM curriculum_maps WHERE user_id = ?", (user_id,))
+    _write("DELETE FROM plans WHERE user_id = ?", (user_id,))
+    _write("DELETE FROM chats WHERE user_id = ?", (user_id,))
+    _write("DELETE FROM classes WHERE user_id = ?", (user_id,))
+    _write("DELETE FROM settings WHERE user_id = ?", (user_id,))
+    _write("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def count_plans(user_id: str) -> int:
     """How many weeks this teacher has built. Informational now — the free
     tier no longer gates on this (see migration 17) — but still worth showing

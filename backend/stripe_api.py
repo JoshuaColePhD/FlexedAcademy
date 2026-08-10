@@ -149,6 +149,25 @@ def get_subscription(subscription_id: str) -> dict:
     return _call("GET", f"/subscriptions/{subscription_id}")
 
 
+def cancel_subscriptions_for_customer(customer_id: str) -> None:
+    """Called right before deleting an account: a departed teacher should not
+    keep being billed for access that no longer exists. There is no single
+    "cancel everything for this customer" endpoint — list, then cancel each
+    (a customer only ever has one subscription in this app, but nothing
+    stops Stripe from having more, e.g. a manually created one). Best-effort
+    per subscription: one failing to cancel should not be the reason account
+    deletion itself fails — the caller logs and moves on.
+    """
+    # A GET's filters are query params, not a form body — every other _call
+    # site here is either a bodyless GET or a POST, so this is the one place
+    # that needs to build the querystring itself.
+    subs = _call("GET", f"/subscriptions?customer={customer_id}&status=all")
+    for sub in subs.get("data", []):
+        if sub.get("status") in ("canceled", "incomplete_expired"):
+            continue
+        _call("DELETE", f"/subscriptions/{sub['id']}")
+
+
 def verify_webhook(payload: bytes, sig_header: str, secret: str) -> dict:
     """Return the parsed event, or raise. Never trust an unverified body."""
     parts = dict(

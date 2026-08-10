@@ -110,6 +110,23 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  /* NOT the same try/finally shape as logout/signOutEverywhere above — a
+     wrong password must stay a normal thrown error with the account intact,
+     not flip to anon regardless. Only a request that actually succeeded
+     (the account is genuinely gone server-side) should end the session
+     client-side, so the state flip happens after the await, not in a
+     finally that runs either way. */
+  const deleteAccount = useCallback(async (password) => {
+    await api.deleteAccount(password)
+    try {
+      sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, '1')
+    } catch {
+      /* Not available — same fallback as logout() above. */
+    }
+    setUser(null)
+    setStatus('anon')
+  }, [])
+
   return (
     <AuthContext.Provider
       value={{
@@ -121,6 +138,7 @@ export function AuthProvider({ children }) {
         resetPassword,
         logout,
         signOutEverywhere,
+        deleteAccount,
         refresh,
       }}
     >

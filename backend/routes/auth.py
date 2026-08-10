@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from .. import auth, db, mail
+from .. import auth, db, mail, stripe_api
 from ..config import settings
 from ..deps import COOKIE_NAME, get_current_user
 from ..entitlement import entitlement
@@ -164,6 +164,42 @@ def sign_out_everywhere(request: Request, response: Response, user_id: str = Dep
     own cookie here just means that happens immediately instead of on the
     next round trip."""
     db.bump_session_version(user_id)
+    response.delete_cookie(COOKIE_NAME, httponly=True, samesite="lax", secure=_is_https(request))
+    return {"ok": True}
+
+
+class DeleteAccountBody(BaseModel):
+    # Absent for a Google-only account (has_password is false — see
+    # _public_user) — there is nothing server-side to check for those beyond
+    # the session itself, same trust level Google sign-in already granted.
+    password: str | None = Field(default=None, max_length=200)
+
+
+@router.post("/delete_account")
+def delete_account(
+    body: DeleteAccountBody, request: Request, response: Response, user_id: str = Depends(get_current_user)
+):
+    """Irreversible — everything this account owns, gone, in one request.
+    Re-verifying the password here (same check as change_password above) is
+    the one guard against a stray click on a page left open, since the
+    confirm dialog alone is just a click too.
+    """
+    user = db.get_user_by_id(user_id)
+    if not user:
+        raise AppError("not_authenticated", "Not logged in.", status=401)
+    if user.get("password_hash") and not (
+        body.password and auth.verify_password(body.password, user["password_hash"])
+    ):
+        raise AppError("invalid_credentials", "That password is incorrect.", status=401)
+    if user.get("stripe_customer_id"):
+        try:
+            stripe_api.cancel_subscriptions_for_customer(user["stripe_customer_id"])
+        except AppError as e:
+            # Deleting the account is the thing the teacher asked for; a
+            # Stripe hiccup shouldn't block it — logged so a stray active
+            # subscription can be caught and canceled by hand afterward.
+            log.warning("could not cancel subscription for deleted user=%s: %s", user_id, e)
+    db.delete_user_account(user_id)
     response.delete_cookie(COOKIE_NAME, httponly=True, samesite="lax", secure=_is_https(request))
     return {"ok": True}
 
