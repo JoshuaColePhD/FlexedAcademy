@@ -166,6 +166,15 @@
     position: relative;
     z-index: 1;
     background: rgb(var(--paper-rgb));
+    /* A flat fill next to the chat's own flat fill read as one surface with
+       a hairline down the middle, not two — the opposite of what an
+       embossed world is for. One-directional, not the symmetric light+dark
+       pair .neo-raised/.neo-panel use: this edge is flush top-to-bottom
+       against the viewport, so a shadow on the far side (away from the
+       chat) would fall outside the panel entirely and do nothing. Only the
+       seam that's actually visible — toward the chat — needs to read as a
+       step down. */
+    box-shadow: 5px 0 12px rgb(var(--neo-dark-rgb) / 0.35);
   }
   /* On a phone, .app-rail is the drawer's own panel — and had no motion of
      its own at all: it appeared and vanished with the conditional render
@@ -1596,16 +1605,22 @@
     flex-shrink: 0;
     width: 14px;
     align-self: stretch;
-    /* Was the rail's own cyan (--rail-pop) — a leftover from the frosted-glass
-       rail this app no longer has (see AppShell.jsx and .app-rail, both now
-       neomorphic). A flat cyan strip next to an embossed cream/rose world
-       read as a stray thread, not an accent. --accent is this world's own
-       "something needs your attention" colour (see the New plan button),
-       so the handle now pulls from the same well instead of a second one. */
-    background: rgb(var(--accent-rgb) / 0.55);
+    /* Was the rail's own cyan (--rail-pop), then --accent — both a colour
+       accent standing out against a panel that used to be flat. Now that
+       .artifact-rail/.doc-shell carry their own depth (the step-down
+       box-shadow on their outer edge, just below), the handle doesn't need
+       to BE the seam anymore — it can read as a groove IN the seam instead:
+       a neomorphic inset, the same material as the rest of this world,
+       found by touch (or by the cursor) rather than announced by colour.
+       --accent is saved for when it actually means something (is-busy,
+       just below, and the New plan button). */
+    background: var(--paper-inset);
+    box-shadow:
+      inset 2px 0 4px rgb(var(--neo-dark-rgb) / 0.5),
+      inset -2px 0 4px rgb(var(--neo-light-rgb) / 0.7);
     border: none;
     cursor: pointer;
-    opacity: 0.5;
+    opacity: 0.6;
     transition:
       opacity var(--t-fast) var(--ease),
       background-color var(--t-fast) var(--ease);
@@ -1627,6 +1642,7 @@
   .artifact-drawer-handle:hover,
   .artifact-drawer.is-open .artifact-drawer-handle {
     opacity: 1;
+    background: var(--paper-sunken);
   }
   /* While a week is being built or revised, the thin edge is the only sign
      of it for a teacher who hasn't opened the drawer — so it gets the one
@@ -1637,6 +1653,12 @@
      pair as the rest of this world, at rest and on hover. */
   .artifact-drawer-handle.is-busy {
     opacity: 1;
+    /* The one moment this groove is worth lighting up — a raised strip, not
+       an inset one, to match every other "something is happening/this
+       matters" surface in this world (the New plan button, above). */
+    box-shadow:
+      2px 0 4px rgb(var(--neo-dark-rgb) / 0.5),
+      -2px 0 4px rgb(var(--neo-light-rgb) / 0.7);
     background: linear-gradient(
       180deg,
       rgb(var(--accent-rgb)) 0%,
@@ -1696,6 +1718,10 @@
     border-left: 1px solid var(--edge);
     background: var(--paper);
     padding: var(--sp-4) 14px;
+    /* Same reasoning as .app-rail's own shadow, mirrored — this panel sits
+       on the chat's OTHER side, so the step-down reads on its left edge
+       instead of its right. */
+    box-shadow: -5px 0 12px rgb(var(--neo-dark-rgb) / 0.35);
   }
   /* The phone form: one row above the composer, not a column beside the chat. */
   .artifact-rail.is-bar {
@@ -1706,6 +1732,9 @@
     border-left: none;
     border-top: 1px solid var(--edge);
     padding: var(--sp-2) var(--gutter);
+    /* The bar sits ABOVE the composer, not beside the chat — the step-down
+       reads on its top edge instead of a side. */
+    box-shadow: 0 -5px 12px rgb(var(--neo-dark-rgb) / 0.35);
   }
   .artifact-rail.is-bar .rail-group {
     margin-bottom: 0;
@@ -1751,6 +1780,10 @@
     border: none;
     border-radius: var(--r-lg);
     cursor: pointer;
+    /* The one card in the rail that's actually a document, not a row of
+       metadata about one — the same lift .neo-raised gives every button,
+       so it reads as the rail's own "the thing you came for" surface. */
+    box-shadow: 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.4), -3px -3px 7px rgb(var(--neo-light-rgb) / 0.75);
   }
   .rail-card-head {
     display: flex;
@@ -1913,11 +1946,17 @@
     flex-direction: column;
     background: var(--paper-sunken);
     border-left: 1px solid var(--edge);
+    /* Same step-down as .artifact-rail's own left edge — the expanded
+       document is the same panel, one layer deeper. */
+    box-shadow: -5px 0 12px rgb(var(--neo-dark-rgb) / 0.35);
     animation: fa-slide var(--t-slow) var(--ease-out) both;
   }
-  /* In the overlay form it IS the panel, so it fills it and drops the rule. */
+  /* In the overlay form it IS the panel, so it fills it and drops the rule
+     AND the shadow — there's no adjacent chat pane for the step-down to
+     read against, only the scrim behind it. */
   .artifact-overlay .doc-shell {
     border-left: none;
+    box-shadow: none;
   }
   /* The one thread that carries a document's class-colour up from the
      collapsed rail's tinted file tile (see ArtifactRail.jsx) into the expanded
@@ -3089,6 +3128,40 @@
     --neo-light-rgb: 255 255 255;
     --neo-dark-rgb: 199 194 188;
     background: rgb(var(--paper-rgb));
+    /* tokens.css's ALIASES (--paper, --ink, --accent, etc. — "for
+       hand-written CSS") are declared ONLY at :root / :root[data-theme=dark]
+       as `rgb(var(--paper-rgb))`. A custom property's var() reference
+       resolves to a computed value AT ITS OWN DECLARATION SITE and that
+       computed value is what descendants inherit — redeclaring the
+       PRIMITIVE (--paper-rgb) here does nothing for a descendant reading
+       the ALIAS, because the alias was already frozen to :root's primitive
+       before it ever reached here. Every Tailwind utility (bg-paper,
+       text-ink, …) reads the primitive directly and repaints for free (see
+       tailwind.config.js's `c()`), but base.css's OWN hand-written rules
+       mostly reach for the alias (.artifact-rail's `background: var(--paper)`
+       was the one that gave this away — dark theme made it render near-
+       black inside an otherwise cream panel). Redeclaring the aliases here
+       too, from THIS class's own already-correct primitives, is the fix:
+       every var(--paper)/var(--ink)/var(--accent-tint)/etc. in this file now
+       repaints the same way the Tailwind classes already did. */
+    --paper: rgb(var(--paper-rgb));
+    --paper-raised: rgb(var(--paper-raised-rgb));
+    --paper-sunken: rgb(var(--paper-sunken-rgb));
+    --paper-inset: rgb(var(--paper-inset-rgb));
+    --edge: rgb(var(--edge-rgb));
+    --edge-strong: rgb(var(--edge-strong-rgb));
+    --ink: rgb(var(--ink-rgb));
+    --ink-soft: rgb(var(--ink-soft-rgb));
+    --ink-muted: rgb(var(--ink-muted-rgb));
+    --ink-faint: rgb(var(--ink-faint-rgb));
+    --ink-inverse: rgb(var(--ink-inverse-rgb));
+    --accent: rgb(var(--accent-rgb));
+    --accent-hover: rgb(var(--accent-hover-rgb));
+    --accent-tint: rgb(var(--accent-tint-rgb));
+    --accent-text: rgb(var(--accent-text-rgb));
+    --accent-ring: rgb(var(--accent-rgb) / 0.32);
+    --mark: rgb(var(--mark-rgb));
+    --mark-tint: rgb(var(--mark-tint-rgb));
     /* The overhaul's actual leverage: --shadow-xs through --shadow-pop are
        plain drop-shadows (tokens.css) that .dialog, .toast, .artifact-card,
        the citation popover and everything else already reference by name.
