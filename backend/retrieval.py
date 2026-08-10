@@ -548,10 +548,11 @@ def retrieve_raw(
         where_clause += " AND ((metadata->>'grade')::int = %s OR metadata->>'source_type' IN ('college_board', 'ap_skills'))"
         params.append(grade)
 
-        # An AP course grounds in AP skills, not in the state course of study.
+        # Enforce AP vs General course standards
         if is_ap_course(course):
             where_clause += " AND metadata->>'source_type' <> 'state_course_of_study'"
-
+        else:
+            where_clause += " AND metadata->>'source_type' NOT IN ('college_board', 'ap_skills')"
         if source_type:
             where_clause += " AND metadata->>'source_type' = %s"
             params.append(source_type)
@@ -662,9 +663,11 @@ def lookup_codes(query: str, course: str, grade: int) -> list[dict]:
         "     OR metadata->>'source_type' IN ('college_board', 'ap_skills', 'act_standards'))"
     )
     params: list = [sorted(codes), list(course_variants(course)), grade]
+    # Enforce AP vs General course standards
     if is_ap_course(course):
         sql += " AND metadata->>'source_type' <> 'state_course_of_study'"
-
+    else:
+        sql += " AND metadata->>'source_type' NOT IN ('college_board', 'ap_skills')"
     try:
         rows = db._rows(sql, tuple(params))
     except Exception as e:  # noqa: BLE001 — an exact-match bonus must never break retrieval

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 
+import openai
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -65,6 +66,50 @@ class ReviseDayRequest(BaseModel):
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+def _openai_error_event(e: Exception) -> dict:
+    """Map an OpenAI SDK exception to the app's {code, message, hint} shape.
+
+    Before this, a timeout, a dropped connection, and a genuine server crash
+    all surfaced as the same "internal_error" — indistinguishable to the
+    frontend, so it could never tell the teacher whether retrying was even
+    worth it. `retryable` lets the client decide that instead of guessing.
+    """
+    if isinstance(e, openai.APITimeoutError):
+        return {
+            "code": "upstream_timeout",
+            "message": "The model took too long to respond.",
+            "hint": "This is usually transient — try again.",
+            "retryable": True,
+        }
+    if isinstance(e, openai.RateLimitError):
+        return {
+            "code": "rate_limited",
+            "message": "Too many requests right now.",
+            "hint": "Wait a few seconds and try again.",
+            "retryable": True,
+        }
+    if isinstance(e, openai.APIConnectionError):
+        return {
+            "code": "upstream_connection_error",
+            "message": "Could not reach the model provider.",
+            "hint": "Check your connection and try again.",
+            "retryable": True,
+        }
+    if isinstance(e, openai.APIStatusError):
+        return {
+            "code": "upstream_error",
+            "message": "The model provider returned an error.",
+            "hint": "Try again in a moment.",
+            "retryable": True,
+        }
+    log.exception("stream crashed")
+    return {
+        "code": "internal_error",
+        "message": "The server crashed while generating.",
+        "retryable": False,
+    }
 
 
 
@@ -130,15 +175,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
             log.warning("stream failed code=%s", e.code)
             yield _sse({"error": e.payload().get("error", e.payload())})
         except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
-            log.exception("stream crashed")
-            yield _sse(
-                {
-                    "error": {
-                        "code": "internal_error",
-                        "message": "The server crashed while generating the plan.",
-                    }
-                }
-            )
+            yield _sse({"error": _openai_error_event(e)})
 
     return StreamingResponse(
         event_stream(),
@@ -230,15 +267,11 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                 yield _sse(event)
                 
             yield _sse({"done": True})
-        except Exception as e:
-            log.exception("chat stream crashed")
-            yield _sse({
-                "error": {
-                    "code": "internal_error",
-                    "message": "Chat generation failed unexpectedly.",
-                    "hint": str(e)[:200],
-                }
-            })
+        except (AppError, SchemaError) as e:
+            log.warning("chat stream failed code=%s", e.code)
+            yield _sse({"error": e.payload().get("error", e.payload())})
+        except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
+            yield _sse({"error": _openai_error_event(e)})
 
     return StreamingResponse(
         event_stream(),

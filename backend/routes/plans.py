@@ -62,9 +62,14 @@ def list_plans(
     # carried chat_id all along; it was only unreachable. This is the lookup
     # that recovers those.
     chat_id: str | None = Query(None, max_length=64),
+    # The sidebar's "My plans" is scoped to whichever class is open, same as
+    # every other list on that screen (chats, the calendar) — db.list_plans
+    # has supported this filter since class_id landed on the plans table, it
+    # was just never wired to a query param.
+    class_id: str | None = Query(None, max_length=64),
     user_id: str = Depends(get_current_user),
 ):
-    return db.list_plans(user_id, limit=limit, offset=offset, q=q, chat_id=chat_id)
+    return db.list_plans(user_id, limit=limit, offset=offset, q=q, chat_id=chat_id, class_id=class_id)
 
 
 @router.get("/{plan_id}")

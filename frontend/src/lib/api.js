@@ -7,6 +7,18 @@
 
 export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
+// See transcribe() below — MediaRecorder's default mimeType varies by browser
+// (webm/opus on Chrome/Firefox, mp4/aac on Safari), and the upload filename's
+// extension is what tells the backend which container it actually got.
+const EXT_BY_MIME = {
+  'audio/webm': 'webm',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+}
+
 /** An error carrying the backend's stable {code, message, hint} envelope. */
 export class ApiError extends Error {
   constructor(message, { code = 'unknown', hint = '', status = 0, extra = {} } = {}) {
@@ -224,8 +236,19 @@ export const api = {
     request('/api/standards/search', { method: 'POST', body: { query, top_k: topK }, signal }),
 
   transcribe: (blob, { signal } = {}) => {
+    // The filename's extension is the ONLY thing the backend uses to decide
+    // the container format it hands to Whisper (see /api/transcribe: it reads
+    // Path(filename).suffix, nothing about the blob's real bytes). This used
+    // to hardcode 'recording.webm' regardless of what MediaRecorder actually
+    // produced — fine on Chrome/Firefox, which default to webm/opus, but
+    // Safari (desktop and iOS) doesn't support webm at all and records
+    // audio/mp4 instead. Every Safari recording was uploaded mislabeled as
+    // .webm, so Whisper's decoder disagreed with the real container on every
+    // browser this app's own screenshots come from. blob.type is the MIME
+    // MediaRecorder actually used — read the real extension from it.
+    const ext = EXT_BY_MIME[blob.type?.split(';')[0]] || 'webm'
     const fd = new FormData()
-    fd.append('audio', blob, 'recording.webm')
+    fd.append('audio', blob, `recording.${ext}`)
     return upload('/api/transcribe', fd, { signal })
   },
   /* The other direction from transcribe() above — text in, an audio Blob

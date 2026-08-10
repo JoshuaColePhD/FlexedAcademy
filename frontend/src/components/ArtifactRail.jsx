@@ -200,9 +200,9 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
   const teachingDays = 5 - closed.length
 
   return (
-    <aside className={`artifact-rail${isBar ? ' is-bar' : ''}`} aria-label="Artifacts">
+    <aside className={`artifact-rail${isBar ? ' is-bar' : ''}`} aria-label="My plans">
       <div className="rail-group">
-        {isBar ? null : <span className="eyebrow">Artifacts</span>}
+        {isBar ? null : <span className="eyebrow">My plans</span>}
 
         {planId ? (
           /* The whole card expands the panel. Download stops the event: the one
@@ -366,13 +366,13 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
         className={`artifact-drawer-handle tap-target${busy ? ' is-busy' : ''}`}
         onClick={onToggle}
         aria-expanded={open}
-        aria-label={open ? 'Collapse the artifacts drawer' : 'Open the artifacts drawer'}
+        aria-label={open ? 'Collapse my plans' : 'Open my plans'}
         title={
           open
             ? 'Collapse'
             : hasArtifact || busy
               ? 'See what this week was built from'
-              : 'Artifacts will appear here'
+              : 'Your plan will appear here'
         }
       />
       {open ? (

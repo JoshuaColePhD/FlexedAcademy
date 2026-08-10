@@ -40,6 +40,15 @@ import { parsePartialJson, usablePlan } from '../lib/partialJson'
 
 const SSE_PREFIX = 'data:'
 
+// See useChatStream's identical constant for the reasoning: only retry codes
+// the backend or the reader itself flags as transient, and only a bounded
+// number of times, so a request that can never succeed doesn't loop forever.
+const RETRYABLE_CODES = new Set(['stream_truncated', 'upstream_timeout', 'upstream_connection_error', 'rate_limited'])
+const MAX_AUTO_RETRIES = 1
+const RETRY_DELAY_MS = 600
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 export function useLessonStream({ onDone, onError } = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [text, setText] = useState('')
@@ -84,6 +93,99 @@ export function useLessonStream({ onDone, onError } = {}) {
     groundingRef.current = null
   }, [])
 
+  // One attempt: opens the SSE connection and either returns the finished
+  // result or throws. Retrying lives in `start`, not here — see useChatStream
+  // for why that split matters (onDone must fire at most once per call).
+  const attempt = useCallback(async (query, { chatId, weekNumber, controller }) => {
+    setText('')
+    setPreview(null)
+    setGrounding(null)
+    groundingRef.current = null
+
+    let accumulated = ''
+
+    const res = await fetch(api.streamUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, chat_id: chatId ?? null, week_number: weekNumber ?? null }),
+      signal: controller.signal,
+      credentials: 'include',
+    })
+
+    if (!res.ok || !res.body) {
+      let payload = null
+      try {
+        payload = await res.json()
+      } catch {
+        /* non-JSON error body */
+      }
+      // Was a second hand-rolled copy of api.js's envelope parsing; one
+      // function should decide how a backend error becomes an ApiError.
+      throw apiErrorFromBody(payload, res.status)
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let finished = null
+
+    // Read until the stream ends, keeping any trailing partial record.
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done })
+
+        const records = buffer.split('\n\n')
+        buffer = records.pop() ?? '' // incomplete record stays in the buffer
+
+        for (const record of records) {
+          const line = record.split('\n').find((l) => l.startsWith(SSE_PREFIX))
+          if (!line) continue
+
+          let event
+          try {
+            event = JSON.parse(line.slice(SSE_PREFIX.length).trim())
+          } catch {
+            continue
+          }
+          if (event.error) {
+            throw new ApiError(event.error.message || 'Generation failed.', {
+              code: event.error.code || 'stream_error',
+              hint: event.error.hint,
+              extra: event.error,
+            })
+          }
+          if (event.grounding) {
+            setGrounding(event.grounding)
+            groundingRef.current = event.grounding
+          }
+          if (event.chunk) {
+            accumulated += event.chunk
+            setText(accumulated)
+            const parsed = usablePlan(parsePartialJson(accumulated))
+            if (parsed) setPreview(parsed)
+          }
+          if (event.done) {
+            finished = event
+          }
+        }
+      }
+      if (done) break
+    }
+
+    if (!finished) {
+      throw new ApiError('The connection closed before the plan was finished.', {
+        code: 'stream_truncated',
+        hint: 'Nothing was saved. Try again.',
+      })
+    }
+
+    setPreview(finished.plan ?? null)
+    // Grounding rides along, because `finished` (the done event) has none and
+    // the caller's `stream.grounding` is a stale read.
+    return { ...finished, grounding: groundingRef.current }
+  }, [])
+
   const start = useCallback(
     async (query, { chatId, weekNumber } = {}) => {
       abortRef.current?.abort()
@@ -91,107 +193,30 @@ export function useLessonStream({ onDone, onError } = {}) {
       abortRef.current = controller
 
       setIsStreaming(true)
-      setText('')
-      setPreview(null)
-      setGrounding(null)
-      groundingRef.current = null
-
-      let accumulated = ''
 
       try {
-        const res = await fetch(api.streamUrl(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, chat_id: chatId ?? null, week_number: weekNumber ?? null }),
-          signal: controller.signal,
-          credentials: 'include',
-        })
-
-        if (!res.ok || !res.body) {
-          let payload = null
+        let lastErr = null
+        for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
+          if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
-            payload = await res.json()
-          } catch {
-            /* non-JSON error body */
+            const result = await attempt(query, { chatId, weekNumber, controller })
+            onDoneRef.current?.(result)
+            return result
+          } catch (err) {
+            if (err.name === 'AbortError') return null // user pressed Stop
+            lastErr = err
+            const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
+            if (!retryable || tryNum === MAX_AUTO_RETRIES) break
           }
-          // Was a second hand-rolled copy of api.js's envelope parsing; one
-          // function should decide how a backend error becomes an ApiError.
-          throw apiErrorFromBody(payload, res.status)
         }
-
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder('utf-8')
-        let buffer = ''
-        let finished = null
-
-        // Read until the stream ends, keeping any trailing partial record.
-        for (;;) {
-          const { value, done } = await reader.read()
-          if (value) {
-            buffer += decoder.decode(value, { stream: !done })
-
-            const records = buffer.split('\n\n')
-            buffer = records.pop() ?? '' // incomplete record stays in the buffer
-
-            for (const record of records) {
-              const line = record.split('\n').find((l) => l.startsWith(SSE_PREFIX))
-              if (!line) continue
-
-              let event
-              try {
-                event = JSON.parse(line.slice(SSE_PREFIX.length).trim())
-              } catch {
-                continue
-              }
-              if (event.error) {
-                throw new ApiError(event.error.message || 'Generation failed.', {
-                  code: event.error.code || 'stream_error',
-                  hint: event.error.hint,
-                  extra: event.error,
-                })
-              }
-              if (event.grounding) {
-                setGrounding(event.grounding)
-                groundingRef.current = event.grounding
-              }
-              if (event.chunk) {
-                accumulated += event.chunk
-                setText(accumulated)
-                const parsed = usablePlan(parsePartialJson(accumulated))
-                if (parsed) setPreview(parsed)
-              }
-              if (event.done) {
-                finished = event
-              }
-            }
-          }
-          if (done) break
-        }
-
-        if (!finished) {
-          throw new ApiError('The connection closed before the plan was finished.', {
-            code: 'stream_truncated',
-            hint: 'Nothing was saved. Try again.',
-          })
-        }
-
-        setPreview(finished.plan ?? null)
-        // Grounding rides along, because `finished` (the done event) has none and
-        // the caller's `stream.grounding` is a stale read.
-        const result = { ...finished, grounding: groundingRef.current }
-        onDoneRef.current?.(result)
-        return result
-      } catch (err) {
-        if (err.name === 'AbortError') return null // user pressed Stop
-        onErrorRef.current?.(err)
-        throw err
+        onErrorRef.current?.(lastErr)
+        throw lastErr
       } finally {
         if (abortRef.current === controller) abortRef.current = null
         setIsStreaming(false)
       }
     },
-    // Empty on purpose — the callbacks are read through refs above.
-    []
+    [attempt]
   )
 
   return { start, stop, reset, isStreaming, text, preview, grounding }

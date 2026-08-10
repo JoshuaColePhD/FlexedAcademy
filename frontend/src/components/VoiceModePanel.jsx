@@ -130,6 +130,19 @@ export function VoiceModePanel({
   // frame, written only when the props actually change.
   const pausedRef = useRef(false)
   const processingRef = useRef(false)
+  // The mic/VAD pipeline below is set up in a mount-once effect (deps: []) —
+  // deliberately, since tearing down and re-requesting getUserMedia every
+  // render would be its own bug. But handleUtteranceReady, which that effect
+  // wires up exactly once via `rec.onstop`, used to call the `onUtterance`
+  // PROP directly. That prop is ChatPage's `submit`, whose identity changes
+  // every turn (its own deps include `messages`, `chatId`, `artifact`...) —
+  // so every utterance after the first was calling the STALE submit()
+  // captured when the panel first opened, with no messages, no chat id, and
+  // no artifact yet. The conversation would submit turn 2 as if turn 1 had
+  // never happened. A ref sidesteps that the same way pausedRef already does
+  // for busy/isSpeaking: read fresh every call, written on every render.
+  const onUtteranceRef = useRef(onUtterance)
+  onUtteranceRef.current = onUtterance
 
   useFocusTrap(panelRef, { active: true, trap: true, initialFocus: closeRef, onEscape: onClose })
 
@@ -137,13 +150,30 @@ export function VoiceModePanel({
     pausedRef.current = Boolean(busy || isSpeaking)
   }, [busy, isSpeaking])
 
+  // rec.stop() is ASYNCHRONOUS — the 'stop' event (and so handleUtteranceReady,
+  // wired up as rec.onstop) doesn't fire until the recorder finishes
+  // flushing. This used to null out speechStartRef/vadStateRef/
+  // silenceStartRef right here, synchronously, immediately after calling
+  // stop() — so by the time handleUtteranceReady actually ran and read
+  // speechStartRef.current to validate the utterance, it was ALWAYS already
+  // null. `if (!started ...) return` fired every time, and the utterance was
+  // discarded before transcription — confirmed live: dataavailable fired
+  // with real recorded audio, the native 'stop' event fired, and
+  // handleUtteranceReady still never called api.transcribe. Every utterance
+  // through the normal silence-triggered path was silently dropped.
+  //
+  // It also raced vadStateRef back to 'idle' before the old recorder had
+  // actually finished stopping, so the VAD loop's very next tick could see
+  // 'idle' and call beginUtterance() again — a second, bogus recording
+  // starting while the first was still flushing.
+  //
+  // handleUtteranceReady already does this same cleanup correctly (reads
+  // `started` BEFORE nulling it) once the recorder actually finishes — so
+  // stopRecorder's only job is to ask it to stop.
   const stopRecorder = () => {
     const rec = recorderRef.current
     if (rec && rec.state !== 'inactive') rec.stop()
     recorderRef.current = null
-    vadStateRef.current = 'idle'
-    silenceStartRef.current = null
-    speechStartRef.current = null
   }
 
   const abortUtterance = () => {
@@ -191,7 +221,7 @@ export function VoiceModePanel({
     setStatus('transcribing')
     try {
       const { text } = await api.transcribe(blob)
-      if (text && text.trim()) onUtterance(text.trim())
+      if (text && text.trim()) onUtteranceRef.current(text.trim())
     } catch {
       // A missed utterance just means "say it again" — the mic is still
       // live and the panel is still open, so there's nothing to recover.

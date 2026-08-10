@@ -28,6 +28,8 @@ export const qk = {
   chat: (id) => ['chat', id],
 
   plan: (id) => ['plan', id],
+  /* The plans library, per class — same reasoning as chats above. */
+  plans: (classId) => ['plans', classId ?? null],
   curriculumProgress: (classId) => ['curriculum-progress', classId ?? null],
   classDocuments: (classId) => ['class-documents', classId],
 }

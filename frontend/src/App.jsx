@@ -24,6 +24,7 @@ import { AppShell } from './components/AppShell'
 import { useClasses } from './hooks/useAppData'
 import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
+import { PlansPage } from './pages/PlansPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
 import { AdminPage } from './pages/AdminPage'
 import { LandingPage } from './pages/LandingPage'
@@ -174,6 +175,7 @@ function ClassRoutes() {
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
           <Route index element={<ChatPage />} />
           <Route path="chat/:chatId" element={<ChatPage />} />
+          <Route path="plans" element={<PlansPage />} />
           <Route path="class" element={<ClassPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

@@ -10,11 +10,15 @@ export function WeekPicker({ options, value, onChange }) {
   if (!options.length) return null
 
   return (
-    <div className="mb-2 flex min-w-0 items-center gap-2 text-xs text-ink-muted">
+    <div className="flex min-w-0 items-center gap-2 text-xs text-ink-muted">
       <label htmlFor="week-picker" className="shrink-0">
         Planning for
       </label>
-      {/* min-w-0 alone doesn't stop a native <select> sizing itself to its
+      {/* Borderless/transparent — this now lives inside the composer's own
+          header strip, not as a standalone chip, so it should read as part
+          of that control rather than a second one next to it.
+
+          min-w-0 alone doesn't stop a native <select> sizing itself to its
           longest option's text — that's the box's intrinsic content width,
           which flex-shrink doesn't reliably override for form controls on
           mobile Safari. A real unit name plus " (already planned)" is long
@@ -26,7 +30,7 @@ export function WeekPicker({ options, value, onChange }) {
         id="week-picker"
         value={value ?? ''}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="min-w-0 flex-1 rounded-md border border-edge bg-paper-raised px-2 py-1 font-medium text-ink outline-none focus:border-accent"
+        className="min-w-0 flex-1 truncate rounded-md border-0 bg-transparent px-1 py-0.5 font-medium text-ink outline-none focus:bg-paper-raised focus:ring-1 focus:ring-accent"
       >
         {options.map((w) => (
           <option key={w.week} value={w.week}>

@@ -15,6 +15,7 @@ import functools
 import json
 import logging
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from openai import OpenAI
 
@@ -28,6 +29,20 @@ from . import db
 
 log = logging.getLogger("aplang.llm")
 
+# A hung call sitting open indefinitely (rather than erroring) is what turns a
+# transient upstream blip into "the chat is stuck" for the teacher watching it.
+# 30s comfortably covers a slow first token on a 4000-max-tokens completion;
+# max_retries=2 (the SDK default) still applies underneath this, for the
+# connection-level errors it retries before it ever reaches our code.
+_REQUEST_TIMEOUT_S = 30.0
+
+# retrieve_map_context is a nice-to-have supplement, not something the teacher
+# is aware is even running — it must never be the reason a chat reply is slow
+# to start. Bounded in its own thread so a slow embeddings call or DB query
+# degrades to "no map context" instead of stalling the first token.
+_MAP_CONTEXT_TIMEOUT_S = 4.0
+_context_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="map-context")
+
 
 @functools.lru_cache(maxsize=1)
 def client() -> OpenAI:
@@ -37,7 +52,7 @@ def client() -> OpenAI:
             "OPENAI_API_KEY is not set.",
             hint="Add it to the .env file at the project root (see .env.example).",
         )
-    return OpenAI(api_key=settings.openai_api_key)
+    return OpenAI(api_key=settings.openai_api_key, timeout=_REQUEST_TIMEOUT_S)
 
 
 def _response_format(name: str, schema: dict) -> dict:
@@ -75,7 +90,26 @@ def map_context_for(user_id: str, subject: str, query: str) -> str:
     Only the plan-writing calls below did.
     """
     active = db.get_active_curriculum_map(user_id, subject)
-    return curriculum.retrieve_map_context(active["id"], query) if active else ""
+    if not active:
+        return ""
+    future = _context_pool.submit(curriculum.retrieve_map_context, active["id"], query)
+    try:
+        return future.result(timeout=_MAP_CONTEXT_TIMEOUT_S)
+    except FutureTimeoutError:
+        log.warning("map context lookup exceeded %.1fs, continuing without it", _MAP_CONTEXT_TIMEOUT_S)
+        return ""
+    except Exception as e:  # noqa: BLE001 — same guarantee as retrieve_map_context itself: never raise
+        log.warning("map context lookup failed: %s", e)
+        return ""
+
+
+def custom_instructions_for(user_id: str) -> str | None:
+    """A teacher's global custom instructions (settings page) — one column
+    on `users`, read alongside settings by every prompt-building call below.
+    Public for the same reason map_context_for is: chat_stream (generate.py)
+    needs this exact same lookup too."""
+    user = db.get_user_by_id(user_id)
+    return user.get("custom_instructions") if user else None
 
 
 def custom_instructions_for(user_id: str) -> str | None:

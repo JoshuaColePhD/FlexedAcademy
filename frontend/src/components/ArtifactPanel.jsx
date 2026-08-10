@@ -102,8 +102,8 @@ export function ArtifactPanel({
           type="button"
           className="doc-collapse fa-press"
           onClick={onCollapse}
-          aria-label="Back to artifacts"
-          title="Back to artifacts"
+          aria-label="Back to my plans"
+          title="Back to my plans"
         >
           <ChevronsRight size={15} aria-hidden="true" />
         </button>

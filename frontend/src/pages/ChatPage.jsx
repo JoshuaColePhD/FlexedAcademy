@@ -607,7 +607,6 @@ export function ChatPage() {
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
         stream.start(firstHistory, { chatId: activeChatId, weekNumber: effectiveWeek }).catch(() => {})
-        setPreparing(false)
         return
       }
 
@@ -906,8 +905,7 @@ export function ChatPage() {
       // longhand, not the `transition` shorthand — React's own style object
       // sets transitionDuration/transitionTimingFunction directly (see the
       // JSX below), and setChatWidthPx's re-render at drop reasserts both,
-      // so this only ever needs to win for the drag itself. React only
-      // finds out once, at drop, via setChatWidthPx below.
+      // so this only ever needs to win for the drag itself.
       el.style.transitionDuration = '0s'
       const onMove = (ev) => {
         latest = clampChatWidth(startWidth + (ev.clientX - startX))
@@ -1005,20 +1003,6 @@ export function ChatPage() {
 
       {isEmpty ? (
         <Greeting
-          onPick={submit}
-          /* Drafting a suggestion puts the caret where the teacher has to keep
-             typing. Without this, clicking "Build around a text" filled the
-             composer and left focus on the suggestion button, so the next
-             keystroke went nowhere and they had to click into the box to finish
-             the sentence the app had just started for them. */
-          onDraft={(text) => {
-            setQuery(text)
-            requestAnimationFrame(() => {
-              const el = document.getElementById('composer-input')
-              el?.focus()
-              el?.setSelectionRange(text.length, text.length)
-            })
-          }}
           className={activeClass?.name}
           /* See the Composer's own onOpenVoice, below — same reason, same fix
              later. */
@@ -1048,11 +1032,22 @@ export function ChatPage() {
                 progress below, the screen just sat blank. Message already
                 understands a `streaming` message (a blinking cursor, used
                 elsewhere) — this is that, fed live text as it arrives instead
-                of only the finished string once onDone fires. */}
+                of only the finished string once onDone fires.
+
+                Before that first token, though, a bare blinking cursor on an
+                empty line reads as "nothing is happening," not "it's working" —
+                same gap "Sending…" below exists to close for chat creation. So
+                this now shows the same eyebrow-label treatment (matching
+                "Retrieving standards" / "Writing the week") until there's
+                actual text to show the cursor against. */}
             {chatStream.isStreaming && !stream.isStreaming ? (
-              <Message
-                message={{ id: 'chat-stream-live', role: 'assistant', content: chatStream.text, streaming: true }}
-              />
+              chatStream.text ? (
+                <Message
+                  message={{ id: 'chat-stream-live', role: 'assistant', content: chatStream.text, streaming: true }}
+                />
+              ) : (
+                <p className="eyebrow">Thinking…</p>
+              )
             ) : null}
 
             {/* Progress is the week filling in, not three bouncing dots — a
@@ -1125,18 +1120,22 @@ export function ChatPage() {
           remount. Only the wrapper's className may change. */}
       <div className="shrink-0 border-t border-edge bg-paper px-gutter pb-5 pt-3">
         <div className="mx-auto w-full max-w-measure">
-          {/* Which week this is about to become. Shown only before a plan
-              exists in this chat — once one does, the chat-head above already
-              names its week, and a plan already built is not up for a silent
-              re-target. Without this, the teacher found out which week they got
-              only after a 30-second generation finished. */}
-          {isEmpty ? (
-            <WeekPicker options={weekOptions} value={effectiveWeek} onChange={setSelectedWeek} />
-          ) : null}
           <Composer
             value={query}
             onChange={setQuery}
             onSubmit={submit}
+            /* Which week this is about to become, shown inside the composer's
+               own header strip so it reads as one control rather than a
+               second box stacked above it. Shown only before a plan exists in
+               this chat — once one does, the chat-head above already names
+               its week, and a plan already built is not up for a silent
+               re-target. Without this, the teacher found out which week they
+               got only after a 30-second generation finished. */
+            topSlot={
+              isEmpty ? (
+                <WeekPicker options={weekOptions} value={effectiveWeek} onChange={setSelectedWeek} />
+              ) : null
+            }
             /* Only a real stream is abortable — see the Composer. Revising has
                no AbortController yet, so `busy` without either flag correctly
                falls through to the composer's "can't be interrupted" spinner. */

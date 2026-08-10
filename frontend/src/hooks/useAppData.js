@@ -101,6 +101,28 @@ export function useDeleteChat() {
   })
 }
 
+/* ── plans ───────────────────────────────────────────────────────────────── */
+
+/** Every plan ever built for this class — the durable record behind the
+ *  sidebar's chat list, which only ever shows the conversations, not the
+ *  documents they produced. */
+export function usePlans() {
+  const { classId } = useParams()
+  return useQuery({
+    queryKey: qk.plans(classId),
+    queryFn: () => api.listPlans({ class_id: classId, limit: 200 }),
+    enabled: Boolean(classId),
+  })
+}
+
+export function useDeletePlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.deletePlan(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans'] }),
+  })
+}
+
 /* ── settings ────────────────────────────────────────────────────────────── */
 
 /** Largely vestigial since classes landed — kept because the plan builder still

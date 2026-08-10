@@ -1784,12 +1784,22 @@
        metadata about one — the same lift .neo-raised gives every button,
        so it reads as the rail's own "the thing you came for" surface. */
     box-shadow: 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.4), -3px -3px 7px rgb(var(--neo-light-rgb) / 0.75);
+    transition: box-shadow var(--t-fast) var(--ease);
+  }
+  /* The card is a button (onClick={onExpand}) but only ever gave feedback via
+     the browser's default nothing — every other .neo-raised surface in the
+     app presses in on :active and this was the one exception. */
+  .rail-card:active {
+    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
   }
   .rail-card-head {
     display: flex;
     align-items: center;
     gap: 9px;
   }
+  /* --paper-inset alone was just a flat, slightly-darker fill — the actual
+     "stamped into the surface" read needs the inset pair, not just the tone
+     that implies it. */
   .rail-tile {
     display: grid;
     height: 30px;
@@ -1799,6 +1809,7 @@
     background: var(--paper-inset);
     border-radius: var(--r-md);
     color: var(--accent-text);
+    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
   .rail-text {
     display: flex;
@@ -1846,7 +1857,11 @@
     display: flex;
     gap: 5px;
   }
-  /* The reason a teacher opened the app: the one filled control in the rail. */
+  /* The reason a teacher opened the app: the one filled control in the rail.
+     Was a flat solid --accent fill — the only button in the whole rail with
+     no shadow physics at all. Matches the rail-cta's own "New plan" recipe
+     (AppShell.jsx) now: the tint carries the accent, .neo-raised carries the
+     emboss, so it floats above the card instead of sitting flush with it. */
   .rail-download {
     display: flex;
     flex: 1;
@@ -1856,14 +1871,15 @@
     padding: 6px;
     font-size: var(--fs-2xs);
     font-weight: var(--fw-semibold);
-    color: var(--accent-on);
-    background: var(--accent);
+    color: var(--accent-text);
+    background: var(--accent-tint);
     border-radius: var(--r-md);
     text-decoration: none;
-    transition: background var(--t-fast) var(--ease);
+    box-shadow: 2px 2px 5px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 5px rgb(var(--neo-light-rgb) / 0.75);
+    transition: box-shadow var(--t-fast) var(--ease);
   }
-  .rail-download:hover {
-    background: var(--accent-hover);
+  .rail-download:active {
+    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
   }
   .rail-open {
     display: grid;
@@ -1875,10 +1891,14 @@
     border: none;
     border-radius: var(--r-md);
     cursor: pointer;
-    transition: color var(--t-fast) var(--ease);
+    box-shadow: 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
+    transition: color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
   }
   .rail-open:hover {
     color: var(--ink);
+  }
+  .rail-open:active {
+    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
 
   /* A secondary rail line: a source the plan was built from. Unfilled, so the
@@ -1904,6 +1924,7 @@
     color: var(--ink-faint);
     background: var(--paper-inset);
     border-radius: var(--r-sm);
+    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
   .rail-row-label {
     overflow: hidden;
@@ -2040,10 +2061,14 @@
     border: none;
     border-radius: var(--r-md);
     cursor: pointer;
-    transition: color var(--t-fast) var(--ease);
+    box-shadow: 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
+    transition: color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
   }
   .doc-collapse:hover {
     color: var(--ink);
+  }
+  .doc-collapse:active {
+    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
   .doc-titles {
     display: flex;
@@ -2079,6 +2104,7 @@
      district table` button inside the table — two controls answering the same
      question, which could disagree and which between them left the day deck
      unreachable above 1024px. */
+  /* A groove, not just a darker fill — the track a physical tab would sit in. */
   .doc-views {
     display: inline-flex;
     flex-shrink: 0;
@@ -2086,6 +2112,7 @@
     padding: 2px;
     background: var(--paper-inset);
     border-radius: var(--r-md);
+    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
   .doc-view {
     padding: 4px var(--sp-2);
@@ -2096,15 +2123,21 @@
     border: none;
     border-radius: var(--r-sm);
     cursor: pointer;
-    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
   }
   .doc-view:hover {
     color: var(--ink);
   }
+  /* Standing up out of the groove above, not just a lighter fill against it —
+     the same raised/inset contrast every other selected-vs-not pair in the
+     app already uses (see .neo-inset on the sidebar's active chat row). */
   .doc-view[aria-pressed='true'] {
     color: var(--ink);
     background: var(--paper-raised);
+    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.45), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.75);
   }
+  /* Same recipe as .rail-download, just at the expanded document's own scale
+     — the tint carries the accent, the shadow carries the "come here". */
   .doc-download {
     display: flex;
     flex-shrink: 0;
@@ -2114,15 +2147,16 @@
     padding: 0 13px;
     font-size: var(--fs-sm);
     font-weight: var(--fw-semibold);
-    color: var(--accent-on);
-    background: var(--accent);
+    color: var(--accent-text);
+    background: var(--accent-tint);
     border: none;
     border-radius: var(--r-md);
     text-decoration: none;
-    transition: background var(--t-fast) var(--ease);
+    box-shadow: 2px 2px 5px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 5px rgb(var(--neo-light-rgb) / 0.75);
+    transition: box-shadow var(--t-fast) var(--ease);
   }
-  .doc-download:hover {
-    background: var(--accent-hover);
+  .doc-download:active {
+    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
   }
   .doc-body {
     min-height: 0;
