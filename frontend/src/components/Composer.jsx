@@ -65,7 +65,12 @@ export function Composer({
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Same constraints as VoiceModePanel's mic request — noise
+      // suppression and auto gain help transcription quality generally,
+      // not just the echo case live voice mode has to worry about.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      })
       const recorder = new MediaRecorder(stream)
       mediaRecorder.current = recorder
       audioChunks.current = []

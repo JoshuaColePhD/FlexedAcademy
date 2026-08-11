@@ -1246,6 +1246,12 @@ export function ChatPage() {
       {voiceOpen ? (
         <VoiceModePanel
           onClose={() => {
+            // The shared <audio> element lives in VoiceProvider, at the app
+            // root — it has no idea this panel is closing, so nothing about
+            // unmounting it stops whatever's still playing through it. Ending
+            // the conversation without also silencing it meant a reply kept
+            // talking well after the "end conversation" click.
+            voice.stop()
             setVoiceOpen(false)
             setVoiceCaption('')
           }}

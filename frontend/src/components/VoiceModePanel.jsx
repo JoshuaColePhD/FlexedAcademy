@@ -365,7 +365,17 @@ export function VoiceModePanel({
 
     ;(async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        // Explicit constraints, not a bare `audio: true` — on a phone the
+        // mic sits inches from the speaker this same panel is playing TTS
+        // out of, and without the browser's own echo cancellation actually
+        // requested, the mic picks up the assistant's own voice bleeding
+        // back in (worst right as isSpeaking flips off and the room's still
+        // resonating) and transcribes THAT — which reads as "can barely hear
+        // what I'm saying" and nonsensical replies, because it isn't
+        // transcribing what was said, it's transcribing an echo of itself.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        })
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop())
           return
