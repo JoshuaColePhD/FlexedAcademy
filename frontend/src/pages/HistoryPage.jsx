@@ -48,10 +48,14 @@ function ChatHistoryRow({ chat, classId, onDelete, deleting, selectionMode, sele
   if (selectionMode) {
     return (
       <li className="group flex items-center gap-1 px-2 py-1">
+        {/* pressed-in, not a background tint — same thing "selected" means on
+            the sidebar's active chat and in the Library. */}
         <button
           type="button"
           onClick={() => onToggleSelect(chat.id)}
-          className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left transition-colors hover:bg-paper-sunken"
+          className={`flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left transition-shadow ${
+            selected ? 'neo-inset' : 'hover:bg-paper-sunken'
+          }`}
         >
           {content}
         </button>
@@ -173,7 +177,7 @@ export function HistoryPage() {
                 type="button"
                 disabled={isDeletingBulk}
                 onClick={toggleSelectAll}
-                className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+                className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
               >
                 {selectedIds.size === filtered.length && filtered.length > 0 ? 'Deselect all' : 'Select all'}
               </button>
@@ -181,7 +185,7 @@ export function HistoryPage() {
                 type="button"
                 disabled={selectedIds.size === 0 || isDeletingBulk}
                 onClick={handleBulkDelete}
-                className="text-xs font-medium text-mark hover:text-mark/80 disabled:opacity-50"
+                className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-mark hover:text-mark/80 disabled:opacity-50"
               >
                 Delete ({selectedIds.size})
               </button>
@@ -192,7 +196,7 @@ export function HistoryPage() {
                   setSelectionMode(false)
                   setSelectedIds(new Set())
                 }}
-                className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+                className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -201,7 +205,7 @@ export function HistoryPage() {
             <button
               type="button"
               onClick={() => setSelectionMode(true)}
-              className="text-xs font-medium text-ink-muted hover:text-ink"
+              className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink"
             >
               Select multiple
             </button>
@@ -223,7 +227,7 @@ export function HistoryPage() {
                 placeholder="Search history…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-md border border-edge bg-transparent py-1.5 pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                className="neo-inset w-full rounded-md bg-transparent py-1.5 pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-accent"
                 aria-label="Search history"
               />
             </div>

@@ -72,7 +72,7 @@ export function AccountMenu({ classPath }) {
         <div
           ref={popoverRef}
           tabIndex={-1}
-          className="absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-lg border border-edge bg-paper-raised py-1 shadow-lg"
+          className="neo-panel absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-2xl bg-paper-raised py-1"
         >
           {/* --ink-muted: an email address is identity, not decoration —
               --ink-faint reads under 3:1 against --paper in light mode. */}

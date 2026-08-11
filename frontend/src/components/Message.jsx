@@ -78,7 +78,7 @@ export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast })
   if (isUser && editing) {
     return (
       <div className="group flex w-full justify-end">
-        <div className="w-full max-w-[85%] rounded-xl bg-paper-sunken p-4">
+        <div className="neo-inset w-full max-w-[85%] rounded-xl bg-paper-sunken p-4">
           <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
             Edit your message
           </label>
@@ -102,7 +102,7 @@ export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast })
           <div className="mt-3 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+              className="neo-raised rounded-full px-4 py-1.5 text-sm font-medium text-ink-soft transition-shadow"
               onClick={() => {
                 setDraft(message.content)
                 setEditing(false)
@@ -112,7 +112,11 @@ export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast })
             </button>
             <button
               type="button"
-              className="rounded-md bg-ink px-3 py-1.5 text-sm font-medium text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-40"
+              /* bg-accent-tint + accent text, not a solid ink fill — the
+                 app's one primary-button treatment (see AppShell's "New
+                 plan"), so "send again" reads the same as every other
+                 commit action instead of a black slab. */
+              className="neo-raised rounded-full bg-accent-tint px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
               disabled={!draft.trim()}
               onClick={() => {
                 setEditing(false)
@@ -147,7 +151,12 @@ export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast })
         <div
           className={
             isUser
-              ? 'rounded-2xl bg-paper-sunken px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
+              ? /* The teacher's own turn, pressed into the page rather than
+                   floating on it — the assistant's replies are bare text on
+                   the paper, so "said by you" reads as a groove cut into
+                   that same sheet instead of a second card competing with
+                   the reply beside it. */
+                'neo-inset rounded-2xl bg-paper-sunken px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
                 : 'text-[0.9375rem] leading-relaxed text-ink'

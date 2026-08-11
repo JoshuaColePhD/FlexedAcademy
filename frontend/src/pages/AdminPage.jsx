@@ -104,7 +104,12 @@ export function AdminPage() {
       ) : isError ? (
         <p className="text-sm text-mark">{error?.message || 'Could not load accounts.'}</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-edge">
+        // neo-world on the wrapper too, not just neo-panel: /admin is routed
+        // OUTSIDE AppShell (App.jsx), so --neo-dark/--neo-light are otherwise
+        // undeclared here and the emboss — the table's and every .btn inside
+        // it — silently computes to nothing. Same one-element pattern
+        // LessonQuestions and WeekStrip already use.
+        <div className="neo-world neo-panel overflow-x-auto rounded-xl">
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted">

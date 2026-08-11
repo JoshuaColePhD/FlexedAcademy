@@ -83,7 +83,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
         type="button"
         id={id}
         disabled={disabled}
-        className="flex w-full items-center justify-between gap-3 rounded-lg bg-paper-sunken px-3 py-2.5 text-left transition-colors hover:bg-paper-inset disabled:cursor-not-allowed disabled:opacity-50"
+        className="neo-inset flex w-full items-center justify-between gap-3 rounded-lg bg-paper-sunken px-3 py-2.5 text-left transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
@@ -111,7 +111,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
       </button>
 
       {open ? (
-        <div className="absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-md border border-edge-strong bg-paper-raised shadow-pop">
+        <div className="neo-panel absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised">
           <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
             <Search size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
             <input
@@ -155,7 +155,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
                             aria-selected={isSelected}
                             data-active={isActive}
                             className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
-                              isActive ? 'bg-accent-tint' : 'hover:bg-paper-sunken'
+                              isActive ? 'neo-inset bg-accent-tint text-accent-text' : 'hover:bg-paper-sunken'
                             }`}
                             onMouseEnter={() => setActive(i)}
                             onClick={() => commit(fw)}

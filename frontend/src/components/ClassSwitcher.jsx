@@ -95,7 +95,7 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
         <ul
           role="listbox"
           aria-label="Your classes"
-          className="absolute left-2 right-2 z-50 mt-1 overflow-hidden rounded-lg border border-edge-strong bg-paper-raised py-1 shadow-pop"
+          className="neo-panel absolute left-2 right-2 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised py-1"
         >
           {classes.map((c) => (
             <li key={c.id}>

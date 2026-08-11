@@ -93,8 +93,11 @@ function AddClass({ frameworks, onCreated, onCancel }) {
     }
   }
 
+  // The accent hairline went with the emboss: a border and a soft shadow
+  // describing the same edge read as two outlines, and the tint alone still
+  // says "this is the new thing".
   return (
-    <form onSubmit={submit} className="rounded-xl border border-accent/30 bg-accent-tint/40 p-3">
+    <form onSubmit={submit} className="neo-panel rounded-xl bg-accent-tint/40 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
           <FrameworkPicker
@@ -108,7 +111,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
           aria-label="Grade"
           value={grade}
           onChange={(e) => setGrade(e.target.value)}
-          className="rounded-lg border border-edge bg-paper-raised px-2.5 py-2.5 text-sm text-ink outline-none focus:border-accent sm:w-24"
+          className="neo-inset rounded-lg bg-paper-raised px-2.5 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent sm:w-24"
         >
           {GRADES.map((g) => (
             <option key={g} value={g}>
@@ -120,7 +123,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
           <button
             type="submit"
             disabled={!subject || saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent-tint px-3 py-2.5 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
             Add
@@ -129,7 +132,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
             type="button"
             onClick={onCancel}
             aria-label="Cancel"
-            className="rounded-lg p-2.5 text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+            className="neo-raised rounded-lg p-2.5 text-ink-muted transition-colors hover:text-ink"
           >
             <X size={15} aria-hidden="true" />
           </button>
@@ -203,7 +206,7 @@ function ClassDocuments({ cls, onChanged }) {
   return (
     <div className="mt-2 space-y-2">
       {rows.length ? (
-        <ul className="divide-y divide-edge overflow-hidden rounded-lg bg-paper-sunken">
+        <ul className="neo-inset divide-y divide-edge overflow-hidden rounded-lg bg-paper-sunken">
           {rows.map((d) => (
             <li key={d.id} className="flex items-center gap-2.5 px-3 py-2">
               <FileText size={14} aria-hidden="true" className="shrink-0 text-ink-muted" />
@@ -244,7 +247,7 @@ function ClassDocuments({ cls, onChanged }) {
           aria-label="Document type"
           value={kind}
           onChange={(e) => setKind(e.target.value)}
-          className="rounded-lg border border-edge bg-paper-raised px-2 py-1.5 text-xs text-ink outline-none focus:border-accent"
+          className="neo-inset rounded-lg bg-paper-raised px-2 py-1.5 text-xs text-ink outline-none focus:ring-1 focus:ring-accent"
         >
           {Object.entries(KIND_LABEL).map(([k, label]) => (
             <option key={k} value={k}>
@@ -256,7 +259,7 @@ function ClassDocuments({ cls, onChanged }) {
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:border-edge-strong hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
+          className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
         >
           {uploading ? (
             <Loader2 size={13} className="animate-spin" aria-hidden="true" />
@@ -294,7 +297,7 @@ function ClassWeeks({ cls }) {
   }
 
   return (
-    <ul className="mt-2 max-h-72 divide-y divide-edge overflow-y-auto rounded-lg bg-paper-sunken">
+    <ul className="neo-inset mt-2 max-h-72 divide-y divide-edge overflow-y-auto rounded-lg bg-paper-sunken">
       {weeks.map((w) => {
         const status = weekStatus(w)
         const { dot, label } = WEEK_STATUS[status]
@@ -394,7 +397,7 @@ function CustomInstructions({ value, onSaved }) {
         maxLength={CUSTOM_INSTRUCTIONS_MAX}
         rows={4}
         placeholder="e.g. Keep Do Now activities under 5 minutes. Avoid group work on Fridays."
-        className="mt-2 w-full resize-y rounded-lg border border-edge bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+        className="neo-inset mt-2 w-full resize-y rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
       />
       <div className="mt-1 flex items-center justify-between">
         <span className="text-2xs text-ink-muted">
@@ -404,7 +407,7 @@ function CustomInstructions({ value, onSaved }) {
           type="button"
           onClick={save}
           disabled={!dirty || saving}
-          className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+          className="neo-raised rounded-lg bg-accent-tint px-3 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
@@ -461,7 +464,7 @@ function ChangePassword() {
           autoComplete="current-password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
-          className="w-full rounded-lg border border-edge bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+          className="neo-inset w-full rounded-lg bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
       <div className="min-w-0 flex-1 basis-40">
@@ -474,7 +477,7 @@ function ChangePassword() {
           autoComplete="new-password"
           value={next}
           onChange={(e) => setNext(e.target.value)}
-          className="w-full rounded-lg border border-edge bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+          className="neo-inset w-full rounded-lg bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
       <div className="min-w-0 flex-1 basis-40">
@@ -487,13 +490,13 @@ function ChangePassword() {
           autoComplete="new-password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
-          className="w-full rounded-lg border border-edge bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+          className="neo-inset w-full rounded-lg bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
       <button
         type="submit"
         disabled={saving || !current || !next}
-        className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+        className="neo-raised rounded-lg bg-accent-tint px-3 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-40"
       >
         {saving ? 'Saving…' : 'Change password'}
       </button>
@@ -527,7 +530,7 @@ function BillingSection() {
   return (
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">Billing</h2>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-edge bg-paper-raised p-3">
+      <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
         <div>
           <p className="text-sm font-medium text-ink">
             {entitlement.subscribed ? 'Subscribed' : 'Free'}
@@ -538,7 +541,7 @@ function BillingSection() {
           type="button"
           onClick={entitlement.subscribed ? manage : openPaywall}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent-tint px-3 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
         >
           {entitlement.subscribed ? (
             <CreditCard size={14} aria-hidden="true" />
@@ -670,6 +673,9 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           <span className="hidden shrink-0 text-xs text-ink-muted sm:block">{derivedLabel}</span>
         )}
 
+        {/* Left flat on purpose while everything around them was embossed:
+            these two are 11px icons stacked with no gap, so a raised shadow
+            on each would bleed into the other and read as one smudge. */}
         <div className="flex shrink-0 flex-col">
           <button
             type="button"
@@ -696,7 +702,12 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           onClick={() => setPanel((p) => (p === 'edit' ? null : 'edit'))}
           aria-expanded={panel === 'edit'}
           aria-label={`Edit ${cls.name}’s framework and grade`}
-          className="shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink"
+          /* Pressed in while its panel is open — the same "selected is
+             inset" the rail's active row uses, and it saves these three
+             from needing a background tint to say which one is showing. */
+          className={`shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:text-ink ${
+            panel === 'edit' ? 'neo-inset' : 'neo-raised'
+          }`}
         >
           <Pencil size={13} aria-hidden="true" />
         </button>
@@ -704,7 +715,9 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           type="button"
           onClick={() => setPanel((p) => (p === 'weeks' ? null : 'weeks'))}
           aria-expanded={panel === 'weeks'}
-          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+          className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:text-ink ${
+            panel === 'weeks' ? 'neo-inset' : 'neo-raised'
+          }`}
         >
           {panel === 'weeks' ? 'Done' : 'Weeks'}
         </button>
@@ -712,7 +725,9 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           type="button"
           onClick={() => setPanel((p) => (p === 'documents' ? null : 'documents'))}
           aria-expanded={panel === 'documents'}
-          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+          className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:text-ink ${
+            panel === 'documents' ? 'neo-inset' : 'neo-raised'
+          }`}
         >
           {panel === 'documents' ? 'Done' : 'Documents'}
         </button>
@@ -720,7 +735,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           type="button"
           onClick={remove}
           aria-label={`Remove ${cls.name}`}
-          className="shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:bg-mark-tint hover:text-mark"
+          className="neo-raised shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:bg-mark-tint hover:text-mark"
         >
           <Trash2 size={14} aria-hidden="true" />
         </button>
@@ -740,7 +755,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
             aria-label={`Grade for ${cls.name}`}
             value={editGrade}
             onChange={(e) => setEditGrade(e.target.value)}
-            className="rounded-lg border border-edge bg-paper-raised px-2.5 py-2.5 text-sm text-ink outline-none focus:border-accent sm:w-24"
+            className="neo-inset rounded-lg bg-paper-raised px-2.5 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent sm:w-24"
           >
             {GRADES.map((g) => (
               <option key={g} value={g}>
@@ -753,7 +768,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
               type="button"
               onClick={saveDetails}
               disabled={!editSubject || savingDetails}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent-tint px-3 py-2.5 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-40"
             >
               {savingDetails ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
               Save
@@ -765,7 +780,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
                 setEditGrade(cls.grade || '11')
                 setPanel(null)
               }}
-              className="rounded-lg px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken"
+              className="neo-raised rounded-lg px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
             >
               Cancel
             </button>
@@ -837,7 +852,7 @@ function AccountSafety() {
   return (
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">Account safety</h2>
-      <div className="mt-2 divide-y divide-edge rounded-xl border border-edge bg-paper-raised">
+      <div className="neo-panel mt-2 divide-y divide-edge rounded-xl bg-paper-raised">
         <div className="flex flex-wrap items-center justify-between gap-3 p-3">
           <div>
             <p className="text-sm font-medium text-ink">Download my data</p>
@@ -848,7 +863,7 @@ function AccountSafety() {
           <a
             href={api.accountExportUrl()}
             download
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent-tint"
+            className="neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent-tint"
           >
             <Download size={14} aria-hidden="true" /> Download
           </a>
@@ -864,7 +879,7 @@ function AccountSafety() {
             type="button"
             onClick={doSignOutEverywhere}
             disabled={busy}
-            className="shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
+            className="neo-raised shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? 'Signing out…' : 'Sign out everywhere'}
           </button>
@@ -900,7 +915,7 @@ function AccountSafety() {
                     autoComplete="current-password"
                     value={deletePassword}
                     onChange={(e) => setDeletePassword(e.target.value)}
-                    className="w-full rounded-lg border border-edge bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+                    className="neo-inset w-full rounded-lg bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               ) : (
@@ -922,7 +937,7 @@ function AccountSafety() {
                   setDeleteOpen(false)
                   setDeletePassword('')
                 }}
-                className="rounded-lg px-3 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken"
+                className="neo-raised rounded-lg px-3 py-2 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
               >
                 Cancel
               </button>
@@ -954,7 +969,7 @@ function Diagnostics() {
   if (!import.meta.env.DEV) return null
 
   return (
-    <details className="mt-2 overflow-hidden rounded-xl border border-edge">
+    <details className="neo-panel mt-2 overflow-hidden rounded-xl bg-paper-raised">
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken">
         Diagnostics
       </summary>
@@ -1123,7 +1138,7 @@ export function ClassPage() {
             ) : null}
           </div>
 
-          <ul className="mt-2 overflow-hidden rounded-xl border border-edge bg-paper-raised">
+          <ul className="neo-panel mt-2 overflow-hidden rounded-xl bg-paper-raised">
             {list.length ? (
               list.map((c, i) => (
                 <ClassRow
@@ -1168,7 +1183,7 @@ export function ClassPage() {
                 type="button"
                 onClick={() => setAdding(true)}
                 disabled={frameworksState.isLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent-tint disabled:opacity-50"
+                className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent-tint disabled:opacity-50"
               >
                 <Plus size={15} aria-hidden="true" /> Add a class
               </button>

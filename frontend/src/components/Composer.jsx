@@ -166,7 +166,7 @@ export function Composer({
           <div className="flex flex-wrap gap-2 px-3 pt-2.5">
             {attachments.map((f, i) => (
               <span
-                className="flex items-center gap-1.5 rounded-md bg-paper-sunken px-2.5 py-1 text-xs font-medium text-ink"
+                className="neo-inset flex items-center gap-1.5 rounded-full bg-paper-sunken px-2.5 py-1 text-xs font-medium text-ink"
                 key={`${f.filename}-${i}`}
               >
                 <FileText size={14} className="text-ink-muted" aria-hidden="true" />
@@ -280,7 +280,7 @@ export function Composer({
             {isStreaming && onStop ? (
               <button
                 type="button"
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-full bg-ink text-ink-inverse transition-colors hover:bg-ink-soft md:h-9 md:w-9"
+                className="neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full bg-mark-tint text-mark transition-shadow md:h-9 md:w-9"
                 onClick={onStop}
                 aria-label="Stop generating"
               >
@@ -288,7 +288,7 @@ export function Composer({
               </button>
             ) : isStreaming ? (
               <span
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-full bg-paper-sunken text-ink-faint md:h-9 md:w-9"
+                className="neo-inset tap-target flex h-11 w-11 items-center justify-center rounded-full bg-paper-sunken text-ink-faint md:h-9 md:w-9"
                 title="Revising — this can't be interrupted"
               >
                 <Loader2 size={17} className="animate-spin md:size-4" aria-hidden="true" />
@@ -320,8 +320,12 @@ export function Composer({
                    whole bar. */
                 className={`tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
                   canSend
-                    ? 'bg-accent text-ink-inverse hover:bg-accent-hover active:scale-95'
-                    : 'cursor-not-allowed bg-paper-sunken text-ink-faint'
+                    ? 'neo-raised bg-accent-tint text-accent-text'
+                    : /* Inset, not a flat grey disc: unavailable reads as
+                         pressed into the bar and out of reach, which is the
+                         same language the rest of the app uses for "not
+                         something you can act on right now." */
+                      'neo-inset cursor-not-allowed bg-paper-sunken text-ink-faint'
                 }`}
                 onClick={submit}
                 disabled={!canSend}

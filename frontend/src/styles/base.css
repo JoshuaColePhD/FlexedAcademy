@@ -957,13 +957,24 @@
     font-size: var(--fs-sm);
     color: var(--ink);
     background: var(--paper-raised);
-    border: 1px solid var(--edge-strong);
+    /* A well, not an outlined box: rule 1's exception still holds — a text
+       input has to advertise itself — but in this world that affordance is
+       "content sits down INSIDE the surface", the same inset the auth
+       screens' own fields already use. Border AND emboss together reads as
+       two competing edges, so the border goes. */
+    border: none;
     border-radius: var(--r-md);
     outline: none;
-    transition: border-color var(--t-fast) var(--ease);
+    box-shadow:
+      inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.65),
+      inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.85);
+    transition: box-shadow var(--t-fast) var(--ease);
   }
   .input:focus {
-    border-color: var(--accent);
+    box-shadow:
+      inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.65),
+      inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.85),
+      0 0 0 2px rgb(var(--accent-rgb) / 0.45);
   }
   .input::placeholder {
     color: var(--ink-faint);
@@ -3419,6 +3430,15 @@
     --shadow-pop:
       12px 12px 28px rgb(var(--neo-dark-rgb) / 0.55),
       -12px -12px 28px rgb(var(--neo-light-rgb) / 0.85);
+    /* The one shadow token this block used to leave alone, which left the
+       docked artifact overlay casting tokens.css's flat grey edge into an
+       otherwise fully embossed world — visible precisely because everything
+       beside it had been converted. Directional like the original (this
+       panel slides in from the right and only its left edge is seen), just
+       drawn with the emboss pair instead of a black wash. */
+    --shadow-panel:
+      -10px 0 24px rgb(var(--neo-dark-rgb) / 0.5),
+      10px 0 24px rgb(var(--neo-light-rgb) / 0.4);
   }
 
   :root[data-theme='dark'] .neo-world {

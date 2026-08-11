@@ -66,10 +66,15 @@ function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, o
   if (selectionMode) {
     return (
       <li className="group flex items-center gap-1 px-2 py-1">
+        {/* pressed-in, not a background tint — "selected" already reads as
+            neo-inset everywhere else in this world (the sidebar's active chat,
+            LessonQuestions' picked answer). */}
         <button
           type="button"
           onClick={() => onToggleSelect(plan.id)}
-          className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left transition-colors hover:bg-paper-sunken"
+          className={`flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left transition-shadow ${
+            selected ? 'neo-inset' : 'hover:bg-paper-sunken'
+          }`}
         >
           {content}
         </button>
@@ -208,7 +213,7 @@ export function PlansPage() {
                     type="button"
                     disabled={isDeletingBulk}
                     onClick={toggleSelectAll}
-                    className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+                    className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
                   >
                     {selectedIds.size === filtered.length && filtered.length > 0 ? 'Deselect all' : 'Select all'}
                   </button>
@@ -216,7 +221,7 @@ export function PlansPage() {
                     type="button"
                     disabled={selectedIds.size === 0 || isDeletingBulk}
                     onClick={handleBulkDelete}
-                    className="text-xs font-medium text-mark hover:text-mark/80 disabled:opacity-50"
+                    className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-mark hover:text-mark/80 disabled:opacity-50"
                   >
                     Delete ({selectedIds.size})
                   </button>
@@ -227,7 +232,7 @@ export function PlansPage() {
                       setSelectionMode(false)
                       setSelectedIds(new Set())
                     }}
-                    className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+                    className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -236,7 +241,7 @@ export function PlansPage() {
                 <button
                   type="button"
                   onClick={() => setSelectionMode(true)}
-                  className="text-xs font-medium text-ink-muted hover:text-ink"
+                  className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink"
                 >
                   Select multiple
                 </button>
@@ -245,7 +250,7 @@ export function PlansPage() {
           )}
 
           {plans.length > SEARCH_THRESHOLD ? (
-            <div className="mb-3 flex items-center gap-2 rounded-lg bg-paper-sunken px-2.5 py-1.5">
+            <div className="neo-inset mb-3 flex items-center gap-2 rounded-lg bg-paper-sunken px-2.5 py-1.5">
               <Search size={13} aria-hidden="true" className="shrink-0 text-ink-muted" />
               <input
                 type="text"
@@ -259,13 +264,13 @@ export function PlansPage() {
           ) : null}
 
           {isLoading ? (
-            <div className="rounded-xl border border-edge bg-paper-raised px-3 py-4">
+            <div className="neo-panel rounded-xl bg-paper-raised px-3 py-4">
               <SkeletonText lines={4} />
             </div>
           ) : isError ? (
             <p className="text-sm text-mark">Couldn’t load your plans. {errorParts(error).message}</p>
           ) : filtered.length ? (
-            <ul className="divide-y divide-edge overflow-hidden rounded-xl border border-edge bg-paper-raised">
+            <ul className="neo-panel divide-y divide-edge overflow-hidden rounded-xl bg-paper-raised">
               {filtered.map((plan) => (
                 <PlanRow
                   key={plan.id}

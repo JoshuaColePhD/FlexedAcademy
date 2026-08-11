@@ -454,16 +454,47 @@ MIGRATIONS: list[str] = [
     ALTER TABLE curriculum_maps ENABLE ROW LEVEL SECURITY;
     ALTER TABLE plan_feedback ENABLE ROW LEVEL SECURITY;
 
+    -- One DO block PER POLICY, not six in one.
+    --
+    -- They were all in a single block, and the `messages` one referenced a
+    -- user_id column that table has never had (a message is scoped through
+    -- its chat — see the CREATE TABLE above). That one bad statement aborted
+    -- the whole block, so NONE of the six policies were ever created, while
+    -- the ENABLE ROW LEVEL SECURITY statements above had already committed.
+    -- RLS on with zero policies means "deny every row" for anyone who is not
+    -- the table owner: invisible while the app connects as the owner, and a
+    -- total blackout the moment anything else does (a restricted app role,
+    -- PostgREST, the Supabase dashboard). The migration also never recorded
+    -- as applied, so it re-ran and re-failed on every single boot.
+    --
+    -- Per-policy blocks mean one wrong column can only cost its own policy
+    -- from here on, instead of silently disarming the other five.
     DO $$ BEGIN
         CREATE POLICY "Users can access their own classes" ON classes USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
         CREATE POLICY "Users can access their own chats" ON chats USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
         CREATE POLICY "Users can access their own plans" ON plans USING (user_id = current_setting('app.user_id', true));
-        CREATE POLICY "Users can access their own messages" ON messages USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    -- Through chats, because `messages` has no user_id of its own.
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own messages" ON messages USING (
+            chat_id IN (SELECT id FROM chats WHERE user_id = current_setting('app.user_id', true))
+        );
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
         CREATE POLICY "Users can access their own maps" ON curriculum_maps USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
         CREATE POLICY "Users can access their own feedback" ON plan_feedback USING (user_id = current_setting('app.user_id', true));
-    EXCEPTION
-        WHEN duplicate_object THEN null;
-    END $$;
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
     """,
     # ── 21: LLM Caching ───────────────────────────────────────────────────────
     #
