@@ -2701,6 +2701,13 @@
     gap: var(--sp-4);
     padding-top: var(--sp-5);
     padding-bottom: var(--sp-5);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgb(var(--brand-rgb) / 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgb(var(--brand-ink-rgb) / 0.05);
   }
   /* Text-only wordmark — the supplied logo file rendered as a hard white-
      cornered square against the violet ground (it's a flat opaque PNG with no
@@ -2812,7 +2819,9 @@
        the redeclared primitives above — the same alias-vs-primitive gap
        the rail's frosted glass hit earlier. */
     border: 1px solid rgb(var(--edge-rgb));
-    background: rgb(var(--paper-raised-rgb));
+    background: rgb(var(--paper-raised-rgb) / 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     color: rgb(var(--ink-rgb));
     box-shadow: var(--shadow-lg);
     animation: land-signin-pop-in var(--t-fast) var(--ease-out) both;
