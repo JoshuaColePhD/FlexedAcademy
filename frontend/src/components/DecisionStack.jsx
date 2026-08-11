@@ -46,6 +46,23 @@ function DecisionRow({ label, value, onRevise }) {
     if (editing) inputRef.current?.select()
   }, [editing])
 
+  /* extract_decisions re-reads the WHOLE transcript on every turn, so
+     several rows can settle (or get corrected) in one update — with no
+     signal beyond that, the whole list just silently looked different from
+     one moment to the next, which is exactly what made it easy to lose
+     track of which decision just landed. fa-flash (already this app's one
+     "what changed" animation — see base.css — used for a revised document
+     cell) answers the same question here: briefly tint whichever row's
+     VALUE actually changed, not just whether it's settled. Compared against
+     the previous value rather than settled/not-settled so a correction to
+     an already-settled item flashes too, not only a first-time answer. */
+  const prevValue = useRef(value)
+  const [justChanged, setJustChanged] = useState(false)
+  useEffect(() => {
+    if (value != null && value !== prevValue.current) setJustChanged(true)
+    prevValue.current = value
+  }, [value])
+
   const cancel = () => {
     setDraft(value || '')
     setEditing(false)
@@ -104,7 +121,7 @@ function DecisionRow({ label, value, onRevise }) {
           word from the teacher. */}
       <span
         aria-hidden="true"
-        className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ${
+        className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full transition-shadow duration-300 ${
           settled ? 'neo-inset text-accent-text' : 'neo-raised text-ink-faint'
         }`}
       >
@@ -112,7 +129,11 @@ function DecisionRow({ label, value, onRevise }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
-        <span className={`block text-sm leading-snug ${settled ? 'text-ink' : 'italic text-ink-faint'}`}>
+        <span
+          className={`block text-sm leading-snug transition-colors duration-300 ${
+            settled ? 'text-ink' : 'italic text-ink-faint'
+          }`}
+        >
           {settled ? value : 'Not yet decided'}
         </span>
       </span>
@@ -126,13 +147,20 @@ function DecisionRow({ label, value, onRevise }) {
     </>
   )
 
+  const clearFlash = (e) => {
+    if (e.animationName === 'fa-flash') setJustChanged(false)
+  }
+
   // Only a settled item with somewhere to send the correction is tappable —
   // an open slot has no value yet to edit, and DecisionStack's other caller
   // (the text chat's rail, ArtifactRail.jsx) passes no onRevise at all, so
   // it stays a plain read-only summary there.
   if (settled && onRevise) {
     return (
-      <li className="fa-card-drop neo-raised group flex shrink-0 rounded-2xl bg-paper-raised text-left">
+      <li
+        className={`fa-card-drop neo-raised group flex shrink-0 rounded-2xl bg-paper-raised text-left ${justChanged ? 'fa-flash' : ''}`}
+        onAnimationEnd={clearFlash}
+      >
         <button
           type="button"
           onClick={() => {
@@ -150,9 +178,10 @@ function DecisionRow({ label, value, onRevise }) {
 
   return (
     <li
+      onAnimationEnd={clearFlash}
       className={`fa-card-drop flex shrink-0 items-start gap-2.5 rounded-2xl px-3.5 py-2.5 text-left ${
         settled ? 'neo-raised bg-paper-raised' : ''
-      }`}
+      } ${justChanged ? 'fa-flash' : ''}`}
     >
       {inner}
     </li>

@@ -737,7 +737,7 @@ export function VoiceModePanel({
 
   return (
     <div
-      className="neo-world dialog-scrim"
+      className="neo-world dialog-scrim flex flex-col items-center gap-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* A GRID with two fixed-width flanking columns, not flex siblings
@@ -759,30 +759,15 @@ export function VoiceModePanel({
           role="dialog"
           aria-modal="true"
           aria-label="Voice conversation"
-          /* relative so the close button can dock to a corner instead of
-             sitting in the vertical flow below the caption — a dialog's
-             close control belongs somewhere fixed and expected, not a
-             third thing stacked under the orb where a longer caption keeps
-             pushing it around. */
-          className="neo-panel relative flex min-w-0 flex-col items-center justify-center gap-5 rounded-[28px] bg-paper-raised p-8 text-center"
+          className="neo-panel flex min-w-0 flex-col items-center justify-center gap-5 rounded-[28px] bg-paper-raised p-8 text-center"
         >
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            aria-label="End voice conversation"
-            className="neo-raised tap-target absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full text-ink-soft"
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
           {orb}
           {/* A FIXED height, not a max — a growing-then-shrinking caption
               was the other half of the "ebb and flow" complaint alongside
-              the boxes that came and went: even with the close button
-              docked to a corner, the orb still crept up and down as the
-              line below it gained and lost lines while typing out. Fixed
-              height + scroll means this spot never moves regardless of
-              how much (or how little) the current line has to say.
+              the boxes that came and went: the orb crept up and down as
+              the line below it gained and lost lines while typing out.
+              Fixed height + scroll means this spot never moves regardless
+              of how much (or how little) the current line has to say.
 
               h-48 and text-base, not the original h-28/text-sm: the orb
               stays full size (it's staying, on request), so the room this
@@ -811,6 +796,22 @@ export function VoiceModePanel({
           <DecisionStack decisions={decisions} onRevise={reviseDecision} />
         )}
       </div>
+      {/* A labeled control below all three panels, not an icon pinned to a
+         corner of one of them — the close button used to live inside the
+         orb's own card (first absolute in a corner, before that stacked
+         under the caption), which made it read as part of that card
+         specifically rather than a control for the whole conversation.
+         Clicking the scrim or pressing Escape (useFocusTrap below) both
+         still close it too; this is the discoverable, labeled way to. */}
+      <button
+        ref={closeRef}
+        type="button"
+        onClick={onClose}
+        className="neo-raised tap-target flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-ink-soft"
+      >
+        <X size={15} aria-hidden="true" />
+        End conversation
+      </button>
     </div>
   )
 }
