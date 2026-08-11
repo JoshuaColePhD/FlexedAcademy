@@ -174,14 +174,24 @@ def day_schema_snippet() -> str:
 
 
 class SchemaError(Exception):
-    """A specific, showable reason the model's output can't become a document."""
+    """A specific, showable reason the model's output can't become a document.
 
-    def __init__(self, code: str, message: str, *, path: str = "", hint: str = ""):
+    Every one of these — a duplicate day name, a missing field, truncated
+    JSON — is a single-sample formatting slip from the model, the same shape
+    as llm.py's stream_chat malformed_tool_call/empty_reply, where a second
+    attempt usually just works. retryable defaults to True for exactly that
+    reason; no call site below has to opt in individually.
+    """
+
+    def __init__(
+        self, code: str, message: str, *, path: str = "", hint: str = "", retryable: bool = True
+    ):
         super().__init__(message)
         self.code = code
         self.message = message
         self.path = path
         self.hint = hint
+        self.retryable = retryable
 
     def payload(self) -> dict:
         body = {"code": self.code, "message": self.message}
@@ -189,6 +199,8 @@ class SchemaError(Exception):
             body["path"] = self.path
         if self.hint:
             body["hint"] = self.hint
+        if self.retryable:
+            body["retryable"] = True
         return body
 
 

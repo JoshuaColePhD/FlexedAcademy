@@ -169,8 +169,9 @@ Return JSON matching this schema exactly:
 
 Do not include teacher, course, or period — those are filled in from the
 teacher's saved settings, not by you. Include exactly {len(DAY_NAMES)} days, one
-per weekday, named exactly as listed. If a day is a holiday or in-service, set
-`no_school` to true for it and leave its content fields as empty strings.
+per weekday, named exactly as listed, each name used EXACTLY ONCE — never repeat
+a weekday. If a day is a holiday or in-service, set `no_school` to true for it
+and leave its content fields as empty strings.
 
 Every day also needs a `title`: two to four words naming that day's focus, the
 way a teacher would say it out loud — "Ethos & audience", "Diction & syntax",

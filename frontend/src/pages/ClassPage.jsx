@@ -29,6 +29,7 @@ import { SkeletonText } from '../components/Skeleton'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
+import { unitSuffix } from '../lib/planShape'
 
 /* Your classes.
  *
@@ -310,7 +311,7 @@ function ClassWeeks({ cls }) {
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium text-ink">
                 Week {String(w.week).padStart(2, '0')}
-                {w.unit ? ` — ${w.unit}` : ''}
+                {unitSuffix(w.unit)}
               </span>
               <span className="block text-xs text-ink-muted">
                 {shortRange(w.start, w.end)} · {label}

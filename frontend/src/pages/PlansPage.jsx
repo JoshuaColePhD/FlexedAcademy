@@ -7,6 +7,7 @@ import { useConfirm } from '../lib/confirmContext'
 import { useActiveClass, usePlans, useDeletePlan } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { SkeletonText } from '../components/Skeleton'
+import { unitSuffix } from '../lib/planShape'
 
 /* Every plan this class has ever produced, in one place.
  *
@@ -53,7 +54,7 @@ function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, o
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-ink">
           {label}
-          {plan.unit ? ` — ${plan.unit}` : ''}
+          {unitSuffix(plan.unit)}
         </span>
         <span className="block truncate text-xs text-ink-muted">
           {plan.course ? `${plan.course} · ` : ''}

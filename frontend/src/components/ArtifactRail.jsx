@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
-import { orderedDays } from '../lib/planShape'
+import { orderedDays, unitSuffix } from '../lib/planShape'
 import { classColor } from '../lib/classColor'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { DecisionStack } from './DecisionStack'
@@ -124,7 +124,7 @@ function OtherWeeks({ classId, weeks }) {
               <span className="rail-text">
                 <span className="rail-row-label">
                   Week {String(w.week).padStart(2, '0')}
-                  {w.unit ? ` — ${w.unit}` : ''}
+                  {unitSuffix(w.unit)}
                 </span>
                 <span className="rail-sub">{label}</span>
               </span>
@@ -242,7 +242,7 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, decisions = []
               >
                 <span className="rail-title">{plan?.week_of || 'Weekly lesson plan'}</span>
                 <span className="rail-sub">
-                  .docx{artifact?.unit ? ` · ${artifact.unit}` : ''}
+                  .docx{unitSuffix(artifact?.unit, ' · ')}
                 </span>
               </button>
             </span>

@@ -6,6 +6,18 @@
  * two would drift.
  */
 
+// A unit name that's just the week number restated ("Week 12") adds nothing
+// next to a week_label that already says "Week 12 — Oct 19-23, 2026" — see
+// backend/units.py's unit_for_week(), which returns exactly this string
+// whenever a course has no real UNIT_MAP entry for that week. Every place
+// that appends `unit` after a week reference needs this same check, or the
+// week number shows up twice.
+const GENERIC_WEEK_UNIT = /^week\s*0*\d+$/i
+
+export function unitSuffix(unit, sep = ' — ') {
+  return unit && !GENERIC_WEEK_UNIT.test(unit.trim()) ? `${sep}${unit}` : ''
+}
+
 export const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
 export const SHORT_DAY = {

@@ -5,6 +5,7 @@ import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
+import { unitSuffix } from '../lib/planShape'
 import { LessonPlanTable } from './LessonPlanTable'
 import { Marginalia } from './Marginalia'
 
@@ -112,7 +113,7 @@ export function ArtifactPanel({
           <strong className="doc-title">{plan?.week_of || 'Lesson plan'}</strong>
           <span className="doc-sub">
             {planId ? 'Saved' : busy ? 'Drafting…' : 'Preview'}
-            {artifact?.unit ? ` · ${artifact.unit}` : ''}
+            {unitSuffix(artifact?.unit, ' · ')}
             {planId && onReviseDay && view !== 'days' ? ' · click any cell to tweak' : ''}
           </span>
         </span>
