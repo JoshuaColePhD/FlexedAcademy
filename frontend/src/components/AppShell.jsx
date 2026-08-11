@@ -290,7 +290,6 @@ export function AppShell({ children }) {
             next to the rail's lit glass. z-index: -1 keeps it under #main's
             own content (the header bar and children below) without needing
             to touch either of those. */}
-        <div className="chat-glow" aria-hidden="true" />
         {isNarrow ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button
