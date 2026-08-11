@@ -187,11 +187,6 @@ function Rail({ onNavigate, onClose }) {
                 <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} />
               ))}
             </ul>
-            <div className="mt-2 px-4">
-              <Link to={`${classPath}/history`} onClick={onNavigate} className="text-xs text-ink-muted hover:text-ink">
-                View all history
-              </Link>
-            </div>
           </div>
         ) : (
           <p className="px-4 py-2 text-xs text-ink-muted">
