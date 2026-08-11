@@ -129,7 +129,7 @@ function Transcript({ messages, onReplay }) {
  * it is. Newest at the bottom, in the order they were decided, because that
  * is the order the teacher said them.
  */
-function DecisionStack({ decisions }) {
+function DecisionStack({ decisions, fill = true }) {
   const endRef = useRef(null)
   // Keep the newest card in view as the column outgrows its container —
   // otherwise the one that just landed is the one you can't see.
@@ -138,7 +138,16 @@ function DecisionStack({ decisions }) {
   }, [decisions.length])
 
   return (
-    <div className="neo-panel flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4">
+    /* fill: stretch to the column (desktop, where three equal-height panels
+       read as one composed layout). Otherwise hug the cards and grow
+       downward as they land — on a phone this panel is the whole screen, and
+       stretching it to full height around three cards leaves most of the
+       display as one empty embossed slab. */
+    <div
+      className={`neo-panel flex min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4 ${
+        fill ? 'h-full' : 'max-h-full'
+      }`}
+    >
       <p className="eyebrow shrink-0 pb-2">The plan so far</p>
       {decisions.length ? (
         <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
@@ -713,7 +722,7 @@ export function VoiceModePanel({
               <QuestionCards questions={questions} onAnswer={onAnswer} />
             </div>
           ) : (
-            <DecisionStack decisions={decisions} />
+            <DecisionStack decisions={decisions} fill={false} />
           )}
         </div>
 
