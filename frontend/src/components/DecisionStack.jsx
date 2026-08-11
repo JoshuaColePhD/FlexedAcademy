@@ -1,73 +1,209 @@
-import { useEffect, useRef } from 'react'
-import { Check } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Check, Pencil } from 'lucide-react'
 
-/* What's been settled in the conversation so far (llm.extract_decisions) —
- * the running plan, building itself in front of the teacher.
+/* The four things every plan-building conversation has to settle, regardless
+ * of what the finished week ends up looking like — independent of
+ * schema.py's DAY_JSON_SCHEMA, which varies day to day and isn't what this
+ * tracks. backend/llm.py's extract_decisions has no fixed schema either (see
+ * its own docstring) — it freely writes a 1-3 word label per decision it
+ * finds — so these are matched against whatever it returns by a loose
+ * keyword test, not an exact key. Anything settled that doesn't match one of
+ * the four still shows, just below, as its own card: a real decision the
+ * model surfaced that isn't one of the regulars (a constraint, a rubric
+ * detail), not something dropped for not fitting the mold. */
+const CORE_CHECKLIST = [
+  { key: 'week', label: 'Week', match: /week/i },
+  { key: 'anchor', label: 'Anchor text', match: /anchor|text/i },
+  { key: 'skill', label: 'Skill focus', match: /skill|focus/i },
+  { key: 'assessment', label: 'Assessment', match: /assess/i },
+]
+
+function splitDecisions(decisions) {
+  const usedIdx = new Set()
+  const checklist = CORE_CHECKLIST.map((slot) => {
+    const idx = decisions.findIndex((d, i) => !usedIdx.has(i) && slot.match.test(d.label))
+    if (idx >= 0) usedIdx.add(idx)
+    const found = idx >= 0 ? decisions[idx] : null
+    return { key: slot.key, label: slot.label, value: found?.value ?? null }
+  })
+  const extra = decisions
+    .map((d, i) => ({ key: `extra:${i}`, label: d.label, value: d.value }))
+    .filter((_, i) => !usedIdx.has(i))
+  return { checklist, extra }
+}
+
+/* One row. Three states: still open (empty circle, informational only —
+ * there's nothing to edit yet, the teacher just hasn't said it), settled
+ * (checkmark, tappable if onRevise exists), or being edited right now
+ * (a real input, not a modal — this is a short correction, not a form). */
+function DecisionRow({ label, value, onRevise }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value || '')
+  const inputRef = useRef(null)
+  const settled = value != null
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select()
+  }, [editing])
+
+  const cancel = () => {
+    setDraft(value || '')
+    setEditing(false)
+  }
+
+  const save = () => {
+    const next = draft.trim()
+    setEditing(false)
+    // Phrased as an instruction, not just restated as a fact — this goes
+    // straight into the conversation the same way a spoken correction
+    // would (see VoiceModePanel's onRevise), and "Skill focus: X" reads to
+    // the model as ambiguous between a correction and just repeating it
+    // back.
+    if (next && next !== value) onRevise(label, next)
+  }
+
+  if (editing) {
+    return (
+      <li className="fa-card-drop neo-raised flex shrink-0 flex-col gap-2 rounded-2xl bg-paper-raised px-3.5 py-2.5 text-left">
+        <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') cancel()
+          }}
+          className="w-full border-none bg-transparent text-sm leading-snug text-ink outline-none"
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={save}
+            className="neo-raised rounded-full bg-accent-tint px-3 py-1 text-xs font-medium text-accent-text transition-shadow"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={cancel}
+            className="neo-raised rounded-full px-3 py-1 text-xs font-medium text-ink-soft transition-shadow"
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    )
+  }
+
+  const inner = (
+    <>
+      {/* Inset once settled — the same "pressed into the card" mark
+          QuestionCards uses for an answered question — raised and empty
+          while still open, so a glance says which of these still need a
+          word from the teacher. */}
+      <span
+        aria-hidden="true"
+        className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ${
+          settled ? 'neo-inset text-accent-text' : 'neo-raised text-ink-faint'
+        }`}
+      >
+        {settled ? <Check size={11} strokeWidth={3} /> : null}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
+        <span className={`block text-sm leading-snug ${settled ? 'text-ink' : 'italic text-ink-faint'}`}>
+          {settled ? value : 'Not yet decided'}
+        </span>
+      </span>
+      {settled && onRevise ? (
+        <Pencil
+          size={12}
+          aria-hidden="true"
+          className="mt-1 shrink-0 text-ink-faint opacity-0 transition-opacity group-hover:opacity-100"
+        />
+      ) : null}
+    </>
+  )
+
+  // Only a settled item with somewhere to send the correction is tappable —
+  // an open slot has no value yet to edit, and DecisionStack's other caller
+  // (the text chat's rail, ArtifactRail.jsx) passes no onRevise at all, so
+  // it stays a plain read-only summary there.
+  if (settled && onRevise) {
+    return (
+      <li className="fa-card-drop neo-raised group flex shrink-0 rounded-2xl bg-paper-raised text-left">
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(value)
+            setEditing(true)
+          }}
+          aria-label={`Change ${label}`}
+          className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left"
+        >
+          {inner}
+        </button>
+      </li>
+    )
+  }
+
+  return (
+    <li
+      className={`fa-card-drop flex shrink-0 items-start gap-2.5 rounded-2xl px-3.5 py-2.5 text-left ${
+        settled ? 'neo-raised bg-paper-raised' : ''
+      }`}
+    >
+      {inner}
+    </li>
+  )
+}
+
+/* What's been settled in the conversation so far (llm.extract_decisions),
+ * plus the core checklist above it — the running plan, building itself in
+ * front of the teacher, with an honest picture of what's left.
  *
  * A vertical column, not a fanned deck: a deck reads as "a pile of things"
  * and only its top card is legible, which is exactly wrong for the job.
- * These are the durable decisions the week is being built from, and all of
- * them need to stay readable at once — so each new one drops in UNDER the
- * last, the column grows downward as the conversation goes, and the whole
- * set reads top to bottom like the outline it is. Newest at the bottom, in
- * the order they were decided, because that is the order the teacher said
- * them.
  *
- * Originally voice mode's own component; shared now with the normal text
- * chat (ChatPage.jsx), which used to have no equivalent at all — a teacher
- * typing never saw what had actually been settled, only voice mode did.
+ * `onRevise(label, newValue)`, when given, is what makes a settled row
+ * tappable — see VoiceModePanel, which wires it straight into the same
+ * onUtterance a spoken correction would use, so tapping "Skill focus" and
+ * typing a new one is just a typed version of saying it out loud.
  */
-export function DecisionStack({ decisions, fill = true }) {
+export function DecisionStack({ decisions, fill = true, onRevise }) {
   const endRef = useRef(null)
-  // Keep the newest card in view as the column outgrows its container —
-  // otherwise the one that just landed is the one you can't see.
+  // Keep the newest extra card in view as the column outgrows its container
+  // — otherwise the one that just landed is the one you can't see. The four
+  // checklist rows are always present, so this only matters once there's
+  // overflow from extras.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [decisions.length])
+
+  const { checklist, extra } = splitDecisions(decisions)
 
   return (
     /* fill: stretch to the column (voice mode's desktop dialog, where three
        equal-height panels read as one composed layout). Otherwise hug the
        cards and grow downward as they land — in a narrow column or on a
-       phone, stretching this to full height around three cards leaves most
-       of the display as one empty embossed slab. */
+       phone, stretching this to full height leaves most of the display as
+       one empty embossed slab. */
     <div
       className={`neo-panel flex min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4 ${
         fill ? 'h-full' : 'max-h-full'
       }`}
     >
       <p className="eyebrow shrink-0 pb-2">The plan so far</p>
-      {decisions.length ? (
-        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
-          {decisions.map((d, i) => (
-            <li
-              key={`${d.label}:${i}`}
-              className="fa-card-drop neo-raised flex shrink-0 items-start gap-2.5 rounded-2xl bg-paper-raised px-3.5 py-2.5 text-left"
-            >
-              {/* Inset, not raised — a completed mark, something already
-                  pressed into the card rather than another thing to tap. */}
-              <span
-                aria-hidden="true"
-                className="neo-inset mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-accent-text"
-              >
-                <Check size={11} strokeWidth={3} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">
-                  {d.label}
-                </span>
-                <span className="block text-sm leading-snug text-ink">{d.value}</span>
-              </span>
-            </li>
-          ))}
-          <li ref={endRef} aria-hidden="true" />
-        </ul>
-      ) : (
-        <p className="text-xs leading-relaxed text-ink-muted">
-          As you settle things — the week, the text, what they’ll be graded on — they’ll stack up
-          here.
-        </p>
-      )}
+      <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
+        {checklist.map((item) => (
+          <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
+        ))}
+        {extra.map((item) => (
+          <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
+        ))}
+        <li ref={endRef} aria-hidden="true" />
+      </ul>
     </div>
   )
 }

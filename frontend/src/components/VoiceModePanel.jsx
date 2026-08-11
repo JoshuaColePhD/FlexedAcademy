@@ -60,60 +60,59 @@ const MAX_UTTERANCE_MS = 30_000
 const BARGE_THRESHOLD = 0.13
 const BARGE_SUSTAIN_MS = 180
 
-/* The transcript, styled the same way the real text chat renders a turn
- * (see Message.jsx): the teacher's own line sits in a pressed-in bubble,
- * the assistant's reply is bare text on the panel — no avatars, no second
- * card competing with the reply beside it. Voice mode used to give this its
- * own music-library-row look (round avatar, title/subtitle, a play button
- * on every row), which made the one conversation read as two different
- * apps depending on whether you typed or talked. Desktop only, in the left
- * column — on a phone the transcript is still one swipe away underneath
- * this panel, and there's no room for a second column at that width
- * anyway. */
+/* What it's said — not a two-sided transcript. This used to show both
+ * turns, styled after the real text chat's bubbles (teacher's own line
+ * pressed into a groove, assistant's bare on the panel). But the teacher
+ * already knows what they just said a moment ago; what's actually hard to
+ * catch in a SPOKEN conversation is the assistant's side, especially once
+ * it's scrolled past and the audio is gone. So this is now a running,
+ * untruncated log of assistant replies only — the answer to "wait, what did
+ * it just say?" without needing Replay for anything but the very latest
+ * line. Desktop only, in the left column — on a phone this is still one
+ * swipe away underneath the panel, and there's no room for a second column
+ * at that width anyway. */
+// A question round with nothing extra to say gets the same fixed line every
+// time ("A couple of quick questions to get this right:" — see ChatPage's
+// onDone), which made a run of questions read as the identical bubble
+// repeated over and over in this log. spokenContent (ChatPage's own
+// speakableQuestions) already boils a question message down to the actual
+// question text — using it here too, not just for TTS, means the log and
+// the audio never disagree about what was "said."
+function saidText(m) {
+  if (!m.questions?.length) return m.content
+  return m.spokenContent || m.questions.map((q) => q.text).join(' ')
+}
+
 function Transcript({ messages, onReplay }) {
+  const said = messages.filter((m) => m.role !== 'user')
   return (
     <div className="neo-panel flex h-full flex-col overflow-hidden rounded-[28px] bg-paper-raised">
       <div className="shrink-0 px-5 py-4">
-        <p className="text-sm font-semibold text-ink">This conversation</p>
+        <p className="text-sm font-semibold text-ink">What it's said</p>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4">
-        {messages.length ? (
-          messages.map((m) => {
-            const isUser = m.role === 'user'
-            return (
-              <div key={m.id} className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
-                <div className={`flex max-w-[92%] flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-                  <div
-                    className={
-                      isUser
-                        ? 'neo-inset rounded-2xl bg-paper-sunken px-3.5 py-2.5 text-sm leading-relaxed text-ink'
-                        : 'text-sm leading-relaxed text-ink'
-                    }
-                  >
-                    <p className="m-0 whitespace-pre-wrap">{m.content}</p>
-                  </div>
-                  {/* Replay is voice mode's own affordance, with no text-chat
-                      equivalent — kept as a quiet text-and-icon action under
-                      the reply rather than the old always-visible round
-                      button, so it reads as an extra on the bubble instead
-                      of a second UI language next to it. */}
-                  {isUser ? null : (
-                    <button
-                      type="button"
-                      onClick={() => onReplay(m.content)}
-                      aria-label="Replay this reply"
-                      className="mt-1 flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-medium text-ink-muted opacity-0 transition-opacity hover:text-accent-text focus-within:opacity-100 group-hover:opacity-100"
-                    >
-                      <Play size={11} aria-hidden="true" fill="currentColor" />
-                      Replay
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+        {said.length ? (
+          said.map((m) => (
+            <div key={m.id} className="fa-rise group flex w-full flex-col items-start">
+              <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed text-ink">{saidText(m)}</p>
+              {/* Replay is voice mode's own affordance, with no text-chat
+                  equivalent — kept as a quiet text-and-icon action under
+                  the reply rather than the old always-visible round
+                  button, so it reads as an extra on the line instead of a
+                  second UI language next to it. */}
+              <button
+                type="button"
+                onClick={() => onReplay(saidText(m))}
+                aria-label="Replay this reply"
+                className="mt-1 flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-medium text-ink-muted opacity-0 transition-opacity hover:text-accent-text focus-within:opacity-100 group-hover:opacity-100"
+              >
+                <Play size={11} aria-hidden="true" fill="currentColor" />
+                Replay
+              </button>
+            </div>
+          ))
         ) : (
-          <p className="px-1 py-3 text-sm text-ink-muted">Say something to get started.</p>
+          <p className="px-1 py-3 text-sm text-ink-muted">Its replies will show up here.</p>
         )}
       </div>
     </div>
@@ -122,37 +121,51 @@ function Transcript({ messages, onReplay }) {
 
 /* The clarification cards. When the teacher says something too vague to
  * build from, the model asks one or more short questions (see the backend's
- * voice prompt) and their options land here as real, tappable buttons
- * rather than a list read aloud — faster to answer, and it keeps the spoken
- * half of the conversation short, which is the whole point of voice mode.
+ * voice prompt) and their options land here as real, tappable buttons —
+ * a SHORTCUT for answering, not a replacement for talking. The mic never
+ * stops listening while these are on screen (busy only pauses it during an
+ * actual generation, see VoiceModePanel's pausedRef), so saying the answer
+ * out loud works exactly the same as tapping one of these; the hint below
+ * the cards says so, because nothing else about a row of buttons implies
+ * that on its own.
  *
  * Styled like DecisionStack (the "plan so far" column this replaces while
  * a question is on the table): same checkmark-in-a-circle language, so a
  * question mid-answer and a decision already locked in read as two states
- * of the same list, not two different components. Each question checks off
- * the moment it's answered — the point is to always be able to glance over
- * and see what's already settled and what's still open, not just whether
- * the whole batch is done. */
+ * of the same list, not two different components.
+ *
+ * Voice mode's own system prompt (backend/routes/generate.py) always asks
+ * exactly ONE question at a time — the multi-question, answer-them-all-then-
+ * Continue shape only exists here for whatever isn't that. So the single-
+ * question case (the actual common case) skips Continue entirely: tapping
+ * an option IS the answer, sent immediately. Requiring a second tap to
+ * confirm a choice already made was pure friction with nothing to weigh. */
 function QuestionCards({ questions, onAnswer }) {
   const [answers, setAnswers] = useState({})
+  const single = questions.length === 1
   const allAnswered = questions.every((q) => answers[q.id])
 
-  const send = () => {
-    const text = questions.map((q) => `${q.text} ${answers[q.id]}`).join('\n')
+  const send = (finalAnswers) => {
+    const text = questions.map((q) => `${q.text} ${finalAnswers[q.id]}`).join('\n')
     onAnswer(text)
+  }
+
+  const choose = (q, opt) => {
+    const next = { ...answers, [q.id]: opt }
+    setAnswers(next)
+    if (single) send(next)
   }
 
   return (
     <div className="neo-panel flex min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4">
-      <p className="eyebrow shrink-0 pb-2">
-        {questions.length > 1 ? 'A couple of quick questions' : 'One quick question'}
-      </p>
+      <p className="eyebrow shrink-0 pb-2">{single ? 'One quick question' : 'A couple of quick questions'}</p>
       <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
-        {questions.map((q) => {
+        {questions.map((q, i) => {
           const answered = Boolean(answers[q.id])
           return (
             <li
               key={q.id}
+              style={{ animationDelay: `${i * 60}ms` }}
               className="fa-card-drop neo-raised flex shrink-0 flex-col gap-2.5 rounded-2xl bg-paper-raised px-3.5 py-3 text-left"
             >
               <div className="flex items-start gap-2.5">
@@ -177,7 +190,7 @@ function QuestionCards({ questions, onAnswer }) {
                       key={opt}
                       type="button"
                       aria-pressed={selected}
-                      onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: opt }))}
+                      onClick={() => choose(q, opt)}
                       /* Pressed-in when chosen, standing proud when not — the
                          same physical language every other selected/unselected
                          pair in this app already speaks. */
@@ -194,14 +207,17 @@ function QuestionCards({ questions, onAnswer }) {
           )
         })}
       </ul>
-      <button
-        type="button"
-        disabled={!allAnswered}
-        onClick={send}
-        className="neo-raised mt-3 min-h-touch shrink-0 self-start rounded-full bg-accent-tint px-5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Continue
-      </button>
+      <p className="mt-2 shrink-0 text-center text-2xs text-ink-faint">Or just say your answer</p>
+      {!single ? (
+        <button
+          type="button"
+          disabled={!allAnswered}
+          onClick={() => send(answers)}
+          className="neo-raised mt-2 min-h-touch shrink-0 self-start rounded-full bg-accent-tint px-5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Continue
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -300,6 +316,13 @@ export function VoiceModePanel({
   // for busy/isSpeaking: read fresh every call, written on every render.
   const onUtteranceRef = useRef(onUtterance)
   onUtteranceRef.current = onUtterance
+
+  // Tapping a settled decision to fix it (DecisionStack's onRevise) is a
+  // typed version of saying the correction out loud — same destination
+  // (ChatPage's submit, via onUtterance) as a finished spoken utterance, just
+  // skipping the mic. No ref needed here: this only ever fires from a click
+  // handler in the render below, not from the mic loop's persistent effect.
+  const reviseDecision = (label, value) => onUtterance(`Change ${label.toLowerCase()} to ${value}.`)
 
   useFocusTrap(panelRef, { active: true, trap: true, initialFocus: closeRef, onEscape: onClose })
 
@@ -686,7 +709,7 @@ export function VoiceModePanel({
               <QuestionCards questions={questions} onAnswer={onAnswer} />
             </div>
           ) : (
-            <DecisionStack decisions={decisions} fill={false} />
+            <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
           )}
         </div>
 
@@ -718,42 +741,61 @@ export function VoiceModePanel({
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* A GRID with two fixed-width flanking columns, not flex siblings
-          that come and go — the transcript only exists once there's a
-          message and the card stack only once there's a decision, and as
-          flex items, each one mounting/unmounting shifted how much space
-          the center column got, which visibly shoved the orb sideways the
-          moment either one appeared. Both flanks are ALWAYS present as grid
-          tracks (280px each) — empty is just an empty column, not a missing
-          one — so the center column, and the orb centered inside it, never
-          moves regardless of what's showing on either side. */}
+          that come and go. This used to mount/unmount the flanking cards
+          themselves too — Transcript only once there was a message,
+          DecisionStack only once there was a decision — so the whole
+          dialog visibly popped and resized as the conversation went, on
+          top of the column tracks already being fixed. All three boxes are
+          now permanent from the moment the panel opens: Transcript and
+          DecisionStack already have their own "nothing yet" copy for an
+          empty list (see each component), so there's always something
+          real to show in an empty box rather than an empty box appearing
+          from nothing. */}
       <div className="grid w-full max-w-4xl grid-cols-[280px_minmax(0,1fr)_280px] items-stretch gap-4">
-        <div>{messages.length ? <Transcript messages={messages} onReplay={onReplay} /> : null}</div>
+        <Transcript messages={messages} onReplay={onReplay} />
         <div
           ref={panelRef}
           tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label="Voice conversation"
-          /* overflow-y-auto, not a fixed centred stack: with a question
-             card open this column carries the orb, the caption, 3-4 option
-             pills and the close button, which together overrun the
-             dialog's own max height on a short laptop screen — the close
-             button was the part that fell off the bottom. */
-          className="neo-panel flex min-w-0 flex-col items-center justify-center gap-5 overflow-y-auto rounded-[28px] bg-paper-raised p-8 text-center"
+          /* relative so the close button can dock to a corner instead of
+             sitting in the vertical flow below the caption — a dialog's
+             close control belongs somewhere fixed and expected, not a
+             third thing stacked under the orb where a longer caption keeps
+             pushing it around. */
+          className="neo-panel relative flex min-w-0 flex-col items-center justify-center gap-5 rounded-[28px] bg-paper-raised p-8 text-center"
         >
-          {orb}
-          <p aria-live="polite" className="line-clamp-3 min-h-[1.5em] text-sm text-ink-soft">
-            {displayText}
-          </p>
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="End voice conversation"
-            className="neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink-soft"
+            className="neo-raised tap-target absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full text-ink-soft"
           >
-            <X size={18} aria-hidden="true" />
+            <X size={16} aria-hidden="true" />
           </button>
+          {orb}
+          {/* A FIXED height, not a max — a growing-then-shrinking caption
+              was the other half of the "ebb and flow" complaint alongside
+              the boxes that came and went: even with the close button
+              docked to a corner, the orb still crept up and down as the
+              line below it gained and lost lines while typing out. Fixed
+              height + scroll means this spot never moves regardless of
+              how much (or how little) the current line has to say.
+
+              h-48 and text-base, not the original h-28/text-sm: the orb
+              stays full size (it's staying, on request), so the room this
+              needs has to come from actually being bigger, not from
+              shrinking anything else — a cramped scroll box was the whole
+              complaint. Bigger text for the same reason: legible while
+              it's actively typing out, not just technically present. */}
+          <p
+            aria-live="polite"
+            className="h-48 w-full overflow-y-auto text-base leading-relaxed text-ink-soft"
+          >
+            {displayText}
+          </p>
         </div>
         {/* The side column: a pending clarification takes over the same
             slot "the plan so far" normally holds — while a question is on
@@ -761,14 +803,13 @@ export function VoiceModePanel({
             decision already locked in is once it's settled. Checking each
             question off as it's answered (see QuestionCards) is what makes
             this readable as a to-do list rather than a form dropped on top
-            of the conversation. */}
-        <div className="min-h-0">
-          {questions?.length ? (
-            <QuestionCards questions={questions} onAnswer={onAnswer} />
-          ) : decisions.length ? (
-            <DecisionStack decisions={decisions} />
-          ) : null}
-        </div>
+            of the conversation. DecisionStack, not null, is the default —
+            same reasoning as Transcript above. */}
+        {questions?.length ? (
+          <QuestionCards questions={questions} onAnswer={onAnswer} />
+        ) : (
+          <DecisionStack decisions={decisions} onRevise={reviseDecision} />
+        )}
       </div>
     </div>
   )
