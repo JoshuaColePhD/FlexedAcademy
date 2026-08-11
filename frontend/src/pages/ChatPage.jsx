@@ -66,23 +66,21 @@ const ATTACHMENT_CHAR_CAP = 12000
 // short on purpose, since it's heard once per conversation, not read.
 const VOICE_GREETING = 'Hey, what do you need a lesson plan for?'
 
-/* ask_clarifying_questions' payload was built for LessonQuestions — tappable
- * option cards, never anything voice mode can render. Speaking only the
- * generic intro line ("A couple of quick questions to get this right:") and
- * silently dropping the actual questions left a voice conversation asking
- * the teacher to answer something it never said out loud — indistinguishable
- * from the panel just being stuck. This is what gets spoken/captioned
- * INSTEAD of the plain intro, for voice specifically: the intro plus every
- * question, each followed by its own options read aloud as candidates —
- * this app's chat text stays typeable, but voice has nothing to tap, so it
- * has to hear the options to have any way to answer.
+/* What voice mode SAYS when the model asks for clarification.
+ *
+ * Only the questions themselves — never their options. The options are
+ * rendered as tappable cards inside the voice panel (VoiceModePanel's
+ * QuestionCards), so reading them aloud would be both slower to sit
+ * through and harder to answer than simply looking at them. Speaking only
+ * the generic intro and dropping the questions entirely, which is what this
+ * did before the cards existed, left the panel silently waiting on an
+ * answer to something it never asked — indistinguishable from being stuck.
+ *
+ * `intro` is empty when it has already been spoken sentence-by-sentence as
+ * it streamed; passing it again would say it twice.
  */
 function speakableQuestions(intro, questions) {
-  const parts = questions.map((q) => {
-    const options = (q.options || []).filter(Boolean)
-    return options.length ? `${q.text} For example: ${options.join(', or ')}.` : q.text
-  })
-  return [intro, ...parts].join(' ')
+  return [intro, ...questions.map((q) => q.text)].filter(Boolean).join(' ')
 }
 
 export function ChatPage() {
@@ -148,6 +146,11 @@ export function ChatPage() {
   // voice mode is open (see the effect further down). Empty is a normal
   // state, not a loading one: nothing has necessarily been settled yet.
   const [decisions, setDecisions] = useState([])
+  // The running text of the reply currently being spoken sentence-by-
+  // sentence, so the caption grows with the speech instead of appearing all
+  // at once when the model finally stops writing. Reset at the top of each
+  // submit — see onSentence, which appends to it.
+  const liveSpeechRef = useRef('')
 
   /* Which cell is being tweaked, and which cells just changed. `flashCells` is
      the only animation in the app that carries information: it answers "what
@@ -409,6 +412,19 @@ export function ChatPage() {
   })
 
   const chatStream = useChatStream({
+    /* Voice mode's low-latency path: speak each sentence the moment the
+       model finishes writing it, rather than waiting for the whole reply,
+       then a whole TTS render, then playback. VoiceProvider queues these so
+       they play back-to-back as one continuous utterance. No-op for the
+       text chat, which never opens the panel. */
+    onSentence: (sentence) => {
+      if (!voiceOpen) return
+      voice.enqueue(sentence)
+      liveSpeechRef.current = liveSpeechRef.current
+        ? `${liveSpeechRef.current} ${sentence}`
+        : sentence
+      setVoiceCaption(liveSpeechRef.current)
+    },
     onDone: (result) => {
       // The guided alternative to typing — see LessonQuestions and
       // backend/llm.py's ask_clarifying_questions tool. Rendered as its own
@@ -426,11 +442,14 @@ export function ChatPage() {
           role: 'assistant',
           content: intro,
           questions: result.questions,
-          // Voice mode has no LessonQuestions cards to tap — see
-          // speakableQuestions' own comment. Read only by the auto-speak/
-          // caption effect below; the text-chat bubble still shows the
-          // short intro, with the actual questions in the cards beneath it.
-          spokenContent: speakableQuestions(intro, result.questions),
+          // What voice mode says out loud — the questions themselves, but
+          // NOT their options: those render as tappable cards in the panel
+          // (see VoiceModePanel's QuestionCards), and reading a list of
+          // choices aloud that the teacher can already see and tap is both
+          // slower and harder to answer. `spokeStream` means the intro
+          // already went out sentence-by-sentence while the model was
+          // writing it, so repeating it here would say it twice.
+          spokenContent: speakableQuestions(result.spokeStream ? '' : intro, result.questions),
         }
         setMessages((prev) => [...prev, reply])
         const saveTo = localFor.current
@@ -449,6 +468,10 @@ export function ChatPage() {
           id: nextId(),
           role: 'assistant',
           content: result.text,
+          // Already read aloud a sentence at a time as it streamed — the
+          // auto-speak effect below skips it rather than saying the whole
+          // reply a second time.
+          spokenLive: Boolean(result.spokeStream),
         }
         setMessages((prev) => [...prev, reply])
         const saveTo = localFor.current
@@ -494,6 +517,9 @@ export function ChatPage() {
   const submit = useCallback(
     async (text) => {
       const typed = (text ?? query).trim()
+      // A new turn starts a new spoken reply — see onSentence, which
+      // appends each streamed sentence onto this.
+      liveSpeechRef.current = ''
 
       /* Attached files were extracted, confirmed with a toast reporting the
          character count, and then never sent: `attachments` was written by the
@@ -881,8 +907,13 @@ export function ChatPage() {
     const toSpeak = last.spokenContent || last.content
     // Only auto-speak if they are actively in the voice conversation,
     // not unexpectedly in the background while they are just typing.
-    if (voiceOpen) {
-      voice.speak(toSpeak)
+    // spokenLive replies were already read aloud as they streamed (see
+    // onSentence) — speaking them again here would repeat the whole turn.
+    if (voiceOpen && !last.spokenLive) {
+      // enqueue, not speak: a clarifying question's spokenContent follows
+      // an intro that may still be playing from the stream, and replacing
+      // would cut its own preamble off mid-word.
+      voice.enqueue(toSpeak)
       setVoiceCaption(toSpeak)
     }
   }, [messages, voice, voiceOpen])
@@ -906,6 +937,16 @@ export function ChatPage() {
       cancelled = true
     }
   }, [messages, voiceOpen])
+
+  /* The clarification the conversation is currently waiting on, if any.
+     Only ever the LAST message's — an older unanswered set has been
+     overtaken by whatever was said since, and answering it now would send
+     the conversation backwards. */
+  const pendingQuestions = useMemo(() => {
+    const last = messages[messages.length - 1]
+    if (last?.role !== 'assistant' || !last?.questions?.length) return null
+    return { message: last, questions: last.questions }
+  }, [messages])
 
   const livePlan = artifact?.plan || stream.preview
   const liveArtifact = useMemo(
@@ -1321,7 +1362,25 @@ export function ChatPage() {
           messages={messages}
           caption={voiceCaption}
           decisions={decisions}
-          onInterrupt={voice.stop}
+          /* Barge-in: silence the reply AND abort the generation behind it.
+             Stopping only the audio would leave the model still writing
+             sentences that VoiceProvider would dutifully queue up and speak
+             the moment the teacher stopped talking — interrupted in sound
+             only, not in fact. */
+          onInterrupt={() => {
+            voice.stop()
+            chatStream.stop()
+            liveSpeechRef.current = ''
+            setVoiceCaption('')
+          }}
+          /* The clarification cards, tappable inside the panel — voice mode
+             asks ONE question at a time (see the backend's voice prompt) and
+             shows its options here rather than reading them aloud. */
+          questions={pendingQuestions?.questions || null}
+          onAnswer={(text) => {
+            voice.stop()
+            onAnswerQuestions(pendingQuestions.message, text)
+          }}
           onReplay={(text) => {
             setVoiceCaption(text)
             voice.speak(text)

@@ -3534,23 +3534,24 @@
   .fa-flash {
     animation: fa-flash 2.2s ease-out both;
   }
-  /* Voice mode's decision cards, dropping into their spot in the stack.
-     Ends at rotate(var(--card-rot)), not `none` — unlike .fa-rise, this
-     card's tilt is its RESTING state (see VoiceModePanel's DecisionStack),
-     not something the animation is transitioning away from. */
+  /* Voice mode's decision cards, settling into place at the bottom of the
+     column as each one is decided. Scale, not just fade: a card that
+     resolves out of slightly-too-small reads as landing ON the stack,
+     which is the thing being communicated — the plan accumulating — where
+     a plain fade would read as a list quietly re-rendering. */
   .fa-card-drop {
-    animation: fa-card-drop 420ms var(--ease-out) both;
+    animation: fa-card-drop 380ms var(--ease-out) both;
   }
 }
 
 @keyframes fa-card-drop {
   from {
     opacity: 0;
-    transform: translateY(-18px) scale(0.92) rotate(var(--card-rot, 0deg));
+    transform: translateY(-10px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1) rotate(var(--card-rot, 0deg));
+    transform: none;
   }
 }
 @keyframes fa-rise {

@@ -596,10 +596,16 @@ def synthesize_speech(user_id: str, text: str) -> bytes:
     return resp.content
 
 
-def stream_chat(user_id: str, messages: list[dict]) -> Iterator[dict]:
+def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> Iterator[dict]:
     """Conversational streaming. Yields dicts with 'chunk' or 'tool_call'.
 
     The first message should be the system prompt.
+
+    `voice` only tightens the token ceiling — the actual "talk like a person,
+    one question at a time" instruction is in the system prompt the route
+    builds. This is the backstop for when the model drifts back toward
+    written-chat length anyway, which a prompt alone does not reliably
+    prevent over a long conversation.
     """
     tools = [
         {
@@ -663,7 +669,12 @@ def stream_chat(user_id: str, messages: list[dict]) -> Iterator[dict]:
     stream = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.7,
-        max_completion_tokens=4000,
+        # Deliberately generous even for voice: max_completion_tokens counts
+        # REASONING tokens too on this model, so a ceiling tight enough to
+        # actually shape prose length (a couple hundred) can be spent before
+        # a single visible character is emitted, and the teacher gets
+        # silence. Brevity is the prompt's job; this only stops an essay.
+        max_completion_tokens=1500 if voice else 4000,
         messages=messages,
         stream=True,
         tools=tools,

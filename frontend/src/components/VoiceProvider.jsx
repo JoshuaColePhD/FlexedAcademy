@@ -65,37 +65,136 @@ export function VoiceProvider({ children }) {
   // the toggle already showing "on" the whole time.
   const unlockedRef = useRef(false)
 
+  /* ── the speech queue ──────────────────────────────────────────────────
+     A reply is spoken in PIECES now, not as one clip once the model has
+     finished writing the whole thing. ChatPage feeds each finished sentence
+     here the moment it lands in the SSE stream (see useChatStream's
+     onSentence), so the first sentence is usually already playing while the
+     model is still writing the second — which is the single biggest reason
+     the old turn-taking felt slow: it waited for generate → THEN synthesize
+     the whole reply → THEN play, three full round trips of dead air before
+     any sound at all.
+
+     Each queued item's TTS fetch starts the instant it's enqueued, in
+     parallel with whatever is currently playing, so by the time one clip
+     ends the next is usually already decoded and there's no gap between
+     them. */
+  const queueRef = useRef([])
+  const playingRef = useRef(false)
+  /* Bumped by stop(). Every async step below captures the value it started
+     with and bails if it no longer matches — without it, a TTS fetch that
+     was already in flight when the teacher interrupted would still resolve
+     a moment later and start talking over them, which is exactly the thing
+     barge-in exists to prevent. */
+  const genRef = useRef(0)
+  // One failure toast per utterance, not one per sentence — a broken
+  // OPENAI_API_KEY would otherwise fire a toast for every clause.
+  const warnedRef = useRef(false)
+  const playNextRef = useRef(null)
+
   useEffect(() => {
     const el = new Audio()
     audioRef.current = el
-    // Only 'pause'/'ended', not 'play': the shared element also plays
-    // UNLOCK_WAV (a genuine ZERO-DURATION clip — its data chunk is 0 bytes,
-    // it's silence in name only), and on iOS Safari a zero-duration clip's
-    // 'play' event fires normally but 'ended' never does — there's no
-    // "end" to reach. A generic onPlay listener here set `speaking` true
-    // the instant unlock() ran, and it then never had a way back to false:
-    // VoiceModePanel treats "speaking" as "the assistant is talking, keep
-    // the mic paused," so it opened permanently paused with nothing to
-    // pause AGAINST. `speaking` is now set explicitly by speak() itself,
-    // right when a REAL reply starts playing — this listener only ever
-    // has to turn it back off.
-    const onEnd = () => setSpeaking(false)
-    el.addEventListener('pause', onEnd)
-    el.addEventListener('ended', onEnd)
+    /* 'ended' only — deliberately NOT 'pause'. Advancing the queue is this
+       listener's whole job, and 'pause' fires for reasons that are not "the
+       clip finished": stop() pausing on purpose, and swapping .src between
+       queued sentences. Driving the queue off 'pause' would advance it
+       twice per clip and skip sentences. Everything that legitimately ends
+       speech (stop(), a drained queue) sets `speaking` false explicitly. */
+    const onEnded = () => playNextRef.current?.()
+    const onError = () => playNextRef.current?.()
+    el.addEventListener('ended', onEnded)
+    el.addEventListener('error', onError)
     return () => {
-      el.removeEventListener('pause', onEnd)
-      el.removeEventListener('ended', onEnd)
+      el.removeEventListener('ended', onEnded)
+      el.removeEventListener('error', onError)
       el.pause()
       if (urlRef.current) URL.revokeObjectURL(urlRef.current)
     }
   }, [])
 
   const stop = useCallback(() => {
+    // Invalidate every in-flight fetch and queued clip before touching the
+    // element, so nothing can resurrect itself a beat after the interrupt.
+    genRef.current += 1
+    queueRef.current = []
+    playingRef.current = false
+    warnedRef.current = false
+    setSpeaking(false)
     const el = audioRef.current
     if (!el) return
     el.pause()
     el.currentTime = 0
   }, [])
+
+  const playNext = useCallback(async () => {
+    const el = audioRef.current
+    const gen = genRef.current
+    const item = queueRef.current.shift()
+    if (!el || !item) {
+      // Queue drained: this is the one place a natural end of speech is
+      // decided, rather than any single clip's 'ended'.
+      playingRef.current = false
+      setSpeaking(false)
+      return
+    }
+    playingRef.current = true
+    let blob = null
+    try {
+      blob = await item.blob
+    } catch {
+      blob = null
+    }
+    // Interrupted while this clip's audio was still being fetched.
+    if (gen !== genRef.current) return
+    if (!blob) {
+      // One bad sentence shouldn't end the reply — skip to the next.
+      playNextRef.current?.()
+      return
+    }
+    try {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+      const url = URL.createObjectURL(blob)
+      urlRef.current = url
+      el.src = url
+      setSpeaking(true)
+      await el.play()
+    } catch (err) {
+      if (!warnedRef.current) {
+        warnedRef.current = true
+        toast.error('Got the reply, but couldn’t play it', err?.message || String(err))
+      }
+      if (gen === genRef.current) playNextRef.current?.()
+    }
+  }, [toast])
+  playNextRef.current = playNext
+
+  /* Append to whatever is already being said, rather than replacing it —
+     this is what makes a multi-sentence reply play as one continuous piece
+     of speech instead of each new sentence cutting off the last. */
+  const enqueue = useCallback(
+    (text) => {
+      const clean = stripMarkdown(text)
+      if (!clean) return
+      const gen = genRef.current
+      const blob = api.synthesizeSpeech(clean).catch((err) => {
+        if (gen === genRef.current && !warnedRef.current) {
+          warnedRef.current = true
+          toast.error('Couldn’t speak that reply', err?.message || String(err))
+        }
+        return null
+      })
+      queueRef.current.push({ blob })
+      // Optimistic, ahead of the audio actually starting: the fetch takes a
+      // few hundred ms, and VoiceModePanel reads `speaking` to decide
+      // whether an incoming utterance is a barge-in. Flipping it only once
+      // sound came out would leave that window classified as "idle" and let
+      // the reply and the teacher talk over each other.
+      setSpeaking(true)
+      if (!playingRef.current) playNext()
+    },
+    [playNext, toast]
+  )
 
   /* Mobile Safari (and Chrome on Android) only starts audio when .play() is
      the DIRECT, SYNCHRONOUS result of a user gesture — a reply arriving
@@ -143,57 +242,21 @@ export function VoiceProvider({ children }) {
     })
   }, [stop, unlock])
 
+  /* Say this INSTEAD of whatever is currently queued or playing. The
+     one-shot form, for text that replaces the conversation's current
+     utterance rather than continuing it: the opening greeting, and the
+     transcript's replay buttons. Streamed replies use enqueue() above. */
   const speak = useCallback(
-    async (text) => {
-      const clean = stripMarkdown(text)
-      if (!clean) return
-      const el = audioRef.current
-      if (!el) return
-      let blob
-      try {
-        blob = await api.synthesizeSpeech(clean)
-      } catch (err) {
-        // The /api/tts request itself failed — network, auth, or the
-        // backend's own OPENAI_API_KEY/TTS config. This used to be silent on
-        // purpose (a missed reply is a smaller loss than a toast interrupting
-        // the conversation, and the text is already on screen either way) —
-        // but "silent" and "the feature has never once worked for anyone" are
-        // indistinguishable without this, so it's reported until proven
-        // reliable.
-        toast.error('Couldn’t speak that reply', err?.message || String(err))
-        return
-      }
-      try {
-        // Stop and release the PREVIOUS clip only after the new one is ready —
-        // swapping src earlier leaves a silent gap where the old audio had
-        // already been torn down.
-        el.pause()
-        if (urlRef.current) URL.revokeObjectURL(urlRef.current)
-        const url = URL.createObjectURL(blob)
-        urlRef.current = url
-        el.src = url
-        // Set explicitly, not left to a 'play' listener — this is a REAL
-        // reply with real duration, so 'pause'/'ended' below are guaranteed
-        // to fire and turn it back off (unlike UNLOCK_WAV's zero-duration
-        // clip, see the mount effect's own comment).
-        setSpeaking(true)
-        await el.play()
-      } catch (err) {
-        // The fetch worked; playback itself was blocked or failed. Distinct
-        // from the network case above because the fix is different — this
-        // means the autoplay-unlock in toggle() didn't hold, not that the
-        // server is misconfigured. play() rejecting means it never actually
-        // started, so 'pause'/'ended' won't fire to undo the line above.
-        setSpeaking(false)
-        toast.error('Got the reply, but couldn’t play it', err?.message || String(err))
-      }
+    (text) => {
+      stop()
+      enqueue(text)
     },
-    [toast]
+    [stop, enqueue]
   )
 
   const value = useMemo(
-    () => ({ enabled, toggle, speaking, speak, stop, unlock }),
-    [enabled, toggle, speaking, speak, stop, unlock]
+    () => ({ enabled, toggle, speaking, speak, enqueue, stop, unlock }),
+    [enabled, toggle, speaking, speak, enqueue, stop, unlock]
   )
 
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>

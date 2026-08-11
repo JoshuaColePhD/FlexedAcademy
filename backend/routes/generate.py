@@ -266,7 +266,11 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                     "`ask_clarifying_questions` INSTEAD, with 2-4 short questions and a few clickable options each. "
                     "This isn't limited to the first message of a request: reach for it again later in the same "
                     "conversation if a later turn is just as vague, but never re-ask about something the teacher "
-                    "already told you or already picked from a previous round — build on what they gave you."
+                    "already told you or already picked from a previous round — build on what they gave you.\n\n"
+                    "Hold the line on having an actual plan before you build one: `generate_lesson_plan` needs "
+                    "WHICH WEEK OR UNIT and WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
+                    "focus). Missing either, ask rather than build — a week generated from a one-line request "
+                    "costs the teacher more time correcting it than answering one question would have."
                 )
 
             # Voice mode's own turn-taking, not just a shorter version of the
@@ -282,17 +286,26 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                 system_prompt += (
                     "\n\nTHIS IS A LIVE SPOKEN CONVERSATION, read aloud by text-to-speech and answered "
                     "by transcribing the teacher's voice — not a written chat. Reply the way a person "
-                    "actually talks: ONE short sentence, sometimes two, never more. Never a list, never "
-                    "multiple questions in one turn. If you'd normally call `ask_clarifying_questions` "
-                    "with several questions, ask only the SINGLE most important one instead, with at "
-                    "most 2 short spoken options — not a paragraph of them. Get to the point; a teacher "
-                    "mid-conversation can always ask you to say more."
+                    "actually talks: ONE short sentence, sometimes two, never more. Never a list, "
+                    "never a paragraph, never more than one question in a turn. Get to the point; a "
+                    "teacher mid-conversation can always ask you to say more.\n\n"
+                    "WHEN SOMETHING IS UNDERSPECIFIED, call `ask_clarifying_questions` with exactly "
+                    "ONE question and 3-4 short options. The options are rendered as buttons the "
+                    "teacher can tap, so make each one a concrete, distinct choice of a few words — "
+                    "never 'other' or 'something else', and never options that are rephrasings of "
+                    "each other. Your spoken text alongside it should be just the question itself; "
+                    "do NOT read the options aloud, they are already on screen.\n\n"
+                    "DO NOT call `generate_lesson_plan` until you actually have a week's worth of "
+                    "plan to build: at minimum you must know WHICH WEEK OR UNIT, and WHAT THE WEEK IS "
+                    "ABOUT — an anchor text, a skill, or a specific focus. If either is missing, ask "
+                    "for it instead of building. Building a week off a one-line request wastes the "
+                    "teacher's time correcting a plan they never described."
                 )
 
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
             
-            for event in llm.stream_chat(user_id, messages):
+            for event in llm.stream_chat(user_id, messages, voice=req.voice):
                 yield _sse(event)
                 
             yield _sse({"done": True})

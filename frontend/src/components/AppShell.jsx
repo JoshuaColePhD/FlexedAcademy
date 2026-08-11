@@ -1,12 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { FileText, PanelLeft, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
+import { FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
-import { useAuth } from '../lib/authContext'
 import { NARROW, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { ClassSwitcher } from './ClassSwitcher'
@@ -102,7 +101,6 @@ function Rail({ onNavigate, onClose }) {
   const confirm = useConfirm()
   const toast = useToast()
   const navigate = useNavigate()
-  const { user } = useAuth()
   const classPath = `/c/${classId}`
 
   const remove = async (chat) => {

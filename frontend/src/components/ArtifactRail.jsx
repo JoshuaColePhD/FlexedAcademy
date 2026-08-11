@@ -185,7 +185,6 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
     staleTime: 5 * 60_000,
   })
   const weeks = (calendar?.weeks || []).filter((w) => !w.no_school)
-  const unplannedCount = weeks.filter((w) => !w.has_plan && !w.is_past).length
 
   const retrieved = artifact?.grounding?.codes || artifact?.retrievedIds || []
   const { grounded, ungrounded, checking } = scanGrounding(plan, retrieved)

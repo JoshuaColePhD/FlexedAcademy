@@ -39,9 +39,25 @@ import { api } from '../lib/api'
  */
 
 const SPEECH_THRESHOLD = 0.06 // fraction of full scale; tune against real use
-const SILENCE_MS = 900
+/* How long a pause has to last before the utterance is considered finished.
+   This is pure turn-taking latency — every millisecond here is dead air the
+   teacher sits through after they've stopped talking, before anything is
+   even sent. 900ms was a noticeable beat; ~600 still comfortably rides out
+   the pause inside "Week seven… uh… on Poe" without cutting it in half. */
+const SILENCE_MS = 620
 const MIN_UTTERANCE_MS = 300
 const MAX_UTTERANCE_MS = 30_000
+
+/* Barge-in (talking over the assistant) is held to a stricter standard than
+   starting a fresh utterance into silence, because the room is not silent —
+   the assistant's own voice is coming out of a speaker inches from the mic.
+   getUserMedia's echoCancellation removes most of it, but "most" leaves
+   enough transient leakage to trip a bare threshold, and a false interrupt
+   is worse than a missed one: it cuts the assistant off mid-word for
+   nothing. So: a higher bar, held for a sustained stretch rather than one
+   lucky frame. */
+const BARGE_THRESHOLD = 0.13
+const BARGE_SUSTAIN_MS = 180
 
 /* The transcript, styled after a music-app library list (another reference
  * the user supplied): a small round avatar, a title/subtitle pair, and one
@@ -101,50 +117,115 @@ function Transcript({ messages, onReplay }) {
   )
 }
 
-// Only the most recent ones stay visible — the point is "what's true right
-// now," not a full history (that's what the transcript is for), and an
-// unbounded stack would eventually spill out of a container sized to look
-// like a small deck of cards, not a scrolling list.
-const MAX_VISIBLE_DECISIONS = 6
-
-/* What's been settled in the conversation so far (llm.extract_decisions),
- * as a small deck of index cards rather than a checklist — each one drops
- * in with its own slight tilt and stays there, so the stack visibly grows
- * turn by turn instead of a list quietly re-rendering. Newest on top: it's
- * both the most recent decision AND the thing most likely still relevant to
- * what's being discussed right now.
+/* What's been settled in the conversation so far (llm.extract_decisions) —
+ * the running plan, building itself in front of the teacher.
+ *
+ * A vertical column, not the fanned deck this used to be: a deck reads as
+ * "a pile of things" and only its top card is legible, which is exactly
+ * wrong for the job. These are the durable decisions the week is being
+ * built from, and all of them need to stay readable at once — so each new
+ * one drops in UNDER the last, the column grows downward as the
+ * conversation goes, and the whole set reads top to bottom like the outline
+ * it is. Newest at the bottom, in the order they were decided, because that
+ * is the order the teacher said them.
  */
 function DecisionStack({ decisions }) {
-  if (!decisions.length) return null
-  const visible = decisions.slice(-MAX_VISIBLE_DECISIONS)
+  const endRef = useRef(null)
+  // Keep the newest card in view as the column outgrows its container —
+  // otherwise the one that just landed is the one you can't see.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [decisions.length])
+
   return (
-    <div className="neo-panel relative flex aspect-square w-full max-w-[220px] shrink-0 flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4">
-      <p className="eyebrow shrink-0">Decided so far</p>
-      <div className="relative min-h-0 flex-1">
-        {visible.map((d, i) => {
-          // A small alternating fan, not a random scatter — random tilts on
-          // a REORDERING list (new cards insert at the end, old ones never
-          // move) would still read as jittery each time one lands next to
-          // an unrelated angle. Alternating by position is stable and still
-          // reads as "a loose stack of cards," not a grid.
-          const rot = ((i % 4) - 1.5) * 3
-          return (
-            <div
+    <div className="neo-panel flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4">
+      <p className="eyebrow shrink-0 pb-2">The plan so far</p>
+      {decisions.length ? (
+        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
+          {decisions.map((d, i) => (
+            <li
               key={`${d.label}:${i}`}
-              className="fa-card-drop neo-raised absolute inset-x-1 flex items-start gap-2 rounded-xl bg-paper-raised px-3 py-2 text-left"
-              style={{ '--card-rot': `${rot}deg`, top: `${i * 8}px`, zIndex: i }}
+              className="fa-card-drop neo-raised flex shrink-0 items-start gap-2.5 rounded-2xl bg-paper-raised px-3.5 py-2.5 text-left"
             >
-              <Check size={13} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
-              <span className="min-w-0">
+              {/* Inset, not raised — a completed mark, something already
+                  pressed into the card rather than another thing to tap. */}
+              <span
+                aria-hidden="true"
+                className="neo-inset mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-accent-text"
+              >
+                <Check size={11} strokeWidth={3} />
+              </span>
+              <span className="min-w-0 flex-1">
                 <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">
                   {d.label}
                 </span>
-                <span className="block truncate text-xs text-ink">{d.value}</span>
+                <span className="block text-sm leading-snug text-ink">{d.value}</span>
               </span>
-            </div>
-          )
-        })}
-      </div>
+            </li>
+          ))}
+          <li ref={endRef} aria-hidden="true" />
+        </ul>
+      ) : (
+        <p className="text-xs leading-relaxed text-ink-muted">
+          As you settle things — the week, the text, what they’ll be graded on — they’ll stack up
+          here.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/* The clarification cards. When the teacher says something too vague to
+ * build from, the model asks ONE short question (see the backend's voice
+ * prompt) and its options land here as real, tappable buttons rather than
+ * a list read aloud — faster to answer, and it keeps the spoken half of
+ * the conversation short, which is the whole point of voice mode.
+ */
+function QuestionCards({ questions, onAnswer }) {
+  const [answers, setAnswers] = useState({})
+  const allAnswered = questions.every((q) => answers[q.id])
+
+  const send = () => {
+    const text = questions.map((q) => `${q.text} ${answers[q.id]}`).join('\n')
+    onAnswer(text)
+  }
+
+  return (
+    <div className="fa-card-drop neo-panel flex w-full flex-col gap-3 rounded-[28px] bg-paper-raised p-4">
+      {questions.map((q) => (
+        <div key={q.id} className="flex flex-col gap-2">
+          <p className="text-sm font-medium leading-snug text-ink">{q.text}</p>
+          <div className="flex flex-wrap gap-2">
+            {(q.options || []).map((opt) => {
+              const selected = answers[q.id] === opt
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: opt }))}
+                  /* Pressed-in when chosen, standing proud when not — the
+                     same physical language every other selected/unselected
+                     pair in this app already speaks. */
+                  className={`tap-target rounded-full px-3.5 py-2 text-sm font-medium transition-shadow ${
+                    selected ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
+                  }`}
+                >
+                  {opt}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+      <button
+        type="button"
+        disabled={!allAnswered}
+        onClick={send}
+        className="neo-raised mt-1 min-h-touch self-start rounded-full bg-accent-tint px-5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Continue
+      </button>
     </div>
   )
 }
@@ -169,10 +250,19 @@ export function VoiceModePanel({
   // Called the instant the teacher starts talking OVER it (see the VAD
   // loop's own comment on barge-in), not after it finishes.
   onInterrupt,
+  // The clarification the conversation is waiting on, if any, and the way
+  // to answer it — see QuestionCards.
+  questions = null,
+  onAnswer,
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
   const [typedCaption, setTypedCaption] = useState('')
+  // How far the type-out has got, and what it was typing — kept across
+  // renders so a caption that GROWS mid-sentence (streamed speech) picks up
+  // where it left off instead of restarting. See the caption effect below.
+  const typedIdxRef = useRef(0)
+  const prevCaptionRef = useRef('')
   const panelRef = useRef(null)
   const closeRef = useRef(null)
   const canvasRef = useRef(null)
@@ -214,6 +304,10 @@ export function VoiceModePanel({
   // pattern as pausedRef/onUtteranceRef, for the same reason: the loop
   // reads this every frame without resubscribing to isSpeaking's renders.
   const isSpeakingRef = useRef(false)
+  // When the current run of over-threshold audio began, while the assistant
+  // holds the floor. Null whenever the level drops back below it — the
+  // "sustained" half of the barge-in test.
+  const bargeStartRef = useRef(null)
   const onInterruptRef = useRef(onInterrupt)
   onInterruptRef.current = onInterrupt
   const processingRef = useRef(false)
@@ -253,14 +347,31 @@ export function VoiceModePanel({
   // finishes slightly AHEAD of the audio reads as natural anticipation, one
   // that lags behind it reads as broken.
   useEffect(() => {
-    setTypedCaption('')
-    if (!caption) return undefined
-    const CHAR_MS = 45
-    let i = 0
+    if (!caption) {
+      typedIdxRef.current = 0
+      prevCaptionRef.current = ''
+      setTypedCaption('')
+      return undefined
+    }
+    /* A streamed reply GROWS — each finished sentence appends to the
+       caption while the last one is still being typed out. Restarting from
+       zero on every change (which is what this did before sentence-level
+       streaming existed, when the caption only ever arrived whole) would
+       re-type the whole reply from the top several times per turn. Keeping
+       the cursor where it is whenever the new caption merely extends the
+       old one turns that into one continuous type-out; anything that isn't
+       an extension is a genuinely new utterance and starts over. */
+    if (!caption.startsWith(prevCaptionRef.current)) typedIdxRef.current = 0
+    prevCaptionRef.current = caption
+    if (typedIdxRef.current >= caption.length) {
+      setTypedCaption(caption)
+      return undefined
+    }
+    const CHAR_MS = 42
     const id = setInterval(() => {
-      i += 1
-      setTypedCaption(caption.slice(0, i))
-      if (i >= caption.length) clearInterval(id)
+      typedIdxRef.current += 1
+      setTypedCaption(caption.slice(0, typedIdxRef.current))
+      if (typedIdxRef.current >= caption.length) clearInterval(id)
     }, CHAR_MS)
     return () => clearInterval(id)
   }, [caption])
@@ -272,6 +383,7 @@ export function VoiceModePanel({
   // showing what was said forever.
   useEffect(() => {
     if (isSpeaking || !caption) return undefined
+    typedIdxRef.current = caption.length
     setTypedCaption(caption)
     const t = setTimeout(() => setTypedCaption(''), 4000)
     return () => clearTimeout(t)
@@ -420,29 +532,48 @@ export function VoiceModePanel({
 
       draw(level)
 
-      if (pausedRef.current) {
-        // Only true while busy now (see pausedRef's own comment) — nothing
-        // exists yet to either record into or interrupt.
-        if (vadStateRef.current === 'recording') abortUtterance()
-      } else if (!processingRef.current) {
+      if (!processingRef.current) {
         const now = performance.now()
-        if (level > SPEECH_THRESHOLD) {
-          silenceStartRef.current = null
-          if (vadStateRef.current === 'idle') {
-            // BARGE-IN: real speech landed while a reply was still playing.
-            // Not an echo the mic caught — getUserMedia's own
-            // echoCancellation constraint (see the mic-request effect
-            // below) suppresses the assistant's own output at the source;
-            // this is what's left over once that's already filtered out.
-            // Stop the reply first so it and the new recording don't
-            // talk over each other, then begin exactly like any other
-            // utterance.
-            if (isSpeakingRef.current) onInterruptRef.current?.()
-            beginUtterance()
-          } else if (now - speechStartRef.current > MAX_UTTERANCE_MS) stopRecorder()
-        } else if (vadStateRef.current === 'recording') {
-          if (silenceStartRef.current == null) silenceStartRef.current = now
-          else if (now - silenceStartRef.current > SILENCE_MS) stopRecorder()
+        // Whether the assistant currently owns the turn — either actively
+        // speaking, or still writing the reply it's about to speak.
+        const holdingFloor = isSpeakingRef.current || pausedRef.current
+
+        if (vadStateRef.current === 'recording') {
+          /* Already capturing. Endpointing always uses the ORDINARY bar,
+             even mid-barge-in: the strict barge-in threshold exists to
+             decide whether someone started talking over the assistant, and
+             reusing it here would treat every ordinary dip between words as
+             the end of the sentence and cut the teacher off mid-thought. */
+          if (level > SPEECH_THRESHOLD) {
+            silenceStartRef.current = null
+            if (now - speechStartRef.current > MAX_UTTERANCE_MS) stopRecorder()
+          } else if (silenceStartRef.current == null) {
+            silenceStartRef.current = now
+          } else if (now - silenceStartRef.current > SILENCE_MS) {
+            stopRecorder()
+          }
+        } else if (holdingFloor) {
+          /* Idle while the assistant holds the floor: this is the barge-in
+             test, and it is deliberately hard to pass. The mic is hearing a
+             speaker playing the assistant's own voice a few inches away —
+             echo cancellation removes most of that, and the stricter bar
+             held for a sustained stretch covers the rest. A cough, a chair,
+             or one leaked syllable does not get to cut the reply off. */
+          if (level > BARGE_THRESHOLD) {
+            if (bargeStartRef.current == null) bargeStartRef.current = now
+            else if (now - bargeStartRef.current > BARGE_SUSTAIN_MS) {
+              bargeStartRef.current = null
+              // Silences the reply AND aborts the generation behind it,
+              // then records exactly like any other utterance.
+              onInterruptRef.current?.()
+              beginUtterance()
+            }
+          } else {
+            bargeStartRef.current = null
+          }
+        } else if (level > SPEECH_THRESHOLD) {
+          // Ordinary start-of-utterance into a quiet room.
+          beginUtterance()
         }
       }
 
@@ -492,7 +623,14 @@ export function VoiceModePanel({
     return () => {
       cancelled = true
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      stopRecorder()
+      /* abortUtterance, NOT stopRecorder: stopRecorder asks the recorder to
+         finish, which fires its `stop` event, which runs
+         handleUtteranceReady — so ending the conversation while a sentence
+         was still being captured transcribed and SUBMITTED that half-
+         sentence after the panel had already closed, landing a stray turn
+         in the chat the teacher had just walked away from. Aborting drops
+         the audio and unhooks the handler instead. */
+      abortUtterance()
       streamRef.current?.getTracks().forEach((t) => t.stop())
       audioCtxRef.current?.close().catch(() => {})
     }
@@ -520,8 +658,15 @@ export function VoiceModePanel({
   // The "album art" disc itself: a big raised, ringed circle standing in
   // for the reference's cover art, with the pulsing accent circles (drawn
   // in the effect above) glowing inside it.
+  // Shrinks out of the way while a question is on the table: the cards are
+  // what the teacher has to act on, and at full size the orb pushed them —
+  // and the close button under them — past the bottom of the dialog.
   const orb = (
-    <div className="neo-raised neo-ring relative flex aspect-square w-full max-w-[280px] items-center justify-center rounded-full">
+    <div
+      className={`neo-raised neo-ring relative flex aspect-square w-full shrink-0 items-center justify-center rounded-full transition-[max-width] duration-300 ${
+        questions?.length ? 'max-w-[104px]' : 'max-w-[280px]'
+      }`}
+    >
       <div className="voice-glow" aria-hidden="true" />
       <canvas ref={canvasRef} width={280} height={280} className="h-full w-full" />
     </div>
@@ -549,17 +694,27 @@ export function VoiceModePanel({
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col items-center justify-center gap-5 overflow-y-auto px-gutter py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 px-gutter pb-2">
           {/* A quiet "it's live" cue, not the desktop's big level-reactive
               orb — on a phone the cards are the actual content; this only
               has to say the mic is on, not perform. */}
           <span
             aria-hidden="true"
-            className={`h-2.5 w-2.5 shrink-0 rounded-full transition-colors ${
+            className={`mx-auto h-2.5 w-2.5 shrink-0 rounded-full transition-colors ${
               status === 'error' ? 'bg-mark' : isSpeaking ? 'bg-accent' : 'bg-ink-soft'
             } ${status === 'error' ? '' : 'animate-pulse'}`}
           />
-          <DecisionStack decisions={decisions} />
+          {/* Answering takes precedence over watching the plan build: while
+              a question is on the table it IS the conversation, and on a
+              phone there is no room to show both without shrinking the tap
+              targets that exist to be tapped. */}
+          {questions?.length ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <QuestionCards questions={questions} onAnswer={onAnswer} />
+            </div>
+          ) : (
+            <DecisionStack decisions={decisions} />
+          )}
         </div>
 
         {/* The reference's docked mini-player bar — here it carries the
@@ -606,12 +761,24 @@ export function VoiceModePanel({
           role="dialog"
           aria-modal="true"
           aria-label="Voice conversation"
-          className="neo-panel flex min-w-0 flex-col items-center justify-center gap-6 rounded-[28px] bg-paper-raised p-8 text-center"
+          /* overflow-y-auto, not a fixed centred stack: with a question
+             card open this column carries the orb, the caption, 3-4 option
+             pills and the close button, which together overrun the
+             dialog's own max height on a short laptop screen — the close
+             button was the part that fell off the bottom. */
+          className="neo-panel flex min-w-0 flex-col items-center justify-center gap-5 overflow-y-auto rounded-[28px] bg-paper-raised p-8 text-center"
         >
           {orb}
           <p aria-live="polite" className="line-clamp-3 min-h-[1.5em] text-sm text-ink-soft">
             {displayText}
           </p>
+          {/* The clarification sits under the orb, in the middle column —
+              it's the live turn of the conversation, not a side panel. */}
+          {questions?.length ? (
+            <div className="w-full">
+              <QuestionCards questions={questions} onAnswer={onAnswer} />
+            </div>
+          ) : null}
           <button
             ref={closeRef}
             type="button"
@@ -622,7 +789,9 @@ export function VoiceModePanel({
             <X size={18} aria-hidden="true" />
           </button>
         </div>
-        <div>{decisions.length ? <DecisionStack decisions={decisions} /> : null}</div>
+        <div className="min-h-0">
+          {decisions.length ? <DecisionStack decisions={decisions} /> : null}
+        </div>
       </div>
     </div>
   )
