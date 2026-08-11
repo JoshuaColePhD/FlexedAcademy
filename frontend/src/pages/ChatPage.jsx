@@ -65,6 +65,10 @@ const ATTACHMENT_CHAR_CAP = 12000
 // Spoken (and captioned) the instant voice mode opens on an empty chat —
 // short on purpose, since it's heard once per conversation, not read.
 const VOICE_GREETING = 'Hey, what do you need a lesson plan for?'
+// Spoken when the model commits to building, which it signals with a tool
+// call carrying no text of its own — see their use in submit().
+const VOICE_BUILDING = 'Building the week now — give me about thirty seconds.'
+const VOICE_REVISING = 'Updating it now — one moment.'
 
 /* What voice mode SAYS when the model asks for clarification.
  *
@@ -672,6 +676,15 @@ export function ChatPage() {
         if (firstResult.text?.trim()) {
           firstHistory += `\n\nASSISTANT: ${firstResult.text}`
         }
+        /* Say something before disappearing for half a minute. When the
+           model decides to build, it emits a tool call and NO text — fine
+           in the text chat, where the week strip fills in visibly, but in a
+           spoken conversation it lands as the assistant simply going silent
+           mid-exchange, which is indistinguishable from it having broken. */
+        if (voiceOpen) {
+          setVoiceCaption(VOICE_BUILDING)
+          voice.enqueue(VOICE_BUILDING)
+        }
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
         stream.start(firstHistory, { chatId: activeChatId, weekNumber: effectiveWeek }).catch(() => {})
@@ -709,6 +722,11 @@ export function ChatPage() {
         combinedHistory += `\n\nASSISTANT: ${chatResult.text}`
       }
 
+      // Same silence problem as a first build — see VOICE_BUILDING's use above.
+      if (voiceOpen) {
+        setVoiceCaption(VOICE_REVISING)
+        voice.enqueue(VOICE_REVISING)
+      }
       setRevising(true)
       try {
         const row = await api.revisePlan(artifact.planId, combinedHistory)
@@ -743,7 +761,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, voiceOpen]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, voiceOpen, voice]
   )
 
   /* Per-cell revise, from clicking a cell in the document.

@@ -152,7 +152,6 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
         user_id,
         "generate_plan",
         model=settings.openai_model,
-        temperature=0.2,
         max_completion_tokens=4000,
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
@@ -178,7 +177,6 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[s
     map_context = map_context_for(user_id, s["subject"], query)
     stream = client().chat.completions.create(
         model=settings.openai_model,
-        temperature=0.2,
         max_completion_tokens=4000,
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
@@ -235,7 +233,6 @@ def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, 
         user_id,
         "rewrite_day",
         model=settings.openai_model,
-        temperature=0.3,
         max_completion_tokens=1600,
         response_format=_response_format("lesson_plan_day", DAY_JSON_SCHEMA),
         messages=[
@@ -284,7 +281,6 @@ def rewrite_day_field(
         user_id,
         "rewrite_day_field",
         model=settings.openai_model,
-        temperature=0.3,
         max_completion_tokens=700,
         response_format=_response_format(f"lesson_plan_day_{field}", field_json_schema(field)),
         messages=[
@@ -359,7 +355,6 @@ def critique_and_revise(
         user_id,
         "critique_and_revise",
         model=settings.openai_model,
-        temperature=0.3,
         max_completion_tokens=4000,
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
@@ -422,7 +417,6 @@ def expand_query(user_id: str, query: str) -> list[str]:
             user_id,
             "expand_query",
             model="gpt-5.6-luna",
-            temperature=0,
             max_completion_tokens=300,
             response_format=_response_format("expanded_queries", QUERY_EXPANSION_SCHEMA),
             messages=[
@@ -476,7 +470,6 @@ def generate_chat_title(user_id: str, message: str) -> str:
             user_id,
             "generate_chat_title",
             model="gpt-5.6-luna",
-            temperature=0.3,
             max_completion_tokens=60,
             response_format=_response_format("chat_title", TITLE_SCHEMA),
             messages=[
@@ -547,7 +540,6 @@ def extract_decisions(user_id: str, messages: list[dict]) -> list[dict]:
             user_id,
             "extract_decisions",
             model="gpt-5.6-luna",
-            temperature=0,
             max_completion_tokens=400,
             response_format=_response_format("decisions", DECISIONS_SCHEMA),
             messages=[
@@ -668,7 +660,13 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
 
     stream = client().chat.completions.create(
         model=settings.openai_model,
-        temperature=0.7,
+        # Required, not tuning: the configured model rejects function tools
+        # outright in /v1/chat/completions unless reasoning is off —
+        # "Function tools with reasoning_effort are not supported ... set
+        # reasoning_effort to 'none'". Both tools below are the entire
+        # mechanism of this conversation (build the plan / ask instead), so
+        # without this every chat turn, typed or spoken, 400s.
+        reasoning_effort="none",
         # Deliberately generous even for voice: max_completion_tokens counts
         # REASONING tokens too on this model, so a ceiling tight enough to
         # actually shape prose length (a couple hundred) can be spent before

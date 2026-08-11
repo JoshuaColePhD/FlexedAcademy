@@ -1539,6 +1539,45 @@ def count_plans(user_id: str) -> int:
     return int(row["n"]) if row else 0
 
 
+# ── the LLM response cache ───────────────────────────────────────────────
+
+
+def get_llm_cache(hash_key: str) -> str | None:
+    """The read half of llm.py's _cached_completion.
+
+    Both halves were called from day one and neither was ever written, so
+    every non-streaming model call in the app — plan generation, both
+    revise paths, chat titles, query expansion — raised AttributeError on
+    its way to OpenAI. The ones wrapped in a broad `except` degraded quietly
+    (a chat kept its truncated title, retrieval ran unexpanded); the ones
+    that weren't simply failed. The table itself did not exist either, since
+    the migration that creates it sat behind the failing migration 20.
+
+    A miss must never be an error: this is an optimisation, and a cache
+    that can take the request down with it is worse than no cache."""
+    try:
+        row = _row("SELECT response FROM llm_cache WHERE hash_key = ?", (hash_key,))
+        return row["response"] if row else None
+    except Exception as e:  # noqa: BLE001 — a cold cache beats a failed request
+        log.warning("llm cache read failed: %s", e)
+        return None
+
+
+def set_llm_cache(hash_key: str, response: str) -> None:
+    """The write half. ON CONFLICT DO NOTHING rather than an upsert: entries
+    are keyed by a hash of the exact request, so a second write for the same
+    key is by definition the same answer, and two concurrent identical calls
+    racing here is normal rather than a conflict worth resolving."""
+    try:
+        _write(
+            "INSERT INTO llm_cache (hash_key, created_at, response) VALUES (?, ?, ?) "
+            "ON CONFLICT (hash_key) DO NOTHING",
+            (hash_key, now(), response),
+        )
+    except Exception as e:  # noqa: BLE001 — same reasoning as the read
+        log.warning("llm cache write failed: %s", e)
+
+
 def record_usage(user_id: str, kind: str, tokens_in: int, tokens_out: int) -> None:
     """One row per model call. Metering must never be why the call it's
     metering fails — a teacher's plan should not error out because logging
