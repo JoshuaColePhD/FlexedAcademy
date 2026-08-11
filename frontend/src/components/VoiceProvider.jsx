@@ -61,13 +61,21 @@ export function VoiceProvider({ children }) {
   useEffect(() => {
     const el = new Audio()
     audioRef.current = el
-    const onPlay = () => setSpeaking(true)
+    // Only 'pause'/'ended', not 'play': the shared element also plays
+    // UNLOCK_WAV (a genuine ZERO-DURATION clip — its data chunk is 0 bytes,
+    // it's silence in name only), and on iOS Safari a zero-duration clip's
+    // 'play' event fires normally but 'ended' never does — there's no
+    // "end" to reach. A generic onPlay listener here set `speaking` true
+    // the instant unlock() ran, and it then never had a way back to false:
+    // VoiceModePanel treats "speaking" as "the assistant is talking, keep
+    // the mic paused," so it opened permanently paused with nothing to
+    // pause AGAINST. `speaking` is now set explicitly by speak() itself,
+    // right when a REAL reply starts playing — this listener only ever
+    // has to turn it back off.
     const onEnd = () => setSpeaking(false)
-    el.addEventListener('play', onPlay)
     el.addEventListener('pause', onEnd)
     el.addEventListener('ended', onEnd)
     return () => {
-      el.removeEventListener('play', onPlay)
       el.removeEventListener('pause', onEnd)
       el.removeEventListener('ended', onEnd)
       el.pause()
@@ -157,12 +165,19 @@ export function VoiceProvider({ children }) {
         const url = URL.createObjectURL(blob)
         urlRef.current = url
         el.src = url
+        // Set explicitly, not left to a 'play' listener — this is a REAL
+        // reply with real duration, so 'pause'/'ended' below are guaranteed
+        // to fire and turn it back off (unlike UNLOCK_WAV's zero-duration
+        // clip, see the mount effect's own comment).
+        setSpeaking(true)
         await el.play()
       } catch (err) {
         // The fetch worked; playback itself was blocked or failed. Distinct
         // from the network case above because the fix is different — this
         // means the autoplay-unlock in toggle() didn't hold, not that the
-        // server is misconfigured.
+        // server is misconfigured. play() rejecting means it never actually
+        // started, so 'pause'/'ended' won't fire to undo the line above.
+        setSpeaking(false)
         toast.error('Got the reply, but couldn’t play it', err?.message || String(err))
       }
     },
