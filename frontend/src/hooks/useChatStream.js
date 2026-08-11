@@ -9,7 +9,20 @@ const SSE_PREFIX = 'data:'
 // manually retry. model_refusal, no_api_key, entitlement errors etc are never
 // in this set: retrying those wastes a round trip on something that can't
 // succeed differently.
-const RETRYABLE_CODES = new Set(['stream_truncated', 'upstream_timeout', 'upstream_connection_error', 'rate_limited'])
+//
+// malformed_tool_call and empty_reply (backend/llm.py's stream_chat) are a
+// different kind of failure from those upstream ones, but land in the same
+// bucket for the same reason: both are the model botching ONE sample (bad
+// JSON on a tool call, or finishing with nothing at all), not a structural
+// problem with the request, so a fresh sample often just works.
+const RETRYABLE_CODES = new Set([
+  'stream_truncated',
+  'upstream_timeout',
+  'upstream_connection_error',
+  'rate_limited',
+  'malformed_tool_call',
+  'empty_reply',
+])
 const MAX_AUTO_RETRIES = 1
 const RETRY_DELAY_MS = 600
 

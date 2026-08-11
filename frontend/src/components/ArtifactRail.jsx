@@ -7,6 +7,7 @@ import { scanGrounding } from '../lib/grounding'
 import { orderedDays } from '../lib/planShape'
 import { classColor } from '../lib/classColor'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
+import { DecisionStack } from './DecisionStack'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
    an open notebook, not a stock "empty box" glyph. Authored, not a Unicode
@@ -151,7 +152,7 @@ function OtherWeeks({ classId, weeks }) {
   )
 }
 
-export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rail' }) {
+export function ArtifactRail({ artifact, classId, onExpand, busy, decisions = [], variant = 'rail' }) {
   const plan = artifact?.plan
   const planId = artifact?.planId
   /* On a phone there is no room for a 240px column, so the same component
@@ -278,6 +279,14 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
               <span className="rail-sub">the .docx follows</span>
             </span>
           </div>
+        ) : !isBar && decisions.length ? (
+          /* Before a plan exists, this is where "the plan so far" lives —
+             voice mode's own deck (see DecisionStack), shown here now too so
+             a teacher typing can see what's already been settled without
+             opening voice mode at all. Replaces the bare empty state the
+             moment there's anything to show; reverts to it if the chat
+             restarts with nothing decided yet. */
+          <DecisionStack decisions={decisions} fill={false} />
         ) : (
           <div className="rail-empty">
             {/* No room for it in the one-row phone bar — same reasoning as

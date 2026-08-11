@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Play, Sparkles, User, X } from 'lucide-react'
+import { ArrowLeft, Check, Play, X } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
+import { DecisionStack } from './DecisionStack'
 
 /* Live voice mode — the thing the "Chat" control opens now, instead of
  * quietly toggling whether replies get read aloud.
@@ -59,137 +60,79 @@ const MAX_UTTERANCE_MS = 30_000
 const BARGE_THRESHOLD = 0.13
 const BARGE_SUSTAIN_MS = 180
 
-/* The transcript, styled after a music-app library list (another reference
- * the user supplied): a small round avatar, a title/subtitle pair, and one
- * round action per row. There's no per-row play/pause state — this is
- * "replay," not a transport control, so every assistant row always shows
- * Play; clicking it just calls voice.speak() again on that message's own
- * text. Desktop only, in the left column — on a phone the transcript is
- * still one swipe away underneath this panel, and there's no room for a
- * second column at that width anyway. */
+/* The transcript, styled the same way the real text chat renders a turn
+ * (see Message.jsx): the teacher's own line sits in a pressed-in bubble,
+ * the assistant's reply is bare text on the panel — no avatars, no second
+ * card competing with the reply beside it. Voice mode used to give this its
+ * own music-library-row look (round avatar, title/subtitle, a play button
+ * on every row), which made the one conversation read as two different
+ * apps depending on whether you typed or talked. Desktop only, in the left
+ * column — on a phone the transcript is still one swipe away underneath
+ * this panel, and there's no room for a second column at that width
+ * anyway. */
 function Transcript({ messages, onReplay }) {
   return (
     <div className="neo-panel flex h-full flex-col overflow-hidden rounded-[28px] bg-paper-raised">
       <div className="shrink-0 px-5 py-4">
         <p className="text-sm font-semibold text-ink">This conversation</p>
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4">
         {messages.length ? (
           messages.map((m) => {
             const isUser = m.role === 'user'
             return (
-              <li key={m.id} className="flex items-center gap-3 px-2 py-2">
-                {/* Inset, not raised — a display element, not something to
-                    tap, and neomorphism's usual way of telling the two
-                    apart at a glance. */}
-                <span
-                  aria-hidden="true"
-                  className={`neo-inset grid h-10 w-10 shrink-0 place-items-center rounded-full ${
-                    isUser ? 'text-ink-soft' : 'text-accent-text'
-                  }`}
-                >
-                  {isUser ? <User size={15} /> : <Sparkles size={15} />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-ink">
-                    {isUser ? 'You' : 'Assistant'}
-                  </span>
-                  <span className="block truncate text-xs text-ink-muted">{m.content}</span>
-                </span>
-                {isUser ? null : (
-                  <button
-                    type="button"
-                    onClick={() => onReplay(m.content)}
-                    aria-label="Replay this reply"
-                    className="neo-raised tap-target flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-accent-text"
+              <div key={m.id} className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+                <div className={`flex max-w-[92%] flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+                  <div
+                    className={
+                      isUser
+                        ? 'neo-inset rounded-2xl bg-paper-sunken px-3.5 py-2.5 text-sm leading-relaxed text-ink'
+                        : 'text-sm leading-relaxed text-ink'
+                    }
                   >
-                    <Play size={14} aria-hidden="true" fill="currentColor" />
-                  </button>
-                )}
-              </li>
+                    <p className="m-0 whitespace-pre-wrap">{m.content}</p>
+                  </div>
+                  {/* Replay is voice mode's own affordance, with no text-chat
+                      equivalent — kept as a quiet text-and-icon action under
+                      the reply rather than the old always-visible round
+                      button, so it reads as an extra on the bubble instead
+                      of a second UI language next to it. */}
+                  {isUser ? null : (
+                    <button
+                      type="button"
+                      onClick={() => onReplay(m.content)}
+                      aria-label="Replay this reply"
+                      className="mt-1 flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-medium text-ink-muted opacity-0 transition-opacity hover:text-accent-text focus-within:opacity-100 group-hover:opacity-100"
+                    >
+                      <Play size={11} aria-hidden="true" fill="currentColor" />
+                      Replay
+                    </button>
+                  )}
+                </div>
+              </div>
             )
           })
         ) : (
-          <li className="px-3 py-3 text-sm text-ink-muted">Say something to get started.</li>
+          <p className="px-1 py-3 text-sm text-ink-muted">Say something to get started.</p>
         )}
-      </ul>
-    </div>
-  )
-}
-
-/* What's been settled in the conversation so far (llm.extract_decisions) —
- * the running plan, building itself in front of the teacher.
- *
- * A vertical column, not the fanned deck this used to be: a deck reads as
- * "a pile of things" and only its top card is legible, which is exactly
- * wrong for the job. These are the durable decisions the week is being
- * built from, and all of them need to stay readable at once — so each new
- * one drops in UNDER the last, the column grows downward as the
- * conversation goes, and the whole set reads top to bottom like the outline
- * it is. Newest at the bottom, in the order they were decided, because that
- * is the order the teacher said them.
- */
-function DecisionStack({ decisions, fill = true }) {
-  const endRef = useRef(null)
-  // Keep the newest card in view as the column outgrows its container —
-  // otherwise the one that just landed is the one you can't see.
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [decisions.length])
-
-  return (
-    /* fill: stretch to the column (desktop, where three equal-height panels
-       read as one composed layout). Otherwise hug the cards and grow
-       downward as they land — on a phone this panel is the whole screen, and
-       stretching it to full height around three cards leaves most of the
-       display as one empty embossed slab. */
-    <div
-      className={`neo-panel flex min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4 ${
-        fill ? 'h-full' : 'max-h-full'
-      }`}
-    >
-      <p className="eyebrow shrink-0 pb-2">The plan so far</p>
-      {decisions.length ? (
-        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
-          {decisions.map((d, i) => (
-            <li
-              key={`${d.label}:${i}`}
-              className="fa-card-drop neo-raised flex shrink-0 items-start gap-2.5 rounded-2xl bg-paper-raised px-3.5 py-2.5 text-left"
-            >
-              {/* Inset, not raised — a completed mark, something already
-                  pressed into the card rather than another thing to tap. */}
-              <span
-                aria-hidden="true"
-                className="neo-inset mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-accent-text"
-              >
-                <Check size={11} strokeWidth={3} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">
-                  {d.label}
-                </span>
-                <span className="block text-sm leading-snug text-ink">{d.value}</span>
-              </span>
-            </li>
-          ))}
-          <li ref={endRef} aria-hidden="true" />
-        </ul>
-      ) : (
-        <p className="text-xs leading-relaxed text-ink-muted">
-          As you settle things — the week, the text, what they’ll be graded on — they’ll stack up
-          here.
-        </p>
-      )}
+      </div>
     </div>
   )
 }
 
 /* The clarification cards. When the teacher says something too vague to
- * build from, the model asks ONE short question (see the backend's voice
- * prompt) and its options land here as real, tappable buttons rather than
- * a list read aloud — faster to answer, and it keeps the spoken half of
- * the conversation short, which is the whole point of voice mode.
- */
+ * build from, the model asks one or more short questions (see the backend's
+ * voice prompt) and their options land here as real, tappable buttons
+ * rather than a list read aloud — faster to answer, and it keeps the spoken
+ * half of the conversation short, which is the whole point of voice mode.
+ *
+ * Styled like DecisionStack (the "plan so far" column this replaces while
+ * a question is on the table): same checkmark-in-a-circle language, so a
+ * question mid-answer and a decision already locked in read as two states
+ * of the same list, not two different components. Each question checks off
+ * the moment it's answered — the point is to always be able to glance over
+ * and see what's already settled and what's still open, not just whether
+ * the whole batch is done. */
 function QuestionCards({ questions, onAnswer }) {
   const [answers, setAnswers] = useState({})
   const allAnswered = questions.every((q) => answers[q.id])
@@ -200,38 +143,62 @@ function QuestionCards({ questions, onAnswer }) {
   }
 
   return (
-    <div className="fa-card-drop neo-panel flex w-full flex-col gap-3 rounded-[28px] bg-paper-raised p-4">
-      {questions.map((q) => (
-        <div key={q.id} className="flex flex-col gap-2">
-          <p className="text-sm font-medium leading-snug text-ink">{q.text}</p>
-          <div className="flex flex-wrap gap-2">
-            {(q.options || []).map((opt) => {
-              const selected = answers[q.id] === opt
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: opt }))}
-                  /* Pressed-in when chosen, standing proud when not — the
-                     same physical language every other selected/unselected
-                     pair in this app already speaks. */
-                  className={`tap-target rounded-full px-3.5 py-2 text-sm font-medium transition-shadow ${
-                    selected ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
+    <div className="neo-panel flex min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4">
+      <p className="eyebrow shrink-0 pb-2">
+        {questions.length > 1 ? 'A couple of quick questions' : 'One quick question'}
+      </p>
+      <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
+        {questions.map((q) => {
+          const answered = Boolean(answers[q.id])
+          return (
+            <li
+              key={q.id}
+              className="fa-card-drop neo-raised flex shrink-0 flex-col gap-2.5 rounded-2xl bg-paper-raised px-3.5 py-3 text-left"
+            >
+              <div className="flex items-start gap-2.5">
+                {/* Inset once answered — the same "pressed into the card"
+                    mark DecisionStack uses for a settled item — raised and
+                    empty while still open. */}
+                <span
+                  aria-hidden="true"
+                  className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full transition-shadow ${
+                    answered ? 'neo-inset text-accent-text' : 'neo-raised text-ink-faint'
                   }`}
                 >
-                  {opt}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      ))}
+                  {answered ? <Check size={11} strokeWidth={3} /> : null}
+                </span>
+                <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-ink">{q.text}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-[30px]">
+                {(q.options || []).map((opt) => {
+                  const selected = answers[q.id] === opt
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: opt }))}
+                      /* Pressed-in when chosen, standing proud when not — the
+                         same physical language every other selected/unselected
+                         pair in this app already speaks. */
+                      className={`tap-target rounded-full px-3 py-1.5 text-xs font-medium transition-shadow ${
+                        selected ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  )
+                })}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
       <button
         type="button"
         disabled={!allAnswered}
         onClick={send}
-        className="neo-raised mt-1 min-h-touch self-start rounded-full bg-accent-tint px-5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
+        className="neo-raised mt-3 min-h-touch shrink-0 self-start rounded-full bg-accent-tint px-5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
       >
         Continue
       </button>
@@ -666,16 +633,13 @@ export function VoiceModePanel({
 
   // The "album art" disc itself: a big raised, ringed circle standing in
   // for the reference's cover art, with the pulsing accent circles (drawn
-  // in the effect above) glowing inside it.
-  // Shrinks out of the way while a question is on the table: the cards are
-  // what the teacher has to act on, and at full size the orb pushed them —
-  // and the close button under them — past the bottom of the dialog.
+  // in the effect above) glowing inside it. Used to shrink while a question
+  // was on the table, because the cards used to live in this same column,
+  // underneath it. Now that they live in the side column instead (see
+  // QuestionCards' own comment), the orb has nothing left to make room for
+  // and stays full size regardless.
   const orb = (
-    <div
-      className={`neo-raised neo-ring relative flex aspect-square w-full shrink-0 items-center justify-center rounded-full transition-[max-width] duration-300 ${
-        questions?.length ? 'max-w-[104px]' : 'max-w-[280px]'
-      }`}
-    >
+    <div className="neo-raised neo-ring relative flex aspect-square w-full max-w-[280px] shrink-0 items-center justify-center rounded-full">
       <div className="voice-glow" aria-hidden="true" />
       <canvas ref={canvasRef} width={280} height={280} className="h-full w-full" />
     </div>
@@ -781,13 +745,6 @@ export function VoiceModePanel({
           <p aria-live="polite" className="line-clamp-3 min-h-[1.5em] text-sm text-ink-soft">
             {displayText}
           </p>
-          {/* The clarification sits under the orb, in the middle column —
-              it's the live turn of the conversation, not a side panel. */}
-          {questions?.length ? (
-            <div className="w-full">
-              <QuestionCards questions={questions} onAnswer={onAnswer} />
-            </div>
-          ) : null}
           <button
             ref={closeRef}
             type="button"
@@ -798,8 +755,19 @@ export function VoiceModePanel({
             <X size={18} aria-hidden="true" />
           </button>
         </div>
+        {/* The side column: a pending clarification takes over the same
+            slot "the plan so far" normally holds — while a question is on
+            the table, what to answer next IS the working state, same as a
+            decision already locked in is once it's settled. Checking each
+            question off as it's answered (see QuestionCards) is what makes
+            this readable as a to-do list rather than a form dropped on top
+            of the conversation. */}
         <div className="min-h-0">
-          {decisions.length ? <DecisionStack decisions={decisions} /> : null}
+          {questions?.length ? (
+            <QuestionCards questions={questions} onAnswer={onAnswer} />
+          ) : decisions.length ? (
+            <DecisionStack decisions={decisions} />
+          ) : null}
         </div>
       </div>
     </div>

@@ -214,10 +214,27 @@ export function ChatPage() {
        whatever `messages`/`artifact` state is on screen BY THEN, and persists
        via `localFor.current`, which has already moved to the new chat. A week
        built for chat A lands in chat B's transcript and database row. Both
-       are safe no-ops when nothing was in flight. */
-    stream.stop()
-    chatStream.stop()
+       are safe no-ops when nothing was in flight.
+
+       This USED to call stop() unconditionally, before either check below —
+       which silently killed the first message of every brand-new chat.
+       submit() creates the chat, sets localFor.current to its id, calls
+       navigate() to put that id in the URL, and only THEN calls
+       chatStream.start() for the very message that created it. That
+       navigate() changes `chatId`, which re-runs this effect — and by the
+       time it does, stream.start()'s fetch is already in flight. The old
+       code stopped both streams first and checked `localFor.current ===
+       chatId` (true, so "nothing to catch up on") second, meaning it aborted
+       the request it was about to recognize as its own. Confirmed live: the
+       chat_stream POST never even reached the backend, twice, on two
+       different first messages — this, not anything upstream, is why a new
+       conversation "does not work a lot of the times." Checking both guards
+       BEFORE stopping anything fixes it: a chatId this component already
+       considers current — whether from a prior load or from the create it
+       just did — has nothing to stop and nothing to catch up on. */
     if (!chatId) {
+      stream.stop()
+      chatStream.stop()
       setMessages([])
       setArtifact(null)
       setExpanded(false)
@@ -230,6 +247,11 @@ export function ChatPage() {
     }
     // The transcript on screen is already this chat's — nothing to catch up on.
     if (localFor.current === chatId) return undefined
+
+    // Genuinely switching to a different, already-existing conversation —
+    // NOW it's safe to stop whatever the old one had running.
+    stream.stop()
+    chatStream.stop()
 
     /* Drop the previous conversation's artifact NOW, not when the fetch
        resolves. Otherwise the rail and the open document keep showing the last
@@ -483,6 +505,25 @@ export function ChatPage() {
           api.addMessage(saveTo, { role: 'assistant', content: result.text }).catch(() => {})
         }
         qc.invalidateQueries({ queryKey: ['chats'] })
+        return
+      }
+      // Neither questions, text, nor a tool call — the backend is meant to
+      // turn this exact case into a real error now (see backend/llm.py's
+      // empty_reply/malformed_tool_call), which lands in onError below
+      // instead of here. This stays as a backstop: a message that got no
+      // reply used to just sit there with nothing under it and nothing to
+      // explain why, which is what made the chat read as randomly broken.
+      if (!result?.toolCalled) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: 'assistant',
+            isError: true,
+            content: "Didn't get a reply back.",
+            hint: 'Try sending that again.',
+          },
+        ])
       }
     },
     onError: (err) => {
@@ -940,10 +981,18 @@ export function ChatPage() {
      assistant replies — the extraction call re-reads everything said each
      time (see llm.extract_decisions), because a teacher naming a text mid-
      utterance is itself a decision, not something only assistant turns
-     produce. Only runs while the panel is open: nothing renders it
-     otherwise, so there's nothing to keep live. */
+     produce.
+
+     Used to only run while voice mode's panel was open — a teacher typing
+     never saw "the plan so far" at all, only one talking to it did, which
+     was half of why the deck read as an odd voice-only extra rather than
+     a real feature. Runs for text chat too now, gated on there being no
+     plan yet instead: once a week exists the rail shows the real document
+     and its "Built from" list, and re-running extraction on a transcript
+     that already has an artifact would just be wasted calls for a card
+     stack nothing displays anymore. */
   useEffect(() => {
-    if (!voiceOpen || messages.length === 0) return undefined
+    if (artifact?.planId || messages.length === 0) return undefined
     let cancelled = false
     api
       .getDecisions(messages.map((m) => ({ role: m.role, content: m.content })))
@@ -954,7 +1003,7 @@ export function ChatPage() {
     return () => {
       cancelled = true
     }
-  }, [messages, voiceOpen])
+  }, [messages, artifact?.planId])
 
   /* The clarification the conversation is currently waiting on, if any.
      Only ever the LAST message's — an older unanswered set has been
@@ -1067,13 +1116,17 @@ export function ChatPage() {
     [chatWidthPx, clampChatWidth, persistChatWidth]
   )
 
-  /* Auto-opens the drawer the moment a build starts or a plan exists; after
-     that it is the teacher's to open or close, and closing it once does not
-     get silently overridden on the next render (busy/hasArtifact going false
-     again is not in this effect's deps). */
+  /* Auto-opens the drawer the moment a build starts, a plan exists, or the
+     first decision lands; after that it is the teacher's to open or close,
+     and closing it once does not get silently overridden on the next render
+     (busy/hasArtifact/decisions.length going back down is not in this
+     effect's deps). The decisions.length > 0 case is what makes "the plan
+     so far" (see ArtifactRail) actually discoverable in text chat — without
+     it the rail stayed closed through the entire brainstorming phase and a
+     teacher had no reason to ever open it before a plan existed. */
   useEffect(() => {
-    if (busy || hasArtifact) setRailOpen(true)
-  }, [busy, hasArtifact])
+    if (busy || hasArtifact || decisions.length > 0) setRailOpen(true)
+  }, [busy, hasArtifact, decisions.length])
 
   /** Opening the document from anywhere, optionally straight into a cell. */
   const openDocument = useCallback((tweak = null) => {
@@ -1291,9 +1344,16 @@ export function ChatPage() {
             ? 'Revising the plan.'
             : preparing
               ? 'Sending.'
-              : artifact?.planId
-                ? 'Lesson plan ready.'
-                : ''}
+              : chatStream.isStreaming
+                ? /* The one busy state this region never announced — a sighted
+                     teacher sees the "Thinking…" eyebrow (below), but nothing
+                     here ever said so, which reads as dead air to anyone
+                     depending on this region instead of looking at the
+                     screen. */
+                  'Thinking.'
+                : artifact?.planId
+                  ? 'Lesson plan ready.'
+                  : ''}
       </div>
 
       <div
@@ -1326,6 +1386,7 @@ export function ChatPage() {
           classId={classId}
           onExpand={() => openDocument()}
           busy={busy}
+          decisions={decisions}
         />
       ) : null}
 

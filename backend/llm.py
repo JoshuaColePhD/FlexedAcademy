@@ -689,6 +689,18 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     # actually finishes the call before there's anything valid to parse.
     tool_name = None
     tool_args = ""
+    # Whether anything has actually been handed to the caller yet. Every one
+    # of the three things this loop can yield — a text chunk, the
+    # generate_lesson_plan signal, a finished ask_clarifying_questions call —
+    # sets this. If the stream ends without ever setting it (the model
+    # finishes with empty content and no tool call, or tool_calls fires but
+    # never reaches a finish_reason this loop recognizes), the caller used to
+    # get back nothing at all: no chunk, no tool_call, no error — the route
+    # still sends its own {"done": true} regardless, so the frontend saw a
+    # "successful" turn with an empty reply and rendered literally nothing.
+    # That silent dead air is what made the chat read as broken "a lot of the
+    # time" with no error to explain it.
+    yielded_anything = False
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
@@ -710,6 +722,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                 if fn and getattr(fn, "arguments", None):
                     tool_args += fn.arguments
                 if tool_name == "generate_lesson_plan":
+                    yielded_anything = True
                     yield {"tool_call": "generate_lesson_plan"}
                     break
                 continue
@@ -719,12 +732,35 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                     questions = json.loads(tool_args).get("questions") or []
                 except ValueError:
                     questions = []
-                if questions:
-                    yield {"tool_call": "ask_clarifying_questions", "questions": questions}
+                if not questions:
+                    # The model committed to asking a question and then sent
+                    # back either unparseable JSON or an empty list — there is
+                    # no reasonable fallback text to show instead, so this has
+                    # to surface as a real error rather than the turn just
+                    # evaporating. Retrying is a real fix here, unlike most
+                    # errors: this is a formatting slip in one sample, not a
+                    # structural failure, so a second attempt often succeeds.
+                    raise AppError(
+                        "malformed_tool_call",
+                        "The model tried to ask a clarifying question but didn't send it back correctly.",
+                        status=502,
+                        hint="Try sending that again.",
+                    )
+                yielded_anything = True
+                yield {"tool_call": "ask_clarifying_questions", "questions": questions}
                 break
 
             if delta.content:
+                yielded_anything = True
                 yield {"chunk": delta.content}
     finally:
         stream.close()
+
+    if not yielded_anything:
+        raise AppError(
+            "empty_reply",
+            "The model finished without saying anything.",
+            status=502,
+            hint="Try sending that again.",
+        )
 
