@@ -160,24 +160,7 @@ function Rail({ onNavigate, onClose }) {
         </Link>
       </div>
 
-      {/* Every plan this class has ever built, not just the chats that built
-          them — "Recent" below is conversations, and a plan that hasn't been
-          revisited since scrolls out of it. Top of the rail, right under the
-          one other thing that matters this much, rather than buried in the
-          footer below a scrolling chat list. */}
-      <div className="px-2 pb-2">
-        <NavLink
-          to={`${classPath}/plans`}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            `flex min-h-touch items-center gap-2.5 rounded-lg px-3 text-sm transition-colors ${
-              isActive ? 'neo-inset text-ink' : 'text-ink-soft hover:bg-paper-inset/60'
-            }`
-          }
-        >
-          <FileText size={15} aria-hidden="true" /> My plans
-        </NavLink>
-      </div>
+
 
       <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
         <p className="eyebrow px-4 pb-1">Recent</p>
@@ -201,6 +184,18 @@ function Rail({ onNavigate, onClose }) {
       </nav>
 
       <div className="shrink-0 border-t border-edge">
+        {/* Every plan this class has ever built, placed at the bottom near account settings. */}
+        <NavLink
+          to={`${classPath}/plans`}
+          onClick={onNavigate}
+          className={({ isActive }) =>
+            `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
+              isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
+            }`
+          }
+        >
+          <FileText size={15} aria-hidden="true" /> Library
+        </NavLink>
         {/* Only rendered for is_admin accounts — everyone else never sees this
             link exists. The route and every request it makes are gated again
             server-side, so this is convenience, not the security boundary. */}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, FileText, Search, Trash2 } from 'lucide-react'
+import { Download, FileText, Search, Trash2, CheckSquare, Square } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -33,7 +33,7 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function PlanRow({ plan, classId, onDelete, deleting }) {
+function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, onToggleSelect }) {
   // Plans built before chat_id was tracked (or ever) have nowhere for a
   // click to go — same fallback ClassWeeks uses for an orphaned week.
   const openable = Boolean(plan.chat_id)
@@ -41,7 +41,15 @@ function PlanRow({ plan, classId, onDelete, deleting }) {
 
   const content = (
     <>
-      <FileText size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
+      {selectionMode ? (
+        selected ? (
+          <CheckSquare size={15} aria-hidden="true" className="shrink-0 text-accent" />
+        ) : (
+          <Square size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
+        )
+      ) : (
+        <FileText size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
+      )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-ink">
           {label}
@@ -54,6 +62,20 @@ function PlanRow({ plan, classId, onDelete, deleting }) {
       </span>
     </>
   )
+
+  if (selectionMode) {
+    return (
+      <li className="group flex items-center gap-1 px-2 py-1">
+        <button
+          type="button"
+          onClick={() => onToggleSelect(plan.id)}
+          className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left transition-colors hover:bg-paper-sunken"
+        >
+          {content}
+        </button>
+      </li>
+    )
+  }
 
   return (
     <li className="group flex items-center gap-1 px-2 py-1">
@@ -100,9 +122,45 @@ export function PlansPage() {
   const toast = useToast()
   const [search, setSearch] = useState('')
   const [deletingId, setDeletingId] = useState(null)
+  
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false)
 
   const plans = data?.items || []
   const filtered = search.trim() ? plans.filter((p) => matchesSearch(p, search)) : plans
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+    const ok = await confirm({
+      title: `Delete ${selectedIds.size} plan${selectedIds.size === 1 ? '' : 's'}?`,
+      body: 'This removes the plans and their documents. The chats that built them are kept.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setIsDeletingBulk(true)
+    try {
+      for (const id of selectedIds) {
+        await deletePlan.mutateAsync(id)
+      }
+      setSelectedIds(new Set())
+      setSelectionMode(false)
+    } catch (err) {
+      toast.apiError('Could not delete all plans', err)
+    } finally {
+      setIsDeletingBulk(false)
+    }
+  }
 
   const handleDelete = async (plan) => {
     const ok = await confirm({
@@ -124,10 +182,43 @@ export function PlansPage() {
 
   return (
     <div className="column">
-      <header className="flex h-14 shrink-0 items-center px-gutter">
+      <header className="flex h-14 shrink-0 items-center justify-between px-gutter">
         <h1 className="text-sm font-semibold text-ink">
-          My plans{activeClass?.name ? ` — ${activeClass.name}` : ''}
+          Library{activeClass?.name ? ` — ${activeClass.name}` : ''}
         </h1>
+        <div className="flex items-center gap-3">
+          {selectionMode ? (
+            <>
+              <button
+                type="button"
+                disabled={selectedIds.size === 0 || isDeletingBulk}
+                onClick={handleBulkDelete}
+                className="text-xs font-medium text-mark hover:text-mark/80 disabled:opacity-50"
+              >
+                Delete ({selectedIds.size})
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingBulk}
+                onClick={() => {
+                  setSelectionMode(false)
+                  setSelectedIds(new Set())
+                }}
+                className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSelectionMode(true)}
+              className="text-xs font-medium text-ink-muted hover:text-ink"
+            >
+              Select multiple
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="page scroll-y">
@@ -161,6 +252,9 @@ export function PlansPage() {
                   classId={classId}
                   onDelete={handleDelete}
                   deleting={deletingId === plan.id}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(plan.id)}
+                  onToggleSelect={toggleSelect}
                 />
               ))}
             </ul>
