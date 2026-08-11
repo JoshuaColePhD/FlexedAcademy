@@ -165,6 +165,10 @@ export function VoiceModePanel({
   caption = '',
   // What's been settled in the conversation so far — see DecisionStack.
   decisions = [],
+  // Cuts the current reply off mid-sentence — VoiceProvider's voice.stop().
+  // Called the instant the teacher starts talking OVER it (see the VAD
+  // loop's own comment on barge-in), not after it finishes.
+  onInterrupt,
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
@@ -195,10 +199,23 @@ export function VoiceModePanel({
   // recorderRef.current has already been nulled — there is no other way to
   // read back what the recorder actually used.
   const mimeTypeRef = useRef('audio/webm')
-  // Mirrors the busy/isSpeaking props into the animation loop without
-  // re-subscribing the loop itself to React's render cycle — read every
-  // frame, written only when the props actually change.
+  // Mirrors `busy` into the animation loop without re-subscribing the loop
+  // itself to React's render cycle — read every frame, written only when
+  // the prop actually changes. isSpeaking used to be folded in here too,
+  // pausing the mic outright while a reply played — which is exactly what
+  // made it impossible to interrupt: the mic was DEAF to the teacher's
+  // voice for as long as the assistant kept talking, not merely ignoring
+  // it. Recording during a reply is a genuinely different pipeline state
+  // (see isSpeakingRef below), not just "still paused."
   const pausedRef = useRef(false)
+  // Read by the VAD loop to tell "the mic caught something during a reply"
+  // (barge-in — interrupt, then record) apart from "the mic caught
+  // something while idle" (an ordinary new utterance). Same ref-mirror
+  // pattern as pausedRef/onUtteranceRef, for the same reason: the loop
+  // reads this every frame without resubscribing to isSpeaking's renders.
+  const isSpeakingRef = useRef(false)
+  const onInterruptRef = useRef(onInterrupt)
+  onInterruptRef.current = onInterrupt
   const processingRef = useRef(false)
   // The mic/VAD pipeline below is set up in a mount-once effect (deps: []) —
   // deliberately, since tearing down and re-requesting getUserMedia every
@@ -217,8 +234,16 @@ export function VoiceModePanel({
   useFocusTrap(panelRef, { active: true, trap: true, initialFocus: closeRef, onEscape: onClose })
 
   useEffect(() => {
-    pausedRef.current = Boolean(busy || isSpeaking)
-  }, [busy, isSpeaking])
+    // busy alone, not busy || isSpeaking — see pausedRef's own comment.
+    // There's genuinely nothing to record INTO yet while busy (no reply
+    // exists at all, spoken or otherwise), but isSpeaking has something
+    // actively playing that a real utterance should be able to cut off.
+    pausedRef.current = Boolean(busy)
+  }, [busy])
+
+  useEffect(() => {
+    isSpeakingRef.current = Boolean(isSpeaking)
+  }, [isSpeaking])
 
   // Reveals `caption` a character at a time rather than all at once — an
   // approximation of speech pace (no real word-level timing exists without
@@ -396,14 +421,25 @@ export function VoiceModePanel({
       draw(level)
 
       if (pausedRef.current) {
-        // The assistant is generating or speaking — don't record it.
+        // Only true while busy now (see pausedRef's own comment) — nothing
+        // exists yet to either record into or interrupt.
         if (vadStateRef.current === 'recording') abortUtterance()
       } else if (!processingRef.current) {
         const now = performance.now()
         if (level > SPEECH_THRESHOLD) {
           silenceStartRef.current = null
-          if (vadStateRef.current === 'idle') beginUtterance()
-          else if (now - speechStartRef.current > MAX_UTTERANCE_MS) stopRecorder()
+          if (vadStateRef.current === 'idle') {
+            // BARGE-IN: real speech landed while a reply was still playing.
+            // Not an echo the mic caught — getUserMedia's own
+            // echoCancellation constraint (see the mic-request effect
+            // below) suppresses the assistant's own output at the source;
+            // this is what's left over once that's already filtered out.
+            // Stop the reply first so it and the new recording don't
+            // talk over each other, then begin exactly like any other
+            // utterance.
+            if (isSpeakingRef.current) onInterruptRef.current?.()
+            beginUtterance()
+          } else if (now - speechStartRef.current > MAX_UTTERANCE_MS) stopRecorder()
         } else if (vadStateRef.current === 'recording') {
           if (silenceStartRef.current == null) silenceStartRef.current = now
           else if (now - silenceStartRef.current > SILENCE_MS) stopRecorder()
@@ -553,22 +589,24 @@ export function VoiceModePanel({
       className="neo-world dialog-scrim"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      {/* items-stretch, not the scrim's own align-items:center — the
-          transcript column matches the card's height instead of centering
-          independently at whatever height its own content happens to want. */}
-      <div className="flex max-h-[560px] w-full max-w-4xl items-stretch gap-4">
-        {messages.length ? (
-          <div className="hidden w-72 shrink-0 md:block">
-            <Transcript messages={messages} onReplay={onReplay} />
-          </div>
-        ) : null}
+      {/* A GRID with two fixed-width flanking columns, not flex siblings
+          that come and go — the transcript only exists once there's a
+          message and the card stack only once there's a decision, and as
+          flex items, each one mounting/unmounting shifted how much space
+          the center column got, which visibly shoved the orb sideways the
+          moment either one appeared. Both flanks are ALWAYS present as grid
+          tracks (280px each) — empty is just an empty column, not a missing
+          one — so the center column, and the orb centered inside it, never
+          moves regardless of what's showing on either side. */}
+      <div className="grid w-full max-w-4xl grid-cols-[280px_minmax(0,1fr)_280px] items-stretch gap-4">
+        <div>{messages.length ? <Transcript messages={messages} onReplay={onReplay} /> : null}</div>
         <div
           ref={panelRef}
           tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label="Voice conversation"
-          className="neo-panel flex min-w-0 flex-1 flex-col items-center justify-center gap-6 rounded-[28px] bg-paper-raised p-8 text-center"
+          className="neo-panel flex min-w-0 flex-col items-center justify-center gap-6 rounded-[28px] bg-paper-raised p-8 text-center"
         >
           {orb}
           <p aria-live="polite" className="line-clamp-3 min-h-[1.5em] text-sm text-ink-soft">
@@ -584,11 +622,7 @@ export function VoiceModePanel({
             <X size={18} aria-hidden="true" />
           </button>
         </div>
-        {decisions.length ? (
-          <div className="hidden w-56 shrink-0 md:block">
-            <DecisionStack decisions={decisions} />
-          </div>
-        ) : null}
+        <div>{decisions.length ? <DecisionStack decisions={decisions} /> : null}</div>
       </div>
     </div>
   )

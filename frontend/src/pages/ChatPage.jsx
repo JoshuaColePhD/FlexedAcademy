@@ -624,7 +624,7 @@ export function ChatPage() {
           { role: 'user', content },
         ]
         setPreparing(false)
-        const firstResult = await chatStream.start(firstPayload, { chatId: activeChatId })
+        const firstResult = await chatStream.start(firstPayload, { chatId: activeChatId, voice: voiceOpen })
 
         // Asked instead of building — onDone (above) already rendered the
         // question cards as their own message. Nothing left to do here
@@ -664,7 +664,7 @@ export function ChatPage() {
       // synchronously, so busy stays continuously true across this call even
       // though we're about to `await` its whole run rather than fire-and-forget.
       setPreparing(false)
-      const chatResult = await chatStream.start(payloadMessages, { chatId: activeChatId })
+      const chatResult = await chatStream.start(payloadMessages, { chatId: activeChatId, voice: voiceOpen })
 
       if (!chatResult || !chatResult.toolCalled) {
         // AI decided to just converse, no revision needed.
@@ -717,7 +717,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, voiceOpen]
   )
 
   /* Per-cell revise, from clicking a cell in the document.
@@ -1321,6 +1321,7 @@ export function ChatPage() {
           messages={messages}
           caption={voiceCaption}
           decisions={decisions}
+          onInterrupt={voice.stop}
           onReplay={(text) => {
             setVoiceCaption(text)
             voice.speak(text)

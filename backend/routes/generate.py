@@ -49,6 +49,11 @@ class ChatMessage(BaseModel):
 class ChatStreamRequest(BaseModel):
     messages: list[ChatMessage]
     mode: str = "brainstorm" # can be 'interview', 'standards', etc.
+    # Set by VoiceModePanel's caller. Same endpoint, same tools — only the
+    # system prompt changes (see chat_stream below): a live, spoken back-
+    # and-forth reads nothing like a written chat, and the model has no
+    # other way to know which one it's in.
+    voice: bool = False
 
 
 class DecisionsRequest(BaseModel):
@@ -263,7 +268,27 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                     "conversation if a later turn is just as vague, but never re-ask about something the teacher "
                     "already told you or already picked from a previous round — build on what they gave you."
                 )
-            
+
+            # Voice mode's own turn-taking, not just a shorter version of the
+            # written prompt above. A written reply gets skimmed; a spoken
+            # one has to be LISTENED to in real time, so length is not a
+            # style preference here, it's what makes the mic able to hear
+            # the teacher again before they've given up and talked over it.
+            # Same reasoning for one question at a time: ask_clarifying_
+            # questions' 2-4-questions-with-several-options-each shape is
+            # built for tappable cards (LessonQuestions) — read aloud as a
+            # single paragraph, it's not answerable in one breath.
+            if req.voice:
+                system_prompt += (
+                    "\n\nTHIS IS A LIVE SPOKEN CONVERSATION, read aloud by text-to-speech and answered "
+                    "by transcribing the teacher's voice — not a written chat. Reply the way a person "
+                    "actually talks: ONE short sentence, sometimes two, never more. Never a list, never "
+                    "multiple questions in one turn. If you'd normally call `ask_clarifying_questions` "
+                    "with several questions, ask only the SINGLE most important one instead, with at "
+                    "most 2 short spoken options — not a paragraph of them. Get to the point; a teacher "
+                    "mid-conversation can always ask you to say more."
+                )
+
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
             
