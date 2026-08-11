@@ -34,7 +34,7 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, onToggleSelect }) {
+function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, selected, onToggleSelect }) {
   // Plans built before chat_id was tracked (or ever) have nowhere for a
   // click to go — same fallback ClassWeeks uses for an orphaned week.
   const openable = Boolean(plan.chat_id)
@@ -66,7 +66,7 @@ function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, o
 
   if (selectionMode) {
     return (
-      <li className="group flex items-center gap-1 px-2 py-1">
+      <li className={`group flex items-center gap-1 px-2 py-1${closing ? ' fa-row-exit' : ''}`}>
         {/* pressed-in, not a background tint — "selected" already reads as
             neo-inset everywhere else in this world (the sidebar's active chat,
             LessonQuestions' picked answer). */}
@@ -84,7 +84,7 @@ function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, o
   }
 
   return (
-    <li className="group flex items-center gap-1 px-2 py-1">
+    <li className={`group flex items-center gap-1 px-2 py-1${closing ? ' fa-row-exit' : ''}`}>
       {openable ? (
         <Link
           to={`/c/${classId}/chat/${plan.chat_id}`}
@@ -128,7 +128,16 @@ export function PlansPage() {
   const toast = useToast()
   const [search, setSearch] = useState('')
   const [deletingId, setDeletingId] = useState(null)
-  
+  /* Deletion goes through react-query invalidation, not a local splice —
+     the row actually disappears from `plans` whenever the refetch lands,
+     on its own schedule. Rather than choreograph an exit animation against
+     that, just flag the row as closing (fa-row-exit, animation-fill-mode:
+     both) the moment deletion is confirmed; it's already collapsed and
+     invisible by the time the real removal happens, so there's nothing to
+     desync. Only ever cleared on failure — a successful id just stays
+     here harmlessly once its row is gone. */
+  const [deletingIds, setDeletingIds] = useState(new Set())
+
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [isDeletingBulk, setIsDeletingBulk] = useState(false)
@@ -162,6 +171,7 @@ export function PlansPage() {
       tone: 'danger',
     })
     if (!ok) return
+    setDeletingIds((prev) => new Set([...prev, ...selectedIds]))
     setIsDeletingBulk(true)
     try {
       for (const id of selectedIds) {
@@ -170,6 +180,14 @@ export function PlansPage() {
       setSelectedIds(new Set())
       setSelectionMode(false)
     } catch (err) {
+      // Partial failure, and no per-id success tracking here: any that DID
+      // succeed are already gone from `plans`, so un-flagging them is a
+      // no-op; any that failed correctly revert to visible.
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        selectedIds.forEach((id) => next.delete(id))
+        return next
+      })
       toast.apiError('Could not delete all plans', err)
     } finally {
       setIsDeletingBulk(false)
@@ -184,10 +202,16 @@ export function PlansPage() {
       tone: 'danger',
     })
     if (!ok) return
+    setDeletingIds((prev) => new Set(prev).add(plan.id))
     setDeletingId(plan.id)
     try {
       await deletePlan.mutateAsync(plan.id)
     } catch (err) {
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(plan.id)
+        return next
+      })
       toast.apiError('Could not delete that plan', err)
     } finally {
       setDeletingId(null)
@@ -279,6 +303,7 @@ export function PlansPage() {
                   classId={classId}
                   onDelete={handleDelete}
                   deleting={deletingId === plan.id}
+                  closing={deletingIds.has(plan.id)}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(plan.id)}
                   onToggleSelect={toggleSelect}

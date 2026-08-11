@@ -3,8 +3,46 @@ import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Square, X } fro
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useVoice } from '../lib/voiceContext'
+import { useExitTransition } from '../hooks/useExitTransition'
 
 const MAX_H = 220
+
+/* An attachment chip's own mount lifecycle — entrance was already implicit
+ * (a plain array render, no fade), removal was a hard splice. This is
+ * local-only state (setAttachments is a plain filter, no network round
+ * trip like the list-row deletions elsewhere in this pass), so unlike
+ * those the removal itself can be delayed to match the animation exactly,
+ * not just flagged and left to a fill-mode keyframe. Identified by object
+ * reference, not index — several chips can be mid-removal at once, and an
+ * index captured at render time would go stale the moment an earlier one
+ * actually leaves the array. */
+function Chip({ file, onRemove }) {
+  const [removing, setRemoving] = useState(false)
+  const { mounted, closing } = useExitTransition(!removing, 150)
+
+  useEffect(() => {
+    if (!mounted) onRemove()
+  }, [mounted, onRemove])
+
+  if (!mounted) return null
+
+  return (
+    <span
+      className={`fa-rise neo-inset flex items-center gap-1.5 rounded-full bg-paper-sunken px-2.5 py-1 text-xs font-medium text-ink${closing ? ' fa-chip-exit' : ''}`}
+    >
+      <FileText size={14} className="text-ink-muted" aria-hidden="true" />
+      <span className="max-w-[120px] truncate">{file.filename}</span>
+      <button
+        type="button"
+        className="ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+        aria-label={`Remove ${file.filename}`}
+        onClick={() => setRemoving(true)}
+      >
+        <X size={12} aria-hidden="true" />
+      </button>
+    </span>
+  )
+}
 
 export function Composer({
   value,
@@ -165,21 +203,11 @@ export function Composer({
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-3 pt-2.5">
             {attachments.map((f, i) => (
-              <span
-                className="neo-inset flex items-center gap-1.5 rounded-full bg-paper-sunken px-2.5 py-1 text-xs font-medium text-ink"
+              <Chip
                 key={`${f.filename}-${i}`}
-              >
-                <FileText size={14} className="text-ink-muted" aria-hidden="true" />
-                <span className="max-w-[120px] truncate">{f.filename}</span>
-                <button
-                  type="button"
-                  className="ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
-                  aria-label={`Remove ${f.filename}`}
-                  onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </span>
+                file={f}
+                onRemove={() => setAttachments((prev) => prev.filter((x) => x !== f))}
+              />
             ))}
           </div>
         ) : null}

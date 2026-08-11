@@ -83,7 +83,10 @@ export default function SignupPage() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         {error ? (
-          <p role="alert" className="rounded-lg border border-mark/25 bg-mark-tint px-3 py-2 text-sm text-mark">
+          <p
+            role="alert"
+            className="fa-rise rounded-lg border border-mark/25 bg-mark-tint px-3 py-2 text-sm text-mark"
+          >
             {error}
           </p>
         ) : null}

@@ -53,7 +53,11 @@ const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
 /** The editor, rendered where the text was. */
 function CellTweak({ field, current, draft, setDraft, onApply, onCancel, busy }) {
   return (
-    <>
+    // fa-card-drop, not a bare Fragment: this popover used to appear/
+    // disappear as a hard conditional render with zero animation — a
+    // small thing resolving into place is exactly what this animation
+    // already communicates elsewhere (voice mode's decision cards).
+    <div className="fa-card-drop">
       <div className="cell-tweak-current">
         <b className="cell-tweak-label">{FIELD_LABELS[field] || field} · tweaking</b>
         {current}
@@ -107,7 +111,7 @@ function CellTweak({ field, current, draft, setDraft, onApply, onCancel, busy })
           </button>
         ))}
       </div>
-    </>
+    </div>
   )
 }
 
@@ -284,37 +288,44 @@ export function LessonPlanTable({
           PRINT — the district table itself, 5x6 at 860px, the exact shape of
                   the .docx. The app's promise: a teacher must always be able
                   to hold the screen against the printed page. */}
-      {view === 'days' ? (
-        <PlanDayCards plan={plan} groundedCodes={groundedCodes} missingDays={missingDays} />
-      ) : view === 'print' ? (
-        <PlanTable
-          ordered={ordered}
-          groundedCodes={groundedCodes}
-          busy={busy}
-          flashCells={flashCells}
-          canTweak={canTweak}
-          openTweak={canTweak ? openTweak : null}
-          openCell={openCell}
-          closeCell={closeCell}
-          applyTweak={applyTweak}
-          draft={draft}
-          setDraft={setDraft}
-        />
-      ) : (
-        <FittedPlan
-          ordered={ordered}
-          groundedCodes={groundedCodes}
-          busy={busy}
-          flashCells={flashCells}
-          canTweak={canTweak}
-          openTweak={canTweak ? openTweak : null}
-          openCell={openCell}
-          closeCell={closeCell}
-          applyTweak={applyTweak}
-          draft={draft}
-          setDraft={setDraft}
-        />
-      )}
+      {/* key={view}, not just the conditional: guarantees a fresh mount (and
+          so a replayed fa-rise) on every switch regardless of how React
+          might otherwise choose to reconcile three different component
+          types at the same position — this was a hard content swap with
+          no transition before. */}
+      <div key={view} className="fa-rise">
+        {view === 'days' ? (
+          <PlanDayCards plan={plan} groundedCodes={groundedCodes} missingDays={missingDays} />
+        ) : view === 'print' ? (
+          <PlanTable
+            ordered={ordered}
+            groundedCodes={groundedCodes}
+            busy={busy}
+            flashCells={flashCells}
+            canTweak={canTweak}
+            openTweak={canTweak ? openTweak : null}
+            openCell={openCell}
+            closeCell={closeCell}
+            applyTweak={applyTweak}
+            draft={draft}
+            setDraft={setDraft}
+          />
+        ) : (
+          <FittedPlan
+            ordered={ordered}
+            groundedCodes={groundedCodes}
+            busy={busy}
+            flashCells={flashCells}
+            canTweak={canTweak}
+            openTweak={canTweak ? openTweak : null}
+            openCell={openCell}
+            closeCell={closeCell}
+            applyTweak={applyTweak}
+            draft={draft}
+            setDraft={setDraft}
+          />
+        )}
+      </div>
     </div>
   )
 }

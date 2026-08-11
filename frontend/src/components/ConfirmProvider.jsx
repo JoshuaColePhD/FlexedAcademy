@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ConfirmContext } from '../lib/confirmContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useExitTransition } from '../hooks/useExitTransition'
 
 /* Replaces the two native confirm() calls, which couldn't be styled, couldn't
    carry a hint, and looked like a browser error rather than part of the app.
@@ -16,6 +17,15 @@ export function ConfirmProvider({ children }) {
   const resolveRef = useRef(null)
   const dialogRef = useRef(null)
   const cancelRef = useRef(null)
+  const { mounted, closing } = useExitTransition(Boolean(request), 200)
+  // settle() nulls `request` the instant an answer is given, which is
+  // exactly when the exit animation needs to start rendering SOMETHING —
+  // the title/body/buttons can't just disappear a frame before the fade
+  // does. Keeps showing whatever was last asked for the ~200ms it takes
+  // the dialog to actually leave.
+  const lastRequestRef = useRef(null)
+  if (request) lastRequestRef.current = request
+  const shown = request || lastRequestRef.current
   /* ConfirmProvider sits above <Gate/> (see App.jsx) so its dialog renders as
      AppShell's SIBLING, not its descendant — .neo-world's redeclared tokens
      live on AppShell's own root and never reach a sibling subtree no matter
@@ -61,29 +71,32 @@ export function ConfirmProvider({ children }) {
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      {request ? (
-        <div className="dialog-scrim" onMouseDown={(e) => e.target === e.currentTarget && settle(false)}>
+      {mounted && shown ? (
+        <div
+          className={`dialog-scrim${closing ? ' is-closing' : ''}`}
+          onMouseDown={(e) => e.target === e.currentTarget && settle(false)}
+        >
           <div
-            className={`dialog${isNeo ? ' neo-world' : ''}`}
+            className={`dialog${isNeo ? ' neo-world' : ''}${closing ? ' is-closing' : ''}`}
             ref={dialogRef}
             tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="confirm-title"
-            aria-describedby={request.body ? 'confirm-body' : undefined}
+            aria-describedby={shown.body ? 'confirm-body' : undefined}
           >
-            <h2 id="confirm-title">{request.title}</h2>
-            {request.body ? <p id="confirm-body">{request.body}</p> : null}
+            <h2 id="confirm-title">{shown.title}</h2>
+            {shown.body ? <p id="confirm-body">{shown.body}</p> : null}
             <div className="dialog-actions">
               <button type="button" className="btn" ref={cancelRef} onClick={() => settle(false)}>
-                {request.cancelLabel}
+                {shown.cancelLabel}
               </button>
               <button
                 type="button"
-                className={`btn ${request.tone === 'danger' ? 'btn-danger' : 'btn-primary'}`}
+                className={`btn ${shown.tone === 'danger' ? 'btn-danger' : 'btn-primary'}`}
                 onClick={() => settle(true)}
               >
-                {request.confirmLabel}
+                {shown.confirmLabel}
               </button>
             </div>
           </div>

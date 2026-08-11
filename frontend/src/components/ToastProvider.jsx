@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { ToastContext } from '../lib/toastContext'
 import { errorParts } from '../lib/apiError'
+import { useExitTransition } from '../hooks/useExitTransition'
 
 /* Replaces four alert() calls. alert() blocks the page, can't carry a hint, and
    is invisible to a screen reader until dismissed — this region is a live region
@@ -18,6 +19,42 @@ let seq = 0
 const MAX_TOASTS = 4
 const DEDUPE_MS = 2000
 
+/* One toast's own mount lifecycle. Entrance already animated (toast-in, see
+ * base.css); dismiss used to just splice the toast out of state and vanish
+ * — an entrance with no matching exit. `toast.closing` (set by
+ * ToastProvider's dismiss()) is this component's own `open` signal to
+ * useExitTransition; once the fade finishes, onExited tells the parent to
+ * actually remove it from state. Until then the toast stays mounted,
+ * playing toast-out. */
+function Toast({ toast: t, isNeo, onDismiss, onExited }) {
+  const { mounted, closing } = useExitTransition(!t.closing, 220)
+
+  useEffect(() => {
+    if (!mounted) onExited(t.id)
+  }, [mounted, onExited, t.id])
+
+  if (!mounted) return null
+
+  return (
+    <div className={`toast is-${t.tone}${isNeo ? ' neo-world' : ''}${closing ? ' is-closing' : ''}`}>
+      <div className="toast-body">
+        <strong>{t.title}</strong>
+        {t.detail ? <small>{t.detail}</small> : null}
+        {/* The backend's actionable half — "Start it with ./run.sh". */}
+        {t.hint ? <small className="toast-hint">{t.hint}</small> : null}
+      </div>
+      <button
+        type="button"
+        className="btn-icon"
+        onClick={() => onDismiss(t.id)}
+        aria-label={`Dismiss: ${t.title}`}
+      >
+        <X size={14} aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const timersRef = useRef(new Map())
@@ -28,12 +65,20 @@ export function ToastProvider({ children }) {
   const location = useLocation()
   const isNeo = location.pathname.startsWith('/c/')
 
+  // Marks a toast as leaving rather than removing it outright — Toast's own
+  // useExitTransition needs the node to stay mounted long enough to play
+  // toast-out. reallyRemove (passed to Toast as onExited) is what actually
+  // takes it out of state, once that animation has finished.
   const dismiss = useCallback((id) => {
     const t = timersRef.current.get(id)
     if (t) {
       clearTimeout(t)
       timersRef.current.delete(id)
     }
+    setToasts((list) => list.map((x) => (x.id === id ? { ...x, closing: true } : x)))
+  }, [])
+
+  const reallyRemove = useCallback((id) => {
     setToasts((list) => list.filter((x) => x.id !== id))
   }, [])
 
@@ -99,22 +144,7 @@ export function ToastProvider({ children }) {
   const others = toasts.filter((t) => t.tone !== 'error')
 
   const renderToast = (t) => (
-    <div key={t.id} className={`toast is-${t.tone}${isNeo ? ' neo-world' : ''}`}>
-      <div className="toast-body">
-        <strong>{t.title}</strong>
-        {t.detail ? <small>{t.detail}</small> : null}
-        {/* The backend's actionable half — "Start it with ./run.sh". */}
-        {t.hint ? <small className="toast-hint">{t.hint}</small> : null}
-      </div>
-      <button
-        type="button"
-        className="btn-icon"
-        onClick={() => dismiss(t.id)}
-        aria-label={`Dismiss: ${t.title}`}
-      >
-        <X size={14} aria-hidden="true" />
-      </button>
-    </div>
+    <Toast key={t.id} toast={t} isNeo={isNeo} onDismiss={dismiss} onExited={reallyRemove} />
   )
 
   return (

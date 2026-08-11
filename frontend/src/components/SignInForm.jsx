@@ -102,7 +102,10 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
 
       <form onSubmit={handleEmailLogin} className="flex flex-col gap-3">
         {error ? (
-          <p role="alert" className="rounded-lg border border-mark/25 bg-mark-tint px-3 py-2 text-sm text-mark">
+          <p
+            role="alert"
+            className="fa-rise rounded-lg border border-mark/25 bg-mark-tint px-3 py-2 text-sm text-mark"
+          >
             {error}
           </p>
         ) : null}
@@ -158,14 +161,14 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
         <summary className="cursor-pointer text-ink-muted underline underline-offset-4 hover:text-ink">
           Forgot your password?
         </summary>
-        <div className="mt-2.5 flex flex-col gap-2 rounded-lg bg-paper-sunken p-3 text-ink-soft">
+        <div className="fa-rise mt-2.5 flex flex-col gap-2 rounded-lg bg-paper-sunken p-3 text-ink-soft">
           <p>
             If your email is a Google account — including a school one —{' '}
             <strong className="font-medium text-ink">Continue with Google</strong> above will sign
             you into the same account, password or not. Everything you’ve built is still there.
           </p>
           {resetSent ? (
-            <p>
+            <p className="fa-rise">
               If <strong className="font-medium text-ink">{resetEmail}</strong> has an account,
               we’ve sent a link to reset its password. It works for one hour.
             </p>

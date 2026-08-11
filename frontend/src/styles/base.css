@@ -1328,6 +1328,16 @@
     pointer-events: auto;
     animation: toast-in var(--t-base) var(--ease-out) both;
   }
+  /* Entrance played; dismiss used to just vanish — see ToastProvider's own
+     comment on why the removal from state is now delayed to let this play.
+     margin-bottom transitions alongside the fade so the toast below doesn't
+     jump into the gap the instant this one's gone — it eases the gap shut
+     over the same span. */
+  .toast.is-closing {
+    animation: toast-out var(--t-fast) var(--ease) both;
+    margin-bottom: 0;
+    transition: margin-bottom var(--t-fast) var(--ease);
+  }
   @keyframes toast-in {
     from {
       opacity: 0;
@@ -1336,6 +1346,16 @@
     to {
       opacity: 1;
       transform: none;
+    }
+  }
+  @keyframes toast-out {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
     }
   }
 
@@ -1414,6 +1434,12 @@
     backdrop-filter: blur(2px);
     animation: scrim-in var(--t-fast) var(--ease-out) both;
   }
+  /* Same reasoning as .panel-scrim.is-closing just below: an entrance with no
+     matching exit reads as considered on the way in and broken on the way
+     out. Reuses scrim-out rather than defining a second identical fade. */
+  .dialog-scrim.is-closing {
+    animation: scrim-out var(--t-fast) var(--ease) both;
+  }
   @keyframes scrim-in {
     from {
       opacity: 0;
@@ -1459,6 +1485,9 @@
     outline: none;
     animation: dialog-in var(--t-base) var(--ease-out) both;
   }
+  .dialog.is-closing {
+    animation: dialog-out var(--t-fast) var(--ease) both;
+  }
   @keyframes dialog-in {
     from {
       opacity: 0;
@@ -1467,6 +1496,16 @@
     to {
       opacity: 1;
       transform: none;
+    }
+  }
+  @keyframes dialog-out {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateY(10px) scale(0.97);
     }
   }
 
@@ -3561,6 +3600,48 @@
      a plain fade would read as a list quietly re-rendering. */
   .fa-card-drop {
     animation: fa-card-drop 380ms var(--ease-out) both;
+  }
+  /* A deleted list row (a plan, a chat, a class document) used to just
+     vanish from the array with the rows below snapping up into the gap
+     immediately — the two genuinely new shapes motion was missing here,
+     entry/touch feedback for something disappearing rather than
+     appearing. max-height is a fixed cap, not the row's real height (CSS
+     can't animate to/from `auto`) — 96px comfortably covers every row
+     this is used on, so the fade completes before the clip would ever cut
+     off real content. */
+  .fa-row-exit {
+    animation: fa-row-exit 200ms var(--ease) both;
+    overflow: hidden;
+  }
+  /* An attachment chip's own removal — smaller and quicker than a row
+     collapsing, since it's a chip disappearing in place, not a line item
+     the rest of a list needs to close ranks around. */
+  .fa-chip-exit {
+    animation: fa-chip-exit 150ms var(--ease) both;
+  }
+}
+@keyframes fa-row-exit {
+  from {
+    opacity: 1;
+    max-height: 96px;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+@keyframes fa-chip-exit {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.85);
   }
 }
 

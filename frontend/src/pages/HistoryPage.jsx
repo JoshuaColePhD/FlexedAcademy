@@ -20,7 +20,7 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function ChatHistoryRow({ chat, classId, onDelete, deleting, selectionMode, selected, onToggleSelect }) {
+function ChatHistoryRow({ chat, classId, onDelete, deleting, closing, selectionMode, selected, onToggleSelect }) {
   const label = chat.title || 'Untitled chat'
 
   const content = (
@@ -47,7 +47,7 @@ function ChatHistoryRow({ chat, classId, onDelete, deleting, selectionMode, sele
 
   if (selectionMode) {
     return (
-      <li className="group flex items-center gap-1 px-2 py-1">
+      <li className={`group flex items-center gap-1 px-2 py-1${closing ? ' fa-row-exit' : ''}`}>
         {/* pressed-in, not a background tint — same thing "selected" means on
             the sidebar's active chat and in the Library. */}
         <button
@@ -64,7 +64,7 @@ function ChatHistoryRow({ chat, classId, onDelete, deleting, selectionMode, sele
   }
 
   return (
-    <li className="group flex items-center gap-1 px-2 py-1">
+    <li className={`group flex items-center gap-1 px-2 py-1${closing ? ' fa-row-exit' : ''}`}>
       <Link
         to={`/c/${classId}/chat/${chat.id}`}
         className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-paper-sunken"
@@ -95,7 +95,12 @@ export function HistoryPage() {
   const toast = useToast()
   const [search, setSearch] = useState('')
   const [deletingId, setDeletingId] = useState(null)
-  
+  // See PlansPage's identical field for why: deletion goes through
+  // react-query invalidation, not a local splice, so this just flags a row
+  // as closing (fa-row-exit) the moment deletion is confirmed rather than
+  // trying to choreograph an animation against the refetch's own timing.
+  const [deletingIds, setDeletingIds] = useState(new Set())
+
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [isDeletingBulk, setIsDeletingBulk] = useState(false)
@@ -129,7 +134,8 @@ export function HistoryPage() {
       tone: 'danger',
     })
     if (!ok) return
-    
+
+    setDeletingIds((prev) => new Set([...prev, ...selectedIds]))
     setIsDeletingBulk(true)
     try {
       const arr = Array.from(selectedIds)
@@ -140,6 +146,14 @@ export function HistoryPage() {
       setSelectionMode(false)
       toast.success(`Deleted ${arr.length} chats`)
     } catch (err) {
+      // Partial failure, no per-id success tracking: anything that DID
+      // delete is already gone from `chats`, so un-flagging it is a no-op;
+      // anything that failed correctly reverts to visible.
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        selectedIds.forEach((id) => next.delete(id))
+        return next
+      })
       toast.apiError('Could not delete all selected chats', err)
     } finally {
       setIsDeletingBulk(false)
@@ -154,10 +168,16 @@ export function HistoryPage() {
       tone: 'danger',
     })
     if (!ok) return
+    setDeletingIds((prev) => new Set(prev).add(chat.id))
     setDeletingId(chat.id)
     try {
       await deleteChat.mutateAsync(chat.id)
     } catch (err) {
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(chat.id)
+        return next
+      })
       toast.apiError('Could not delete that chat', err)
     } finally {
       setDeletingId(null)
@@ -251,6 +271,7 @@ export function HistoryPage() {
                   classId={classId}
                   onDelete={remove}
                   deleting={deletingId === c.id}
+                  closing={deletingIds.has(c.id)}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(c.id)}
                   onToggleSelect={toggleSelect}

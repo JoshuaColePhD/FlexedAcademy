@@ -158,6 +158,12 @@ function ClassDocuments({ cls, onChanged }) {
   const fileRef = useRef(null)
   const [kind, setKind] = useState('pacing_guide')
   const [uploading, setUploading] = useState(false)
+  // Removal calls the API then refetches — the row's actual disappearance
+  // rides on that refetch's own timing, not a local splice. Same reasoning
+  // as PlansPage/HistoryPage's deletingIds: flag it closing the moment
+  // it's confirmed (fa-row-exit is already invisible/collapsed well before
+  // the refetch lands), only ever cleared on failure.
+  const [removingIds, setRemovingIds] = useState(new Set())
   const docs = useQuery({
     queryKey: qk.classDocuments(cls.id),
     queryFn: () => api.listClassDocuments(cls.id),
@@ -193,11 +199,17 @@ function ClassDocuments({ cls, onChanged }) {
       tone: 'danger',
     })
     if (!ok) return
+    setRemovingIds((prev) => new Set(prev).add(doc.id))
     try {
       await api.deleteCurriculumMap(doc.id)
       docs.refetch()
       onChanged?.()
     } catch (err) {
+      setRemovingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(doc.id)
+        return next
+      })
       toast.apiError('Could not remove that document', err)
     }
   }
@@ -209,7 +221,10 @@ function ClassDocuments({ cls, onChanged }) {
       {rows.length ? (
         <ul className="neo-inset divide-y divide-edge overflow-hidden rounded-lg bg-paper-sunken">
           {rows.map((d) => (
-            <li key={d.id} className="flex items-center gap-2.5 px-3 py-2">
+            <li
+              key={d.id}
+              className={`flex items-center gap-2.5 px-3 py-2${removingIds.has(d.id) ? ' fa-row-exit' : ''}`}
+            >
               <FileText size={14} aria-hidden="true" className="shrink-0 text-ink-muted" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-ink">{d.original_name}</span>
@@ -743,7 +758,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
       </div>
 
       {panel === 'edit' ? (
-        <div className="flex flex-col gap-2 px-3 pb-3 pl-10 sm:flex-row sm:items-start">
+        <div className="fa-rise flex flex-col gap-2 px-3 pb-3 pl-10 sm:flex-row sm:items-start">
           <div className="min-w-0 flex-1">
             <FrameworkPicker
               frameworks={frameworks}
@@ -788,11 +803,11 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           </div>
         </div>
       ) : panel === 'weeks' ? (
-        <div className="px-3 pb-3 pl-10">
+        <div className="fa-rise px-3 pb-3 pl-10">
           <ClassWeeks cls={cls} />
         </div>
       ) : panel === 'documents' ? (
-        <div className="px-3 pb-3 pl-10">
+        <div className="fa-rise px-3 pb-3 pl-10">
           {/* Verification is not uniform — ELA is 100%, PE 61% — and it matters
               before trusting a plan built on this framework. */}
           {verified !== null && verified < 100 ? (
