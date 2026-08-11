@@ -7,15 +7,19 @@ on a sleeping instance.
 
 Render's free web services sleep after 15 minutes idle and take ~50s to wake.
 Added to a ~10s generation, a colleague's first impression is a minute of
-nothing. This keeps the app up during the evenings when planning happens.
+nothing. This keeps the app up during the school day — Mon-Fri 7am-4pm US
+Central — when it's actually being used, rather than the evening planning
+window this originally targeted.
 
 Not a 24/7 ping: Render's free tier grants ~750 instance-hours a month, and
-holding one service up around the clock would spend ~730 of them. The schedule
-here costs ~130.
+holding one service up around the clock would spend ~730 of them. The current
+schedule (9 hours × 5 days × ~4.3 weeks/month) costs ~195 — comfortably clear
+of the limit.
 
 ## Deploy
 
-Both free — Workers free allows 100,000 requests/day; this uses ~180/month.
+Both free — Workers free allows 100,000 requests/day; this schedule fires
+roughly 1,200 times a month.
 
 ```bash
 cd keepwarm
