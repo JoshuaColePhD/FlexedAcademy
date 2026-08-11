@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Play, X } from 'lucide-react'
+import { ArrowLeft, Check, Download, FileText, Play, X } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
 import { DecisionStack } from './DecisionStack'
@@ -222,6 +222,50 @@ function QuestionCards({ questions, onAnswer }) {
   )
 }
 
+/* The side column's third state, once a week actually exists — after that,
+ * "the plan so far" (DecisionStack) is stale news; the teacher already knows
+ * it built, or should. This is a persistent, visual answer to "did that
+ * work?" that doesn't depend on catching a spoken line the moment it plays
+ * — see ChatPage's own auto-speak effect, which already queues "Built
+ * {week}. Tell me what to change and I'll revise it." through the TTS the
+ * instant the plan lands, but a sentence spoken once and gone is easy to
+ * miss entirely if the room is noisy or attention was elsewhere. This card
+ * stays up for as long as the conversation does. */
+function BuiltPlanCard({ builtPlan, fill = true }) {
+  return (
+    <div
+      className={`neo-panel flex w-full flex-col items-start gap-3 rounded-[28px] bg-paper-raised p-4 ${
+        fill ? 'h-full justify-center' : ''
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className="neo-inset grid h-9 w-9 shrink-0 place-items-center rounded-full text-accent-text"
+      >
+        <Check size={16} strokeWidth={3} />
+      </span>
+      <div>
+        <p className="eyebrow pb-1">Built</p>
+        <p className="fa-rise text-sm font-medium leading-snug text-ink">
+          {builtPlan.weekLabel || 'This week'}
+        </p>
+      </div>
+      <a
+        href={api.planDownloadUrl(builtPlan.planId)}
+        download
+        className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-accent-text transition-shadow"
+      >
+        <Download size={12} aria-hidden="true" />
+        Download
+      </a>
+      <p className="flex items-start gap-1.5 text-xs leading-snug text-ink-faint">
+        <FileText size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
+        Say what to change and I'll revise it.
+      </p>
+    </div>
+  )
+}
+
 export function VoiceModePanel({
   onClose,
   onUtterance,
@@ -238,6 +282,9 @@ export function VoiceModePanel({
   caption = '',
   // What's been settled in the conversation so far — see DecisionStack.
   decisions = [],
+  // Non-null once a week has actually been built — see BuiltPlanCard, which
+  // takes over the side column from DecisionStack the moment this is set.
+  builtPlan = null,
   // Cuts the current reply off mid-sentence — VoiceProvider's voice.stop().
   // Called the instant the teacher starts talking OVER it (see the VAD
   // loop's own comment on barge-in), not after it finishes.
@@ -708,6 +755,8 @@ export function VoiceModePanel({
             <div className="min-h-0 flex-1 overflow-y-auto">
               <QuestionCards questions={questions} onAnswer={onAnswer} />
             </div>
+          ) : builtPlan ? (
+            <BuiltPlanCard builtPlan={builtPlan} fill={false} />
           ) : (
             <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
           )}
@@ -788,10 +837,14 @@ export function VoiceModePanel({
             decision already locked in is once it's settled. Checking each
             question off as it's answered (see QuestionCards) is what makes
             this readable as a to-do list rather than a form dropped on top
-            of the conversation. DecisionStack, not null, is the default —
-            same reasoning as Transcript above. */}
+            of the conversation. Once a week actually exists, BuiltPlanCard
+            takes over instead — "the plan so far" is stale news once
+            there's an actual plan. DecisionStack, not null, is the
+            fallback default — same reasoning as Transcript above. */}
         {questions?.length ? (
           <QuestionCards questions={questions} onAnswer={onAnswer} />
+        ) : builtPlan ? (
+          <BuiltPlanCard builtPlan={builtPlan} />
         ) : (
           <DecisionStack decisions={decisions} onRevise={reviseDecision} />
         )}

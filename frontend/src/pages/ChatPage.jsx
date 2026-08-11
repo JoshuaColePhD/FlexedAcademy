@@ -1441,6 +1441,13 @@ export function ChatPage() {
           messages={messages}
           caption={voiceCaption}
           decisions={decisions}
+          /* Non-null the moment a week is actually saved — see
+             VoiceModePanel's BuiltPlanCard, which takes over the side
+             column from the running decisions checklist once this is set.
+             artifact.planId, not liveArtifact/stream.preview: those cover
+             the in-progress preview too, and this is specifically "it's
+             done and saved," not "it's still being written." */
+          builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
           /* Barge-in: silence the reply AND abort the generation behind it.
              Stopping only the audio would leave the model still writing
              sentences that VoiceProvider would dutifully queue up and speak
