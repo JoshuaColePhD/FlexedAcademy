@@ -165,7 +165,7 @@
   .app-rail {
     position: relative;
     z-index: 1;
-    background: rgb(var(--paper-rgb));
+    background: var(--paper-sunken);
     /* Reversing the elevation: instead of projecting a shadow onto the chat
        to read as a raised surface, it uses an inset shadow to read as a
        depressed/sunken area. The dark inset on the left/top and light inset

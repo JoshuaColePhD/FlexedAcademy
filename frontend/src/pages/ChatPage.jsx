@@ -879,12 +879,12 @@ export function ChatPage() {
     // spokenContent, when set, carries content the text-chat bubble
     // deliberately doesn't show in full — see speakableQuestions.
     const toSpeak = last.spokenContent || last.content
-    if (voice.enabled) voice.speak(toSpeak)
-    // Captioned only while the panel is actually open to show it — the
-    // "read every reply aloud" half of this effect runs regardless of
-    // voiceOpen (see its own comment), but there's no caption UI listening
-    // when the panel is closed.
-    if (voiceOpen) setVoiceCaption(toSpeak)
+    // Only auto-speak if they are actively in the voice conversation,
+    // not unexpectedly in the background while they are just typing.
+    if (voiceOpen) {
+      voice.speak(toSpeak)
+      setVoiceCaption(toSpeak)
+    }
   }, [messages, voice, voiceOpen])
 
   /* The card stack's data. Keyed on the WHOLE transcript, not just new
