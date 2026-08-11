@@ -51,6 +51,10 @@ class ChatStreamRequest(BaseModel):
     mode: str = "brainstorm" # can be 'interview', 'standards', etc.
 
 
+class DecisionsRequest(BaseModel):
+    messages: list[ChatMessage]
+
+
 class ReviseDayRequest(BaseModel):
     plan_id: str = Field(min_length=1, max_length=64)
     day_index: int = Field(ge=0, le=4)
@@ -278,6 +282,15 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@router.post("/decisions")
+def decisions(req: DecisionsRequest, user_id: str = Depends(get_current_user)):
+    """Voice mode's card stack — see llm.extract_decisions for why this isn't
+    gated by require_entitlement: it's a visual aid over an ALREADY-gated
+    conversation, not a plan generation in its own right."""
+    msgs = [{"role": m.role, "content": m.content} for m in req.messages]
+    return {"decisions": llm.extract_decisions(user_id, msgs)}
 
 
 @router.post("/revise_day")

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Play, Sparkles, User, X } from 'lucide-react'
+import { ArrowLeft, Check, Play, Sparkles, User, X } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
 
@@ -101,6 +101,54 @@ function Transcript({ messages, onReplay }) {
   )
 }
 
+// Only the most recent ones stay visible — the point is "what's true right
+// now," not a full history (that's what the transcript is for), and an
+// unbounded stack would eventually spill out of a container sized to look
+// like a small deck of cards, not a scrolling list.
+const MAX_VISIBLE_DECISIONS = 6
+
+/* What's been settled in the conversation so far (llm.extract_decisions),
+ * as a small deck of index cards rather than a checklist — each one drops
+ * in with its own slight tilt and stays there, so the stack visibly grows
+ * turn by turn instead of a list quietly re-rendering. Newest on top: it's
+ * both the most recent decision AND the thing most likely still relevant to
+ * what's being discussed right now.
+ */
+function DecisionStack({ decisions }) {
+  if (!decisions.length) return null
+  const visible = decisions.slice(-MAX_VISIBLE_DECISIONS)
+  return (
+    <div className="neo-panel relative flex aspect-square w-full max-w-[220px] shrink-0 flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4">
+      <p className="eyebrow shrink-0">Decided so far</p>
+      <div className="relative min-h-0 flex-1">
+        {visible.map((d, i) => {
+          // A small alternating fan, not a random scatter — random tilts on
+          // a REORDERING list (new cards insert at the end, old ones never
+          // move) would still read as jittery each time one lands next to
+          // an unrelated angle. Alternating by position is stable and still
+          // reads as "a loose stack of cards," not a grid.
+          const rot = ((i % 4) - 1.5) * 3
+          return (
+            <div
+              key={`${d.label}:${i}`}
+              className="fa-card-drop neo-raised absolute inset-x-1 flex items-start gap-2 rounded-xl bg-paper-raised px-3 py-2 text-left"
+              style={{ '--card-rot': `${rot}deg`, top: `${i * 8}px`, zIndex: i }}
+            >
+              <Check size={13} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">
+                  {d.label}
+                </span>
+                <span className="block truncate text-xs text-ink">{d.value}</span>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function VoiceModePanel({
   onClose,
   onUtterance,
@@ -115,6 +163,8 @@ export function VoiceModePanel({
   // "talking," matching what's actually coming out of the speaker turn by
   // turn instead of a caption that's already finished before the voice has.
   caption = '',
+  // What's been settled in the conversation so far — see DecisionStack.
+  decisions = [],
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
@@ -463,7 +513,13 @@ export function VoiceModePanel({
           </button>
         </div>
 
-        <div className="flex flex-1 items-center justify-center px-gutter">{orb}</div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-gutter py-4">
+          {/* Shares the vertical space with the stack once there's one to
+              show, rather than the orb always claiming the same room
+              whether or not there's anything else on screen. */}
+          <div className={decisions.length ? 'w-full max-w-[200px]' : 'w-full max-w-[280px]'}>{orb}</div>
+          <DecisionStack decisions={decisions} />
+        </div>
 
         {/* The reference's docked mini-player bar — here it carries the
             live status instead of a track name, since that's the one thing
@@ -495,7 +551,7 @@ export function VoiceModePanel({
       {/* items-stretch, not the scrim's own align-items:center — the
           transcript column matches the card's height instead of centering
           independently at whatever height its own content happens to want. */}
-      <div className="flex max-h-[560px] w-full max-w-3xl items-stretch gap-4">
+      <div className="flex max-h-[560px] w-full max-w-4xl items-stretch gap-4">
         {messages.length ? (
           <div className="hidden w-72 shrink-0 md:block">
             <Transcript messages={messages} onReplay={onReplay} />
@@ -523,6 +579,11 @@ export function VoiceModePanel({
             <X size={18} aria-hidden="true" />
           </button>
         </div>
+        {decisions.length ? (
+          <div className="hidden w-56 shrink-0 md:block">
+            <DecisionStack decisions={decisions} />
+          </div>
+        ) : null}
       </div>
     </div>
   )

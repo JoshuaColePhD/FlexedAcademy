@@ -473,6 +473,80 @@ def generate_chat_title(user_id: str, message: str) -> str:
     return first_line[:40] + ("…" if len(first_line) > 40 else "")
 
 
+DECISIONS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "decisions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "description": "1-3 words naming WHAT was decided, e.g. 'Week', 'Anchor text', 'Assessment'.",
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "The actual decision, under about 8 words.",
+                    },
+                },
+                "required": ["label", "value"],
+            },
+        }
+    },
+    "required": ["decisions"],
+}
+
+_DECISIONS_PROMPT = """Read this planning conversation between a teacher and an \
+assistant building a week of lessons. List only the concrete decisions actually \
+SETTLED so far — a week chosen, a text or anchor named, a unit or skill focus, an \
+assessment type, a specific constraint given. Do not include anything still open, \
+being asked about, or only suggested and not yet confirmed. One row per decision, \
+in the order they were made. A short label (1-3 words) and a short value (under 8 \
+words). If nothing has been settled yet, return an empty list."""
+
+
+def extract_decisions(user_id: str, messages: list[dict]) -> list[dict]:
+    """Voice mode's card stack — a running, best-effort read of what's actually
+    been settled in the conversation so far.
+
+    Not a fixed checklist: there's no set list of "the questions" a plan
+    always answers (schema.py's DAY_JSON_SCHEMA varies with what the teacher
+    actually asks for), so this re-reads the whole transcript each call and
+    reports back whatever it can find. Cheap model, swallows failures — this
+    is a visual aid for a live conversation, never worth blocking or erroring
+    it over.
+    """
+    if not messages:
+        return []
+    convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-16:])
+    try:
+        resp = client().chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0,
+            max_tokens=400,
+            response_format=_response_format("decisions", DECISIONS_SCHEMA),
+            messages=[
+                {"role": "system", "content": _DECISIONS_PROMPT},
+                {"role": "user", "content": convo[:6000]},
+            ],
+        )
+        _record(user_id, "extract_decisions", resp.usage)
+        data = json.loads(resp.choices[0].message.content or "{}")
+        out = []
+        for d in data.get("decisions", []):
+            label = str(d.get("label", "")).strip()
+            value = str(d.get("value", "")).strip()
+            if label and value:
+                out.append({"label": label[:40], "value": value[:80]})
+        return out[:8]
+    except Exception as e:  # noqa: BLE001 — a visual aid, never a hard failure
+        log.warning("decision extraction failed: %s", e)
+        return []
+
+
 def transcribe(user_id: str, path: str) -> str:
     with open(path, "rb") as f:
         result = client().audio.transcriptions.create(model="whisper-1", file=f)

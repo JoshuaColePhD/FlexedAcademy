@@ -124,6 +124,11 @@ export function ChatPage() {
   // reach it from two different moments: the opening greeting (below) and
   // every later assistant reply (the auto-speak effect, further down).
   const [voiceCaption, setVoiceCaption] = useState('')
+  // The card stack: what's actually been decided in the conversation so
+  // far, per api.getDecisions — re-read after every new message while
+  // voice mode is open (see the effect further down). Empty is a normal
+  // state, not a loading one: nothing has necessarily been settled yet.
+  const [decisions, setDecisions] = useState([])
 
   /* Which cell is being tweaked, and which cells just changed. `flashCells` is
      the only animation in the app that carries information: it answers "what
@@ -194,6 +199,7 @@ export function ChatPage() {
       setSelectedWeek(null)
       localFor.current = null
       lastSpokenRef.current = null
+      setDecisions([])
       return undefined
     }
     // The transcript on screen is already this chat's — nothing to catch up on.
@@ -849,6 +855,26 @@ export function ChatPage() {
     if (voiceOpen) setVoiceCaption(last.content)
   }, [messages, voice, voiceOpen])
 
+  /* The card stack's data. Keyed on the WHOLE transcript, not just new
+     assistant replies — the extraction call re-reads everything said each
+     time (see llm.extract_decisions), because a teacher naming a text mid-
+     utterance is itself a decision, not something only assistant turns
+     produce. Only runs while the panel is open: nothing renders it
+     otherwise, so there's nothing to keep live. */
+  useEffect(() => {
+    if (!voiceOpen || messages.length === 0) return undefined
+    let cancelled = false
+    api
+      .getDecisions(messages.map((m) => ({ role: m.role, content: m.content })))
+      .then((res) => {
+        if (!cancelled) setDecisions(res.decisions || [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [messages, voiceOpen])
+
   const livePlan = artifact?.plan || stream.preview
   const liveArtifact = useMemo(
     () =>
@@ -1254,6 +1280,7 @@ export function ChatPage() {
             voice.stop()
             setVoiceOpen(false)
             setVoiceCaption('')
+            setDecisions([])
           }}
           onUtterance={submit}
           busy={busy}
@@ -1261,6 +1288,7 @@ export function ChatPage() {
           isPhone={isPhone}
           messages={messages}
           caption={voiceCaption}
+          decisions={decisions}
           onReplay={(text) => {
             setVoiceCaption(text)
             voice.speak(text)

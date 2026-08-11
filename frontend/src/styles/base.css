@@ -3529,8 +3529,25 @@
   .fa-flash {
     animation: fa-flash 2.2s ease-out both;
   }
+  /* Voice mode's decision cards, dropping into their spot in the stack.
+     Ends at rotate(var(--card-rot)), not `none` — unlike .fa-rise, this
+     card's tilt is its RESTING state (see VoiceModePanel's DecisionStack),
+     not something the animation is transitioning away from. */
+  .fa-card-drop {
+    animation: fa-card-drop 420ms var(--ease-out) both;
+  }
 }
 
+@keyframes fa-card-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.92) rotate(var(--card-rot, 0deg));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(var(--card-rot, 0deg));
+  }
+}
 @keyframes fa-rise {
   from {
     opacity: 0;

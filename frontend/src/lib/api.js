@@ -194,6 +194,10 @@ export const api = {
      plain conversational text. They are not interchangeable. */
   streamUrl: () => `${API_BASE}/api/generate_stream`,
   chatStreamUrl: () => `${API_BASE}/api/chat_stream`,
+  /* Voice mode's card stack — best-effort, re-read after every new message
+     while the panel is open. Never worth a toast on failure; the caller
+     just keeps whatever it already had. */
+  getDecisions: (messages) => request('/api/decisions', { method: 'POST', body: { messages } }),
 
   reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload }),
 
