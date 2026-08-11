@@ -285,11 +285,6 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, variant = 'rai
                 dropping "Built from" a few lines up. */}
             {!isBar ? <EmptyRailArt color={color.rgb} /> : null}
             <p>Nothing built yet. Describe a week in the chat.</p>
-            {!isBar && unplannedCount > 0 ? (
-              <Link to={`/c/${classId}/class`} className="rail-empty-hint">
-                {unplannedCount} week{unplannedCount === 1 ? '' : 's'} not yet planned →
-              </Link>
-            ) : null}
           </div>
         )}
       </div>

@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o"
+    openai_model: str = "gpt-5.6-luna"
     common_standards_api_key: str = ""
 
     # ── voice replies ────────────────────────────────────────────────────────

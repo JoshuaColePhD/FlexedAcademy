@@ -170,11 +170,18 @@ function Rail({ onNavigate, onClose }) {
             <SkeletonText lines={4} />
           </div>
         ) : chats?.length ? (
-          <ul className="flex flex-col gap-0.5">
-            {chats.map((c) => (
-              <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} />
-            ))}
-          </ul>
+          <div className="flex flex-col pb-4">
+            <ul className="flex flex-col gap-0.5">
+              {chats.map((c) => (
+                <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} />
+              ))}
+            </ul>
+            <div className="mt-2 px-4">
+              <Link to={`${classPath}/history`} onClick={onNavigate} className="text-xs text-ink-muted hover:text-ink">
+                View all history
+              </Link>
+            </div>
+          </div>
         ) : (
           <p className="px-4 py-2 text-xs text-ink-muted">
             Nothing yet. Describe a week to get started.
@@ -199,19 +206,6 @@ function Rail({ onNavigate, onClose }) {
         {/* Only rendered for is_admin accounts — everyone else never sees this
             link exists. The route and every request it makes are gated again
             server-side, so this is convenience, not the security boundary. */}
-        {user?.is_admin ? (
-          <NavLink
-            to="/admin"
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
-                isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
-              }`
-            }
-          >
-            <ShieldCheck size={15} aria-hidden="true" /> Admin
-          </NavLink>
-        ) : null}
         <AccountMenu classPath={classPath} />
       </div>
     </>

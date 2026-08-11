@@ -28,6 +28,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+import contextvars
+
+current_user_id = contextvars.ContextVar("current_user_id", default=None)
 
 from .config import settings
 from .errors import AppError
@@ -439,6 +442,39 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_instructions TEXT;
     """,
+    # ── 20: Row Level Security ───────────────────────────────────────────────
+    #
+    # Enable RLS on all tenant-specific tables to satisfy Supabase security
+    # recommendations and provide defense-in-depth.
+    """
+    ALTER TABLE classes ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE plans ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE curriculum_maps ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE plan_feedback ENABLE ROW LEVEL SECURITY;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own classes" ON classes USING (user_id = current_setting('app.user_id', true));
+        CREATE POLICY "Users can access their own chats" ON chats USING (user_id = current_setting('app.user_id', true));
+        CREATE POLICY "Users can access their own plans" ON plans USING (user_id = current_setting('app.user_id', true));
+        CREATE POLICY "Users can access their own messages" ON messages USING (user_id = current_setting('app.user_id', true));
+        CREATE POLICY "Users can access their own maps" ON curriculum_maps USING (user_id = current_setting('app.user_id', true));
+        CREATE POLICY "Users can access their own feedback" ON plan_feedback USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;
+    """,
+    # ── 21: LLM Caching ───────────────────────────────────────────────────────
+    #
+    # Exact-match caching for LLM calls to save tokens and reduce latency.
+    """
+    CREATE TABLE IF NOT EXISTS llm_cache (
+        hash_key TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        response TEXT NOT NULL
+    );
+    """,
 ]
 
 
@@ -544,6 +580,10 @@ def borrow():
     _slots.acquire()
     try:
         conn = pool.getconn()
+        user_id = current_user_id.get()
+        if user_id:
+            with conn.cursor() as cur:
+                cur.execute("SET LOCAL app.user_id = %s", (user_id,))
     except Exception:
         _slots.release()
         raise
@@ -1541,27 +1581,40 @@ def list_accounts_with_stats() -> list[dict]:
     this admin table instead: one place to see who's using what, not a
     number every teacher stares at on their own account.
     """
-    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
+    since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
+    since_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(timespec="seconds")
     rows = _rows(
         """
         SELECT u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
                COUNT(p.id) AS plans_built,
                MAX(p.created_at) AS last_plan_at,
-               COALESCE(ue.tokens_used, 0) AS tokens_used
+               COALESCE(ue7.tokens, 0) AS tokens_7d,
+               COALESCE(ue30.tokens, 0) AS tokens_30d
         FROM users u
         LEFT JOIN plans p ON p.user_id = u.id
         LEFT JOIN (
-            SELECT user_id, SUM(tokens_in + tokens_out) AS tokens_used
+            SELECT user_id, SUM(tokens_in + tokens_out) AS tokens
             FROM usage_events
             WHERE created_at >= ?
             GROUP BY user_id
-        ) ue ON ue.user_id = u.id
-        GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at, ue.tokens_used
+        ) ue7 ON ue7.user_id = u.id
+        LEFT JOIN (
+            SELECT user_id, SUM(tokens_in + tokens_out) AS tokens
+            FROM usage_events
+            WHERE created_at >= ?
+            GROUP BY user_id
+        ) ue30 ON ue30.user_id = u.id
+        GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at, ue7.tokens, ue30.tokens
         ORDER BY u.created_at DESC
         """,
-        (since,),
+        (since_7d, since_30d),
     )
-    return [dict(r) for r in rows]
+    res = []
+    for r in rows:
+        d = dict(r)
+        d["tokens_avg_day_30d"] = int(d["tokens_30d"] / 30) if d.get("tokens_30d") else 0
+        res.append(d)
+    return res
 
 
 def create_user(email: str, name: str, password_hash: str) -> dict:

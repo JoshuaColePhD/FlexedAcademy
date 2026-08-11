@@ -111,7 +111,9 @@ export function AdminPage() {
                 <th className="px-3 py-2 font-medium">Account</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Plans built</th>
-                <th className="px-3 py-2 font-medium">Tokens this week</th>
+                <th className="px-3 py-2 font-medium">Tokens 7d</th>
+                <th className="px-3 py-2 font-medium">Tokens 30d</th>
+                <th className="px-3 py-2 font-medium">Avg/day</th>
                 <th className="px-3 py-2 font-medium">Last active</th>
                 <th className="px-3 py-2 font-medium">Joined</th>
                 <th className="px-3 py-2 font-medium" />
@@ -131,7 +133,9 @@ export function AdminPage() {
                     <StatusPill status={a.subscription_status} />
                   </td>
                   <td className="px-3 py-2 font-mono text-ink-soft">{a.plans_built}</td>
-                  <td className="px-3 py-2 font-mono text-ink-soft">{(a.tokens_used || 0).toLocaleString()}</td>
+                  <td className="px-3 py-2 font-mono text-ink-soft">{(a.tokens_7d || 0).toLocaleString()}</td>
+                  <td className="px-3 py-2 font-mono text-ink-soft">{(a.tokens_30d || 0).toLocaleString()}</td>
+                  <td className="px-3 py-2 font-mono text-ink-soft">{(a.tokens_avg_day_30d || 0).toLocaleString()}</td>
                   <td className="px-3 py-2 text-ink-soft">{relative(a.last_plan_at)}</td>
                   <td className="px-3 py-2 text-ink-soft">{relative(a.created_at)}</td>
                   <td className="px-3 py-2 text-right">

@@ -1,31 +1,18 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, FileText, Search, Trash2, CheckSquare, Square } from 'lucide-react'
-import { api } from '../lib/api'
+import { MessageSquare, Search, Trash2, CheckSquare, Square } from 'lucide-react'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
-import { useActiveClass, usePlans, useDeletePlan } from '../hooks/useAppData'
+import { useActiveClass, useChats, useDeleteChat } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { SkeletonText } from '../components/Skeleton'
 
-/* Every plan this class has ever produced, in one place.
- *
- * The sidebar's "Recent" list is chats, not plans — a conversation that
- * revised a week three times is one row there, and a plan built without ever
- * being revisited is easy to lose track of once it scrolls out of "Recent".
- * This reads straight from the same durable record the calendar and the
- * paywall's free-week counter already trust (backend/db.py's `plans` table),
- * so it is never out of sync with what actually got built.
- */
-
 const SEARCH_THRESHOLD = 8
 
-function matchesSearch(plan, query) {
+function matchesSearch(chat, query) {
   const q = query.trim().toLowerCase()
   if (!q) return true
-  return [plan.week_label, plan.unit, plan.course]
-    .filter(Boolean)
-    .some((s) => s.toLowerCase().includes(q))
+  return chat.title?.toLowerCase().includes(q)
 }
 
 function formatDate(iso) {
@@ -33,11 +20,8 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, onToggleSelect }) {
-  // Plans built before chat_id was tracked (or ever) have nowhere for a
-  // click to go — same fallback ClassWeeks uses for an orphaned week.
-  const openable = Boolean(plan.chat_id)
-  const label = plan.week_label || 'Untitled week'
+function ChatHistoryRow({ chat, classId, onDelete, deleting, selectionMode, selected, onToggleSelect }) {
+  const label = chat.title || 'Untitled chat'
 
   const content = (
     <>
@@ -48,16 +32,14 @@ function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, o
           <Square size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
         )
       ) : (
-        <FileText size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
+        <MessageSquare size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-ink">
           {label}
-          {plan.unit ? ` — ${plan.unit}` : ''}
         </span>
         <span className="block truncate text-xs text-ink-muted">
-          {plan.course ? `${plan.course} · ` : ''}
-          {formatDate(plan.created_at)}
+          {formatDate(chat.created_at)}
         </span>
       </span>
     </>
@@ -68,7 +50,7 @@ function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, o
       <li className="group flex items-center gap-1 px-2 py-1">
         <button
           type="button"
-          onClick={() => onToggleSelect(plan.id)}
+          onClick={() => onToggleSelect(chat.id)}
           className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left transition-colors hover:bg-paper-sunken"
         >
           {content}
@@ -79,30 +61,17 @@ function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, o
 
   return (
     <li className="group flex items-center gap-1 px-2 py-1">
-      {openable ? (
-        <Link
-          to={`/c/${classId}/chat/${plan.chat_id}`}
-          className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-paper-sunken"
-        >
-          {content}
-        </Link>
-      ) : (
-        <span className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 px-2 opacity-60">{content}</span>
-      )}
+      <Link
+        to={`/c/${classId}/chat/${chat.id}`}
+        className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-paper-sunken"
+      >
+        {content}
+      </Link>
       <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-        <a
-          className="btn-icon"
-          href={api.planDownloadUrl(plan.id)}
-          download
-          aria-label={`Download ${label}`}
-          title="Download"
-        >
-          <Download size={13} aria-hidden="true" />
-        </a>
         <button
           type="button"
           className="btn-icon"
-          onClick={() => onDelete(plan)}
+          onClick={() => onDelete(chat)}
           disabled={deleting}
           aria-label={`Delete ${label}`}
           title="Delete"
@@ -114,10 +83,10 @@ function PlanRow({ plan, classId, onDelete, deleting, selectionMode, selected, o
   )
 }
 
-export function PlansPage() {
+export function HistoryPage() {
   const { classId, activeClass } = useActiveClass()
-  const { data, isLoading, isError, error } = usePlans()
-  const deletePlan = useDeletePlan()
+  const { data: chats, isLoading, isError, error } = useChats()
+  const deleteChat = useDeleteChat()
   const confirm = useConfirm()
   const toast = useToast()
   const [search, setSearch] = useState('')
@@ -127,8 +96,8 @@ export function PlansPage() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [isDeletingBulk, setIsDeletingBulk] = useState(false)
 
-  const plans = data?.items || []
-  const filtered = search.trim() ? plans.filter((p) => matchesSearch(p, search)) : plans
+  const items = chats || []
+  const filtered = search.trim() ? items.filter((c) => matchesSearch(c, search)) : items
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -143,56 +112,59 @@ export function PlansPage() {
     if (selectedIds.size === filtered.length && filtered.length > 0) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(filtered.map(p => p.id)))
+      setSelectedIds(new Set(filtered.map(c => c.id)))
     }
   }
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return
     const ok = await confirm({
-      title: `Delete ${selectedIds.size} plan${selectedIds.size === 1 ? '' : 's'}?`,
-      body: 'This removes the plans and their documents. The chats that built them are kept.',
+      title: `Delete ${selectedIds.size} chat${selectedIds.size === 1 ? '' : 's'}?`,
+      body: 'This removes the conversations. Any lesson plans built from them are kept in the Library.',
       confirmLabel: 'Delete',
       tone: 'danger',
     })
     if (!ok) return
+    
     setIsDeletingBulk(true)
     try {
-      for (const id of selectedIds) {
-        await deletePlan.mutateAsync(id)
+      const arr = Array.from(selectedIds)
+      for (const id of arr) {
+        await deleteChat.mutateAsync(id)
       }
       setSelectedIds(new Set())
       setSelectionMode(false)
+      toast.success(`Deleted ${arr.length} chats`)
     } catch (err) {
-      toast.apiError('Could not delete all plans', err)
+      toast.apiError('Could not delete all selected chats', err)
     } finally {
       setIsDeletingBulk(false)
     }
   }
 
-  const handleDelete = async (plan) => {
+  const remove = async (chat) => {
     const ok = await confirm({
-      title: `Delete “${plan.week_label || 'this plan'}”?`,
-      body: 'This removes the plan and its document. The chat that built it is kept.',
+      title: `Delete “${chat.title}”?`,
+      body: 'The lesson plan it produced is kept.',
       confirmLabel: 'Delete',
       tone: 'danger',
     })
     if (!ok) return
-    setDeletingId(plan.id)
+    setDeletingId(chat.id)
     try {
-      await deletePlan.mutateAsync(plan.id)
+      await deleteChat.mutateAsync(chat.id)
     } catch (err) {
-      toast.apiError('Could not delete that plan', err)
+      toast.apiError('Could not delete that chat', err)
     } finally {
       setDeletingId(null)
     }
   }
 
   return (
-    <div className="column">
+    <div className="flex h-app flex-col bg-paper font-sans text-ink">
       <header className="flex h-14 shrink-0 items-center justify-between px-gutter">
         <h1 className="text-sm font-semibold text-ink">
-          Library{activeClass?.name ? ` — ${activeClass.name}` : ''}
+          History{activeClass?.name ? ` — ${activeClass.name}` : ''}
         </h1>
         <div className="flex items-center gap-3">
           {selectionMode ? (
@@ -239,47 +211,57 @@ export function PlansPage() {
 
       <div className="page scroll-y">
         <div className="mx-auto w-full max-w-measure-form">
-          {plans.length > SEARCH_THRESHOLD ? (
-            <div className="mb-3 flex items-center gap-2 rounded-lg bg-paper-sunken px-2.5 py-1.5">
-              <Search size={13} aria-hidden="true" className="shrink-0 text-ink-muted" />
+          {items.length >= SEARCH_THRESHOLD ? (
+            <div className="relative mb-6 px-4">
+              <Search
+                size={14}
+                className="absolute left-7 top-1/2 -translate-y-1/2 text-ink-faint"
+                aria-hidden="true"
+              />
               <input
                 type="text"
+                placeholder="Search history…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search plans"
-                aria-label="Search plans"
-                className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
+                className="w-full rounded-md border border-edge bg-transparent py-1.5 pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                aria-label="Search history"
               />
             </div>
           ) : null}
 
           {isLoading ? (
-            <div className="rounded-xl border border-edge bg-paper-raised px-3 py-4">
-              <SkeletonText lines={4} />
+            <div className="px-4">
+              <SkeletonText lines={10} />
             </div>
           ) : isError ? (
-            <p className="text-sm text-mark">Couldn’t load your plans. {errorParts(error).message}</p>
-          ) : filtered.length ? (
-            <ul className="divide-y divide-edge overflow-hidden rounded-xl border border-edge bg-paper-raised">
-              {filtered.map((plan) => (
-                <PlanRow
-                  key={plan.id}
-                  plan={plan}
+            <div className="px-4">
+              <p className="text-sm font-medium text-mark">Could not load history</p>
+              <p className="text-xs text-ink-muted">{errorParts(error).message}</p>
+            </div>
+          ) : filtered.length > 0 ? (
+            <ul className="flex flex-col pb-12">
+              {filtered.map((c) => (
+                <ChatHistoryRow
+                  key={c.id}
+                  chat={c}
                   classId={classId}
-                  onDelete={handleDelete}
-                  deleting={deletingId === plan.id}
+                  onDelete={remove}
+                  deleting={deletingId === c.id}
                   selectionMode={selectionMode}
-                  selected={selectedIds.has(plan.id)}
+                  selected={selectedIds.has(c.id)}
                   onToggleSelect={toggleSelect}
                 />
               ))}
             </ul>
-          ) : plans.length ? (
-            <p className="text-sm text-ink-muted">No plans match “{search}”.</p>
           ) : (
-            <p className="text-sm text-ink-muted">
-              Nothing yet. Describe a week in a new chat and it will show up here once it's built.
-            </p>
+            <div className="px-4 text-center">
+              <p className="text-sm font-medium text-ink">No chats found</p>
+              {search ? (
+                <p className="text-xs text-ink-muted">Nothing matched your search.</p>
+              ) : (
+                <p className="text-xs text-ink-muted">You haven't built anything yet.</p>
+              )}
+            </div>
           )}
         </div>
       </div>

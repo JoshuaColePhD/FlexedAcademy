@@ -12,6 +12,7 @@ expressible in the schema. That check lives in schema.py.
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
 import logging
 from collections.abc import Iterator
@@ -112,20 +113,44 @@ def custom_instructions_for(user_id: str) -> str | None:
     return user.get("custom_instructions") if user else None
 
 
-def custom_instructions_for(user_id: str) -> str | None:
-    """A teacher's global custom instructions (settings page) — one column
-    on `users`, read alongside settings by every prompt-building call below.
-    Public for the same reason map_context_for is: chat_stream (generate.py)
-    needs this exact same lookup too."""
-    user = db.get_user_by_id(user_id)
-    return user.get("custom_instructions") if user else None
+def _cached_completion(user_id: str, kind: str, **kwargs):
+    """Checks the database cache before calling OpenAI."""
+    # We only cache if we have a stable way to hash the request
+    messages = kwargs.get("messages", [])
+    model = kwargs.get("model", "")
+    temperature = kwargs.get("temperature", 0)
+    response_format = kwargs.get("response_format", None)
+    
+    data = {
+        "model": model,
+        "temperature": temperature,
+        "messages": messages,
+        "response_format": response_format,
+    }
+    hash_key = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
+    
+    cached = db.get_llm_cache(hash_key)
+    if cached is not None:
+        log.info("LLM cache hit for %s", kind)
+        return cached
+
+    resp = client().chat.completions.create(**kwargs)
+    msg = resp.choices[0].message
+    _check_refusal(msg)
+    _record(user_id, kind, resp.usage)
+    
+    if msg.content:
+        db.set_llm_cache(hash_key, msg.content)
+    return msg.content
 
 
 def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
     """Non-streaming week generation. Returns parsed (not yet validated) JSON."""
     s = db.get_settings_row(user_id)
     map_context = map_context_for(user_id, s["subject"], query)
-    resp = client().chat.completions.create(
+    content = _cached_completion(
+        user_id,
+        "generate_plan",
         model=settings.openai_model,
         temperature=0.2,
         max_tokens=4000,
@@ -144,10 +169,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
             {"role": "user", "content": query},
         ],
     )
-    msg = resp.choices[0].message
-    _check_refusal(msg)
-    _record(user_id, "generate_plan", resp.usage)
-    return loads_lenient(msg.content or "")
+    return loads_lenient(content or "")
 
 
 def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[str]:
@@ -209,7 +231,9 @@ def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, 
     string — so a rewritten day could not be merged back into the week.
     """
     s = db.get_settings_row(user_id)
-    resp = client().chat.completions.create(
+    content = _cached_completion(
+        user_id,
+        "rewrite_day",
         model=settings.openai_model,
         temperature=0.3,
         max_tokens=1600,
@@ -234,10 +258,7 @@ def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, 
             },
         ],
     )
-    msg = resp.choices[0].message
-    _check_refusal(msg)
-    _record(user_id, "rewrite_day", resp.usage)
-    return loads_lenient(msg.content or "")
+    return loads_lenient(content or "")
 
 
 def rewrite_day_field(
@@ -259,10 +280,11 @@ def rewrite_day_field(
     interpolated into the prompt and the response schema as a key name.
     """
     s = db.get_settings_row(user_id)
-    resp = client().chat.completions.create(
+    content = _cached_completion(
+        user_id,
+        "rewrite_day_field",
         model=settings.openai_model,
         temperature=0.3,
-        # One cell, not seven. The whole-day call needs 1600.
         max_tokens=700,
         response_format=_response_format(f"lesson_plan_day_{field}", field_json_schema(field)),
         messages=[
@@ -287,10 +309,7 @@ def rewrite_day_field(
             },
         ],
     )
-    msg = resp.choices[0].message
-    _check_refusal(msg)
-    _record(user_id, "rewrite_day_field", resp.usage)
-    payload = loads_lenient(msg.content or "")
+    payload = loads_lenient(content or "")
     if not isinstance(payload, dict) or field not in payload:
         raise AppError(
             "field_rewrite_empty",
@@ -336,7 +355,9 @@ def critique_and_revise(
     else:
         instruction = _CRITIQUE_PROMPT
 
-    resp = client().chat.completions.create(
+    content = _cached_completion(
+        user_id,
+        "critique_and_revise",
         model=settings.openai_model,
         temperature=0.3,
         max_tokens=4000,
@@ -356,10 +377,7 @@ def critique_and_revise(
             },
         ],
     )
-    msg = resp.choices[0].message
-    _check_refusal(msg)
-    _record(user_id, "critique_and_revise", resp.usage)
-    return loads_lenient(msg.content or "")
+    return loads_lenient(content or "")
 
 
 QUERY_EXPANSION_SCHEMA = {
@@ -400,8 +418,10 @@ def expand_query(user_id: str, query: str) -> list[str]:
     memory. Uses a cheap model; falls back to the raw query on any failure.
     """
     try:
-        resp = client().chat.completions.create(
-            model="gpt-4o-mini",
+        content = _cached_completion(
+            user_id,
+            "expand_query",
+            model="gpt-5.6-luna",
             temperature=0,
             max_tokens=300,
             response_format=_response_format("expanded_queries", QUERY_EXPANSION_SCHEMA),
@@ -410,8 +430,7 @@ def expand_query(user_id: str, query: str) -> list[str]:
                 {"role": "user", "content": query[:2000]},
             ],
         )
-        _record(user_id, "expand_query", resp.usage)
-        data = json.loads(resp.choices[0].message.content or "{}")
+        data = json.loads(content or "{}")
         out = [q.strip() for q in data.get("queries", []) if isinstance(q, str) and q.strip()]
         log.info("expanded query into %d searches", len(out))
         return out[:5]
@@ -453,8 +472,10 @@ def generate_chat_title(user_id: str, message: str) -> str:
     blocking chat creation over.
     """
     try:
-        resp = client().chat.completions.create(
-            model="gpt-4o-mini",
+        content = _cached_completion(
+            user_id,
+            "generate_chat_title",
+            model="gpt-5.6-luna",
             temperature=0.3,
             max_tokens=60,
             response_format=_response_format("chat_title", TITLE_SCHEMA),
@@ -463,8 +484,7 @@ def generate_chat_title(user_id: str, message: str) -> str:
                 {"role": "user", "content": message[:2000]},
             ],
         )
-        _record(user_id, "generate_chat_title", resp.usage)
-        title = json.loads(resp.choices[0].message.content or "{}").get("title", "").strip()
+        title = json.loads(content or "{}").get("title", "").strip()
         if title:
             return title[:80]
     except Exception as e:  # noqa: BLE001 — a title is cosmetic, never a hard failure
@@ -523,8 +543,10 @@ def extract_decisions(user_id: str, messages: list[dict]) -> list[dict]:
         return []
     convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-16:])
     try:
-        resp = client().chat.completions.create(
-            model="gpt-4o-mini",
+        content = _cached_completion(
+            user_id,
+            "extract_decisions",
+            model="gpt-5.6-luna",
             temperature=0,
             max_tokens=400,
             response_format=_response_format("decisions", DECISIONS_SCHEMA),
@@ -533,8 +555,7 @@ def extract_decisions(user_id: str, messages: list[dict]) -> list[dict]:
                 {"role": "user", "content": convo[:6000]},
             ],
         )
-        _record(user_id, "extract_decisions", resp.usage)
-        data = json.loads(resp.choices[0].message.content or "{}")
+        data = json.loads(content or "{}")
         out = []
         for d in data.get("decisions", []):
             label = str(d.get("label", "")).strip()

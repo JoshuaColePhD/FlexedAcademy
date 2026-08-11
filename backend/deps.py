@@ -47,12 +47,14 @@ def get_current_user(aplang_session: str | None = Cookie(default=None, alias=COO
     user_id = _verify_current(aplang_session)
     if not user_id:
         if not settings.require_login:
+            db.current_user_id.set("default_user")
             return "default_user"
         raise AppError(
             "not_authenticated",
             "Log in to continue.",
             status=401,
         )
+    db.current_user_id.set(user_id)
     return user_id
 
 
