@@ -513,11 +513,16 @@ export function VoiceModePanel({
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-gutter py-4">
-          {/* Shares the vertical space with the stack once there's one to
-              show, rather than the orb always claiming the same room
-              whether or not there's anything else on screen. */}
-          <div className={decisions.length ? 'w-full max-w-[200px]' : 'w-full max-w-[280px]'}>{orb}</div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 overflow-y-auto px-gutter py-4">
+          {/* A quiet "it's live" cue, not the desktop's big level-reactive
+              orb — on a phone the cards are the actual content; this only
+              has to say the mic is on, not perform. */}
+          <span
+            aria-hidden="true"
+            className={`h-2.5 w-2.5 shrink-0 rounded-full transition-colors ${
+              status === 'error' ? 'bg-mark' : isSpeaking ? 'bg-accent' : 'bg-ink-soft'
+            } ${status === 'error' ? '' : 'animate-pulse'}`}
+          />
           <DecisionStack decisions={decisions} />
         </div>
 

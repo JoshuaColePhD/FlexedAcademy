@@ -66,6 +66,25 @@ const ATTACHMENT_CHAR_CAP = 12000
 // short on purpose, since it's heard once per conversation, not read.
 const VOICE_GREETING = 'Hey, what do you need a lesson plan for?'
 
+/* ask_clarifying_questions' payload was built for LessonQuestions — tappable
+ * option cards, never anything voice mode can render. Speaking only the
+ * generic intro line ("A couple of quick questions to get this right:") and
+ * silently dropping the actual questions left a voice conversation asking
+ * the teacher to answer something it never said out loud — indistinguishable
+ * from the panel just being stuck. This is what gets spoken/captioned
+ * INSTEAD of the plain intro, for voice specifically: the intro plus every
+ * question, each followed by its own options read aloud as candidates —
+ * this app's chat text stays typeable, but voice has nothing to tap, so it
+ * has to hear the options to have any way to answer.
+ */
+function speakableQuestions(intro, questions) {
+  const parts = questions.map((q) => {
+    const options = (q.options || []).filter(Boolean)
+    return options.length ? `${q.text} For example: ${options.join(', or ')}.` : q.text
+  })
+  return [intro, ...parts].join(' ')
+}
+
 export function ChatPage() {
   const { classId, chatId } = useParams()
   const navigate = useNavigate()
@@ -402,7 +421,17 @@ export function ChatPage() {
       // longer clickable.
       if (result?.questions?.length) {
         const intro = result.text?.trim() || 'A couple of quick questions to get this right:'
-        const reply = { id: nextId(), role: 'assistant', content: intro, questions: result.questions }
+        const reply = {
+          id: nextId(),
+          role: 'assistant',
+          content: intro,
+          questions: result.questions,
+          // Voice mode has no LessonQuestions cards to tap — see
+          // speakableQuestions' own comment. Read only by the auto-speak/
+          // caption effect below; the text-chat bubble still shows the
+          // short intro, with the actual questions in the cards beneath it.
+          spokenContent: speakableQuestions(intro, result.questions),
+        }
         setMessages((prev) => [...prev, reply])
         const saveTo = localFor.current
         if (saveTo) {
@@ -847,12 +876,15 @@ export function ChatPage() {
     if (!last || last.role !== 'assistant' || last.streaming) return
     if (lastSpokenRef.current === last.id) return
     lastSpokenRef.current = last.id
-    if (voice.enabled) voice.speak(last.content)
+    // spokenContent, when set, carries content the text-chat bubble
+    // deliberately doesn't show in full — see speakableQuestions.
+    const toSpeak = last.spokenContent || last.content
+    if (voice.enabled) voice.speak(toSpeak)
     // Captioned only while the panel is actually open to show it — the
     // "read every reply aloud" half of this effect runs regardless of
     // voiceOpen (see its own comment), but there's no caption UI listening
     // when the panel is closed.
-    if (voiceOpen) setVoiceCaption(last.content)
+    if (voiceOpen) setVoiceCaption(toSpeak)
   }, [messages, voice, voiceOpen])
 
   /* The card stack's data. Keyed on the WHOLE transcript, not just new
