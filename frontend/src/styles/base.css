@@ -166,15 +166,11 @@
     position: relative;
     z-index: 1;
     background: rgb(var(--paper-rgb));
-    /* A flat fill next to the chat's own flat fill read as one surface with
-       a hairline down the middle, not two — the opposite of what an
-       embossed world is for. One-directional, not the symmetric light+dark
-       pair .neo-raised/.neo-panel use: this edge is flush top-to-bottom
-       against the viewport, so a shadow on the far side (away from the
-       chat) would fall outside the panel entirely and do nothing. Only the
-       seam that's actually visible — toward the chat — needs to read as a
-       step down. */
-    box-shadow: 5px 0 12px rgb(var(--neo-dark-rgb) / 0.35);
+    /* Reversing the elevation: instead of projecting a shadow onto the chat
+       to read as a raised surface, it uses an inset shadow to read as a
+       depressed/sunken area. The dark inset on the left/top and light inset
+       on the right completes the neomorphic "sunken" illusion. */
+    box-shadow: inset 4px 4px 12px rgb(var(--neo-dark-rgb) / 0.4), inset -4px -4px 12px rgb(var(--neo-light-rgb) / 0.7);
   }
   /* On a phone, .app-rail is the drawer's own panel — and had no motion of
      its own at all: it appeared and vanished with the conditional render
