@@ -62,6 +62,10 @@ const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
    every prompt in the conversation. */
 const ATTACHMENT_CHAR_CAP = 12000
 
+// Spoken (and captioned) the instant voice mode opens on an empty chat —
+// short on purpose, since it's heard once per conversation, not read.
+const VOICE_GREETING = 'Hey, what do you need a lesson plan for?'
+
 export function ChatPage() {
   const { classId, chatId } = useParams()
   const navigate = useNavigate()
@@ -114,6 +118,12 @@ export function ChatPage() {
   // now, everywhere it appears (Composer's icon, Greeting's pill) — see
   // VoiceModePanel for why this replaced a quiet on/off toggle.
   const [voiceOpen, setVoiceOpen] = useState(false)
+  // What VoiceModePanel is currently typing out in sync with its own TTS
+  // playback — the caption half of "greet me and type along with the
+  // speech." Owned here, not inside the panel, because the same text has to
+  // reach it from two different moments: the opening greeting (below) and
+  // every later assistant reply (the auto-speak effect, further down).
+  const [voiceCaption, setVoiceCaption] = useState('')
 
   /* Which cell is being tweaked, and which cells just changed. `flashCells` is
      the only animation in the app that carries information: it answers "what
@@ -428,12 +438,22 @@ export function ChatPage() {
      needs to unlock playback on THIS page load (see its own comment on
      unlock()). Turning spoken replies on here too, unconditionally: opening
      a voice conversation and not hearing it back would be the single most
-     confusing state this feature could land in. */
+     confusing state this feature could land in.
+
+     A fresh conversation gets greeted rather than opening to silence and an
+     empty transcript — dropping a teacher into "say something" with no idea
+     the mic is even listening yet. Only when there's nothing said already:
+     reopening voice mode on a chat mid-conversation should pick back up
+     where it left off, not re-introduce itself over the top of it. */
   const openVoice = useCallback(() => {
     if (!voice.enabled) voice.toggle()
     else voice.unlock()
     setVoiceOpen(true)
-  }, [voice])
+    if (messages.length === 0) {
+      setVoiceCaption(VOICE_GREETING)
+      voice.speak(VOICE_GREETING)
+    }
+  }, [voice, messages])
 
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
@@ -822,7 +842,12 @@ export function ChatPage() {
     if (lastSpokenRef.current === last.id) return
     lastSpokenRef.current = last.id
     if (voice.enabled) voice.speak(last.content)
-  }, [messages, voice])
+    // Captioned only while the panel is actually open to show it — the
+    // "read every reply aloud" half of this effect runs regardless of
+    // voiceOpen (see its own comment), but there's no caption UI listening
+    // when the panel is closed.
+    if (voiceOpen) setVoiceCaption(last.content)
+  }, [messages, voice, voiceOpen])
 
   const livePlan = artifact?.plan || stream.preview
   const liveArtifact = useMemo(
@@ -1220,13 +1245,20 @@ export function ChatPage() {
 
       {voiceOpen ? (
         <VoiceModePanel
-          onClose={() => setVoiceOpen(false)}
+          onClose={() => {
+            setVoiceOpen(false)
+            setVoiceCaption('')
+          }}
           onUtterance={submit}
           busy={busy}
           isSpeaking={voice.speaking}
           isPhone={isPhone}
           messages={messages}
-          onReplay={(text) => voice.speak(text)}
+          caption={voiceCaption}
+          onReplay={(text) => {
+            setVoiceCaption(text)
+            voice.speak(text)
+          }}
         />
       ) : null}
     </div>

@@ -109,9 +109,16 @@ export function VoiceModePanel({
   isPhone,
   messages = [],
   onReplay,
+  // The text currently being (or about to be) spoken — the opening greeting,
+  // then every later reply. Typed out below in rough sync with the TTS
+  // audio, rather than dumped on screen all at once, so the panel reads as
+  // "talking," matching what's actually coming out of the speaker turn by
+  // turn instead of a caption that's already finished before the voice has.
+  caption = '',
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
+  const [typedCaption, setTypedCaption] = useState('')
   const panelRef = useRef(null)
   const closeRef = useRef(null)
   const canvasRef = useRef(null)
@@ -162,6 +169,38 @@ export function VoiceModePanel({
   useEffect(() => {
     pausedRef.current = Boolean(busy || isSpeaking)
   }, [busy, isSpeaking])
+
+  // Reveals `caption` a character at a time rather than all at once — an
+  // approximation of speech pace (no real word-level timing exists without
+  // aligning against the TTS audio itself, which this app's turn-based
+  // record→transcribe→speak pipeline has no hook for). ~22 chars/sec is a
+  // touch brisker than average spoken English, on purpose: a caption that
+  // finishes slightly AHEAD of the audio reads as natural anticipation, one
+  // that lags behind it reads as broken.
+  useEffect(() => {
+    setTypedCaption('')
+    if (!caption) return undefined
+    const CHAR_MS = 45
+    let i = 0
+    const id = setInterval(() => {
+      i += 1
+      setTypedCaption(caption.slice(0, i))
+      if (i >= caption.length) clearInterval(id)
+    }, CHAR_MS)
+    return () => clearInterval(id)
+  }, [caption])
+
+  // Two cleanup jobs once the audio itself stops: finish the type-out
+  // instantly rather than leaving it to visibly limp to the end of a
+  // sentence nobody can still hear, then clear it a few seconds later so
+  // the panel settles back to its normal "Listening…" status instead of
+  // showing what was said forever.
+  useEffect(() => {
+    if (isSpeaking || !caption) return undefined
+    setTypedCaption(caption)
+    const t = setTimeout(() => setTypedCaption(''), 4000)
+    return () => clearTimeout(t)
+  }, [isSpeaking, caption])
 
   // rec.stop() is ASYNCHRONOUS — the 'stop' event (and so handleUtteranceReady,
   // wired up as rec.onstop) doesn't fire until the recorder finishes
@@ -377,6 +416,11 @@ export function VoiceModePanel({
               ? 'Got it — one sec…'
               : 'Listening…'
 
+  // The typed-out caption takes over the status line while there's one to
+  // show — status === 'error' still wins over it regardless, a real problem
+  // (mic blocked, etc.) shouldn't be buried under leftover caption text.
+  const displayText = status === 'error' ? label : typedCaption || label
+
   // The "album art" disc itself: a big raised, ringed circle standing in
   // for the reference's cover art, with the pulsing accent circles (drawn
   // in the effect above) glowing inside it.
@@ -415,9 +459,9 @@ export function VoiceModePanel({
             live status instead of a track name, since that's the one thing
             actually changing turn to turn. */}
         <div className="shrink-0 px-gutter pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <div className="neo-panel flex min-h-touch items-center justify-between gap-3 rounded-full bg-paper-raised px-5 py-3">
-            <p aria-live="polite" className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-              {label}
+          <div className="neo-panel flex min-h-touch items-center justify-between gap-3 rounded-[28px] bg-paper-raised px-5 py-3">
+            <p aria-live="polite" className="line-clamp-2 min-w-0 flex-1 text-sm font-medium text-ink">
+              {displayText}
             </p>
             <button
               type="button"
@@ -456,8 +500,8 @@ export function VoiceModePanel({
           className="neo-panel flex min-w-0 flex-1 flex-col items-center justify-center gap-6 rounded-[28px] bg-paper-raised p-8 text-center"
         >
           {orb}
-          <p aria-live="polite" className="min-h-[1.5em] text-sm text-ink-soft">
-            {label}
+          <p aria-live="polite" className="line-clamp-3 min-h-[1.5em] text-sm text-ink-soft">
+            {displayText}
           </p>
           <button
             ref={closeRef}
