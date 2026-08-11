@@ -195,50 +195,55 @@ export function PlansPage() {
           Library{activeClass?.name ? ` — ${activeClass.name}` : ''}
         </h1>
         <div className="flex items-center gap-3">
-          {selectionMode ? (
-            <>
-              <button
-                type="button"
-                disabled={isDeletingBulk}
-                onClick={toggleSelectAll}
-                className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
-              >
-                {selectedIds.size === filtered.length && filtered.length > 0 ? 'Deselect all' : 'Select all'}
-              </button>
-              <button
-                type="button"
-                disabled={selectedIds.size === 0 || isDeletingBulk}
-                onClick={handleBulkDelete}
-                className="text-xs font-medium text-mark hover:text-mark/80 disabled:opacity-50"
-              >
-                Delete ({selectedIds.size})
-              </button>
-              <button
-                type="button"
-                disabled={isDeletingBulk}
-                onClick={() => {
-                  setSelectionMode(false)
-                  setSelectedIds(new Set())
-                }}
-                className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setSelectionMode(true)}
-              className="text-xs font-medium text-ink-muted hover:text-ink"
-            >
-              Select multiple
-            </button>
-          )}
         </div>
       </header>
 
       <div className="page scroll-y">
         <div className="mx-auto w-full max-w-measure-form">
+          {plans.length > 0 && (
+            <div className="mb-2 flex items-center justify-end gap-3">
+              {selectionMode ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={isDeletingBulk}
+                    onClick={toggleSelectAll}
+                    className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+                  >
+                    {selectedIds.size === filtered.length && filtered.length > 0 ? 'Deselect all' : 'Select all'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedIds.size === 0 || isDeletingBulk}
+                    onClick={handleBulkDelete}
+                    className="text-xs font-medium text-mark hover:text-mark/80 disabled:opacity-50"
+                  >
+                    Delete ({selectedIds.size})
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingBulk}
+                    onClick={() => {
+                      setSelectionMode(false)
+                      setSelectedIds(new Set())
+                    }}
+                    className="text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSelectionMode(true)}
+                  className="text-xs font-medium text-ink-muted hover:text-ink"
+                >
+                  Select multiple
+                </button>
+              )}
+            </div>
+          )}
+
           {plans.length > SEARCH_THRESHOLD ? (
             <div className="mb-3 flex items-center gap-2 rounded-lg bg-paper-sunken px-2.5 py-1.5">
               <Search size={13} aria-hidden="true" className="shrink-0 text-ink-muted" />

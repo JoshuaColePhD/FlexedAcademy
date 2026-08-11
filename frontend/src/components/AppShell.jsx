@@ -163,7 +163,18 @@ function Rail({ onNavigate, onClose }) {
 
 
       <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
-        <p className="eyebrow px-4 pb-1">Recent</p>
+        <div className="flex items-center justify-between px-4 pb-1">
+          <p className="eyebrow">Recent</p>
+          <Link
+            to={`${classPath}/history`}
+            onClick={onNavigate}
+            className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-ink-muted hover:text-ink"
+            aria-label="Edit chat history"
+          >
+            <Pencil size={11} aria-hidden="true" />
+            Edit
+          </Link>
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="px-4 py-2">

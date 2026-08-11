@@ -89,7 +89,7 @@ export function AdminPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-5xl px-4 py-8">
       <Link to="/" className="mb-6 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
         <ArrowLeft size={15} aria-hidden="true" /> Back to the app
       </Link>
@@ -104,8 +104,8 @@ export function AdminPage() {
       ) : isError ? (
         <p className="text-sm text-mark">{error?.message || 'Could not load accounts.'}</p>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-edge">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-edge">
+          <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted">
                 <th className="px-3 py-2 font-medium">Account</th>

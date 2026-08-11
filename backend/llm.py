@@ -153,7 +153,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
         "generate_plan",
         model=settings.openai_model,
         temperature=0.2,
-        max_tokens=4000,
+        max_completion_tokens=4000,
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
@@ -179,7 +179,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[s
     stream = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.2,
-        max_tokens=4000,
+        max_completion_tokens=4000,
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
@@ -236,7 +236,7 @@ def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, 
         "rewrite_day",
         model=settings.openai_model,
         temperature=0.3,
-        max_tokens=1600,
+        max_completion_tokens=1600,
         response_format=_response_format("lesson_plan_day", DAY_JSON_SCHEMA),
         messages=[
             {
@@ -285,7 +285,7 @@ def rewrite_day_field(
         "rewrite_day_field",
         model=settings.openai_model,
         temperature=0.3,
-        max_tokens=700,
+        max_completion_tokens=700,
         response_format=_response_format(f"lesson_plan_day_{field}", field_json_schema(field)),
         messages=[
             {
@@ -360,7 +360,7 @@ def critique_and_revise(
         "critique_and_revise",
         model=settings.openai_model,
         temperature=0.3,
-        max_tokens=4000,
+        max_completion_tokens=4000,
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
@@ -423,7 +423,7 @@ def expand_query(user_id: str, query: str) -> list[str]:
             "expand_query",
             model="gpt-5.6-luna",
             temperature=0,
-            max_tokens=300,
+            max_completion_tokens=300,
             response_format=_response_format("expanded_queries", QUERY_EXPANSION_SCHEMA),
             messages=[
                 {"role": "system", "content": _EXPANSION_PROMPT},
@@ -477,7 +477,7 @@ def generate_chat_title(user_id: str, message: str) -> str:
             "generate_chat_title",
             model="gpt-5.6-luna",
             temperature=0.3,
-            max_tokens=60,
+            max_completion_tokens=60,
             response_format=_response_format("chat_title", TITLE_SCHEMA),
             messages=[
                 {"role": "system", "content": _TITLE_PROMPT},
@@ -548,7 +548,7 @@ def extract_decisions(user_id: str, messages: list[dict]) -> list[dict]:
             "extract_decisions",
             model="gpt-5.6-luna",
             temperature=0,
-            max_tokens=400,
+            max_completion_tokens=400,
             response_format=_response_format("decisions", DECISIONS_SCHEMA),
             messages=[
                 {"role": "system", "content": _DECISIONS_PROMPT},
@@ -663,7 +663,7 @@ def stream_chat(user_id: str, messages: list[dict]) -> Iterator[dict]:
     stream = client().chat.completions.create(
         model=settings.openai_model,
         temperature=0.7,
-        max_tokens=4000,
+        max_completion_tokens=4000,
         messages=messages,
         stream=True,
         tools=tools,
