@@ -50,6 +50,21 @@ const SILENCE_MS = 620
 const MIN_UTTERANCE_MS = 300
 const MAX_UTTERANCE_MS = 30_000
 
+/* The gap SPEECH_THRESHOLD alone leaves: a level that never crosses it reads
+   identically whether the room is silent or someone's talking too quietly
+   to trip it — "the mic isn't working" and "you're just a bit too quiet"
+   look the same with nothing but silence either way. This band catches the
+   second case specifically: real signal (above room-noise) that still never
+   clears the bar, held long enough that it's a pattern and not one soft
+   word. */
+const QUIET_FLOOR = 0.02
+const QUIET_HINT_MS = 2500
+// How many finished-but-unusable utterances (transcribe failed, or came back
+// empty) in a row before saying so — one miss is normal noise; a second one
+// right after is the point a teacher would otherwise just keep repeating
+// themselves into silence with no idea why nothing's landing.
+const MISS_HINT_COUNT = 2
+
 /* Barge-in (talking over the assistant) is held to a stricter standard than
    starting a fresh utterance into silence, because the room is not silent —
    the assistant's own voice is coming out of a speaker inches from the mic.
@@ -334,6 +349,18 @@ export function VoiceModePanel({
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
+  // Two distinct "something's off" nudges, both surfaced through the status
+  // pill (see `label` below) rather than the caption — they're about the
+  // PIPELINE, not something said, and the caption is reserved for that.
+  // missHint: consecutive attempts that produced nothing usable.
+  // quietHint: real signal that never once cleared SPEECH_THRESHOLD.
+  // Only one shows at a time (missHint wins — see `label`), so there's no
+  // need to track them as mutually exclusive here, just independently.
+  const [missHint, setMissHint] = useState(false)
+  const [quietHint, setQuietHint] = useState(false)
+  const missCountRef = useRef(0)
+  const quietStartRef = useRef(null)
+  const quietHintShownRef = useRef(false)
   const [typedCaption, setTypedCaption] = useState('')
   // How far the type-out has got, and what it was typing — kept across
   // renders so a caption that GROWS mid-sentence (streamed speech) picks up
@@ -473,6 +500,25 @@ export function VoiceModePanel({
     return () => clearTimeout(t)
   }, [isSpeaking, caption])
 
+  // Neither hint has any OTHER path back to false if the teacher just gives
+  // up rather than resolving it (speaking up, or landing a real utterance —
+  // see tick()/handleUtteranceReady, which clear these the moment either
+  // actually happens). Without this they'd sit there claiming "still having
+  // trouble" indefinitely once true, long after it stopped being current.
+  useEffect(() => {
+    if (!missHint) return undefined
+    const t = setTimeout(() => setMissHint(false), 6000)
+    return () => clearTimeout(t)
+  }, [missHint])
+  useEffect(() => {
+    if (!quietHint) return undefined
+    const t = setTimeout(() => {
+      setQuietHint(false)
+      quietHintShownRef.current = false
+    }, 6000)
+    return () => clearTimeout(t)
+  }, [quietHint])
+
   // rec.stop() is ASYNCHRONOUS — the 'stop' event (and so handleUtteranceReady,
   // wired up as rec.onstop) doesn't fire until the recorder finishes
   // flushing. This used to null out speechStartRef/vadStateRef/
@@ -545,10 +591,25 @@ export function VoiceModePanel({
     setStatus('transcribing')
     try {
       const { text } = await api.transcribe(blob)
-      if (text && text.trim()) onUtteranceRef.current(text.trim())
+      if (text && text.trim()) {
+        missCountRef.current = 0
+        setMissHint(false)
+        onUtteranceRef.current(text.trim())
+      } else {
+        // Transcribed successfully but got nothing usable back (Whisper
+        // heard only noise/silence in what still passed the length check
+        // above) — same "did that actually land" gap as a thrown error,
+        // just without one.
+        missCountRef.current += 1
+        if (missCountRef.current >= MISS_HINT_COUNT) setMissHint(true)
+      }
     } catch {
-      // A missed utterance just means "say it again" — the mic is still
-      // live and the panel is still open, so there's nothing to recover.
+      // A missed utterance used to just mean "say it again" with nothing
+      // shown for it — fine once, but a SECOND miss right after is the
+      // point a teacher would otherwise keep repeating themselves with no
+      // idea whether the mic even heard anything at all.
+      missCountRef.current += 1
+      if (missCountRef.current >= MISS_HINT_COUNT) setMissHint(true)
     } finally {
       processingRef.current = false
       setStatus('listening')
@@ -675,7 +736,25 @@ export function VoiceModePanel({
           }
         } else if (level > SPEECH_THRESHOLD) {
           // Ordinary start-of-utterance into a quiet room.
+          quietStartRef.current = null
+          if (quietHintShownRef.current) {
+            quietHintShownRef.current = false
+            setQuietHint(false)
+          }
           beginUtterance()
+        } else if (level > QUIET_FLOOR) {
+          // Real signal (someone talking, just not loud enough), sustained —
+          // one soft word doesn't warrant a nudge, a whole pattern of them
+          // does.
+          if (quietStartRef.current == null) quietStartRef.current = now
+          else if (!quietHintShownRef.current && now - quietStartRef.current > QUIET_HINT_MS) {
+            quietHintShownRef.current = true
+            setQuietHint(true)
+          }
+        } else {
+          // True silence — not the same signal as "trying and too quiet,"
+          // so it doesn't accumulate toward the hint at all.
+          quietStartRef.current = null
         }
       }
 
@@ -762,6 +841,11 @@ export function VoiceModePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // missHint and quietHint only ever apply to the plain "listening, nothing
+  // else going on" state — busy/speaking/transcribing/building all mean
+  // something else is actively happening that already explains the pill,
+  // and a stale hint from three turns ago has no business outranking any
+  // of them.
   const label =
     status === 'requesting-mic'
       ? 'Asking for microphone access…'
@@ -775,7 +859,11 @@ export function VoiceModePanel({
               ? 'Speaking…'
               : status === 'transcribing'
                 ? 'Got it — one sec…'
-                : 'Listening…'
+                : missHint
+                  ? "Didn't catch that — try again"
+                  : quietHint
+                    ? 'Having trouble hearing you — try speaking up'
+                    : 'Listening…'
 
   // The typed-out caption takes over the status line while there's one to
   // show — status === 'error' still wins over it regardless, a real problem
@@ -873,6 +961,18 @@ export function VoiceModePanel({
             <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
           )}
         </div>
+
+        {/* Same reasoning as the desktop layout's own "Type instead" link
+            (see its comment) — the header's back arrow and the docked bar's
+            X both already close this, but neither one says "the
+            conversation keeps going, just typed" the way this does. */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 self-center pb-2 text-xs font-medium text-ink-muted underline decoration-ink-faint underline-offset-2"
+        >
+          Type instead
+        </button>
 
         {/* The reference's docked mini-player bar — here it carries the
             live status instead of a track name, since that's the one thing
@@ -980,22 +1080,37 @@ export function VoiceModePanel({
           )}
         </div>
       </div>
-      {/* A labeled control below all three panels, not an icon pinned to a
-         corner of one of them — the close button used to live inside the
-         orb's own card (first absolute in a corner, before that stacked
-         under the caption), which made it read as part of that card
-         specifically rather than a control for the whole conversation.
-         Clicking the scrim or pressing Escape (useFocusTrap below) both
-         still close it too; this is the discoverable, labeled way to. */}
-      <button
-        ref={closeRef}
-        type="button"
-        onClick={onClose}
-        className="neo-raised tap-target flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-ink-soft"
-      >
-        <X size={15} aria-hidden="true" />
-        End conversation
-      </button>
+      <div className="flex items-center gap-4">
+        {/* A labeled control below all three panels, not an icon pinned to a
+           corner of one of them — the close button used to live inside the
+           orb's own card (first absolute in a corner, before that stacked
+           under the caption), which made it read as part of that card
+           specifically rather than a control for the whole conversation.
+           Clicking the scrim or pressing Escape (useFocusTrap below) both
+           still close it too; this is the discoverable, labeled way to. */}
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          className="neo-raised tap-target flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-ink-soft"
+        >
+          <X size={15} aria-hidden="true" />
+          End conversation
+        </button>
+        {/* Same action as the button above — onClose just returns to the
+           text chat, it doesn't delete anything — but a teacher whose room
+           just got noisy, or who'd rather type the next thing precisely,
+           reads "End conversation" as "I'm done" and hesitates to use it
+           for that. This is the honest label for what closing actually
+           does: the conversation keeps going, just typed instead of said. */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-sm font-medium text-ink-muted underline decoration-ink-faint underline-offset-2 transition-colors hover:text-ink-soft"
+        >
+          Type instead
+        </button>
+      </div>
     </div>
   )
 }
