@@ -244,7 +244,7 @@ function SignInPopover() {
 }
 
 export function LandingPage() {
-  useDocumentTitle('AI lesson plans cited to the Alabama Course of Study')
+  useDocumentTitle('Lesson plans, cited to the standard')
   const [pricing, setPricing] = useState(null)
   const [proofRef, proofInView] = useInView()
   const [pipelineRef, pipelineInView] = useInView()
