@@ -432,6 +432,60 @@ function CustomInstructions({ value, onSaved }) {
   )
 }
 
+/* ── school ─────────────────────────────────────────────────────────────────
+   Which lesson plan template a generated week downloads as (see backend
+   docx_build.py). Blur/select-to-save like the name field above, not an
+   explicit Save button like custom instructions — there's nothing to lose
+   to an accidental change here the way there is with half a retyped
+   paragraph, it's a single choice from a fixed list.
+
+   One entry today (backend/routes/classes.py's own SCHOOLS dict) — this is
+   groundwork for a second school's template landing somewhere real, not a
+   working multi-template switch yet. Still a real select reading from the
+   backend's own whitelist rather than a hardcoded label, so a second entry
+   just appears here the day one exists. */
+function SchoolPicker({ value, onSaved }) {
+  const toast = useToast()
+  const schoolsState = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
+  const [saving, setSaving] = useState(false)
+  const schools = schoolsState.data || []
+
+  const commit = async (school) => {
+    if (!school || school === value) return
+    setSaving(true)
+    try {
+      await api.updateMe({ school })
+      toast.success('Saved')
+      onSaved?.()
+    } catch (err) {
+      toast.apiError('Could not save your school', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-5">
+      <h2 className="text-sm font-semibold text-ink">School</h2>
+      <p className="mt-1 text-xs text-ink-muted">
+        Sets which district's lesson plan template a generated week downloads as.
+      </p>
+      <select
+        value={value || ''}
+        disabled={saving || !schools.length}
+        onChange={(e) => commit(e.target.value)}
+        className="neo-inset mt-2 w-full max-w-xs rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {schools.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 /* ── change password ───────────────────────────────────────────────────────
    Hidden for a Google-only account (no password_hash — see /api/auth/me's
    has_password) rather than shown and left to fail on "current password":
@@ -1122,6 +1176,12 @@ export function ClassPage() {
               className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-faint hover:bg-paper-sunken focus:bg-paper-sunken"
             />
           </div>
+
+          {/* ── school ───────────────────────────────────────────────────── */}
+          <SchoolPicker
+            value={meState.data?.school}
+            onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+          />
 
           {/* ── custom instructions ─────────────────────────────────────── */}
           <CustomInstructions

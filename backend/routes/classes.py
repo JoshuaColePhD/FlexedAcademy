@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .. import db
 from ..deps import get_current_user
@@ -55,16 +55,39 @@ def _auto_name(subject: str, grade: str) -> str:
         return label
 
 
+
+# Whitelisted school ids, one entry today — see db.py migration 22's own
+# comment for why this is a plain string column, not a foreign key. Every
+# school that actually has a docx builder of its own (backend/docx_build.py)
+# gets an entry here; the settings page dropdown reads straight off this.
+SCHOOLS = {"florence-high-school": "Florence High School"}
+
+
 class MeBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     # Global custom instructions, like Claude's own — applied to every
     # generation and chat (backend/prompts.py), not per class.
     custom_instructions: str | None = Field(default=None, max_length=2000)
+    school: str | None = Field(default=None)
+
+    @field_validator("school")
+    @classmethod
+    def _known_school(cls, v: str | None) -> str | None:
+        if v is not None and v not in SCHOOLS:
+            raise ValueError("Unknown school.")
+        return v
+
+
+@router.get("/schools")
+def list_schools_route() -> list[dict]:
+    """No auth needed — same reasoning as GET /api/frameworks (misc.py):
+    this is a fixed lookup table for a dropdown, not account data."""
+    return [{"id": k, "name": v} for k, v in SCHOOLS.items()]
 
 
 @router.patch("/me")
 def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> dict:
-    """Set the teacher's name and/or custom instructions — whichever the
+    """Set the teacher's name/custom instructions/school — whichever the
     caller sent, independently (db.update_user's own whitelist)."""
     fields = body.model_dump(exclude_none=True)
     user = db.update_user(user_id, **fields) if fields else db.get_user_by_id(user_id)
@@ -75,6 +98,7 @@ def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> d
         "name": user["name"],
         "email": user["email"],
         "custom_instructions": user.get("custom_instructions"),
+        "school": user.get("school"),
     }
 
 

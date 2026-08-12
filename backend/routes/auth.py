@@ -75,6 +75,7 @@ def _public_user(user: dict) -> dict:
         # separate GET, since /api/auth/me is already the one place the
         # frontend refetches the account from after any settings change.
         "custom_instructions": user.get("custom_instructions"),
+        "school": user.get("school"),
         "entitlement": entitlement(user["id"]).as_dict(),
     }
 

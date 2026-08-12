@@ -506,6 +506,19 @@ MIGRATIONS: list[str] = [
         response TEXT NOT NULL
     );
     """,
+    # ── 22: school ────────────────────────────────────────────────────────────
+    #
+    # Groundwork, not a working multi-template switch yet: there is exactly
+    # one docx builder (backend/builder/build_lesson_plan.py, hardcoded to
+    # Florence's own layout — see docx_build.builder_template()'s
+    # florence-docx-v2 check), so this column exists to be shown back on the
+    # settings page and to give a second school somewhere real to land when
+    # one actually gets a builder of its own. Plain TEXT, not an enum/FK to a
+    # schools table — there's only one real value today, and a fixed enum
+    # would need its own migration the day a second school shows up anyway.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS school TEXT NOT NULL DEFAULT 'florence-high-school';
+    """,
 ]
 
 
@@ -1696,7 +1709,7 @@ def create_user(email: str, name: str, password_hash: str) -> dict:
     return get_user_by_id(uid)  # type: ignore[return-value]
 
 
-_USER_FIELDS = {"name", "custom_instructions"}
+_USER_FIELDS = {"name", "custom_instructions", "school"}
 
 
 def update_user(user_id: str, **fields: Any) -> dict | None:
