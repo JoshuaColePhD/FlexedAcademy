@@ -88,7 +88,10 @@ function Transcript({ messages, onReplay }) {
   return (
     <div className="neo-panel flex h-full flex-col overflow-hidden rounded-[28px] bg-paper-raised">
       <div className="shrink-0 px-5 py-4">
-        <p className="text-sm font-semibold text-ink">What it's said</p>
+        <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+          What it's said
+        </p>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
         {said.length ? (
@@ -753,7 +756,36 @@ export function VoiceModePanel({
     <div className="neo-raised neo-ring relative flex aspect-square w-full max-w-[280px] shrink-0 items-center justify-center rounded-full">
       <div className="voice-glow" aria-hidden="true" />
       <canvas ref={canvasRef} width={280} height={280} className="h-full w-full" />
+      {/* A slow highlight chasing the ring's own edge — the level-driven
+          canvas above already answers "is it hearing volume," this answers
+          "is it alive" independent of that, the same way a spinner keeps
+          moving even mid-silence. Purely decorative (aria-hidden), and
+          collapses under the app's global prefers-reduced-motion rule like
+          every other animation here. */}
+      <div className="voice-orb-sheen" aria-hidden="true" />
     </div>
+  )
+
+  // A persistent, always-visible state readout — separate from `caption`
+  // below, which types out what's actually being SAID and clears itself a
+  // few seconds after each turn. Without this, "what state is it in right
+  // now" only ever showed up as plain text sharing a line with the spoken
+  // caption, easy to miss the moment it changed underneath a sentence still
+  // typing out.
+  const statusPill = (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-2xs font-semibold uppercase tracking-caps ${
+        status === 'error' ? 'bg-mark-tint text-mark' : 'bg-accent-tint text-accent-text'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 rounded-full ${status === 'error' ? 'bg-mark' : 'bg-accent'} ${
+          status === 'error' ? '' : 'animate-pulse'
+        }`}
+      />
+      {label}
+    </span>
   )
 
   if (isPhone) {
@@ -841,54 +873,64 @@ export function VoiceModePanel({
           empty list (see each component), so there's always something
           real to show in an empty box rather than an empty box appearing
           from nothing. */}
-      <div className="grid w-full max-w-4xl grid-cols-[280px_minmax(0,1fr)_280px] items-stretch gap-4">
-        <Transcript messages={messages} onReplay={onReplay} />
-        <div
-          ref={panelRef}
-          tabIndex={-1}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Voice conversation"
-          className="neo-panel flex min-w-0 flex-col items-center justify-center gap-5 rounded-[28px] bg-paper-raised p-8 text-center"
-        >
-          {orb}
-          {/* A FIXED height, not a max — a growing-then-shrinking caption
-              was the other half of the "ebb and flow" complaint alongside
-              the boxes that came and went: the orb crept up and down as
-              the line below it gained and lost lines while typing out.
-              Fixed height + scroll means this spot never moves regardless
-              of how much (or how little) the current line has to say.
-
-              h-48 and text-base, not the original h-28/text-sm: the orb
-              stays full size (it's staying, on request), so the room this
-              needs has to come from actually being bigger, not from
-              shrinking anything else — a cramped scroll box was the whole
-              complaint. Bigger text for the same reason: legible while
-              it's actively typing out, not just technically present. */}
-          <p
-            aria-live="polite"
-            className="h-48 w-full overflow-y-auto text-base leading-relaxed text-ink-soft"
+      <div className="relative w-full max-w-4xl">
+        {/* A literal thread running behind all three cards, only visible in
+            the gaps between them (the cards' own opaque backgrounds cover
+            the rest) — the same "several things resolving to one" motif
+            the landing page's proof/mechanism sections use, here saying
+            "these three boxes are one conversation," not three unrelated
+            panels that happen to share a row. */}
+        <div aria-hidden="true" className="voice-thread pointer-events-none absolute inset-x-8 top-1/2 hidden -translate-y-1/2 md:block" />
+        <div className="grid w-full grid-cols-[280px_minmax(0,1fr)_280px] items-stretch gap-4">
+          <Transcript messages={messages} onReplay={onReplay} />
+          <div
+            ref={panelRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Voice conversation"
+            className="neo-panel flex min-w-0 flex-col items-center justify-center gap-5 rounded-[28px] bg-paper-raised p-8 text-center"
           >
-            {displayText}
-          </p>
+            {statusPill}
+            {orb}
+            {/* A FIXED height, not a max — a growing-then-shrinking caption
+                was the other half of the "ebb and flow" complaint alongside
+                the boxes that came and went: the orb crept up and down as
+                the line below it gained and lost lines while typing out.
+                Fixed height + scroll means this spot never moves regardless
+                of how much (or how little) the current line has to say.
+
+                h-48 and text-base, not the original h-28/text-sm: the orb
+                stays full size (it's staying, on request), so the room this
+                needs has to come from actually being bigger, not from
+                shrinking anything else — a cramped scroll box was the whole
+                complaint. Bigger text for the same reason: legible while
+                it's actively typing out, not just technically present. */}
+            <p
+              aria-live="polite"
+              className="h-48 w-full overflow-y-auto text-base leading-relaxed text-ink-soft"
+            >
+              {displayText}
+            </p>
+          </div>
+          {/* The side column: a pending clarification takes over the same
+              slot "the plan so far" normally holds — while a question is on
+              the table, what to answer next IS the working state, same as a
+              decision already locked in is once it's settled. Checking each
+              question off as it's answered (see QuestionCards) is what makes
+              this readable as a to-do list rather than a form dropped on top
+              of the conversation. Once a week actually exists, BuiltPlanCard
+              takes over instead — "the plan so far" is stale news once
+              there's an actual plan. DecisionStack, not null, is the
+              fallback default — same reasoning as Transcript above. */}
+          {questions?.length ? (
+            <QuestionCards questions={questions} onAnswer={onAnswer} />
+          ) : builtPlan ? (
+            <BuiltPlanCard builtPlan={builtPlan} />
+          ) : (
+            <DecisionStack decisions={decisions} onRevise={reviseDecision} />
+          )}
         </div>
-        {/* The side column: a pending clarification takes over the same
-            slot "the plan so far" normally holds — while a question is on
-            the table, what to answer next IS the working state, same as a
-            decision already locked in is once it's settled. Checking each
-            question off as it's answered (see QuestionCards) is what makes
-            this readable as a to-do list rather than a form dropped on top
-            of the conversation. Once a week actually exists, BuiltPlanCard
-            takes over instead — "the plan so far" is stale news once
-            there's an actual plan. DecisionStack, not null, is the
-            fallback default — same reasoning as Transcript above. */}
-        {questions?.length ? (
-          <QuestionCards questions={questions} onAnswer={onAnswer} />
-        ) : builtPlan ? (
-          <BuiltPlanCard builtPlan={builtPlan} />
-        ) : (
-          <DecisionStack decisions={decisions} onRevise={reviseDecision} />
-        )}
       </div>
       {/* A labeled control below all three panels, not an icon pinned to a
          corner of one of them — the close button used to live inside the

@@ -1545,6 +1545,49 @@
     }
   }
 
+  /* A highlight chasing the ring's own edge, independent of the level-driven
+     canvas inside it — the canvas answers "is it hearing volume," this
+     answers "is it alive" even mid-silence. A conic gradient masked down to
+     a thin annulus at the ring's outer edge, not a filled wedge — the mask's
+     inner stop sits just inside the ring's own border so the sheen reads as
+     riding along it. */
+  .voice-orb-sheen {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgb(var(--accent-rgb) / 0.6) 30deg,
+      transparent 75deg,
+      transparent 360deg
+    );
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+    animation: voice-orb-spin 5s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes voice-orb-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Runs behind all three desktop columns (Transcript/orb/DecisionStack) —
+     each card's own opaque bg-paper-raised covers it everywhere except the
+     two gaps between them, which is the point: it should read as one
+     thread ducking under three cards, not a line drawn across the page. */
+  .voice-thread {
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(var(--accent-rgb) / 0.5) 15%,
+      rgb(var(--accent-rgb) / 0.5) 85%,
+      transparent 100%
+    );
+  }
+
   .dialog h2 {
     margin: 0;
     font-size: var(--fs-lg);
