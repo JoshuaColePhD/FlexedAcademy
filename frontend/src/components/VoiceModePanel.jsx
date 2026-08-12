@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Download, FileText, Play, X } from 'lucide-react'
+import { ArrowLeft, Check, Download, FileText, Loader2, Play, X } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
 import { DecisionStack } from './DecisionStack'
+import { WeekStrip } from './WeekStrip'
 
 /* Live voice mode — the thing the "Chat" control opens now, instead of
  * quietly toggling whether replies get read aloud.
@@ -225,6 +226,32 @@ function QuestionCards({ questions, onAnswer }) {
   )
 }
 
+/* "Making it," the half of the request BuiltPlanCard below doesn't cover —
+ * that one only answers "did it finish," and until now there was nothing
+ * between the mic panel and a generic "Thinking…" label for however long
+ * the model actually spends writing five days. WeekStrip's own writing+loose
+ * form already does exactly this in the text chat (see ChatPage's identical
+ * usage next to the composer) — reused here rather than re-invented, so a
+ * teacher who's used both surfaces recognizes the same progress read in
+ * either one. Takes over whichever slot would otherwise hold the transcript
+ * (desktop) or the decisions list (phone) while actually streaming; once
+ * `builtPlan` lands, BuiltPlanCard takes over from there. */
+function BuildProgress({ days, fill = true }) {
+  return (
+    <div
+      className={`neo-panel flex w-full flex-col gap-3 rounded-[28px] bg-paper-raised p-4 ${
+        fill ? 'h-full justify-center' : ''
+      }`}
+    >
+      <p className="flex shrink-0 items-center gap-2 text-sm font-semibold text-ink">
+        <Loader2 size={14} className="animate-spin text-accent-text" aria-hidden="true" />
+        Building your week
+      </p>
+      <WeekStrip days={days} writing loose className="w-full" />
+    </div>
+  )
+}
+
 /* The side column's third state, once a week actually exists — after that,
  * "the plan so far" (DecisionStack) is stale news; the teacher already knows
  * it built, or should. This is a persistent, visual answer to "did that
@@ -288,6 +315,14 @@ export function VoiceModePanel({
   // Non-null once a week has actually been built — see BuiltPlanCard, which
   // takes over the side column from DecisionStack the moment this is set.
   builtPlan = null,
+  // True while a week is actually being generated (ChatPage's stream.
+  // isStreaming) — see BuildProgress, which takes over the transcript
+  // (desktop) or decisions (phone) slot for as long as this holds.
+  building = false,
+  // The plan's own day objects as they arrive mid-stream — ChatPage's
+  // stream.preview?.days, the exact same value the text chat's identical
+  // WeekStrip usage reads from.
+  buildDays = null,
   // Cuts the current reply off mid-sentence — VoiceProvider's voice.stop().
   // Called the instant the teacher starts talking OVER it (see the VAD
   // loop's own comment on barge-in), not after it finishes.
@@ -732,13 +767,15 @@ export function VoiceModePanel({
       ? 'Asking for microphone access…'
       : status === 'error'
         ? errorMessage
-        : busy
-          ? 'Thinking…'
-          : isSpeaking
-            ? 'Speaking…'
-            : status === 'transcribing'
-              ? 'Got it — one sec…'
-              : 'Listening…'
+        : building
+          ? 'Building your week…'
+          : busy
+            ? 'Thinking…'
+            : isSpeaking
+              ? 'Speaking…'
+              : status === 'transcribing'
+                ? 'Got it — one sec…'
+                : 'Listening…'
 
   // The typed-out caption takes over the status line while there's one to
   // show — status === 'error' still wins over it regardless, a real problem
@@ -828,6 +865,8 @@ export function VoiceModePanel({
             <div className="min-h-0 flex-1 overflow-y-auto">
               <QuestionCards questions={questions} onAnswer={onAnswer} />
             </div>
+          ) : building ? (
+            <BuildProgress days={buildDays} fill={false} />
           ) : builtPlan ? (
             <BuiltPlanCard builtPlan={builtPlan} fill={false} />
           ) : (
@@ -882,7 +921,16 @@ export function VoiceModePanel({
             panels that happen to share a row. */}
         <div aria-hidden="true" className="voice-thread pointer-events-none absolute inset-x-8 top-1/2 hidden -translate-y-1/2 md:block" />
         <div className="grid w-full grid-cols-[280px_minmax(0,1fr)_280px] items-stretch gap-4">
-          <Transcript messages={messages} onReplay={onReplay} />
+          {/* Building takes over the transcript's own slot rather than
+              stacking above/below it — the transcript is a log of what's
+              ALREADY been said, and there's nothing new to log while the
+              model is silently writing five days; showing both at once
+              would just be an idle box next to a busy one. */}
+          {building ? (
+            <BuildProgress days={buildDays} />
+          ) : (
+            <Transcript messages={messages} onReplay={onReplay} />
+          )}
           <div
             ref={panelRef}
             tabIndex={-1}

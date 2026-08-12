@@ -1462,6 +1462,13 @@ export function ChatPage() {
              the in-progress preview too, and this is specifically "it's
              done and saved," not "it's still being written." */
           builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
+          /* "Making it" — the same stream.preview days feeding the text
+             chat's own WeekStrip (see the "Writing the week" block above),
+             read here too rather than re-fetched, so voice mode and the
+             text view can never show two different days-done counts for
+             the same in-flight generation. */
+          building={stream.isStreaming}
+          buildDays={stream.preview?.days}
           /* Barge-in: silence the reply AND abort the generation behind it.
              Stopping only the audio would leave the model still writing
              sentences that VoiceProvider would dutifully queue up and speak
