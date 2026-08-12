@@ -2750,21 +2750,34 @@
     position: sticky;
     top: 0;
     z-index: 100;
-    background: rgb(var(--brand-rgb) / 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgb(var(--brand-ink-rgb) / 0.05);
+    background: rgb(var(--brand-rgb) / 0.6);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border-bottom: 1px solid rgb(var(--brand-ink-rgb) / 0.06);
   }
   /* Text-only wordmark — the supplied logo file rendered as a hard white-
      cornered square against the violet ground (it's a flat opaque PNG with no
      alpha channel, converted from a JPEG source) rather than blending in, so
      it's dropped per direct request rather than patched. */
   .land-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
     font-family: var(--font-display);
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
     letter-spacing: var(--tracking-tight);
     color: var(--brand-ink);
+  }
+  /* The favicon's own checkmark, reused as the wordmark's mark (on request)
+     rather than a separate logo asset — same seal the proof section already
+     uses for "this claim was checked," just sized down to sit beside text. */
+  .land-brand-mark {
+    width: 22px;
+    height: 22px;
+    color: var(--land-gold);
+    filter: drop-shadow(1px 1px 2px rgb(var(--neo-dark-rgb) / 0.7))
+      drop-shadow(-1px -1px 2px rgb(var(--neo-light-rgb) / 0.5));
   }
   /* Text, not a filled button — the page has exactly one filled action (the
      CTA), and a second button here would compete with it for attention. */
@@ -2865,9 +2878,9 @@
        the redeclared primitives above — the same alias-vs-primitive gap
        the rail's frosted glass hit earlier. */
     border: 1px solid rgb(var(--edge-rgb));
-    background: rgb(var(--paper-raised-rgb) / 0.75);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgb(var(--paper-raised-rgb) / 0.6);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
     color: rgb(var(--ink-rgb));
     box-shadow: var(--shadow-lg);
     animation: land-signin-pop-in var(--t-fast) var(--ease-out) both;
@@ -2939,7 +2952,12 @@
     margin-bottom: var(--sp-5);
     padding: var(--sp-2) var(--sp-4);
     border-radius: var(--r-full);
-    background: rgb(var(--brand-ink-rgb) / 0.05);
+    /* Glass, not flat tint (per direct request) — it sits over the aurora
+       blob, so a frosted pill actually has something to blur. */
+    background: rgb(var(--brand-rgb) / 0.45);
+    backdrop-filter: blur(10px) saturate(180%);
+    -webkit-backdrop-filter: blur(10px) saturate(180%);
+    border: 1px solid rgb(var(--brand-ink-rgb) / 0.08);
     font-family: var(--font-mono);
     font-size: var(--fs-xs);
     font-weight: var(--fw-medium);
@@ -3089,14 +3107,20 @@
      floating loose on the page. A real embossed card each, in the section's
      own paper (not a second tone), is what makes them read as two things
      being compared rather than one paragraph with a footnote. */
+  /* Glass cards, not opaque neomorphic ones (per direct request) — a
+     translucent fill + blur + hairline border reads as two panes of glass
+     laid over the section, rather than two more solid embossed surfaces. */
   .land-excerpt-plan,
   .land-excerpt-source {
     display: flex;
     gap: var(--sp-4);
     padding: var(--sp-5);
     border-radius: var(--r-lg);
-    background: var(--land-paper);
-    box-shadow: 6px 6px 14px rgb(var(--neo-dark-rgb) / 0.5), -6px -6px 14px rgb(var(--neo-light-rgb) / 0.8);
+    background: rgb(var(--brand-rgb) / 0.5);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    border: 1px solid rgb(var(--brand-ink-rgb) / 0.08);
+    box-shadow: 0 8px 24px rgb(var(--brand-ink-rgb) / 0.06);
   }
   .land-excerpt-source {
     align-items: flex-start;
@@ -3141,7 +3165,10 @@
     margin-bottom: var(--sp-2);
     padding: var(--sp-1) var(--sp-3);
     border-radius: var(--r-full);
-    background: rgb(var(--brand-ink-rgb) / 0.06);
+    background: rgb(var(--brand-ink-rgb) / 0.05);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgb(var(--brand-ink-rgb) / 0.06);
     color: var(--brand-muted);
     font-family: var(--font-mono);
     font-size: var(--fs-xs);
@@ -3150,7 +3177,8 @@
     text-transform: uppercase;
   }
   .land-tag--cited {
-    background: rgb(var(--land-gold-rgb) / 0.12);
+    background: rgb(var(--land-gold-rgb) / 0.14);
+    border-color: rgb(var(--land-gold-rgb) / 0.2);
     color: var(--land-gold-ink);
   }
   .land-quote {

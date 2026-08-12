@@ -238,7 +238,7 @@ function SignInPopover() {
 }
 
 export function LandingPage() {
-  useDocumentTitle('Lesson planning, grounded')
+  useDocumentTitle('AI lesson plans cited to the Alabama Course of Study')
   const [pricing, setPricing] = useState(null)
   const [proofRef, proofInView] = useInView()
   const [pipelineRef, pipelineInView] = useInView()
@@ -257,16 +257,19 @@ export function LandingPage() {
   return (
     <div className="land">
       <header className="land-bar">
-        <span className="land-brand">Flexed Academy</span>
+        <span className="land-brand">
+          <VerifySeal className="land-brand-mark" />
+          Flexed Academy
+        </span>
         <SignInPopover />
       </header>
 
       <section className="land-hero">
         <div className="land-blob" aria-hidden="true" />
-        <span className="land-eyebrow">Cited, not recalled</span>
-        <h1 className="land-title">A week of plans that cite their sources</h1>
+        <span className="land-eyebrow">No hallucinated standards</span>
+        <h1 className="land-title">A week of lesson plans, cited to the standard</h1>
         <p className="land-sub">
-          Written from the verbatim text of the Alabama Course of Study — not a model's
+          Generated from the verbatim text of the Alabama Course of Study — not a model's
           memory of it. Downloads as your district's own .docx.
         </p>
         <div className="land-actions">
@@ -280,7 +283,7 @@ export function LandingPage() {
       </section>
 
       <section ref={proofRef} className={`land-proof${proofInView ? ' is-inview' : ''}`}>
-        <h2 className="land-heading">Every line traces back.</h2>
+        <h2 className="land-heading">Every line cites where it came from.</h2>
         <div className="land-excerpt">
           <div className="land-excerpt-plan">
             <div>
