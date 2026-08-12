@@ -2754,6 +2754,15 @@
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
     border-bottom: 1px solid rgb(var(--brand-ink-rgb) / 0.06);
+    transform: translateY(0);
+    transition: transform var(--t-base) var(--ease);
+  }
+  /* Slid up off-screen rather than removed/faded — LandingPage's own scroll
+     listener toggles this class, translateY keeps the bar's sticky
+     position/layout intact so it's ready to slide back the instant scroll
+     direction reverses, instead of re-triggering layout on every toggle. */
+  .land-bar--hidden {
+    transform: translateY(-100%);
   }
   /* Text-only wordmark — the supplied logo file rendered as a hard white-
      cornered square against the violet ground (it's a flat opaque PNG with no
@@ -3277,13 +3286,93 @@
     color: rgb(var(--brand-ink-rgb) / 0.5);
   }
 
+  /* ── mechanism: one concrete pass, not another abstract description ────
+     The pipeline section above states retrieve/generate/audit as prose; this
+     walks one real example through all three, so the SAME phrase (tone)
+     visibly reappears from the retrieved standard to the generated line
+     rather than asking the reader to trust the connection. Glass cards, same
+     treatment as the proof section's excerpt pair, for the same reason —
+     this is a comparison, three things being placed side by side. */
+  .land-mech {
+    background: var(--land-paper);
+    padding-top: clamp(var(--sp-12), 8vw, var(--sp-14));
+    padding-bottom: clamp(var(--sp-12), 8vw, var(--sp-14));
+  }
+  .land-mech-steps {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    margin-top: clamp(var(--sp-8), 5vw, var(--sp-10));
+  }
+  .land-mech-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-5);
+    border-radius: var(--r-lg);
+    background: rgb(var(--brand-rgb) / 0.5);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    border: 1px solid rgb(var(--brand-ink-rgb) / 0.08);
+    box-shadow: 0 8px 24px rgb(var(--brand-ink-rgb) / 0.06);
+    /* Each card settles in a beat after the last, rather than all three
+       popping at once — small enough to read as "in order," not a delay. */
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 450ms var(--ease-out), transform 450ms var(--ease-out);
+  }
+  /* Steps 2 and 3, addressed by their actual position among ALL children
+     (arrows included) — .land-mech-step is the 1st, 3rd, and 5th child,
+     the arrows sit at 2 and 4. */
+  .land-mech-step:nth-child(3) {
+    transition-delay: 150ms;
+  }
+  .land-mech-step:nth-child(5) {
+    transition-delay: 300ms;
+  }
+  .land-mech.is-inview .land-mech-step {
+    opacity: 1;
+    transform: none;
+  }
+  .land-mech-step--audit {
+    align-items: center;
+    text-align: center;
+    color: var(--brand-muted);
+  }
+  .land-mech-step--audit .land-seal {
+    margin-left: 0;
+  }
+  .land-mech-arrow {
+    flex: 0 0 auto;
+    color: rgb(var(--brand-ink-rgb) / 0.3);
+  }
+  /* The one word/phrase retrieval actually carried into the generated
+     line, highlighted the same way in both cards — the mechanism made
+     visible instead of just claimed. */
+  .land-mark {
+    background: rgb(var(--land-gold-rgb) / 0.18);
+    color: var(--land-gold-ink);
+    border-radius: 3px;
+    padding: 0 0.15em;
+  }
+
+  @media (max-width: 767.98px) {
+    .land-mech-steps {
+      flex-direction: column;
+    }
+    .land-mech-arrow {
+      transform: rotate(90deg);
+    }
+  }
+
   /* ── footer ───────────────────────────────────────────────────────────── */
+  /* Was space-between across three items (a scope label, a location, the
+     CTA) — now just the CTA, so centered rather than left-stranded by a
+     justify rule sized for children that no longer exist. */
   .land-foot {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-3) var(--sp-8);
+    justify-content: center;
     padding-top: var(--sp-6);
     padding-bottom: clamp(var(--sp-8), 5vw, var(--sp-12));
     font-family: var(--font-mono);
@@ -3332,11 +3421,6 @@
     }
     .land-thread-line {
       display: none;
-    }
-    .land-foot {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: var(--sp-3);
     }
   }
 

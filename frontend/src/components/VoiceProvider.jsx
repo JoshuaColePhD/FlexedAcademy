@@ -91,6 +91,11 @@ export function VoiceProvider({ children }) {
   // OPENAI_API_KEY would otherwise fire a toast for every clause.
   const warnedRef = useRef(false)
   const playNextRef = useRef(null)
+  // Keyed by the cleaned text, so a prefetch() fired ahead of time (the
+  // opening greeting, warmed the moment an empty chat loads rather than
+  // when voice mode is actually opened) and the real enqueue() later share
+  // the same in-flight fetch instead of the second one starting from zero.
+  const cacheRef = useRef(new Map())
 
   useEffect(() => {
     const el = new Audio()
@@ -177,7 +182,15 @@ export function VoiceProvider({ children }) {
       const clean = stripMarkdown(text)
       if (!clean) return
       const gen = genRef.current
-      const blob = api.synthesizeSpeech(clean).catch((err) => {
+      // Reuse a prefetch() already in flight for this exact text instead of
+      // starting a second identical fetch — see prefetch() below.
+      let fetched = cacheRef.current.get(clean)
+      if (!fetched) {
+        fetched = api.synthesizeSpeech(clean)
+        cacheRef.current.set(clean, fetched)
+      }
+      const blob = fetched.catch((err) => {
+        cacheRef.current.delete(clean)
         if (gen === genRef.current && !warnedRef.current) {
           warnedRef.current = true
           toast.error('Couldn’t speak that reply', err?.message || String(err))
@@ -242,6 +255,25 @@ export function VoiceProvider({ children }) {
     })
   }, [stop, unlock])
 
+  /* Starts the TTS fetch ahead of any actual speak() call, so the network
+     round trip overlaps with whatever the teacher is doing before they
+     actually open voice mode (reading the empty-chat screen, moving the
+     mouse to the button) instead of only starting once they've clicked.
+     Safe to call speculatively and never use — an unconsumed cache entry
+     just sits there, there's no queue or playback side effect until
+     enqueue()/speak() actually reads it. */
+  const prefetch = useCallback((text) => {
+    const clean = stripMarkdown(text)
+    if (!clean || cacheRef.current.has(clean)) return
+    const fetched = api.synthesizeSpeech(clean)
+    cacheRef.current.set(clean, fetched)
+    // A second listener, not the only one — enqueue() attaches its own
+    // .catch (with the real user-facing toast) if/when it actually reads
+    // this promise. Without this one, a prefetch that's never consumed
+    // (voice mode never opened) would surface as an unhandled rejection.
+    fetched.catch(() => cacheRef.current.delete(clean))
+  }, [])
+
   /* Say this INSTEAD of whatever is currently queued or playing. The
      one-shot form, for text that replaces the conversation's current
      utterance rather than continuing it: the opening greeting, and the
@@ -255,8 +287,8 @@ export function VoiceProvider({ children }) {
   )
 
   const value = useMemo(
-    () => ({ enabled, toggle, speaking, speak, enqueue, stop, unlock }),
-    [enabled, toggle, speaking, speak, enqueue, stop, unlock]
+    () => ({ enabled, toggle, speaking, speak, enqueue, stop, unlock, prefetch }),
+    [enabled, toggle, speaking, speak, enqueue, stop, unlock, prefetch]
   )
 
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>

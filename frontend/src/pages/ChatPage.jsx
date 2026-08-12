@@ -548,6 +548,20 @@ export function ChatPage() {
      the mic is even listening yet. Only when there's nothing said already:
      reopening voice mode on a chat mid-conversation should pick back up
      where it left off, not re-introduce itself over the top of it. */
+
+  // The greeting's TTS fetch used to start only once openVoice actually ran
+  // — the one moment a teacher is guaranteed to be staring at silence,
+  // waiting on a network round trip that hadn't even begun yet. Warming it
+  // here, the moment an empty chat is on screen, means that round trip
+  // mostly happens while they're still reading the page/reaching for the
+  // button, so by the time they actually click, voice.speak() below is
+  // usually just handing back an already-fetched clip. VoiceProvider's own
+  // cache is what makes calling this speculatively harmless even if voice
+  // mode never opens.
+  useEffect(() => {
+    if (messages.length === 0) voice.prefetch(VOICE_GREETING)
+  }, [messages.length, voice])
+
   const openVoice = useCallback(() => {
     if (!voice.enabled) voice.toggle()
     else voice.unlock()

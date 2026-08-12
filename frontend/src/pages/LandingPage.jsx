@@ -47,7 +47,7 @@ function priceLine(data) {
   }).format(p.amount / 100)
   const every =
     p.interval_count > 1 ? `${p.interval_count} ${p.interval}s` : p.interval || 'month'
-  return `Free to start, no limit on how many weeks you build. ${money} a ${every} unlocks a much higher usage ceiling. Cancel any time.`
+  return `Free to start, ${money} a ${every}. Cancel any time.`
 }
 
 function useInView() {
@@ -106,9 +106,15 @@ function VerifySeal({ className }) {
   )
 }
 
-function ArrowIcon() {
+function ArrowIcon({ className }) {
   return (
-    <svg viewBox="0 0 16 10" width="16" height="10" aria-hidden="true" className="land-arrow">
+    <svg
+      viewBox="0 0 16 10"
+      width="16"
+      height="10"
+      aria-hidden="true"
+      className={className ? `land-arrow ${className}` : 'land-arrow'}
+    >
       <path
         d="M0 5h14M9 1l5 4-5 4"
         fill="none"
@@ -242,6 +248,9 @@ export function LandingPage() {
   const [pricing, setPricing] = useState(null)
   const [proofRef, proofInView] = useInView()
   const [pipelineRef, pipelineInView] = useInView()
+  const [mechRef, mechInView] = useInView()
+  const landRef = useRef(null)
+  const [barHidden, setBarHidden] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -254,9 +263,35 @@ export function LandingPage() {
     }
   }, [])
 
+  /* Was permanently pinned (position: sticky just keeps it AT the top once
+     scrolled there — it never actually leaves, sticky alone doesn't hide
+     anything), which on a page this long meant the bar sat over content for
+     the entire scroll. Now it hides on the way down and reappears the
+     moment you reverse direction — the "give the page back, but hand the
+     nav straight back on the way up" pattern most long pages use. A small
+     dead zone (4px) around each scroll event ignores the sub-pixel jitter
+     some trackpads/mice report as direction changes on an otherwise still
+     page; snapping back to visible below 8px means it's never hidden while
+     sitting at the very top. */
+  useEffect(() => {
+    const el = landRef.current
+    if (!el) return undefined
+    let lastY = el.scrollTop
+    const onScroll = () => {
+      const y = el.scrollTop
+      const delta = y - lastY
+      if (y < 8) setBarHidden(false)
+      else if (delta > 4) setBarHidden(true)
+      else if (delta < -4) setBarHidden(false)
+      lastY = y
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
   return (
-    <div className="land">
-      <header className="land-bar">
+    <div className="land" ref={landRef}>
+      <header className={`land-bar${barHidden ? ' land-bar--hidden' : ''}`}>
         <span className="land-brand">
           <VerifySeal className="land-brand-mark" />
           Flexed Academy
@@ -277,7 +312,7 @@ export function LandingPage() {
             Start a week free
             <ArrowIcon />
           </Link>
-          <span className="land-note">Built by a Florence, Alabama high school teacher</span>
+          <span className="land-note">Built by an Alabama high school teacher</span>
         </div>
         {pricing ? <p className="land-price">{pricing}</p> : null}
       </section>
@@ -287,7 +322,7 @@ export function LandingPage() {
         <div className="land-excerpt">
           <div className="land-excerpt-plan">
             <div>
-              <span className="land-tag">Example — illustrative, not a real class output</span>
+              <span className="land-tag">Lesson plan line</span>
               <p className="land-quote">
                 Monday — Students annotate rhetorical shifts in paired excerpts, then draft a
                 claim connecting tone to purpose.
@@ -336,14 +371,38 @@ export function LandingPage() {
           </div>
         </div>
         <p className="land-scope">
-          Calibrated today for AP Lang, grade 11. Grades 9–12 across all Alabama Course of
-          Study subjects are in the corpus; AP Lang is the fully tested path.
+          Grades 9–12 across all Alabama Course of Study subjects are in the corpus.
         </p>
       </section>
 
+      <section ref={mechRef} className={`land-mech${mechInView ? ' is-inview' : ''}`}>
+        <h2 className="land-heading">One pass through the mechanism.</h2>
+        <div className="land-mech-steps">
+          <div className="land-mech-step">
+            <span className="land-tag">Retrieved</span>
+            <p className="land-quote">
+              AP Lang Skill 4.B — Reading: explain how{' '}
+              <mark className="land-mark">word choice and syntax convey tone</mark>.
+            </p>
+            <span className="land-loc">source_docs/APLangSkills.pdf, p. 6</span>
+          </div>
+          <ArrowIcon className="land-mech-arrow" />
+          <div className="land-mech-step">
+            <span className="land-tag land-tag--cited">Generated</span>
+            <p className="land-quote">
+              Monday — Students annotate rhetorical shifts in paired excerpts, then draft a
+              claim connecting <mark className="land-mark">tone</mark> to purpose.
+            </p>
+          </div>
+          <ArrowIcon className="land-mech-arrow" />
+          <div className="land-mech-step land-mech-step--audit">
+            <VerifySeal className="land-seal" />
+            <p>Matched to the retrieved standard. Nothing flagged.</p>
+          </div>
+        </div>
+      </section>
+
       <footer className="land-foot">
-        <span>AP Lang, Grade 11 · Alabama Course of Study</span>
-        <span>Florence, Alabama</span>
         <Link to="/signup" className="land-foot-cta">
           Start a week free
           <ArrowIcon />
