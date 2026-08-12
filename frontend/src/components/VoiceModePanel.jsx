@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Download, FileText, Loader2, Play, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  Download,
+  FileText,
+  Keyboard,
+  Loader2,
+  Mic,
+  MicOff,
+  Play,
+  RotateCcw,
+} from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
 import { DecisionStack } from './DecisionStack'
@@ -361,6 +372,36 @@ export function VoiceModePanel({
   const missCountRef = useRef(0)
   const quietStartRef = useRef(null)
   const quietHintShownRef = useRef(false)
+  /* Whether the recorder is capturing RIGHT NOW. The VAD already tracked
+     this in vadStateRef, but a ref doesn't re-render — so the panel spent
+     every utterance still saying "Listening…", with the orb's volume
+     reaction as the only sign anything was being captured at all. That's
+     ambient, not confirmation: it says "the mic is on," never "I've got
+     you, keep going," which is the one thing you want to know mid-sentence. */
+  const [hearing, setHearing] = useState(false)
+  /* What the last utterance actually transcribed to. The transcript column
+     is assistant-replies-only by design, so a mis-hear ("week seven" →
+     "week eleven") was invisible until the reply came back answering the
+     wrong question — a whole wasted turn before you could even tell
+     something went wrong. Echoing it back for a few seconds is the input
+     half of the same "nothing is silently wrong" promise the rest of this
+     product makes about its output. */
+  const [heardText, setHeardText] = useState('')
+  /* Teacher-controlled mic pause — distinct from pausedRef, which is the
+     PIPELINE pausing itself while busy. Without this, a student walking up
+     mid-conversation meant ending the whole thing; the mic was live from
+     open to close with no way to hold it. */
+  const [muted, setMuted] = useState(false)
+  const mutedRef = useRef(false)
+  // Bumped by "Try again" in the error state — it's the mic-setup effect's
+  // only dependency, so changing it re-runs teardown + setup, which is
+  // exactly what retrying permission means. Previously the error state was
+  // a dead end: fix it in browser settings, then reopen the panel yourself.
+  const [retryToken, setRetryToken] = useState(0)
+  // Set the moment a barge-in actually fires, cleared shortly after — the
+  // interrupt worked silently before, so talking over the assistant felt
+  // like it might not have registered.
+  const [justInterrupted, setJustInterrupted] = useState(false)
   const [typedCaption, setTypedCaption] = useState('')
   // How far the type-out has got, and what it was typing — kept across
   // renders so a caption that GROWS mid-sentence (streamed speech) picks up
@@ -519,6 +560,43 @@ export function VoiceModePanel({
     return () => clearTimeout(t)
   }, [quietHint])
 
+  // The heard-back echo is a CHECK, not a log — it exists for the few
+  // seconds between "you finished saying it" and "the reply starts," which
+  // is the whole window in which noticing a mis-hear is still useful.
+  // Whichever comes first clears it: the reply starting, or this timeout.
+  useEffect(() => {
+    if (!heardText) return undefined
+    const t = setTimeout(() => setHeardText(''), 5000)
+    return () => clearTimeout(t)
+  }, [heardText])
+  useEffect(() => {
+    if (isSpeaking || caption) setHeardText('')
+  }, [isSpeaking, caption])
+
+  useEffect(() => {
+    if (!justInterrupted) return undefined
+    const t = setTimeout(() => setJustInterrupted(false), 1600)
+    return () => clearTimeout(t)
+  }, [justInterrupted])
+
+  /* Really mutes, rather than just ignoring the level: track.enabled =
+     false makes the browser itself deliver silence, so "off" is off at the
+     source and not a promise this component is making on its own. Anything
+     mid-capture is dropped rather than sent — a half sentence cut off by
+     hitting mute is not something the teacher meant to submit. */
+  const toggleMute = () => {
+    const next = !muted
+    setMuted(next)
+    mutedRef.current = next
+    streamRef.current?.getAudioTracks().forEach((t) => {
+      t.enabled = !next
+    })
+    if (next) {
+      abortUtterance()
+      quietStartRef.current = null
+    }
+  }
+
   // rec.stop() is ASYNCHRONOUS — the 'stop' event (and so handleUtteranceReady,
   // wired up as rec.onstop) doesn't fire until the recorder finishes
   // flushing. This used to null out speechStartRef/vadStateRef/
@@ -561,6 +639,7 @@ export function VoiceModePanel({
     vadStateRef.current = 'idle'
     silenceStartRef.current = null
     speechStartRef.current = null
+    setHearing(false)
   }
 
   const beginUtterance = () => {
@@ -576,6 +655,7 @@ export function VoiceModePanel({
     vadStateRef.current = 'recording'
     speechStartRef.current = performance.now()
     silenceStartRef.current = null
+    setHearing(true)
   }
 
   const handleUtteranceReady = async () => {
@@ -585,6 +665,7 @@ export function VoiceModePanel({
     vadStateRef.current = 'idle'
     speechStartRef.current = null
     silenceStartRef.current = null
+    setHearing(false)
     // Too short to be real speech — a cough, a tap, a bump of the table.
     if (!started || performance.now() - started < MIN_UTTERANCE_MS || blob.size === 0) return
     processingRef.current = true
@@ -594,6 +675,9 @@ export function VoiceModePanel({
       if (text && text.trim()) {
         missCountRef.current = 0
         setMissHint(false)
+        // Shown back in the caption box for a few seconds (see heardText's
+        // own comment) so a mis-hear is catchable BEFORE the reply arrives.
+        setHeardText(text.trim())
         onUtteranceRef.current(text.trim())
       } else {
         // Transcribed successfully but got nothing usable back (Whisper
@@ -649,8 +733,12 @@ export function VoiceModePanel({
       // to their low alpha (below) that the whole orb read as barely
       // reactive, not just faint.
       const extra = Math.min(width, height) * 0.3
-      const effectiveLevel = pausedRef.current ? 0.05 : Math.max(0.05, level)
-      const rgb = pausedRef.current ? '150 150 150' : resolvedAccentRgb
+      // Muted reads the same as paused here on purpose — both mean "your
+      // voice is not going anywhere right now," and that's the one thing
+      // the orb has to be honest about. (The label distinguishes them.)
+      const damped = pausedRef.current || mutedRef.current
+      const effectiveLevel = damped ? 0.05 : Math.max(0.05, level)
+      const rgb = damped ? '150 150 150' : resolvedAccentRgb
       // Outer two layers' alpha raised (0.16→0.28, 0.28→0.44) — at the old
       // values they mostly disappeared into the page background, leaving
       // only the small solid core layer actually visible, which read as
@@ -695,7 +783,12 @@ export function VoiceModePanel({
 
       draw(level)
 
-      if (!processingRef.current) {
+      // Muted: the orb keeps drawing (damped, above) so the panel doesn't
+      // look frozen, but nothing below this line runs — no endpointing, no
+      // barge-in, no quiet-hint accumulation. The track is already
+      // delivering silence (see toggleMute), this just stops the VAD from
+      // reasoning about it at all.
+      if (!processingRef.current && !mutedRef.current) {
         const now = performance.now()
         // Whether the assistant currently owns the turn — either actively
         // speaking, or still writing the reply it's about to speak.
@@ -729,6 +822,11 @@ export function VoiceModePanel({
               // Silences the reply AND aborts the generation behind it,
               // then records exactly like any other utterance.
               onInterruptRef.current?.()
+              // Cutting the assistant off used to happen in total silence —
+              // the reply just stopped, which is as consistent with "it
+              // finished" or "it broke" as with "you interrupted it." A
+              // brief acknowledgement is what makes it read as deliberate.
+              setJustInterrupted(true)
               beginUtterance()
             }
           } else {
@@ -838,37 +936,73 @@ export function VoiceModePanel({
       streamRef.current?.getTracks().forEach((t) => t.stop())
       audioCtxRef.current?.close().catch(() => {})
     }
+    // retryToken, not [] — the whole body of this effect IS "set the mic
+    // up," and its cleanup above already tears every piece of it back down,
+    // so re-running it is exactly what "Try again" has to mean. Still
+    // mount-once in practice: nothing bumps the token but that button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [retryToken])
 
-  // missHint and quietHint only ever apply to the plain "listening, nothing
-  // else going on" state — busy/speaking/transcribing/building all mean
-  // something else is actively happening that already explains the pill,
-  // and a stale hint from three turns ago has no business outranking any
-  // of them.
+  /* Re-request the mic from scratch. Resets the state the failed attempt
+     left behind first, so a second failure re-renders as a fresh error
+     rather than looking like the old one never cleared. */
+  const retryMic = () => {
+    setErrorMessage(null)
+    setStatus('requesting-mic')
+    setMuted(false)
+    mutedRef.current = false
+    setRetryToken((n) => n + 1)
+  }
+
+  /* Ordered by immediacy, not by pipeline stage: whatever is truest about
+     THIS instant wins. So the teacher's own mic state (off, being heard)
+     outranks whatever the assistant happens to be doing in the background —
+     during a barge-in or a build both are true at once, and "Hearing you"
+     is the half that's actually about them.
+
+     missHint and quietHint sit at the bottom, applying only to the plain
+     "listening, nothing else going on" state: every branch above them means
+     something is actively happening that already explains the pill, and a
+     stale hint from three turns ago has no business outranking it. */
   const label =
     status === 'requesting-mic'
       ? 'Asking for microphone access…'
       : status === 'error'
         ? errorMessage
-        : building
-          ? 'Building your week…'
-          : busy
-            ? 'Thinking…'
-            : isSpeaking
-              ? 'Speaking…'
+        : muted
+          ? 'Mic off'
+          : justInterrupted
+            ? 'Go ahead'
+            : hearing
+              ? 'Hearing you…'
               : status === 'transcribing'
                 ? 'Got it — one sec…'
-                : missHint
-                  ? "Didn't catch that — try again"
-                  : quietHint
-                    ? 'Having trouble hearing you — try speaking up'
-                    : 'Listening…'
+                : building
+                  ? 'Building your week…'
+                  : busy
+                    ? 'Thinking…'
+                    : isSpeaking
+                      ? 'Speaking…'
+                      : missHint
+                        ? "Didn't catch that — try again"
+                        : quietHint
+                          ? 'Having trouble hearing you — try speaking up'
+                          : 'Listening…'
 
-  // The typed-out caption takes over the status line while there's one to
-  // show — status === 'error' still wins over it regardless, a real problem
-  // (mic blocked, etc.) shouldn't be buried under leftover caption text.
-  const displayText = status === 'error' ? label : typedCaption || label
+  /* The caption area holds CONTENT — words that were said, by either side —
+     and the pill holds STATUS. They used to share: the caption fell back to
+     `label` whenever there was no caption, so "Listening…" rendered twice
+     on screen at once (pill and caption) for most of every conversation,
+     and a screen reader announced the same string from two live regions.
+     Now the caption goes quiet when there's nothing said to show, and the
+     pill is the single place status lives. */
+  const spokenText = typedCaption || ''
+  const showHeard = !spokenText && Boolean(heardText)
+  // captionBlock below is a JSX element either way — always truthy — so
+  // "is there actually anything in it" has to be its own test. The phone
+  // reads this to decide whether to render its container at all, rather
+  // than docking an empty card between turns.
+  const hasCaption = status === 'error' || Boolean(spokenText) || showHeard || Boolean(isSpeaking)
 
   // The "album art" disc itself: a big raised, ringed circle standing in
   // for the reference's cover art, with the pulsing accent circles (drawn
@@ -891,27 +1025,96 @@ export function VoiceModePanel({
     </div>
   )
 
-  // A persistent, always-visible state readout — separate from `caption`
-  // below, which types out what's actually being SAID and clears itself a
-  // few seconds after each turn. Without this, "what state is it in right
-  // now" only ever showed up as plain text sharing a line with the spoken
-  // caption, easy to miss the moment it changed underneath a sentence still
-  // typing out.
+  /* The one place status lives, on BOTH layouts now — the phone used to
+     have only a bare pulsing dot here (mic on/off and nothing else) and
+     leaned on its docked bar to carry status text, which is why that bar
+     could never be given over to actual content the way the desktop
+     caption box could.
+
+     aria-live sits here rather than on the caption: this is the region
+     whose changes are worth announcing on their own ("Hearing you",
+     "Mic off"), and it no longer duplicates the caption's text. */
   const statusPill = (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-2xs font-semibold uppercase tracking-caps ${
-        status === 'error' ? 'bg-mark-tint text-mark' : 'bg-accent-tint text-accent-text'
+      aria-live="polite"
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-2xs font-semibold uppercase tracking-caps transition-colors ${
+        status === 'error'
+          ? 'bg-mark-tint text-mark'
+          : muted
+            ? 'bg-paper-sunken text-ink-muted'
+            : 'bg-accent-tint text-accent-text'
       }`}
     >
       <span
         aria-hidden="true"
-        className={`h-1.5 w-1.5 rounded-full ${status === 'error' ? 'bg-mark' : 'bg-accent'} ${
-          status === 'error' ? '' : 'animate-pulse'
-        }`}
+        className={`h-1.5 w-1.5 rounded-full ${
+          status === 'error' ? 'bg-mark' : muted ? 'bg-ink-faint' : 'bg-accent'
+        } ${status === 'error' || muted ? '' : 'animate-pulse'}`}
       />
       {label}
     </span>
   )
+
+  /* Hold the mic without ending the conversation — a student walks up, a
+     colleague asks something, and the only previous option was to close the
+     whole panel. Pressed-in while muted, the same physical language every
+     other on/off pair in this app speaks. */
+  const muteButton = (
+    <button
+      type="button"
+      onClick={toggleMute}
+      disabled={status === 'error'}
+      aria-pressed={muted}
+      aria-label={muted ? 'Turn the microphone back on' : 'Turn the microphone off'}
+      className={`tap-target flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-shadow disabled:cursor-not-allowed disabled:opacity-40 ${
+        muted ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
+      }`}
+    >
+      {muted ? <MicOff size={15} aria-hidden="true" /> : <Mic size={15} aria-hidden="true" />}
+      {muted ? 'Unmute' : 'Mute'}
+    </button>
+  )
+
+  /* What was actually SAID, either side of the conversation — never status
+     (that's statusPill's job now; see spokenText's comment). Three states,
+     in order: the assistant's reply typing itself out, the echo of what was
+     just heard from the teacher, or the error state's own recovery path. */
+  const captionBlock =
+    status === 'error' ? (
+      <div className="flex flex-col items-center gap-3">
+        <p className="text-base leading-relaxed text-mark">{errorMessage}</p>
+        {/* The error used to be terminal — the message named the fix
+            (browser settings) but left no way to act on it, so the only
+            route back was closing and reopening the panel. */}
+        <button
+          type="button"
+          onClick={retryMic}
+          className="neo-raised tap-target flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-accent-text transition-shadow"
+        >
+          <RotateCcw size={14} aria-hidden="true" />
+          Try again
+        </button>
+      </div>
+    ) : (
+      <>
+        {spokenText ? (
+          <p className="text-base leading-relaxed text-ink-soft">{spokenText}</p>
+        ) : showHeard ? (
+          <p className="fa-rise text-base leading-relaxed text-ink-muted">
+            <span className="eyebrow mr-2 not-italic">You said</span>
+            <span className="italic">“{heardText}”</span>
+          </p>
+        ) : null}
+        {/* Barge-in is real but was never advertised — nothing on screen
+            suggested talking over a reply would do anything but collide
+            with it. Sits BELOW whatever is being said rather than instead
+            of it: while the assistant speaks there's almost always caption
+            text in the slot above, so an either/or would have meant this
+            tip effectively never rendered at the one moment it's
+            actionable. */}
+        {isSpeaking ? <p className="text-sm text-ink-faint">Talk any time to cut in.</p> : null}
+      </>
+    )
 
   if (isPhone) {
     return (
@@ -928,7 +1131,10 @@ export function VoiceModePanel({
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label="End voice conversation"
+            // Matches the labeled control above the docked bar rather than
+            // the old "End voice conversation" — same action, and nothing
+            // about it ends the conversation.
+            aria-label="Back to typing"
             className="neo-raised tap-target flex h-10 w-10 items-center justify-center rounded-full text-ink-soft"
           >
             <ArrowLeft size={20} aria-hidden="true" />
@@ -936,15 +1142,11 @@ export function VoiceModePanel({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 px-gutter pb-2">
-          {/* A quiet "it's live" cue, not the desktop's big level-reactive
-              orb — on a phone the cards are the actual content; this only
-              has to say the mic is on, not perform. */}
-          <span
-            aria-hidden="true"
-            className={`mx-auto h-2.5 w-2.5 shrink-0 rounded-full transition-colors ${
-              status === 'error' ? 'bg-mark' : isSpeaking ? 'bg-accent' : 'bg-ink-soft'
-            } ${status === 'error' ? '' : 'animate-pulse'}`}
-          />
+          {/* Was a bare pulsing dot that could only say "the mic is on" —
+              the same statusPill the desktop uses now, so a phone gets the
+              real state (hearing you, mic off, building) rather than the
+              one bit it had before. */}
+          <div className="flex shrink-0 justify-center">{statusPill}</div>
           {/* Answering takes precedence over watching the plan build: while
               a question is on the table it IS the conversation, and on a
               phone there is no room to show both without shrinking the tap
@@ -962,33 +1164,34 @@ export function VoiceModePanel({
           )}
         </div>
 
-        {/* Same reasoning as the desktop layout's own "Type instead" link
-            (see its comment) — the header's back arrow and the docked bar's
-            X both already close this, but neither one says "the
-            conversation keeps going, just typed" the way this does. */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="shrink-0 self-center pb-2 text-xs font-medium text-ink-muted underline decoration-ink-faint underline-offset-2"
-        >
-          Type instead
-        </button>
-
-        {/* The reference's docked mini-player bar — here it carries the
-            live status instead of a track name, since that's the one thing
-            actually changing turn to turn. */}
-        <div className="shrink-0 px-gutter pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <div className="neo-panel flex min-h-touch items-center justify-between gap-3 rounded-[28px] bg-paper-raised px-5 py-3">
-            <p aria-live="polite" className="line-clamp-2 min-w-0 flex-1 text-sm font-medium text-ink">
-              {displayText}
-            </p>
+        {/* The reference's docked mini-player bar. Carries CONTENT now
+            (what was said, either side) rather than status — the pill above
+            took that over, which is what freed this bar up for the
+            heard-back echo it never had room for before. */}
+        <div className="shrink-0 space-y-3 px-gutter pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          {hasCaption ? (
+            <div
+              aria-live="polite"
+              className="neo-panel flex max-h-32 flex-col items-center gap-2 overflow-y-auto rounded-[28px] bg-paper-raised px-5 py-3 text-center"
+            >
+              {captionBlock}
+            </div>
+          ) : null}
+          <div className="flex items-center justify-center gap-3">
+            {muteButton}
+            {/* One labeled control, not the bare X this used to be alongside
+                a separate "Type instead" link — they both called onClose,
+                so the pair only ever posed a difference that didn't exist.
+                This is the honest description of the single action: the
+                conversation continues, typed. (The header's back arrow
+                stays as ordinary phone navigation.) */}
             <button
               type="button"
               onClick={onClose}
-              aria-label="End voice conversation"
-              className="neo-raised tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-soft"
+              className="neo-raised tap-target flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-ink-soft"
             >
-              <X size={16} aria-hidden="true" />
+              <Keyboard size={15} aria-hidden="true" />
+              Type instead
             </button>
           </div>
         </div>
@@ -1053,13 +1256,19 @@ export function VoiceModePanel({
                 needs has to come from actually being bigger, not from
                 shrinking anything else — a cramped scroll box was the whole
                 complaint. Bigger text for the same reason: legible while
-                it's actively typing out, not just technically present. */}
-            <p
+                it's actively typing out, not just technically present.
+
+                It legitimately renders EMPTY between turns now, where it
+                used to fall back to the status text the pill above already
+                shows. That's the point: the reserved height keeps the orb
+                from moving, and silence here means nothing is being said
+                rather than the panel having nothing to report. */}
+            <div
               aria-live="polite"
-              className="h-48 w-full overflow-y-auto text-base leading-relaxed text-ink-soft"
+              className="flex h-48 w-full flex-col items-center gap-3 overflow-y-auto"
             >
-              {displayText}
-            </p>
+              {captionBlock}
+            </div>
           </div>
           {/* The side column: a pending clarification takes over the same
               slot "the plan so far" normally holds — while a question is on
@@ -1080,34 +1289,28 @@ export function VoiceModePanel({
           )}
         </div>
       </div>
-      <div className="flex items-center gap-4">
-        {/* A labeled control below all three panels, not an icon pinned to a
-           corner of one of them — the close button used to live inside the
-           orb's own card (first absolute in a corner, before that stacked
-           under the caption), which made it read as part of that card
-           specifically rather than a control for the whole conversation.
-           Clicking the scrim or pressing Escape (useFocusTrap below) both
-           still close it too; this is the discoverable, labeled way to. */}
+      {/* Controls for the whole conversation, below all three panels rather
+         than pinned inside the orb's own card — the close button used to
+         live in that card (first absolute in a corner, before that stacked
+         under the caption), which made it read as belonging to that panel
+         specifically instead of to the conversation.
+
+         ONE close control, not the two that briefly sat here: "End
+         conversation" and "Type instead" both called onClose, so the pair
+         posed a distinction that didn't exist and left you guessing which
+         one lost your work. Neither does — closing returns to the same
+         chat with its history intact — so the surviving label is the one
+         that says so. Clicking the scrim or pressing Escape (useFocusTrap)
+         still close it too; this is the discoverable, labeled way. */}
+      <div className="flex items-center gap-3">
+        {muteButton}
         <button
           ref={closeRef}
           type="button"
           onClick={onClose}
           className="neo-raised tap-target flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-ink-soft"
         >
-          <X size={15} aria-hidden="true" />
-          End conversation
-        </button>
-        {/* Same action as the button above — onClose just returns to the
-           text chat, it doesn't delete anything — but a teacher whose room
-           just got noisy, or who'd rather type the next thing precisely,
-           reads "End conversation" as "I'm done" and hesitates to use it
-           for that. This is the honest label for what closing actually
-           does: the conversation keeps going, just typed instead of said. */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-sm font-medium text-ink-muted underline decoration-ink-faint underline-offset-2 transition-colors hover:text-ink-soft"
-        >
+          <Keyboard size={15} aria-hidden="true" />
           Type instead
         </button>
       </div>
