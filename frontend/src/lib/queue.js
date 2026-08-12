@@ -3,8 +3,11 @@
  * There is no calendar screen. The year shapes every generation from the server
  * side — backend/schoolcal.py reads the same file the prompt quotes, so a plan
  * cannot land five days of lessons inside Fall Break — and the only thing the
- * frontend needs from it is the answer to "which week would you like next?",
- * offered as a starter suggestion on an empty chat.
+ * frontend needs from it is the answer to "which week is next?" That answer
+ * picks the week a new plan is built for (ChatPage's effectiveWeek) and is
+ * named in the empty chat's greeting so the choice is visible before the
+ * generation, not discovered in the finished document afterward. It was a
+ * clickable starter suggestion once; that was removed, the naming was not.
  *
  * Kept as a module rather than inlined because it is a real definition with
  * real edge cases (a closed week is not unplanned; a past week is not

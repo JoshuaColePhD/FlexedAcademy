@@ -108,11 +108,16 @@ export function ChatPage() {
   const [artifact, setArtifact] = useState(null)
   const [query, setQuery] = useState('')
   const [attachments, setAttachments] = useState([])
-  /* Which week a NEW plan will be built for. Null means "auto" — the same
-     next-unplanned week the Greeting suggestion already names — until the
-     teacher overrides it. Without this the teacher found out which week they
-     got only after a 30-second generation, from the finished document's own
-     header; there was no way to see it, let alone change it, beforehand. */
+  /* Which week a NEW plan will be built for. Null means "auto" — the
+     next-unplanned week (autoWeek, below) — until a ?week= param overrides
+     it, which is how the Library hands a specific week over.
+
+     Whichever it resolves to is named in the Greeting (see targetWeek): the
+     teacher used to find out which week they got only after a 30-second
+     generation, from the finished document's own header. That naming lived
+     on the Greeting's starter suggestions until those were removed, which
+     silently took the answer with it — hence targetWeek putting it back as
+     plain copy rather than as a suggestion. */
   const [selectedWeek, setSelectedWeek] = useState(null)
 
   /* Was `panelOpen`. The document is closed by default now — the rail and the
@@ -170,6 +175,15 @@ export function ChatPage() {
 
   const autoWeek = useMemo(() => firstUnplanned(calendar?.weeks), [calendar])
   const effectiveWeek = selectedWeek ?? autoWeek?.week ?? null
+  /* The whole week row behind effectiveWeek, not just its number — the
+     Greeting names it (dates included) so a new chat says which week it is
+     about to build instead of "the week." Resolved from effectiveWeek
+     rather than reusing autoWeek directly, so a ?week= override is named
+     just as accurately as the auto-picked one. */
+  const targetWeek = useMemo(
+    () => (calendar?.weeks || []).find((w) => w.week === effectiveWeek) || null,
+    [calendar, effectiveWeek]
+  )
 
   /* The nav rail tightens while the document is open — see lib/shellContext.js.
      Reported rather than reached for: AppShell owns its own width. */
@@ -1196,7 +1210,7 @@ export function ChatPage() {
       ) : null}
 
       {isEmpty ? (
-        <Greeting className={activeClass?.name} onOpenVoice={openVoice} />
+        <Greeting className={activeClass?.name} onOpenVoice={openVoice} week={targetWeek} />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className="chat-column mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
