@@ -235,7 +235,15 @@ export function VoiceProvider({ children }) {
     // silent too, and that's worth knowing immediately instead of guessing
     // from "it never talks back." Un-set the flag on failure so the next
     // gesture gets another attempt rather than giving up for the session.
+    //
+    // EXCEPT AbortError: that's not the browser blocking anything, it's this
+    // clip getting pre-empted a moment later by real speech starting on the
+    // same click (openVoice calls unlock() then speak() in the same
+    // gesture — speak()'s own stop() pauses this clip mid-flight). The
+    // unlock clip already did its one job the instant play() was called
+    // inside the gesture; being cut off after that is success, not failure.
     el.play().catch((err) => {
+      if (err?.name === 'AbortError') return
       unlockedRef.current = false
       toast.error('Couldn’t enable spoken replies', err?.message || String(err))
     })
