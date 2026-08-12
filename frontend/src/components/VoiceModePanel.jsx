@@ -546,12 +546,19 @@ export function VoiceModePanel({
       const cx = width / 2
       const cy = height / 2
       const base = Math.min(width, height) * 0.16
-      const extra = Math.min(width, height) * 0.22
+      // Was 0.22 — the outer layers' own pulse range was small enough next
+      // to their low alpha (below) that the whole orb read as barely
+      // reactive, not just faint.
+      const extra = Math.min(width, height) * 0.3
       const effectiveLevel = pausedRef.current ? 0.05 : Math.max(0.05, level)
       const rgb = pausedRef.current ? '150 150 150' : resolvedAccentRgb
+      // Outer two layers' alpha raised (0.16→0.28, 0.28→0.44) — at the old
+      // values they mostly disappeared into the page background, leaving
+      // only the small solid core layer actually visible, which read as
+      // one weak dot rather than a set of rings.
       const layers = [
-        { mult: 1, alpha: 0.16 },
-        { mult: 0.7, alpha: 0.28 },
+        { mult: 1, alpha: 0.28 },
+        { mult: 0.7, alpha: 0.44 },
         { mult: 0.42, alpha: 0.9 },
       ]
       for (const { mult, alpha } of layers) {
@@ -561,6 +568,17 @@ export function VoiceModePanel({
         ctx.fillStyle = `rgb(${rgb} / ${alpha})`
         ctx.fill()
       }
+      // A crisp stroked edge on the outermost layer only — the fills alone
+      // still fade to nothing at their own boundary, which is soft by
+      // design for the inner glow but left the whole orb without a single
+      // defined edge to actually read as a "ring."
+      const outer = layers[0]
+      const outerR = base * outer.mult + extra * outer.mult * effectiveLevel
+      ctx.beginPath()
+      ctx.arc(cx, cy, outerR, 0, Math.PI * 2)
+      ctx.strokeStyle = `rgb(${rgb} / 0.5)`
+      ctx.lineWidth = 1.5
+      ctx.stroke()
     }
 
     const tick = () => {
@@ -626,6 +644,18 @@ export function VoiceModePanel({
       rafRef.current = requestAnimationFrame(tick)
     }
 
+    /* iOS Safari suspends an AudioContext outright when the tab is
+       backgrounded (app-switched away from, screen locked) — coming back
+       doesn't resume it on its own, which reads as the panel having frozen:
+       the orb stops animating and the mic stops hearing anything, silently,
+       because tick()'s analyser is reading a suspended (silent) context. */
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && audioCtxRef.current?.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
     ;(async () => {
       try {
         // Explicit constraints, not a bare `audio: true` — on a phone the
@@ -647,6 +677,16 @@ export function VoiceModePanel({
         const AudioCtx = window.AudioContext || window.webkitAudioContext
         const ctx = new AudioCtx()
         audioCtxRef.current = ctx
+        /* iOS Safari starts an AudioContext created outside the SYNCHRONOUS
+           call stack of a user gesture in "suspended" state — and the await
+           on getUserMedia just above means construction here never counts,
+           gesture or not. A suspended context still returns silence/zeros
+           from the analyser, not an error, so the VAD's level never crosses
+           SPEECH_THRESHOLD and the mic reads as "not picking anything up"
+           with no error surfaced anywhere — exactly what iPhone reports and
+           desktop Chrome doesn't (Chrome doesn't enforce this as strictly).
+           resume() is safe to call even when already running. */
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {})
         const source = ctx.createMediaStreamSource(stream)
         const analyser = ctx.createAnalyser()
         analyser.fftSize = 1024
@@ -668,6 +708,7 @@ export function VoiceModePanel({
 
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       /* abortUtterance, NOT stopRecorder: stopRecorder asks the recorder to
          finish, which fires its `stop` event, which runs

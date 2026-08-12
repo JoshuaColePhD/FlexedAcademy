@@ -84,6 +84,20 @@ function VerifySeal({ className }) {
           two-shadow filter on .land-seal itself. The ring and check stay
           exactly as before, just drawn on top of something with depth now. */}
       <circle cx="32" cy="32" r="29" className="land-seal-disc" />
+      {/* The stamp's perforated edge — more of the "seal" this icon is named
+          for, and literally more connecting lines around the mark, not just
+          the one ring. Sits outside the disc, inside the viewBox's own
+          margin, so it never clips. */}
+      <circle
+        cx="32"
+        cy="32"
+        r="30.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeDasharray="1.6 3.4"
+        className="land-seal-ticks"
+      />
       <circle
         cx="32"
         cy="32"
@@ -330,8 +344,20 @@ export function LandingPage() {
               </p>
             </div>
           </div>
+          {/* A bundle converging on a single junction, not one bare line —
+              the mechanism isn't "text points at text," it's several
+              things (the phrase, the code, the source) resolving to one
+              checked match. Each strand still gets the same scroll-triggered
+              draw-in as the original single path (see .land-connector path
+              below); the node itself fades in once they've all arrived. */}
           <svg className="land-connector" viewBox="0 0 200 90" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M6 14 C 120 14, 90 76, 194 76" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path className="land-connector-line" d="M6 4 C 80 4, 92 40, 100 45" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path className="land-connector-line" d="M6 14 C 90 14, 96 42, 100 45" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path className="land-connector-line" d="M6 24 C 80 24, 92 44, 100 45" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path className="land-connector-line" d="M100 45 C 104 46, 114 68, 194 68" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path className="land-connector-line" d="M100 45 C 104 45, 110 76, 194 76" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path className="land-connector-line" d="M100 45 C 104 44, 114 84, 194 84" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <circle cx="100" cy="45" r="3" className="land-connector-node" />
           </svg>
           <div className="land-excerpt-source">
             <VerifySeal className="land-seal land-seal--source" />

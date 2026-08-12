@@ -1648,9 +1648,14 @@
     width: clamp(254px, 16vw, 320px);
   }
   .artifact-drawer-handle {
+    position: relative;
     flex-shrink: 0;
     width: 14px;
     align-self: stretch;
+    /* Centers the arrow below without it needing its own margin math. */
+    display: flex;
+    align-items: center;
+    justify-content: center;
     /* Was the rail's own cyan (--rail-pop), then --accent — both a colour
        accent standing out against a panel that used to be flat. Now that
        .artifact-rail/.doc-shell carry their own depth (the step-down
@@ -1689,6 +1694,21 @@
   .artifact-drawer.is-open .artifact-drawer-handle {
     opacity: 1;
     background: var(--paper-sunken);
+  }
+  /* Small and quiet on purpose — the handle's own groove is already the
+     primary affordance (found by hover/touch); this just answers "does
+     this do something" for a teacher who hasn't tried yet. Sized under the
+     14px strip's own width so it never forces the groove wider. */
+  .artifact-drawer-arrow {
+    width: 10px;
+    height: 10px;
+    color: var(--ink-faint);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .artifact-drawer-handle:hover .artifact-drawer-arrow {
+    opacity: 1;
+    color: var(--ink-muted);
   }
   /* While a week is being built or revised, the thin edge is the only sign
      of it for a teacher who hasn't opened the drawer — so it gets the one
@@ -3014,10 +3034,22 @@
     opacity: 0;
     animation: land-seal-disc-in 300ms var(--ease-out) 200ms both;
   }
+  /* Fades in rather than sweeping around like the check below — a plain
+     circle has no direction worth admiring the way a checkmark's own stroke
+     does, and the sweep's start point (wherever the browser puts a bare
+     <circle>'s path origin) was reading as a stray dot appearing before the
+     rest of the ring caught up. Fading removes that point-of-origin
+     artifact outright instead of chasing where exactly it was. */
   .land-seal-ring {
-    stroke-dasharray: 170;
-    stroke-dashoffset: 170;
-    animation: land-seal-draw 700ms var(--ease-out) 500ms both;
+    opacity: 0;
+    animation: land-seal-disc-in 350ms var(--ease-out) 500ms both;
+  }
+  /* The stamp's perforated edge — a plain dashed pattern, not a sweep, so
+     it has no start-point artifact to begin with. Timed to finish right as
+     the ring does, so the two read as one "the seal is stamped" beat. */
+  .land-seal-ticks {
+    opacity: 0;
+    animation: land-seal-disc-in 350ms var(--ease-out) 550ms both;
   }
   .land-seal-check {
     stroke-dasharray: 34;
@@ -3162,13 +3194,31 @@
        dark color anymore. */
     color: rgb(var(--brand-ink-rgb) / 0.35);
   }
-  .land-connector path {
+  .land-connector-line {
     stroke-dasharray: 260;
     stroke-dashoffset: 260;
     transition: stroke-dashoffset 900ms var(--ease-out) 200ms;
+    /* The outer pair of each trio reads as "part of the same bundle," not
+       "another full line," at a lighter weight than the center strand. */
+    opacity: 0.55;
   }
-  .land-proof.is-inview .land-connector path {
+  .land-connector-line:nth-of-type(2),
+  .land-connector-line:nth-of-type(5) {
+    opacity: 1;
+  }
+  .land-proof.is-inview .land-connector-line {
     stroke-dashoffset: 0;
+  }
+  /* The junction itself, not part of the draw-in — it only makes sense
+     once every strand has actually arrived, so it fades in afterward
+     rather than drawing alongside them. */
+  .land-connector-node {
+    fill: var(--land-gold);
+    opacity: 0;
+    transition: opacity 300ms var(--ease-out) 1000ms;
+  }
+  .land-proof.is-inview .land-connector-node {
+    opacity: 0.9;
   }
   /* Was a plain uppercase label with no box — now a quiet pill, so the two
      excerpt cards read as tagged/categorized rather than just captioned.

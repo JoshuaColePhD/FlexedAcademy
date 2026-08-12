@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Calendar, Download, Eye, FileText, Loader2 } from 'lucide-react'
+import { BookOpen, Calendar, ChevronLeft, Download, Eye, FileText, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
@@ -377,7 +377,13 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
               ? 'See what this week was built from'
               : 'Your plan will appear here'
         }
-      />
+      >
+        {/* Left, not right — it points the way the drawer itself moves:
+            open pulls this edge OUT into a panel that grows leftward. Only
+            drawn while closed; once open, the panel itself is the answer to
+            "does this open." */}
+        {!open ? <ChevronLeft className="artifact-drawer-arrow" aria-hidden="true" /> : null}
+      </button>
       {open ? (
         <div className="artifact-drawer-body">
           <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
