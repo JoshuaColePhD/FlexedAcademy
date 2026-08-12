@@ -560,9 +560,30 @@ def extract_decisions(user_id: str, messages: list[dict]) -> list[dict]:
         return []
 
 
+def _no_speech_prob(segment) -> float:
+    if isinstance(segment, dict):
+        return segment.get("no_speech_prob", 0.0)
+    return getattr(segment, "no_speech_prob", 0.0)
+
+
 def transcribe(user_id: str, path: str) -> str:
     with open(path, "rb") as f:
-        result = client().audio.transcriptions.create(model="whisper-1", file=f)
+        result = client().audio.transcriptions.create(
+            model="whisper-1",
+            file=f,
+            # This app is English lesson planning; there is no legitimate
+            # reason a clip should ever be anything else. Without this,
+            # ambiguous audio (background noise, a cough, silence) lets
+            # Whisper's language auto-detect pick something else — confirmed
+            # live: a VAD false-positive produced a fluent Korean question
+            # about translating a sentence, which the chat model then
+            # answered in kind, derailing the whole conversation.
+            language="en",
+            # Needed for the no_speech_prob check below — plain "text" format
+            # gives back nothing to tell a real utterance apart from
+            # hallucinated text.
+            response_format="verbose_json",
+        )
     # Whisper and TTS bill per minute / per character, not per token, so
     # there's no real usage.prompt_tokens to read — without SOME charge here
     # they'd be a free channel outside the cap this whole feature exists to
@@ -570,6 +591,18 @@ def transcribe(user_id: str, path: str) -> str:
     # gpt-4o-equivalent tokens at that model's own blended rate, assuming a
     # generous one-minute clip — approximate on purpose, not a real invoice.
     db.record_usage(user_id, "transcribe", 1200, 0)
+    # Pinning the language stops Whisper from hallucinating in a RANDOM one,
+    # but it can still confidently invent a fluent English sentence from
+    # background noise or near-silence — a VAD false positive (the mic
+    # picked up SOMETHING, just not speech) with nothing to transcribe.
+    # no_speech_prob is Whisper's own per-segment confidence that a stretch
+    # of audio wasn't speech at all; if every segment reads that way, the
+    # clip is noise, not an utterance, no matter how plausible the invented
+    # text sounds. VoiceModePanel's caller already treats an empty string as
+    # "nothing said, mic stays live" — the same as a too-short clip.
+    segments = getattr(result, "segments", None) or []
+    if segments and all(_no_speech_prob(s) > 0.6 for s in segments):
+        return ""
     return result.text
 
 
