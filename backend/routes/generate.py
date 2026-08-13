@@ -42,6 +42,32 @@ def _with_week(query: str, week_number: int | None, school_id: str) -> str:
         return query
     return f"Build this for {schoolcal.label_for(week)}. {query}"
 
+
+def _chat_class(user_id: str, chat_id: str | None) -> dict | None:
+    """The chat's own class, if it and the chat both exist.
+
+    Shared by /generate, /generate_stream and /chat_stream — all three
+    resolve school (and chat_stream also resolves subject/grade) from
+    whichever class the CHAT actually belongs to, not
+    get_settings_row(user_id)'s "most recently touched settings row for this
+    account". That old fallback is a legacy (user_id, subject) table
+    predating `classes`: for a teacher with more than one prep, it returns
+    whichever class was last touched anywhere in the app, not necessarily
+    the one THIS chat is under — confirmed live as AP Lang's subject, grade
+    and pacing guide leaking into an ENG 101 conversation whenever AP Lang's
+    settings had been saved more recently.
+
+    Returns None (not get_settings_row) for a legacy chat with no chat_id,
+    no class_id, or a since-deleted class — every caller here already has
+    its own fallback for that case (db.class_school falls back to the
+    account default; the callers below fall back to get_settings_row)."""
+    if not chat_id:
+        return None
+    chat = db.get_chat(user_id, chat_id)
+    if not chat or not chat.get("class_id"):
+        return None
+    return db.get_class(user_id, chat["class_id"])
+
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -137,8 +163,24 @@ def _openai_error_event(e: Exception) -> dict:
 @router.post("/generate")
 def generate(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     require_entitlement(user_id)
-    query = _with_week(req.query, req.week_number, db.get_user_school(user_id))
-    return service.generate(user_id, query, chat_id=req.chat_id, bg_tasks=bg_tasks)
+    # Resolved once, from the chat this generation belongs to (see
+    # _chat_class) — used for the week label below AND threaded through to
+    # service.generate so llm.generate_plan names the same school, not
+    # whatever get_user_school(user_id) would answer on its own.
+    cls = _chat_class(user_id, req.chat_id)
+    school_id = db.class_school(cls, user_id)
+    query = _with_week(req.query, req.week_number, school_id)
+    return service.generate(
+        user_id,
+        query,
+        chat_id=req.chat_id,
+        bg_tasks=bg_tasks,
+        # Same lookup, reused rather than resolve_class(user_id)'s "whichever
+        # class was touched most recently" fallback inside finalize — this
+        # plan belongs to the chat's OWN class when one exists.
+        class_id=cls["id"] if cls else None,
+        school_id=school_id,
+    )
 
 
 @router.post("/generate_stream")
@@ -152,7 +194,9 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
     # normal error envelope rather than an SSE frame the reader has to special-
     # case. useLessonStream already reads a non-200 body through apiErrorFromBody.
     require_entitlement(user_id)
-    query = _with_week(req.query, req.week_number, db.get_user_school(user_id))
+    cls = _chat_class(user_id, req.chat_id)
+    school_id = db.class_school(cls, user_id)
+    query = _with_week(req.query, req.week_number, school_id)
 
     def event_stream():
         chunks: list[str] = []
@@ -168,7 +212,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
                     }
                 }
             )
-            for delta in llm.stream_plan(user_id, query, result):
+            for delta in llm.stream_plan(user_id, query, result, school_id=school_id):
                 chunks.append(delta)
                 yield _sse({"chunk": delta})
 
@@ -181,6 +225,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
                 result=result,
                 chat_id=req.chat_id,
                 bg_tasks=bg_tasks,
+                class_id=cls["id"] if cls else None,
             )
             yield _sse(
                 {
@@ -216,21 +261,8 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
             # We construct a system prompt based on the user's settings and chosen mode.
             #
             # Prefer the class this chat actually belongs to over
-            # get_settings_row(user_id)'s "most recently updated settings row for
-            # this account" — settings is a legacy (user_id, subject) table that
-            # predates `classes`, so for a teacher with more than one prep, the
-            # subject it returns is whichever class was last touched anywhere in
-            # the app, not necessarily the one this chat is under. A teacher
-            # bouncing between AP Lang and ENG 101 chats got AP Lang's subject,
-            # grade, and pacing guide inside an ENG 101 conversation whenever AP
-            # Lang's settings had been saved more recently. Falls back to the old
-            # lookup for chats with no chat_id, no class_id (pre-scoping chats —
-            # see create_chat), or a since-deleted class.
-            cls = None
-            if req.chat_id:
-                chat = db.get_chat(user_id, req.chat_id)
-                if chat and chat.get("class_id"):
-                    cls = db.get_class(user_id, chat["class_id"])
+            # get_settings_row(user_id) — see _chat_class's own docstring.
+            cls = _chat_class(user_id, req.chat_id)
 
             if cls:
                 subject = cls["subject"]
@@ -240,9 +272,11 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                 subject = s.get("subject", "AP Language & Composition")
                 grade = s.get("grade", "11")
 
-            # Independent of `cls` above — school is per-account (users.school),
-            # not per-class, so it doesn't need the chat's own class to resolve.
-            school_id = db.get_user_school(user_id)
+            # class_school, not get_user_school directly — a class pinned to
+            # a different school than the account default (migration 25)
+            # gets its OWN calendar named here, not the account's. Was
+            # "independent of cls" until school stopped being account-only.
+            school_id = db.class_school(cls, user_id)
 
             system_prompt = (
                 f"You are an expert curriculum brainstorming assistant for {subject} (Grade {grade}). "

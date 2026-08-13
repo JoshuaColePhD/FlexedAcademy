@@ -144,10 +144,15 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     return msg.content
 
 
-def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
-    """Non-streaming week generation. Returns parsed (not yet validated) JSON."""
+def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str) -> dict:
+    """Non-streaming week generation. Returns parsed (not yet validated) JSON.
+
+    `school_id` is taken as a parameter rather than resolved here (it used to
+    be db.get_user_school(user_id)) so the caller can hand over the CHAT's
+    own class's school (db.class_school, migration 25) instead of always the
+    account default — a class at a different school than the account default
+    would otherwise get the wrong one named in its own prompt."""
     s = db.get_settings_row(user_id)
-    school_id = db.get_user_school(user_id)
     map_context = map_context_for(user_id, s["subject"], query)
     content = _cached_completion(
         user_id,
@@ -173,10 +178,12 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
     return loads_lenient(content or "")
 
 
-def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[str]:
-    """Yield raw content deltas. The caller accumulates and validates."""
+def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str) -> Iterator[str]:
+    """Yield raw content deltas. The caller accumulates and validates.
+
+    See generate_plan's own docstring for why `school_id` is a parameter
+    rather than resolved internally."""
     s = db.get_settings_row(user_id)
-    school_id = db.get_user_school(user_id)
     map_context = map_context_for(user_id, s["subject"], query)
     stream = client().chat.completions.create(
         model=settings.openai_model,

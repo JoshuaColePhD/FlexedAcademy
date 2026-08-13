@@ -571,6 +571,26 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE chats ADD COLUMN IF NOT EXISTS week_number INTEGER;
     """,
+    # ── 25: a class can follow its own school's calendar ───────────────────────
+    #
+    # school used to live only on `users` (migration 22) — one calendar for
+    # the whole account, no matter how many classes are on it. That's correct
+    # for a teacher whose classes are all in the same building, and silently
+    # wrong for one whose aren't: a second class at a second school read the
+    # first school's teaching days and closures, because there was nowhere
+    # else for it to come from.
+    #
+    # Nullable, no default — see class_school()'s own comment for why a class
+    # predating this column falls back to the account default rather than
+    # getting backfilled to a value that might be wrong for it specifically.
+    # create_class() DOES stamp new classes with a real value (the account's
+    # CURRENT default, at creation) so a fresh class has an honest answer from
+    # the start and can still be moved to a different school independently
+    # later — the same "snapshot now, editable after" shape subject/grade
+    # already have per class.
+    """
+    ALTER TABLE classes ADD COLUMN IF NOT EXISTS school TEXT;
+    """,
 ]
 
 
@@ -851,12 +871,25 @@ def get_class(user_id: str, class_id: str) -> dict | None:
 def create_class(user_id: str, *, name: str, subject: str, grade: str) -> dict:
     class_id = new_id()
     row = _row("SELECT COALESCE(MAX(sort_order), -1) AS m FROM classes WHERE user_id = ?", (user_id,))
+    # Stamped with the account's CURRENT default school, not left NULL — a
+    # fresh class gets an honest answer to "which calendar" from the start
+    # (see migration 25), and can still be pointed at a different school
+    # later without that touching the account default other classes read.
     _write(
         """
-        INSERT INTO classes (id, user_id, name, subject, grade, sort_order, archived, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+        INSERT INTO classes (id, user_id, name, subject, grade, school, sort_order, archived, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
         """,
-        (class_id, user_id, name.strip()[:120], subject, str(grade), int(row["m"]) + 1, now()),
+        (
+            class_id,
+            user_id,
+            name.strip()[:120],
+            subject,
+            str(grade),
+            get_user_school(user_id),
+            int(row["m"]) + 1,
+            now(),
+        ),
     )
     # Mirror into settings so the generate path, which still reads
     # get_settings_row(user_id), sees this class the moment it is created.
@@ -864,7 +897,21 @@ def create_class(user_id: str, *, name: str, subject: str, grade: str) -> dict:
     return get_class(user_id, class_id)
 
 
-_CLASS_FIELDS = {"name", "subject", "grade", "sort_order", "archived"}
+_CLASS_FIELDS = {"name", "subject", "grade", "sort_order", "archived", "school"}
+
+
+def class_school(cls: dict | None, user_id: str) -> str:
+    """Which calendar a class follows — its own pinned school (migration 25)
+    if it has one, else the account default (get_user_school).
+
+    The fallback matters for two real cases, not just missing data: a class
+    created before this column existed, and `cls=None` itself — every caller
+    that resolves a class from a chat_id (routes/generate.py's chat_stream,
+    /generate, /generate_stream) gets None for a legacy chat with no
+    class_id, and still needs a school to hand schoolcal."""
+    if cls and cls.get("school"):
+        return cls["school"]
+    return get_user_school(user_id)
 
 
 def update_class(user_id: str, class_id: str, **fields: Any) -> dict | None:
@@ -1378,7 +1425,10 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
     from . import schoolcal  # local: keeps the calendar out of db's import cycle
 
     cls = resolve_class(user_id, class_id)
-    school_id = get_user_school(user_id)
+    # class_school, not get_user_school directly — a class pinned to a
+    # different school than the account default (migration 25) shows ITS
+    # calendar, not whichever one the account happens to default to.
+    school_id = class_school(cls, user_id)
     weeks = schoolcal.school_weeks(school_id)
     # Named, and returned even when the calendar comes back empty. Every
     # week this board produces belongs to ONE school's calendar, and until

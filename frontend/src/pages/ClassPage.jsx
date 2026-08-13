@@ -476,8 +476,16 @@ function SchoolPicker({ value, onSaved }) {
   return (
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">School</h2>
+      {/* Was "Sets your school calendar" — true when school lived only on
+          the account (migration 22). Now that a class can pin its own
+          (migration 25), this only decides what a NEW class starts as; an
+          existing one keeps whatever it already has regardless of this
+          setting. Said plainly rather than left to be discovered the first
+          time changing this here doesn't move an existing class's weeks. */}
       <p className="mt-1 text-xs text-ink-muted">
-        Sets your school calendar — which weeks are teaching weeks and which days are closed.
+        The default calendar for a new class — which weeks are teaching weeks and which days
+        are closed.
+        {schools.length > 1 ? ' Change one class’s own school from its Edit panel below.' : ''}
       </p>
       <select
         value={value || ''}
@@ -662,13 +670,25 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
   // half-made pick without touching the class until Save commits it.
   const [editSubject, setEditSubject] = useState(cls.subject)
   const [editGrade, setEditGrade] = useState(cls.grade || '11')
+  // '' (not cls.school itself) for a class with none set — a class from
+  // before migration 25 has no school row value at all, and the account
+  // default it currently falls back to (db.class_school) isn't necessarily
+  // what the teacher would pick for THIS class specifically, so the select
+  // starts genuinely unset rather than silently pre-choosing for them. See
+  // its own "not set" option below.
+  const [editSchool, setEditSchool] = useState(cls.school || '')
   const [savingDetails, setSavingDetails] = useState(false)
+  // Same list the account-level SchoolPicker reads (qk.schools) — one fetch
+  // either way, since React Query dedupes by key.
+  const schoolsState = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
+  const schools = schoolsState.data || []
 
   useEffect(() => setName(cls.name), [cls.name])
   useEffect(() => {
     setEditSubject(cls.subject)
     setEditGrade(cls.grade || '11')
-  }, [cls.subject, cls.grade])
+    setEditSchool(cls.school || '')
+  }, [cls.subject, cls.grade, cls.school])
 
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
@@ -689,7 +709,18 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
     const nextName = name.trim() || cls.name
     setSavingDetails(true)
     try {
-      await api.updateClass(cls.id, { name: nextName, subject: editSubject, grade: editGrade })
+      await api.updateClass(cls.id, {
+        name: nextName,
+        subject: editSubject,
+        grade: editGrade,
+        // Omitted entirely, not sent as '', while still "not set" — the
+        // backend's ClassPatch treats a present `school` as a real change to
+        // validate against the schools table, and '' matches no school id.
+        // This also means a school can't be CLEARED back to unset from here,
+        // same as name/subject/grade already can't be — consistent, not a
+        // new gap.
+        ...(editSchool ? { school: editSchool } : {}),
+      })
       setName(nextName)
       onChanged?.()
       setPanel(null)
@@ -898,6 +929,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
                 setName(cls.name)
                 setEditSubject(cls.subject)
                 setEditGrade(cls.grade || '11')
+                setEditSchool(cls.school || '')
                 setPanel(null)
               }}
               className="neo-raised rounded-lg px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
@@ -906,6 +938,37 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
             </button>
           </div>
           </div>
+          {/* Its own row, not squeezed into the framework/grade one — this
+              answers a different question ("which calendar does this class
+              follow", migration 25) from those two ("what does it teach").
+              Only shown once there's more than one school to actually pick
+              between: a solo-school account has nothing here worth asking. */}
+          {schools.length > 1 ? (
+            <label className="block max-w-xs">
+              <span className="mb-1 block text-xs text-ink-muted">School</span>
+              <select
+                aria-label={`School for ${cls.name}`}
+                value={editSchool}
+                onChange={(e) => setEditSchool(e.target.value)}
+                className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2 pl-3 pr-8 text-sm text-ink"
+              >
+                {/* Genuinely absent for a class predating migration 25, not
+                    pre-filled with the account default — see editSchool's
+                    own comment on why guessing here would be dishonest. */}
+                {!editSchool ? (
+                  <option value="" disabled>
+                    Not set — using account default
+                  </option>
+                ) : null}
+                {schools.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.has_calendar === false ? ' — no calendar yet' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
       ) : panel === 'weeks' ? (
         <div className="fa-rise px-3 pb-3 pl-10">

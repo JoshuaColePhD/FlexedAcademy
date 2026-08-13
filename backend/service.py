@@ -206,15 +206,32 @@ def finalize(
     return row
 
 
-def generate(user_id: str, query: str, chat_id: str | None = None, bg_tasks: BackgroundTasks | None = None) -> dict:
+def generate(
+    user_id: str,
+    query: str,
+    chat_id: str | None = None,
+    bg_tasks: BackgroundTasks | None = None,
+    class_id: str | None = None,
+    school_id: str | None = None,
+) -> dict:
+    """`class_id`/`school_id`, when the caller has them, are the chat's own
+    class and its resolved school (routes/generate.py's _chat_class +
+    db.class_school) — not re-derived here, so this stays a plain pass-
+    through rather than a second place that could resolve them differently.
+    `class_id=None` is a real case `finalize` already handles (falls back to
+    resolve_class(user_id)'s "whichever class was touched most recently").
+    `school_id=None` means the caller had no chat context at all — the
+    account default (get_user_school) is the only honest answer left, same
+    as db.class_school's own fallback for a class with none of its own."""
     result = prepare(user_id, query)
     return finalize(
         user_id=user_id,
-        plan_raw=llm.generate_plan(user_id, query, result),
+        plan_raw=llm.generate_plan(user_id, query, result, school_id=school_id or db.get_user_school(user_id)),
         query=query,
         result=result,
         chat_id=chat_id,
         bg_tasks=bg_tasks,
+        class_id=class_id,
     )
 
 

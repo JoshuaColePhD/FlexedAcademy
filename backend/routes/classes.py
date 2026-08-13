@@ -33,6 +33,12 @@ class ClassPatch(BaseModel):
     subject: str | None = Field(default=None, max_length=120)
     grade: str | None = Field(default=None, max_length=8)
     sort_order: int | None = None
+    # Which calendar this class follows (migration 25) — independent of the
+    # account default (PATCH /api/me), and of every other class on it. Not on
+    # ClassBody: a brand-new class is stamped with the account's current
+    # default at creation (db.create_class) and moved from here afterward,
+    # the same two-step "auto-set, then editable" shape as its name.
+    school: str | None = Field(default=None)
 
 
 def _auto_name(subject: str, grade: str) -> str:
@@ -127,6 +133,11 @@ def update_class_route(
 ) -> dict:
     if not db.get_class(user_id, class_id):
         raise AppError("not_found", "That class doesn't exist.", status=404)
+    # Checked here, in the handler body, not a validator — same reasoning as
+    # MeBody's identical check just above: the valid set is the live `schools`
+    # table, not something a validator can close over.
+    if body.school is not None and not db.get_school(body.school):
+        raise AppError("unknown_school", "Unknown school.", status=400)
     updated = db.update_class(user_id, class_id, **body.model_dump(exclude_none=True))
     return updated  # type: ignore[return-value]
 

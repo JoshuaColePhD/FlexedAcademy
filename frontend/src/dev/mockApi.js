@@ -151,9 +151,14 @@ const state = {
           billing_enabled: true,
           period_end: null,
         },
+  // school on each mirrors backend db.py migration 25 — c2 is deliberately
+  // pinned to the calendar-LESS school (springfield-ms) while the account
+  // default stays Florence, so switching the active class between the two
+  // is what actually exercises "a class can follow a different calendar
+  // than the account default," not just two classes that happen to agree.
   classes: [
-    { id: 'c1', name: 'AP Language & Composition', subject: 'AP_Lang', grade: '11', sort_order: 0 },
-    { id: 'c2', name: 'AP Physics 1', subject: 'Science', grade: '11', sort_order: 1 },
+    { id: 'c1', name: 'AP Language & Composition', subject: 'AP_Lang', grade: '11', sort_order: 0, school: 'florence-high-school' },
+    { id: 'c2', name: 'AP Physics 1', subject: 'Science', grade: '11', sort_order: 1, school: 'springfield-ms' },
   ],
   // Two, not one, so the onboarding/admin picker under test actually has a
   // real choice to render — the real backend starts with one (Florence);
@@ -317,10 +322,18 @@ export function installMockApi() {
     if (path === '/api/classes' && method === 'GET')
       return json([...state.classes].sort((a, b) => a.sort_order - b.sort_order))
     if (path === '/api/weeks') {
-      const school = state.schools.find((x) => x.id === state.me.school) || state.schools[0]
+      // class_school, mirrored: the requested class's OWN school if it has
+      // one (db.py migration 25), else the account default -- not the
+      // account default unconditionally, which is what this used to read
+      // before a class could pin its own.
+      const classId = new URL(url, location.origin).searchParams.get('class_id')
+      const cls = state.classes.find((c) => c.id === classId)
+      const schoolId = (cls && cls.school) || state.me.school
+      const school = state.schools.find((x) => x.id === schoolId) || state.schools[0]
       const info = { id: school.id, name: school.name, has_calendar: school.has_calendar }
-      // Switching to a calendar-less school in settings really does empty the
-      // board here, so the chat's own degraded state is reachable in the mock.
+      // Switching to a calendar-less school (in settings, or by switching to
+      // a class pinned to one) really does empty the board here, so the
+      // chat's own degraded state is reachable in the mock.
       if (!school.has_calendar) return json({ class: null, school: info, weeks: [], current_week: null })
       return json({ class: null, school: info, weeks: state.weeks, current_week: 3 })
     }
@@ -365,7 +378,9 @@ export function installMockApi() {
       const n = Number(body.grade)
       const name = `${body.subject} · ${Number.isFinite(n) ? `${n}th` : `${body.grade}th`}`
       const sort_order = Math.max(-1, ...state.classes.map((c) => c.sort_order)) + 1
-      const created = { id, name, subject: body.subject, grade: body.grade, sort_order }
+      // Stamped with the account's current default, same as db.create_class
+      // — a fresh class starts with an honest answer, editable after.
+      const created = { id, name, subject: body.subject, grade: body.grade, sort_order, school: state.me.school }
       state.classes.push(created)
       return json(created)
     }
