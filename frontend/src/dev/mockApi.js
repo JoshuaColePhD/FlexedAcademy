@@ -158,9 +158,13 @@ const state = {
   // Two, not one, so the onboarding/admin picker under test actually has a
   // real choice to render — the real backend starts with one (Florence);
   // a second here is what exercises the picker as a picker.
+  // has_calendar mirrors whether backend/context/calendars/<id>.md exists.
+  // Springfield is deliberately calendar-less: a school row can be added by
+  // admin before anyone authors its year, and that state has to be visible
+  // rather than silently emptying the week board.
   schools: [
-    { id: 'florence-high-school', name: 'Florence High School', created_at: '2026-01-01T00:00:00+00:00' },
-    { id: 'springfield-ms', name: 'Springfield Middle School', created_at: '2026-01-02T00:00:00+00:00' },
+    { id: 'florence-high-school', name: 'Florence High School', created_at: '2026-01-01T00:00:00+00:00', has_calendar: true },
+    { id: 'springfield-ms', name: 'Springfield Middle School', created_at: '2026-01-02T00:00:00+00:00', has_calendar: false },
   ],
   accounts: [
     { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true,
@@ -312,8 +316,14 @@ export function installMockApi() {
     }
     if (path === '/api/classes' && method === 'GET')
       return json([...state.classes].sort((a, b) => a.sort_order - b.sort_order))
-    if (path === '/api/weeks')
-      return json({ class: null, weeks: state.weeks, current_week: 3 })
+    if (path === '/api/weeks') {
+      const school = state.schools.find((x) => x.id === state.me.school) || state.schools[0]
+      const info = { id: school.id, name: school.name, has_calendar: school.has_calendar }
+      // Switching to a calendar-less school in settings really does empty the
+      // board here, so the chat's own degraded state is reachable in the mock.
+      if (!school.has_calendar) return json({ class: null, school: info, weeks: [], current_week: null })
+      return json({ class: null, school: info, weeks: state.weeks, current_week: 3 })
+    }
     if (
       path === '/api/curriculum_progress' &&
       new URL(url, location.origin).searchParams.get('subject') !== 'AP Lang'

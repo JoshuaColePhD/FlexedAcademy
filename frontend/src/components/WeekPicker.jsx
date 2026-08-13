@@ -20,14 +20,35 @@ import { shortRange } from '../lib/dates'
  *    not from a calendar expression that drifts to the next unplanned week
  *    the moment this one gets built.
  */
-export function WeekPicker({ options, value, onChange, disabled = false }) {
-  if (!options.length) return null
+export function WeekPicker({ options, value, onChange, schoolName, disabled = false }) {
+  /* No weeks means the teacher's school has no calendar file on disk — a
+     real, reachable state, because a school's row and its calendar live in
+     different places by design (admin adds the row; the year itself is a
+     hand-authored file in version control). This used to `return null`, so
+     the control simply vanished and took the explanation with it: no week
+     on screen, no week in the prompt, and nothing anywhere saying why or
+     for which school. Naming the school is the whole point — "no calendar"
+     is useless without "whose". */
+  if (!options.length) {
+    return (
+      <p className="chat-week">
+        <CalendarDays size={12} aria-hidden="true" />
+        {schoolName ? `${schoolName} — no calendar on file` : 'No school calendar on file'}
+      </p>
+    )
+  }
 
   return (
     <div className="chat-week">
       <CalendarDays size={12} aria-hidden="true" />
-      <label htmlFor="week-picker" className="shrink-0">
-        Planning
+      {/* The school's own name in place of a generic "Planning" label: every
+          week in the dropdown is one district's real teaching calendar, and
+          a teacher who has more than one school on file (or is checking
+          they picked the right one) can't tell that from a bare week
+          number. Costs no extra room — it replaces a word rather than
+          adding a line. */}
+      <label htmlFor="week-picker" className="min-w-0 shrink truncate">
+        {schoolName || 'Planning'}
       </label>
       {/* min-w-0 alone does NOT stop a native <select> sizing itself to its
           longest option's text — that's the box's intrinsic content width,

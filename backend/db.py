@@ -1380,8 +1380,21 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
     cls = resolve_class(user_id, class_id)
     school_id = get_user_school(user_id)
     weeks = schoolcal.school_weeks(school_id)
+    # Named, and returned even when the calendar comes back empty. Every
+    # week this board produces belongs to ONE school's calendar, and until
+    # now the payload said only "weeks" — leaving the UI to present a
+    # district's real closures and teaching days as though they came from
+    # nowhere, with no way to attribute them or to say WHOSE calendar is
+    # missing when there isn't one. Falls back to the raw id if the schools
+    # row is gone, since a name is presentation and the id is the truth.
+    school_row = get_school(school_id)
+    school = {
+        "id": school_id,
+        "name": (school_row or {}).get("name") or school_id,
+        "has_calendar": bool(weeks),
+    }
     if not weeks:
-        return {"class": cls, "weeks": [], "current_week": None}
+        return {"class": cls, "school": school, "weeks": [], "current_week": None}
 
     # Which weeks already have a plan. class_id is the key where one exists;
     # plans written before migration 9 only have the course display name, so
@@ -1439,6 +1452,7 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
 
     return {
         "class": cls,
+        "school": school,
         "weeks": out,
         "current_week": current["week"] if current else None,
     }

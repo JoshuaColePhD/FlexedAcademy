@@ -1426,6 +1426,11 @@ export function ChatPage() {
             options={weekOptions}
             value={conversationWeek}
             onChange={changeWeek}
+            /* Whose calendar these weeks are. Comes down with the board
+               itself (db.week_board) rather than being looked up separately,
+               so the name and the weeks can never disagree about which
+               school they describe. */
+            schoolName={calendar?.school?.name}
             disabled={busy}
           />
           <Composer

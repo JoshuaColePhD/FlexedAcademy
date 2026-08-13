@@ -308,8 +308,15 @@ function ClassWeeks({ cls }) {
 
   if (isLoading) return <p className="mt-2 text-xs text-ink-muted">Loading weeks…</p>
   if (isError) return <p className="mt-2 text-xs text-mark">Couldn’t load the calendar.</p>
+  // Named, because "no school calendar on file" doesn't tell a teacher which
+  // school's is missing — and the fix (add a calendar for THAT school)
+  // depends entirely on knowing.
   if (!weeks.length) {
-    return <p className="mt-2 text-xs text-ink-muted">No school calendar on file.</p>
+    return (
+      <p className="mt-2 text-xs text-ink-muted">
+        No calendar on file{calendar?.school?.name ? ` for ${calendar.school.name}` : ''}.
+      </p>
+    )
   }
 
   return (
@@ -450,6 +457,7 @@ function SchoolPicker({ value, onSaved }) {
   const schoolsState = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
   const [saving, setSaving] = useState(false)
   const schools = schoolsState.data || []
+  const selected = schools.find((s) => s.id === value) || null
 
   const commit = async (school) => {
     if (!school || school === value) return
@@ -480,9 +488,22 @@ function SchoolPicker({ value, onSaved }) {
         {schools.map((s) => (
           <option key={s.id} value={s.id}>
             {s.name}
+            {s.has_calendar === false ? ' — no calendar yet' : ''}
           </option>
         ))}
       </select>
+      {/* A school's row and its calendar are added in different places on
+          purpose (see GET /api/schools) — so one can exist with no year
+          behind it, and choosing it silently empties the week board, the
+          composer's week dropdown and the week the model is told about.
+          Said out loud here, after the fact, because the row is still a
+          legitimate choice: it just can't schedule anything yet. */}
+      {selected && selected.has_calendar === false ? (
+        <p className="mt-2 max-w-xs text-xs text-mark">
+          No calendar is on file for {selected.name} yet, so weeks can’t be scheduled — plans
+          will build without a week or a closure to work from until one is added.
+        </p>
+      ) : null}
     </div>
   )
 }

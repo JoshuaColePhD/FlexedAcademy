@@ -67,8 +67,21 @@ class MeBody(BaseModel):
 @router.get("/schools")
 def list_schools_route() -> list[dict]:
     """No auth needed — same reasoning as GET /api/frameworks (misc.py):
-    this is a fixed lookup table for a dropdown, not account data."""
-    return db.list_schools()
+    this is a fixed lookup table for a dropdown, not account data.
+
+    `has_calendar` rides along because the two halves of a school live in
+    different places on purpose: the row here, and the year itself as a
+    hand-authored file in version control (see schoolcal's docstring). So a
+    school can legitimately exist with no calendar yet — admin adds the row
+    before anyone writes the file — and picking one silently costs the
+    teacher their whole week board. Reporting it lets the picker say so
+    instead of letting them find out by watching the weeks disappear."""
+    from .. import schoolcal
+
+    return [
+        {**s, "has_calendar": bool(schoolcal.school_weeks(s["id"]))}
+        for s in db.list_schools()
+    ]
 
 
 @router.patch("/me")
