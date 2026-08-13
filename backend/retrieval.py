@@ -259,6 +259,29 @@ def course_variants(subject_code: str | None) -> tuple[str, ...]:
 _AP_COURSE_RE = re.compile(r"^(?:pre[-\s]?)?ap[\s_]", re.IGNORECASE)
 
 
+@functools.lru_cache(maxsize=1)
+def _ap_courses() -> frozenset[str]:
+    """Every raw `course` value that actually has College Board content filed
+    under it (source_type college_board or ap_skills) — the ground truth
+    is_ap_course checks FIRST, before ever guessing from the name.
+
+    A name-pattern regex alone missed four real shapes: "APHuG" (no
+    separator after "ap"), bare "AP", "Grades 9-12AP Environmental Science"
+    ("AP" isn't at the start), and "Advanced English" (an alias with no "AP"
+    in the name at all, but its own ingested AP English Lit CED chunks). Each
+    one is_ap_course() called "not AP" — so retrieve_raw's else branch
+    excluded exactly the college_board/ap_skills chunks holding the answer,
+    and eight golden-set codes dropped out of the top 60 entirely with no
+    error, no course this affects ever raising anything. Built from the
+    chunk files, like _courses_by_identity() beside it, so it costs no query
+    and cannot disagree with what 02_embed_store.py loaded."""
+    return frozenset(
+        c["course"]
+        for c in load_chunks()
+        if c.get("course") and c.get("source_type") in ("college_board", "ap_skills")
+    )
+
+
 def is_ap_course(subject_code: str | None) -> bool:
     """Does this course ground in College Board standards rather than the ALCOS?
 
@@ -271,8 +294,18 @@ def is_ap_course(subject_code: str | None) -> bool:
     an AP course's own name never matches. AP_Lang is the exception — it holds
     35 Grade 11 ELA course-of-study chunks as well as its 22 AP skills — so this
     is what makes the rule uniform instead of incidental.
+
+    Checked against _ap_courses() (what the corpus actually filed) before the
+    name regex ever runs — the regex is only a fallback, for a course this
+    corpus has never ingested a single College Board chunk for yet, where a
+    name guess is genuinely all there is to go on.
     """
-    return bool(_AP_COURSE_RE.match((subject_code or "").strip()))
+    name = (subject_code or "").strip()
+    if not name:
+        return False
+    if name in _ap_courses():
+        return True
+    return bool(_AP_COURSE_RE.match(name))
 
 
 def act_sections_for(subject_code: str | None) -> tuple[str, ...]:
