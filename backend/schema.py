@@ -123,6 +123,124 @@ PLAN_JSON_SCHEMA = {
 
 
 # ---------------------------------------------------------------------------
+# Quiz — grounded in an ALREADY-BUILT plan, not a fresh retrieval
+#
+# generate_quiz (llm.py) hands the model the plan's own plan_json as its only
+# source material and forbids citing any standard not already in it — the
+# quiz can only test what the week's grounding audit already verified, never
+# a code the retrieval step never actually surfaced. No new retrieval call,
+# no new way for a code to be wrong.
+#
+# One flat question shape covers all four types (Structured Outputs' strict
+# mode requires every declared property present regardless of type, same as
+# DAY_JSON_SCHEMA above) rather than a oneOf/anyOf per type — the API does
+# not support oneOf inside a JSON Schema response_format, only a single flat
+# object. qti_build.py reads whichever fields `type` actually uses and
+# ignores the rest.
+# ---------------------------------------------------------------------------
+
+QUESTION_TYPES = ["multiple_choice", "true_false", "short_answer", "matching"]
+
+QUESTION_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "type": {"type": "string", "enum": QUESTION_TYPES},
+        "prompt": {"type": "string", "description": "The question text, one to two sentences."},
+        "standard_code": {
+            "type": "string",
+            "description": "The exact standard code (as written in the plan) this question tests, or '' if it tests general comprehension rather than one specific code.",
+        },
+        "choices": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "multiple_choice only: 3-5 answer options, in the order they should be shown. [] for every other type.",
+        },
+        "correct_index": {
+            "type": "integer",
+            "description": "multiple_choice only: 0-based index into `choices` of the correct answer. -1 for every other type.",
+        },
+        "correct_bool": {
+            "type": "boolean",
+            "description": "true_false only: whether the statement in `prompt` is true. Always include; ignored for every other type.",
+        },
+        "accepted_answers": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "short_answer only: exact-match acceptable answers — include obvious capitalization/wording variants, since Canvas grades this literally. [] for every other type.",
+        },
+        "pairs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "term": {"type": "string"},
+                    "match": {"type": "string"},
+                },
+                "required": ["term", "match"],
+            },
+            "description": "matching only: 3-6 term/match pairs. [] for every other type.",
+        },
+    },
+    "required": ["type", "prompt", "standard_code", "choices", "correct_index", "correct_bool", "accepted_answers", "pairs"],
+}
+
+QUIZ_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "title": {"type": "string", "description": "e.g. 'Week 11 Quiz — Voice, Tone & Rhetorical Devices'"},
+        "questions": {"type": "array", "items": QUESTION_JSON_SCHEMA},
+    },
+    "required": ["title", "questions"],
+}
+
+
+class QuizSchemaError(Exception):
+    """A question the model wrote doesn't match what its own `type` needs —
+    e.g. multiple_choice with an empty `choices`, or a correct_index outside
+    `choices`. Caught where the quiz is built, same as SchemaError for a plan
+    day: a structurally invalid question would either crash the QTI writer
+    or silently produce a Canvas item with no right answer."""
+
+
+def validate_quiz(quiz: dict) -> list[str]:
+    """Returns warnings; raises QuizSchemaError only for a question qti_build.py
+    could not render at all (grading a QTI item with no correct answer marked
+    is worse than dropping it, so those are fatal here rather than warned)."""
+    warnings: list[str] = []
+    questions = quiz.get("questions") or []
+    if not questions:
+        raise QuizSchemaError("The quiz has no questions.")
+    for i, q in enumerate(questions, 1):
+        label = f"Q{i} ({q.get('type')})"
+        qtype = q.get("type")
+        if qtype == "multiple_choice":
+            choices = q.get("choices") or []
+            idx = q.get("correct_index")
+            if len(choices) < 2:
+                raise QuizSchemaError(f"{label}: fewer than 2 choices.")
+            if not isinstance(idx, int) or not (0 <= idx < len(choices)):
+                raise QuizSchemaError(f"{label}: correct_index {idx!r} doesn't point into choices.")
+        elif qtype == "short_answer":
+            if not (q.get("accepted_answers") or []):
+                raise QuizSchemaError(f"{label}: no accepted_answers.")
+        elif qtype == "matching":
+            pairs = q.get("pairs") or []
+            if len(pairs) < 2:
+                raise QuizSchemaError(f"{label}: fewer than 2 pairs.")
+        elif qtype == "true_false":
+            if not isinstance(q.get("correct_bool"), bool):
+                raise QuizSchemaError(f"{label}: correct_bool is not a real boolean.")
+        else:
+            raise QuizSchemaError(f"{label}: unknown question type {qtype!r}.")
+        if not (q.get("standard_code") or "").strip():
+            warnings.append(f"{label}: no standard cited.")
+    return warnings
+
+
+# ---------------------------------------------------------------------------
 # Field-scoped revision
 #
 # In-cell tweaking rewrites ONE cell. Regenerating the whole day for "make the

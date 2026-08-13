@@ -591,6 +591,33 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE classes ADD COLUMN IF NOT EXISTS school TEXT;
     """,
+    # ── 26: quizzes ──────────────────────────────────────────────────────────
+    #
+    # One or more quizzes CAN exist per plan (a teacher can ask for a second
+    # variant, or a different mix of question types, for the same week), so
+    # this is its own table rather than a column on plans — a plan has many
+    # quizzes, never the reverse. ON DELETE CASCADE: a quiz with no plan to
+    # belong to is not a real row, it is an orphaned file on disk.
+    #
+    # question_types is stored as-requested (a JSON array, "make me a
+    # multiple choice and matching quiz" -> ["multiple_choice","matching"])
+    # rather than derived from the questions themselves, so the library can
+    # show what was ASKED for even before the qti_path exists.
+    """
+    CREATE TABLE IF NOT EXISTS quizzes (
+        id             TEXT PRIMARY KEY,
+        user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plan_id        TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+        title          TEXT NOT NULL,
+        question_types TEXT NOT NULL,
+        quiz_json      TEXT NOT NULL,
+        qti_path       TEXT,
+        warnings       TEXT,
+        created_at     TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_quizzes_plan ON quizzes(plan_id);
+    ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -1145,6 +1172,70 @@ def add_plan_feedback(user_id: str, plan_id: str, is_good: bool, notes: str | No
         (user_id, plan_id, 1 if is_good else 0, notes, now())
     )
     return True
+
+
+# ---------------------------------------------------------------------------
+# Quizzes — a plan can have several (migration 26)
+# ---------------------------------------------------------------------------
+
+
+def _hydrate_quiz(row: dict) -> dict:
+    d = dict(row)
+    d["question_types"] = json.loads(d["question_types"]) if d.get("question_types") else []
+    d["quiz_json"] = json.loads(d["quiz_json"]) if d.get("quiz_json") else None
+    d["warnings"] = json.loads(d["warnings"]) if d.get("warnings") else []
+    # Same shape as plans' own has_docx — a row can outlive its file (a
+    # crashed build_qti_zip, or the file cleaned up outside the app), and
+    # the download route needs to say so rather than 500 on a missing path.
+    d["has_qti"] = bool(d.get("qti_path")) and Path(d["qti_path"]).is_file()
+    return d
+
+
+def create_quiz(
+    *,
+    quiz_id: str,
+    user_id: str,
+    plan_id: str,
+    title: str,
+    question_types: list[str],
+    quiz_json: dict,
+    qti_path: str | None,
+    warnings: list[str],
+) -> dict:
+    _write(
+        """INSERT INTO quizzes (id, user_id, plan_id, title, question_types, quiz_json,
+                                qti_path, warnings, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (
+            quiz_id,
+            user_id,
+            plan_id,
+            title,
+            json.dumps(question_types),
+            json.dumps(quiz_json),
+            qti_path,
+            json.dumps(warnings),
+            now(),
+        ),
+    )
+    return get_quiz(user_id, quiz_id)  # type: ignore[return-value]
+
+
+def get_quiz(user_id: str, quiz_id: str) -> dict | None:
+    row = _row("SELECT * FROM quizzes WHERE id = ? AND user_id = ?", (quiz_id, user_id))
+    return _hydrate_quiz(row) if row else None
+
+
+def list_quizzes_for_plan(user_id: str, plan_id: str) -> list[dict]:
+    rows = _rows(
+        "SELECT * FROM quizzes WHERE plan_id = ? AND user_id = ? ORDER BY created_at DESC",
+        (plan_id, user_id),
+    )
+    return [_hydrate_quiz(r) for r in rows]
+
+
+def delete_quiz(user_id: str, quiz_id: str) -> bool:
+    return _write("DELETE FROM quizzes WHERE id = ? AND user_id = ?", (quiz_id, user_id)).rowcount > 0
 
 
 # ---------------------------------------------------------------------------

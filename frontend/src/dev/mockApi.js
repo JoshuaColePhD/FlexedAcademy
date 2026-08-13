@@ -212,6 +212,21 @@ const state = {
   },
   plans: { plan1: makePlan('Week 03 — Aug 17-21, 2026'), planOrphan: makePlan('Week 12 — Oct 19-23, 2026') },
   planChat: { plan1: 'seed1', planOrphan: 'stranded' },
+  // quizzes[planId] is an array — a plan can have several (db.py migration
+  // 26). plan1 seeds with one already built, so ArtifactRail's quiz list has
+  // something to render without needing to drive the chat_stream tool-call
+  // path first every time.
+  quizzes: {
+    plan1: [
+      {
+        id: 'quiz1',
+        title: 'Week 03 Quiz — Voice & Tone',
+        question_types: ['multiple_choice'],
+        has_qti: true,
+        warnings: [],
+      },
+    ],
+  },
   documents: [],
   // GET /api/weeks — db.week_board()'s shape. Week 03 is built and links to
   // seed1 (the has_plan-and-openable case); week 12 is built but with no
@@ -577,6 +592,40 @@ export function installMockApi() {
       })
     }
 
+    const quizListMatch = path.match(/^\/api\/plans\/([^/]+)\/quizzes$/)
+    if (quizListMatch && method === 'GET') {
+      await wait(150)
+      return json(state.quizzes[quizListMatch[1]] || [])
+    }
+
+    const quizCreateMatch = path.match(/^\/api\/plans\/([^/]+)\/quiz$/)
+    if (quizCreateMatch && method === 'POST') {
+      // Slower than most mock writes on purpose — this is a real model call
+      // (llm.generate_quiz) plus a local zip write in production, and the
+      // "Building quiz…" row in ArtifactRail is the thing under test here,
+      // not instant success.
+      await wait(1200)
+      const planId = quizCreateMatch[1]
+      const types = body.question_types || ['multiple_choice']
+      const quiz = {
+        id: uid('quiz'),
+        title: `${(state.plans[planId] || {}).week_of || 'Week'} Quiz`,
+        question_types: types,
+        has_qti: true,
+        warnings: [],
+      }
+      state.quizzes[planId] = [quiz, ...(state.quizzes[planId] || [])]
+      return json(quiz)
+    }
+
+    const quizDeleteMatch = path.match(/^\/api\/plans\/([^/]+)\/quizzes\/([^/]+)$/)
+    if (quizDeleteMatch && method === 'DELETE') {
+      await wait(150)
+      const [, planId, quizId] = quizDeleteMatch
+      state.quizzes[planId] = (state.quizzes[planId] || []).filter((q) => q.id !== quizId)
+      return new Response(null, { status: 204 })
+    }
+
     if (path === '/api/generate_stream') {
       // Recorded so a test can assert what the MODEL received, as against what
       // the transcript shows — the two are deliberately different once a file
@@ -609,6 +658,7 @@ export function installMockApi() {
        anything else just talks back, so both branches are drivable. */
     if (path === '/api/chat_stream') {
       const last = [...(body?.messages || [])].reverse().find((m) => m.role === 'user')?.content || ''
+      const wantsQuiz = /\bquiz\b/i.test(last)
       const wantsPlan = /\b(plan|week|build|unit|lesson)\b/i.test(last)
       // Vague, on purpose: enough words to want a plan at all, but nothing
       // naming what the week is actually about — no text/topic, no skill, no
@@ -617,7 +667,13 @@ export function installMockApi() {
       // to drive the ask_clarifying_questions branch in the mock harness.
       const isVague = wantsPlan && last.trim().split(/\s+/).length <= 8 && !/\d|ch\.|chapter/i.test(last)
       return sse(
-        isVague
+        wantsQuiz
+          ? [
+              [{ chunk: 'Sure — building a multiple choice quiz over this week now.' }, 120],
+              [{ tool_call: 'generate_quiz', question_types: ['multiple_choice', 'true_false'], num_questions: 6 }, 120],
+              [{ done: true }, 60],
+            ]
+          : isVague
           ? [
               [{ tool_call: 'ask_clarifying_questions', questions: [
                 { id: 'text', text: 'What are you teaching this week?', options: ['A text we’re reading', 'A skill, no text yet', 'Test/exam prep'] },

@@ -31,6 +31,9 @@ export const qk = {
   chat: (id) => ['chat', id],
 
   plan: (id) => ['plan', id],
+  /** Every quiz built for one plan — its own key, not folded into plan(id),
+   *  so a quiz finishing building doesn't have to re-fetch the whole plan. */
+  quizzes: (planId) => ['quizzes', planId ?? null],
   /* The plans library, per class — same reasoning as chats above. */
   plans: (classId) => ['plans', classId ?? null],
   curriculumProgress: (classId) => ['curriculum-progress', classId ?? null],

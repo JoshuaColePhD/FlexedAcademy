@@ -101,7 +101,8 @@ def entitlement(user_id: str) -> Entitlement:
 
 def require_entitlement(user_id: str) -> None:
     """The one gate, on every door that spends real tokens: /generate,
-    /generate_stream, /chat_stream, /revise_day, /plans/{id}/revise. Downloads
+    /generate_stream, /chat_stream, /revise_day, /plans/{id}/revise,
+    /plans/{id}/quiz. Downloads
     are never gated — nothing about reading what's already built costs
     another token.
 

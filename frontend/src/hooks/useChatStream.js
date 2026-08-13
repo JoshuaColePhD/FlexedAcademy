@@ -117,6 +117,13 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
     let finished = null
     let toolCalled = false
     let questions = null
+    // The generate_quiz alternative — see backend/llm.py's tool declaration.
+    // A SEPARATE field from `toolCalled`/`questions`, not folded into either:
+    // toolCalled means "go build the plan," and a caller checking only that
+    // flag (ChatPage's submit does, right after chatStream.start resolves)
+    // would otherwise try to build a plan for a quiz request instead of
+    // building the quiz.
+    let quizRequested = null
 
     /* How much of `accumulated` has already been handed to onSentence. The
        caller (voice mode) starts synthesizing each sentence the moment it
@@ -185,6 +192,15 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
             questions = event.questions || []
           }
 
+          // Its own arguments are the entire payload too, same reasoning as
+          // ask_clarifying_questions just above.
+          if (event.tool_call === 'generate_quiz') {
+            quizRequested = {
+              questionTypes: event.question_types || [],
+              numQuestions: event.num_questions || 10,
+            }
+          }
+
           if (event.chunk) {
             accumulated += event.chunk
             setText(accumulated)
@@ -211,7 +227,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
     emitSentences(true)
     // `spokeStream` tells the caller this reply has ALREADY been spoken,
     // piece by piece, so its own end-of-turn speak() would be a duplicate.
-    return { text: accumulated, toolCalled, questions, spokeStream: emittedTo > 0 }
+    return { text: accumulated, toolCalled, questions, quizRequested, spokeStream: emittedTo > 0 }
   }, [])
 
   const start = useCallback(

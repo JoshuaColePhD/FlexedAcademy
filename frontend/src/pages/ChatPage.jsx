@@ -133,6 +133,11 @@ export function ChatPage() {
      never overridden by a render where nothing changed. */
   const [railOpen, setRailOpen] = useState(false)
   const [revising, setRevising] = useState(false)
+  // A quiz build is its own busy state, not folded into `revising` — the
+  // two can genuinely overlap (asking for a quiz while a revision request
+  // from a moment ago is still finishing), and ArtifactRail needs to show
+  // "Building quiz…" independent of whatever the plan itself is doing.
+  const [quizBuilding, setQuizBuilding] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
   /* True from the instant submit() is called until either stream/chatStream
      picks up the busy flag on its own (both flip isStreaming synchronously
@@ -862,6 +867,47 @@ export function ChatPage() {
         weekNumber: conversationWeek,
       })
 
+      // The generate_quiz alternative — a distinct request from
+      // generate_lesson_plan (see quizRequested's own comment in
+      // useChatStream), handled and returned from here entirely rather
+      // than falling into the revise-the-plan branch below.
+      if (chatResult?.quizRequested) {
+        if (!artifact?.planId) {
+          // The system prompt already tells the model not to call this
+          // tool with no plan built yet (see routes/generate.py's
+          // has_plan) — reaching here means that held anyway, from a race
+          // rather than the model ignoring the instruction, so this is a
+          // plain apology rather than a real error.
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'assistant',
+              content: "I need to build this week's plan before I can make a quiz for it.",
+            },
+          ])
+          return
+        }
+        setQuizBuilding(true)
+        try {
+          const quiz = await api.createQuiz(artifact.planId, chatResult.quizRequested)
+          qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'assistant',
+              content: `Built "${quiz.title}." Download it from the plan panel — it imports into Canvas as a QTI package.`,
+            },
+          ])
+        } catch (err) {
+          toast.apiError('Could not build the quiz', err)
+        } finally {
+          setQuizBuilding(false)
+        }
+        return
+      }
+
       if (!chatResult || !chatResult.toolCalled) {
         // AI decided to just converse, no revision needed.
         return
@@ -1401,6 +1447,7 @@ export function ChatPage() {
           classId={classId}
           onExpand={() => openDocument()}
           busy={busy}
+          quizBuilding={quizBuilding}
           variant="bar"
         />
       ) : null}
@@ -1524,6 +1571,7 @@ export function ChatPage() {
           classId={classId}
           onExpand={() => openDocument()}
           busy={busy}
+          quizBuilding={quizBuilding}
           decisions={decisions}
         />
       ) : null}

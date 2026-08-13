@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .. import db, docx_build, schema, service, units
+from .. import db, docx_build, llm, qti_build, schema, service, units
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
@@ -34,6 +34,11 @@ class PatchPlan(BaseModel):
 class PlanFeedback(BaseModel):
     is_good: bool
     notes: str | None = None
+
+
+class QuizRequest(BaseModel):
+    question_types: list[str] = Field(min_length=1, max_length=len(schema.QUESTION_TYPES))
+    num_questions: int = Field(default=10, ge=1, le=40)
 
 
 def _require_id(plan_id: str) -> None:
@@ -257,4 +262,112 @@ def download_plan(plan_id: str, user_id: str = Depends(get_current_user)):
         path=str(p),
         filename=f"{docx_build.safe_filename(row['week_label'])}.docx",
         media_type=DOCX_MIME,
+    )
+
+
+@router.get("/{plan_id}/quizzes")
+def list_quizzes(plan_id: str, user_id: str = Depends(get_current_user)) -> list[dict]:
+    _require_plan(user_id, plan_id)
+    return db.list_quizzes_for_plan(user_id, plan_id)
+
+
+@router.post("/{plan_id}/quiz", status_code=201)
+def create_quiz(
+    plan_id: str, body: QuizRequest, user_id: str = Depends(get_current_user)
+) -> dict:
+    """Write, validate, and save a quiz over an ALREADY-BUILT plan.
+
+    Gated the same as building the plan itself (require_entitlement) — this
+    is a real model call and spends real tokens, same reasoning as
+    revise_day's own gate.
+
+    Synchronous, unlike the plan's own docx build (which backgrounds):
+    generate_quiz is one non-streamed completion and build_qti_zip is a
+    local zip write with no external I/O, so there is nothing here slow
+    enough to justify the polling BuiltPlanCard's own has_docx dance exists
+    for.
+    """
+    row = _require_plan(user_id, plan_id)
+    require_entitlement(user_id)
+
+    unknown = set(body.question_types) - set(schema.QUESTION_TYPES)
+    if unknown:
+        raise AppError(
+            "unknown_question_type",
+            f"Unknown question type(s): {', '.join(sorted(unknown))}.",
+            status=400,
+            hint=f"Valid types: {', '.join(schema.QUESTION_TYPES)}.",
+        )
+
+    quiz_raw = llm.generate_quiz(user_id, row["plan_json"], body.question_types, body.num_questions)
+    try:
+        warnings = schema.validate_quiz(quiz_raw)
+    except schema.QuizSchemaError as e:
+        raise AppError(
+            "quiz_schema_error",
+            f"The generated quiz wasn't usable: {e}",
+            status=502,
+            hint="Try asking for the quiz again — this is a one-sample formatting slip, not a structural problem.",
+        ) from e
+
+    quiz_id = db.new_id()
+    out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
+    try:
+        qti_build.build_qti_zip(quiz_raw, out_path)
+        qti_path = str(out_path)
+    except Exception as e:  # noqa: BLE001 - the quiz row is worth saving even if the zip failed
+        warnings = [*warnings, f"QTI file could not be built: {e}"]
+        qti_path = None
+
+    return db.create_quiz(
+        quiz_id=quiz_id,
+        user_id=user_id,
+        plan_id=plan_id,
+        title=quiz_raw.get("title") or f"{row['week_label']} Quiz",
+        question_types=body.question_types,
+        quiz_json=quiz_raw,
+        qti_path=qti_path,
+        warnings=warnings,
+    )
+
+
+@router.delete("/{plan_id}/quizzes/{quiz_id}", status_code=204)
+def delete_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_user)) -> None:
+    _require_plan(user_id, plan_id)
+    row = db.get_quiz(user_id, quiz_id)
+    if row and row.get("qti_path"):
+        p = Path(row["qti_path"]).resolve()
+        if p.is_file() and p.is_relative_to(Path(settings.plans_dir).resolve()):
+            p.unlink()
+    if not db.delete_quiz(user_id, quiz_id):
+        raise AppError("quiz_not_found", "No such quiz.", status=404)
+    return None
+
+
+@router.get("/{plan_id}/quizzes/{quiz_id}/download")
+def download_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_user)):
+    _require_plan(user_id, plan_id)
+    row = db.get_quiz(user_id, quiz_id)
+    if not row:
+        raise AppError("quiz_not_found", "No such quiz.", status=404)
+    path_str = row.get("qti_path")
+    if not path_str:
+        raise AppError(
+            "qti_missing",
+            "This quiz's QTI file could not be built.",
+            status=409,
+            hint="See its warnings, or ask for the quiz again — the quiz content is safe in the database.",
+        )
+    p = Path(path_str).resolve()
+    if not p.is_relative_to(Path(settings.plans_dir).resolve()) or not p.is_file():
+        raise AppError(
+            "qti_missing",
+            "The QTI file for this quiz is missing.",
+            status=404,
+            hint="Ask for the quiz again — the content is safe in the database.",
+        )
+    return FileResponse(
+        path=str(p),
+        filename=f"{docx_build.safe_filename(row['title'])}.zip",
+        media_type=qti_build.QTI_MIME,
     )

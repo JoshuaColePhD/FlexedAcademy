@@ -25,7 +25,7 @@ from .config import settings
 from .errors import AppError
 from .prompts import day_field_system_prompt, day_system_prompt, week_system_prompt
 from .retrieval import RetrievalResult
-from .schema import DAY_JSON_SCHEMA, PLAN_JSON_SCHEMA, field_json_schema, loads_lenient
+from .schema import DAY_JSON_SCHEMA, PLAN_JSON_SCHEMA, QUIZ_JSON_SCHEMA, field_json_schema, loads_lenient
 from . import db
 
 log = logging.getLogger("aplang.llm")
@@ -230,6 +230,58 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
         # iterating early (Stop clicked mid-stream) rather than leaving it to
         # the SDK's own GC-triggered cleanup.
         stream.close()
+
+
+# Canvas-facing names, not our internal ones — question_types arrives from
+# the generate_quiz TOOL CALL (routes/generate.py), whose own description is
+# what the model reads to decide what a teacher meant by "multiple choice"
+# or "matching quiz", so the wording there and here has to agree.
+_QUESTION_TYPE_PROMPT_NAMES = {
+    "multiple_choice": "multiple choice",
+    "true_false": "true/false",
+    "short_answer": "short answer",
+    "matching": "matching",
+}
+
+
+def generate_quiz(user_id: str, plan: dict, question_types: list[str], num_questions: int) -> dict:
+    """A short quiz over an ALREADY-BUILT plan — no retrieval call of its
+    own. The plan's own plan_json is the ONLY source material handed to the
+    model, and the prompt forbids citing a standard that isn't already in
+    it: the quiz can only test what that week's grounding audit already
+    verified, never a code retrieval never actually surfaced for THIS
+    generation. Returns parsed (not yet validated — see schema.validate_quiz)
+    JSON matching QUIZ_JSON_SCHEMA.
+    """
+    types_wanted = ", ".join(_QUESTION_TYPE_PROMPT_NAMES.get(t, t) for t in question_types) or "multiple choice"
+    system_prompt = (
+        "You are writing a short quiz for a lesson plan a teacher already built. "
+        "Write ONLY using the content, standards, and vocabulary already present in the plan below — "
+        "never invent a standard code, term, or fact that isn't already in it. If a question doesn't "
+        "test one specific standard, leave standard_code as an empty string rather than guessing one.\n\n"
+        f"Write approximately {num_questions} questions, using ONLY these question type(s): {types_wanted}. "
+        "Spread the questions across the days rather than clustering them on one. "
+        "Each question must be self-contained — a student answering it should not need to see the plan itself.\n\n"
+        "THE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
+    )
+    custom_instructions = custom_instructions_for(user_id)
+    if custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only, "
+            "never license to add content outside the plan above:\n\n" + custom_instructions
+        )
+    content = _cached_completion(
+        user_id,
+        "generate_quiz",
+        model=settings.openai_model,
+        max_completion_tokens=3000,
+        response_format=_response_format("weekly_quiz", QUIZ_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": "Write the quiz now."},
+        ],
+    )
+    return loads_lenient(content or "")
 
 
 def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, result: RetrievalResult) -> dict:
@@ -654,6 +706,46 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
         {
             "type": "function",
             "function": {
+                "name": "generate_quiz",
+                # ONLY on explicit request, never volunteered — the teacher
+                # asked for exactly this (a lesson plan, not a lesson plan
+                # PLUS a quiz they didn't ask for), and this tool only makes
+                # sense once a plan actually exists for it to test.
+                "description": (
+                    "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
+                    "downloadable file — never volunteer it alongside a lesson plan. Requires a plan to "
+                    "already exist for this conversation; if none does yet, tell the teacher to build the "
+                    "week first instead of calling this. The quiz is built over that plan's own content "
+                    "and standards, not anything new."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question_types": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 4,
+                            "items": {
+                                "type": "string",
+                                "enum": ["multiple_choice", "true_false", "short_answer", "matching"],
+                            },
+                            "description": (
+                                "Which type(s) the teacher asked for. Default to ['multiple_choice'] if "
+                                "they said 'quiz' or 'test' with no type named."
+                            ),
+                        },
+                        "num_questions": {
+                            "type": "integer",
+                            "description": "How many questions, if the teacher named a number. Default 10.",
+                        },
+                    },
+                    "required": ["question_types"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "ask_clarifying_questions",
                 # Call this INSTEAD of generate_lesson_plan, not before it —
                 # the two are alternatives, not a required first step. A
@@ -792,6 +884,31 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                     )
                 yielded_anything = True
                 yield {"tool_call": "ask_clarifying_questions", "questions": questions}
+                break
+
+            # generate_quiz needs its own arguments before there is anything
+            # buildable — same reason ask_clarifying_questions above waits
+            # for finish_reason rather than firing on first sighting like
+            # generate_lesson_plan does.
+            if choice.finish_reason == "tool_calls" and tool_name == "generate_quiz":
+                try:
+                    args = json.loads(tool_args)
+                except ValueError:
+                    args = {}
+                question_types = args.get("question_types") or []
+                if not question_types:
+                    raise AppError(
+                        "malformed_tool_call",
+                        "The model tried to build a quiz but didn't send back which question types.",
+                        status=502,
+                        hint="Try asking for the quiz again.",
+                    )
+                yielded_anything = True
+                yield {
+                    "tool_call": "generate_quiz",
+                    "question_types": question_types,
+                    "num_questions": args.get("num_questions") or 10,
+                }
                 break
 
             if delta.content:

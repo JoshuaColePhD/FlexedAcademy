@@ -264,6 +264,13 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
             # get_settings_row(user_id) — see _chat_class's own docstring.
             cls = _chat_class(user_id, req.chat_id)
 
+            # Whether generate_quiz is even callable right now — it needs a
+            # plan to build over, and "ask the model to check the
+            # conversation for one" is exactly the kind of inference this
+            # app avoids everywhere else an id already answers the question
+            # directly (see _chat_class itself, or db.class_school).
+            has_plan = bool(req.chat_id) and db.list_plans(user_id, chat_id=req.chat_id, limit=1)["total"] > 0
+
             if cls:
                 subject = cls["subject"]
                 grade = cls["grade"]
@@ -375,7 +382,17 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                     "don't ask about it again unless the teacher's own message clearly points at a different "
                     "week. WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
                     "you; missing that, ask rather than build — a week generated from a one-line request "
-                    "costs the teacher more time correcting it than answering one question would have."
+                    "costs the teacher more time correcting it than answering one question would have.\n\n"
+                    + (
+                        "A plan already exists for this conversation. If the teacher explicitly asks for a "
+                        "quiz, test, or assessment as a downloadable file, call `generate_quiz` with the "
+                        "question type(s) they named (default to multiple choice if they said 'quiz' with no "
+                        "type). Never call it unasked, and never alongside `generate_lesson_plan` in the same turn."
+                        if has_plan
+                        else "No plan exists yet for this conversation, so `generate_quiz` cannot be called — "
+                        "if the teacher asks for a quiz before there is a week to test, tell them to build "
+                        "the week first."
+                    )
                 )
 
             # Voice mode's own turn-taking, not just a shorter version of the

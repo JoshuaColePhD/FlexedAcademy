@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Calendar, ChevronLeft, Download, Eye, FileText, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { BookOpen, Calendar, ChevronLeft, Download, Eye, FileText, ListChecks, Loader2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
@@ -7,6 +8,7 @@ import { scanGrounding } from '../lib/grounding'
 import { orderedDays, unitSuffix } from '../lib/planShape'
 import { classColor } from '../lib/classColor'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
+import { useToast } from '../lib/toastContext'
 import { DecisionStack } from './DecisionStack'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
@@ -96,6 +98,79 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
   )
 }
 
+/* One built quiz — its own row rather than reusing RailRow, which has no
+ * room for two independent actions (Download, Delete) alongside the label.
+ * A quiz with no qti_path (has_qti false — the LLM call succeeded but the
+ * local zip write failed) still shows, with Download disabled rather than
+ * the whole row vanishing: the questions are safe in the database either
+ * way (quiz_json), and the title says so on hover. */
+function QuizRow({ quiz, planId, index = 0 }) {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const [deleting, setDeleting] = useState(false)
+  const style = { animationDelay: `${index * 60}ms` }
+
+  const remove = async () => {
+    setDeleting(true)
+    try {
+      await api.deleteQuiz(planId, quiz.id)
+      qc.setQueryData(qk.quizzes(planId), (old) => (old || []).filter((q) => q.id !== quiz.id))
+    } catch (err) {
+      toast.apiError('Could not remove that quiz', err)
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="rail-row fa-rise" style={style}>
+      <span className="rail-row-tile">
+        {deleting ? (
+          <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+        ) : (
+          <ListChecks size={13} aria-hidden="true" />
+        )}
+      </span>
+      <span className="rail-text">
+        <span className="rail-row-label">{quiz.title}</span>
+        <span className="rail-sub">
+          {quiz.question_types.map((t) => QUESTION_TYPE_LABELS[t] || t).join(', ')}
+          {quiz.has_qti ? '' : ' · file failed, ask again'}
+        </span>
+      </span>
+      <span className="rail-actions">
+        {quiz.has_qti ? (
+          <a
+            className="rail-download fa-press"
+            href={api.quizDownloadUrl(planId, quiz.id)}
+            download
+            aria-label={`Download ${quiz.title} as a QTI zip`}
+            title="Download as a QTI zip — imports into Canvas as a Classic Quiz"
+          >
+            <Download size={11} aria-hidden="true" />
+          </a>
+        ) : null}
+        <button
+          type="button"
+          className="rail-open fa-press"
+          onClick={remove}
+          disabled={deleting}
+          aria-label={`Remove ${quiz.title}`}
+          title="Remove this quiz"
+        >
+          <X size={12} aria-hidden="true" />
+        </button>
+      </span>
+    </div>
+  )
+}
+
+const QUESTION_TYPE_LABELS = {
+  multiple_choice: 'Multiple choice',
+  true_false: 'True/false',
+  short_answer: 'Short answer',
+  matching: 'Matching',
+}
+
 /** The 2-3 weeks nearest "now" for this class, collapsed by default — a peek,
  *  not a duplicate of ClassPage.jsx's own full-semester Weeks panel, which
  *  this links out to for the rest. Starts at the current week if the
@@ -152,9 +227,33 @@ function OtherWeeks({ classId, weeks }) {
   )
 }
 
-export function ArtifactRail({ artifact, classId, onExpand, busy, decisions = [], variant = 'rail' }) {
+export function ArtifactRail({
+  artifact,
+  classId,
+  onExpand,
+  busy,
+  decisions = [],
+  variant = 'rail',
+  // Whether a quiz is being generated right now for THIS plan — ChatPage's
+  // own state, passed down rather than inferred here, since the request
+  // that triggers it (a chat message) and the card that shows its progress
+  // live in different components.
+  quizBuilding = false,
+}) {
   const plan = artifact?.plan
   const planId = artifact?.planId
+  /* Every quiz already built for this plan (backend db.py migration 26) —
+     fetched here rather than passed down, same call ChatPage would
+     otherwise have to make and hand through as one more prop. Invalidated
+     by ChatPage the moment a new one finishes building (qk.quizzes(planId)),
+     so this list picks it up without polling. */
+  const { data: quizzes = [] } = useQuery({
+    queryKey: qk.quizzes(planId),
+    queryFn: () => api.listQuizzes(planId),
+    enabled: Boolean(planId),
+    retry: false,
+    staleTime: 30_000,
+  })
   /* On a phone there is no room for a 240px column, so the same component
      becomes a one-row bar above the composer: the file and its Download, and
      nothing else. "Built from" is dropped rather than squeezed — it already
@@ -342,6 +441,33 @@ export function ArtifactRail({ artifact, classId, onExpand, busy, decisions = []
             flag={checking && ungrounded.length > 0}
             title={checking ? grounded.join(', ') : undefined}
           />
+        </div>
+      ) : null}
+
+      {/* Quizzes over this plan — only in the full rail, same reasoning as
+          "Built from" above: the phone bar's whole point is "the file and
+          its Download, nothing else." Shown whenever there's something to
+          show (a build in progress, or an already-built quiz), not gated
+          behind planId the same strict way "Built from" is — quizBuilding
+          can be true for one render right after the request lands, before
+          the query below has anything cached yet. */}
+      {!isBar && (quizBuilding || quizzes.length > 0) ? (
+        <div className="rail-group">
+          <span className="eyebrow">Quizzes</span>
+          {quizBuilding ? (
+            <div className="rail-row fa-rise">
+              <span className="rail-row-tile">
+                <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+              </span>
+              <span className="rail-text">
+                <span className="rail-row-label">Building quiz…</span>
+                <span className="rail-sub">grounded in this week's own plan</span>
+              </span>
+            </div>
+          ) : null}
+          {quizzes.map((quiz, i) => (
+            <QuizRow key={quiz.id} quiz={quiz} planId={planId} index={i} />
+          ))}
         </div>
       ) : null}
 

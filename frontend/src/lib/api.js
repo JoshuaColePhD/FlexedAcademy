@@ -203,6 +203,19 @@ export const api = {
       body: { is_good: isGood, ...(notes ? { notes } : {}) },
     }),
   planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,
+  /* A plan can have several quizzes (backend db.py migration 26) — each ask
+   *  for one ("make a matching quiz") is its own row, never overwriting an
+   *  earlier one. `questionTypes` is a real array (['multiple_choice']),
+   *  not a single string, since a request can name more than one type. */
+  listQuizzes: (planId, { signal } = {}) => request(`/api/plans/${planId}/quizzes`, { signal }),
+  createQuiz: (planId, { questionTypes, numQuestions } = {}) =>
+    request(`/api/plans/${planId}/quiz`, {
+      method: 'POST',
+      body: { question_types: questionTypes, num_questions: numQuestions },
+    }),
+  deleteQuiz: (planId, quizId) =>
+    request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'DELETE' }),
+  quizDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download`,
   /* The two raw SSE endpoints. generate_stream drives useLessonStream and yields
      a structured plan with grounding; chat_stream drives useChatStream and yields
      plain conversational text. They are not interchangeable. */
