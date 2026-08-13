@@ -112,7 +112,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
           aria-label="Grade"
           value={grade}
           onChange={(e) => setGrade(e.target.value)}
-          className="neo-inset rounded-lg bg-paper-raised px-2.5 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent sm:w-24"
+          className="neo-select neo-inset rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink sm:w-24"
         >
           {GRADES.map((g) => (
             <option key={g} value={g}>
@@ -263,7 +263,7 @@ function ClassDocuments({ cls, onChanged }) {
           aria-label="Document type"
           value={kind}
           onChange={(e) => setKind(e.target.value)}
-          className="neo-inset rounded-lg bg-paper-raised px-2 py-1.5 text-xs text-ink outline-none focus:ring-1 focus:ring-accent"
+          className="neo-select neo-inset rounded-lg bg-paper-raised py-1.5 pl-2 pr-7 text-xs text-ink"
         >
           {Object.entries(KIND_LABEL).map(([k, label]) => (
             <option key={k} value={k}>
@@ -483,7 +483,7 @@ function SchoolPicker({ value, onSaved }) {
         value={value || ''}
         disabled={saving || !schools.length}
         onChange={(e) => commit(e.target.value)}
-        className="neo-inset mt-2 w-full max-w-xs rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+        className="neo-select neo-inset mt-2 w-full max-w-xs rounded-lg bg-paper-raised py-2 pl-3 pr-8 text-sm text-ink disabled:opacity-60"
       >
         {schools.map((s) => (
           <option key={s.id} value={s.id}>
@@ -676,23 +676,21 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
   const grade = gradeLabel(cls.grade)
   const derivedLabel = grade ? `${shortLabel(fw, cls.subject)} · ${grade}` : shortLabel(fw, cls.subject)
 
-  const commitName = async () => {
-    const next = name.trim()
-    if (!next || next === cls.name) return setName(cls.name)
-    try {
-      await api.updateClass(cls.id, { name: next })
-      onChanged?.()
-    } catch (err) {
-      toast.apiError('Could not rename that class', err)
-      setName(cls.name)
-    }
-  }
+  /* One save for the whole panel — name, framework and grade together. The
+     name used to commit on its own, on blur, from the row's input; now that
+     it's a field in this panel it belongs to this panel's Save, or Cancel
+     couldn't honestly discard it.
 
+     An emptied name falls back to the class's current one rather than
+     writing blank: the field is pre-filled, so clearing it reads as "start
+     over", not "call this class nothing". */
   const saveDetails = async () => {
     if (!editSubject) return
+    const nextName = name.trim() || cls.name
     setSavingDetails(true)
     try {
-      await api.updateClass(cls.id, { subject: editSubject, grade: editGrade })
+      await api.updateClass(cls.id, { name: nextName, subject: editSubject, grade: editGrade })
+      setName(nextName)
       onChanged?.()
       setPanel(null)
     } catch (err) {
@@ -744,17 +742,21 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           <Check size={13} />
         </span>
 
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
-            if (e.key === 'Escape') setName(cls.name)
-          }}
-          aria-label={`Name of ${cls.name}`}
-          className="min-w-0 flex-1 truncate rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors hover:bg-paper-sunken focus:bg-paper-sunken"
-        />
+        {/* Clicking the name SWITCHES to that class; it no longer edits it.
+            It was a bare text input, so the row's most obvious click target
+            was a rename nobody was asking for, and the one thing a list of
+            classes should do — let you pick one — wasn't on the row at all.
+            Renaming moved into the pencil's panel below, alongside the
+            framework and grade, which is where "edit this class" already
+            lived. */}
+        <Link
+          to={`/c/${cls.id}`}
+          aria-current={isActive ? 'true' : undefined}
+          title={isActive ? `${cls.name} — already open` : `Switch to ${cls.name}`}
+          className="min-w-0 flex-1 truncate rounded-md px-1.5 py-1 text-sm font-medium text-ink no-underline transition-colors hover:bg-paper-sunken"
+        >
+          {cls.name}
+        </Link>
 
         {/* Only when it adds something. POST /api/classes auto-names a class
             from exactly these two fields, so an unrenamed class printed
@@ -793,7 +795,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           type="button"
           onClick={() => setPanel((p) => (p === 'edit' ? null : 'edit'))}
           aria-expanded={panel === 'edit'}
-          aria-label={`Edit ${cls.name}’s framework and grade`}
+          aria-label={`Rename ${cls.name} or change its framework and grade`}
           /* Pressed in while its panel is open — the same "selected is
              inset" the rail's active row uses, and it saves these three
              from needing a background tint to say which one is showing. */
@@ -834,7 +836,25 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
       </div>
 
       {panel === 'edit' ? (
-        <div className="fa-rise flex flex-col gap-2 px-3 pb-3 pl-10 sm:flex-row sm:items-start">
+        <div className="fa-rise flex flex-col gap-2 px-3 pb-3 pl-10">
+          {/* Renaming lives here now, not on the row itself — the row's name
+              is how you switch class. Draft state like the two pickers
+              beside it, so Cancel discards a half-typed name the same way it
+              discards a half-made pick. */}
+          <label className="block">
+            <span className="mb-1 block text-xs text-ink-muted">Name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveDetails()
+                if (e.key === 'Escape') setName(cls.name)
+              }}
+              placeholder={derivedLabel}
+              className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+            />
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
           <div className="min-w-0 flex-1">
             <FrameworkPicker
               frameworks={frameworks}
@@ -847,7 +867,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
             aria-label={`Grade for ${cls.name}`}
             value={editGrade}
             onChange={(e) => setEditGrade(e.target.value)}
-            className="neo-inset rounded-lg bg-paper-raised px-2.5 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent sm:w-24"
+            className="neo-select neo-inset rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink sm:w-24"
           >
             {GRADES.map((g) => (
               <option key={g} value={g}>
@@ -868,6 +888,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
             <button
               type="button"
               onClick={() => {
+                setName(cls.name)
                 setEditSubject(cls.subject)
                 setEditGrade(cls.grade || '11')
                 setPanel(null)
@@ -876,6 +897,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
             >
               Cancel
             </button>
+          </div>
           </div>
         </div>
       ) : panel === 'weeks' ? (

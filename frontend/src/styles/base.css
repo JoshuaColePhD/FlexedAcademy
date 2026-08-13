@@ -2603,15 +2603,58 @@
     flex-shrink: 0;
     opacity: 0.7;
   }
+  /* ── selects ──────────────────────────────────────────────────────────────
+     A native <select> paints its own chrome — on macOS a bevelled well and a
+     double-chevron, drawn by the OS and immune to every token in this file.
+     Next to surfaces whose whole language is soft embossed depth, that read
+     as a control borrowed from another app: right shape, wrong world. The
+     inset shadow was already being applied and simply lost underneath it.
+
+     appearance:none is what hands the box back, and once it's gone the arrow
+     has to be drawn here. A background-image can't take currentColor, so the
+     stroke is a literal --ink-muted per theme rather than one grey hoping to
+     pass in both. Composes with .neo-inset/.neo-raised rather than replacing
+     them: this rule owns the chrome, those own the depth. */
+  .neo-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75' fill='none' stroke='%23666d78' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--sp-2) center;
+    background-size: 11px 8px;
+    /* Room for the arrow is reserved by an explicit right-padding utility at
+       each call site, NOT here: this rule lives in @layer components and
+       Tailwind's padding utilities outrank it, so a padding-right set here is
+       silently dropped wherever a horizontal-padding utility is also present.
+       Each select therefore spells its left and right padding out separately
+       instead of using the px axis shorthand, so nothing can collide. */
+    cursor: pointer;
+  }
+  .neo-select:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+  .neo-select:disabled {
+    cursor: not-allowed;
+  }
+
   /* Borderless and transparent at rest so the row reads as a caption for the
      composer below it, not a second control competing with it — the crowding
      that got the original picker removed. The affordance shows up on hover
      and focus, which is when it matters. */
   .week-picker-select {
+    appearance: none;
+    -webkit-appearance: none;
     border: 0;
     border-radius: var(--r-sm);
     background: transparent;
-    padding: 2px var(--sp-1);
+    /* Same arrow as .neo-select, tucked tighter — this one sits inline in a
+       caption rather than in a filled box. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75' fill='none' stroke='%23666d78' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 2px center;
+    background-size: 9px 7px;
+    padding: 2px 15px 2px var(--sp-1);
     font: inherit;
     letter-spacing: inherit;
     color: var(--ink);
@@ -2620,16 +2663,25 @@
     transition: background-color var(--t-fast) var(--ease);
   }
   .week-picker-select:hover:not(:disabled) {
-    background: var(--paper-sunken);
+    /* background-COLOR, not the shorthand: `background` would reset
+       background-image and take the arrow with it. */
+    background-color: var(--paper-sunken);
   }
   .week-picker-select:focus-visible {
     outline: none;
-    background: var(--paper-raised);
+    background-color: var(--paper-raised);
     box-shadow: var(--focus-ring);
   }
   .week-picker-select:disabled {
     cursor: default;
     opacity: 0.6;
+  }
+  /* The arrow is a background-image, which cannot read currentColor — so the
+     dark theme needs the stroke restated at its own --ink-muted (140 148 159)
+     rather than keeping a light-theme grey that goes muddy on a dark well. */
+  :root[data-theme='dark'] .neo-select,
+  :root[data-theme='dark'] .week-picker-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75' fill='none' stroke='%238c949f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
   @container (max-width: 30rem) {
     /* Download drops to its own line rather than crushing the file name to

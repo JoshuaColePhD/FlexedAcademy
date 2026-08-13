@@ -131,7 +131,7 @@ export function WelcomePage() {
             id="welcome-school"
             value={school}
             onChange={(e) => setSchool(e.target.value)}
-            className="mt-1 min-h-touch rounded-lg border border-edge bg-paper px-3.5 py-2.5 text-sm text-ink outline-none focus:border-accent"
+            className="neo-select mt-1 min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
           >
             <option value="" disabled>
               Choose a school
@@ -160,7 +160,7 @@ export function WelcomePage() {
               aria-label="Grade"
               value={grade}
               onChange={(e) => setGrade(e.target.value)}
-              className="min-h-touch rounded-lg border border-edge bg-paper px-2.5 py-2.5 text-sm text-ink outline-none focus:border-accent sm:w-24"
+              className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-2.5 pr-8 text-sm text-ink outline-none focus:border-accent sm:w-24"
             >
               {GRADES.map((g) => (
                 <option key={g.value} value={g.value}>{g.label}</option>
