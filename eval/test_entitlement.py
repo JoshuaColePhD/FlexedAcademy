@@ -11,12 +11,19 @@ The promises:
   1. With no Stripe keys the gate is INERT. Everyone builds. A gate with no
      door in it is not a paywall, it is an outage.
   2. Existing accounts are grandfathered as 'comped' by migration 15, and
-     'comped' entitles regardless of how many plans they have.
-  3. A new teacher gets `free_plan_allowance` weeks, then stops.
-  4. 'past_due' still entitles — a failed card retry must not lock someone out
-     mid-week while Stripe is still trying.
-  5. 'canceled' / 'incomplete_expired' do not entitle.
-  6. The allowance counts PLANS, not chats or messages.
+     'comped' gets the subscriber cap — high enough to be a safety net, not
+     a real limit — regardless of how many plans it took to get there.
+  3. A new teacher gets `free_weekly_token_cap` tokens, in a trailing 7-day
+     window, then stops — until usage from more than a week ago rolls off.
+  4. 'past_due' still entitles at the SUBSCRIBER cap — a failed card retry
+     must not lock someone out mid-week while Stripe is still trying.
+  5. 'canceled' / 'incomplete_expired' do not entitle — they're capped at the
+     free tier like anyone unsubscribed, not blocked outright.
+  6. The cap counts TOKENS spent (llm.py's own db.record_usage), not plans or
+     chats or messages — replaced "one free plan, ever" (migration 15,
+     db.count_plans) once a teacher revising the same week fifteen times for
+     free while another was locked out after two short ones made it obvious
+     plan count was never what was being protected.
 
 No database, no API: db is stubbed.
 
@@ -42,60 +49,83 @@ def check(label: str, got, want) -> None:
         FAILURES.append(label)
 
 
-def scenario(status, plans, *, keys: bool, allowance: int = 1):
+def scenario(status, tokens_used, *, keys: bool, free_cap: int = 1000, sub_cap: int = 1_000_000, plans: int = 0):
     db.get_user_by_id = lambda _uid: {"subscription_status": status}
+    # Still called (Entitlement.plans_used rides along for the account menu),
+    # just no longer what gates — see promise 6.
     db.count_plans = lambda _uid: plans
+    db.tokens_used_since = lambda _uid, _since: tokens_used
     settings.stripe_secret_key = "sk_test" if keys else ""
     settings.stripe_price_id = "price_test" if keys else ""
     settings.stripe_webhook_secret = "whsec_test" if keys else ""
-    settings.free_plan_allowance = allowance
+    settings.free_weekly_token_cap = free_cap
+    settings.subscriber_weekly_token_cap = sub_cap
     return E.entitlement("u")
 
 
 def main() -> int:
-    real = (db.get_user_by_id, db.count_plans)
+    real = (db.get_user_by_id, db.count_plans, db.tokens_used_since)
     real_settings = (
         settings.stripe_secret_key,
         settings.stripe_price_id,
         settings.stripe_webhook_secret,
-        settings.free_plan_allowance,
+        settings.free_weekly_token_cap,
+        settings.subscriber_weekly_token_cap,
     )
     try:
         print("\n1. Billing unconfigured — the gate is inert")
-        check("no keys, 99 plans, no status", scenario(None, 99, keys=False).may_generate, True)
-        check("no keys reports disabled", scenario(None, 99, keys=False).billing_enabled, False)
+        check("no keys, huge usage, no status", scenario(None, 999_999, keys=False).may_generate, True)
+        check("no keys reports disabled", scenario(None, 999_999, keys=False).billing_enabled, False)
 
-        print("\n2. Grandfathered accounts (migration 15 sets 'comped')")
-        check("comped, 7 plans", scenario("comped", 7, keys=True).may_generate, True)
+        print("\n2. Grandfathered accounts (migration 15 sets 'comped') get the subscriber cap")
+        check(
+            "comped, over the free cap but under the subscriber cap",
+            scenario("comped", 5_000, keys=True, free_cap=1000, sub_cap=1_000_000).may_generate,
+            True,
+        )
+        check(
+            "same usage, NOT comped — the free cap alone blocks it",
+            scenario(None, 5_000, keys=True, free_cap=1000, sub_cap=1_000_000).may_generate,
+            False,
+        )
 
-        print("\n3. The free allowance")
-        check("new teacher, 0 plans", scenario(None, 0, keys=True).may_generate, True)
-        check("new teacher, 1 plan", scenario(None, 1, keys=True).may_generate, False)
-        check("free_remaining at 0 plans", scenario(None, 0, keys=True).free_remaining, 1)
-        check("free_remaining at 1 plan", scenario(None, 1, keys=True).free_remaining, 0)
-        check("allowance of 3, 2 plans", scenario(None, 2, keys=True, allowance=3).may_generate, True)
-        check("allowance of 3, 3 plans", scenario(None, 3, keys=True, allowance=3).may_generate, False)
+        print("\n3. The free cap — a trailing-week token budget, not a plan count")
+        check("new teacher, 0 tokens", scenario(None, 0, keys=True, free_cap=1000).may_generate, True)
+        check("new teacher, 1 token under the cap", scenario(None, 999, keys=True, free_cap=1000).may_generate, True)
+        check("new teacher, AT the cap", scenario(None, 1000, keys=True, free_cap=1000).may_generate, False)
+        check("tokens_remaining under the cap", scenario(None, 400, keys=True, free_cap=1000).tokens_remaining, 600)
+        check("tokens_remaining never negative past the cap", scenario(None, 1500, keys=True, free_cap=1000).tokens_remaining, 0)
 
-        print("\n4. Statuses that entitle")
+        print("\n4. Statuses that entitle — at the SUBSCRIBER cap")
         for status in ("active", "trialing", "past_due", "comped"):
-            check(f"{status}, 50 plans", scenario(status, 50, keys=True).may_generate, True)
+            check(
+                f"{status}, over the free cap, under the subscriber cap",
+                scenario(status, 1000, keys=True, free_cap=1000, sub_cap=1_000_000).may_generate,
+                True,
+            )
 
-        print("\n5. Statuses that do not")
+        print("\n5. Statuses that do not — capped at the free tier like anyone unsubscribed")
         for status in ("canceled", "incomplete_expired", "unpaid", None, ""):
-            check(f"{status!r}, 50 plans", scenario(status, 50, keys=True).may_generate, False)
+            check(
+                f"{status!r}, at the free cap",
+                scenario(status, 1000, keys=True, free_cap=1000, sub_cap=1_000_000).may_generate,
+                False,
+            )
 
         print("\n6. A missing user row is not an accidental free pass")
         db.get_user_by_id = lambda _uid: None
         db.count_plans = lambda _uid: 5
-        settings.free_plan_allowance = 1
-        check("no user row, 5 plans", E.entitlement("ghost").may_generate, False)
+        db.tokens_used_since = lambda _uid, _since: 5000
+        settings.free_weekly_token_cap = 1000
+        check("no user row, over the free cap", E.entitlement("ghost").may_generate, False)
     finally:
-        db.get_user_by_id, db.count_plans = real
+        db.get_user_by_id, db.count_plans, db.tokens_used_since = real
         (
             settings.stripe_secret_key,
             settings.stripe_price_id,
             settings.stripe_webhook_secret,
-            settings.free_plan_allowance,
+            settings.free_weekly_token_cap,
+            settings.subscriber_weekly_token_cap,
         ) = real_settings
 
     print()
