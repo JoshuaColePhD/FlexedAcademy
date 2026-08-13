@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CalendarDays } from 'lucide-react'
+import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -14,10 +14,11 @@ import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQu
 import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
 import { FIELD_LABELS } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
-import { shortRange } from '../lib/dates'
+import { qk } from '../lib/queryKeys'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
+import { WeekPicker } from '../components/WeekPicker'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
@@ -197,13 +198,53 @@ export function ChatPage() {
     () => (calendar?.weeks || []).find((w) => w.week === conversationWeek) || null,
     [calendar, conversationWeek]
   )
-  /* "Week 03 · Sep 8–12" — padded and dated the same way every other surface
-     writes a week (ClassPage's board, the Greeting). */
-  const weekChipLabel = useMemo(() => {
-    if (!displayWeek) return ''
-    const range = shortRange(displayWeek.start, displayWeek.end)
-    return `Week ${String(displayWeek.week).padStart(2, '0')}${range ? ` \u00b7 ${range}` : ''}`
-  }, [displayWeek])
+  /* Every week worth offering: never a week the school is shut, never one
+     already behind us — EXCEPT the one this chat is already pinned to, which
+     stays listed however old it is. Dropping it would leave the select with
+     no matching option and render blank, which is the one thing this control
+     exists to prevent. */
+  const weekOptions = useMemo(() => {
+    const weeks = calendar?.weeks || []
+    return weeks.filter((w) => !w.no_school && (!w.is_past || w.week === conversationWeek))
+  }, [calendar, conversationWeek])
+
+  /* Change which week this conversation is planning. Three cases, because
+     "the week" means something different depending on how far along the chat
+     is:
+
+     1. Nothing created yet — the value is just what createChat will pin, so
+        setSelectedWeek is the whole job.
+     2. A chat exists but hasn't produced a plan — re-pin it for real
+        (PATCH /chats/{id}/week). Written into the chats cache first so the
+        select moves under the teacher's finger rather than after a
+        round trip; invalidated on failure so a rejected write doesn't leave
+        a wrong week sitting on screen.
+     3. A plan already exists — its document, its download and the rail all
+        belong to that week, and quietly re-pointing the chat would put the
+        pin and the artifact into disagreement. A different week's plan is a
+        different conversation, so this opens one (the same ?week= route
+        ClassPage's week list uses). */
+  const changeWeek = useCallback(
+    (week) => {
+      if (!week || week === conversationWeek) return
+      if (!chatId) {
+        setSelectedWeek(week)
+        return
+      }
+      if (artifact?.planId) {
+        navigate(`/c/${classId}?week=${week}`)
+        return
+      }
+      qc.setQueryData(qk.chats(classId), (old) =>
+        (old || []).map((c) => (c.id === chatId ? { ...c, week_number: week } : c))
+      )
+      api.setChatWeek(chatId, week).catch((err) => {
+        qc.invalidateQueries({ queryKey: ['chats'] })
+        toast.apiError('Could not change the week', err)
+      })
+    },
+    [chatId, classId, conversationWeek, artifact?.planId, navigate, qc, toast]
+  )
 
   /* The nav rail tightens while the document is open — see lib/shellContext.js.
      Reported rather than reached for: AppShell owns its own width. */
@@ -1370,23 +1411,23 @@ export function ChatPage() {
           remount. Only the wrapper's className may change. */}
       <div className="shrink-0 border-t border-edge bg-paper px-gutter pb-5 pt-3">
         <div className="mx-auto w-full max-w-measure">
-          {/* Which week this conversation is building, stated where the
-              teacher is already looking while typing. A READOUT, not a
-              picker: the composer's old "Planning for" dropdown was removed
-              (commit eda8141) for making this dock feel busy, and the ask
-              here is only to know the week for certain — not to choose it.
-              To change it, start a plan from the Library's week list, which
-              is still the one place that decides.
+          {/* Which week this conversation is planning, and the one place to
+              change it. Was a read-only readout for exactly one commit — it
+              answered "which week" but left changing it to a trip out to My
+              classes and a scroll through 36 rows, which is friction on the
+              single most common thing a teacher does here.
 
-              Sits above the Composer rather than in it: the Composer owns a
-              MediaRecorder and a ResizeObserver that don't survive a
-              remount, so nothing gets added inside its subtree. */}
-          {displayWeek ? (
-            <p className="chat-week" aria-label={`Planning ${weekChipLabel}`}>
-              <CalendarDays size={12} aria-hidden="true" />
-              {weekChipLabel}
-            </p>
-          ) : null}
+              Sits above the Composer rather than inside it (where the
+              original lived, before eda8141 removed it for crowding that
+              dock): the Composer owns a MediaRecorder and a ResizeObserver
+              that don't survive a remount, so nothing is added to its
+              subtree. */}
+          <WeekPicker
+            options={weekOptions}
+            value={conversationWeek}
+            onChange={changeWeek}
+            disabled={busy}
+          />
           <Composer
             value={query}
             onChange={setQuery}

@@ -2603,6 +2603,34 @@
     flex-shrink: 0;
     opacity: 0.7;
   }
+  /* Borderless and transparent at rest so the row reads as a caption for the
+     composer below it, not a second control competing with it — the crowding
+     that got the original picker removed. The affordance shows up on hover
+     and focus, which is when it matters. */
+  .week-picker-select {
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    padding: 2px var(--sp-1);
+    font: inherit;
+    letter-spacing: inherit;
+    color: var(--ink);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    transition: background-color var(--t-fast) var(--ease);
+  }
+  .week-picker-select:hover:not(:disabled) {
+    background: var(--paper-sunken);
+  }
+  .week-picker-select:focus-visible {
+    outline: none;
+    background: var(--paper-raised);
+    box-shadow: var(--focus-ring);
+  }
+  .week-picker-select:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
   @container (max-width: 30rem) {
     /* Download drops to its own line rather than crushing the file name to
        "W…". It is the one control on this card that must not be dropped. */

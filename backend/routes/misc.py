@@ -263,6 +263,23 @@ def rename_chat(chat_id: str, body: ChatBody, user_id: str = Depends(get_current
     return chat
 
 
+class ChatWeekBody(BaseModel):
+    week_number: int = Field(ge=1, le=52)
+
+
+@router.patch("/chats/{chat_id}/week")
+def set_chat_week(chat_id: str, body: ChatWeekBody, user_id: str = Depends(get_current_user)):
+    """Re-point an existing conversation at a different week — the composer's
+    own week dropdown, once a chat exists to re-point.
+
+    Its own route rather than a field on the rename PATCH above: that one
+    requires a title, which a week change has no business inventing."""
+    chat = db.set_chat_week(user_id, chat_id, body.week_number)
+    if not chat:
+        raise AppError("chat_not_found", "No such chat.", status=404)
+    return chat
+
+
 @router.delete("/chats/{chat_id}", status_code=204)
 def delete_chat(chat_id: str, user_id: str = Depends(get_current_user)):
     if not db.delete_chat(user_id, chat_id):

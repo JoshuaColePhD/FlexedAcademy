@@ -162,6 +162,11 @@ export const api = {
     }),
   getChat: (id) => request(`/api/chats/${id}`),
   renameChat: (id, title) => request(`/api/chats/${id}`, { method: 'PATCH', body: { title } }),
+  /** Re-point an existing conversation at a different week — the composer's
+   *  week dropdown. Separate from renameChat because that route requires a
+   *  title this has no business inventing. */
+  setChatWeek: (id, weekNumber) =>
+    request(`/api/chats/${id}/week`, { method: 'PATCH', body: { week_number: weekNumber } }),
   suggestChatTitle: (message) => request('/api/chats/title', { method: 'POST', body: { message } }),
   deleteChat: (id) => request(`/api/chats/${id}`, { method: 'DELETE' }),
   addMessage: (chatId, msg) =>

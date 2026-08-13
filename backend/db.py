@@ -1510,6 +1510,23 @@ def rename_chat(user_id: str, chat_id: str, title: str) -> dict | None:
     return get_chat(user_id, chat_id)
 
 
+def set_chat_week(user_id: str, chat_id: str, week_number: int) -> dict | None:
+    """Re-pin which week an existing conversation is about.
+
+    Its own function rather than a field on rename_chat's UPDATE: the two are
+    unrelated edits arriving from unrelated controls, and PATCH /chats/{id}
+    requires a title it would have no business sending just to move a week.
+
+    Deliberately does NOT touch updated_at — that column orders the sidebar,
+    and correcting which week a chat was always about is not the chat being
+    used, so it shouldn't jump the list."""
+    _write(
+        "UPDATE chats SET week_number = ? WHERE id = ? AND user_id = ?",
+        (week_number, chat_id, user_id),
+    )
+    return get_chat(user_id, chat_id)
+
+
 def delete_chat(user_id: str, chat_id: str) -> bool:
     return _write("DELETE FROM chats WHERE id = ? AND user_id = ?", (chat_id, user_id)).rowcount > 0
 

@@ -470,9 +470,28 @@ export function installMockApi() {
     if (path === '/api/chats' && method === 'POST') {
       await wait(latency.createChat)
       const id = uid('chat')
-      state.chats.unshift({ id, title: body.title, class_id: body.class_id ?? null, updated_at: 'now' })
+      // week_number is pinned at creation (backend db.py migration 24) and
+      // read back off this list by ChatPage's conversationWeek — so the fake
+      // has to persist it, not just echo it, or the composer's week dropdown
+      // resets itself the moment the chat is created.
+      state.chats.unshift({
+        id,
+        title: body.title,
+        class_id: body.class_id ?? null,
+        week_number: body.week_number ?? null,
+        updated_at: 'now',
+      })
       state.messages[id] = []
-      return json({ id, title: body.title })
+      return json({ id, title: body.title, week_number: body.week_number ?? null })
+    }
+
+    // PATCH /api/chats/:id/week — re-point an existing conversation.
+    const weekMatch = path.match(/^\/api\/chats\/([^/]+)\/week$/)
+    if (weekMatch && method === 'PATCH') {
+      const chat = state.chats.find((c) => c.id === weekMatch[1])
+      if (!chat) return new Response('{}', { status: 404 })
+      chat.week_number = body.week_number
+      return json({ ...chat })
     }
 
     const chatMatch = path.match(/^\/api\/chats\/([^/]+)$/)
