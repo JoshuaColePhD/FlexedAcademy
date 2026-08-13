@@ -132,6 +132,13 @@ export function ChatPage() {
      to, and only that transition forces it — closing it again afterward is
      never overridden by a render where nothing changed. */
   const [railOpen, setRailOpen] = useState(false)
+  /* Whether the auto-open effect has already fired for THIS chat. `busy`
+     goes true/false on every single turn (a revision, a follow-up message,
+     a quiz build) — not just the first one — so without this guard the
+     effect's deps changed on every turn and force-reopened the drawer even
+     after the teacher had deliberately closed it. Reset alongside
+     `railOpen` itself wherever that resets to false. */
+  const railAutoOpenedRef = useRef(false)
   const [revising, setRevising] = useState(false)
   // A quiz build is its own busy state, not folded into `revising` — the
   // two can genuinely overlap (asking for a quiz while a revision request
@@ -319,6 +326,7 @@ export function ChatPage() {
       setArtifact(null)
       setExpanded(false)
       setRailOpen(false)
+      railAutoOpenedRef.current = false
       setSelectedWeek(null)
       localFor.current = null
       lastSpokenRef.current = null
@@ -342,6 +350,7 @@ export function ChatPage() {
     setOpenTweak(null)
     setExpanded(false)
     setRailOpen(false)
+    railAutoOpenedRef.current = false
 
     api
       .getChat(chatId)
@@ -1279,15 +1288,21 @@ export function ChatPage() {
   )
 
   /* Auto-opens the drawer the moment a build starts, a plan exists, or the
-     first decision lands; after that it is the teacher's to open or close,
-     and closing it once does not get silently overridden on the next render
-     (busy/hasArtifact/decisions.length going back down is not in this
-     effect's deps). The decisions.length > 0 case is what makes "the plan
-     so far" (see ArtifactRail) actually discoverable in text chat — without
-     it the rail stayed closed through the entire brainstorming phase and a
-     teacher had no reason to ever open it before a plan existed. */
+     first decision lands; after that it is the teacher's to open or close.
+     Fires at most ONCE per chat (railAutoOpenedRef) — `busy` flips true and
+     back false on every later turn too (a revision, a follow-up, a quiz),
+     and without the guard each of those turns re-ran this effect and
+     force-reopened a drawer the teacher had just closed. The decisions.length
+     > 0 case is what makes "the plan so far" (see ArtifactRail) actually
+     discoverable in text chat — without it the rail stayed closed through
+     the entire brainstorming phase and a teacher had no reason to ever open
+     it before a plan existed. */
   useEffect(() => {
-    if (busy || hasArtifact || decisions.length > 0) setRailOpen(true)
+    if (railAutoOpenedRef.current) return
+    if (busy || hasArtifact || decisions.length > 0) {
+      setRailOpen(true)
+      railAutoOpenedRef.current = true
+    }
   }, [busy, hasArtifact, decisions.length])
 
   /** Opening the document from anywhere, optionally straight into a cell. */
