@@ -659,6 +659,12 @@ export function installMockApi() {
     if (path === '/api/chat_stream') {
       const last = [...(body?.messages || [])].reverse().find((m) => m.role === 'user')?.content || ''
       const wantsQuiz = /\bquiz\b/i.test(last)
+      // Mirrors backend/llm.py's real rule: generate_quiz only fires once the
+      // teacher's own message already names a type AND a count — otherwise
+      // ask_clarifying_questions asks the two things missing.
+      const quizTypeNamed = /\b(multiple.choice|true.false|short.answer|matching|a mix)\b/i.test(last)
+      const quizCountNamed = /\b\d+\b/.test(last)
+      const quizNeedsClarify = wantsQuiz && !(quizTypeNamed && quizCountNamed)
       const wantsPlan = /\b(plan|week|build|unit|lesson)\b/i.test(last)
       // Vague, on purpose: enough words to want a plan at all, but nothing
       // naming what the week is actually about — no text/topic, no skill, no
@@ -667,7 +673,15 @@ export function installMockApi() {
       // to drive the ask_clarifying_questions branch in the mock harness.
       const isVague = wantsPlan && last.trim().split(/\s+/).length <= 8 && !/\d|ch\.|chapter/i.test(last)
       return sse(
-        wantsQuiz
+        quizNeedsClarify
+          ? [
+              [{ tool_call: 'ask_clarifying_questions', questions: [
+                { id: 'quiz_type', text: 'What kind of questions?', options: ['Multiple choice', 'True or false', 'Short answer', 'Matching', 'A mix'] },
+                { id: 'quiz_count', text: 'About how many?', options: ['5', '10', '15', '20'] },
+              ] }, 300],
+              [{ done: true }, 60],
+            ]
+          : wantsQuiz
           ? [
               [{ chunk: 'Sure — building a multiple choice quiz over this week now.' }, 120],
               [{ tool_call: 'generate_quiz', question_types: ['multiple_choice', 'true_false'], num_questions: 6 }, 120],

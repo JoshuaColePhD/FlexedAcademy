@@ -713,9 +713,11 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                 # sense once a plan actually exists for it to test.
                 "description": (
                     "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
-                    "downloadable file — never volunteer it alongside a lesson plan. Requires a plan to "
-                    "already exist for this conversation; if none does yet, tell the teacher to build the "
-                    "week first instead of calling this. The quiz is built over that plan's own content "
+                    "downloadable file, AND their request already says which question type(s) they want and "
+                    "roughly how many — never volunteer it alongside a lesson plan, and never guess type or "
+                    "count silently: call ask_clarifying_questions instead when either is missing. Requires a "
+                    "plan to already exist for this conversation; if none does yet, tell the teacher to build "
+                    "the week first instead of calling this. The quiz is built over that plan's own content "
                     "and standards, not anything new."
                 ),
                 "parameters": {
@@ -747,23 +749,24 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
             "type": "function",
             "function": {
                 "name": "ask_clarifying_questions",
-                # Call this INSTEAD of generate_lesson_plan, not before it —
-                # the two are alternatives, not a required first step. A
-                # request that already names a text/topic and a rough shape
-                # ("plan a week on Gatsby ch 3-4, rhetorical analysis") has
+                # Call this INSTEAD of generate_lesson_plan OR generate_quiz,
+                # not before either — these are alternatives, not a required
+                # first step. A request that already names a text/topic and a
+                # rough shape ("plan a week on Gatsby ch 3-4, rhetorical
+                # analysis"), or a quiz request that already names its
+                # type(s) and count ("10 multiple choice questions"), has
                 # enough to build from immediately. Not limited to the first
-                # message of a request anymore — any turn where the teacher's
-                # last message is too vague to act on (a brand-new request, a
-                # follow-up brainstorm, or "can you revise this" with no
-                # specifics on what to change) is fair game, tapping through
-                # options beats typing a paragraph either way.
+                # message of a request — any turn where the teacher's last
+                # message is too vague to act on is fair game, tapping
+                # through options beats typing a paragraph either way.
                 "description": (
-                    "Call this INSTEAD of generate_lesson_plan when the teacher's most recent message is too "
-                    "vague to build or revise a specific week from — whether that's the start of a new "
-                    "request, a follow-up in an ongoing brainstorm, or a revision ask with no specifics "
-                    "('can you change Thursday?' with no hint of how). Ask 2-4 short, concrete questions, "
-                    "each with a few clickable options, so the teacher can tap through rather than type a "
-                    "paragraph. Don't ask again about something they already answered or already specified."
+                    "Call this INSTEAD of generate_lesson_plan or generate_quiz when the teacher's most recent "
+                    "message is too vague to act on directly — a plan request with no text/topic named, a "
+                    "revision ask with no specifics ('can you change Thursday?' with no hint of how), or a "
+                    "quiz request that doesn't already say which question type(s) and roughly how many. Ask "
+                    "2-4 short, concrete questions, each with a few clickable options, so the teacher can tap "
+                    "through rather than type a paragraph. Don't ask again about something they already "
+                    "answered or already specified."
                 ),
                 "parameters": {
                     "type": "object",
