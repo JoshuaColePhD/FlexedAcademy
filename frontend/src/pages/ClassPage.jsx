@@ -748,11 +748,18 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
             classes should do — let you pick one — wasn't on the row at all.
             Renaming moved into the pencil's panel below, alongside the
             framework and grade, which is where "edit this class" already
-            lived. */}
+            lived.
+
+            Points at this same settings route rather than the class root, so
+            selecting a class STAYS here. The :classId in the URL is what
+            makes a class active (see the check above), so /c/<id>/class
+            switches and keeps the page — sending them to /c/<id> would have
+            made picking a class in a list also mean leaving the screen they
+            were working on. */}
         <Link
-          to={`/c/${cls.id}`}
+          to={`/c/${cls.id}/class`}
           aria-current={isActive ? 'true' : undefined}
-          title={isActive ? `${cls.name} — already open` : `Switch to ${cls.name}`}
+          title={isActive ? `${cls.name} — already selected` : `Switch to ${cls.name}`}
           className="min-w-0 flex-1 truncate rounded-md px-1.5 py-1 text-sm font-medium text-ink no-underline transition-colors hover:bg-paper-sunken"
         >
           {cls.name}
