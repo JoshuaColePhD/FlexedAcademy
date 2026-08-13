@@ -1802,6 +1802,35 @@
     flex: 1;
     min-width: 0;
     overflow: hidden;
+    /* Was a bare conditional mount — content appeared already full-width the
+       instant the drawer opened, fighting the outer width transition for the
+       same pixels instead of easing in behind it. Same slide-and-fade shape
+       as .app-rail.rail-drawer's own entrance, just horizontal in the other
+       direction (this drawer grows from the right edge inward). */
+    animation: artifact-drawer-body-in var(--t-base) var(--ease-out) both;
+  }
+  .artifact-drawer-body.is-closing {
+    animation: artifact-drawer-body-out var(--t-fast) var(--ease) both;
+  }
+  @keyframes artifact-drawer-body-in {
+    from {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes artifact-drawer-body-out {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateX(10px);
+    }
   }
 
   /* ══ THE ARTIFACT RAIL ════════════════════════════════════════════════════

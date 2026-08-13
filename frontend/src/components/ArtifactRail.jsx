@@ -9,6 +9,7 @@ import { orderedDays, unitSuffix } from '../lib/planShape'
 import { classColor } from '../lib/classColor'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { useToast } from '../lib/toastContext'
+import { useExitTransition } from '../hooks/useExitTransition'
 import { DecisionStack } from './DecisionStack'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
@@ -486,8 +487,18 @@ export function ArtifactRail({
  * Auto-opens the moment a build starts or a plan exists (ChatPage owns that
  * effect); afterward it is the teacher's to open or close, and closing it
  * once does not get silently overridden on the next render.
+ *
+ * The body used to be a bare conditional {open ? <div>…</div> : null} —
+ * appearing already full-width the instant `open` flipped, and vanishing
+ * with no exit animation at all, unlike every other drawer in this app
+ * (the phone nav rail, the document overlay, every dialog/toast) which
+ * plays a mirrored close via useExitTransition. `mounted` keeps the node
+ * around for one more tick so the CSS exit animation below has something
+ * to play on; `open` itself still drives the outer width immediately, so
+ * the handle springs open at once and the content eases in behind it.
  */
 export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps }) {
+  const { mounted, closing } = useExitTransition(open, 130)
   return (
     <div className={`artifact-drawer${open ? ' is-open' : ''}`}>
       <button
@@ -510,8 +521,8 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
             "does this open." */}
         {!open ? <ChevronLeft className="artifact-drawer-arrow" aria-hidden="true" /> : null}
       </button>
-      {open ? (
-        <div className="artifact-drawer-body">
+      {mounted ? (
+        <div className={`artifact-drawer-body${closing ? ' is-closing' : ''}`}>
           <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
         </div>
       ) : null}
