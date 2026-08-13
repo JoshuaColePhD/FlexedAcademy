@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from .. import db
 from ..deps import get_current_user
@@ -56,13 +56,6 @@ def _auto_name(subject: str, grade: str) -> str:
 
 
 
-# Whitelisted school ids, one entry today — see db.py migration 22's own
-# comment for why this is a plain string column, not a foreign key. Every
-# school that actually has a docx builder of its own (backend/docx_build.py)
-# gets an entry here; the settings page dropdown reads straight off this.
-SCHOOLS = {"florence-high-school": "Florence High School"}
-
-
 class MeBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     # Global custom instructions, like Claude's own — applied to every
@@ -70,25 +63,27 @@ class MeBody(BaseModel):
     custom_instructions: str | None = Field(default=None, max_length=2000)
     school: str | None = Field(default=None)
 
-    @field_validator("school")
-    @classmethod
-    def _known_school(cls, v: str | None) -> str | None:
-        if v is not None and v not in SCHOOLS:
-            raise ValueError("Unknown school.")
-        return v
-
 
 @router.get("/schools")
 def list_schools_route() -> list[dict]:
     """No auth needed — same reasoning as GET /api/frameworks (misc.py):
     this is a fixed lookup table for a dropdown, not account data."""
-    return [{"id": k, "name": v} for k, v in SCHOOLS.items()]
+    return db.list_schools()
 
 
 @router.patch("/me")
 def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> dict:
     """Set the teacher's name/custom instructions/school — whichever the
-    caller sent, independently (db.update_user's own whitelist)."""
+    caller sent, independently (db.update_user's own whitelist).
+
+    `school` is checked against the live `schools` table here, in the
+    handler body, rather than in a pydantic validator — the valid set is a
+    database table now (db.py migration 23), not a module constant a
+    validator can close over. Same reasoning as curriculum.py's upload route
+    checking class_id inline rather than via a validator.
+    """
+    if body.school is not None and not db.get_school(body.school):
+        raise AppError("unknown_school", "Unknown school.", status=400)
     fields = body.model_dump(exclude_none=True)
     user = db.update_user(user_id, **fields) if fields else db.get_user_by_id(user_id)
     if not user:

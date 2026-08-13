@@ -1,6 +1,7 @@
 /* Date formatting only. Nothing here computes WHICH dates a week contains —
- * that comes from backend/context/school_calendar.md via /api/weeks, and the
- * browser deriving it is the bug that put a lesson plan inside Fall Break. */
+ * that comes from the teacher's own school's calendar file, under
+ * backend/context/calendars/, via /api/weeks — and the browser deriving it
+ * is the bug that put a lesson plan inside Fall Break. */
 
 const MONTH_DAY = { month: 'short', day: 'numeric' }
 

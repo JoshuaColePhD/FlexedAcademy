@@ -125,6 +125,54 @@ def retrieve_map_context(map_id: str, query: str, top_k: int = 4) -> str:
     return "\n\n".join(docs)
 
 
+def unit_for_calendar_week(user_id: str, subject: str, week: dict) -> dict | None:
+    """Cross-references a resolved SCHOOL CALENDAR week (a schoolcal.school_weeks()
+    row — needs its `week`/`start`/`end`) against the teacher's own uploaded
+    pacing guide's parsed schedule, so a chat about to build that week can be
+    told which unit THEIR OWN document says it covers.
+
+    Deliberately separate from units.unit_for_week(): that one is a hardcoded
+    9-unit map for AP Lang only, and just echoes back "Week N" for every other
+    subject — fine for labeling a plan that already exists, useless for
+    telling a model what's coming up in a subject with no hardcoded map. This
+    works for whatever the teacher actually uploaded, for any subject.
+
+    Tries two matches, in that order, because parse_curriculum_progress emits
+    either shape depending on how the source document reads:
+      1. By week NUMBER — parsing each row's free-text week_label with
+         units.week_number(), the same parse db.curriculum_status() already
+         trusts to match a plan to a progress row.
+      2. By DATE OVERLAP against target_start/target_end, for a document
+         organized by unit rather than by week, whose week_label is the
+         unit's own name with no number in it for (1) to find at all.
+
+    None if there's no active map, no parsed progress, or nothing in it names
+    this week with a non-empty unit — never a guess at what the unit might be.
+    """
+    from . import db, units
+
+    rows = db.list_curriculum_progress(user_id, subject)
+
+    def _unit(row: dict) -> dict | None:
+        unit = (row.get("unit") or "").strip()
+        return {"unit": unit, "week_label": row.get("week_label") or ""} if unit else None
+
+    for row in rows:
+        if units.week_number(row.get("week_label") or "") == week["week"]:
+            hit = _unit(row)
+            if hit:
+                return hit
+
+    for row in rows:
+        start, end = row.get("target_start"), row.get("target_end")
+        if start and end and start <= week["end"] and end >= week["start"]:
+            hit = _unit(row)
+            if hit:
+                return hit
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Structured week-by-week parse, for the progress table.
 # ---------------------------------------------------------------------------

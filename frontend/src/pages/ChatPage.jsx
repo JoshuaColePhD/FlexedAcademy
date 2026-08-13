@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, CalendarDays } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -14,6 +14,7 @@ import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQu
 import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
 import { FIELD_LABELS } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
+import { shortRange } from '../lib/dates'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -112,12 +113,13 @@ export function ChatPage() {
      next-unplanned week (autoWeek, below) — until a ?week= param overrides
      it, which is how the Library hands a specific week over.
 
-     Whichever it resolves to is named in the Greeting (see targetWeek): the
+     Whichever it resolves to is pinned onto the new chat and named in the
+     Greeting (see conversationWeek): the
      teacher used to find out which week they got only after a 30-second
      generation, from the finished document's own header. That naming lived
      on the Greeting's starter suggestions until those were removed, which
-     silently took the answer with it — hence targetWeek putting it back as
-     plain copy rather than as a suggestion. */
+     silently took the answer with it — hence naming it in plain copy, and
+     in the composer's own chip, rather than as a suggestion. */
   const [selectedWeek, setSelectedWeek] = useState(null)
 
   /* Was `panelOpen`. The document is closed by default now — the rail and the
@@ -175,15 +177,33 @@ export function ChatPage() {
 
   const autoWeek = useMemo(() => firstUnplanned(calendar?.weeks), [calendar])
   const effectiveWeek = selectedWeek ?? autoWeek?.week ?? null
-  /* The whole week row behind effectiveWeek, not just its number — the
-     Greeting names it (dates included) so a new chat says which week it is
-     about to build instead of "the week." Resolved from effectiveWeek
-     rather than reusing autoWeek directly, so a ?week= override is named
-     just as accurately as the auto-picked one. */
-  const targetWeek = useMemo(
-    () => (calendar?.weeks || []).find((w) => w.week === effectiveWeek) || null,
-    [calendar, effectiveWeek]
+  /* Which week THIS CONVERSATION is about — the one stable answer, read back
+     off the chat rather than recomputed.
+
+     effectiveWeek above is derived from the calendar, so it drifts: build
+     week 3 and firstUnplanned starts answering "week 4" for the very chat
+     still discussing week 3. Once a chat exists, its own pinned week_number
+     (db.py migration 23) is the truth; effectiveWeek only decides what a
+     BRAND-NEW chat will pin.
+
+     Null for chats created before the column existed — deliberately not
+     falling back to effectiveWeek there, since that's exactly the drifted
+     value this exists to stop trusting. Those chats behave as they do
+     today: no week in the prompt, no chip. */
+  const conversationWeek = chatId ? (activeChat?.week_number ?? null) : effectiveWeek
+  /* The whole week row behind it, not just the number — the Greeting and the
+     composer's chip both want the dates too. */
+  const displayWeek = useMemo(
+    () => (calendar?.weeks || []).find((w) => w.week === conversationWeek) || null,
+    [calendar, conversationWeek]
   )
+  /* "Week 03 · Sep 8–12" — padded and dated the same way every other surface
+     writes a week (ClassPage's board, the Greeting). */
+  const weekChipLabel = useMemo(() => {
+    if (!displayWeek) return ''
+    const range = shortRange(displayWeek.start, displayWeek.end)
+    return `Week ${String(displayWeek.week).padStart(2, '0')}${range ? ` \u00b7 ${range}` : ''}`
+  }, [displayWeek])
 
   /* The nav rail tightens while the document is open — see lib/shellContext.js.
      Reported rather than reached for: AppShell owns its own width. */
@@ -633,7 +653,14 @@ export function ChatPage() {
       let activeChatId = chatId
       if (!activeChatId) {
         try {
-          const created = await api.createChat((typed || attachments[0]?.filename || 'New plan').slice(0, 80), classId)
+          // effectiveWeek is pinned onto the chat here, at creation, and is
+          // what every later turn reads back (conversationWeek) instead of
+          // recomputing — see db.py migration 23.
+          const created = await api.createChat(
+            (typed || attachments[0]?.filename || 'New plan').slice(0, 80),
+            classId,
+            effectiveWeek
+          )
           activeChatId = created.id
           localFor.current = created.id
           qc.invalidateQueries({ queryKey: ['chats'] })
@@ -723,7 +750,14 @@ export function ChatPage() {
           { role: 'user', content },
         ]
         setPreparing(false)
-        const firstResult = await chatStream.start(firstPayload, { chatId: activeChatId, voice: voiceOpen })
+        // The same value just pinned onto the chat by createChat above, so
+        // this first turn and every later one (see the second
+        // chatStream.start below) name the identical week.
+        const firstResult = await chatStream.start(firstPayload, {
+          chatId: activeChatId,
+          voice: voiceOpen,
+          weekNumber: effectiveWeek,
+        })
 
         // Asked instead of building — onDone (above) already rendered the
         // question cards as their own message. Nothing left to do here
@@ -772,7 +806,20 @@ export function ChatPage() {
       // synchronously, so busy stays continuously true across this call even
       // though we're about to `await` its whole run rather than fire-and-forget.
       setPreparing(false)
-      const chatResult = await chatStream.start(payloadMessages, { chatId: activeChatId, voice: voiceOpen })
+      /* conversationWeek, not effectiveWeek — and no longer omitted. This
+         used to send no week at all, because effectiveWeek had drifted to
+         the class's next unplanned week by now and would have named the
+         wrong one. The cost was that generate.py's "THE TEACHER IS
+         CURRENTLY WORKING ON …" block, and the pacing-guide unit lookup
+         attached to it, reached the model on a chat's first turn and never
+         again — so the model spent the rest of every conversation (typed or
+         spoken) with no idea which week it was on. The chat's pinned week
+         doesn't drift, so it's safe to keep sending. */
+      const chatResult = await chatStream.start(payloadMessages, {
+        chatId: activeChatId,
+        voice: voiceOpen,
+        weekNumber: conversationWeek,
+      })
 
       if (!chatResult || !chatResult.toolCalled) {
         // AI decided to just converse, no revision needed.
@@ -830,7 +877,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, voiceOpen, voice]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice]
   )
 
   /* Per-cell revise, from clicking a cell in the document.
@@ -1210,7 +1257,7 @@ export function ChatPage() {
       ) : null}
 
       {isEmpty ? (
-        <Greeting className={activeClass?.name} onOpenVoice={openVoice} week={targetWeek} />
+        <Greeting className={activeClass?.name} onOpenVoice={openVoice} week={displayWeek} />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className="chat-column mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
@@ -1323,6 +1370,23 @@ export function ChatPage() {
           remount. Only the wrapper's className may change. */}
       <div className="shrink-0 border-t border-edge bg-paper px-gutter pb-5 pt-3">
         <div className="mx-auto w-full max-w-measure">
+          {/* Which week this conversation is building, stated where the
+              teacher is already looking while typing. A READOUT, not a
+              picker: the composer's old "Planning for" dropdown was removed
+              (commit eda8141) for making this dock feel busy, and the ask
+              here is only to know the week for certain — not to choose it.
+              To change it, start a plan from the Library's week list, which
+              is still the one place that decides.
+
+              Sits above the Composer rather than in it: the Composer owns a
+              MediaRecorder and a ResizeObserver that don't survive a
+              remount, so nothing gets added inside its subtree. */}
+          {displayWeek ? (
+            <p className="chat-week" aria-label={`Planning ${weekChipLabel}`}>
+              <CalendarDays size={12} aria-hidden="true" />
+              {weekChipLabel}
+            </p>
+          ) : null}
           <Composer
             value={query}
             onChange={setQuery}

@@ -119,7 +119,7 @@ let seq = 0
 const uid = (p) => `${p}_${++seq}`
 
 const state = {
-  me: { name: 'Josh Cole', custom_instructions: '' },
+  me: { name: 'Josh Cole', custom_instructions: '', school: 'florence-high-school' },
   // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
@@ -154,6 +154,13 @@ const state = {
   classes: [
     { id: 'c1', name: 'AP Language & Composition', subject: 'AP_Lang', grade: '11', sort_order: 0 },
     { id: 'c2', name: 'AP Physics 1', subject: 'Science', grade: '11', sort_order: 1 },
+  ],
+  // Two, not one, so the onboarding/admin picker under test actually has a
+  // real choice to render — the real backend starts with one (Florence);
+  // a second here is what exercises the picker as a picker.
+  schools: [
+    { id: 'florence-high-school', name: 'Florence High School', created_at: '2026-01-01T00:00:00+00:00' },
+    { id: 'springfield-ms', name: 'Springfield Middle School', created_at: '2026-01-02T00:00:00+00:00' },
   ],
   accounts: [
     { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true,
@@ -275,6 +282,7 @@ export function installMockApi() {
         is_admin: true,
         has_password: true,
         custom_instructions: state.me.custom_instructions,
+        school: state.me.school,
         entitlement: state.entitlement,
       })
     if (path === '/api/auth/forgot-password') return json({ ok: true })
@@ -373,7 +381,45 @@ export function installMockApi() {
       await wait(120)
       if (body?.name != null) state.me.name = body.name
       if (body?.custom_instructions != null) state.me.custom_instructions = body.custom_instructions
-      return json({ id: 'u1', email: 'jc@x.org', name: state.me.name, custom_instructions: state.me.custom_instructions })
+      if (body?.school != null) state.me.school = body.school
+      return json({
+        id: 'u1',
+        email: 'jc@x.org',
+        name: state.me.name,
+        custom_instructions: state.me.custom_instructions,
+        school: state.me.school,
+      })
+    }
+
+    if (path === '/api/schools' && method === 'GET') return json(state.schools)
+
+    if (path === '/api/admin/schools' && method === 'POST') {
+      await wait(200)
+      if (state.schools.some((s) => s.id === body.id)) {
+        return new Response(
+          JSON.stringify({ error: { code: 'already_exists', message: `A school with id '${body.id}' already exists.` } }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      const created = { id: body.id, name: body.name, created_at: '2026-01-01T00:00:00+00:00' }
+      state.schools.push(created)
+      return json(created)
+    }
+
+    const schoolDelete = path.match(/^\/api\/admin\/schools\/([^/]+)$/)
+    if (schoolDelete && method === 'DELETE') {
+      await wait(150)
+      const id = decodeURIComponent(schoolDelete[1])
+      // Same shape as the real backend's block-while-in-use check, so the
+      // confirm-then-409 path under test in AdminPage is actually reachable.
+      if (state.me.school === id) {
+        return new Response(
+          JSON.stringify({ error: { code: 'school_in_use', message: '1 account(s) still use this school.' } }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      state.schools = state.schools.filter((s) => s.id !== id)
+      return new Response(null, { status: 204 })
     }
 
     /* Class documents, faithful to the real thing: the upload only becomes

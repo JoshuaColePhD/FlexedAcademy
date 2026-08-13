@@ -40,6 +40,7 @@ export function WelcomePage() {
   const toast = useToast()
 
   const [name, setName] = useState(user?.name || '')
+  const [school, setSchool] = useState(user?.school || '')
   const [subject, setSubject] = useState('')
   const [grade, setGrade] = useState('11')
   const [saving, setSaving] = useState(false)
@@ -49,16 +50,32 @@ export function WelcomePage() {
     queryFn: () => api.getFrameworks(),
     staleTime: Infinity,
   })
+  const { data: schools = [] } = useQuery({
+    queryKey: qk.schools,
+    queryFn: () => api.listSchools(),
+    staleTime: Infinity,
+  })
 
   const submit = async (e) => {
     e.preventDefault()
+    if (!school) {
+      toast.error('Pick a school first', 'It decides which calendar your plans are built against.')
+      return
+    }
     if (!subject) {
       toast.error('Pick a course first', 'It decides which standards your plans are grounded in.')
       return
     }
     setSaving(true)
     try {
-      if (name.trim() && name.trim() !== user?.name) await api.updateMe(name.trim())
+      // Combined into one call, not two: api.updateMe takes an object
+      // ({name, customInstructions, school}) and destructures it — passing
+      // a bare string here (the old code) sent `name: undefined`, so the
+      // name field has silently never saved.
+      const patch = {}
+      if (name.trim() && name.trim() !== user?.name) patch.name = name.trim()
+      if (school !== user?.school) patch.school = school
+      if (Object.keys(patch).length) await api.updateMe(patch)
       const created = await api.createClass({ subject, grade })
       await Promise.all([
         qc.invalidateQueries({ queryKey: qk.classes }),
@@ -85,7 +102,7 @@ export function WelcomePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-display text-ink">Let’s set up your year</h1>
           <p className="mt-1.5 text-sm text-ink-muted">
-            Two things, then your calendar is ready. You can add more classes later.
+            A few things, then your calendar is ready. You can add more classes later.
           </p>
         </div>
 
@@ -102,6 +119,27 @@ export function WelcomePage() {
             autoComplete="name"
             className="mt-1 block w-full rounded-lg border border-edge bg-paper px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent"
           />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-ink">Which school is this for?</span>
+          <span className="text-xs text-ink-muted">
+            Sets your school calendar — which weeks are teaching weeks and which days are closed.
+          </span>
+          <select
+            aria-label="School"
+            id="welcome-school"
+            value={school}
+            onChange={(e) => setSchool(e.target.value)}
+            className="mt-1 min-h-touch rounded-lg border border-edge bg-paper px-3.5 py-2.5 text-sm text-ink outline-none focus:border-accent"
+          >
+            <option value="" disabled>
+              Choose a school
+            </option>
+            {schools.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
         </label>
 
         <div className="flex flex-col gap-1.5">

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import { api } from '../lib/api'
+import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
@@ -42,6 +43,124 @@ function StatusPill({ status }) {
     >
       {label}
     </span>
+  )
+}
+
+/* Curated schools — a calendar switch, not a CRUD showcase. Registering one
+   here never writes or parses a calendar file; it only points at one that
+   already exists on disk (backend/context/calendars/<id>.md), which is what
+   the copy below says outright. See db.py migration 23 / routes/admin.py's
+   create_school_route for why: this app deliberately has no self-serve
+   calendar upload, only a curated, hand-authored list. */
+function SchoolsAdmin() {
+  const toast = useToast()
+  const confirm = useConfirm()
+  const qc = useQueryClient()
+  const { data: schools = [], isLoading, isError } = useQuery({
+    queryKey: qk.schools,
+    queryFn: () => api.listSchools(),
+  })
+  const [newId, setNewId] = useState('')
+  const [newName, setNewName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [removingId, setRemovingId] = useState(null)
+
+  const addSchool = async (e) => {
+    e.preventDefault()
+    if (!newId.trim() || !newName.trim()) return
+    setSaving(true)
+    try {
+      await api.adminCreateSchool(newId.trim(), newName.trim())
+      await qc.invalidateQueries({ queryKey: qk.schools })
+      setNewId('')
+      setNewName('')
+      toast.success(`${newName.trim()} added`)
+    } catch (err) {
+      toast.apiError('Could not add that school', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeSchool = async (school) => {
+    const ok = await confirm({
+      title: `Remove ${school.name}?`,
+      body: 'Fails safely if any account is still set to this school — reassign them first.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setRemovingId(school.id)
+    try {
+      await api.adminDeleteSchool(school.id)
+      await qc.invalidateQueries({ queryKey: qk.schools })
+      toast.success(`${school.name} removed`)
+    } catch (err) {
+      toast.apiError('Could not remove that school', err)
+    } finally {
+      setRemovingId(null)
+    }
+  }
+
+  return (
+    <div className="neo-world neo-panel mt-8 rounded-xl p-4">
+      <h2 className="text-sm font-semibold text-ink">Schools</h2>
+      <p className="mt-1 text-2xs text-ink-muted">
+        Add <code>backend/context/calendars/&lt;id&gt;.md</code> and commit it before registering
+        here — this only points at a calendar file that already exists, it never writes or
+        parses one.
+      </p>
+
+      {isLoading ? (
+        <p className="mt-3 text-sm text-ink-muted">Loading…</p>
+      ) : isError ? (
+        <p className="mt-3 text-sm text-mark">Could not load schools.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-edge">
+          {schools.map((s) => (
+            <li key={s.id} className="flex items-center justify-between py-2 text-sm">
+              <span>
+                {s.name} <span className="text-ink-faint">({s.id})</span>
+              </span>
+              <button
+                type="button"
+                className="btn-icon"
+                disabled={removingId === s.id}
+                onClick={() => removeSchool(s)}
+                aria-label={`Remove ${s.name}`}
+                title="Remove this school"
+              >
+                <Trash2 size={13} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form onSubmit={addSchool} className="mt-3 flex flex-wrap items-center gap-2">
+        <input
+          value={newId}
+          onChange={(e) => setNewId(e.target.value)}
+          placeholder="id (e.g. springfield-ms)"
+          aria-label="School id"
+          className="rounded-lg border border-edge bg-paper px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+        />
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="Display name"
+          aria-label="School display name"
+          className="rounded-lg border border-edge bg-paper px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+        />
+        <button
+          type="submit"
+          disabled={saving || !newId.trim() || !newName.trim()}
+          className="btn inline-flex items-center gap-1.5 text-xs"
+        >
+          <Plus size={13} aria-hidden="true" /> Add
+        </button>
+      </form>
+    </div>
   )
 }
 
@@ -168,6 +287,8 @@ export function AdminPage() {
         the free-week limit entirely and never expires on its own; use "Revoke unlimited" to put an
         account back on the ordinary free week.
       </p>
+
+      <SchoolsAdmin />
     </div>
   )
 }

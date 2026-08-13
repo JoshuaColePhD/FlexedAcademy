@@ -114,8 +114,11 @@ class Settings(BaseSettings):
     builder_path: Path = DEFAULT_BUILDER
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
     school_profile_path: Path = Path(__file__).resolve().parent / "context" / "school_profile.md"
-    # The global school calendar for Florence City Schools, applying to all courses.
-    calendar_path: Path = Path(__file__).resolve().parent / "context" / "school_calendar.md"
+    # One calendar file per registered school (backend/db.py's `schools` table),
+    # named by the school's own id: <calendars_dir>/<id>.md. No separate path
+    # column on that table — the id doubling as the filename means there's one
+    # string to keep in sync, not two that can drift apart.
+    calendars_dir: Path = Path(__file__).resolve().parent / "context" / "calendars"
 
     retrieval_top_k: int = 5
     # MEASURED, NOT GUESSED — and specific to the embedding model.

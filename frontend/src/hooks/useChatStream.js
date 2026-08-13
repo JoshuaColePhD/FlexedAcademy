@@ -85,14 +85,20 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, mode, voice, controller }) => {
+  const attempt = useCallback(async (messages, { chatId, mode, voice, weekNumber, controller }) => {
     let accumulated = ''
     setText('')
 
     const res = await fetch(api.chatStreamUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, mode, chat_id: chatId ?? null, voice: Boolean(voice) }),
+      body: JSON.stringify({
+        messages,
+        mode,
+        chat_id: chatId ?? null,
+        voice: Boolean(voice),
+        week_number: weekNumber ?? null,
+      }),
       signal: controller.signal,
       credentials: 'include',
     })
@@ -209,7 +215,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
   }, [])
 
   const start = useCallback(
-    async (messages, { chatId, mode = 'standard', voice = false } = {}) => {
+    async (messages, { chatId, mode = 'standard', voice = false, weekNumber } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -221,7 +227,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
-            const result = await attempt(messages, { chatId, mode, voice, controller })
+            const result = await attempt(messages, { chatId, mode, voice, weekNumber, controller })
             onDoneRef.current?.(result)
             return result
           } catch (err) {

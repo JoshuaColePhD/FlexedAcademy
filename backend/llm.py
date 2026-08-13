@@ -147,6 +147,7 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
 def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
     """Non-streaming week generation. Returns parsed (not yet validated) JSON."""
     s = db.get_settings_row(user_id)
+    school_id = db.get_user_school(user_id)
     map_context = map_context_for(user_id, s["subject"], query)
     content = _cached_completion(
         user_id,
@@ -163,6 +164,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
                     grade=s["grade"],
                     map_context=map_context,
                     custom_instructions=custom_instructions_for(user_id),
+                    school_id=school_id,
                 ),
             },
             {"role": "user", "content": query},
@@ -174,6 +176,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult) -> dict:
 def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[str]:
     """Yield raw content deltas. The caller accumulates and validates."""
     s = db.get_settings_row(user_id)
+    school_id = db.get_user_school(user_id)
     map_context = map_context_for(user_id, s["subject"], query)
     stream = client().chat.completions.create(
         model=settings.openai_model,
@@ -188,6 +191,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult) -> Iterator[s
                     grade=s["grade"],
                     map_context=map_context,
                     custom_instructions=custom_instructions_for(user_id),
+                    school_id=school_id,
                 ),
             },
             {"role": "user", "content": query},

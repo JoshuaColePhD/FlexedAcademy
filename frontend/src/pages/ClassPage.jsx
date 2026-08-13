@@ -433,17 +433,18 @@ function CustomInstructions({ value, onSaved }) {
 }
 
 /* ── school ─────────────────────────────────────────────────────────────────
-   Which lesson plan template a generated week downloads as (see backend
-   docx_build.py). Blur/select-to-save like the name field above, not an
+   Which calendar a class's week board and generated plans are built against
+   (backend/schoolcal.py, backend/prompts.py's calendar_context) — and,
+   longer term, which district's lesson plan template a generated week
+   downloads as (backend docx_build.py), once a second school actually has
+   one of its own. Blur/select-to-save like the name field above, not an
    explicit Save button like custom instructions — there's nothing to lose
    to an accidental change here the way there is with half a retyped
-   paragraph, it's a single choice from a fixed list.
+   paragraph, it's a single choice from a list.
 
-   One entry today (backend/routes/classes.py's own SCHOOLS dict) — this is
-   groundwork for a second school's template landing somewhere real, not a
-   working multi-template switch yet. Still a real select reading from the
-   backend's own whitelist rather than a hardcoded label, so a second entry
-   just appears here the day one exists. */
+   Reads from the `schools` table (db.py migration 23) via GET /api/schools,
+   the same curated, admin-added list onboarding's own picker uses — not a
+   hardcoded dict, so a school added there just appears here too. */
 function SchoolPicker({ value, onSaved }) {
   const toast = useToast()
   const schoolsState = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
@@ -468,7 +469,7 @@ function SchoolPicker({ value, onSaved }) {
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">School</h2>
       <p className="mt-1 text-xs text-ink-muted">
-        Sets which district's lesson plan template a generated week downloads as.
+        Sets your school calendar — which weeks are teaching weeks and which days are closed.
       </p>
       <select
         value={value || ''}
@@ -1082,8 +1083,9 @@ function Diagnostics() {
  *
  *   - The collapsed "School calendar" list, which rendered src/data/fhs_events
  *     .json — a hardcoded THIRD index of the school year that could silently
- *     contradict school_calendar.md, the file both the prompt and the week board
- *     read. Deleted along with the JSON.
+ *     contradict the school's own calendar file (backend/context/calendars/),
+ *     the one both the prompt and the week board read. Deleted along with the
+ *     JSON.
  */
 export function ClassPage() {
   const toast = useToast()
@@ -1274,8 +1276,9 @@ export function ClassPage() {
 
           {/* The "School calendar" list that used to sit here rendered
               src/data/fhs_events.json — a hardcoded third copy of the school
-              year, alongside school_calendar.md (which the prompt quotes and the
-              week board reads). Three sources, two of which could drift. The
+              year, alongside the school's own calendar file under
+              backend/context/calendars/ (which the prompt quotes and the week
+              board reads). Three sources, two of which could drift. The
               year now lives on the calendar page, where it is the point. */}
 
           <AccountSafety />

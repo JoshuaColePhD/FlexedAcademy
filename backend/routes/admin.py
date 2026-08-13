@@ -10,11 +10,13 @@ a data change, not a redeploy.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import db
+from ..config import settings
 from ..deps import get_current_admin
 from ..entitlement import ENTITLED_STATUSES
+from ..errors import AppError
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -52,3 +54,45 @@ def entitled_statuses(_admin: str = Depends(get_current_admin)):
     """What the app currently treats as "may generate", for display only —
     the page can show it without hardcoding a second copy of the rule."""
     return {"statuses": sorted(ENTITLED_STATUSES)}
+
+
+class SchoolBody(BaseModel):
+    # A plain slug, not just "non-empty": this becomes a filesystem path
+    # component (calendars_dir / f"{id}.md"), so it's validated as one here
+    # rather than trusted as arbitrary text.
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
+    name: str = Field(min_length=1, max_length=120)
+
+
+@router.post("/schools", status_code=201)
+def create_school_route(body: SchoolBody, _admin: str = Depends(get_current_admin)):
+    """Registers a school that already has a calendar file — never the other
+    way around. This app deliberately has no upload/parse path for a school
+    calendar (see backend/schoolcal.py's own reasoning); an admin hand-
+    authors backend/context/calendars/<id>.md and commits it FIRST."""
+    if db.get_school(body.id):
+        raise AppError("already_exists", f"A school with id {body.id!r} already exists.", status=409)
+    calendar_file = settings.calendars_dir / f"{body.id}.md"
+    if not calendar_file.is_file():
+        raise AppError(
+            "calendar_missing",
+            f"No calendar file for {body.id!r}.",
+            status=400,
+            hint=f"Add backend/context/calendars/{body.id}.md and commit it, then try again.",
+        )
+    return db.create_school(body.id, body.name)
+
+
+@router.delete("/schools/{school_id}", status_code=204)
+def delete_school_route(school_id: str, _admin: str = Depends(get_current_admin)):
+    if not db.get_school(school_id):
+        raise AppError("not_found", "That school doesn't exist.", status=404)
+    in_use = db.count_users_with_school(school_id)
+    if in_use:
+        raise AppError(
+            "school_in_use",
+            f"{in_use} account(s) still use this school.",
+            status=409,
+            hint="Reassign those accounts to a different school first.",
+        )
+    db.delete_school(school_id)

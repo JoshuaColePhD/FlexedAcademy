@@ -25,6 +25,8 @@ SUITES: list[tuple[str, bool]] = [
     ("test_field_scoped_revise.py", False),
     ("test_entitlement.py", False),
     ("test_chat_pacing_guide.py", False),
+    ("test_chat_week_context.py", False),
+    ("test_schoolcal_per_school.py", False),
     ("test_course_identity_and_codes.py", True),
     ("test_cross_course_grounding.py", True),
     ("test_offdomain_refusal.py", True),

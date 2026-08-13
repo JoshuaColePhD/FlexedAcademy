@@ -149,8 +149,17 @@ export const api = {
    *  every chat, which is what this meant before. */
   listChats: ({ classId, signal } = {}) =>
     request(classId ? `/api/chats?class_id=${encodeURIComponent(classId)}` : '/api/chats', { signal }),
-  createChat: (title, classId) =>
-    request('/api/chats', { method: 'POST', body: { title, ...(classId ? { class_id: classId } : {}) } }),
+  /** `weekNumber` pins which week the conversation is about, once, at
+   *  creation — see backend db.py migration 24 for why it isn’t derived. */
+  createChat: (title, classId, weekNumber) =>
+    request('/api/chats', {
+      method: 'POST',
+      body: {
+        title,
+        ...(classId ? { class_id: classId } : {}),
+        ...(weekNumber ? { week_number: weekNumber } : {}),
+      },
+    }),
   getChat: (id) => request(`/api/chats/${id}`),
   renameChat: (id, title) => request(`/api/chats/${id}`, { method: 'PATCH', body: { title } }),
   suggestChatTitle: (message) => request('/api/chats/title', { method: 'POST', body: { message } }),
@@ -218,6 +227,10 @@ export const api = {
   adminListAccounts: ({ signal } = {}) => request('/api/admin/accounts', { signal }),
   adminSetComped: (accountId, comped) =>
     request(`/api/admin/accounts/${accountId}/comp`, { method: 'POST', body: { comped } }),
+  adminCreateSchool: (id, name) =>
+    request('/api/admin/schools', { method: 'POST', body: { id, name } }),
+  adminDeleteSchool: (id) =>
+    request(`/api/admin/schools/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 

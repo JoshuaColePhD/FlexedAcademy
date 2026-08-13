@@ -519,6 +519,58 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS school TEXT NOT NULL DEFAULT 'florence-high-school';
     """,
+    # ── 23: schools ──────────────────────────────────────────────────────────
+    #
+    # Turns migration 22's single hardcoded dict entry into a real, curated
+    # list: onboarding and the admin page both read this table now, not a
+    # module constant. `id` doubles as the calendar filename
+    # (backend/context/calendars/<id>.md) rather than carrying a separate
+    # path column — one string to keep in sync instead of two that can drift
+    # apart. Seeded with the school that already exists, so users.school's
+    # own default keeps resolving to a real row.
+    #
+    # RLS enabled with no policies, matching chunks/curriculum_progress/
+    # settings above: this is public reference data (every teacher reads the
+    # same rows), but Supabase's security advisor flags RLS-OFF on ANY public
+    # table at ERROR severity regardless of whether the data is tenant-scoped
+    # — RLS-on-with-no-policy is only ever an INFO note. The app's own DB
+    # role already bypasses RLS (see migration 12), so no policy is needed
+    # for the app itself to keep working.
+    """
+    CREATE TABLE IF NOT EXISTS schools (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    ALTER TABLE schools ENABLE ROW LEVEL SECURITY;
+
+    INSERT INTO schools (id, name, created_at)
+    VALUES ('florence-high-school', 'Florence High School', '2026-08-12T00:00:00+00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """,
+    # ── 24: a chat knows which week it is about ───────────────────────────────
+    #
+    # The week used to be DERIVED on every render, frontend-side, as
+    # firstUnplanned(calendar) — so it drifted. The moment a conversation
+    # actually built week 3, week 3 had a plan, and the same expression
+    # started answering "week 4" for the very chat still discussing week 3.
+    #
+    # That drift is why ChatPage sent week_number on a chat's FIRST message
+    # and deliberately never again: sending the drifted value would have
+    # named the wrong week. The cost was that generate.py's own
+    # "THE TEACHER IS CURRENTLY WORKING ON …" block (plus its pacing-guide
+    # unit lookup) only ever reached the model once per conversation, then
+    # went silent for every turn after.
+    #
+    # Pinned here instead: written once when the chat is created, never
+    # recomputed, so "which week is this conversation about" has one stable
+    # answer for the life of the chat — for the prompt and for the teacher.
+    # Nullable with no default on purpose: chats predating this column have
+    # no honest value to backfill (their calendar has moved on), and a wrong
+    # week in the prompt is worse than none.
+    """
+    ALTER TABLE chats ADD COLUMN IF NOT EXISTS week_number INTEGER;
+    """,
 ]
 
 
@@ -870,6 +922,49 @@ def resolve_class(user_id: str, class_id: str | None = None) -> dict | None:
             return cls
     rows = list_classes(user_id)
     return rows[0] if rows else None
+
+
+# ---------------------------------------------------------------------------
+# Schools — the curated calendar list (migration 23)
+# ---------------------------------------------------------------------------
+
+
+def list_schools() -> list[dict]:
+    """Every registered school, alphabetically — what onboarding's picker and
+    the admin page both read. Public reference data, no user_id scoping."""
+    return _rows("SELECT * FROM schools ORDER BY name")
+
+
+def get_school(school_id: str) -> dict | None:
+    return _row("SELECT * FROM schools WHERE id = ?", (school_id,))
+
+
+def create_school(school_id: str, name: str) -> dict:
+    _write(
+        "INSERT INTO schools (id, name, created_at) VALUES (?,?,?) ON CONFLICT (id) DO NOTHING",
+        (school_id, name.strip(), now()),
+    )
+    return get_school(school_id)  # type: ignore[return-value]
+
+
+def count_users_with_school(school_id: str) -> int:
+    row = _row("SELECT COUNT(*) AS n FROM users WHERE school = ?", (school_id,))
+    return int(row["n"]) if row else 0
+
+
+def delete_school(school_id: str) -> bool:
+    cur = _write("DELETE FROM schools WHERE id = ?", (school_id,))
+    return cur.rowcount > 0
+
+
+def get_user_school(user_id: str) -> str:
+    """The calendar key for one teacher. Wraps get_user_by_id so every caller
+    (week_board, generate's _with_week, llm.generate_plan/stream_plan,
+    chat_stream) shares one fallback instead of each repeating it. The
+    column itself is NOT NULL DEFAULT'd, so this only matters if user_id
+    resolves to no row at all (an already-deleted account mid-request)."""
+    user = get_user_by_id(user_id)
+    return (user or {}).get("school") or "florence-high-school"
 
 
 # ---------------------------------------------------------------------------
@@ -1277,12 +1372,14 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
     Replaces guessing. The starter prompts used to compute "next Monday" in the
     browser with no idea whether that week was Fall Break, and week_label was
     whatever the model decided to write. Both now come from the same file the
-    prompt quotes — backend/context/school_calendar.md — so a week the school is
-    closed can be shown as closed rather than offered as a plan to build."""
+    prompt quotes — the teacher's own school's calendar under
+    backend/context/calendars/ — so a week the school is closed can be shown as
+    closed rather than offered as a plan to build."""
     from . import schoolcal  # local: keeps the calendar out of db's import cycle
 
     cls = resolve_class(user_id, class_id)
-    weeks = schoolcal.school_weeks()
+    school_id = get_user_school(user_id)
+    weeks = schoolcal.school_weeks(school_id)
     if not weeks:
         return {"class": cls, "weeks": [], "current_week": None}
 
@@ -1312,11 +1409,11 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
             )
 
     today = now()[:10]
-    current = schoolcal.week_for()
+    current = schoolcal.week_for(school_id)
     out = []
     for w in weeks:
         plan = by_week.get(w["week"])
-        days = schoolcal.week_days(w)
+        days = schoolcal.week_days(school_id, w)
         out.append(
             {
                 **w,
@@ -1352,15 +1449,26 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
 # ---------------------------------------------------------------------------
 
 
-def create_chat(user_id: str, title: str, chat_id: str | None = None, class_id: str | None = None) -> dict:
+def create_chat(
+    user_id: str,
+    title: str,
+    chat_id: str | None = None,
+    class_id: str | None = None,
+    week_number: int | None = None,
+) -> dict:
     """`class_id` is what keeps one prep's conversations out of another's
     sidebar. It was never passed, so every chat was written NULL — see the
-    backfill in migration 14."""
+    backfill in migration 14.
+
+    `week_number` is the week this conversation is about, pinned once here so
+    it cannot drift out from under the chat — see migration 24 for what
+    deriving it per-render cost."""
     cid = chat_id or new_id()
     ts = now()
     _write(
-        "INSERT INTO chats (id, user_id, title, class_id, created_at, updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
-        (cid, user_id, title[:200], class_id, ts, ts),
+        "INSERT INTO chats (id, user_id, title, class_id, week_number, created_at, updated_at)"
+        " VALUES (?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
+        (cid, user_id, title[:200], class_id, week_number, ts, ts),
     )
     return get_chat(user_id, cid)  # type: ignore[return-value]
 

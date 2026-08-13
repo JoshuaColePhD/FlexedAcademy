@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from .. import db, llm, schoolcal, service
+from .. import curriculum, db, llm, schoolcal, service
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
@@ -34,10 +34,10 @@ class GenerateRequest(BaseModel):
     week_number: int | None = None
 
 
-def _with_week(query: str, week_number: int | None) -> str:
+def _with_week(query: str, week_number: int | None, school_id: str) -> str:
     if week_number is None:
         return query
-    week = next((w for w in schoolcal.school_weeks() if w["week"] == week_number), None)
+    week = next((w for w in schoolcal.school_weeks(school_id) if w["week"] == week_number), None)
     if not week:
         return query
     return f"Build this for {schoolcal.label_for(week)}. {query}"
@@ -54,6 +54,18 @@ class ChatStreamRequest(BaseModel):
     # and-forth reads nothing like a written chat, and the model has no
     # other way to know which one it's in.
     voice: bool = False
+    # useChatStream has sent this in the request body all along — it's what
+    # lets a reopened chat resume the right conversation elsewhere in the
+    # app. This endpoint just never declared the field, so it was parsed and
+    # silently dropped. Now used to resolve the chat's own class below,
+    # instead of the account's most-recently-touched settings row.
+    chat_id: str | None = None
+    # The same value GenerateRequest.week_number carries (ChatPage's
+    # effectiveWeek — the ?week= override, or else the next unplanned week),
+    # sent here too so the conversational model knows it BEFORE generation,
+    # not just at the moment of building. See chat_stream below: the empty
+    # chat's own greeting already states this week aloud to the teacher.
+    week_number: int | None = None
 
 
 class DecisionsRequest(BaseModel):
@@ -125,7 +137,7 @@ def _openai_error_event(e: Exception) -> dict:
 @router.post("/generate")
 def generate(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     require_entitlement(user_id)
-    query = _with_week(req.query, req.week_number)
+    query = _with_week(req.query, req.week_number, db.get_user_school(user_id))
     return service.generate(user_id, query, chat_id=req.chat_id, bg_tasks=bg_tasks)
 
 
@@ -140,7 +152,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
     # normal error envelope rather than an SSE frame the reader has to special-
     # case. useLessonStream already reads a non-200 body through apiErrorFromBody.
     require_entitlement(user_id)
-    query = _with_week(req.query, req.week_number)
+    query = _with_week(req.query, req.week_number, db.get_user_school(user_id))
 
     def event_stream():
         chunks: list[str] = []
@@ -202,14 +214,70 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
     def event_stream():
         try:
             # We construct a system prompt based on the user's settings and chosen mode.
-            s = db.get_settings_row(user_id)
-            subject = s.get("subject", "AP Language & Composition")
-            grade = s.get("grade", "11")
+            #
+            # Prefer the class this chat actually belongs to over
+            # get_settings_row(user_id)'s "most recently updated settings row for
+            # this account" — settings is a legacy (user_id, subject) table that
+            # predates `classes`, so for a teacher with more than one prep, the
+            # subject it returns is whichever class was last touched anywhere in
+            # the app, not necessarily the one this chat is under. A teacher
+            # bouncing between AP Lang and ENG 101 chats got AP Lang's subject,
+            # grade, and pacing guide inside an ENG 101 conversation whenever AP
+            # Lang's settings had been saved more recently. Falls back to the old
+            # lookup for chats with no chat_id, no class_id (pre-scoping chats —
+            # see create_chat), or a since-deleted class.
+            cls = None
+            if req.chat_id:
+                chat = db.get_chat(user_id, req.chat_id)
+                if chat and chat.get("class_id"):
+                    cls = db.get_class(user_id, chat["class_id"])
+
+            if cls:
+                subject = cls["subject"]
+                grade = cls["grade"]
+            else:
+                s = db.get_settings_row(user_id)
+                subject = s.get("subject", "AP Language & Composition")
+                grade = s.get("grade", "11")
+
+            # Independent of `cls` above — school is per-account (users.school),
+            # not per-class, so it doesn't need the chat's own class to resolve.
+            school_id = db.get_user_school(user_id)
 
             system_prompt = (
                 f"You are an expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
                 "The teacher is preparing to generate or revise a weekly lesson plan. "
             )
+
+            # ChatPage already resolves effectiveWeek client-side and even says it
+            # aloud in the empty chat's own greeting ("I'll build Week 03…") — but
+            # never sent it here, so this conversational model had no idea, and
+            # could ask the teacher which week it was for right after the UI had
+            # just told them. Resolved the same way generate_stream's _with_week
+            # does: looked up in schoolcal.school_weeks(), never guessed, and
+            # silently skipped if the number doesn't match a real week.
+            week_row = None
+            if req.week_number is not None:
+                week_row = next(
+                    (w for w in schoolcal.school_weeks(school_id) if w["week"] == req.week_number), None
+                )
+
+            if week_row:
+                system_prompt += f"\n\nTHE TEACHER IS CURRENTLY WORKING ON {schoolcal.label_for(week_row)}"
+                # Cross-referenced against the teacher's OWN uploaded pacing guide —
+                # not units.unit_for_week()'s hardcoded AP-Lang-only 9-unit map,
+                # which falls back to a bare "Week N" for every other subject and
+                # is meant for labeling an already-built plan, not for telling this
+                # model what's coming up in a subject it has no map for.
+                unit_row = curriculum.unit_for_calendar_week(user_id, subject, week_row)
+                if unit_row:
+                    system_prompt += f", which their own pacing guide names as {unit_row['unit']}"
+                system_prompt += (
+                    ". Treat the week"
+                    + (" and unit" if unit_row else "")
+                    + " as already settled — don't ask which one this is unless the "
+                    "teacher's own message clearly means a different week."
+                )
 
             # The pacing guide a teacher uploads in settings was only ever read
             # by the plan-WRITING calls (llm.generate_plan / stream_plan) — this
@@ -269,7 +337,10 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                     "already told you or already picked from a previous round — build on what they gave you.\n\n"
                     "Hold the line on having an actual plan before you build one: `generate_lesson_plan` needs "
                     "WHICH WEEK OR UNIT and WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
-                    "focus). Missing either, ask rather than build — a week generated from a one-line request "
+                    "focus). If the week/unit was already named for you above, treat that half as settled — "
+                    "don't ask about it again unless the teacher's own message clearly points at a different "
+                    "week. WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
+                    "you; missing that, ask rather than build — a week generated from a one-line request "
                     "costs the teacher more time correcting it than answering one question would have."
                 )
 
@@ -296,10 +367,12 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                     "each other. Your spoken text alongside it should be just the question itself; "
                     "do NOT read the options aloud, they are already on screen.\n\n"
                     "DO NOT call `generate_lesson_plan` until you actually have a week's worth of "
-                    "plan to build: at minimum you must know WHICH WEEK OR UNIT, and WHAT THE WEEK IS "
-                    "ABOUT — an anchor text, a skill, or a specific focus. If either is missing, ask "
-                    "for it instead of building. Building a week off a one-line request wastes the "
-                    "teacher's time correcting a plan they never described."
+                    "plan to build: at minimum you must know WHICH WEEK OR UNIT (already named for you "
+                    "above if it was resolved — don't ask about it again unless the teacher says "
+                    "otherwise) and WHAT THE WEEK IS ABOUT — an anchor text, a skill, or a specific "
+                    "focus. If that's genuinely missing, ask for it instead of building. Building a week "
+                    "off a one-line request wastes the teacher's time correcting a plan they never "
+                    "described."
                 )
 
             messages = [{"role": "system", "content": system_prompt}]

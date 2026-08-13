@@ -281,9 +281,28 @@ function Gate() {
   )
 }
 
-/** Honours ?next= after a successful sign-in. */
+/** Honours ?next= after a successful sign-in — but only once we know the
+ *  account isn't brand-new. next is almost always a class-scoped URL (a
+ *  colleague clicking a shared plan/week link IS how someone new to the
+ *  product signs up), and a zero-class account can neither own nor do
+ *  anything useful with whatever class that path names. Without this check,
+ *  that signup landed straight in ClassRoutes with no class ever created —
+ *  RootRedirect's own "no classes -> /welcome" only runs for a bare "/"
+ *  visit, and login/signup/reset-password all funnel here instead, so the
+ *  one path a brand-new teacher is actually likely to arrive by (a shared
+ *  link) was exactly the one that skipped onboarding entirely. */
 function AfterAuthRedirect() {
   const location = useLocation()
+  const { data: classes = [], isLoading, isError } = useClasses()
+
+  if (isLoading) return <BootScreen />
+  // isError, not just "classes.length === 0": a failed request must not be
+  // mistaken for zero classes — see RootRedirect's identical guard and the
+  // bug it cites (a single blip once sent a five-class teacher to "Let's set
+  // up your year"). On error, fall through to the ordinary next/'/' redirect
+  // below rather than guessing either way.
+  if (!isError && !classes.length) return <Navigate to="/welcome" replace />
+
   const next = new URLSearchParams(location.search).get('next')
   // Only same-origin paths, so a crafted ?next=https://… can't turn the login
   // screen into an open redirect.

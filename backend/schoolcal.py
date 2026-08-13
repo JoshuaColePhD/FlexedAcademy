@@ -1,17 +1,18 @@
-"""The school year, as structured data.
+"""The school year, as structured data — one calendar per school.
 
-`backend/context/school_calendar.md` already holds the real week map — 43 rows of
-`| Wk | Mon | Fri | Notes |` plus a bullet list of closures. Until now nothing
-read it: it was pasted verbatim into the model prompt and hoped for. That is why
-a plan could be built for Fall Break, and why "the week of Aug 10" was a string
-the model invented rather than a date anyone had checked.
+`backend/context/calendars/<school_id>.md` holds one school's real week map —
+rows of `| Wk | Mon | Fri | Notes |` plus a bullet list of closures. Every
+function here takes the `school_id` to read as its first argument, resolved
+by the caller (generally db.get_user_school) — never guessed inside this
+module, and never defaulted, so a caller that forgot to resolve one gets a
+loud TypeError here rather than a lesson plan silently built against the
+wrong district's calendar.
 
-This parses that same file, so the prompt and the interface cannot disagree —
-there is still exactly one source of truth, it just has a reader now.
-
-Deliberately not a database table. The calendar is authored by hand once a year,
-belongs in version control next to the prompt that quotes it, and would be one
-more thing to keep in sync if it were duplicated into Postgres.
+Deliberately not a database table. Each calendar is authored by hand once a
+year, belongs in version control next to the prompt that quotes it, and would
+be one more thing to keep in sync if it were duplicated into Postgres. The
+`schools` table (db.py) holds only the curated list of which ids exist and
+their display names — never the calendar content itself.
 """
 
 from __future__ import annotations
@@ -97,11 +98,12 @@ def _mk_date(token: str, fall_year: int, spring_year: int) -> date | None:
         return None
 
 
-@lru_cache(maxsize=1)
-def _read() -> tuple[str, int, int]:
-    """The calendar file plus the two years its dates belong to. Cached because
-    every week board hits it and it changes once a year."""
-    path = settings.calendar_path
+@lru_cache(maxsize=None)
+def _read(school_id: str) -> tuple[str, int, int]:
+    """One school's calendar file plus the two years its dates belong to.
+    Cached per school_id because every week board hits it and it changes
+    once a year."""
+    path = settings.calendars_dir / f"{school_id}.md"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -113,9 +115,9 @@ def _read() -> tuple[str, int, int]:
     return text, fall_year, spring_year
 
 
-@lru_cache(maxsize=1)
-def school_weeks() -> list[dict]:
-    """Every numbered week of the year, in order.
+@lru_cache(maxsize=None)
+def school_weeks(school_id: str) -> list[dict]:
+    """Every numbered week of one school's year, in order.
 
     Each: {week, start, end, notes, no_school, closures}
       week       int
@@ -124,7 +126,7 @@ def school_weeks() -> list[dict]:
       closures   True when any day in it is out — a plan for such a week has
                  fewer than five teaching days
     """
-    text, fall_year, spring_year = _read()
+    text, fall_year, spring_year = _read(school_id)
     if not text:
         return []
 
@@ -154,13 +156,13 @@ def school_weeks() -> list[dict]:
     return weeks
 
 
-def week_for(day: date | None = None) -> dict | None:
+def week_for(school_id: str, day: date | None = None) -> dict | None:
     """The week containing `day` — or, if that falls in a gap, the next one to
     start. Returns None once the year is over."""
     day = day or date.today()
     iso = day.isoformat()
     upcoming = None
-    for w in school_weeks():
+    for w in school_weeks(school_id):
         if w["start"] <= iso <= w["end"]:
             return w
         if w["start"] > iso and upcoming is None:
@@ -206,9 +208,9 @@ def _dates_in(segment: str, fall_year: int, spring_year: int) -> list[date]:
     return out
 
 
-@lru_cache(maxsize=1)
-def closure_days() -> dict[str, str]:
-    """Every individual day the school is closed -> why.
+@lru_cache(maxsize=None)
+def closure_days(school_id: str) -> dict[str, str]:
+    """Every individual day one school is closed -> why.
 
     Read from BOTH the bullet list at the top of the calendar file and the
     per-week Notes column, because the two disagree in useful ways: the bullets
@@ -220,7 +222,7 @@ def closure_days() -> dict[str, str]:
     already carries those, and duplicating them would make a Fall Break week look
     like five unrelated holidays.
     """
-    text, fall_year, spring_year = _read()
+    text, fall_year, spring_year = _read(school_id)
     if not text:
         return {}
 
@@ -250,7 +252,7 @@ def closure_days() -> dict[str, str]:
     return out
 
 
-def week_days(week: dict) -> list[dict]:
+def week_days(school_id: str, week: dict) -> list[dict]:
     """Monday–Friday as five records: {date, dow, is_school, note}.
 
     Always five, even for a week the school is shut — a calendar grid needs a
@@ -266,7 +268,7 @@ def week_days(week: dict) -> list[dict]:
     # last week ends Thursday; counting five days forward from `start` would have
     # week 1 running Wed–Sun.
     monday = start - timedelta(days=start.weekday())
-    closed = closure_days()
+    closed = closure_days(school_id)
 
     out = []
     for i in range(5):
@@ -284,11 +286,3 @@ def week_days(week: dict) -> list[dict]:
             is_school, note = True, ""
         out.append({"date": iso, "dow": _DOW[i], "is_school": is_school, "note": note})
     return out
-
-
-def teaching_days(week: dict) -> list[str]:
-    """The ISO dates school is actually in session that week — now derived from
-    `week_days`, so the count the board shows and the grid a teacher reads cannot
-    drift apart. Previously this returned all five days of any week that wasn't
-    wholly closed, which overcounted every holiday week by one."""
-    return [d["date"] for d in week_days(week) if d["is_school"]]

@@ -40,15 +40,20 @@ def school_profile() -> str:
     return path.read_text(encoding="utf-8")
 
 
-@functools.lru_cache(maxsize=1)
-def calendar_context() -> str:
-    """The global school calendar and week->date table for Florence City Schools.
+@functools.lru_cache(maxsize=None)
+def calendar_context(school_id: str) -> str:
+    """One school's calendar and week->date table, verbatim.
 
     Without this the model invents dates — a first run produced "Week 3 — Sept
     11-15, 2023" for a 2026-27 school year, which makes the document useless no
-    matter how well-grounded the standards are.
+    matter how well-grounded the standards are. Keyed by school_id (see the
+    `schools` table, db.py) rather than reading one hardcoded path, so a
+    second school's plans are built against ITS calendar, not Florence's —
+    this function used to read settings.calendar_path directly, independent
+    of backend/schoolcal.py, which is exactly the kind of second copy that
+    let the prompt and the interface disagree in the first place.
     """
-    path = Path(settings.calendar_path)
+    path = settings.calendars_dir / f"{school_id}.md"
     if not path.is_file():
         log.warning("school calendar not found at %s; dates will be guesswork", path)
         return ""
@@ -127,6 +132,7 @@ def week_system_prompt(
     grade: str = "11",
     map_context: str = "",
     custom_instructions: str | None = None,
+    school_id: str = "florence-high-school",
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
 
@@ -139,7 +145,7 @@ def week_system_prompt(
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
-        "date or a school year.\n\n" + calendar_context(),
+        "date or a school year.\n\n" + calendar_context(school_id),
         (
             "TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — align this week's unit, "
             "sequencing, and any texts or milestones it names. Still cite standards "

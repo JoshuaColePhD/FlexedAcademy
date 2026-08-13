@@ -214,7 +214,7 @@ re-index, so it is much cheaper to carry them from the first commit.
 FlexedAcademy/
   backend/           FastAPI app
     routes/          auth, classes, generate, plans, standards, curriculum, misc
-    schoolcal.py     reads context/school_calendar.md -> weeks AND days
+    schoolcal.py     reads context/calendars/<school_id>.md -> weeks AND days
     db.py            Postgres + pgvector, append-only MIGRATIONS list
   frontend/src/
     pages/           CalendarPage, WeekPage, ChatPage, ClassPage, auth/, onboarding/

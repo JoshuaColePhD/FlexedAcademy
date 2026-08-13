@@ -208,6 +208,11 @@ class ChatBody(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     # Optional so an older client still creates a working (unscoped) chat.
     class_id: str | None = Field(default=None, max_length=64)
+    # The week this conversation is about, pinned at creation — see db.py's
+    # migration 24. Also optional: a chat with no week still works, it just
+    # doesn't get the "currently working on …" block in its system prompt.
+    # Ignored by the rename route below, which shares this model.
+    week_number: int | None = Field(default=None, ge=1, le=52)
 
 
 class TitleRequest(BaseModel):
@@ -237,7 +242,9 @@ def list_chats(class_id: str | None = None, user_id: str = Depends(get_current_u
 
 @router.post("/chats")
 def create_chat(body: ChatBody, user_id: str = Depends(get_current_user)):
-    return db.create_chat(user_id, body.title, class_id=body.class_id)
+    return db.create_chat(
+        user_id, body.title, class_id=body.class_id, week_number=body.week_number
+    )
 
 
 @router.get("/chats/{chat_id}")

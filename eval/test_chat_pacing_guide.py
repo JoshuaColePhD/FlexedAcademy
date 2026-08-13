@@ -14,6 +14,16 @@ the model. No DB, no OpenAI call — db.get_settings_row, llm.map_context_for,
 and llm.stream_chat are stubbed so the assertion is about the system prompt
 routes/generate.py builds, not about retrieval or the LLM.
 
+Sections 4-5 lock in a second, related fix: subject/grade used to come from
+db.get_settings_row(user_id) with no subject filter — "the most recently
+updated settings row for this account," a legacy table that predates
+`classes`. A teacher with more than one prep got whichever class's settings
+were touched most recently ANYWHERE in the app, not the class the open chat
+actually belongs to — so an ENG 101 chat could brainstorm off AP Lang's
+subject, grade, and pacing guide. Now chat_stream resolves the chat's own
+class via chat_id first, falling back to the old lookup only when there's no
+chat_id, no class_id on the chat, or the class was since deleted.
+
 Run:  ./venv/bin/python eval/test_chat_pacing_guide.py
 """
 from __future__ import annotations
@@ -41,18 +51,28 @@ def check(label: str, ok: bool, detail: str = "") -> None:
 def main() -> int:
     captured: dict[str, object] = {}
 
-    real_settings, real_map_context, real_stream_chat = (
+    real_settings, real_map_context, real_stream_chat, real_get_chat, real_get_class = (
         db.get_settings_row,
         llm.map_context_for,
         llm.stream_chat,
+        db.get_chat,
+        db.get_class,
     )
     db.get_settings_row = lambda _uid: {"subject": "AP Language & Composition", "grade": "11"}
+
+    # No class_id resolves for either of these ids — sections 1-3 below never
+    # set chat_id at all, so req.chat_id is None and these aren't even called;
+    # sections 4-5 use them to check the resolve-then-fall-back branch.
+    db.get_chat = lambda _uid, chat_id: {"class_id": "eng101"} if chat_id == "chat-eng101" else None
+    db.get_class = lambda _uid, class_id: (
+        {"subject": "English Language Arts", "grade": "10"} if class_id == "eng101" else None
+    )
 
     def fake_map_context(user_id, subject, query):
         captured["map_context_args"] = (user_id, subject, query)
         return "Unit 2, Week 2: irony and diction in short fiction." if captured.get("has_map") else ""
 
-    def fake_stream_chat(messages):
+    def fake_stream_chat(user_id, messages, *, voice=False):
         captured["system_prompt"] = messages[0]["content"]
         yield {"chunk": "ok"}
         yield {"done": True}
@@ -110,10 +130,43 @@ def main() -> int:
             "used the most recent user turn as the query",
             captured.get("map_context_args", (None, None, ""))[2] == "check my pacing guide for what's next",
         )
+
+        print("\n4. A chat under a DIFFERENT class than the account's last-touched settings")
+        captured.clear()
+        captured["has_map"] = True
+        client.post(
+            "/api/chat_stream",
+            json={
+                "chat_id": "chat-eng101",
+                "messages": [{"role": "user", "content": "what's next in the unit"}],
+            },
+        )
+        prompt = str(captured.get("system_prompt", ""))
+        check("used the chat's OWN class subject and grade", "English Language Arts (Grade 10)" in prompt)
+        check("did not fall back to the account's last-touched settings subject", "AP Language & Composition" not in prompt)
+        check(
+            "looked up the pacing guide under the chat's class subject, not settings'",
+            captured.get("map_context_args", (None, None, ""))[1] == "English Language Arts",
+        )
+
+        print("\n5. A chat with no resolvable class still falls back to settings")
+        captured.clear()
+        captured["has_map"] = True
+        client.post(
+            "/api/chat_stream",
+            json={
+                "chat_id": "chat-not-a-real-chat",
+                "messages": [{"role": "user", "content": "let's plan week 3"}],
+            },
+        )
+        prompt = str(captured.get("system_prompt", ""))
+        check("falls back to account settings when the chat has no class", "AP Language & Composition (Grade 11)" in prompt)
     finally:
         db.get_settings_row = real_settings
         llm.map_context_for = real_map_context
         llm.stream_chat = real_stream_chat
+        db.get_chat = real_get_chat
+        db.get_class = real_get_class
         app.dependency_overrides.pop(get_current_user, None)
 
     print()
