@@ -25,7 +25,7 @@ import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
 
 function QuizQuestionCard({ q, index }) {
   return (
-    <div className="detail-card neo-raised">
+    <div className="detail-card neo-raised fa-rise" style={{ animationDelay: `${index * 60}ms` }}>
       <div className="detail-card-head">
         <span className="detail-card-index">Q{index + 1}</span>
         <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
@@ -100,7 +100,7 @@ function QuizBody({ quiz }) {
  * Japanese Language and Culture PDF inside a Pre-AP Algebra 2 plan) resolves
  * to THIS course's own text, not whichever course the corpus-wide lookup
  * happened to keep. */
-function StandardStub({ code, subject, flag, where }) {
+function StandardStub({ code, subject, flag, where, index = 0 }) {
   const [record, setRecord] = useState(undefined)
   const [failed, setFailed] = useState(false)
 
@@ -118,7 +118,10 @@ function StandardStub({ code, subject, flag, where }) {
   }, [code, subject])
 
   return (
-    <div className={`detail-card neo-raised${flag ? ' is-flag' : ''}`}>
+    <div
+      className={`detail-card neo-raised fa-rise${flag ? ' is-flag' : ''}`}
+      style={{ animationDelay: `${index * 60}ms` }}
+    >
       <div className="detail-card-head">
         <span className="detail-card-code" style={{ marginLeft: 0 }}>
           {code}
@@ -156,11 +159,18 @@ function StandardsBody({ grounded = [], ungrounded = [], subject }) {
   }
   return (
     <div className="detail-card-stack">
-      {grounded.map((code) => (
-        <StandardStub key={code} code={code} subject={subject} />
+      {grounded.map((code, i) => (
+        <StandardStub key={code} code={code} subject={subject} index={i} />
       ))}
-      {ungrounded.map((u) => (
-        <StandardStub key={`${u.code}-${u.dayName}`} code={u.code} subject={subject} flag where={u.dayName} />
+      {ungrounded.map((u, i) => (
+        <StandardStub
+          key={`${u.code}-${u.dayName}`}
+          code={u.code}
+          subject={subject}
+          flag
+          where={u.dayName}
+          index={grounded.length + i}
+        />
       ))}
     </div>
   )
@@ -187,16 +197,22 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
 
   return (
     <div className="detail-card-stack">
-      {weeks.map((w) => {
+      {weeks.map((w, i) => {
         const status = weekStatus(w)
         const { dot, label } = WEEK_STATUS[status]
         const isThisPlan = w.week === currentWeek
         const openable = status === 'built' && w.chat_id && !isThisPlan
+        // Capped, not a flat i * 60ms: a school year is ~36 rows, and the
+        // stagger's job is to read as "settling into place," not to make a
+        // teacher wait over two seconds for Week 30 to appear. Flattens
+        // after the first 9 rows rather than climbing the whole list.
+        const style = { animationDelay: `${Math.min(i * 40, 360)}ms` }
         const row = (
           <div
-            className={`detail-card neo-raised${w.no_school ? ' is-closed' : ''}${
+            className={`detail-card neo-raised fa-rise${w.no_school ? ' is-closed' : ''}${
               isThisPlan ? ' is-current' : ''
             }`}
+            style={style}
           >
             <div className="detail-card-head">
               <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
