@@ -104,13 +104,22 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
  * local zip write failed) still shows, with Download disabled rather than
  * the whole row vanishing: the questions are safe in the database either
  * way (quiz_json), and the title says so on hover. */
-function QuizRow({ quiz, planId, index = 0, onOpen }) {
+/* Was a flat .rail-row with an icon-only Download and no visible action at
+ * all once has_qti was false (just Remove, sitting alone — a card that
+ * looks like the only thing left to do with a failed quiz is delete it).
+ * Now the same raised .rail-card treatment the plan itself gets, with the
+ * same shape: a labeled Download pill first, Remove second and small. A
+ * failed build keeps that same Download slot, just inert (see
+ * .rail-download.is-disabled) — reads as "retry by asking again in chat,"
+ * not as a control that vanished. */
+function QuizRow({ quiz, planId, index = 0, onOpen, color }) {
   const toast = useToast()
   const qc = useQueryClient()
   const [deleting, setDeleting] = useState(false)
   const style = { animationDelay: `${index * 60}ms` }
 
-  const remove = async () => {
+  const remove = async (e) => {
+    e.stopPropagation()
     setDeleting(true)
     try {
       await api.deleteQuiz(planId, quiz.id)
@@ -121,48 +130,69 @@ function QuizRow({ quiz, planId, index = 0, onOpen }) {
     }
   }
 
-  // Same shape as the plan card above, and for the same reason (see its own
-  // comment): the row is a plain container, not role="button" wrapping a
-  // link and a button — the title is the real button, Download and Remove
-  // are its siblings.
   return (
-    <div className="rail-row fa-rise" style={style}>
-      <span className="rail-row-tile">
-        {deleting ? (
-          <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+    <div
+      className="rail-card fa-lift fa-rise"
+      style={style}
+      onClick={onOpen ? () => onOpen(quiz) : undefined}
+    >
+      <span className="rail-card-head">
+        <span
+          className="rail-tile"
+          style={{ background: `rgb(${color.rgb} / 0.16)`, color: `rgb(${color.rgb})` }}
+        >
+          {deleting ? (
+            <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <ListChecks size={15} aria-hidden="true" />
+          )}
+        </span>
+        {onOpen ? (
+          <button
+            type="button"
+            className="rail-text rail-open-title"
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpen(quiz)
+            }}
+          >
+            <span className="rail-title">{quiz.title}</span>
+            <span className="rail-sub">
+              {questionTypesLabel(quiz.question_types)}
+              {quiz.has_qti ? '' : ' · file failed, ask again'}
+            </span>
+          </button>
         ) : (
-          <ListChecks size={13} aria-hidden="true" />
+          <span className="rail-text">
+            <span className="rail-title">{quiz.title}</span>
+            <span className="rail-sub">
+              {questionTypesLabel(quiz.question_types)}
+              {quiz.has_qti ? '' : ' · file failed, ask again'}
+            </span>
+          </span>
         )}
       </span>
-      {onOpen ? (
-        <button type="button" className="rail-text rail-open-title" onClick={() => onOpen(quiz)}>
-          <span className="rail-row-label">{quiz.title}</span>
-          <span className="rail-sub">
-            {questionTypesLabel(quiz.question_types)}
-            {quiz.has_qti ? '' : ' · file failed, ask again'}
-          </span>
-        </button>
-      ) : (
-        <span className="rail-text">
-          <span className="rail-row-label">{quiz.title}</span>
-          <span className="rail-sub">
-            {questionTypesLabel(quiz.question_types)}
-            {quiz.has_qti ? '' : ' · file failed, ask again'}
-          </span>
-        </span>
-      )}
       <span className="rail-actions">
         {quiz.has_qti ? (
           <a
             className="rail-download fa-press"
             href={api.quizDownloadUrl(planId, quiz.id)}
             download
+            onClick={(e) => e.stopPropagation()}
             aria-label={`Download ${quiz.title} as a QTI zip`}
             title="Download as a QTI zip — imports into Canvas as a Classic Quiz"
           >
-            <Download size={11} aria-hidden="true" />
+            <Download size={11} aria-hidden="true" /> Download
           </a>
-        ) : null}
+        ) : (
+          <span
+            className="rail-download is-disabled"
+            aria-disabled="true"
+            title="The file failed to build — ask again in chat to rebuild it"
+          >
+            <Download size={11} aria-hidden="true" /> Download
+          </span>
+        )}
         <button
           type="button"
           className="rail-open fa-press"
@@ -369,7 +399,7 @@ export function ArtifactRail({
             </div>
           ) : null}
           {quizzes.map((quiz, i) => (
-            <QuizRow key={quiz.id} quiz={quiz} planId={planId} index={i} onOpen={onOpenQuiz} />
+            <QuizRow key={quiz.id} quiz={quiz} planId={planId} index={i} onOpen={onOpenQuiz} color={color} />
           ))}
         </div>
       ) : null}

@@ -2069,6 +2069,18 @@
   .rail-download:active {
     box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
   }
+  /* A quiz whose zip write failed (has_qti false — see QuizRow's own
+     comment) used to drop Download entirely, leaving only Remove: a card
+     that looks like it can only be deleted, never retried. Same slot, same
+     shape, just inert — flat instead of raised, no press feedback — so the
+     card still reads as "this is what Download normally looks like here,"
+     not as a second unrelated control. */
+  .rail-download.is-disabled {
+    color: var(--ink-faint);
+    background: var(--paper-inset);
+    box-shadow: none;
+    cursor: default;
+  }
   .rail-open {
     display: grid;
     width: 28px;
