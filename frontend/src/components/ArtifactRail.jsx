@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { orderedDays, unitSuffix } from '../lib/planShape'
+import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { useToast } from '../lib/toastContext'
@@ -139,7 +140,7 @@ function QuizRow({ quiz, planId, index = 0, onOpen }) {
         <button type="button" className="rail-text rail-open-title" onClick={() => onOpen(quiz)}>
           <span className="rail-row-label">{quiz.title}</span>
           <span className="rail-sub">
-            {quiz.question_types.map((t) => QUESTION_TYPE_LABELS[t] || t).join(', ')}
+            {questionTypesLabel(quiz.question_types)}
             {quiz.has_qti ? '' : ' · file failed, ask again'}
           </span>
         </button>
@@ -147,7 +148,7 @@ function QuizRow({ quiz, planId, index = 0, onOpen }) {
         <span className="rail-text">
           <span className="rail-row-label">{quiz.title}</span>
           <span className="rail-sub">
-            {quiz.question_types.map((t) => QUESTION_TYPE_LABELS[t] || t).join(', ')}
+            {questionTypesLabel(quiz.question_types)}
             {quiz.has_qti ? '' : ' · file failed, ask again'}
           </span>
         </span>
@@ -179,12 +180,6 @@ function QuizRow({ quiz, planId, index = 0, onOpen }) {
   )
 }
 
-const QUESTION_TYPE_LABELS = {
-  multiple_choice: 'Multiple choice',
-  true_false: 'True/false',
-  short_answer: 'Short answer',
-  matching: 'Matching',
-}
 
 /** The 2-3 weeks nearest "now" for this class, collapsed by default — a peek,
  *  not a duplicate of ClassPage.jsx's own full-semester Weeks panel, which

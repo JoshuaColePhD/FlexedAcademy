@@ -5,6 +5,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
 import { orderedDays } from '../lib/planShape'
+import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
 
 /* The same embossed shell ArtifactPanel uses for the lesson plan itself
  * (.doc-shell/.doc-head/.doc-body — see that component's own header
@@ -18,13 +19,6 @@ import { orderedDays } from '../lib/planShape'
  * a quiz is revised by asking in chat, not by a second writer of the same
  * artifact.
  */
-
-const QUESTION_TYPE_LABELS = {
-  multiple_choice: 'Multiple choice',
-  true_false: 'True / False',
-  short_answer: 'Short answer',
-  matching: 'Matching',
-}
 
 function QuizQuestionCard({ q, index }) {
   return (
@@ -182,7 +176,7 @@ const TITLES = {
 }
 
 const SUBS = {
-  quiz: (quiz) => (quiz?.question_types || []).map((t) => QUESTION_TYPE_LABELS[t] || t).join(', '),
+  quiz: (quiz) => questionTypesLabel(quiz?.question_types),
   standards: (_d, { grounded = [], ungrounded = [] }) =>
     `${grounded.length} retrieved${ungrounded.length ? ` · ${ungrounded.length} not retrieved` : ''}`,
   calendar: (_d, { plan }) => plan?.week_of || '',

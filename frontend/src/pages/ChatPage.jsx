@@ -16,6 +16,7 @@ import { FIELD_LABELS } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
+import { questionTypesProse } from '../lib/quizShape'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -930,6 +931,26 @@ export function ChatPage() {
           return
         }
         setQuizBuilding(true)
+        // A fallback, not a second announcement: onDone already showed the
+        // model's own text above when it wrote any (a natural "Sure, I'll
+        // build that now" it just isn't required to write — see
+        // routes/generate.py's system prompt). Only fires when it said
+        // NOTHING, which is common: a real build takes several real
+        // seconds, and answer-two-taps-then-silence-until-a-finished-quiz-
+        // appears-out-of-nowhere reads as broken, not as "working on it."
+        // quizBuilding's own spinner in the rail already solves this for a
+        // teacher watching the rail, not one watching the chat — which is
+        // most of them, most of the time.
+        if (!chatResult.text?.trim()) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'assistant',
+              content: `Building your quiz now — ${chatResult.quizRequested.numQuestions} ${questionTypesProse(chatResult.quizRequested.questionTypes)} questions.`,
+            },
+          ])
+        }
         try {
           const quiz = await api.createQuiz(artifact.planId, chatResult.quizRequested)
           qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
