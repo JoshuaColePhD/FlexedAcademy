@@ -35,7 +35,7 @@ function Field({ label, children }) {
   )
 }
 
-function PlanDayCard({ day, index, groundedCodes }) {
+function PlanDayCard({ day, index, groundedCodes, subject }) {
   const state = dayState(day)
 
   if (state !== 'ok') {
@@ -83,7 +83,7 @@ function PlanDayCard({ day, index, groundedCodes }) {
 
       {day.standards ? (
         <Field label="Standards">
-          <CitedText text={day.standards} groundedCodes={groundedCodes} />
+          <CitedText text={day.standards} groundedCodes={groundedCodes} subject={subject} />
         </Field>
       ) : null}
 
@@ -95,7 +95,7 @@ function PlanDayCard({ day, index, groundedCodes }) {
               day[key] ? (
                 <Field key={key} label={label}>
                   {cited ? (
-                    <CitedText text={day[key]} groundedCodes={groundedCodes} />
+                    <CitedText text={day[key]} groundedCodes={groundedCodes} subject={subject} />
                   ) : (
                     day[key]
                   )}
@@ -199,7 +199,7 @@ export function PlanDayCards({ plan, groundedCodes, missingDays }) {
         aria-label="The week, one day per card — scrolls sideways"
       >
         {days.map((d, i) => (
-          <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} />
+          <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} subject={plan.course} />
         ))}
       </div>
     </div>

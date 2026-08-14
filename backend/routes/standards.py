@@ -154,8 +154,13 @@ def search(req: SearchRequest):
 
 
 @router.get("/{code:path}")
-def get_standard(code: str):
-    chunk = retrieval.chunks_by_code().get(re.sub(r"\s+", " ", code).strip().upper())
+def get_standard(code: str, subject: str | None = Query(None)):
+    """A code alone is not a safe key across the whole corpus — see
+    chunk_for_code()'s own docstring. `subject` is optional only because the
+    Standards browser has no one course in mind; every plan-facing caller
+    (a chat citation, the rail's Standards panel) has a course and MUST send
+    it, or a cross-course collision renders as this plan's own standard."""
+    chunk = retrieval.chunk_for_code(code, subject_code=subject)
     if not chunk:
         raise AppError("standard_not_found", f"No standard with code {code!r}.", status=404)
     return chunk

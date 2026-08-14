@@ -216,7 +216,7 @@ export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast })
               <div className="grounding-line">
                 <span>Grounded:</span>
                 {grounded.map((c) => (
-                  <Cite key={c} code={c} grounded />
+                  <Cite key={c} code={c} subject={message.plan.course} grounded />
                 ))}
                 {ungrounded.length ? (
                   <>
@@ -228,7 +228,7 @@ export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast })
                         citation and the warning loses its subject. */}
                     {ungrounded.map((u) => (
                       <span className="grounding-line-miss-group" key={u.code}>
-                        <Cite code={u.code} grounded={false} />
+                        <Cite code={u.code} subject={message.plan.course} grounded={false} />
                         <span className="grounding-line-miss">
                           not retrieved — {u.dayName}
                         </span>

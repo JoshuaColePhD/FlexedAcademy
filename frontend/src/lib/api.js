@@ -258,8 +258,16 @@ export const api = {
     )
     return request(`/api/standards${qs.toString() ? `?${qs}` : ''}`, { signal })
   },
-  getStandard: (code, { signal } = {}) =>
-    request(`/api/standards/${encodeURIComponent(code)}`, { signal }),
+  // `subject` scopes the lookup to one course — omitting it on a plan-facing
+  // call is how a Pre-AP Algebra 2 citation once rendered sourced to "AP
+  // Japanese Language and Culture" (same code, wrong course; see
+  // backend/retrieval.py's chunk_for_code). Only the Standards browser,
+  // which has no one course in mind, should ever omit it.
+  getStandard: (code, { subject, signal } = {}) =>
+    request(
+      `/api/standards/${encodeURIComponent(code)}${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`,
+      { signal }
+    ),
   standardsStats: ({ signal, ...params } = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')

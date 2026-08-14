@@ -300,6 +300,7 @@ export function LessonPlanTable({
           <PlanTable
             ordered={ordered}
             groundedCodes={groundedCodes}
+            subject={plan.course}
             busy={busy}
             flashCells={flashCells}
             canTweak={canTweak}
@@ -314,6 +315,7 @@ export function LessonPlanTable({
           <FittedPlan
             ordered={ordered}
             groundedCodes={groundedCodes}
+            subject={plan.course}
             busy={busy}
             flashCells={flashCells}
             canTweak={canTweak}
@@ -407,6 +409,7 @@ const currentValue = (day, field) =>
 function PlanTable({
   ordered,
   groundedCodes,
+  subject,
   busy,
   flashCells,
   canTweak,
@@ -561,7 +564,7 @@ function PlanTable({
                   return (
                     <td key={day.name} {...editableProps(dayIndex, row.key)}>
                       {row.cited ? (
-                        <CitedText text={day[row.key]} groundedCodes={groundedCodes} />
+                        <CitedText text={day[row.key]} groundedCodes={groundedCodes} subject={subject} />
                       ) : (
                         day[row.key]
                       )}
@@ -594,6 +597,7 @@ function PlanTable({
 function FittedPlan({
   ordered,
   groundedCodes,
+  subject,
   busy,
   flashCells,
   canTweak,
@@ -711,7 +715,7 @@ function FittedPlan({
                 return (
                   <td key={day.name} {...editableProps(dayIndex, row.key)}>
                     {row.cited ? (
-                      <CitedText text={day[row.key]} groundedCodes={groundedCodes} />
+                      <CitedText text={day[row.key]} groundedCodes={groundedCodes} subject={subject} />
                     ) : (
                       day[row.key]
                     )}

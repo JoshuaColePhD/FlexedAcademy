@@ -422,8 +422,52 @@ def chunks_by_code() -> dict[str, dict]:
     Kept for the Standards browser, which looks a code up on its own. Do NOT use
     it to decide whether a code is legitimate for a course — codes are not unique
     across the corpus. See codes_for_course().
+
+    Also unsafe for DISPLAYING a code as a plan's own standard: "3.2.3" exists
+    in both the Algebra course of study and AP Japanese Language and Culture,
+    and this dict keeps whichever loaded last. A Pre-AP Algebra 2 plan citing
+    3.2.3 rendered its popover sourced to "AP Japanese Language and Culture
+    (2024).pdf" — a real teacher-facing instance of exactly the cross-course
+    collision codes_for_course() already exists to guard against on the write
+    side. chunk_for_code() below is the read-side (GET /standards/{code})
+    equivalent; use it wherever a course is known.
     """
     return {_norm_code(c["code"]): c for c in load_chunks()}
+
+
+@functools.lru_cache(maxsize=1)
+def _chunks_by_course_and_code() -> dict[tuple[str, str], dict]:
+    """(normalized course, normalized code) -> chunk — the scoped companion to
+    chunks_by_code(). Built once, alongside it, for the same reason
+    _codes_by_course() sits next to codes_for_course()."""
+    out: dict[tuple[str, str], dict] = {}
+    for c in load_chunks():
+        course, code = c.get("course"), c.get("code")
+        if course and code:
+            out[(normalize_course(course), _norm_code(code))] = c
+    return out
+
+
+def chunk_for_code(code: str, subject_code: str | None = None) -> dict | None:
+    """One chunk for this code — scoped to subject_code's course when given.
+
+    Tries every course_variants() match for subject_code first, so a code
+    that collides across courses resolves to the plan's OWN course's chunk,
+    not whichever course chunks_by_code() happened to keep. Falls back to
+    the course-blind lookup when subject_code is omitted (the Standards
+    browser has no one course in mind) or when this course doesn't carry
+    the code at all (a teacher-typed code from memory, say) — a fallback
+    match is still more useful than a bare 404, it just isn't guaranteed to
+    be THIS course's own text.
+    """
+    norm = _norm_code(code)
+    if subject_code:
+        by_course = _chunks_by_course_and_code()
+        for course in course_variants(subject_code):
+            hit = by_course.get((normalize_course(course), norm))
+            if hit:
+                return hit
+    return chunks_by_code().get(norm)
 
 
 @functools.lru_cache(maxsize=1)
