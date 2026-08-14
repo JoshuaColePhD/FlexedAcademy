@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import time
 
-from . import db, docx_build, llm, retrieval, schema, units
+from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, units
 from .errors import AppError
 from .retrieval import RetrievalResult
 
@@ -147,12 +147,20 @@ def finalize(
     bg_tasks: BackgroundTasks | None = None,
     class_id: str | None = None,
     week_number: int | None = None,
+    school_id: str | None = None,
 ) -> dict:
     """Validate, stamp identity, build the .docx, persist. Returns the plan row.
 
     `week_number` is the week the teacher actually asked for, when the caller
     knows it. Without it the week is parsed back out of whatever label the model
     wrote, which is a guess — see migration 11.
+
+    `school_id`, alongside `week_number`, is what lets `unit` below prefer the
+    teacher's OWN uploaded curriculum map over units.unit_for_week()'s
+    hardcoded AP-Lang-only 9-unit map — omitting either just means the rail's
+    "Built from" can't say more than that generic fallback (or "Week N" for
+    every other subject, which is what it fell back to for a Pre-AP Algebra 2
+    plan even though that class had a real pacing guide on file).
     """
     started = time.monotonic()
     plan, warnings = schema.validate_plan(plan_raw)
@@ -165,6 +173,16 @@ def finalize(
     warnings += retrieval.audit_grounding(
         plan, result.codes, subject_code=_subject_code(s.get("subject", ""))
     )
+
+    unit = units.unit_for_week(plan["week_of"], subject=plan["course"])
+    if week_number is not None and school_id:
+        week_row = next(
+            (w for w in schoolcal.school_weeks(school_id) if w["week"] == week_number), None
+        )
+        if week_row:
+            map_unit = curriculum.unit_for_calendar_week(user_id, plan["course"], week_row)
+            if map_unit and map_unit.get("unit"):
+                unit = map_unit["unit"]
 
     plan_id = db.new_id()
     out_path = docx_build.plan_output_path(plan, plan_id)
@@ -181,7 +199,7 @@ def finalize(
         user_id=user_id,
         course=plan["course"],
         week_label=plan["week_of"],
-        unit=units.unit_for_week(plan["week_of"], subject=plan["course"]),
+        unit=unit,
         query=query,
         plan_json=plan,
         docx_path=docx_path_val,

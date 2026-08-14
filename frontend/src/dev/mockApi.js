@@ -180,7 +180,7 @@ const state = {
       created_at: '2026-08-01T09:00:00+00:00', plans_built: 12, last_plan_at: '2026-08-08T08:00:00+00:00', tokens_used: 1_204_600 },
   ],
   chats: [
-    { id: 'seed1', title: 'Week 03 — voice and tone', class_id: 'c1', updated_at: '2026-08-07' },
+    { id: 'seed1', title: 'Week 03 — voice and tone', class_id: 'c1', updated_at: '2026-08-07', week_number: 3 },
     { id: 'stranded', title: 'plan week 12 on satire', class_id: 'c1', updated_at: '2026-08-06' },
     { id: 'physics', title: 'Kinematics week', class_id: 'c2', updated_at: '2026-08-05' },
     // Never attributed — must appear under BOTH classes, not vanish.

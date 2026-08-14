@@ -1469,6 +1469,8 @@ export function ChatPage() {
         doc={viewingDoc}
         grounded={grounded}
         ungrounded={ungrounded}
+        weeks={calendar?.weeks || []}
+        currentWeek={conversationWeek}
         onCollapse={collapse}
       />
     )

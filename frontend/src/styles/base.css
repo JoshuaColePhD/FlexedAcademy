@@ -2392,11 +2392,32 @@
   .detail-card.is-closed {
     opacity: 0.7;
   }
+  /* The one row in the calendar table that's actually THIS plan's own week —
+     the same "found it" job .rail-card does for the plan itself, just an
+     outline instead of a full raise so a 36-row list doesn't turn into 36
+     competing highlights. */
+  .detail-card.is-current {
+    box-shadow: 0 0 0 1.5px rgb(var(--accent-rgb) / 0.6);
+  }
   .detail-card-head {
     display: flex;
     align-items: baseline;
     gap: var(--sp-2);
     flex-wrap: wrap;
+  }
+  /* A week row with a dot (the calendar table) wants the dot vertically
+     centered against the label next to it, not baseline-aligned with it —
+     baseline sits a dot noticeably low against cap-height text. */
+  .detail-card-head:has(> [class*='rounded-full']) {
+    align-items: center;
+  }
+  .detail-card-link {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+  }
+  .detail-card-link:hover .detail-card {
+    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.4), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
   .detail-card-index {
     font-family: var(--font-mono);

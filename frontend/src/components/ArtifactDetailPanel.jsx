@@ -1,10 +1,13 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ChevronsRight, Download } from 'lucide-react'
 import { api } from '../lib/api'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
-import { orderedDays } from '../lib/planShape'
+import { unitSuffix } from '../lib/planShape'
+import { shortRange } from '../lib/dates'
+import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
 
 /* The same embossed shell ArtifactPanel uses for the lesson plan itself
@@ -88,60 +91,135 @@ function QuizBody({ quiz }) {
   )
 }
 
-function StandardsBody({ grounded = [], ungrounded = [] }) {
+/* A code alone ("1.1.3a") answers nothing a teacher would actually be
+ * asking when they click through from the rail — what does it SAY, and
+ * what document is it FROM. StandardStub fetches exactly that: the same
+ * api.getStandard(code, {subject}) the chat's own inline citations use
+ * (see Citation.jsx), scoped to this plan's course so a code that collides
+ * across corpora (a real, hit bug: "3.2.3" rendered sourced to an AP
+ * Japanese Language and Culture PDF inside a Pre-AP Algebra 2 plan) resolves
+ * to THIS course's own text, not whichever course the corpus-wide lookup
+ * happened to keep. */
+function StandardStub({ code, subject, flag, where }) {
+  const [record, setRecord] = useState(undefined)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setRecord(undefined)
+    setFailed(false)
+    const controller = new AbortController()
+    api
+      .getStandard(code, { subject, signal: controller.signal })
+      .then(setRecord)
+      .catch((e) => {
+        if (e?.name !== 'AbortError') setFailed(true)
+      })
+    return () => controller.abort()
+  }, [code, subject])
+
+  return (
+    <div className={`detail-card neo-raised${flag ? ' is-flag' : ''}`}>
+      <div className="detail-card-head">
+        <span className="detail-card-code" style={{ marginLeft: 0 }}>
+          {code}
+        </span>
+        {where ? <span className="detail-card-type is-flag">not retrieved — {where}</span> : null}
+      </div>
+      {record === undefined && !failed ? (
+        <p className="detail-card-answer">Looking it up…</p>
+      ) : failed || !record ? (
+        <p className="detail-card-answer">
+          Not in the standards corpus — no source document we hold defines this code.
+        </p>
+      ) : (
+        <>
+          <p className="detail-card-prompt">{record.description}</p>
+          {record.parent_text ? (
+            <p className="detail-card-answer">
+              Part of {record.parent_code}: {record.parent_text}
+            </p>
+          ) : null}
+          <p className="detail-card-answer">
+            {record.source_document}
+            {record.source_page_or_section ? ` · ${record.source_page_or_section}` : ''}
+            {record.verbatim_ok ? ' · verified verbatim' : ''}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function StandardsBody({ grounded = [], ungrounded = [], subject }) {
   if (!grounded.length && !ungrounded.length) {
     return <p className="note">No grounding was recorded for this plan.</p>
   }
   return (
     <div className="detail-card-stack">
-      {grounded.length ? (
-        <div className="detail-card neo-raised">
-          <div className="detail-card-head">
-            <span className="detail-card-type">Retrieved &amp; cited</span>
-          </div>
-          <ul className="detail-code-list">
-            {grounded.map((code) => (
-              <li key={code} className="detail-code is-grounded">
-                {code}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {ungrounded.length ? (
-        <div className="detail-card neo-raised">
-          <div className="detail-card-head">
-            <span className="detail-card-type is-flag">Cited but not retrieved</span>
-          </div>
-          <ul className="detail-code-list">
-            {ungrounded.map((u) => (
-              <li key={`${u.code}-${u.dayName}`} className="detail-code is-flag">
-                {u.code} <span className="detail-code-where">— {u.dayName}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {grounded.map((code) => (
+        <StandardStub key={code} code={code} subject={subject} />
+      ))}
+      {ungrounded.map((u) => (
+        <StandardStub key={`${u.code}-${u.dayName}`} code={u.code} subject={subject} flag where={u.dayName} />
+      ))}
     </div>
   )
 }
 
-function CalendarBody({ plan }) {
-  const days = plan?.days?.length ? orderedDays(plan, 'no_school') : []
-  if (!days.length) {
-    return <p className="note">No calendar information was recorded for this plan.</p>
+/* Was five rows repeating "Monday: Teaching day" — this week's own no-school
+ * flags, which the chat message already carries as the week strip (see
+ * Message.jsx). "Actually open up a calendar table that shows you what's
+ * going on" meant the school's calendar, not a second copy of the plan:
+ * every week the school board already has (same query key ClassPage's own
+ * Weeks panel and ArtifactRail's "Other weeks" use, so this costs nothing
+ * extra to fetch), classified with the same WEEK_STATUS every other calendar
+ * surface in the app uses, with the week this plan is actually FOR pinned
+ * open at the top so it doesn't get lost scrolling a 36-week list. */
+function CalendarBody({ weeks = [], currentWeek, classId }) {
+  const currentRef = useRef(null)
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ block: 'center' })
+  }, [weeks.length])
+
+  if (!weeks.length) {
+    return <p className="note">No school calendar is on file for this class.</p>
   }
+
   return (
     <div className="detail-card-stack">
-      {days.map((d) => (
-        <div key={d.name} className={`detail-card neo-raised${d.no_school ? ' is-closed' : ''}`}>
-          <div className="detail-card-head">
-            <span className="detail-card-type">{d.name}</span>
-            <span className="detail-card-code">{d.no_school ? 'No school' : 'Teaching day'}</span>
+      {weeks.map((w) => {
+        const status = weekStatus(w)
+        const { dot, label } = WEEK_STATUS[status]
+        const isThisPlan = w.week === currentWeek
+        const openable = status === 'built' && w.chat_id && !isThisPlan
+        const row = (
+          <div
+            className={`detail-card neo-raised${w.no_school ? ' is-closed' : ''}${
+              isThisPlan ? ' is-current' : ''
+            }`}
+          >
+            <div className="detail-card-head">
+              <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+              <span className="detail-card-type">
+                Week {String(w.week).padStart(2, '0')}
+                {unitSuffix(w.unit)}
+                {isThisPlan ? ' — this plan' : ''}
+              </span>
+              <span className="detail-card-code">{label}</span>
+            </div>
+            <p className="detail-card-answer">{shortRange(w.start, w.end)}</p>
           </div>
-          {d.no_school && d.title ? <p className="detail-card-answer">{d.title}</p> : null}
-        </div>
-      ))}
+        )
+        return openable ? (
+          <Link key={w.week} to={`/c/${classId}/chat/${w.chat_id}`} className="detail-card-link">
+            {row}
+          </Link>
+        ) : (
+          <div key={w.week} ref={isThisPlan ? currentRef : undefined}>
+            {row}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -179,7 +257,7 @@ const SUBS = {
   quiz: (quiz) => questionTypesLabel(quiz?.question_types),
   standards: (_d, { grounded = [], ungrounded = [] }) =>
     `${grounded.length} retrieved${ungrounded.length ? ` · ${ungrounded.length} not retrieved` : ''}`,
-  calendar: (_d, { plan }) => plan?.week_of || '',
+  calendar: (_d, { weeks = [] }) => `${weeks.length} week${weeks.length === 1 ? '' : 's'} on file`,
   document: (doc) => (doc?.chars ? `${doc.chars.toLocaleString()} characters` : ''),
 }
 
@@ -193,6 +271,8 @@ export function ArtifactDetailPanel({
   planId,
   grounded = [],
   ungrounded = [],
+  weeks = [],
+  currentWeek,
 }) {
   const panelRef = useRef(null)
   const titleRef = useRef(null)
@@ -208,7 +288,7 @@ export function ArtifactDetailPanel({
 
   const item = kind === 'quiz' ? quiz : kind === 'document' ? doc : null
   const title = (TITLES[kind] || (() => ''))(item)
-  const sub = (SUBS[kind] || (() => ''))(item, { grounded, ungrounded, plan })
+  const sub = (SUBS[kind] || (() => ''))(item, { grounded, ungrounded, plan, weeks })
 
   return (
     <section
@@ -247,8 +327,12 @@ export function ArtifactDetailPanel({
       <div className="doc-body" tabIndex={0} role="region" aria-label={title}>
         <div className="doc-sheet doc-sheet-plain">
           {kind === 'quiz' ? <QuizBody quiz={quiz} /> : null}
-          {kind === 'standards' ? <StandardsBody grounded={grounded} ungrounded={ungrounded} /> : null}
-          {kind === 'calendar' ? <CalendarBody plan={plan} /> : null}
+          {kind === 'standards' ? (
+            <StandardsBody grounded={grounded} ungrounded={ungrounded} subject={plan?.course} />
+          ) : null}
+          {kind === 'calendar' ? (
+            <CalendarBody weeks={weeks} currentWeek={currentWeek} classId={classId} />
+          ) : null}
           {kind === 'document' ? <DocumentBody doc={doc} /> : null}
         </div>
       </div>
