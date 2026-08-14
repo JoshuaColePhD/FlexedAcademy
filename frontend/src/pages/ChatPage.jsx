@@ -61,6 +61,16 @@ const nextId = () => `m${++idSeq}`
 
 const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
 
+// What each `viewKind` is called in copy the teacher reads — the overlay's
+// close button and (for a screen reader) ArtifactDetailPanel's own region.
+const VIEW_KIND_LABELS = {
+  plan: 'lesson plan',
+  quiz: 'quiz',
+  standards: 'standards',
+  calendar: 'school calendar',
+  document: 'document',
+}
+
 /* Per attached file. A pacing guide is a few thousand characters; a scanned
    40-page PDF is hundreds of thousands, and the whole thing would ride into
    every prompt in the conversation. */
@@ -1383,6 +1393,12 @@ export function ChatPage() {
   const retrievedCodes = liveArtifact?.grounding?.codes || liveArtifact?.retrievedIds || []
   const { grounded, ungrounded } = scanGrounding(livePlan, retrievedCodes)
 
+  // What the overlay's own scrim-close button below (line ~1690) should say
+  // it's closing — it used to hardcode "lesson plan" even while looking at
+  // a quiz or the standards list, since it's shared chrome around whichever
+  // of the two `artifactEl` renders.
+  const viewLabel = VIEW_KIND_LABELS[viewKind] || VIEW_KIND_LABELS.plan
+
   const artifactEl =
     viewKind === 'plan' ? (
       <ArtifactPanel
@@ -1683,7 +1699,7 @@ export function ChatPage() {
         <>
           <button
             type="button"
-            aria-label="Close lesson plan"
+            aria-label={`Close ${viewLabel}`}
             className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
             onClick={collapse}
           />
