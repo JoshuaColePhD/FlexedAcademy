@@ -269,6 +269,7 @@ export function ArtifactDetailPanel({
   doc,
   plan,
   planId,
+  subject,
   grounded = [],
   ungrounded = [],
   weeks = [],
@@ -328,7 +329,7 @@ export function ArtifactDetailPanel({
         <div className="doc-sheet doc-sheet-plain">
           {kind === 'quiz' ? <QuizBody quiz={quiz} /> : null}
           {kind === 'standards' ? (
-            <StandardsBody grounded={grounded} ungrounded={ungrounded} subject={plan?.course} />
+            <StandardsBody grounded={grounded} ungrounded={ungrounded} subject={subject} />
           ) : null}
           {kind === 'calendar' ? (
             <CalendarBody weeks={weeks} currentWeek={currentWeek} classId={classId} />

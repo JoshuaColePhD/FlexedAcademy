@@ -109,7 +109,7 @@ function PlanDayCard({ day, index, groundedCodes, subject }) {
   )
 }
 
-export function PlanDayCards({ plan, groundedCodes, missingDays }) {
+export function PlanDayCards({ plan, subject, groundedCodes, missingDays }) {
   const days = orderedDays(plan, missingDays)
   const [active, setActive] = useState(() => initialDayIndex(days, TODAY_NAME))
   const scrollerRef = useRef(null)
@@ -199,7 +199,7 @@ export function PlanDayCards({ plan, groundedCodes, missingDays }) {
         aria-label="The week, one day per card — scrolls sideways"
       >
         {days.map((d, i) => (
-          <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} subject={plan.course} />
+          <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} subject={subject} />
         ))}
       </div>
     </div>

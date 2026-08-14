@@ -1462,6 +1462,7 @@ export function ChatPage() {
       <ArtifactPanel
         artifact={{ ...liveArtifact, plan: livePlan }}
         classId={classId}
+        subject={activeClass?.subject}
         missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
         onCollapse={collapse}
         onReviseDay={!isPhone && artifact?.planId ? reviseDay : undefined}
@@ -1478,6 +1479,7 @@ export function ChatPage() {
         classId={classId}
         planId={artifact?.planId}
         plan={livePlan}
+        subject={activeClass?.subject}
         quiz={viewingQuiz}
         doc={viewingDoc}
         grounded={grounded}
@@ -1510,6 +1512,7 @@ export function ChatPage() {
               <Message
                 key={m.id}
                 message={m}
+                subject={activeClass?.subject}
                 isLast={i === messages.length - 1}
                 onRetry={m.isError && !busy ? retryLast : undefined}
                 /* The pencil rendered unguarded while this was never passed, so

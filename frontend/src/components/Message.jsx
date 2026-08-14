@@ -49,7 +49,7 @@ function useCopy() {
  * so it gets no bubble and no avatar. The previous version gave the assistant a
  * greyscale logo avatar and a rounded chat bubble, which framed a document tool
  * as a messaging app. */
-export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast }) {
+export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, isLast }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -216,7 +216,7 @@ export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast })
               <div className="grounding-line">
                 <span>Grounded:</span>
                 {grounded.map((c) => (
-                  <Cite key={c} code={c} subject={message.plan.course} grounded />
+                  <Cite key={c} code={c} subject={subject} grounded />
                 ))}
                 {ungrounded.length ? (
                   <>
@@ -228,7 +228,7 @@ export function Message({ message, onRetry, onEdit, onAnswerQuestions, isLast })
                         citation and the warning loses its subject. */}
                     {ungrounded.map((u) => (
                       <span className="grounding-line-miss-group" key={u.code}>
-                        <Cite code={u.code} subject={message.plan.course} grounded={false} />
+                        <Cite code={u.code} subject={subject} grounded={false} />
                         <span className="grounding-line-miss">
                           not retrieved — {u.dayName}
                         </span>

@@ -32,6 +32,7 @@ const VIEWS = [
 export function ArtifactPanel({
   artifact,
   classId,
+  subject,
   onCollapse,
   onReviseDay,
   onPlanRevised,
@@ -179,6 +180,7 @@ export function ArtifactPanel({
             <LessonPlanTable
               plan={plan}
               planId={planId}
+              subject={subject}
               groundedCodes={grounded}
               onReviseDay={planId ? onReviseDay : undefined}
               onPlanRevised={onPlanRevised}

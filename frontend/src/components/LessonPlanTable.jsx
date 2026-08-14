@@ -125,6 +125,7 @@ function CellTweak({ field, current, draft, setDraft, onApply, onCancel, busy })
 export function LessonPlanTable({
   plan,
   planId,
+  subject,
   groundedCodes,
   onReviseDay,
   onPlanRevised,
@@ -295,12 +296,12 @@ export function LessonPlanTable({
           no transition before. */}
       <div key={view} className="fa-rise">
         {view === 'days' ? (
-          <PlanDayCards plan={plan} groundedCodes={groundedCodes} missingDays={missingDays} />
+          <PlanDayCards plan={plan} subject={subject} groundedCodes={groundedCodes} missingDays={missingDays} />
         ) : view === 'print' ? (
           <PlanTable
             ordered={ordered}
             groundedCodes={groundedCodes}
-            subject={plan.course}
+            subject={subject}
             busy={busy}
             flashCells={flashCells}
             canTweak={canTweak}
@@ -315,7 +316,7 @@ export function LessonPlanTable({
           <FittedPlan
             ordered={ordered}
             groundedCodes={groundedCodes}
-            subject={plan.course}
+            subject={subject}
             busy={busy}
             flashCells={flashCells}
             canTweak={canTweak}
