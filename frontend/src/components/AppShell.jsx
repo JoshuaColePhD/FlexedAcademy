@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -227,6 +227,31 @@ export function AppShell({ children }) {
   const drawerExit = useExitTransition(drawerOpen, 130)
   useFocusTrap(drawerRef, { active: drawerOpen, trap: drawerOpen, onEscape: () => setDrawerOpen(false) })
 
+  /* Desktop-dock only — the narrow/phone drawer above already has its own
+     open/close (drawerOpen). At >=lg the rail used to be a permanent fixture
+     with no way to reclaim its width, unlike the artifact rail on the other
+     side of the screen, which has had a collapse handle from the start.
+     Persisted the same way chatWidthPx is (ChatPage.jsx), so it survives a
+     reload instead of springing back open every visit. */
+  const [railCollapsed, setRailCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('aplang.railCollapsed') === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleRailCollapsed = () => {
+    setRailCollapsed((collapsed) => {
+      const next = !collapsed
+      try {
+        localStorage.setItem('aplang.railCollapsed', next ? '1' : '0')
+      } catch {
+        /* not persisted */
+      }
+      return next
+    })
+  }
+
   return (
     <ShellContext.Provider value={shell}>
     {/* neo-world here, not per-surface: this is the one root every
@@ -248,14 +273,32 @@ export function AppShell({ children }) {
       {/* docked */}
       {!isNarrow ? (
         <div
-          className="app-rail flex shrink-0 flex-col overflow-hidden transition-[width]"
+          className="app-rail flex shrink-0 flex-row overflow-hidden transition-[width]"
           style={{
-            width: docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
+            width: railCollapsed ? '14px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
             transitionTimingFunction: 'var(--ease-out)',
           }}
         >
-          <Rail />
+          {!railCollapsed ? (
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              <Rail />
+            </div>
+          ) : null}
+          {/* Same seam-handle language as the artifact rail's own collapse
+              control on the other side of the screen (ArtifactRail.jsx) —
+              a groove found by hover/touch, not a labeled button competing
+              with everything else in the header. */}
+          <button
+            type="button"
+            className="app-rail-handle tap-target"
+            onClick={toggleRailCollapsed}
+            aria-expanded={!railCollapsed}
+            aria-label={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
+            title={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
+          >
+            {railCollapsed ? <ChevronRight className="app-rail-handle-arrow" aria-hidden="true" /> : null}
+          </button>
         </div>
       ) : null}
 

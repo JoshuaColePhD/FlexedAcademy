@@ -602,7 +602,13 @@ export function ChatPage() {
       // instead of here. This stays as a backstop: a message that got no
       // reply used to just sit there with nothing under it and nothing to
       // explain why, which is what made the chat read as randomly broken.
-      if (!result?.toolCalled) {
+      // `quizRequested` is excluded for the same reason `toolCalled` is —
+      // it's ANOTHER real reply (see its own branch in submit()), just one
+      // this callback doesn't render itself. Without this, a quiz request
+      // that came back with no chat text of its own (the common case) hit
+      // this backstop and showed "Didn't get a reply back" a beat before
+      // submit()'s own "Built ... Quiz" message landed right under it.
+      if (!result?.toolCalled && !result?.quizRequested) {
         setMessages((prev) => [
           ...prev,
           {

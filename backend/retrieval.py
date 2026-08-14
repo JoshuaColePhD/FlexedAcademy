@@ -958,10 +958,21 @@ def audit_grounding(plan: dict, allowed: set[str], subject_code: str | None = No
     else:
         known = chunks_by_code()
 
+    # A course with a COMPANION ACT STANDARDS block (act_sections_for non-empty)
+    # is expected to cite one on every teaching day — see the mandatory-fill
+    # instruction in prompts.py. A course with no ACT companion at all is not
+    # held to this; act_alignment is correctly empty there on every day.
+    act_expected = bool(act_sections_for(subject_code)) if subject_code else False
+
     for day in plan.get("days", []):
         if day.get("no_school"):
             continue
         name = day.get("name", "?")
+        if act_expected and not str(day.get("act_alignment", "")).strip():
+            warnings.append(
+                f"{name} has no ACT alignment, even though this course has a companion "
+                f"ACT section. Ask for a revision, or add one by hand."
+            )
         cited: list[str] = []
         for fld in ("standards", "act_alignment"):
             cited += _CODE_RE.findall(str(day.get(fld, "")))

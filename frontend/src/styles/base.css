@@ -199,6 +199,56 @@
     }
   }
 
+  /* The docked nav rail's own collapse handle — same groove language as
+     .artifact-drawer-handle on the other side of the screen, mirrored: that
+     one sits at the LEFT edge of a panel that grows leftward, this one sits
+     at the RIGHT edge of a panel that grows rightward, so the chevron points
+     the opposite way (right, not left) while collapsed. */
+  .app-rail-handle {
+    position: relative;
+    flex-shrink: 0;
+    width: 14px;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--paper-inset);
+    box-shadow:
+      inset 2px 0 4px rgb(var(--neo-dark-rgb) / 0.5),
+      inset -2px 0 4px rgb(var(--neo-light-rgb) / 0.7);
+    border: none;
+    cursor: pointer;
+    opacity: 0.6;
+    transition:
+      opacity var(--t-fast) var(--ease),
+      background-color var(--t-fast) var(--ease);
+    clip-path: polygon(
+      30% 0%,
+      70% 0%,
+      100% 10px,
+      100% calc(100% - 10px),
+      70% 100%,
+      30% 100%,
+      0% calc(100% - 10px),
+      0% 10px
+    );
+  }
+  .app-rail-handle:hover {
+    opacity: 1;
+    background: var(--paper-sunken);
+  }
+  .app-rail-handle-arrow {
+    width: 10px;
+    height: 10px;
+    color: var(--ink-faint);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .app-rail-handle:hover .app-rail-handle-arrow {
+    opacity: 1;
+    color: var(--ink-muted);
+  }
+
   /* Per-class colour, decoration with a job — see lib/classColor.js. Sized by
      a CSS custom property rather than a Tailwind class per instance, since the
      colour itself is already inline (`style`) and a size modifier is cheaper

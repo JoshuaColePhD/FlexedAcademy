@@ -1222,7 +1222,7 @@ export function VoiceModePanel({
             the landing page's proof/mechanism sections use, here saying
             "these three boxes are one conversation," not three unrelated
             panels that happen to share a row. */}
-        <div aria-hidden="true" className="voice-thread pointer-events-none absolute inset-x-8 top-1/2 hidden -translate-y-1/2 md:block" />
+        <div aria-hidden="true" className="voice-thread pointer-events-none absolute inset-x-8 top-1/2 -z-10 hidden -translate-y-1/2 md:block" />
         <div className="grid w-full grid-cols-[280px_minmax(0,1fr)_280px] items-stretch gap-4">
           {/* Building takes over the transcript's own slot rather than
               stacking above/below it — the transcript is a log of what's

@@ -91,10 +91,17 @@ GROUNDING RULES — these override everything else, including the teacher's requ
    reading or grammar standard does not belong in a science or math plan, and
    an empty field is better than a borrowed code.
 4. If the retrieved standards do not cover the requested unit or topic, state that plainly. Do not invent fake standard codes to fill the gap.
-5. If no retrieved standard fits a given day, write exactly:
+5. If no retrieved standard fits a given day's `standards` field, write exactly:
    "No grounded standard retrieved for this day."
-   and leave `act_alignment` an empty string. An honest gap is correct output;
-   an invented code is not.
+   An honest gap is correct output there; an invented code is not.
+6. `act_alignment` is different: whenever a "COMPANION ACT STANDARDS" block is
+   present below, it is MANDATORY on every teaching day — never leave it blank
+   because that day's specific topic isn't a perfect match. The ACT does not
+   test week-by-week topics, it tests recurring skills, so pick whichever
+   retrieved companion code is the closest fit to what the day is teaching
+   (structure, evidence, tone, argument, etc.) and cite it. `act_alignment`
+   stays an empty string ONLY when no "COMPANION ACT STANDARDS" block exists
+   at all for this course — never as a judgment call about day-to-day fit.
 """
     return hard_rules.strip() + "\n\nFor reference, the recorded gaps:\n\n" + known_gaps()
 
@@ -162,9 +169,11 @@ def week_system_prompt(
 Design a cohesive five-day arc, {' -> '.join(DAY_NAMES)}. Scaffold the learning
 targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For each
 day, you must identify the appropriate primary standard (e.g. ACOS or AP) for the `standards` field from the "--- PRIMARY COURSE STANDARDS ---" block.
-THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, identify a
-highly relevant companion ACT standard from it and include it in the
-`act_alignment` field. If that block is absent, the ACT has no test section for
+THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, `act_alignment`
+is MANDATORY on every teaching day — pick the closest-fitting companion ACT
+standard from that block for EACH day, even if it's a broader skill than the
+day's specific topic; never leave it blank because the fit feels imperfect
+(see grounding rule 6). If that block is absent, the ACT has no test section for
 this course and `act_alignment` MUST be an empty string on every day — do not
 substitute a standard from the primary block or from another subject.
 Show how the activity actually fulfills the standards you cite.
@@ -220,9 +229,12 @@ Apply the teacher's feedback to the single day given. Keep the day's `name`
 unchanged. Preserve anything the feedback didn't ask you to change — this is a
 revision, not a regeneration. Keep it coherent with the rest of the week shown
 above. Ensure that you identify the appropriate primary standard in the `standards` field from the "--- PRIMARY COURSE STANDARDS ---" block. If a
-"--- COMPANION ACT STANDARDS ---" block is present, cite a relevant standard
-from it in `act_alignment`; if it is absent, leave `act_alignment` an empty
-string. Every code you cite must come from the retrieved standards block.
+"--- COMPANION ACT STANDARDS ---" block is present, `act_alignment` is
+MANDATORY — cite the closest-fitting standard from it even if the fit is
+broader than the day's specific topic (see grounding rule 6); never leave it
+blank just because nothing matches perfectly. Only leave it empty if that
+block is absent entirely. Every code you cite must come from the retrieved
+standards block.
 
 Return JSON for that one day matching this schema exactly:
 
@@ -263,12 +275,22 @@ def day_field_system_prompt(
     rules = planning_rules() if subject == "AP Language & Composition" else ""
     label = FIELD_LABELS.get(field, field)
 
-    codes_note = (
-        "This field carries standard codes. Every code you cite must appear in "
-        "the retrieved standards block above — do not recall one from memory."
-        if field in ("standards", "act_alignment")
-        else "Do NOT put a standard code in this field; it does not carry one."
-    )
+    if field == "act_alignment":
+        codes_note = (
+            "This field carries standard codes. Every code you cite must appear in "
+            "the retrieved standards block above — do not recall one from memory. If "
+            'a "--- COMPANION ACT STANDARDS ---" block is present above, this field is '
+            "MANDATORY — pick the closest-fitting code from it even if the fit is "
+            "broader than this day's specific topic (see grounding rule 6); leave it "
+            "empty only if that block is absent entirely."
+        )
+    elif field == "standards":
+        codes_note = (
+            "This field carries standard codes. Every code you cite must appear in "
+            "the retrieved standards block above — do not recall one from memory."
+        )
+    else:
+        codes_note = "Do NOT put a standard code in this field; it does not carry one."
 
     blocks = [
         f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
