@@ -221,13 +221,78 @@ const state = {
       {
         id: 'quiz1',
         title: 'Week 03 Quiz — Voice & Tone',
-        question_types: ['multiple_choice'],
+        question_types: ['multiple_choice', 'true_false', 'short_answer', 'matching'],
         has_qti: true,
         warnings: [],
+        // Real shape (schema.QUESTION_JSON_SCHEMA) — quiz_json is what
+        // ArtifactDetailPanel's quiz view actually renders, and list_quizzes
+        // returns it hydrated on every row, not just get_quiz by id.
+        quiz_json: {
+          title: 'Week 03 Quiz — Voice & Tone',
+          questions: [
+            {
+              type: 'multiple_choice',
+              prompt: "Which term describes the narrator's own attitude toward the events of the story?",
+              standard_code: 'RHS-2A',
+              choices: ['Tone', 'Diction', 'Syntax', 'Ethos'],
+              correct_index: 0,
+              correct_bool: false,
+              accepted_answers: [],
+              pairs: [],
+            },
+            {
+              type: 'true_false',
+              prompt: 'Diction and syntax are two of the tools a writer uses to establish tone.',
+              standard_code: 'RHS-2A',
+              choices: [],
+              correct_index: -1,
+              correct_bool: true,
+              accepted_answers: [],
+              pairs: [],
+            },
+            {
+              type: 'short_answer',
+              prompt: 'Name one connotative word choice from Monday’s reading and the tone it creates.',
+              standard_code: '',
+              choices: [],
+              correct_index: -1,
+              correct_bool: false,
+              accepted_answers: ['(open response)'],
+              pairs: [],
+            },
+            {
+              type: 'matching',
+              prompt: 'Match each rhetorical term to its definition.',
+              standard_code: 'RHS-1',
+              choices: [],
+              correct_index: -1,
+              correct_bool: false,
+              accepted_answers: [],
+              pairs: [
+                { term: 'Ethos', match: 'An appeal to credibility' },
+                { term: 'Pathos', match: 'An appeal to emotion' },
+                { term: 'Logos', match: 'An appeal to logic' },
+              ],
+            },
+          ],
+        },
       },
     ],
   },
-  documents: [],
+  // Flat array, filtered by class_id — see docList below. Seeded with one
+  // document for c1 so the rail's "Built from" group has a row to open;
+  // ArtifactDetailPanel's document view had no mock coverage before this,
+  // since nothing had ever put a document here at load time.
+  documents: [
+    {
+      id: 'doc1',
+      class_id: 'c1',
+      kind: 'pacing_guide',
+      original_name: 'AP Lang pacing guide.pdf',
+      chars: 18420,
+      uploaded_at: '2026-08-01T00:00:00+00:00',
+    },
+  ],
   // GET /api/weeks — db.week_board()'s shape. Week 03 is built and links to
   // seed1 (the has_plan-and-openable case); week 12 is built but with no
   // chat_id (the pre-chat_id-tracking orphan case, plain text not a link);
@@ -473,7 +538,14 @@ export function installMockApi() {
       const id = uid('doc')
       if (classId) {
         state.documents = state.documents.filter((d) => !(d.class_id === classId && d.kind === kind))
-        state.documents.push({ id, class_id: classId, kind, original_name: f?.name || 'upload.pdf', chars: 12345 })
+        state.documents.push({
+          id,
+          class_id: classId,
+          kind,
+          original_name: f?.name || 'upload.pdf',
+          chars: 12345,
+          uploaded_at: new Date().toISOString(),
+        })
       }
       return json({ id, weeks_parsed: 12 })
     }

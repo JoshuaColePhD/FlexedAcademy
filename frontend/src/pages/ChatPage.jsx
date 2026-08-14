@@ -15,12 +15,14 @@ import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
 import { FIELD_LABELS } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
+import { scanGrounding } from '../lib/grounding'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
 import { WeekPicker } from '../components/WeekPicker'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
+import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
@@ -126,6 +128,14 @@ export function ChatPage() {
   /* Was `panelOpen`. The document is closed by default now — the rail and the
      message carry enough that opening it is a choice, not a requirement. */
   const [expanded, setExpanded] = useState(false)
+  /* What `expanded` actually shows — the plan itself (ArtifactPanel, the
+     original and only option until now) or one of the rail's other rows,
+     rendered through the shared embossed shell in ArtifactDetailPanel.
+     `viewingQuiz`/`viewingDoc` carry the one piece of data each of those
+     needs that isn't already in scope some other way. */
+  const [viewKind, setViewKind] = useState('plan')
+  const [viewingQuiz, setViewingQuiz] = useState(null)
+  const [viewingDoc, setViewingDoc] = useState(null)
   /* The drawer's own open/closed state — separate from `expanded`, which is
      the FULL docked/overlay document. Starts closed (just the handle) for
      every chat; the effect below pulls it open the moment there's a reason
@@ -325,6 +335,9 @@ export function ChatPage() {
       setMessages([])
       setArtifact(null)
       setExpanded(false)
+      setViewKind('plan')
+      setViewingQuiz(null)
+      setViewingDoc(null)
       setRailOpen(false)
       railAutoOpenedRef.current = false
       setSelectedWeek(null)
@@ -349,6 +362,9 @@ export function ChatPage() {
     setArtifact(null)
     setOpenTweak(null)
     setExpanded(false)
+    setViewKind('plan')
+    setViewingQuiz(null)
+    setViewingDoc(null)
     setRailOpen(false)
     railAutoOpenedRef.current = false
 
@@ -1313,7 +1329,32 @@ export function ChatPage() {
 
   /** Opening the document from anywhere, optionally straight into a cell. */
   const openDocument = useCallback((tweak = null) => {
+    setViewKind('plan')
     setOpenTweak(tweak)
+    setExpanded(true)
+  }, [])
+
+  /* The rail's other rows open the same embossed panel the plan does (see
+     ArtifactDetailPanel) instead of each inventing its own. `viewKind`
+     switches what fills it; `viewingQuiz`/`viewingDoc` carry the one piece
+     of data ChatPage doesn't already have some other way (the plan itself,
+     the calendar, and the grounding scan are all already in scope below). */
+  const openQuiz = useCallback((quiz) => {
+    setViewKind('quiz')
+    setViewingQuiz(quiz)
+    setExpanded(true)
+  }, [])
+  const openStandards = useCallback(() => {
+    setViewKind('standards')
+    setExpanded(true)
+  }, [])
+  const openCalendar = useCallback(() => {
+    setViewKind('calendar')
+    setExpanded(true)
+  }, [])
+  const openDoc = useCallback((doc) => {
+    setViewKind('document')
+    setViewingDoc(doc)
     setExpanded(true)
   }, [])
 
@@ -1335,21 +1376,41 @@ export function ChatPage() {
     })
   }, [])
 
-  const artifactEl = (
-    <ArtifactPanel
-      artifact={{ ...liveArtifact, plan: livePlan }}
-      classId={classId}
-      missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
-      onCollapse={collapse}
-      onReviseDay={!isPhone && artifact?.planId ? reviseDay : undefined}
-      onPlanRevised={onPlanRevised}
-      busy={busy}
-      streamingText={stream.text}
-      openTweak={openTweak}
-      setOpenTweak={setOpenTweak}
-      flashCells={flashCells}
-    />
-  )
+  // Same scan ArtifactRail runs to decide its own "Standards" row sub-text —
+  // recomputed here rather than threaded down, since the two components
+  // don't otherwise share a parent-owned result and this is a plain array
+  // scan, not a fetch.
+  const retrievedCodes = liveArtifact?.grounding?.codes || liveArtifact?.retrievedIds || []
+  const { grounded, ungrounded } = scanGrounding(livePlan, retrievedCodes)
+
+  const artifactEl =
+    viewKind === 'plan' ? (
+      <ArtifactPanel
+        artifact={{ ...liveArtifact, plan: livePlan }}
+        classId={classId}
+        missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
+        onCollapse={collapse}
+        onReviseDay={!isPhone && artifact?.planId ? reviseDay : undefined}
+        onPlanRevised={onPlanRevised}
+        busy={busy}
+        streamingText={stream.text}
+        openTweak={openTweak}
+        setOpenTweak={setOpenTweak}
+        flashCells={flashCells}
+      />
+    ) : (
+      <ArtifactDetailPanel
+        kind={viewKind}
+        classId={classId}
+        planId={artifact?.planId}
+        plan={livePlan}
+        quiz={viewingQuiz}
+        doc={viewingDoc}
+        grounded={grounded}
+        ungrounded={ungrounded}
+        onCollapse={collapse}
+      />
+    )
 
   const chatPane = (
     <div className="relative flex h-full min-h-0 flex-col bg-paper">
@@ -1591,6 +1652,10 @@ export function ChatPage() {
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
           onExpand={() => openDocument()}
+          onOpenQuiz={openQuiz}
+          onOpenStandards={openStandards}
+          onOpenCalendar={openCalendar}
+          onOpenDocument={openDoc}
           busy={busy}
           quizBuilding={quizBuilding}
           decisions={decisions}

@@ -105,7 +105,7 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
  * local zip write failed) still shows, with Download disabled rather than
  * the whole row vanishing: the questions are safe in the database either
  * way (quiz_json), and the title says so on hover. */
-function QuizRow({ quiz, planId, index = 0 }) {
+function QuizRow({ quiz, planId, index = 0, onOpen }) {
   const toast = useToast()
   const qc = useQueryClient()
   const [deleting, setDeleting] = useState(false)
@@ -122,6 +122,10 @@ function QuizRow({ quiz, planId, index = 0 }) {
     }
   }
 
+  // Same shape as the plan card above, and for the same reason (see its own
+  // comment): the row is a plain container, not role="button" wrapping a
+  // link and a button — the title is the real button, Download and Remove
+  // are its siblings.
   return (
     <div className="rail-row fa-rise" style={style}>
       <span className="rail-row-tile">
@@ -131,13 +135,23 @@ function QuizRow({ quiz, planId, index = 0 }) {
           <ListChecks size={13} aria-hidden="true" />
         )}
       </span>
-      <span className="rail-text">
-        <span className="rail-row-label">{quiz.title}</span>
-        <span className="rail-sub">
-          {quiz.question_types.map((t) => QUESTION_TYPE_LABELS[t] || t).join(', ')}
-          {quiz.has_qti ? '' : ' · file failed, ask again'}
+      {onOpen ? (
+        <button type="button" className="rail-text rail-open-title" onClick={() => onOpen(quiz)}>
+          <span className="rail-row-label">{quiz.title}</span>
+          <span className="rail-sub">
+            {quiz.question_types.map((t) => QUESTION_TYPE_LABELS[t] || t).join(', ')}
+            {quiz.has_qti ? '' : ' · file failed, ask again'}
+          </span>
+        </button>
+      ) : (
+        <span className="rail-text">
+          <span className="rail-row-label">{quiz.title}</span>
+          <span className="rail-sub">
+            {quiz.question_types.map((t) => QUESTION_TYPE_LABELS[t] || t).join(', ')}
+            {quiz.has_qti ? '' : ' · file failed, ask again'}
+          </span>
         </span>
-      </span>
+      )}
       <span className="rail-actions">
         {quiz.has_qti ? (
           <a
@@ -240,6 +254,15 @@ export function ArtifactRail({
   // that triggers it (a chat message) and the card that shows its progress
   // live in different components.
   quizBuilding = false,
+  // Opens the same embossed panel the plan card does (see onExpand above),
+  // just pointed at a different kind of content — ArtifactDetailPanel in
+  // ChatPage.jsx switches on what each of these was given. Not gated behind
+  // isBar: the phone bar never renders the rows these belong to at all, so
+  // there's nothing there to wire up.
+  onOpenQuiz,
+  onOpenStandards,
+  onOpenCalendar,
+  onOpenDocument,
 }) {
   const plan = artifact?.plan
   const planId = artifact?.planId
@@ -397,6 +420,36 @@ export function ArtifactRail({
         )}
       </div>
 
+      {/* Quizzes over this plan — right under My Plans, ahead of Built From:
+          a quiz is a second artifact this conversation produced, the same
+          rank as the plan itself, not a citation the plan rests on. Only in
+          the full rail, same reasoning as Built From below: the phone bar's
+          whole point is "the file and its Download, nothing else." Shown
+          whenever there's something to show (a build in progress, or an
+          already-built quiz), not gated behind planId the same strict way
+          Built From is — quizBuilding can be true for one render right
+          after the request lands, before the query below has anything
+          cached yet. */}
+      {!isBar && (quizBuilding || quizzes.length > 0) ? (
+        <div className="rail-group">
+          <span className="eyebrow">Quizzes</span>
+          {quizBuilding ? (
+            <div className="rail-row fa-rise">
+              <span className="rail-row-tile">
+                <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+              </span>
+              <span className="rail-text">
+                <span className="rail-row-label">Building quiz…</span>
+                <span className="rail-sub">grounded in this week's own plan</span>
+              </span>
+            </div>
+          ) : null}
+          {quizzes.map((quiz, i) => (
+            <QuizRow key={quiz.id} quiz={quiz} planId={planId} index={i} onOpen={onOpenQuiz} />
+          ))}
+        </div>
+      ) : null}
+
       {planId && !isBar ? (
         <div className="rail-group">
           <span className="eyebrow">Built from</span>
@@ -411,6 +464,7 @@ export function ArtifactRail({
                 : `${teachingDays} teaching days`
             }
             title="The plan's no-school days come from the school calendar"
+            onClick={onOpenCalendar}
           />
 
           {documents.map((doc, i) => (
@@ -421,6 +475,7 @@ export function ArtifactRail({
               label={doc.original_name}
               sub={artifact?.unit || doc.kind?.replace(/_/g, ' ') || 'course document'}
               title={doc.original_name}
+              onClick={onOpenDocument ? () => onOpenDocument(doc) : undefined}
             />
           ))}
 
@@ -441,34 +496,8 @@ export function ArtifactRail({
             }
             flag={checking && ungrounded.length > 0}
             title={checking ? grounded.join(', ') : undefined}
+            onClick={onOpenStandards}
           />
-        </div>
-      ) : null}
-
-      {/* Quizzes over this plan — only in the full rail, same reasoning as
-          "Built from" above: the phone bar's whole point is "the file and
-          its Download, nothing else." Shown whenever there's something to
-          show (a build in progress, or an already-built quiz), not gated
-          behind planId the same strict way "Built from" is — quizBuilding
-          can be true for one render right after the request lands, before
-          the query below has anything cached yet. */}
-      {!isBar && (quizBuilding || quizzes.length > 0) ? (
-        <div className="rail-group">
-          <span className="eyebrow">Quizzes</span>
-          {quizBuilding ? (
-            <div className="rail-row fa-rise">
-              <span className="rail-row-tile">
-                <Loader2 size={13} className="animate-spin" aria-hidden="true" />
-              </span>
-              <span className="rail-text">
-                <span className="rail-row-label">Building quiz…</span>
-                <span className="rail-sub">grounded in this week's own plan</span>
-              </span>
-            </div>
-          ) : null}
-          {quizzes.map((quiz, i) => (
-            <QuizRow key={quiz.id} quiz={quiz} planId={planId} index={i} />
-          ))}
         </div>
       ) : null}
 

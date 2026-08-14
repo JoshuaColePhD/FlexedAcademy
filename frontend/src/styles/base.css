@@ -2370,6 +2370,127 @@
   .doc-sheet .marginalia {
     margin-top: var(--sp-5);
   }
+
+  /* ArtifactDetailPanel's own sheet variant — a quiz, a standards list, a
+     calendar week or a document's metadata is not a printed page, so the
+     district-blue "this simulates paper" treatment .doc-sheet otherwise
+     carries would be a claim this content doesn't make. Same padding and
+     shadow, a plain embossed panel background instead. */
+  .doc-sheet-plain {
+    background: var(--paper-raised);
+  }
+  .detail-card-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+  .detail-card {
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--paper-raised);
+    border-radius: var(--r-lg);
+  }
+  .detail-card.is-closed {
+    opacity: 0.7;
+  }
+  .detail-card-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+  }
+  .detail-card-index {
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    color: var(--ink-faint);
+  }
+  .detail-card-type {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    color: var(--ink-muted);
+  }
+  .detail-card-type.is-flag {
+    color: var(--flag);
+  }
+  .detail-card-code {
+    margin-left: auto;
+    padding: 1px 7px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    color: var(--accent-text);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+  }
+  .detail-card-prompt {
+    margin: var(--sp-2) 0 0;
+    font-size: var(--fs-sm);
+    color: var(--ink);
+  }
+  .detail-card-answer {
+    margin: var(--sp-1) 0 0;
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+  }
+  .detail-choice-list,
+  .detail-pair-list,
+  .detail-code-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: var(--sp-2) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .detail-choice {
+    padding: 6px 10px;
+    font-size: var(--fs-sm);
+    color: var(--ink-soft);
+    background: var(--paper-inset);
+    border-radius: var(--r-md);
+    box-shadow: inset 1px 1px 2px rgb(var(--neo-dark-rgb) / 0.4), inset -1px -1px 2px rgb(var(--neo-light-rgb) / 0.6);
+  }
+  /* The one right answer, picked out of the list the same way a selected
+     control reads elsewhere in this world — raised out of the groove
+     instead of sitting flush in it, tinted with the accent rather than a
+     traffic-light green this palette doesn't otherwise use. */
+  .detail-choice.is-correct {
+    color: var(--accent-text);
+    background: var(--accent-tint);
+    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.4), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
+  }
+  .detail-pair-list li {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 6px 10px;
+    font-size: var(--fs-sm);
+    color: var(--ink-soft);
+    background: var(--paper-inset);
+    border-radius: var(--r-md);
+  }
+  .detail-pair-list li span:first-child,
+  .detail-pair-list li span:last-child {
+    flex: 1;
+  }
+  .detail-pair-list li span:nth-child(2) {
+    color: var(--ink-faint);
+  }
+  .detail-code {
+    padding: 6px 10px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    background: var(--paper-inset);
+    border-radius: var(--r-md);
+  }
+  .detail-code.is-grounded {
+    color: var(--ink);
+  }
+  .detail-code.is-flag {
+    color: var(--flag);
+  }
+  .detail-code-where {
+    font-family: initial;
+    color: var(--ink-faint);
+  }
   @media (max-width: 767.98px) {
     .doc-sheet {
       padding: var(--sp-6) var(--sp-5);
