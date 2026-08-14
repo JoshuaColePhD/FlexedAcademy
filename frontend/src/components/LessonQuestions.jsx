@@ -7,13 +7,19 @@ import { useState } from 'react'
  * never invents a fixed question set of its own.
  *
  * Single-select per question, on purpose: this is a quick way to point the
- * model in a direction, not a form. A teacher who wants to say something more
- * specific than any option offered still has the composer for that — Continue
- * only needs every question touched, not a perfect answer to each.
+ * model in a direction, not a form. "Type instead" is the real escape hatch
+ * for a teacher whose answer isn't any of the offered options — it used to
+ * be "abandon this card and use the composer instead," which nothing here
+ * ever said out loud, so it was findable only by already knowing the trick.
+ * Typing sends the free text as the whole answer, in place of every tapped
+ * option, not alongside them — mixing "tapped some, typed the rest" would
+ * have to guess which question the typed text was even answering.
  */
 export function LessonQuestions({ questions, onSubmit }) {
   const [answers, setAnswers] = useState({})
   const [submitted, setSubmitted] = useState(false)
+  const [typing, setTyping] = useState(false)
+  const [customText, setCustomText] = useState('')
 
   if (submitted) return null
 
@@ -23,6 +29,12 @@ export function LessonQuestions({ questions, onSubmit }) {
     setSubmitted(true)
     const text = questions.map((q) => `${q.text} ${answers[q.id]}`).join('\n')
     onSubmit(text)
+  }
+
+  const submitCustom = () => {
+    if (!customText.trim()) return
+    setSubmitted(true)
+    onSubmit(customText.trim())
   }
 
   return (
@@ -50,14 +62,65 @@ export function LessonQuestions({ questions, onSubmit }) {
           </div>
         </div>
       ))}
-      <button
-        type="button"
-        className="neo-raised mt-1 self-start rounded-lg bg-accent-tint px-4 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={!allAnswered}
-        onClick={submit}
-      >
-        Continue
-      </button>
+
+      {typing ? (
+        <div className="flex flex-col gap-2">
+          <label className="visually-hidden" htmlFor="clarify-custom-input">
+            Type your own answer instead
+          </label>
+          <textarea
+            id="clarify-custom-input"
+            className="input"
+            autoFocus
+            rows={2}
+            placeholder="Type your own answer instead…"
+            value={customText}
+            onChange={(e) => setCustomText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                submitCustom()
+              }
+              if (e.key === 'Escape') setTyping(false)
+            }}
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="neo-raised rounded-lg bg-accent-tint px-4 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!customText.trim()}
+              onClick={submitCustom}
+            >
+              Send
+            </button>
+            <button
+              type="button"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-ink-muted"
+              onClick={() => setTyping(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            className="neo-raised self-start rounded-lg bg-accent-tint px-4 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!allAnswered}
+            onClick={submit}
+          >
+            Continue
+          </button>
+          <button
+            type="button"
+            className="self-start text-sm font-medium text-ink-muted underline-offset-2 hover:underline"
+            onClick={() => setTyping(true)}
+          >
+            Type instead
+          </button>
+        </div>
+      )}
     </div>
   )
 }

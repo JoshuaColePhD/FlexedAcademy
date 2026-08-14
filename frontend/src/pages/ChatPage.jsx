@@ -992,6 +992,19 @@ export function ChatPage() {
         setVoiceCaption(VOICE_REVISING)
         voice.enqueue(VOICE_REVISING)
       }
+      // Same fallback as the quiz-build path below, and the same reason: the
+      // model isn't REQUIRED to say anything before calling generate_lesson_plan
+      // (chatResult.text is what onDone already showed, above, when it did),
+      // and a revision is a real model call — answer-then-silence-then-a-
+      // sudden "Updated the week" reads as broken. Voice mode already speaks
+      // VOICE_REVISING, but that's audio, not a line in the transcript, so
+      // this isn't gated on voiceOpen.
+      if (!chatResult.text?.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: 'assistant', content: 'Updating the week now — one moment.' },
+        ])
+      }
       setRevising(true)
       try {
         const row = await api.revisePlan(artifact.planId, combinedHistory)
