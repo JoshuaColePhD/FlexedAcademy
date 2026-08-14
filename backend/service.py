@@ -148,6 +148,7 @@ def finalize(
     class_id: str | None = None,
     week_number: int | None = None,
     school_id: str | None = None,
+    subject: str | None = None,
 ) -> dict:
     """Validate, stamp identity, build the .docx, persist. Returns the plan row.
 
@@ -161,6 +162,18 @@ def finalize(
     "Built from" can't say more than that generic fallback (or "Week N" for
     every other subject, which is what it fell back to for a Pre-AP Algebra 2
     plan even though that class had a real pacing guide on file).
+
+    `subject` MUST be the class's real subject code (classes.subject, e.g.
+    "AP_Lang" or "Pre-AP Algebra 2" — the same value uploadCurriculumMap sends
+    and list_curriculum_progress does an EXACT match against), never
+    plan["course"]/settings.course. That's the free-text display string a
+    teacher can type anything into ("Pre-AP Algebra 2 · 11th"), and passing it
+    here silently returns zero curriculum_progress rows for every class whose
+    display name isn't exactly the subject code — the same "right mechanism,
+    wrong field" bug retrieval.chunk_for_code had, just one call site over.
+    Falls back to the account's most-recently-touched settings row only when
+    the caller has no class context at all (same fallback audit_grounding's
+    own subject_code already uses, two lines below).
     """
     started = time.monotonic()
     plan, warnings = schema.validate_plan(plan_raw)
@@ -170,9 +183,8 @@ def finalize(
         plan, teacher=s["teacher"], course=s["course"], period=s["period"]
     )
 
-    warnings += retrieval.audit_grounding(
-        plan, result.codes, subject_code=_subject_code(s.get("subject", ""))
-    )
+    subject_code = subject or _subject_code(s.get("subject", ""))
+    warnings += retrieval.audit_grounding(plan, result.codes, subject_code=subject_code)
 
     unit = units.unit_for_week(plan["week_of"], subject=plan["course"])
     if week_number is not None and school_id:
@@ -180,7 +192,7 @@ def finalize(
             (w for w in schoolcal.school_weeks(school_id) if w["week"] == week_number), None
         )
         if week_row:
-            map_unit = curriculum.unit_for_calendar_week(user_id, plan["course"], week_row)
+            map_unit = curriculum.unit_for_calendar_week(user_id, subject_code, week_row)
             if map_unit and map_unit.get("unit"):
                 unit = map_unit["unit"]
 

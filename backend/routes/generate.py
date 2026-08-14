@@ -228,6 +228,7 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
                 class_id=cls["id"] if cls else None,
                 week_number=req.week_number,
                 school_id=school_id,
+                subject=cls["subject"] if cls else None,
             )
             yield _sse(
                 {
