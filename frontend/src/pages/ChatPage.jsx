@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDown } from 'lucide-react'
@@ -1289,6 +1289,30 @@ export function ChatPage() {
       /* not persisted */
     }
   }, [])
+
+  /* clampChatWidth only ever ran from the drag/keyboard handlers — so a width
+     dragged wide on one screen (a big external monitor, say) and persisted to
+     localStorage came back UNCLAMPED on a narrower one, and with
+     flex-shrink:0 on the chat pane (below), the artifact panel simply lost the
+     fight for space: squeezed to a sliver, or pushed off past the edge of the
+     viewport entirely, reading as "the document panel is just gone." Docked
+     mode is the only one this can happen in — the overlay/phone layouts never
+     read chatWidthPx at all — so this only needs to run when docOpen flips on
+     (a fresh mount into a narrower window than last time) and again on a live
+     resize of the SAME window while it's open. */
+  useLayoutEffect(() => {
+    if (!docOpen || chatWidthPx == null) return undefined
+    const reclamp = () => {
+      const clamped = clampChatWidth(chatWidthPx)
+      if (clamped !== chatWidthPx) {
+        setChatWidthPx(clamped)
+        persistChatWidth(clamped)
+      }
+    }
+    reclamp()
+    window.addEventListener('resize', reclamp)
+    return () => window.removeEventListener('resize', reclamp)
+  }, [docOpen, chatWidthPx, clampChatWidth, persistChatWidth])
 
   const onResizePointerDown = useCallback(
     (e) => {
