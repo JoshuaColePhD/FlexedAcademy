@@ -2115,6 +2115,14 @@
     box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
   .rail-row-label {
+    /* Same bug .rail-title's own comment already documents, one class over:
+       QuizRow's title is a button combining .rail-text (flex-direction:
+       column) with .rail-open-title (align-items: flex-start), so this
+       label no longer stretches to the button's full width — with nothing
+       to truncate against, a long quiz title ("Week 02 Quiz — Linear Forms
+       and Quadratic Features") just overflowed past its box and crowded
+       into the Download/Remove icons instead of eliding. */
+    max-width: 100%;
     overflow: hidden;
     font-size: var(--fs-xs);
     color: var(--ink-soft);
