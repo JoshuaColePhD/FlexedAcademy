@@ -82,7 +82,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             paper-sunken groove this used to be — editing your own turn
             should still read as your turn, not switch to a different
             surface mid-edit. */}
-        <div className="msg-user-bubble neo-raised w-full max-w-[85%] rounded-2xl rounded-br-none bg-accent-tint p-4">
+        <div className="neo-raised w-full max-w-[85%] rounded-2xl bg-accent-tint p-4">
           <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
             Edit your message
           </label>
@@ -161,12 +161,12 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                    accent-tint combo the app already uses for its one
                    primary-action treatment (see "Send again" below, or the
                    "New plan" button), so "said by you" reads as the
-                   prominent, colored voice in the exchange. The bottom-right
-                   corner is squared off (rounded-br-none) so .msg-user-bubble's
-                   CSS tail (base.css) has a flush corner to grow out of,
-                   instead of fighting a rounded one and leaving a visible
-                   notch. */
-                'msg-user-bubble neo-raised rounded-2xl rounded-br-none bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
+                   prominent, colored voice in the exchange. A literal CSS
+                   tail (squared corner + pseudo-element flap) was tried and
+                   looked wrong at this bubble's size, so this stays a plain
+                   rounded bubble — the color and elevation alone are enough
+                   to read as "you" beside the assistant's bare text. */
+                'neo-raised rounded-2xl bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
                 : 'text-[0.9375rem] leading-relaxed text-ink'
