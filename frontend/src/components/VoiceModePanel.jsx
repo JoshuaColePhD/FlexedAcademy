@@ -339,7 +339,6 @@ export function VoiceModePanel({
   const prevCaptionRef = useRef('')
   const panelRef = useRef(null)
   const closeRef = useRef(null)
-  const canvasRef = useRef(null)
 
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
@@ -636,71 +635,6 @@ export function VoiceModePanel({
   useEffect(() => {
     let cancelled = false
 
-    // Canvas's fillStyle parser doesn't resolve CSS var() — it isn't part of
-    // the cascade — so the actual accent color has to be read out as a
-    // concrete value once, not passed through as a custom property.
-    //
-    // Read from the CANVAS element, not document.documentElement: this
-    // panel lives inside .neo-world, which redeclares --accent-rgb to its
-    // own rose rather than the app's blue, and that override only takes
-    // effect for elements actually inside the scope. Reading from the root
-    // would silently get the wrong color the moment .neo-world disagrees
-    // with :root, which is the entire point of it existing. Read once, here
-    // — the canvas is already mounted by the time an effect body runs — not
-    // per frame, which would force a style recalculation at 60fps.
-    const accentRgb = canvasRef.current
-      ? getComputedStyle(canvasRef.current).getPropertyValue('--accent-rgb').trim()
-      : ''
-    const resolvedAccentRgb = accentRgb || '47 95 191'
-
-    const draw = (level) => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext('2d')
-      const { width, height } = canvas
-      ctx.clearRect(0, 0, width, height)
-      const cx = width / 2
-      const cy = height / 2
-      const base = Math.min(width, height) * 0.16
-      // Was 0.22 — the outer layers' own pulse range was small enough next
-      // to their low alpha (below) that the whole orb read as barely
-      // reactive, not just faint.
-      const extra = Math.min(width, height) * 0.3
-      // Muted reads the same as paused here on purpose — both mean "your
-      // voice is not going anywhere right now," and that's the one thing
-      // the orb has to be honest about. (The label distinguishes them.)
-      const damped = pausedRef.current || mutedRef.current
-      const effectiveLevel = damped ? 0.05 : Math.max(0.05, level)
-      const rgb = damped ? '150 150 150' : resolvedAccentRgb
-      // Outer two layers' alpha raised (0.16→0.28, 0.28→0.44) — at the old
-      // values they mostly disappeared into the page background, leaving
-      // only the small solid core layer actually visible, which read as
-      // one weak dot rather than a set of rings.
-      const layers = [
-        { mult: 1, alpha: 0.28 },
-        { mult: 0.7, alpha: 0.44 },
-        { mult: 0.42, alpha: 0.9 },
-      ]
-      for (const { mult, alpha } of layers) {
-        const r = base * mult + extra * mult * effectiveLevel
-        ctx.beginPath()
-        ctx.arc(cx, cy, r, 0, Math.PI * 2)
-        ctx.fillStyle = `rgb(${rgb} / ${alpha})`
-        ctx.fill()
-      }
-      // A crisp stroked edge on the outermost layer only — the fills alone
-      // still fade to nothing at their own boundary, which is soft by
-      // design for the inner glow but left the whole orb without a single
-      // defined edge to actually read as a "ring."
-      const outer = layers[0]
-      const outerR = base * outer.mult + extra * outer.mult * effectiveLevel
-      ctx.beginPath()
-      ctx.arc(cx, cy, outerR, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgb(${rgb} / 0.5)`
-      ctx.lineWidth = 1.5
-      ctx.stroke()
-    }
-
     const tick = () => {
       const analyser = analyserRef.current
       if (!analyser) return
@@ -714,10 +648,13 @@ export function VoiceModePanel({
       }
       const level = Math.sqrt(sumSquares / data.length)
 
-      draw(level)
+      // level itself still drives the VAD logic below (endpointing,
+      // barge-in, the quiet/miss hints) — only the orb that used to paint
+      // it as a pulsing waveform is gone now that the checklist is the
+      // panel's whole point; statusPill's own dot (below) is the entire
+      // "is it hearing me" indicator now.
 
-      // Muted: the orb keeps drawing (damped, above) so the panel doesn't
-      // look frozen, but nothing below this line runs — no endpointing, no
+      // Muted: nothing below this line runs — no endpointing, no
       // barge-in, no quiet-hint accumulation. The track is already
       // delivering silence (see toggleMute), this just stops the VAD from
       // reasoning about it at all.
@@ -932,27 +869,6 @@ export function VoiceModePanel({
   const spokenText = typedCaption || ''
   const showHeard = !spokenText && Boolean(heardText)
 
-  // The "album art" disc itself: a big raised, ringed circle standing in
-  // for the reference's cover art, with the pulsing accent circles (drawn
-  // in the effect above) glowing inside it. Used to shrink while a question
-  // was on the table, because the cards used to live in this same column,
-  // underneath it. Now that they live in the side column instead (see
-  // QuestionCards' own comment), the orb has nothing left to make room for
-  // and stays full size regardless.
-  const orb = (
-    <div className="neo-raised neo-ring relative flex aspect-square w-full max-w-[280px] shrink-0 items-center justify-center rounded-full">
-      <div className="voice-glow" aria-hidden="true" />
-      <canvas ref={canvasRef} width={280} height={280} className="h-full w-full" />
-      {/* A slow highlight chasing the ring's own edge — the level-driven
-          canvas above already answers "is it hearing volume," this answers
-          "is it alive" independent of that, the same way a spinner keeps
-          moving even mid-silence. Purely decorative (aria-hidden), and
-          collapses under the app's global prefers-reduced-motion rule like
-          every other animation here. */}
-      <div className="voice-orb-sheen" aria-hidden="true" />
-    </div>
-  )
-
   /* The one place status lives, on BOTH layouts now — the phone used to
      have only a bare pulsing dot here (mic on/off and nothing else) and
      leaned on its docked bar to carry status text, which is why that bar
@@ -1009,40 +925,30 @@ export function VoiceModePanel({
      just heard from the teacher, or the error state's own recovery path. */
   const captionBlock =
     status === 'error' ? (
-      <div className="flex flex-col items-center gap-3">
-        <p className="text-base leading-relaxed text-mark">{errorMessage}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm leading-relaxed text-mark">{errorMessage}</p>
         {/* The error used to be terminal — the message named the fix
             (browser settings) but left no way to act on it, so the only
             route back was closing and reopening the panel. */}
         <button
           type="button"
           onClick={retryMic}
-          className="neo-raised tap-target flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-accent-text transition-shadow"
+          className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-accent-text transition-shadow"
         >
-          <RotateCcw size={14} aria-hidden="true" />
+          <RotateCcw size={12} aria-hidden="true" />
           Try again
         </button>
       </div>
-    ) : (
-      <>
-        {spokenText ? (
-          <p className="text-base leading-relaxed text-ink-soft">{spokenText}</p>
-        ) : showHeard ? (
-          <p className="fa-rise text-base leading-relaxed text-ink-muted">
-            <span className="eyebrow mr-2 not-italic">You said</span>
-            <span className="italic">“{heardText}”</span>
-          </p>
-        ) : null}
-        {/* Barge-in is real but was never advertised — nothing on screen
-            suggested talking over a reply would do anything but collide
-            with it. Sits BELOW whatever is being said rather than instead
-            of it: while the assistant speaks there's almost always caption
-            text in the slot above, so an either/or would have meant this
-            tip effectively never rendered at the one moment it's
-            actionable. */}
-        {isSpeaking ? <p className="text-sm text-ink-faint">Talk any time to cut in.</p> : null}
-      </>
-    )
+    ) : spokenText ? (
+      <p className="truncate text-sm leading-relaxed text-ink-soft">{spokenText}</p>
+    ) : showHeard ? (
+      <p className="fa-rise truncate text-sm leading-relaxed text-ink-muted">
+        <span className="eyebrow mr-1.5 not-italic">You said</span>
+        <span className="italic">“{heardText}”</span>
+      </p>
+    ) : isSpeaking ? (
+      <p className="text-sm text-ink-faint">Talk any time to cut in.</p>
+    ) : null
 
   return (
     <div
@@ -1056,15 +962,19 @@ export function VoiceModePanel({
          corners. The point is that this reads as the chat box's own
          surface continuing upward to make room, not a distinct panel that
          happened to land above the composer. neo-world stays (not
-         neo-panel): the orb/pill/buttons inside still read their emboss
-         and accent color from it, that's just no longer paired with an
-         outer card shadow of its own. */
-      className="neo-world flex w-full flex-col gap-4 border-t border-edge bg-paper px-gutter pb-3 pt-4"
+         neo-panel): the pill/buttons inside still read their emboss and
+         accent color from it, that's just no longer paired with an outer
+         card shadow of its own. */
+      className="neo-world flex w-full flex-col gap-3 border-t border-edge bg-paper px-gutter pb-3 pt-4"
     >
       {/* Header row: status on the left, the two controls for the whole
           conversation on the right — mirrors the artifact drawer's own
           handle+content shape, just inline instead of a separate strip,
-          since this panel is short enough not to need one. */}
+          since this panel is short enough not to need one. There is no
+          orb here anymore — a big pulsing circle used to split this
+          panel's space with the checklist; the checklist is the one thing
+          this panel exists to show, so the mic gets exactly the room its
+          own status pill needs and nothing more. */}
       <div className="flex shrink-0 items-center justify-between gap-3">
         {statusPill}
         <div className="flex items-center gap-2">
@@ -1081,42 +991,31 @@ export function VoiceModePanel({
         </div>
       </div>
 
-      {/* Body row: the orb + whatever's being said on the left, the
-          checklist (or whichever of questions/build progress/built plan
-          currently owns that slot — same rotation the old side column
-          used) on the right. Stacks to a single column once there isn't
-          room for both side by side. */}
-      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start">
-        <div className="flex shrink-0 flex-col items-center gap-3 sm:w-48">
-          <div className="w-full max-w-[160px]">{orb}</div>
-          {/* Same fixed-height-plus-scroll reasoning as the old dialog's
-              caption box — this spot shouldn't move as the line below it
-              gains and loses lines while typing out — just shorter, since
-              this panel no longer owns the whole screen's height. */}
-          <div
-            aria-live="polite"
-            className="flex h-20 w-full flex-col items-center gap-2 overflow-y-auto text-center"
-          >
-            {captionBlock}
-          </div>
+      {/* What's currently being said, either side — a single line under
+          the status bar rather than a boxed caption card, since it's
+          secondary now: worth showing, not worth the space a whole panel
+          of its own used to cost. Renders nothing (and takes no space)
+          once there's nothing to say — see captionBlock's own branches. */}
+      {captionBlock ? (
+        <div aria-live="polite" className="shrink-0">
+          {captionBlock}
         </div>
-        <div className="min-w-0 flex-1">
-          {/* Same rotation the old side column used: a pending
-              clarification takes over first (it IS the conversation while
-              it's on the table), then the week actually building, then a
-              finished plan, and the running checklist as the default —
-              exactly what "the plan so far" is once none of the others
-              apply. */}
-          {questions?.length ? (
-            <QuestionCards questions={questions} onAnswer={onAnswer} />
-          ) : building ? (
-            <BuildProgress days={buildDays} fill={false} />
-          ) : builtPlan ? (
-            <BuiltPlanCard builtPlan={builtPlan} fill={false} />
-          ) : (
-            <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
-          )}
-        </div>
+      ) : null}
+
+      {/* The checklist — or whichever of questions/build progress/built
+          plan currently owns this slot, same rotation the old side column
+          used — now full width and the clear focus of the panel: talk,
+          and watch it get checked off. */}
+      <div className="min-w-0">
+        {questions?.length ? (
+          <QuestionCards questions={questions} onAnswer={onAnswer} />
+        ) : building ? (
+          <BuildProgress days={buildDays} fill={false} />
+        ) : builtPlan ? (
+          <BuiltPlanCard builtPlan={builtPlan} fill={false} />
+        ) : (
+          <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
+        )}
       </div>
     </div>
   )
