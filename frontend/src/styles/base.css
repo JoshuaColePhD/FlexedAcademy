@@ -1625,25 +1625,49 @@
 
   /* Voice mode's dock, above the composer (ChatPage.jsx) — it used to be a
      full-screen/dialog takeover with its own mount/unmount and no exit
-     animation at all; now it grows out of the chat box itself, so it gets
-     the same two-part open/close shape .artifact-drawer already uses
-     beside it: an outer wrapper that animates the space it takes up, and
-     an inner body that fades/slides on top of that, kept mounted one beat
-     longer on close (useExitTransition) so the exit actually plays instead
-     of the node just vanishing. Vertical here (grows upward from the
-     composer) where the drawer's is horizontal (grows in from the side) —
-     same language, matched to where each one actually docks. */
+     animation at all. Now the chat box itself grows to make room for it:
+     the message list above compresses (ordinary flex layout — this sits
+     between it and the composer in the same flex column) while THIS
+     wrapper's own height animates from nothing up to its content's real
+     size, so the whole thing reads as the chat pane pushing up from the
+     bottom rather than a separate card dropping in on top of it.
+
+     grid-template-rows: 0fr → 1fr, not a max-height guess: max-height has
+     to animate toward some fixed number that either clips a taller panel
+     (a two-question round, say) or leaves a dead gap under a shorter one —
+     neither reads as "organic." A 0fr/1fr grid row animates to the
+     content's OWN height every time, whatever that happens to be, the same
+     shape browsers now recommend for this exact "height: auto" gap. The
+     single grid child (voice-dock-body) needs overflow+min-height: 0 for
+     the trick to actually clip during the animation — grid items default
+     to min-height: auto, which refuses to shrink below content size and
+     would otherwise cancel this out entirely.
+
+     Kept mounted one beat longer on close (useExitTransition) so the
+     content still fades out rather than the row simply snapping shut with
+     the panel yanked out from under it — same two-part open/close shape
+     .artifact-drawer already uses beside it, vertical here where the
+     drawer's is horizontal. */
   .voice-dock {
+    display: grid;
     flex-shrink: 0;
-    max-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-    transition: max-height var(--t-base) var(--ease-out);
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--t-base) var(--ease-out);
   }
   .voice-dock.is-open {
-    max-height: min(70vh, 560px);
+    grid-template-rows: 1fr;
   }
   .voice-dock-body {
+    min-height: 0;
+    /* A sane ceiling, not the height itself — the row above still grows to
+       fit real content (a one-line "listening…" state and a two-question
+       round land at genuinely different heights, on purpose). This only
+       stops something unusually tall from pushing the composer off the
+       bottom of a short screen; past it the panel scrolls internally
+       instead of the page growing without end. */
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
+    overflow-x: hidden;
     animation: voice-dock-body-in var(--t-base) var(--ease-out) both;
   }
   .voice-dock-body.is-closing {
