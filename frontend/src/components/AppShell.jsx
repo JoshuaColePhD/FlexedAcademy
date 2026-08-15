@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ChevronRight, FileText, PanelLeft, Pencil, Plus, Sun, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -195,6 +195,21 @@ function Rail({ onNavigate, onClose }) {
       </nav>
 
       <div className="shrink-0 border-t border-edge">
+        {/* The daily reason to open the app on the days nothing's being
+            planned — see TodayPage's own docstring. Placed above Library,
+            not folded into it: this is a glance a teacher takes most
+            mornings, not an archive they visit occasionally. */}
+        <NavLink
+          to={`${classPath}/today`}
+          onClick={onNavigate}
+          className={({ isActive }) =>
+            `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
+              isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
+            }`
+          }
+        >
+          <Sun size={15} aria-hidden="true" /> Today
+        </NavLink>
         {/* Every plan this class has ever built, placed at the bottom near account settings. */}
         <NavLink
           to={`${classPath}/plans`}

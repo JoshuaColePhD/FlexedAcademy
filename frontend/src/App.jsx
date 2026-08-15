@@ -26,6 +26,7 @@ import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
 import { PlansPage } from './pages/PlansPage'
 import { HistoryPage } from './pages/HistoryPage'
+import { TodayPage } from './pages/TodayPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
 import { AdminPage } from './pages/AdminPage'
 import { LandingPage } from './pages/LandingPage'
@@ -176,6 +177,7 @@ function ClassRoutes() {
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
           <Route index element={<ChatPage />} />
           <Route path="chat/:chatId" element={<ChatPage />} />
+          <Route path="today" element={<TodayPage />} />
           <Route path="plans" element={<PlansPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="class" element={<ClassPage />} />
