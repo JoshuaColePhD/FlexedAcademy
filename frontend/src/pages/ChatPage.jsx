@@ -487,6 +487,34 @@ export function ChatPage() {
     )
   }, [chatId, searchParams, setSearchParams])
 
+  /* Back from Google's consent screen (routes/drive.py's /callback) — the
+     browser lands right back on this same chat with ?drive=connected,
+     cancelled, or error appended to whatever `return_to` was when Share was
+     clicked. Same shape as BillingProvider's own "back from Stripe"
+     handling: strip the marker first so a reload doesn't replay the toast,
+     then react to it. There's nothing to poll for here the way a
+     subscription's webhook needs — the connection either exists by the time
+     this fires or it doesn't. */
+  useEffect(() => {
+    const outcome = searchParams.get('drive')
+    if (!outcome) return
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('drive')
+        return next
+      },
+      { replace: true }
+    )
+    if (outcome === 'connected') {
+      toast.success('Google Drive connected', 'Open Share again to finish sending it.')
+    } else if (outcome === 'cancelled') {
+      toast.info('Google Drive wasn’t connected — nothing was shared.')
+    } else if (outcome === 'error') {
+      toast.error('Couldn’t connect Google Drive', 'Try again in a moment.')
+    }
+  }, [searchParams, setSearchParams, toast])
+
   /** Mark cells as just-changed. Cleared after the flash has finished playing. */
   const flash = useCallback((keys) => {
     if (!keys.length) return

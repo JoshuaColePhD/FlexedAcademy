@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { ChevronsRight, Download, Loader2, RefreshCw } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import { ChevronsRight, Download, Loader2, RefreshCw, Share2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -8,6 +9,7 @@ import { classColor } from '../lib/classColor'
 import { unitSuffix } from '../lib/planShape'
 import { LessonPlanTable } from './LessonPlanTable'
 import { Marginalia } from './Marginalia'
+import { ShareDialog } from './ShareDialog'
 
 /* The artifact, expanded into a working document.
  *
@@ -44,7 +46,9 @@ export function ArtifactPanel({
   setOpenTweak,
 }) {
   const [rebuilding, setRebuilding] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const toast = useToast()
+  const location = useLocation()
   const panelRef = useRef(null)
   const titleRef = useRef(null)
   const color = classColor(classId)
@@ -124,8 +128,17 @@ export function ArtifactPanel({
         {planId ? (
           <>
             {/* Not on a phone: collapse + Download already fill 375px, and
-                Rebuild is a power action where Download is the reason the
-                app exists. */}
+                both Rebuild and Share are power actions where Download is
+                the reason the app exists. */}
+            <button
+              type="button"
+              className={`btn-icon${isPhone ? ' hidden' : ''}`}
+              onClick={() => setShareOpen(true)}
+              aria-label="Share this plan via Google"
+              title="Share via Google"
+            >
+              <Share2 size={16} aria-hidden="true" />
+            </button>
             <button
               type="button"
               className={`btn-icon${isPhone ? ' hidden' : ''}`}
@@ -190,6 +203,14 @@ export function ArtifactPanel({
           </div>
         )}
       </div>
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        planId={planId}
+        weekLabel={plan?.week_of}
+        returnTo={`${location.pathname}${location.search}`}
+      />
     </section>
   )
 }

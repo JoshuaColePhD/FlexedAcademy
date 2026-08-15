@@ -279,6 +279,20 @@ const state = {
       },
     ],
   },
+  // "Share via Google" (backend/routes/drive.py + plans.py's /share). Mirrors
+  // the entitlement toggle above: sessionStorage flips it for a dev session,
+  // since the real flow needs an actual Google OAuth round trip this harness
+  // can't perform. enabled: true always — the mock is what exercises the
+  // "disconnected" and "connected" UI, not the config-gate itself, which has
+  // no mock-worthy state of its own (it's just a bool read from settings).
+  drive: {
+    connected: typeof sessionStorage !== 'undefined' && sessionStorage.getItem('mock.driveConnected') === 'true',
+  },
+  // planId -> [{email, role, created_at}], plus the Doc link once "created".
+  // Seeded empty; a share POST below fills it in, same shape
+  // db.list_plan_shares/plans.drive_web_link return for real.
+  planShares: {},
+  planDriveFiles: {},
   // Flat array, filtered by class_id — see docList below. Seeded with one
   // document for c1 so the rail's "Built from" group has a row to open;
   // ArtifactDetailPanel's document view had no mock coverage before this,
@@ -696,6 +710,33 @@ export function installMockApi() {
       const [, planId, quizId] = quizDeleteMatch
       state.quizzes[planId] = (state.quizzes[planId] || []).filter((q) => q.id !== quizId)
       return new Response(null, { status: 204 })
+    }
+
+    if (path === '/api/drive/status') {
+      await wait(150)
+      return json({ enabled: true, connected: state.drive.connected })
+    }
+
+    const shareListMatch = path.match(/^\/api\/plans\/([^/]+)\/shares$/)
+    if (shareListMatch && method === 'GET') {
+      await wait(150)
+      const planId = shareListMatch[1]
+      return json({ web_link: state.planDriveFiles[planId] || null, shares: state.planShares[planId] || [] })
+    }
+
+    const shareCreateMatch = path.match(/^\/api\/plans\/([^/]+)\/share$/)
+    if (shareCreateMatch && method === 'POST') {
+      // Slower than a plain write, same reasoning as quiz creation above —
+      // the first share on a plan is a real upload-and-convert in
+      // production, not instant.
+      await wait(800)
+      const planId = shareCreateMatch[1]
+      if (!state.planDriveFiles[planId]) {
+        state.planDriveFiles[planId] = `https://docs.google.com/document/d/mock-${planId}/edit`
+      }
+      const share = { email: body.email, role: body.role || 'reader', created_at: new Date().toISOString() }
+      state.planShares[planId] = [share, ...(state.planShares[planId] || [])]
+      return json({ web_link: state.planDriveFiles[planId], shares: state.planShares[planId] })
     }
 
     if (path === '/api/generate_stream') {

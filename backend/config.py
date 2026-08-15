@@ -86,6 +86,31 @@ class Settings(BaseSettings):
     # Where Stripe sends them back to. Empty = derive from the request.
     billing_return_url: str = ""
 
+    # ── Google Drive sharing ─────────────────────────────────────────────────
+    # Same inert-until-configured shape as Stripe/Resend above: with either of
+    # these empty, drive_share_enabled is False and the whole feature just
+    # doesn't offer itself — no gate anyone can trip, no error anyone can hit.
+    #
+    # google_client_id (above, existing) is already used for Sign-In-with-
+    # Google, which only proves who someone is — it carries no Drive
+    # permission at all. Sharing needs the app to actually CREATE and PERMISSION
+    # a file on a teacher's own Drive, which is a different, much bigger ask
+    # of Google than "tell me who's signing in": a real OAuth authorization-
+    # code exchange, which is what google_client_secret is for. The two only
+    # share a name because they're issued from the same Google Cloud project.
+    #
+    # Scope requested is drive.file — the file this app creates and nothing
+    # else already in the teacher's Drive. That's the least Google offers, and
+    # it's still enough that a school's Google Workspace admin may need to
+    # approve this app before any teacher in that domain can use it; that
+    # approval lives in Google's admin console, not in this app.
+    google_client_secret: str = ""
+    # Where Google redirects back to after consent. Empty = derive from the
+    # request, same fallback billing_return_url uses — set this in production
+    # so the redirect URI matches exactly what's registered in Google Cloud
+    # Console (Google rejects a mismatch outright).
+    drive_redirect_url: str = ""
+
     # Replaces "one free plan, ever": that gated on plan COUNT, so revising the
     # same week fifteen times cost nothing extra while building two short weeks
     # used the whole allowance — the thing actually being protected (API spend)
@@ -310,6 +335,16 @@ class Settings(BaseSettings):
         entitlement() lets everyone through.
         """
         return bool(self.stripe_secret_key and self.stripe_price_id and self.stripe_webhook_secret)
+
+    @property
+    def drive_share_enabled(self) -> bool:
+        """Whether "Share via Google" can actually do anything.
+
+        google_client_id alone (used for Sign-In-with-Google) is not enough —
+        that flow never asks for Drive access. This is True only once the
+        secret half of a real OAuth client is also configured.
+        """
+        return bool(self.google_client_id and self.google_client_secret)
 
     def floor_for(self, course: str | None) -> float:
         """The relevance floor for one course, falling back to the global one."""
