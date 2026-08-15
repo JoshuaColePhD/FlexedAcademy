@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import { RotateCcw } from 'lucide-react'
+import * as Sentry from '@sentry/react'
 
 /* There was no error boundary, so any render-time throw blanked the page with no
    way back — and a corrupt localStorage entry could put it in that state
@@ -17,6 +18,7 @@ export class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error('Unhandled UI error:', error, info)
+    Sentry.captureException(error, { extra: { componentStack: info?.componentStack } })
   }
 
   render() {

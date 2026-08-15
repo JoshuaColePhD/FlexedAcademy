@@ -1,15 +1,15 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Calendar, ChevronLeft, Download, Eye, FileText, ListChecks, Loader2, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { BookOpen, Calendar, ChevronLeft, Download, FileText, ListChecks, Loader2, Share2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { orderedDays, unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
-import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { DecisionStack } from './DecisionStack'
+import { ShareDialog } from './ShareDialog'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
    an open notebook, not a stock "empty box" glyph. Authored, not a Unicode
@@ -99,36 +99,18 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
 }
 
 /* One built quiz — its own row rather than reusing RailRow, which has no
- * room for two independent actions (Download, Delete) alongside the label.
+ * room for a labeled Download pill alongside the label.
  * A quiz with no qti_path (has_qti false — the LLM call succeeded but the
  * local zip write failed) still shows, with Download disabled rather than
  * the whole row vanishing: the questions are safe in the database either
  * way (quiz_json), and the title says so on hover. */
-/* Was a flat .rail-row with an icon-only Download and no visible action at
- * all once has_qti was false (just Remove, sitting alone — a card that
- * looks like the only thing left to do with a failed quiz is delete it).
- * Now the same raised .rail-card treatment the plan itself gets, with the
- * same shape: a labeled Download pill first, Remove second and small. A
- * failed build keeps that same Download slot, just inert (see
- * .rail-download.is-disabled) — reads as "retry by asking again in chat,"
- * not as a control that vanished. */
+/* Used to also carry a small Remove (X) button beside Download — a quiz has
+ * no draft state to discard and no real reason to delete once built, so
+ * that second control was a destructive action sitting next to the one a
+ * teacher actually came for, answering a question ("why would you want to
+ * delete it?") nobody was asking. Download is the row's only action now. */
 function QuizRow({ quiz, planId, index = 0, onOpen, color }) {
-  const toast = useToast()
-  const qc = useQueryClient()
-  const [deleting, setDeleting] = useState(false)
   const style = { animationDelay: `${index * 60}ms` }
-
-  const remove = async (e) => {
-    e.stopPropagation()
-    setDeleting(true)
-    try {
-      await api.deleteQuiz(planId, quiz.id)
-      qc.setQueryData(qk.quizzes(planId), (old) => (old || []).filter((q) => q.id !== quiz.id))
-    } catch (err) {
-      toast.apiError('Could not remove that quiz', err)
-      setDeleting(false)
-    }
-  }
 
   return (
     <div
@@ -141,11 +123,7 @@ function QuizRow({ quiz, planId, index = 0, onOpen, color }) {
           className="rail-tile"
           style={{ background: `rgb(${color.rgb} / 0.16)`, color: `rgb(${color.rgb})` }}
         >
-          {deleting ? (
-            <Loader2 size={15} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <ListChecks size={15} aria-hidden="true" />
-          )}
+          <ListChecks size={15} aria-hidden="true" />
         </span>
         {onOpen ? (
           <button
@@ -173,36 +151,30 @@ function QuizRow({ quiz, planId, index = 0, onOpen, color }) {
         )}
       </span>
       <span className="rail-actions">
+        {/* An icon-only download, the same shape the plan card's own
+            "Open the document" button already uses — the labeled pill this
+            replaced was sized for sharing a row with a second (Remove)
+            action, which is gone now that this is the row's only control. */}
         {quiz.has_qti ? (
           <a
-            className="rail-download fa-press"
+            className="rail-open fa-press"
             href={api.quizDownloadUrl(planId, quiz.id)}
             download
             onClick={(e) => e.stopPropagation()}
             aria-label={`Download ${quiz.title} as a QTI zip`}
             title="Download as a QTI zip — imports into Canvas as a Classic Quiz"
           >
-            <Download size={11} aria-hidden="true" /> Download
+            <Download size={13} aria-hidden="true" />
           </a>
         ) : (
           <span
-            className="rail-download is-disabled"
+            className="rail-open is-disabled"
             aria-disabled="true"
             title="The file failed to build — ask again in chat to rebuild it"
           >
-            <Download size={11} aria-hidden="true" /> Download
+            <Download size={13} aria-hidden="true" />
           </span>
         )}
-        <button
-          type="button"
-          className="rail-open fa-press"
-          onClick={remove}
-          disabled={deleting}
-          aria-label={`Remove ${quiz.title}`}
-          title="Remove this quiz"
-        >
-          <X size={12} aria-hidden="true" />
-        </button>
       </span>
     </div>
   )
@@ -231,6 +203,7 @@ export function ArtifactRail({
   onOpenCalendar,
   onOpenDocument,
 }) {
+  const [shareOpen, setShareOpen] = useState(false)
   const plan = artifact?.plan
   const planId = artifact?.planId
   /* Every quiz already built for this plan (backend db.py migration 26) —
@@ -324,26 +297,34 @@ export function ArtifactRail({
               </button>
             </span>
             <span className="rail-actions">
-              <a
-                className="rail-download fa-press"
-                href={api.planDownloadUrl(planId)}
-                download
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download size={11} aria-hidden="true" /> Download
-              </a>
+              {/* Icon-only, matching the quiz card's own Download button.
+                  Nothing else belongs beside it: the whole card (and the
+                  title specifically) already calls onExpand above, so a
+                  separate "open" icon here was a third way to do the exact
+                  same thing Download's own stopPropagation exists to keep
+                  distinct from. */}
               <button
                 type="button"
                 className="rail-open fa-press"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onExpand()
+                  setShareOpen(true)
                 }}
-                aria-label="Open the document"
-                title="Open the document"
+                aria-label="Save to Google Drive or Share"
+                title="Save to Google Drive or Share"
               >
-                <Eye size={12} aria-hidden="true" />
+                <Share2 size={13} aria-hidden="true" />
               </button>
+              <a
+                className="rail-open fa-press"
+                href={api.planDownloadUrl(planId)}
+                download
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Download the document"
+                title="Download the document"
+              >
+                <Download size={13} aria-hidden="true" />
+              </a>
             </span>
           </div>
         ) : busy ? (
@@ -376,17 +357,17 @@ export function ArtifactRail({
 
       {/* Quizzes over this plan — right under My Plans, ahead of Built From:
           a quiz is a second artifact this conversation produced, the same
-          rank as the plan itself, not a citation the plan rests on. Only in
-          the full rail, same reasoning as Built From below: the phone bar's
-          whole point is "the file and its Download, nothing else." Shown
-          whenever there's something to show (a build in progress, or an
-          already-built quiz), not gated behind planId the same strict way
-          Built From is — quizBuilding can be true for one render right
-          after the request lands, before the query below has anything
-          cached yet. */}
-      {!isBar && (quizBuilding || quizzes.length > 0) ? (
+          rank as the plan itself, not a citation the plan rests on. Reachable
+          in the phone bar too, unlike Built From below — a built quiz is a
+          real deliverable a teacher would want off their phone, not a
+          citation the plan rests on. Shown whenever there's something to
+          show (a build in progress, or an already-built quiz), not gated
+          behind planId the same strict way Built From is — quizBuilding can
+          be true for one render right after the request lands, before the
+          query below has anything cached yet. */}
+      {quizBuilding || quizzes.length > 0 ? (
         <div className="rail-group">
-          <span className="eyebrow">Quizzes</span>
+          {isBar ? null : <span className="eyebrow">Quizzes</span>}
           {quizBuilding ? (
             <div className="rail-row fa-rise">
               <span className="rail-row-tile">
@@ -454,6 +435,13 @@ export function ArtifactRail({
           />
         </div>
       ) : null}
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        planId={planId}
+        weekLabel={plan?.week_of}
+      />
     </aside>
   )
 }

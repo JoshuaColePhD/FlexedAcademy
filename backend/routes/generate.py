@@ -5,7 +5,7 @@ import json
 import logging
 
 import openai
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..ratelimit import limiter
 from ..schema import SchemaError
 
 log = logging.getLogger("aplang.generate")
@@ -161,7 +162,8 @@ def _openai_error_event(e: Exception) -> dict:
 
 
 @router.post("/generate")
-def generate(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
+@limiter.limit("20/minute")
+def generate(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     require_entitlement(user_id)
     # Resolved once, from the chat this generation belongs to (see
     # _chat_class) — used for the week label below AND threaded through to
@@ -184,7 +186,8 @@ def generate(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: str = Dep
 
 
 @router.post("/generate_stream")
-def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
+@limiter.limit("20/minute")
+def generate_stream(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     """Stream tokens, then emit the finished plan.
 
     Every terminal event carries an `error` object with the same {code, message,
@@ -255,7 +258,8 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
 
 
 @router.post("/chat_stream")
-def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Stream a standard conversational response, not a JSON schema."""
     require_entitlement(user_id)
 
@@ -476,7 +480,8 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
 
 
 @router.post("/decisions")
-def decisions(req: DecisionsRequest, user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+def decisions(req: DecisionsRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Voice mode's card stack — see llm.extract_decisions for why this isn't
     gated by require_entitlement: it's a visual aid over an ALREADY-gated
     conversation, not a plan generation in its own right."""
@@ -485,7 +490,8 @@ def decisions(req: DecisionsRequest, user_id: str = Depends(get_current_user)):
 
 
 @router.post("/revise_day")
-def revise_day(req: ReviseDayRequest, user_id: str = Depends(get_current_user)):
+@limiter.limit("20/minute")
+def revise_day(req: ReviseDayRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Rewrite one day — or one cell of it — AND rebuild the .docx, so the file
     matches what's on screen."""
     require_entitlement(user_id)

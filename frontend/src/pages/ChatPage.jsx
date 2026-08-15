@@ -487,6 +487,34 @@ export function ChatPage() {
     )
   }, [chatId, searchParams, setSearchParams])
 
+  /* Back from Google's consent screen (routes/drive.py's /callback) — the
+     browser lands right back on this same chat with ?drive=connected,
+     cancelled, or error appended to whatever `return_to` was when Share was
+     clicked. Same shape as BillingProvider's own "back from Stripe"
+     handling: strip the marker first so a reload doesn't replay the toast,
+     then react to it. There's nothing to poll for here the way a
+     subscription's webhook needs — the connection either exists by the time
+     this fires or it doesn't. */
+  useEffect(() => {
+    const outcome = searchParams.get('drive')
+    if (!outcome) return
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('drive')
+        return next
+      },
+      { replace: true }
+    )
+    if (outcome === 'connected') {
+      toast.success('Google Drive connected', 'Open Share again to finish sending it.')
+    } else if (outcome === 'cancelled') {
+      toast.info('Google Drive wasn’t connected — nothing was shared.')
+    } else if (outcome === 'error') {
+      toast.error('Couldn’t connect Google Drive', 'Try again in a moment.')
+    }
+  }, [searchParams, setSearchParams, toast])
+
   /** Mark cells as just-changed. Cleared after the flash has finished playing. */
   const flash = useCallback((keys) => {
     if (!keys.length) return
@@ -1274,6 +1302,12 @@ export function ChatPage() {
      out of the chat box itself, right above the composer — same
      mount-a-beat-longer-to-play-the-exit shape as overlayExit above. */
   const voiceExit = useExitTransition(voiceOpen, 180)
+  /* The "Latest" jump-to-bottom pill used to unmount the instant atBottom
+     flipped true — the one piece of chat chrome still doing a hard cut
+     while every other transient here (toasts, attachment chips) plays a
+     matched exit. 150ms, same as the attachment chip's own removal: both
+     are a small pill leaving the page, not a panel. */
+  const latestPill = useExitTransition(!atBottom && !isEmpty, 150)
 
   /* The docked split's own width, draggable via the handle rendered between
      the two panes below. null means "use --chat-w-narrow, the CSS default";
@@ -1584,11 +1618,11 @@ export function ChatPage() {
         </div>
       )}
 
-      {!atBottom && !isEmpty ? (
+      {latestPill.mounted ? (
         <div className="pointer-events-none absolute bottom-[92px] left-0 right-0 z-10 flex justify-center">
           <button
             type="button"
-            className="pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge"
+            className={`fa-rise fa-press pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
             onClick={() => {
               setAtBottom(true)
               endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -1612,6 +1646,7 @@ export function ChatPage() {
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
           onExpand={() => openDocument()}
+          onOpenQuiz={openQuiz}
           busy={busy}
           quizBuilding={quizBuilding}
           variant="bar"
