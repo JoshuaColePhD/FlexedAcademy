@@ -2050,42 +2050,6 @@
     display: flex;
     gap: 5px;
   }
-  /* The reason a teacher opened the app: the one filled control in the rail.
-     Was a flat solid --accent fill — the only button in the whole rail with
-     no shadow physics at all. Matches the rail-cta's own "New plan" recipe
-     (AppShell.jsx) now: the tint carries the accent, .neo-raised carries the
-     emboss, so it floats above the card instead of sitting flush with it. */
-  .rail-download {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 6px;
-    font-size: var(--fs-2xs);
-    font-weight: var(--fw-semibold);
-    color: var(--accent-text);
-    background: var(--accent-tint);
-    border-radius: var(--r-md);
-    text-decoration: none;
-    box-shadow: 2px 2px 5px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 5px rgb(var(--neo-light-rgb) / 0.75);
-    transition: box-shadow var(--t-fast) var(--ease);
-  }
-  .rail-download:active {
-    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
-  }
-  /* A quiz whose zip write failed (has_qti false — see QuizRow's own
-     comment) used to drop Download entirely, leaving only Remove: a card
-     that looks like it can only be deleted, never retried. Same slot, same
-     shape, just inert — flat instead of raised, no press feedback — so the
-     card still reads as "this is what Download normally looks like here,"
-     not as a second unrelated control. */
-  .rail-download.is-disabled {
-    color: var(--ink-faint);
-    background: var(--paper-inset);
-    box-shadow: none;
-    cursor: default;
-  }
   .rail-open {
     display: grid;
     width: 28px;
@@ -2105,9 +2069,12 @@
   .rail-open:active {
     box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
-  /* A quiz whose zip write failed, mirroring .rail-download.is-disabled's own
-     "same slot, just inert" treatment now that the icon-only button is what
-     that slot looks like. */
+  /* A quiz whose zip write failed (has_qti false — see QuizRow's own
+     comment) used to drop Download entirely, leaving only Remove: a card
+     that looks like it can only be deleted, never retried. Same slot, same
+     shape, just inert — flat instead of raised, no press feedback — so the
+     card still reads as "this is what Download normally looks like here,"
+     not as a second unrelated control. */
   .rail-open.is-disabled {
     color: var(--ink-faint);
     background: var(--paper-inset);
@@ -2373,8 +2340,10 @@
     background: var(--paper-raised);
     box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.45), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.75);
   }
-  /* Same recipe as .rail-download, just at the expanded document's own scale
-     — the tint carries the accent, the shadow carries the "come here". */
+  /* The tint carries the accent, the shadow carries the "come here" — the
+     one filled control in the document header, the same way Download used
+     to be the one filled control in the rail before both plan and quiz
+     cards there settled on an icon-only button instead (see .rail-open). */
   .doc-download {
     display: flex;
     flex-shrink: 0;

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Calendar, ChevronLeft, Download, Eye, FileText, ListChecks, Loader2 } from 'lucide-react'
+import { BookOpen, Calendar, ChevronLeft, Download, FileText, ListChecks, Loader2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
@@ -294,26 +294,22 @@ export function ArtifactRail({
               </button>
             </span>
             <span className="rail-actions">
+              {/* Icon-only, matching the quiz card's own Download button.
+                  Nothing else belongs beside it: the whole card (and the
+                  title specifically) already calls onExpand above, so a
+                  separate "open" icon here was a third way to do the exact
+                  same thing Download's own stopPropagation exists to keep
+                  distinct from. */}
               <a
-                className="rail-download fa-press"
+                className="rail-open fa-press"
                 href={api.planDownloadUrl(planId)}
                 download
                 onClick={(e) => e.stopPropagation()}
+                aria-label="Download the document"
+                title="Download the document"
               >
-                <Download size={11} aria-hidden="true" /> Download
+                <Download size={13} aria-hidden="true" />
               </a>
-              <button
-                type="button"
-                className="rail-open fa-press"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onExpand()
-                }}
-                aria-label="Open the document"
-                title="Open the document"
-              >
-                <Eye size={12} aria-hidden="true" />
-              </button>
             </span>
           </div>
         ) : busy ? (
