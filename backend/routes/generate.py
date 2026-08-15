@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import openai
 from fastapi import APIRouter, BackgroundTasks, Depends
@@ -263,16 +264,30 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
         try:
             # We construct a system prompt based on the user's settings and chosen mode.
             #
-            # Prefer the class this chat actually belongs to over
-            # get_settings_row(user_id) — see _chat_class's own docstring.
-            cls = _chat_class(user_id, req.chat_id)
+            # These three are each their own DB (or DB+network) round trip
+            # and none depends on another's result, so they used to cost a
+            # sequential ~4 round trips before the model call could even
+            # start — the teacher's very first sign anything is happening.
+            # Fired together instead; only custom_instructions_for's result
+            # is used further down, but has_plan and cls are worth starting
+            # now too since they're needed almost immediately after.
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                cls_future = pool.submit(_chat_class, user_id, req.chat_id)
+                # Whether generate_quiz is even callable right now — it needs
+                # a plan to build over, and "ask the model to check the
+                # conversation for one" is exactly the kind of inference this
+                # app avoids everywhere else an id already answers the
+                # question directly (see _chat_class itself, or
+                # db.class_school).
+                has_plan_future = pool.submit(
+                    lambda: bool(req.chat_id) and db.list_plans(user_id, chat_id=req.chat_id, limit=1)["total"] > 0
+                )
+                custom_instructions_future = pool.submit(llm.custom_instructions_for, user_id)
 
-            # Whether generate_quiz is even callable right now — it needs a
-            # plan to build over, and "ask the model to check the
-            # conversation for one" is exactly the kind of inference this
-            # app avoids everywhere else an id already answers the question
-            # directly (see _chat_class itself, or db.class_school).
-            has_plan = bool(req.chat_id) and db.list_plans(user_id, chat_id=req.chat_id, limit=1)["total"] > 0
+                # Prefer the class this chat actually belongs to over
+                # get_settings_row(user_id) — see _chat_class's own docstring.
+                cls = cls_future.result()
+                has_plan = has_plan_future.result()
 
             if cls:
                 subject = cls["subject"]
@@ -348,7 +363,7 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
             # like Claude's own custom instructions) — appended once here,
             # mode-agnostically, since none of the three modes below have any
             # retrieval-grounding language for it to need to sit after.
-            custom_instructions = llm.custom_instructions_for(user_id)
+            custom_instructions = custom_instructions_future.result()
             if custom_instructions:
                 system_prompt += (
                     "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only:\n\n"

@@ -328,11 +328,21 @@ def _spool(upload: UploadFile, suffix: str, max_bytes: int) -> Path:
 
 
 @router.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...), user_id: str = Depends(get_current_user)):
+def transcribe(audio: UploadFile = File(...), user_id: str = Depends(get_current_user)):
     """Was unauthenticated — every other OpenAI-backed route here requires
     login (see /tts's own comment), but this one didn't, which made it a free
     relay for anyone who found it: no account to attribute the cost to, and
-    nothing for entitlement.py's cap to apply against."""
+    nothing for entitlement.py's cap to apply against.
+
+    Plain `def`, not `async def`: `_spool` below does blocking synchronous
+    file reads (`upload.file.read()`), and `llm.transcribe` makes a blocking
+    OpenAI HTTP call. Inside an `async def` route both run directly on the
+    event loop, stalling every other in-flight request for as long as this
+    upload/transcription takes. FastAPI runs a sync `def` route in its own
+    worker thread automatically, which is exactly what every other
+    OpenAI-backed route here (chat_stream, synthesize_speech) already relies
+    on — this one was the odd one out.
+    """
     suffix = Path(audio.filename or "recording.webm").suffix or ".webm"
     path = _spool(audio, suffix, settings.max_audio_bytes)
     try:
