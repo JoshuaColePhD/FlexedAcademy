@@ -83,7 +83,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             paper-sunken groove this used to be — editing your own turn
             should still read as your turn, not switch to a different
             surface mid-edit. */}
-        <div className="neo-raised w-full max-w-[85%] rounded-2xl bg-accent-tint p-4">
+        <div className="msg-user-bubble neo-raised w-full max-w-[85%] rounded-2xl bg-accent-tint p-4">
           <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
             Edit your message
           </label>
@@ -162,12 +162,10 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                    accent-tint combo the app already uses for its one
                    primary-action treatment (see "Send again" below, or the
                    "New plan" button), so "said by you" reads as the
-                   prominent, colored voice in the exchange. A literal CSS
-                   tail (squared corner + pseudo-element flap) was tried and
-                   looked wrong at this bubble's size, so this stays a plain
-                   rounded bubble — the color and elevation alone are enough
-                   to read as "you" beside the assistant's bare text. */
-                'neo-raised rounded-2xl bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
+                   prominent, colored voice in the exchange. .msg-user-bubble
+                   (base.css) grows the actual iMessage-style tail out from
+                   behind the corner, without squaring it off this time. */
+                'msg-user-bubble neo-raised rounded-2xl bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
                 : /* Same neo-raised box as the teacher's own bubble, but

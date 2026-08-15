@@ -2938,6 +2938,42 @@
     }
   }
 
+  /* The teacher's own bubble's tail — sits BEHIND the bubble (z-index -1),
+     not beside it, so the bubble's own rounded-2xl corner draws on top and
+     naturally hides the seam. An earlier attempt squared the corner off to
+     give the tail somewhere flush to attach to; that broke the bubble's
+     rounding to serve the tail and looked wrong on its own. This way the
+     corner stays fully rounded and the tail just peeks out from behind it. */
+  .msg-user-bubble {
+    position: relative;
+    /* Establishes its own stacking context so the tail's z-index: -1 below
+       means "behind this bubble" — without it, -1 is relative to whatever
+       ancestor stacking context is nearest, which could be behind sibling
+       messages instead of just this one. */
+    z-index: 0;
+  }
+  .msg-user-bubble::before,
+  .msg-user-bubble::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    bottom: 0;
+  }
+  .msg-user-bubble::before {
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    background: var(--accent-tint);
+    border-bottom-left-radius: 16px;
+  }
+  .msg-user-bubble::after {
+    right: -9px;
+    width: 11px;
+    height: 16px;
+    background: var(--paper);
+    border-bottom-left-radius: 16px;
+  }
+
   /* A reply that is a failure, marked as one. Same apparatus as .marginalia:
      a coloured left edge and a tinted ground, so it reads as an annotation on
      the conversation rather than as the app's own voice. */
