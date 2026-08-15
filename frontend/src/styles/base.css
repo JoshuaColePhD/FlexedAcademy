@@ -3379,8 +3379,8 @@
     animation: land-seal-disc-in 350ms var(--ease-out) 550ms both;
   }
   .land-seal-check {
-    stroke-dasharray: 34;
-    stroke-dashoffset: 34;
+    stroke-dasharray: 40;
+    stroke-dashoffset: 40;
     animation: land-seal-draw 400ms var(--ease-out) 950ms both;
   }
   .land-sub {
