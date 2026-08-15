@@ -2379,8 +2379,21 @@
      calendar week or a document's metadata is not a printed page, so the
      district-blue "this simulates paper" treatment .doc-sheet otherwise
      carries would be a claim this content doesn't make. Same padding and
-     shadow, a plain embossed panel background instead. */
+     shadow, a plain embossed panel background instead.
+
+     --artifact-w was always the intended width of this panel (see the xl
+     breakpoint's own math in lib/breakpoints.js) but nothing ever actually
+     enforced it — .doc-shell just flexes to fill whatever the chat pane's
+     own minimum leaves over, docked or fully overlaid, with no cap. A
+     district TABLE fills a wide measure the way the printed page it mirrors
+     does; a standards card or a calendar row does not, and a stack of them
+     stretched across a 1500px overlay reads as a small note lost in a huge
+     blank room instead of a compact side panel. Centered, not left-pinned,
+     so the extra room reads as margin instead of the panel being off-centre
+     in its own overlay. */
   .doc-sheet-plain {
+    max-width: var(--artifact-w);
+    margin: 0 auto;
     background: var(--paper-raised);
   }
   .detail-card-stack {
