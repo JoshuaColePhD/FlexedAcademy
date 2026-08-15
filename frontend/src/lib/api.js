@@ -276,6 +276,7 @@ export const api = {
     }),
   adminAuditLog: ({ limit, signal } = {}) =>
     request(`/api/admin/audit-log${limit ? `?limit=${limit}` : ''}`, { signal }),
+  adminBilling: ({ signal } = {}) => request('/api/admin/billing', { signal }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 

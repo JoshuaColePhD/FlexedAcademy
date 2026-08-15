@@ -12,7 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 
-from .. import db
+from .. import db, stripe_api
 from ..config import settings
 from ..deps import get_current_admin
 from ..entitlement import ENTITLED_STATUSES
@@ -144,3 +144,43 @@ def update_app_settings_route(body: AppSettingsBody, _admin: str = Depends(get_c
 @router.get("/audit-log")
 def get_audit_log_route(limit: int = 50, _admin: str = Depends(get_current_admin)):
     return {"entries": db.list_admin_audit_log(limit=min(limit, 200))}
+
+
+# Statuses that mean "a real Stripe subscription, paying or trying to" —
+# what MRR is computed over. Deliberately NOT the same set as
+# entitlement.ENTITLED_STATUSES: 'comped' entitles someone to generate but
+# pays nothing, so counting it toward revenue would be fictional income.
+_PAYING_STATUSES = frozenset({"active", "trialing", "past_due"})
+
+
+@router.get("/billing")
+def get_billing_route(_admin: str = Depends(get_current_admin)):
+    """Revenue and payment-risk, without a Stripe dashboard login.
+
+    MRR is an estimate, not a Stripe-reported figure: (paying accounts) ×
+    (the one configured price). True for this app because it only ever
+    sells one price, one interval — see stripe_api.get_price's own docstring
+    for why the price itself is never hardcoded here either.
+    """
+    summary = db.billing_summary()
+    counts = summary["counts"]
+    paying = sum(counts.get(s, 0) for s in _PAYING_STATUSES)
+
+    price = None
+    mrr_cents = None
+    if settings.billing_enabled:
+        try:
+            price = stripe_api.get_price(settings.stripe_price_id)
+            if price.get("amount") is not None:
+                mrr_cents = paying * price["amount"]
+        except AppError:
+            pass  # A page that can't reach Stripe still shows account counts.
+
+    return {
+        "billing_enabled": settings.billing_enabled,
+        "counts": counts,
+        "paying_accounts": paying,
+        "price": price,
+        "mrr_cents": mrr_cents,
+        "past_due_accounts": summary["past_due_accounts"],
+    }

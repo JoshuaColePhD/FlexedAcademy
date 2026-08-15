@@ -2188,6 +2188,30 @@ def list_admin_audit_log(limit: int = 50) -> list[dict]:
     return rows
 
 
+def billing_summary() -> dict:
+    """Account counts by subscription_status, plus the 'past_due' accounts by
+    name — the two things an admin actually needs from Stripe without
+    calling Stripe: how many people are paying, and who's at risk of losing
+    access because a card failed. 'past_due' is set by the same webhook
+    (routes/billing.py) that would otherwise only ever be seen in the Stripe
+    dashboard, so this is that state surfaced somewhere an admin already is.
+
+    MRR is computed by the caller (routes/admin.py), not here — it needs the
+    live Stripe price, which is a network call this DB layer has no business
+    making.
+    """
+    counts = _rows(
+        "SELECT COALESCE(subscription_status, 'none') AS status, COUNT(*) AS n FROM users GROUP BY subscription_status"
+    )
+    past_due = _rows(
+        "SELECT id, email, name, subscription_period_end FROM users WHERE subscription_status = 'past_due' ORDER BY email"
+    )
+    return {
+        "counts": {row["status"]: row["n"] for row in counts},
+        "past_due_accounts": past_due,
+    }
+
+
 def create_user(email: str, name: str, password_hash: str) -> dict:
     uid = new_id()
     _write(

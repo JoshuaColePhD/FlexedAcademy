@@ -23,9 +23,32 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 const TABS = [
   { id: 'accounts', label: 'Accounts' },
+  { id: 'billing', label: 'Billing' },
   { id: 'schools', label: 'Schools' },
   { id: 'settings', label: 'Settings' },
 ]
+
+const STATUS_LABELS = {
+  active: 'Active',
+  trialing: 'Trialing',
+  past_due: 'Past due',
+  canceled: 'Canceled',
+  comped: 'Comped',
+  none: 'No subscription',
+}
+
+/* Same shape as BillingProvider's own formatPrice — cents and a currency
+   code in, a locale-formatted figure out. Not imported from there: that
+   component's version also appends "/ month", which an aggregate MRR figure
+   has no use for. */
+function formatCents(cents, currency = 'USD') {
+  if (cents == null) return '—'
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100)
+}
 
 /* One human-readable line per admin_audit_log row (backend/db.py migration
    28). Kept next to the log fetch rather than in a shared util — nothing
@@ -194,6 +217,90 @@ function SchoolsAdmin() {
           <Plus size={13} aria-hidden="true" /> Add
         </button>
       </form>
+    </div>
+  )
+}
+
+/* Revenue and payment-risk without a Stripe dashboard login. Read-only —
+   there is nothing here for an admin to edit; everything that changes a
+   subscription happens on Stripe's own hosted pages (checkout, portal), and
+   this app never touches a card. MRR is an estimate (routes/admin.py's own
+   comment explains why), not a Stripe-reported figure. */
+function BillingAdmin() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'billing'],
+    queryFn: () => api.adminBilling(),
+  })
+
+  if (isLoading) return <p className="mt-8 text-sm text-ink-muted">Loading…</p>
+  if (isError) return <p className="mt-8 text-sm text-mark">Could not load billing data.</p>
+
+  const counts = data.counts || {}
+  const statusOrder = ['active', 'trialing', 'past_due', 'comped', 'canceled', 'none']
+  const pastDue = data.past_due_accounts || []
+
+  return (
+    <div className="mt-8 space-y-6">
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink">Revenue</h2>
+        {!data.billing_enabled ? (
+          <p className="mt-3 text-sm text-ink-muted">
+            Billing isn't configured yet (no Stripe keys) — every account may generate for free.
+          </p>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-6 text-sm">
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-ink-muted">Estimated MRR</div>
+              <div className="font-mono text-lg text-ink">
+                {formatCents(data.mrr_cents, data.price?.currency)}
+              </div>
+            </div>
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-ink-muted">Paying accounts</div>
+              <div className="font-mono text-ink-soft">{data.paying_accounts}</div>
+            </div>
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-ink-muted">Price</div>
+              <div className="font-mono text-ink-soft">
+                {data.price ? `${formatCents(data.price.amount, data.price.currency)} / ${data.price.interval}` : '—'}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink">Accounts by status</h2>
+        <div className="mt-3 flex flex-wrap gap-6 text-sm">
+          {statusOrder
+            .filter((s) => counts[s])
+            .map((s) => (
+              <div key={s}>
+                <div className="text-2xs uppercase tracking-wide text-ink-muted">{STATUS_LABELS[s] || s}</div>
+                <div className="font-mono text-ink-soft">{counts[s]}</div>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink">Payment at risk</h2>
+        <p className="mt-1 text-2xs text-ink-muted">
+          Accounts whose card failed on renewal — Stripe will keep retrying, but access lapses if it never succeeds.
+        </p>
+        {pastDue.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-muted">No accounts currently past due.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-edge">
+            {pastDue.map((a) => (
+              <li key={a.id} className="py-2 text-sm">
+                <div className="font-medium text-ink">{a.name}</div>
+                <div className="text-2xs text-ink-muted">{a.email}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
@@ -500,6 +607,7 @@ export function AdminPage() {
         </p>
       )}
 
+      {tab === 'billing' && <BillingAdmin />}
       {tab === 'schools' && <SchoolsAdmin />}
       {tab === 'settings' && <SettingsAdmin />}
     </div>
