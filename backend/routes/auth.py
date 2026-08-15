@@ -204,6 +204,7 @@ def delete_account(
             # Stripe hiccup shouldn't block it — logged so a stray active
             # subscription can be caught and canceled by hand afterward.
             log.warning("could not cancel subscription for deleted user=%s: %s", user_id, e)
+    db.record_audit_log(user_id, "account.delete", target_user_id=user_id, detail={"email": user.get("email")})
     db.delete_user_account(user_id)
     response.delete_cookie(COOKIE_NAME, httponly=True, samesite="lax", secure=_is_https(request))
     return {"ok": True}

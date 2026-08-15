@@ -433,6 +433,9 @@ export function LandingPage() {
           Start a week free
           <ArrowIcon />
         </Link>
+        <Link to="/privacy" className="land-foot-privacy">
+          Privacy &amp; data policy
+        </Link>
       </footer>
     </div>
   )

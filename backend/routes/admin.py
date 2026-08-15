@@ -44,9 +44,19 @@ def set_comped(account_id: str, body: CompBody, _admin: str = Depends(get_curren
         db.set_subscription(account_id, status="comped")
     else:
         db.clear_subscription_status(account_id)
+    db.record_audit_log(
+        _admin, "admin.set_comped", target_user_id=account_id, detail={"comped": body.comped}
+    )
     return {"account": next(
         (a for a in db.list_accounts_with_stats() if a["id"] == account_id), None
     )}
+
+
+@router.get("/audit-log")
+def get_audit_log(_admin: str = Depends(get_current_admin)):
+    """Most recent sensitive actions — admin account changes, self-service
+    export/delete — for oversight without grepping server logs."""
+    return {"entries": db.list_audit_log()}
 
 
 @router.get("/entitled-statuses")
@@ -80,7 +90,9 @@ def create_school_route(body: SchoolBody, _admin: str = Depends(get_current_admi
             status=400,
             hint=f"Add backend/context/calendars/{body.id}.md and commit it, then try again.",
         )
-    return db.create_school(body.id, body.name)
+    school = db.create_school(body.id, body.name)
+    db.record_audit_log(_admin, "admin.create_school", detail={"school_id": body.id, "name": body.name})
+    return school
 
 
 @router.delete("/schools/{school_id}", status_code=204)
@@ -96,3 +108,4 @@ def delete_school_route(school_id: str, _admin: str = Depends(get_current_admin)
             hint="Reassign those accounts to a different school first.",
         )
     db.delete_school(school_id)
+    db.record_audit_log(_admin, "admin.delete_school", detail={"school_id": school_id})

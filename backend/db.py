@@ -618,6 +618,32 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_quizzes_plan ON quizzes(plan_id);
     ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 27: audit log ─────────────────────────────────────────────────────────
+    #
+    # A FERPA-style access/action trail: who did what, to which account, and
+    # when. Distinct from usage_events (that's token spend) and from
+    # backend_audit.log (that's the server's own request log, rotated and
+    # local, not a queryable record) — this is the one place "did an admin
+    # touch this account" or "did this teacher export/delete their data" can
+    # be answered without grepping log files.
+    #
+    # actor_user_id is nullable rather than a hard FK: the actor is gone by
+    # the time a delete_account row is written (the account it deleted was
+    # its own), so a FK ON DELETE CASCADE would erase the very record of the
+    # deletion. target_user_id is the account acted upon, when different from
+    # the actor (e.g. an admin comping someone else's account).
+    """
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id             TEXT PRIMARY KEY,
+        created_at     TEXT NOT NULL,
+        actor_user_id  TEXT,
+        action         TEXT NOT NULL,
+        target_user_id TEXT,
+        detail         TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_user_id);
+    """,
 ]
 
 
@@ -629,12 +655,28 @@ def new_id() -> str:
     return uuid.uuid4().hex
 
 
+def _dsn_with_tls() -> str:
+    """DATABASE_URL, with sslmode=require added if the URL didn't already pick
+    one. Supabase's pooler accepts plaintext as well as TLS, so an operator
+    who copies a bare connection string in gets an encrypted connection
+    anyway rather than a silent unencrypted one — student-adjacent data
+    (teacher accounts, essays pasted into chat, curriculum text) shouldn't
+    ride the wire in the clear regardless of what the DSN happened to omit.
+    "require" (not "verify-full"): the pooler's cert isn't pinned here, so
+    this stops passive eavesdropping without also needing a bundled CA file.
+    """
+    url = settings.database_url
+    if "sslmode=" in url:
+        return url
+    return url + ("&" if "?" in url else "?") + "sslmode=require"
+
+
 def _new_connection() -> psycopg2.extensions.connection:
     if not settings.database_url:
         raise ValueError("DATABASE_URL is not set in .env")
 
     try:
-        conn = psycopg2.connect(settings.database_url, cursor_factory=RealDictCursor)
+        conn = psycopg2.connect(_dsn_with_tls(), cursor_factory=RealDictCursor)
     except psycopg2.OperationalError as exc:
         # Every data route died with a generic "Something went wrong on the
         # server" when this happened, which sent you to the logs to find out the
@@ -707,7 +749,7 @@ def _ensure_pool() -> ThreadedConnectionPool:
             _pool = ThreadedConnectionPool(
                 minconn=1,
                 maxconn=settings.db_pool_size,
-                dsn=settings.database_url,
+                dsn=_dsn_with_tls(),
                 cursor_factory=RealDictCursor,
             )
             log.info("db pool opened (max %d connections)", settings.db_pool_size)
@@ -1883,6 +1925,30 @@ def record_usage(user_id: str, kind: str, tokens_in: int, tokens_out: int) -> No
         )
     except Exception:
         log.exception("failed to record usage user_id=%s kind=%s", user_id, kind)
+
+
+def record_audit_log(
+    actor_user_id: str | None, action: str, *, target_user_id: str | None = None, detail: dict | None = None
+) -> None:
+    """One row per sensitive action — admin account changes, self-service
+    export/delete — for the same reason record_usage never lets a metering
+    failure fail the call it's metering: an audit trail that can take down
+    the action it's recording is worse than an audit trail with a gap.
+    """
+    try:
+        _write(
+            "INSERT INTO audit_log (id, created_at, actor_user_id, action, target_user_id, detail) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (new_id(), now(), actor_user_id, action, target_user_id, json.dumps(detail) if detail else None),
+        )
+    except Exception:
+        log.exception("failed to record audit log actor=%s action=%s", actor_user_id, action)
+
+
+def list_audit_log(limit: int = 200) -> list[dict]:
+    """Most recent actions first, for the admin page — bounded so the page
+    can't be turned into an unpaginated full-table dump."""
+    return _rows("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?", (int(limit),))
 
 
 def tokens_used_since(user_id: str, since_iso: str) -> int:

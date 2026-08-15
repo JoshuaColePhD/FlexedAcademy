@@ -33,6 +33,7 @@ import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { PrivacyPage } from './pages/PrivacyPage'
 import './styles/base.css'
 
 const LEGACY_KEY = 'lesson_chats'
@@ -240,6 +241,7 @@ function Gate() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         {/* A deep link still round-trips through sign-in and comes back. */}
         <Route
           path="*"
@@ -276,6 +278,7 @@ function Gate() {
           this route with a non-admin session gets the page shell and then a
           403 from /api/admin/accounts, not real data. */}
       <Route path="/admin" element={<AdminPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )

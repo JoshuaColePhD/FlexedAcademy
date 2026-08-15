@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CreditCard, LogOut, Settings, Sparkles, User, ShieldCheck } from 'lucide-react'
+import { CreditCard, LogOut, Settings, Sparkles, User, ShieldCheck, Info } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -130,6 +130,13 @@ export function AccountMenu({ classPath }) {
             className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
           >
             <Settings size={14} aria-hidden="true" /> Classes &amp; settings
+          </Link>
+          <Link
+            to="/privacy"
+            onClick={() => setOpen(false)}
+            className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+          >
+            <Info size={14} aria-hidden="true" /> Privacy &amp; data policy
           </Link>
           <button
             type="button"

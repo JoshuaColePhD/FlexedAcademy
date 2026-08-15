@@ -249,6 +249,7 @@ export const api = {
     request('/api/admin/schools', { method: 'POST', body: { id, name } }),
   adminDeleteSchool: (id) =>
     request(`/api/admin/schools/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  adminAuditLog: ({ signal } = {}) => request('/api/admin/audit-log', { signal }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 

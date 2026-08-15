@@ -26,6 +26,7 @@ def export_data(user_id: str = Depends(get_current_user)):
     included and why (and what's deliberately left out).
     """
     data = db.export_user_data(user_id)
+    db.record_audit_log(user_id, "account.export", target_user_id=user_id)
     return Response(
         content=json.dumps(data, indent=2, default=str),
         media_type="application/json",

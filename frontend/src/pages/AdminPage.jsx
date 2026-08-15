@@ -164,6 +164,49 @@ function SchoolsAdmin() {
   )
 }
 
+/* A read-only trail of sensitive actions — comping an account, registering
+   or removing a school, a teacher exporting or deleting their own data —
+   backed by backend/db.py's audit_log table. Nothing here is editable; it
+   exists so "who changed this account, and when" has an answer that isn't
+   grepping server logs. */
+function AuditLogPanel() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'audit-log'],
+    queryFn: () => api.adminAuditLog(),
+  })
+  const entries = data?.entries ?? []
+
+  return (
+    <div className="neo-world neo-panel mt-8 rounded-xl p-4">
+      <h2 className="text-sm font-semibold text-ink">Audit log</h2>
+      <p className="mt-1 text-2xs text-ink-muted">
+        The most recent 200 sensitive actions — admin account changes, and teachers exporting or
+        deleting their own data.
+      </p>
+
+      {isLoading ? (
+        <p className="mt-3 text-sm text-ink-muted">Loading…</p>
+      ) : isError ? (
+        <p className="mt-3 text-sm text-mark">Could not load the audit log.</p>
+      ) : entries.length === 0 ? (
+        <p className="mt-3 text-sm text-ink-muted">No actions recorded yet.</p>
+      ) : (
+        <ul className="mt-3 max-h-80 divide-y divide-edge overflow-y-auto">
+          {entries.map((e) => (
+            <li key={e.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+              <span className="text-ink">{e.action}</span>
+              <span className="truncate text-2xs text-ink-muted">
+                {e.target_user_id ? `target: ${e.target_user_id}` : ''}
+              </span>
+              <span className="whitespace-nowrap text-2xs text-ink-faint">{relative(e.created_at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function AdminPage() {
   useDocumentTitle('Accounts')
   const toast = useToast()
@@ -289,6 +332,7 @@ export function AdminPage() {
       </p>
 
       <SchoolsAdmin />
+      <AuditLogPanel />
     </div>
   )
 }
