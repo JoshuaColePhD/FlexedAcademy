@@ -18,7 +18,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './components/AuthProvider'
 import { BillingProvider } from './components/BillingProvider'
 import { VoiceProvider } from './components/VoiceProvider'
-import { useAuth, EXPLICIT_SIGNOUT_KEY } from './lib/authContext'
+import { useAuth, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from './lib/authContext'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
 import { useClasses } from './hooks/useAppData'
@@ -211,7 +211,20 @@ function Gate() {
     }
   }, [status])
 
-  if (status === 'loading') return <BootScreen />
+  if (status === 'loading') {
+    let knownAuthed = false
+    try {
+      knownAuthed = localStorage.getItem(KNOWN_AUTHED_KEY) === '1'
+    } catch {
+      /* ignore */
+    }
+    if (knownAuthed) return <BootScreen />
+    if (location.pathname === '/') {
+      // Landing page is dark, auth routes are light. Prevent white flash or skeleton flash.
+      return <div className="flex h-app w-full" style={{ backgroundColor: 'var(--neo-dark)' }} />
+    }
+    return <div className="flex h-app w-full bg-paper" />
+  }
 
   if (status === 'anon') {
     const here = location.pathname + location.search
