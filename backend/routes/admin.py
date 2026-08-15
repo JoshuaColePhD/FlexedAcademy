@@ -10,7 +10,7 @@ a data change, not a redeploy.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .. import db
 from ..config import settings
@@ -44,6 +44,7 @@ def set_comped(account_id: str, body: CompBody, _admin: str = Depends(get_curren
         db.set_subscription(account_id, status="comped")
     else:
         db.clear_subscription_status(account_id)
+    db.log_admin_action(_admin, "comp_grant" if body.comped else "comp_revoke", target=account_id)
     return {"account": next(
         (a for a in db.list_accounts_with_stats() if a["id"] == account_id), None
     )}
@@ -80,7 +81,9 @@ def create_school_route(body: SchoolBody, _admin: str = Depends(get_current_admi
             status=400,
             hint=f"Add backend/context/calendars/{body.id}.md and commit it, then try again.",
         )
-    return db.create_school(body.id, body.name)
+    school = db.create_school(body.id, body.name)
+    db.log_admin_action(_admin, "school_add", target=body.id, detail={"name": body.name})
+    return school
 
 
 @router.delete("/schools/{school_id}", status_code=204)
@@ -96,3 +99,48 @@ def delete_school_route(school_id: str, _admin: str = Depends(get_current_admin)
             hint="Reassign those accounts to a different school first.",
         )
     db.delete_school(school_id)
+    db.log_admin_action(_admin, "school_remove", target=school_id)
+
+
+class AppSettingsBody(BaseModel):
+    # Both required — the row always carries a value for each, so a PUT is a
+    # full replace, not a partial patch (unlike CompBody's single field).
+    free_weekly_token_cap: int = Field(gt=0, le=100_000_000)
+    subscriber_weekly_token_cap: int = Field(gt=0, le=100_000_000)
+
+    @field_validator("subscriber_weekly_token_cap")
+    @classmethod
+    def _subscriber_at_least_free(cls, v: int, info) -> int:
+        free = info.data.get("free_weekly_token_cap")
+        if free is not None and v < free:
+            raise ValueError("Subscriber cap must be at least the free cap.")
+        return v
+
+
+@router.get("/settings")
+def get_app_settings_route(_admin: str = Depends(get_current_admin)):
+    return db.get_app_settings()
+
+
+@router.put("/settings")
+def update_app_settings_route(body: AppSettingsBody, _admin: str = Depends(get_current_admin)):
+    before = db.get_app_settings()
+    after = db.update_app_settings(
+        free_weekly_token_cap=body.free_weekly_token_cap,
+        subscriber_weekly_token_cap=body.subscriber_weekly_token_cap,
+        actor_id=_admin,
+    )
+    db.log_admin_action(
+        _admin,
+        "settings_update",
+        detail={
+            "before": {k: before[k] for k in ("free_weekly_token_cap", "subscriber_weekly_token_cap")},
+            "after": {k: after[k] for k in ("free_weekly_token_cap", "subscriber_weekly_token_cap")},
+        },
+    )
+    return after
+
+
+@router.get("/audit-log")
+def get_audit_log_route(limit: int = 50, _admin: str = Depends(get_current_admin)):
+    return {"entries": db.list_admin_audit_log(limit=min(limit, 200))}

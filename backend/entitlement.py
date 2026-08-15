@@ -82,7 +82,11 @@ def entitlement(user_id: str) -> Entitlement:
     # Still worth knowing — the account menu shows it — just not what gates.
     plans_used = db.count_plans(user_id)
 
-    cap = settings.subscriber_weekly_token_cap if subscribed else settings.free_weekly_token_cap
+    # Admin-editable via the Settings tab (routes/admin.py) — config.py's own
+    # values are only the seed for app_settings' singleton row, read here so
+    # a cap change takes effect on the next request, not the next deploy.
+    caps = db.get_app_settings()
+    cap = caps["subscriber_weekly_token_cap"] if subscribed else caps["free_weekly_token_cap"]
     since = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
     tokens_used = db.tokens_used_since(user_id, since)
 

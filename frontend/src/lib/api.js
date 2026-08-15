@@ -249,6 +249,17 @@ export const api = {
     request('/api/admin/schools', { method: 'POST', body: { id, name } }),
   adminDeleteSchool: (id) =>
     request(`/api/admin/schools/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  adminGetSettings: ({ signal } = {}) => request('/api/admin/settings', { signal }),
+  adminUpdateSettings: (freeWeeklyTokenCap, subscriberWeeklyTokenCap) =>
+    request('/api/admin/settings', {
+      method: 'PUT',
+      body: {
+        free_weekly_token_cap: freeWeeklyTokenCap,
+        subscriber_weekly_token_cap: subscriberWeeklyTokenCap,
+      },
+    }),
+  adminAuditLog: ({ limit, signal } = {}) =>
+    request(`/api/admin/audit-log${limit ? `?limit=${limit}` : ''}`, { signal }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 

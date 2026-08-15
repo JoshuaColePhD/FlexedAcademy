@@ -618,6 +618,47 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_quizzes_plan ON quizzes(plan_id);
     ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 27: admin settings + audit log ─────────────────────────────────────────
+    #
+    # app_settings is a singleton row (id BOOLEAN PRIMARY KEY DEFAULT true,
+    # CHECK (id)), the same shape migration 1's `settings` table used for its
+    # own single-teacher config — there is exactly one value of each cap, ever,
+    # so a real table with a WHERE clause would be answering a question
+    # ("which row?") that doesn't exist. Seeded from config.py's own defaults
+    # so a fresh deploy's admin Settings tab shows the same numbers
+    # entitlement.py already enforced before this table existed.
+    #
+    # admin_audit_log exists because the two admin actions that predate it —
+    # granting/revoking comped access, adding/removing a school — had no
+    # record of who did it or when, only current state. actor_id has no FK:
+    # an admin account can be deleted later and the log should still read who
+    # did it, not silently lose the row.
+    f"""
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id                           BOOLEAN PRIMARY KEY DEFAULT true,
+      free_weekly_token_cap        INTEGER NOT NULL,
+      subscriber_weekly_token_cap  INTEGER NOT NULL,
+      updated_at                   TEXT NOT NULL,
+      updated_by                   TEXT,
+      CHECK (id)
+    );
+    ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+
+    INSERT INTO app_settings (id, free_weekly_token_cap, subscriber_weekly_token_cap, updated_at)
+    VALUES (true, {settings.free_weekly_token_cap}, {settings.subscriber_weekly_token_cap}, '2026-08-15T00:00:00+00:00')
+    ON CONFLICT (id) DO NOTHING;
+
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id         SERIAL PRIMARY KEY,
+      actor_id   TEXT NOT NULL,
+      action     TEXT NOT NULL,
+      target     TEXT,
+      detail     TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created ON admin_audit_log(created_at DESC);
+    ALTER TABLE admin_audit_log ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -1978,6 +2019,64 @@ def list_accounts_with_stats() -> list[dict]:
         d["tokens_avg_day_30d"] = int(d["tokens_30d"] / 30) if d.get("tokens_30d") else 0
         res.append(d)
     return res
+
+
+def get_app_settings() -> dict:
+    """The two admin-editable weekly token caps. Falls back to config.py's
+    defaults if the singleton row is somehow missing (never happens after
+    migration 27 runs, but a missing row should degrade to the pre-Settings-
+    tab behavior rather than a 500)."""
+    row = _row("SELECT * FROM app_settings WHERE id = true")
+    if row:
+        return row
+    return {
+        "free_weekly_token_cap": settings.free_weekly_token_cap,
+        "subscriber_weekly_token_cap": settings.subscriber_weekly_token_cap,
+        "updated_at": None,
+        "updated_by": None,
+    }
+
+
+def update_app_settings(*, free_weekly_token_cap: int, subscriber_weekly_token_cap: int, actor_id: str) -> dict:
+    _write(
+        """
+        UPDATE app_settings
+        SET free_weekly_token_cap = ?, subscriber_weekly_token_cap = ?, updated_at = ?, updated_by = ?
+        WHERE id = true
+        """,
+        (free_weekly_token_cap, subscriber_weekly_token_cap, now(), actor_id),
+    )
+    return get_app_settings()
+
+
+def log_admin_action(actor_id: str, action: str, target: str | None = None, detail: dict | None = None) -> None:
+    """One row per admin action — comp grant/revoke, school add/remove,
+    a settings change. Never raised on failure to the caller: an admin
+    action that succeeded but went unlogged is a worse outcome than one
+    with a thin log entry, not one that gets undone or refused."""
+    _write(
+        "INSERT INTO admin_audit_log (actor_id, action, target, detail, created_at) VALUES (?,?,?,?,?)",
+        (actor_id, action, target, json.dumps(detail) if detail is not None else None, now()),
+    )
+
+
+def list_admin_audit_log(limit: int = 50) -> list[dict]:
+    """Most recent admin actions, actor's email joined in — the log table
+    only has actor_id, and the page has no use for a bare uuid."""
+    rows = _rows(
+        """
+        SELECT l.id, l.action, l.target, l.detail, l.created_at,
+               u.email AS actor_email
+        FROM admin_audit_log l
+        LEFT JOIN users u ON u.id = l.actor_id
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    for r in rows:
+        r["detail"] = json.loads(r["detail"]) if r.get("detail") else None
+    return rows
 
 
 def create_user(email: str, name: str, password_hash: str) -> dict:
