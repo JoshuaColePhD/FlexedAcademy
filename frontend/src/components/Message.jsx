@@ -151,12 +151,15 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
         <div
           className={
             isUser
-              ? /* The teacher's own turn, pressed into the page rather than
-                   floating on it — the assistant's replies are bare text on
-                   the paper, so "said by you" reads as a groove cut into
-                   that same sheet instead of a second card competing with
-                   the reply beside it. */
-                'neo-inset rounded-2xl bg-paper-sunken px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
+              ? /* The teacher's own turn, lifted off the page as its own
+                   bubble rather than cut into it — the same neo-raised +
+                   accent-tint combo the app already uses for its one
+                   primary-action treatment (see "Send again" below, or the
+                   "New plan" button), so "said by you" reads as the
+                   prominent, colored voice in the exchange. The tighter
+                   bottom-right radius gives it an iMessage-style pinched
+                   corner without a literal tail. */
+                'neo-raised rounded-2xl rounded-br-md bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
                 : 'text-[0.9375rem] leading-relaxed text-ink'
