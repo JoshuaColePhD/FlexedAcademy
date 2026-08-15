@@ -1607,6 +1607,7 @@ export function ChatPage() {
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
           onExpand={() => openDocument()}
+          onOpenQuiz={openQuiz}
           busy={busy}
           quizBuilding={quizBuilding}
           variant="bar"

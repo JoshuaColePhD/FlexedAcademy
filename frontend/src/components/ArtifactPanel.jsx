@@ -60,7 +60,13 @@ export function ArtifactPanel({
      picks, then sticky. `useState(!isOverlay)` never re-evaluated, so a wrong
      answer at mount time was permanent. */
   const [chosen, setChosen] = useState(null)
-  const view = chosen ?? (isPhone ? 'days' : 'fit')
+  // isPhone wins regardless of `chosen`: Fit/Print are both the district
+  // table and neither has a min-width floor, so a `chosen` of 'fit' picked
+  // on a wider window — then carried into this render by resizing the SAME
+  // session down to phone width, not just a fresh phone load — would still
+  // try to render it, the exact broken-table case the toggle below is
+  // hidden to prevent choosing in the first place.
+  const view = isPhone ? 'days' : (chosen ?? 'fit')
   /* Escape peels one layer at a time, innermost first: an open cell tweak, then
      the document. It has to be decided HERE rather than in the tweak input,
      because useFocusTrap binds a native listener on this container — which runs
@@ -124,21 +130,31 @@ export function ArtifactPanel({
         {/* One control where there were two — a `Fit width` button up here and
             a `View as the district table` button down in the table, which
             could contradict each other and which left the deck unreachable
-            above 1024px. */}
-        <div className="doc-views" role="group" aria-label="How to show the plan">
-          {VIEWS.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              className="doc-view"
-              aria-pressed={view === v.id}
-              onClick={() => setChosen(v.id)}
-              title={v.hint}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
+            above 1024px.
+
+            Fit and Print are both the 860px district table, just at two
+            widths — neither is a phone shape, and picking one at 375px
+            didn't just look cramped, it broke outright: columns collapsed
+            into each other with no min-width to stop them, rendering
+            every day's content superimposed on the next and unreadable.
+            Days is the only view a phone ever gets; nothing to toggle
+            between means nothing to show. */}
+        {isPhone ? null : (
+          <div className="doc-views" role="group" aria-label="How to show the plan">
+            {VIEWS.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                className="doc-view"
+                aria-pressed={view === v.id}
+                onClick={() => setChosen(v.id)}
+                title={v.hint}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {planId ? (
           <>

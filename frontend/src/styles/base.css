@@ -1911,11 +1911,16 @@
        instead of its right. */
     box-shadow: -5px 0 12px rgb(var(--neo-dark-rgb) / 0.35);
   }
-  /* The phone form: one row above the composer, not a column beside the chat. */
+  /* The phone form: one row per group above the composer, not a column
+     beside the chat. Was flex-direction: row for a single group (the plan
+     card) — once Quizzes became reachable here too (a built quiz is a real
+     deliverable, not something worth hiding on a phone), a second
+     .rail-group needed its own line rather than fighting the first one for
+     width in the same row. */
   .artifact-rail.is-bar {
     width: 100%;
-    flex-direction: row;
-    align-items: center;
+    flex-direction: column;
+    gap: var(--sp-2);
     overflow: visible;
     border-left: none;
     border-top: 1px solid var(--edge);
@@ -2287,10 +2292,25 @@
   /* On a phone the header's fixed items (collapse, the view control, Download)
      leave the title about 40px, so it rendered as "We…" over "Save…". The sheet
      immediately below states the week as its own heading, so this is the one
-     thing in the header that can go. */
+     thing in the header that can go.
+
+     .doc-head-keep-title opts back in — ArtifactDetailPanel's four kinds
+     (quiz/standards/calendar/document) have no restated heading below,
+     so hiding it there left a phone with no idea what it was looking at. */
   @media (max-width: 767.98px) {
     .doc-titles {
       display: none;
+    }
+    .doc-head-keep-title .doc-titles {
+      display: flex;
+    }
+    /* Same 40px-left-for-the-title problem this whole rule exists to solve,
+       just without a view control competing for room — one less fixed item,
+       but Download's label is real text, not an icon, so the title still
+       needs the same truncate-not-overflow treatment on a phone as it gets
+       everywhere wider. */
+    .doc-head-keep-title .doc-title {
+      font-size: var(--fs-sm);
     }
   }
   .doc-title {

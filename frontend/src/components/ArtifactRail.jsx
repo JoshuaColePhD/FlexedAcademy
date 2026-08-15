@@ -376,17 +376,17 @@ export function ArtifactRail({
 
       {/* Quizzes over this plan — right under My Plans, ahead of Built From:
           a quiz is a second artifact this conversation produced, the same
-          rank as the plan itself, not a citation the plan rests on. Only in
-          the full rail, same reasoning as Built From below: the phone bar's
-          whole point is "the file and its Download, nothing else." Shown
-          whenever there's something to show (a build in progress, or an
-          already-built quiz), not gated behind planId the same strict way
-          Built From is — quizBuilding can be true for one render right
-          after the request lands, before the query below has anything
-          cached yet. */}
-      {!isBar && (quizBuilding || quizzes.length > 0) ? (
+          rank as the plan itself, not a citation the plan rests on. Reachable
+          in the phone bar too, unlike Built From below — a built quiz is a
+          real deliverable a teacher would want off their phone, not a
+          citation the plan rests on. Shown whenever there's something to
+          show (a build in progress, or an already-built quiz), not gated
+          behind planId the same strict way Built From is — quizBuilding can
+          be true for one render right after the request lands, before the
+          query below has anything cached yet. */}
+      {quizBuilding || quizzes.length > 0 ? (
         <div className="rail-group">
-          <span className="eyebrow">Quizzes</span>
+          {isBar ? null : <span className="eyebrow">Quizzes</span>}
           {quizBuilding ? (
             <div className="rail-row fa-rise">
               <span className="rail-row-tile">
