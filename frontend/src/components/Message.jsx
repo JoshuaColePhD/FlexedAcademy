@@ -248,7 +248,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
         >
           <button
             type="button"
-            className="rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
+            className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
             /* The week and its codes, not just the sentence.
                An assistant reply's `content` is the fixed string "Built the
                week of X. Tell me what to change…", while the message also
@@ -257,7 +257,15 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             onClick={() => copy(copyableText(message, grounded, ungrounded))}
             aria-label={copied ? 'Copied' : 'Copy this message'}
           >
-            {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+            {/* The confirmation pops in rather than just swapping icons —
+                the click already told the finger something happened
+                (fa-press), so the eye gets its own answer a beat later
+                instead of a silent glyph replacement. */}
+            {copied ? (
+              <Check key="copied" size={14} className="fa-pop" aria-hidden="true" />
+            ) : (
+              <Copy size={14} aria-hidden="true" />
+            )}
           </button>
           {/* Guarded on onEdit, like the retry button beside it. Without the
               guard this rendered on every user message even though no caller
@@ -266,7 +274,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           {isUser && onEdit ? (
             <button
               type="button"
-              className="rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
+              className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={() => setEditing(true)}
               aria-label="Edit and send again"
             >
@@ -276,7 +284,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           {!isUser && isLast && onRetry ? (
             <button
               type="button"
-              className="rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
+              className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={onRetry}
               aria-label="Build this plan again"
             >

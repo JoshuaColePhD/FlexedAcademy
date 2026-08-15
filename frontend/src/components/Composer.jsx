@@ -308,7 +308,7 @@ export function Composer({
             {isStreaming && onStop ? (
               <button
                 type="button"
-                className="neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full bg-mark-tint text-mark transition-shadow md:h-9 md:w-9"
+                className="fa-press neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full bg-mark-tint text-mark transition-shadow md:h-9 md:w-9"
                 onClick={onStop}
                 aria-label="Stop generating"
               >
@@ -346,7 +346,7 @@ export function Composer({
                    filled buttons on ClassPage) — a plain black circle here
                    just wasn't reading as the one button that matters on the
                    whole bar. */
-                className={`tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
+                className={`fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
                   canSend
                     ? 'neo-raised bg-accent-tint text-accent-text'
                     : /* Inset, not a flat grey disc: unavailable reads as

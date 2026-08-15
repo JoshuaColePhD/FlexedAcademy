@@ -4189,6 +4189,13 @@
   .fa-flash {
     animation: fa-flash 2.2s ease-out both;
   }
+  /* A confirmation icon (Copy → Check) arriving with a touch of overshoot
+     rather than just replacing the glyph in place — the same "settling into
+     view" idea fa-card-drop carries, scaled down to icon size for a state
+     that lasts under two seconds. */
+  .fa-pop {
+    animation: fa-pop 320ms var(--ease-spring) both;
+  }
   /* Voice mode's decision cards, settling into place at the bottom of the
      column as each one is decided. Scale, not just fade: a card that
      resolves out of slightly-too-small reads as landing ON the stack,
@@ -4277,6 +4284,16 @@
   }
   100% {
     background: transparent;
+  }
+}
+@keyframes fa-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 /* The hero's verification seal draws itself in once, on load — a stamp being

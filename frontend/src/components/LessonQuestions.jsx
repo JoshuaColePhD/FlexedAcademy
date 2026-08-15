@@ -50,7 +50,7 @@ export function LessonQuestions({ questions, onSubmit }) {
                   key={opt}
                   type="button"
                   aria-pressed={selected}
-                  className={`rounded-full px-3.5 py-2 text-sm font-medium transition-shadow ${
+                  className={`fa-press rounded-full px-3.5 py-2 text-sm font-medium transition-shadow ${
                     selected ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
                   }`}
                   onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: opt }))}
@@ -87,7 +87,7 @@ export function LessonQuestions({ questions, onSubmit }) {
           <div className="flex gap-2">
             <button
               type="button"
-              className="neo-raised rounded-lg bg-accent-tint px-4 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
+              className="fa-press neo-raised rounded-lg bg-accent-tint px-4 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!customText.trim()}
               onClick={submitCustom}
             >
@@ -106,7 +106,7 @@ export function LessonQuestions({ questions, onSubmit }) {
         <div className="flex items-center gap-4">
           <button
             type="button"
-            className="neo-raised self-start rounded-lg bg-accent-tint px-4 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
+            className="fa-press neo-raised self-start rounded-lg bg-accent-tint px-4 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!allAnswered}
             onClick={submit}
           >
