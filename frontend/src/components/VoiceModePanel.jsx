@@ -110,7 +110,7 @@ function saidText(m) {
   return m.spokenContent || m.questions.map((q) => q.text).join(' ')
 }
 
-function Transcript({ messages, onReplay }) {
+export function Transcript({ messages, onReplay }) {
   const said = messages.filter((m) => m.role !== 'user')
   return (
     <div className="neo-panel flex h-full flex-col overflow-hidden rounded-[28px] bg-paper-raised">
@@ -170,7 +170,7 @@ function Transcript({ messages, onReplay }) {
  * question case (the actual common case) skips Continue entirely: tapping
  * an option IS the answer, sent immediately. Requiring a second tap to
  * confirm a choice already made was pure friction with nothing to weigh. */
-function QuestionCards({ questions, onAnswer }) {
+export function QuestionCards({ questions, onAnswer }) {
   const [answers, setAnswers] = useState({})
   const single = questions.length === 1
   const allAnswered = questions.every((q) => answers[q.id])
@@ -262,7 +262,7 @@ function QuestionCards({ questions, onAnswer }) {
  * either one. Takes over whichever slot would otherwise hold the transcript
  * (desktop) or the decisions list (phone) while actually streaming; once
  * `builtPlan` lands, BuiltPlanCard takes over from there. */
-function BuildProgress({ days, fill = true }) {
+export function BuildProgress({ days, fill = true }) {
   return (
     <div
       className={`neo-panel flex w-full flex-col gap-3 rounded-[28px] bg-paper-raised p-4 ${
@@ -287,7 +287,7 @@ function BuildProgress({ days, fill = true }) {
  * instant the plan lands, but a sentence spoken once and gone is easy to
  * miss entirely if the room is noisy or attention was elsewhere. This card
  * stays up for as long as the conversation does. */
-function BuiltPlanCard({ builtPlan, fill = true }) {
+export function BuiltPlanCard({ builtPlan, fill = true }) {
   return (
     <div
       className={`neo-panel flex w-full flex-col items-start gap-3 rounded-[28px] bg-paper-raised p-4 ${

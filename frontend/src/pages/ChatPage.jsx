@@ -28,6 +28,7 @@ import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
 import { VoiceModePanel } from '../components/VoiceModePanel'
+import { RealtimeVoicePanel } from '../components/RealtimeVoicePanel'
 
 /* One chat, one plan.
  *
@@ -56,6 +57,15 @@ import { VoiceModePanel } from '../components/VoiceModePanel'
  * message (WeekStrip + grounding line), which is what makes closing the
  * document safe. Click the file when you actually want the pages.
  */
+
+// The kill switch. `openVoice` below opens the live speech-to-speech
+// session (RealtimeVoicePanel) instead of the older record-clip -> Whisper
+// -> chat-completion -> tts-1 pipeline (VoiceModePanel) whenever this is
+// true — one line to flip back to the known-good pipeline if the realtime
+// one misbehaves in the field, without reverting a commit or touching
+// either panel's code. VoiceModePanel/VoiceProvider are untouched and stay
+// fully wired below regardless of this flag.
+const REALTIME_VOICE = true
 
 let idSeq = 0
 const nextId = () => `m${++idSeq}`
@@ -180,6 +190,13 @@ export function ChatPage() {
   // now, everywhere it appears (Composer's icon, Greeting's pill) — see
   // VoiceModePanel for why this replaced a quiet on/off toggle.
   const [voiceOpen, setVoiceOpen] = useState(false)
+  // The realtime/speech-to-speech overlay's own open flag — deliberately
+  // separate from voiceOpen rather than a shared boolean with a "which
+  // panel" enum: keeping them independent means nothing here has to change
+  // if REALTIME_VOICE flips, and the legacy auto-speak effect below (gated
+  // on voiceOpen specifically) can't accidentally fire for a realtime
+  // session's own messages.
+  const [realtimeVoiceOpen, setRealtimeVoiceOpen] = useState(false)
   // What VoiceModePanel is currently typing out in sync with its own TTS
   // playback — the caption half of "greet me and type along with the
   // speech." Owned here, not inside the panel, because the same text has to
@@ -684,7 +701,44 @@ export function ChatPage() {
     if (messages.length === 0) voice.prefetch(VOICE_GREETING)
   }, [messages.length, voice])
 
+  /* A realtime session needs a chat_id before it can even open — its
+     system prompt (resolve_conversation_context) resolves class/subject/
+     week from it — unlike submit()'s lazy creation, which always has some
+     typed text to name the chat's placeholder title with. Mirrors that
+     same creation block; kept separate rather than shared so neither
+     path's error handling has to account for the other's caller. */
+  const ensureChatId = useCallback(async () => {
+    if (chatId) return chatId
+    const created = await api.createChat('New plan', classId, effectiveWeek)
+    localFor.current = created.id
+    qc.invalidateQueries({ queryKey: ['chats'] })
+    navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
+    return created.id
+  }, [chatId, classId, effectiveWeek, navigate, qc])
+
+  const openRealtimeVoice = useCallback(async () => {
+    // Same reasoning as submit()'s own check: the server enforces this too
+    // (require_entitlement, called from POST /api/realtime/session), but
+    // asking first means a blocked teacher sees the paywall immediately
+    // instead of a WebRTC handshake that was always going to fail.
+    if (!mayGenerate) {
+      openPaywall()
+      return
+    }
+    try {
+      await ensureChatId()
+    } catch (err) {
+      toast.apiError("Couldn't start that conversation", err)
+      return
+    }
+    setRealtimeVoiceOpen(true)
+  }, [ensureChatId, mayGenerate, openPaywall, toast])
+
   const openVoice = useCallback(() => {
+    if (REALTIME_VOICE) {
+      openRealtimeVoice()
+      return
+    }
     if (!voice.enabled) voice.toggle()
     else voice.unlock()
     setVoiceOpen(true)
@@ -692,7 +746,136 @@ export function ChatPage() {
       setVoiceCaption(VOICE_GREETING)
       voice.speak(VOICE_GREETING)
     }
-  }, [voice, messages])
+  }, [voice, messages, openRealtimeVoice])
+
+  /* A teacher's utterance (or a tapped clarifying-question answer) from
+     the live realtime session — appended and persisted exactly like
+     submit()'s own user-message write, but WITHOUT going through submit()
+     itself: the realtime session already heard it directly as audio (or,
+     for a tap, is told separately via sendText — see RealtimeVoicePanel's
+     onAnswer) and is generating its own reply live. Calling submit() here
+     too would fire a second, redundant /api/chat_stream turn racing the
+     session's own response for the same exchange. */
+  const onRealtimeUserUtterance = useCallback((text) => {
+    setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: text }])
+    if (localFor.current) api.addMessage(localFor.current, { role: 'user', content: text }).catch(() => {})
+  }, [])
+
+  /* The realtime session's own spoken turn, already read aloud live by
+     the session itself — this only mirrors it into the transcript (so
+     Transcript/reload/history-for-the-next-tool-call all see it), same as
+     chatStream's onDone does for the legacy pipeline's text/questions
+     split. spokenLive marks it so nothing re-speaks it — the legacy
+     auto-speak effect is gated on voiceOpen, which stays false here, but
+     the flag documents the same intent regardless. */
+  const onRealtimeAssistantMessage = useCallback(
+    ({ content, questions }) => {
+      const reply = { id: nextId(), role: 'assistant', content, spokenLive: true, ...(questions?.length ? { questions } : {}) }
+      setMessages((prev) => [...prev, reply])
+      const saveTo = localFor.current
+      if (saveTo) {
+        const persistContent = questions?.length
+          ? `${content}\n\n${questions.map((q) => `• ${q.text}`).join('\n')}`
+          : content
+        api.addMessage(saveTo, { role: 'assistant', content: persistContent }).catch(() => {})
+      }
+      qc.invalidateQueries({ queryKey: ['chats'] })
+    },
+    [qc]
+  )
+
+  /* A completed generate_lesson_plan / generate_quiz call from the live
+     session — mirrors submit()'s own build/revise/quiz branches (see
+     there for the fuller reasoning behind each), reimplemented here rather
+     than shared: a realtime turn has no discrete "the model just replied
+     with this text" return value to branch on the way chatStream.start()'s
+     awaited result does, so the two call sites don't share a natural
+     extraction point without a larger refactor of submit() itself — one
+     this deliberately avoids touching, since it is the one path already
+     proven correct in production. */
+  const onRealtimeToolResult = useCallback(
+    async ({ name, args, transcriptText }) => {
+      if (name === 'generate_quiz') {
+        if (!artifact?.planId) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'assistant',
+              content: "I need to build this week's plan before I can make a quiz for it.",
+            },
+          ])
+          return
+        }
+        setQuizBuilding(true)
+        try {
+          const quiz = await api.createQuiz(artifact.planId, {
+            questionTypes: args.question_types,
+            numQuestions: args.num_questions || 10,
+          })
+          qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
+          const content = `Built "${quiz.title}." Download it from the plan panel — it imports into Canvas as a QTI package.`
+          setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content }])
+          if (localFor.current) api.addMessage(localFor.current, { role: 'assistant', content }).catch(() => {})
+        } catch (err) {
+          toast.apiError('Could not build the quiz', err)
+        } finally {
+          setQuizBuilding(false)
+        }
+        return
+      }
+
+      if (name !== 'generate_lesson_plan') return
+
+      if (!artifact?.planId) {
+        if (!mayGenerate) {
+          openPaywall()
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'assistant',
+              isError: true,
+              content: 'You’ve reached this week’s usage limit.',
+              hint: 'Subscribe for a much higher limit, or wait for it to reset — everything you’ve already built stays yours.',
+            },
+          ])
+          return
+        }
+        stream.start(transcriptText, { chatId: localFor.current, weekNumber: effectiveWeek }).catch(() => {})
+        return
+      }
+
+      setRevising(true)
+      try {
+        const row = await api.revisePlan(artifact.planId, transcriptText)
+        setArtifact((a) => ({ ...a, plan: row.plan_json, warnings: row.warnings, retrievedIds: row.retrieved_ids }))
+        const content = 'Updated the week and rebuilt the document.'
+        const reply = {
+          id: nextId(),
+          role: 'assistant',
+          content,
+          planId: row.id,
+          weekLabel: row.week_label,
+          plan: row.plan_json,
+          retrievedCodes: row.retrieved_ids,
+        }
+        setMessages((prev) => [...prev, reply])
+        if (localFor.current) {
+          api.addMessage(localFor.current, { role: 'assistant', content, plan_id: row.id }).catch(() => {})
+        }
+      } catch (err) {
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
+        ])
+        toast.apiError("Couldn't revise that", err)
+      } finally {
+        setRevising(false)
+      }
+    },
+    [artifact, mayGenerate, openPaywall, stream, effectiveWeek, qc, toast]
+  )
 
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
@@ -1829,6 +2012,22 @@ export function ChatPage() {
             setVoiceCaption(text)
             voice.speak(text)
           }}
+        />
+      ) : null}
+
+      {realtimeVoiceOpen ? (
+        <RealtimeVoicePanel
+          onClose={() => setRealtimeVoiceOpen(false)}
+          isPhone={isPhone}
+          messages={messages}
+          decisions={decisions}
+          builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
+          building={stream.isStreaming}
+          buildDays={stream.preview?.days}
+          sessionRequest={{ mode: 'brainstorm', chat_id: localFor.current || chatId, week_number: conversationWeek }}
+          onUserUtterance={onRealtimeUserUtterance}
+          onAssistantMessage={onRealtimeAssistantMessage}
+          onToolResult={onRealtimeToolResult}
         />
       ) : null}
     </div>

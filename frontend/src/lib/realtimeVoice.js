@@ -244,5 +244,24 @@ export function useRealtimeVoice({ onCaption, onCaptionDone, onHeard, onSpeechSt
     }
   }, [])
 
-  return { connected, muted, connect, disconnect, toggleMute, cancelResponse }
+  /* Injects a TEXT turn into the live session and asks the model to
+   * respond to it — the one thing the mic can't do on its own. Every
+   * ordinary utterance reaches the model as audio, which the server VAD
+   * already turns into a turn automatically; this exists specifically for
+   * QuestionCards' tap-an-option case (RealtimeVoicePanel's onAnswer),
+   * where tapping a button produces no audio for the session to hear.
+   */
+  const sendText = useCallback((text) => {
+    const dc = dcRef.current
+    if (!dc || dc.readyState !== 'open') return
+    dc.send(
+      JSON.stringify({
+        type: 'conversation.item.create',
+        item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
+      })
+    )
+    dc.send(JSON.stringify({ type: 'response.create' }))
+  }, [])
+
+  return { connected, muted, connect, disconnect, toggleMute, cancelResponse, sendText }
 }
