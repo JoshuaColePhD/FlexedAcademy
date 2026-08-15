@@ -27,6 +27,30 @@ function copyableText(message, grounded, ungrounded) {
   return parts.join('\n')
 }
 
+/* The teacher's own bubble's tail, as real vector artwork instead of a CSS
+   corner-radius hack — two rounded-rectangle pseudo-elements were tried and
+   neither read as an actual curved tail at this size. Filled with
+   var(--accent-tint) via inline style (not the `fill` attribute) so it
+   tracks the bubble's own color across themes; positioned to overlap the
+   bubble's bottom-right corner so the seam is just two identical colors
+   touching, with only the curved tip poking out past the bubble's edge. */
+function BubbleTail() {
+  return (
+    <svg
+      className="msg-user-bubble-tail"
+      width="22"
+      height="18"
+      viewBox="0 0 22 18"
+      aria-hidden="true"
+    >
+      <path
+        d="M0 0 C 9 1 20 3 22 10 C 22 15 17 18 10 18 C 5 18 1 13 0 7 Z"
+        style={{ fill: 'var(--accent-tint)' }}
+      />
+    </svg>
+  )
+}
+
 function useCopy() {
   const [copied, setCopied] = useState(false)
   const copy = async (text) => {
@@ -84,6 +108,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             should still read as your turn, not switch to a different
             surface mid-edit. */}
         <div className="msg-user-bubble neo-raised w-full max-w-[85%] rounded-2xl bg-accent-tint p-4">
+          <BubbleTail />
           <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
             Edit your message
           </label>
@@ -162,9 +187,9 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                    accent-tint combo the app already uses for its one
                    primary-action treatment (see "Send again" below, or the
                    "New plan" button), so "said by you" reads as the
-                   prominent, colored voice in the exchange. .msg-user-bubble
-                   (base.css) grows the actual iMessage-style tail out from
-                   behind the corner, without squaring it off this time. */
+                   prominent, colored voice in the exchange. <BubbleTail />
+                   draws the actual iMessage-style tail as vector artwork,
+                   overlapping the corner rather than fighting its rounding. */
                 'msg-user-bubble neo-raised rounded-2xl bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
@@ -177,7 +202,10 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           }
         >
           {isUser ? (
-            <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+            <>
+              <BubbleTail />
+              <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+            </>
           ) : (
             <div className="msg-markdown">
               <ReactMarkdown>{message.content}</ReactMarkdown>

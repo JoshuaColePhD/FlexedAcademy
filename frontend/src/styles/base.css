@@ -2938,40 +2938,22 @@
     }
   }
 
-  /* The teacher's own bubble's tail — sits BEHIND the bubble (z-index -1),
-     not beside it, so the bubble's own rounded-2xl corner draws on top and
-     naturally hides the seam. An earlier attempt squared the corner off to
-     give the tail somewhere flush to attach to; that broke the bubble's
-     rounding to serve the tail and looked wrong on its own. This way the
-     corner stays fully rounded and the tail just peeks out from behind it. */
+  /* The teacher's own bubble's tail (see the inline <svg> in Message.jsx).
+     Two rounded-rectangle pseudo-elements (a flap + a page-colored mask to
+     carve it into a curve) were tried twice — first with the bubble's own
+     corner squared off to give the tail a flush edge, then with the tail
+     sitting behind the still-rounded corner. Neither read as a real curved
+     tail at this size; the mask trick just isn't precise enough. An actual
+     SVG path is the reliable way to get the exact iMessage curve, so the
+     tail is real vector artwork now, not a CSS shape hack. */
   .msg-user-bubble {
     position: relative;
-    /* Establishes its own stacking context so the tail's z-index: -1 below
-       means "behind this bubble" — without it, -1 is relative to whatever
-       ancestor stacking context is nearest, which could be behind sibling
-       messages instead of just this one. */
-    z-index: 0;
   }
-  .msg-user-bubble::before,
-  .msg-user-bubble::after {
-    content: '';
+  .msg-user-bubble-tail {
     position: absolute;
-    z-index: -1;
-    bottom: 0;
-  }
-  .msg-user-bubble::before {
-    right: -3px;
-    width: 26px;
-    height: 26px;
-    background: var(--accent-tint);
-    border-bottom-left-radius: 26px;
-  }
-  .msg-user-bubble::after {
-    right: -18px;
-    width: 16px;
-    height: 26px;
-    background: var(--paper);
-    border-bottom-left-radius: 22px;
+    right: -9px;
+    bottom: -3px;
+    pointer-events: none;
   }
 
   /* A reply that is a failure, marked as one. Same apparatus as .marginalia:
