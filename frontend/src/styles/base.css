@@ -2938,24 +2938,6 @@
     }
   }
 
-  /* The teacher's own bubble's tail (see the inline <svg> in Message.jsx).
-     Two rounded-rectangle pseudo-elements (a flap + a page-colored mask to
-     carve it into a curve) were tried twice — first with the bubble's own
-     corner squared off to give the tail a flush edge, then with the tail
-     sitting behind the still-rounded corner. Neither read as a real curved
-     tail at this size; the mask trick just isn't precise enough. An actual
-     SVG path is the reliable way to get the exact iMessage curve, so the
-     tail is real vector artwork now, not a CSS shape hack. */
-  .msg-user-bubble {
-    position: relative;
-  }
-  .msg-user-bubble-tail {
-    position: absolute;
-    right: -9px;
-    bottom: -3px;
-    pointer-events: none;
-  }
-
   /* A reply that is a failure, marked as one. Same apparatus as .marginalia:
      a coloured left edge and a tinted ground, so it reads as an annotation on
      the conversation rather than as the app's own voice. */
