@@ -1581,83 +1581,75 @@
     }
   }
 
-  /* The voice panel's ambient glow, behind its waveform canvas. Deliberately
-     NOT driven by the live audio level (that's the canvas's own job, redrawn
-     every frame from the AnalyserNode) — this is a slow, constant breathing
-     independent of whether anyone is talking, the difference between "a
-     meter" and "a room with some light in it." rgb(var(--accent-rgb)), the
-     primitive, not --accent-tint or any other alias: this sits behind a
-     canvas painted from the SAME primitive read via getComputedStyle in
-     VoiceModePanel.jsx, and the two have to agree on where the color comes
-     from or a future retint of one silently stops matching the other. */
-  .voice-glow {
-    position: absolute;
-    inset: -35%;
-    z-index: -1;
-    border-radius: 50%;
-    background: radial-gradient(closest-side, rgb(var(--accent-rgb) / 0.4), transparent 70%);
-    filter: blur(28px);
-    animation: voice-glow-pulse 4.5s var(--ease) infinite;
-    pointer-events: none;
-  }
-  @keyframes voice-glow-pulse {
-    0%, 100% {
-      opacity: 0.35;
-      transform: scale(0.9);
-    }
-    50% {
-      opacity: 0.7;
-      transform: scale(1.08);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .voice-glow {
-      animation: none;
-      opacity: 0.5;
-    }
-  }
+  /* Voice mode's dock, above the composer (ChatPage.jsx) — it used to be a
+     full-screen/dialog takeover with its own mount/unmount and no exit
+     animation at all. Now the chat box itself grows to make room for it:
+     the message list above compresses (ordinary flex layout — this sits
+     between it and the composer in the same flex column) while THIS
+     wrapper's own height animates from nothing up to its content's real
+     size, so the whole thing reads as the chat pane pushing up from the
+     bottom rather than a separate card dropping in on top of it.
 
-  /* A highlight chasing the ring's own edge, independent of the level-driven
-     canvas inside it — the canvas answers "is it hearing volume," this
-     answers "is it alive" even mid-silence. A conic gradient masked down to
-     a thin annulus at the ring's outer edge, not a filled wedge — the mask's
-     inner stop sits just inside the ring's own border so the sheen reads as
-     riding along it. */
-  .voice-orb-sheen {
-    position: absolute;
-    inset: -6px;
-    border-radius: 50%;
-    background: conic-gradient(
-      from 0deg,
-      transparent 0deg,
-      rgb(var(--accent-rgb) / 0.6) 30deg,
-      transparent 75deg,
-      transparent 360deg
-    );
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
-    animation: voice-orb-spin 5s linear infinite;
-    pointer-events: none;
+     grid-template-rows: 0fr → 1fr, not a max-height guess: max-height has
+     to animate toward some fixed number that either clips a taller panel
+     (a two-question round, say) or leaves a dead gap under a shorter one —
+     neither reads as "organic." A 0fr/1fr grid row animates to the
+     content's OWN height every time, whatever that happens to be, the same
+     shape browsers now recommend for this exact "height: auto" gap. The
+     single grid child (voice-dock-body) needs overflow+min-height: 0 for
+     the trick to actually clip during the animation — grid items default
+     to min-height: auto, which refuses to shrink below content size and
+     would otherwise cancel this out entirely.
+
+     Kept mounted one beat longer on close (useExitTransition) so the
+     content still fades out rather than the row simply snapping shut with
+     the panel yanked out from under it — same two-part open/close shape
+     .artifact-drawer already uses beside it, vertical here where the
+     drawer's is horizontal. */
+  .voice-dock {
+    display: grid;
+    flex-shrink: 0;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--t-base) var(--ease-out);
   }
-  @keyframes voice-orb-spin {
+  .voice-dock.is-open {
+    grid-template-rows: 1fr;
+  }
+  .voice-dock-body {
+    min-height: 0;
+    /* A sane ceiling, not the height itself — the row above still grows to
+       fit real content (a one-line "listening…" state and a two-question
+       round land at genuinely different heights, on purpose). This only
+       stops something unusually tall from pushing the composer off the
+       bottom of a short screen; past it the panel scrolls internally
+       instead of the page growing without end. */
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    animation: voice-dock-body-in var(--t-base) var(--ease-out) both;
+  }
+  .voice-dock-body.is-closing {
+    animation: voice-dock-body-out var(--t-fast) var(--ease) both;
+  }
+  @keyframes voice-dock-body-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
     to {
-      transform: rotate(360deg);
+      opacity: 1;
+      transform: none;
     }
   }
-
-  /* Runs behind all three desktop columns (Transcript/orb/DecisionStack) —
-     each card's own opaque bg-paper-raised covers it everywhere except the
-     two gaps between them, which is the point: it should read as one
-     thread ducking under three cards, not a line drawn across the page. */
-  .voice-thread {
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgb(var(--accent-rgb) / 0.5) 15%,
-      rgb(var(--accent-rgb) / 0.5) 85%,
-      transparent 100%
-    );
+  @keyframes voice-dock-body-out {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateY(10px);
+    }
   }
 
   .dialog h2 {
