@@ -11,11 +11,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from . import db
 from .config import settings
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
+from .ratelimit import limiter, rate_limit_exceeded_handler
 from .routes import account, admin, auth, billing, classes, curriculum, drive, generate, misc, plans, standards
 from .schema import SchemaError
 
@@ -24,6 +27,23 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-7s %(name)s  %(message)s",
 )
 log = logging.getLogger("aplang")
+
+if settings.sentry_dsn:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        # AppError is an expected, handled control-flow signal (a 401, a 409
+        # for "email taken") with its own {code, message, hint} envelope —
+        # reporting every one of those to Sentry would bury the unhandled
+        # crashes unhandled_handler exists to catch under routine noise.
+        before_send=lambda event, hint: (
+            None
+            if hint.get("exc_info") and isinstance(hint["exc_info"][1], AppError)
+            else event
+        ),
+    )
 
 
 @asynccontextmanager
@@ -59,6 +79,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AP Lang RAG", version="2.0.0", lifespan=lifespan)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

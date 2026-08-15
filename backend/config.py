@@ -290,6 +290,12 @@ class Settings(BaseSettings):
     max_doc_bytes: int = 10 * 1024 * 1024
     max_query_chars: int = 8000
 
+    # Error tracking. Inert until set — same inert-until-configured shape as
+    # Stripe and Resend above, since a dev machine shouldn't report its own
+    # tracebacks to a shared Sentry project.
+    sentry_dsn: str = ""
+    sentry_environment: str = "development"
+
     @field_validator("allowed_origins")
     @classmethod
     def _strip(cls, v: str) -> str:

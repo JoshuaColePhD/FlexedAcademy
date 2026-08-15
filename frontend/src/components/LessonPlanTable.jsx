@@ -378,11 +378,6 @@ function cellKit({
   return { isOpen, flashed, editableProps, Trigger, tweakBody }
 }
 
-/** The value a tweak editor shows as "what this says now". */
-const currentValue = (day, field) =>
-  field === 'engagement_strategy'
-    ? (Array.isArray(day[field]) ? day[field] : []).join(', ')
-    : day[field]
 
 /* The district table itself. It mirrors the .docx and its faithfulness is the
    product, so the only thing in-cell editing is allowed to change is what

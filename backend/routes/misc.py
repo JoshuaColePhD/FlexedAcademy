@@ -8,7 +8,7 @@ from pathlib import Path
 
 from collections import Counter
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,7 @@ from .. import db, docx_build, llm, retrieval, service
 from ..config import settings
 from ..deps import get_current_user, get_current_user_optional
 from ..errors import AppError
+from ..ratelimit import limiter
 
 log = logging.getLogger("aplang.misc")
 router = APIRouter(prefix="/api", tags=["misc"])
@@ -328,7 +329,8 @@ def _spool(upload: UploadFile, suffix: str, max_bytes: int) -> Path:
 
 
 @router.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def transcribe(request: Request, audio: UploadFile = File(...), user_id: str = Depends(get_current_user)):
     """Was unauthenticated — every other OpenAI-backed route here requires
     login (see /tts's own comment), but this one didn't, which made it a free
     relay for anyone who found it: no account to attribute the cost to, and
@@ -346,7 +348,8 @@ class TTSRequest(BaseModel):
 
 
 @router.post("/tts")
-def synthesize_speech(req: TTSRequest, user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+def synthesize_speech(req: TTSRequest, request: Request, user_id: str = Depends(get_current_user)):
     """The assistant's chat replies, spoken aloud. Authenticated like every
     other OpenAI-backed route — this bills the same API key transcribe()
     already does, and a public speech-synthesis endpoint is a free relay for
