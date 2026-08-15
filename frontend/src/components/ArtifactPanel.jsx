@@ -19,16 +19,16 @@ import { Marginalia } from './Marginalia'
  *  - Edit. An edit mode is a second writer of the same artifact and would drift
  *    against chat-driven revision. Every revision goes through the composer or a
  *    cell tweak, so there is exactly one path a change can take.
+ *  - A Days/Fit/Print toggle. Three ways to read one week was two more
+ *    decisions than a teacher opening this panel actually has: what a plan
+ *    "really" looks like is the district table it prints to, so that is the
+ *    only shape a non-phone screen ever shows now — see PRINT below. Fit's
+ *    own compact grid is gone with it, not just hidden, since nothing can
+ *    reach it anymore.
  *
  * The page fits the container and is never a fixed 900px sheet: a fixed page in
  * a narrow canvas clips its own title, which is the defect this replaces.
  */
-const VIEWS = [
-  { id: 'days', label: 'Days', hint: 'One card per day' },
-  { id: 'fit', label: 'Fit', hint: 'Fitted to this width' },
-  { id: 'print', label: 'Print', hint: 'The district table at its printed width' },
-]
-
 export function ArtifactPanel({
   artifact,
   classId,
@@ -56,17 +56,11 @@ export function ArtifactPanel({
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
   const isPhone = useLayoutMode() === 'phone'
 
-  /* One control, three views — see VIEWS below. Derived until the teacher
-     picks, then sticky. `useState(!isOverlay)` never re-evaluated, so a wrong
-     answer at mount time was permanent. */
-  const [chosen, setChosen] = useState(null)
-  // isPhone wins regardless of `chosen`: Fit/Print are both the district
-  // table and neither has a min-width floor, so a `chosen` of 'fit' picked
-  // on a wider window — then carried into this render by resizing the SAME
-  // session down to phone width, not just a fresh phone load — would still
-  // try to render it, the exact broken-table case the toggle below is
-  // hidden to prevent choosing in the first place.
-  const view = isPhone ? 'days' : (chosen ?? 'fit')
+  // Days is the phone shape — the district table has a min-width and a
+  // teacher on a phone reads one day at a time anyway. Everyone else gets
+  // Print, the actual district table: no picking required, because there is
+  // nothing left to pick between.
+  const view = isPhone ? 'days' : 'print'
   /* Escape peels one layer at a time, innermost first: an open cell tweak, then
      the document. It has to be decided HERE rather than in the tweak input,
      because useFocusTrap binds a native listener on this container — which runs
@@ -127,40 +121,11 @@ export function ArtifactPanel({
 
         <span className="flex-1" />
 
-        {/* One control where there were two — a `Fit width` button up here and
-            a `View as the district table` button down in the table, which
-            could contradict each other and which left the deck unreachable
-            above 1024px.
-
-            Fit and Print are both the 860px district table, just at two
-            widths — neither is a phone shape, and picking one at 375px
-            didn't just look cramped, it broke outright: columns collapsed
-            into each other with no min-width to stop them, rendering
-            every day's content superimposed on the next and unreadable.
-            Days is the only view a phone ever gets; nothing to toggle
-            between means nothing to show. */}
-        {isPhone ? null : (
-          <div className="doc-views" role="group" aria-label="How to show the plan">
-            {VIEWS.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                className="doc-view"
-                aria-pressed={view === v.id}
-                onClick={() => setChosen(v.id)}
-                title={v.hint}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-        )}
-
         {planId ? (
           <>
-            {/* Not on a phone: collapse + the view control + Download already
-                fill 375px, and Rebuild is a power action where Download is the
-                reason the app exists. */}
+            {/* Not on a phone: collapse + Download already fill 375px, and
+                Rebuild is a power action where Download is the reason the
+                app exists. */}
             <button
               type="button"
               className={`btn-icon${isPhone ? ' hidden' : ''}`}

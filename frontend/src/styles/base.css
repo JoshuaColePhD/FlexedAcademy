@@ -2304,42 +2304,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* Days | Fit | Print. Replaces a `Fit width` button here and a `View as the
-     district table` button inside the table — two controls answering the same
-     question, which could disagree and which between them left the day deck
-     unreachable above 1024px. */
-  /* A groove, not just a darker fill — the track a physical tab would sit in. */
-  .doc-views {
-    display: inline-flex;
-    flex-shrink: 0;
-    gap: 2px;
-    padding: 2px;
-    background: var(--paper-inset);
-    border-radius: var(--r-md);
-    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
-  }
-  .doc-view {
-    padding: 4px var(--sp-2);
-    font-family: var(--font-mono);
-    font-size: var(--fs-2xs);
-    color: var(--ink-muted);
-    background: transparent;
-    border: none;
-    border-radius: var(--r-sm);
-    cursor: pointer;
-    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
-  }
-  .doc-view:hover {
-    color: var(--ink);
-  }
-  /* Standing up out of the groove above, not just a lighter fill against it —
-     the same raised/inset contrast every other selected-vs-not pair in the
-     app already uses (see .neo-inset on the sidebar's active chat row). */
-  .doc-view[aria-pressed='true'] {
-    color: var(--ink);
-    background: var(--paper-raised);
-    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.45), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.75);
-  }
   /* The tint carries the accent, the shadow carries the "come here" — the
      one filled control in the document header, the same way Download used
      to be the one filled control in the rail before both plan and quiz
@@ -2545,83 +2509,6 @@
      it into the cell narrows the scope to a day AND a field — see
      backend/service.py's merge-one-key path, which is what stops "shorten the
      Do Now" from re-rolling that day's standards. */
-  /* The fitted view: a summary grid, then a per-day block for the narrative.
-     Both are still .plan-table, so the district blue, the hairlines and the
-     header treatment are one definition — only the column shape differs. */
-  .plan-fit {
-    display: flex;
-    flex-direction: column;
-  }
-  /* Scrolls instead of squeezing: a docked panel's width is whatever the chat
-     pane's own minimum leaves over, which at ordinary laptop widths (1366×768
-     docked left ~450px) is well under six columns' worth of legible text.
-     min-width was 0 here so the table would always match the panel exactly —
-     with table-layout:fixed that meant every column shrank in step, down to
-     one word per line. The floor below is the same one Print already uses
-     (.plan-table's base min-width), just narrower, since Fit still has
-     nowhere else to send the width Print's own scroll container gives it. */
-  .plan-fit-scroll {
-    overflow-x: auto;
-  }
-  .plan-fit-eyebrow {
-    margin: 22px 0 10px;
-  }
-  .plan-table.is-fit {
-    min-width: 0;
-    table-layout: fixed;
-  }
-  /* Only the six-column summary grid needs the floor above — .plan-fit-scroll
-     is what gives it somewhere to send the overflow. The two-column detail
-     table isn't wrapped in that scroller: its narrative column just wraps
-     text at any width, the way a paragraph always has, so forcing a floor on
-     it would only add a stray scrollbar with nothing worth scrolling to. */
-  .plan-table.is-fit:not(.is-detail) {
-    min-width: 720px;
-  }
-  /* With table-layout:fixed the header row sets every column, so the label
-     column has to be told its width here — and the labels have to be allowed to
-     wrap, because "Engagement Strategy" does not fit on one line in it. */
-  .plan-table.is-fit thead th:first-child {
-    width: 8.5rem;
-  }
-  .plan-table.is-fit tbody th {
-    width: auto;
-    white-space: normal;
-    hyphens: auto;
-  }
-  /* The detail table has no header row, so its label column is set here. This
-     is the whole point of the split: one wide column for the paragraphs that
-     were being squeezed into a fifth of the page. */
-  /* The day column. On the <col>, because that is what fixed layout reads. */
-  .plan-detail-day {
-    width: 8.5rem;
-  }
-  .plan-table.is-detail tbody th {
-    vertical-align: top;
-  }
-  .plan-table.is-detail td {
-    line-height: var(--lh-relaxed);
-  }
-  /* In the detail table the part label sits above its paragraph rather than
-     inline — there is room for it now. */
-  .plan-table.is-detail .plan-lesson-part b {
-    display: block;
-    margin-bottom: var(--sp-1);
-    font-size: 10px;
-    font-weight: var(--fw-semibold);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-    color: var(--ink-muted);
-  }
-  .plan-table.is-detail .plan-lesson-part {
-    margin-bottom: var(--sp-4);
-    padding: 2px var(--sp-1);
-    margin-left: calc(var(--sp-1) * -1);
-    border-radius: var(--r-sm);
-  }
-  .plan-table.is-detail .plan-lesson-part:last-child {
-    margin-bottom: 0;
-  }
   .plan-lesson-part.is-editable {
     cursor: text;
     transition: background var(--t-fast) var(--ease);
