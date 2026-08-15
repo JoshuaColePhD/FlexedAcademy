@@ -43,12 +43,13 @@ function useCopy() {
 
 /* One exchange on the page.
  *
- * The teacher's own message is the one that looks written: set against a tinted
- * block, the way a quoted passage sits in a text. The app's reply is unadorned
- * body copy on the ruled lines — it is the page talking, not a second speaker,
- * so it gets no bubble and no avatar. The previous version gave the assistant a
- * greyscale logo avatar and a rounded chat bubble, which framed a document tool
- * as a messaging app. */
+ * Both turns sit in the same neo-raised, rounded box now — the teacher's own
+ * message tinted with the accent color, the app's reply in the plain
+ * neutral card surface (bg-paper-raised) the rest of the app already uses
+ * for a "card." Same shape, different fill: that's what keeps "said by you"
+ * distinct from "said by the app" without giving the assistant an avatar or
+ * a second speaker's identity — it's still the page talking back, just
+ * boxed like everything else here. */
 export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, isLast }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
@@ -169,7 +170,12 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                 'neo-raised rounded-2xl bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
-                : 'text-[0.9375rem] leading-relaxed text-ink'
+                : /* Same neo-raised box as the teacher's own bubble, but
+                     bg-paper-raised instead of bg-accent-tint — the app's
+                     existing neutral "card" surface (see DecisionStack,
+                     VoiceModePanel), not a colored one, so the two turns are
+                     still visually distinct while both read as boxed. */
+                  'neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
           }
         >
           {isUser ? (
