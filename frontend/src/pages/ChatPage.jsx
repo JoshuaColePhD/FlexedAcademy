@@ -1269,6 +1269,11 @@ export function ChatPage() {
   const docOpen = expanded && hasArtifact && !isOverlay
   const overlayOpen = expanded && hasArtifact && isOverlay
   const overlayExit = useExitTransition(overlayOpen, 130)
+  /* Voice mode used to be a full-screen/dialog takeover, mounted and
+     unmounted outright with no exit of its own. Now it's a dock that grows
+     out of the chat box itself, right above the composer — same
+     mount-a-beat-longer-to-play-the-exit shape as overlayExit above. */
+  const voiceExit = useExitTransition(voiceOpen, 180)
 
   /* The docked split's own width, draggable via the handle rendered between
      the two panes below. null means "use --chat-w-narrow, the CSS default";
@@ -1613,6 +1618,75 @@ export function ChatPage() {
         />
       ) : null}
 
+      {/* Voice mode, docked. It used to open a different screen entirely (a
+          full-screen takeover on a phone, a centered dialog with a scrim on
+          desktop) — now it grows out of the chat box itself, right above the
+          composer, the same "extends from here" language the artifact
+          drawer already speaks beside the chat on desktop. The message list
+          stays visible and live behind/above it (utterances land in
+          `messages` the same way typed turns do — see `submit` below), so
+          this panel only has to carry what the chat itself doesn't: mic
+          state and the running checklist. */}
+      {voiceExit.mounted ? (
+        <div className={`voice-dock${voiceOpen ? ' is-open' : ''}`}>
+          <div className={`voice-dock-body${voiceExit.closing ? ' is-closing' : ''}`}>
+            <VoiceModePanel
+              onClose={() => {
+                // The shared <audio> element lives in VoiceProvider, at the
+                // app root — it has no idea this panel is closing, so
+                // nothing about unmounting it stops whatever's still
+                // playing through it. Ending the conversation without also
+                // silencing it meant a reply kept talking well after the
+                // "end conversation" click.
+                voice.stop()
+                setVoiceOpen(false)
+                setVoiceCaption('')
+                setDecisions([])
+              }}
+              onUtterance={submit}
+              busy={busy}
+              isSpeaking={voice.speaking}
+              caption={voiceCaption}
+              decisions={decisions}
+              /* Non-null the moment a week is actually saved — see
+                 VoiceModePanel's BuiltPlanCard, which takes over from the
+                 running decisions checklist once this is set. artifact.planId,
+                 not liveArtifact/stream.preview: those cover the in-progress
+                 preview too, and this is specifically "it's done and saved,"
+                 not "it's still being written." */
+              builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
+              /* "Making it" — the same stream.preview days feeding the text
+                 chat's own WeekStrip (see the "Writing the week" block
+                 above), read here too rather than re-fetched, so voice mode
+                 and the text view can never show two different days-done
+                 counts for the same in-flight generation. */
+              building={stream.isStreaming}
+              buildDays={stream.preview?.days}
+              /* Barge-in: silence the reply AND abort the generation behind
+                 it. Stopping only the audio would leave the model still
+                 writing sentences that VoiceProvider would dutifully queue
+                 up and speak the moment the teacher stopped talking —
+                 interrupted in sound only, not in fact. */
+              onInterrupt={() => {
+                voice.stop()
+                chatStream.stop()
+                liveSpeechRef.current = ''
+                setVoiceCaption('')
+              }}
+              /* The clarification cards, tappable inside the panel — voice
+                 mode asks ONE question at a time (see the backend's voice
+                 prompt) and shows its options here rather than reading them
+                 aloud. */
+              questions={pendingQuestions?.questions || null}
+              onAnswer={(text) => {
+                voice.stop()
+                onAnswerQuestions(pendingQuestions.message, text)
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {/* The dock. Composer must stay in the SAME slot of the same parent across
           the empty/non-empty transition — it owns a MediaRecorder, a
           ResizeObserver and an autosized inline height, all of which die on
@@ -1772,65 +1846,6 @@ export function ChatPage() {
         </>
       ) : null}
 
-      {voiceOpen ? (
-        <VoiceModePanel
-          onClose={() => {
-            // The shared <audio> element lives in VoiceProvider, at the app
-            // root — it has no idea this panel is closing, so nothing about
-            // unmounting it stops whatever's still playing through it. Ending
-            // the conversation without also silencing it meant a reply kept
-            // talking well after the "end conversation" click.
-            voice.stop()
-            setVoiceOpen(false)
-            setVoiceCaption('')
-            setDecisions([])
-          }}
-          onUtterance={submit}
-          busy={busy}
-          isSpeaking={voice.speaking}
-          isPhone={isPhone}
-          messages={messages}
-          caption={voiceCaption}
-          decisions={decisions}
-          /* Non-null the moment a week is actually saved — see
-             VoiceModePanel's BuiltPlanCard, which takes over the side
-             column from the running decisions checklist once this is set.
-             artifact.planId, not liveArtifact/stream.preview: those cover
-             the in-progress preview too, and this is specifically "it's
-             done and saved," not "it's still being written." */
-          builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
-          /* "Making it" — the same stream.preview days feeding the text
-             chat's own WeekStrip (see the "Writing the week" block above),
-             read here too rather than re-fetched, so voice mode and the
-             text view can never show two different days-done counts for
-             the same in-flight generation. */
-          building={stream.isStreaming}
-          buildDays={stream.preview?.days}
-          /* Barge-in: silence the reply AND abort the generation behind it.
-             Stopping only the audio would leave the model still writing
-             sentences that VoiceProvider would dutifully queue up and speak
-             the moment the teacher stopped talking — interrupted in sound
-             only, not in fact. */
-          onInterrupt={() => {
-            voice.stop()
-            chatStream.stop()
-            liveSpeechRef.current = ''
-            setVoiceCaption('')
-          }}
-          /* The clarification cards, tappable inside the panel — voice mode
-             asks ONE question at a time (see the backend's voice prompt) and
-             shows its options here rather than reading them aloud. */
-          questions={pendingQuestions?.questions || null}
-          onAnswer={(text) => {
-            voice.stop()
-            onAnswerQuestions(pendingQuestions.message, text)
-          }}
-          onReplay={(text) => {
-            setVoiceCaption(text)
-            voice.speak(text)
-          }}
-        />
-      ) : null}
     </div>
   )
 }

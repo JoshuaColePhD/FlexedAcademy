@@ -1623,19 +1623,51 @@
     }
   }
 
-  /* Runs behind all three desktop columns (Transcript/orb/DecisionStack) —
-     each card's own opaque bg-paper-raised covers it everywhere except the
-     two gaps between them, which is the point: it should read as one
-     thread ducking under three cards, not a line drawn across the page. */
-  .voice-thread {
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgb(var(--accent-rgb) / 0.5) 15%,
-      rgb(var(--accent-rgb) / 0.5) 85%,
-      transparent 100%
-    );
+  /* Voice mode's dock, above the composer (ChatPage.jsx) — it used to be a
+     full-screen/dialog takeover with its own mount/unmount and no exit
+     animation at all; now it grows out of the chat box itself, so it gets
+     the same two-part open/close shape .artifact-drawer already uses
+     beside it: an outer wrapper that animates the space it takes up, and
+     an inner body that fades/slides on top of that, kept mounted one beat
+     longer on close (useExitTransition) so the exit actually plays instead
+     of the node just vanishing. Vertical here (grows upward from the
+     composer) where the drawer's is horizontal (grows in from the side) —
+     same language, matched to where each one actually docks. */
+  .voice-dock {
+    flex-shrink: 0;
+    max-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    transition: max-height var(--t-base) var(--ease-out);
+  }
+  .voice-dock.is-open {
+    max-height: min(70vh, 560px);
+  }
+  .voice-dock-body {
+    animation: voice-dock-body-in var(--t-base) var(--ease-out) both;
+  }
+  .voice-dock-body.is-closing {
+    animation: voice-dock-body-out var(--t-fast) var(--ease) both;
+  }
+  @keyframes voice-dock-body-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes voice-dock-body-out {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateY(10px);
+    }
   }
 
   .dialog h2 {
