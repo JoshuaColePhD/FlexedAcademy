@@ -2370,6 +2370,8 @@
     min-height: 0;
     flex: 1;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 14px 26px 30px;
   }
   /* Fits the container, never a fixed 900px page — a fixed page in a narrow
