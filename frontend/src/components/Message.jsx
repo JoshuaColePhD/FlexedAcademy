@@ -169,7 +169,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
               <ReactMarkdown>{message.content}</ReactMarkdown>
               {message.streaming ? (
                 <span
-                  className="ml-1 inline-block h-4 w-1.5 animate-pulse bg-accent align-middle"
+                  className="fa-cursor ml-1 inline-block h-4 w-1.5 bg-accent align-middle"
                   aria-hidden="true"
                 />
               ) : null}

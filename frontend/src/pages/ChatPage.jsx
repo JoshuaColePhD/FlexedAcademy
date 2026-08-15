@@ -1269,6 +1269,12 @@ export function ChatPage() {
   const docOpen = expanded && hasArtifact && !isOverlay
   const overlayOpen = expanded && hasArtifact && isOverlay
   const overlayExit = useExitTransition(overlayOpen, 130)
+  /* The "Latest" jump-to-bottom pill used to unmount the instant atBottom
+     flipped true — the one piece of chat chrome still doing a hard cut
+     while every other transient here (toasts, attachment chips) plays a
+     matched exit. 150ms, same as the attachment chip's own removal: both
+     are a small pill leaving the page, not a panel. */
+  const latestPill = useExitTransition(!atBottom && !isEmpty, 150)
 
   /* The docked split's own width, draggable via the handle rendered between
      the two panes below. null means "use --chat-w-narrow, the CSS default";
@@ -1579,11 +1585,11 @@ export function ChatPage() {
         </div>
       )}
 
-      {!atBottom && !isEmpty ? (
+      {latestPill.mounted ? (
         <div className="pointer-events-none absolute bottom-[92px] left-0 right-0 z-10 flex justify-center">
           <button
             type="button"
-            className="pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge"
+            className={`fa-rise fa-press pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
             onClick={() => {
               setAtBottom(true)
               endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })

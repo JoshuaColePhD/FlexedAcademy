@@ -64,7 +64,10 @@ export function LessonQuestions({ questions, onSubmit }) {
       ))}
 
       {typing ? (
-        <div className="flex flex-col gap-2">
+        // fa-card-drop, the same settle-into-place CellTweak's own popover
+        // uses for the identical moment elsewhere — a small editor appearing
+        // in place of what was just tapped.
+        <div className="fa-card-drop flex flex-col gap-2">
           <label className="visually-hidden" htmlFor="clarify-custom-input">
             Type your own answer instead
           </label>
