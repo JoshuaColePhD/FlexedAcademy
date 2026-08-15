@@ -622,34 +622,64 @@ function BillingSection() {
 
   if (!billingEnabled || !entitlement) return null
 
-  // Usage (tokens_used/token_cap) moved to the admin accounts panel — one
-  // place to see who's using what, not a number every teacher's own
-  // settings page has to carry.
   const renews = entitlement.subscribed && entitlement.period_end ? formatRenewal(entitlement.period_end) : null
+  const pct = entitlement.token_cap > 0
+    ? Math.min(100, Math.round((entitlement.tokens_used / entitlement.token_cap) * 100))
+    : 0
+  // Same threshold AccountMenu's badge implies (may_generate flips at the
+  // cap) — warm the bar up before the teacher hits the hard block, not only
+  // once they're already there.
+  const near = pct >= 80
 
   return (
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">Billing</h2>
-      <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
-        <div>
-          <p className="text-sm font-medium text-ink">
-            {entitlement.subscribed ? 'Subscribed' : 'Free'}
-          </p>
-          {renews ? <p className="text-xs text-ink-muted">Renews {renews}</p> : null}
+      <div className="neo-panel mt-2 rounded-xl bg-paper-raised p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-ink">
+              {entitlement.subscribed ? 'Subscribed' : 'Free'}
+            </p>
+            {renews ? <p className="text-xs text-ink-muted">Renews {renews}</p> : null}
+          </div>
+          <button
+            type="button"
+            onClick={entitlement.subscribed ? manage : openPaywall}
+            disabled={busy}
+            className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent-tint px-3 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {entitlement.subscribed ? (
+              <CreditCard size={14} aria-hidden="true" />
+            ) : (
+              <Sparkles size={14} aria-hidden="true" />
+            )}
+            {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={entitlement.subscribed ? manage : openPaywall}
-          disabled={busy}
-          className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent-tint px-3 py-2 text-sm font-medium text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {entitlement.subscribed ? (
-            <CreditCard size={14} aria-hidden="true" />
-          ) : (
-            <Sparkles size={14} aria-hidden="true" />
-          )}
-          {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
-        </button>
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-xs text-ink-muted">
+            <span>{entitlement.tokens_used.toLocaleString()} / {entitlement.token_cap.toLocaleString()} tokens this week</span>
+            <span>{pct}%</span>
+          </div>
+          <div
+            className="neo-inset mt-1 h-1.5 w-full overflow-hidden rounded-full bg-paper"
+            role="progressbar"
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Weekly usage"
+          >
+            <div
+              className={`h-full rounded-full transition-[width] ${near ? 'bg-mark' : 'bg-accent'}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          {!entitlement.may_generate ? (
+            <p className="mt-1 text-xs text-mark">Limit reached — resets on a rolling week.</p>
+          ) : near ? (
+            <p className="mt-1 text-xs text-ink-muted">Approaching this week’s limit.</p>
+          ) : null}
+        </div>
       </div>
     </div>
   )
