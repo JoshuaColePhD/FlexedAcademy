@@ -131,19 +131,19 @@ export function LessonPlanTable({
   onPlanRevised,
   busy,
   missingDays = 'no_school',
-  /* 'days' | 'fit' | 'print'. The panel owns this now.
-     It used to be two separate controls that could contradict each other: a
-     `fitWidth` prop from the header and a `rawTable` toggle down here. Between
-     1024 and 1279 the deck was unreachable AND fitWidth defaulted false, so the
-     only thing you could get was the 860px district table inside a 480px
-     drawer. One value cannot disagree with itself. */
-  view = 'fit',
+  /* 'days' | 'print'. The panel owns this now — see ArtifactPanel, which
+     picks Days on a phone and Print everywhere else, with no control left
+     to switch between them. */
+  view = 'print',
   flashCells,
   openTweak,
   setOpenTweak,
 }) {
   const [draft, setDraft] = useState('')
-  const [feedbackSent, setFeedbackSent] = useState(false)
+  // null = not sent yet; true/false = which thumb was actually clicked, not
+  // just "sent" — disabling both buttons on a plain boolean left no visible
+  // trace of which one you'd picked, only a toast that had already faded.
+  const [feedbackSent, setFeedbackSent] = useState(null)
   const [revisingWholePlan, setRevisingWholePlan] = useState(false)
   const mode = useLayoutMode()
   const toast = useToast()
@@ -155,13 +155,13 @@ export function LessonPlanTable({
      send the session cookie, surface a {code,message,hint} error, and reach the
      global 401 handler. */
   const handleFeedback = async (isGood) => {
-    if (!planId || feedbackSent) return
-    setFeedbackSent(true)
+    if (!planId || feedbackSent !== null) return
+    setFeedbackSent(isGood)
     try {
       await api.planFeedback(planId, isGood)
       toast.success(isGood ? 'Thanks — noted.' : 'Thanks. That helps tune the prompt.')
     } catch (e) {
-      setFeedbackSent(false)
+      setFeedbackSent(null)
       toast.apiError("Couldn't send that", e)
     }
   }
@@ -232,23 +232,23 @@ export function LessonPlanTable({
             </button>
             <button
               type="button"
-              className="btn-icon"
-              disabled={feedbackSent}
+              className={`btn-icon${feedbackSent === true ? ' is-good' : ''}`}
+              disabled={feedbackSent !== null}
               onClick={() => handleFeedback(true)}
               aria-label="This plan is good"
               title="This plan is good"
             >
-              <ThumbsUp size={16} aria-hidden="true" />
+              <ThumbsUp size={16} className={feedbackSent === true ? 'fa-pop' : ''} aria-hidden="true" />
             </button>
             <button
               type="button"
-              className="btn-icon"
-              disabled={feedbackSent}
+              className={`btn-icon${feedbackSent === false ? ' is-bad' : ''}`}
+              disabled={feedbackSent !== null}
               onClick={() => handleFeedback(false)}
               aria-label="This plan needs work"
               title="This plan needs work"
             >
-              <ThumbsDown size={16} aria-hidden="true" />
+              <ThumbsDown size={16} className={feedbackSent === false ? 'fa-pop' : ''} aria-hidden="true" />
             </button>
           </div>
         ) : null}

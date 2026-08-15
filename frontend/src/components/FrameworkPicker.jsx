@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Search } from 'lucide-react'
 import { findFramework, groupFrameworks, matchesFramework, verifiedPct } from '../lib/frameworks'
+import { useExitTransition } from '../hooks/useExitTransition'
 
 /* A searchable, grouped picker for the 72 ingested standards frameworks.
  *
@@ -11,6 +12,8 @@ import { findFramework, groupFrameworks, matchesFramework, verifiedPct } from '.
  * "AP English Language and Composition" (37) before you commit to one. */
 export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
   const [open, setOpen] = useState(false)
+  // Same hard-cut gap the class switcher's own menu had — see its comment.
+  const { mounted, closing } = useExitTransition(open, 150)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const rootRef = useRef(null)
@@ -110,8 +113,10 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
         />
       </button>
 
-      {open ? (
-        <div className="neo-panel absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised">
+      {mounted ? (
+        <div
+          className={`neo-panel fa-card-drop absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`}
+        >
           <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
             <Search size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
             <input

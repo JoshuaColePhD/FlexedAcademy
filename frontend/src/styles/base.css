@@ -1103,6 +1103,28 @@
       inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
       inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
   }
+  /* The plan feedback thumbs, once sent: disabling both on a plain boolean
+     left no trace of which one you'd actually picked, only a toast that had
+     already faded by the time you looked back. Pressed in and tinted, the
+     same "selected" language .neo-inset uses everywhere else, so the choice
+     stays visible rather than both buttons just going flat and grey. */
+  .btn-icon.is-good:disabled,
+  .btn-icon.is-bad:disabled {
+    opacity: 1;
+    border-color: transparent;
+    cursor: default;
+    box-shadow:
+      inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.5),
+      inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.7);
+  }
+  .btn-icon.is-good:disabled {
+    color: var(--accent-text);
+    background: var(--accent-tint);
+  }
+  .btn-icon.is-bad:disabled {
+    color: var(--mark);
+    background: var(--mark-tint);
+  }
 
   .btn-send {
     display: inline-flex;
