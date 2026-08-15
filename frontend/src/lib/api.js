@@ -314,6 +314,19 @@ export const api = {
     if (!res.ok) throw await toError(res)
     return res.blob()
   },
+  /* Mints the ephemeral OpenAI credential a live voice session's WebRTC
+     connection authenticates with — see lib/realtimeVoice.js, which is the
+     only caller. Our permanent OPENAI_API_KEY never leaves the backend;
+     this short-lived, pre-configured value is what the browser gets
+     instead. */
+  createRealtimeSession: (payload, { signal } = {}) =>
+    request('/api/realtime/session', { method: 'POST', body: payload, signal }),
+  /* Best-effort usage reporting for a realtime session's response.done
+     events — see backend/routes/realtime.py's RealtimeUsageRequest for why
+     this is trusted-but-capped rather than independently verified. */
+  reportRealtimeUsage: (payload, { signal } = {}) =>
+    request('/api/realtime/usage', { method: 'POST', body: payload, signal }),
+
   extractText: (file, { signal } = {}) => {
     const fd = new FormData()
     fd.append('file', file)

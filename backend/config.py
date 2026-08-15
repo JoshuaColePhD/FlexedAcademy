@@ -56,6 +56,20 @@ class Settings(BaseSettings):
     # not a real limit anything should ever hit.
     max_tts_chars: int = 2000
 
+    # ── realtime voice (speech-to-speech) ──────────────────────────────────
+    # The live conversational turn in voice mode — mic in, spoken reply out
+    # over one persistent WebRTC session — instead of the record-clip →
+    # Whisper → chat-completion → tts-1 cascade above, which is what actually
+    # made voice mode feel slow (three sequential network round trips per
+    # turn, dead air between sentences). tts_model/tts_voice above are still
+    # used for the canned one-off announcements ChatPage speaks outside the
+    # live conversation ("Building your week…") and for typed-chat dictation.
+    realtime_model: str = "gpt-realtime"
+    # Reuses tts_voice's value by default rather than a second setting to
+    # keep in sync — override independently only if the realtime voice
+    # catalogue and tts-1's ever diverge for the configured name.
+    realtime_voice: str = "alloy"
+
     # ── email (password reset) ────────────────────────────────────────────────
     # Resend's HTTP API — no SDK, just a POST via `requests`, which is already
     # a dependency. Inert until the key is set: forgot-password degrades to

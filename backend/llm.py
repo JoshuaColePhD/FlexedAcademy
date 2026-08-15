@@ -684,6 +684,133 @@ def synthesize_speech(user_id: str, text: str) -> bytes:
     return resp.content
 
 
+# The three moves this conversation can make — shared between Chat
+# Completions (stream_chat below) and the Realtime API (realtime.py's
+# session config), which is why this lives at module scope instead of
+# inside stream_chat. Chat Completions and Realtime disagree on tool
+# shape (nested under "function" vs. flat) — realtime_tool_defs() below
+# does that one translation once, so the actual tool descriptions —
+# the carefully-worded rules an earlier bug fix tuned — exist in exactly
+# one place rather than two copies drifting apart.
+CHAT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_lesson_plan",
+            "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_quiz",
+            # ONLY on explicit request, never volunteered — the teacher
+            # asked for exactly this (a lesson plan, not a lesson plan
+            # PLUS a quiz they didn't ask for), and this tool only makes
+            # sense once a plan actually exists for it to test.
+            "description": (
+                "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
+                "downloadable file, AND their request already says which question type(s) they want and "
+                "roughly how many — never volunteer it alongside a lesson plan, and never guess type or "
+                "count silently: call ask_clarifying_questions instead when either is missing. Requires a "
+                "plan to already exist for this conversation; if none does yet, tell the teacher to build "
+                "the week first instead of calling this. The quiz is built over that plan's own content "
+                "and standards, not anything new."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question_types": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 4,
+                        "items": {
+                            "type": "string",
+                            "enum": ["multiple_choice", "true_false", "short_answer", "matching"],
+                        },
+                        "description": (
+                            "Which type(s) the teacher asked for. Default to ['multiple_choice'] if "
+                            "they said 'quiz' or 'test' with no type named."
+                        ),
+                    },
+                    "num_questions": {
+                        "type": "integer",
+                        "description": "How many questions, if the teacher named a number. Default 10.",
+                    },
+                },
+                "required": ["question_types"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_clarifying_questions",
+            # Call this INSTEAD of generate_lesson_plan OR generate_quiz,
+            # not before either — these are alternatives, not a required
+            # first step. A request that already names a text/topic and a
+            # rough shape ("plan a week on Gatsby ch 3-4, rhetorical
+            # analysis"), or a quiz request that already names its
+            # type(s) and count ("10 multiple choice questions"), has
+            # enough to build from immediately. Not limited to the first
+            # message of a request — any turn where the teacher's last
+            # message is too vague to act on is fair game, tapping
+            # through options beats typing a paragraph either way.
+            "description": (
+                "Call this INSTEAD of generate_lesson_plan or generate_quiz when the teacher's most recent "
+                "message is too vague to act on directly — a plan request with no text/topic named, a "
+                "revision ask with no specifics ('can you change Thursday?' with no hint of how), or a "
+                "quiz request that doesn't already say which question type(s) and roughly how many. Ask "
+                "2-4 short, concrete questions, each with a few clickable options, so the teacher can tap "
+                "through rather than type a paragraph. Don't ask again about something they already "
+                "answered or already specified."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "questions": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 4,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string", "description": "A short, stable slug, e.g. 'text' or 'skill'."},
+                                "text": {"type": "string", "description": "The question itself, one sentence."},
+                                "options": {
+                                    "type": "array",
+                                    "minItems": 2,
+                                    "maxItems": 5,
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            "required": ["id", "text", "options"],
+                        },
+                    }
+                },
+                "required": ["questions"],
+            },
+        },
+    },
+]
+
+
+def realtime_tool_defs() -> list[dict]:
+    """CHAT_TOOLS, translated to the Realtime API's flat tool shape.
+
+    Chat Completions nests a tool's name/description/parameters under a
+    "function" key; the Realtime API's session.tools wants those same three
+    keys at the top level instead. Same tools, same rules for when to call
+    each — only the JSON shape a session.update/client_secrets call expects
+    differs, so this is a reshape, not a re-description.
+    """
+    return [
+        {"type": "function", **t["function"]}
+        for t in CHAT_TOOLS
+        if t.get("type") == "function"
+    ]
+
+
 def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> Iterator[dict]:
     """Conversational streaming. Yields dicts with 'chunk' or 'tool_call'.
 
@@ -695,108 +822,6 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     written-chat length anyway, which a prompt alone does not reliably
     prevent over a long conversation.
     """
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "generate_lesson_plan",
-                "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "generate_quiz",
-                # ONLY on explicit request, never volunteered — the teacher
-                # asked for exactly this (a lesson plan, not a lesson plan
-                # PLUS a quiz they didn't ask for), and this tool only makes
-                # sense once a plan actually exists for it to test.
-                "description": (
-                    "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
-                    "downloadable file, AND their request already says which question type(s) they want and "
-                    "roughly how many — never volunteer it alongside a lesson plan, and never guess type or "
-                    "count silently: call ask_clarifying_questions instead when either is missing. Requires a "
-                    "plan to already exist for this conversation; if none does yet, tell the teacher to build "
-                    "the week first instead of calling this. The quiz is built over that plan's own content "
-                    "and standards, not anything new."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "question_types": {
-                            "type": "array",
-                            "minItems": 1,
-                            "maxItems": 4,
-                            "items": {
-                                "type": "string",
-                                "enum": ["multiple_choice", "true_false", "short_answer", "matching"],
-                            },
-                            "description": (
-                                "Which type(s) the teacher asked for. Default to ['multiple_choice'] if "
-                                "they said 'quiz' or 'test' with no type named."
-                            ),
-                        },
-                        "num_questions": {
-                            "type": "integer",
-                            "description": "How many questions, if the teacher named a number. Default 10.",
-                        },
-                    },
-                    "required": ["question_types"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "ask_clarifying_questions",
-                # Call this INSTEAD of generate_lesson_plan OR generate_quiz,
-                # not before either — these are alternatives, not a required
-                # first step. A request that already names a text/topic and a
-                # rough shape ("plan a week on Gatsby ch 3-4, rhetorical
-                # analysis"), or a quiz request that already names its
-                # type(s) and count ("10 multiple choice questions"), has
-                # enough to build from immediately. Not limited to the first
-                # message of a request — any turn where the teacher's last
-                # message is too vague to act on is fair game, tapping
-                # through options beats typing a paragraph either way.
-                "description": (
-                    "Call this INSTEAD of generate_lesson_plan or generate_quiz when the teacher's most recent "
-                    "message is too vague to act on directly — a plan request with no text/topic named, a "
-                    "revision ask with no specifics ('can you change Thursday?' with no hint of how), or a "
-                    "quiz request that doesn't already say which question type(s) and roughly how many. Ask "
-                    "2-4 short, concrete questions, each with a few clickable options, so the teacher can tap "
-                    "through rather than type a paragraph. Don't ask again about something they already "
-                    "answered or already specified."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "questions": {
-                            "type": "array",
-                            "minItems": 1,
-                            "maxItems": 4,
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "id": {"type": "string", "description": "A short, stable slug, e.g. 'text' or 'skill'."},
-                                    "text": {"type": "string", "description": "The question itself, one sentence."},
-                                    "options": {
-                                        "type": "array",
-                                        "minItems": 2,
-                                        "maxItems": 5,
-                                        "items": {"type": "string"},
-                                    },
-                                },
-                                "required": ["id", "text", "options"],
-                            },
-                        }
-                    },
-                    "required": ["questions"],
-                },
-            },
-        },
-    ]
-
     stream = client().chat.completions.create(
         model=settings.openai_model,
         # Required, not tuning: the configured model rejects function tools
@@ -814,7 +839,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
         max_completion_tokens=1500 if voice else 4000,
         messages=messages,
         stream=True,
-        tools=tools,
+        tools=CHAT_TOOLS,
         # See stream_plan's identical option — without it this call, which
         # runs on every non-generating chat turn too, went unmetered.
         stream_options={"include_usage": True},

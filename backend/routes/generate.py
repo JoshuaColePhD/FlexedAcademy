@@ -255,6 +255,221 @@ def generate_stream(req: GenerateRequest, bg_tasks: BackgroundTasks, user_id: st
     )
 
 
+def resolve_conversation_context(user_id: str, chat_id: str | None, week_number: int | None) -> dict:
+    """Everything chat_stream's system prompt needs about WHERE this
+    conversation sits (class, subject/grade, school, week/unit) and WHAT it's
+    allowed to do (has_plan) — factored out so the realtime voice session
+    endpoint (routes/realtime.py) can build the identical prompt without
+    duplicating this resolution logic. Only the query-scoped pacing-guide
+    RAG lookup (map_context_for, keyed on the latest user message) stays
+    out of this: a realtime session has no "latest user message" yet at the
+    moment it's created, so that grounding is chat_stream-only for now.
+
+    These three are each their own DB (or DB+network) round trip and none
+    depends on another's result, so they used to cost a sequential ~4 round
+    trips before the model call could even start — the teacher's very first
+    sign anything is happening. Fired together instead.
+    """
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        cls_future = pool.submit(_chat_class, user_id, chat_id)
+        # Whether generate_quiz is even callable right now — it needs a plan
+        # to build over, and "ask the model to check the conversation for
+        # one" is exactly the kind of inference this app avoids everywhere
+        # else an id already answers the question directly (see _chat_class
+        # itself, or db.class_school).
+        has_plan_future = pool.submit(
+            lambda: bool(chat_id) and db.list_plans(user_id, chat_id=chat_id, limit=1)["total"] > 0
+        )
+        custom_instructions_future = pool.submit(llm.custom_instructions_for, user_id)
+
+        # Prefer the class this chat actually belongs to over
+        # get_settings_row(user_id) — see _chat_class's own docstring.
+        cls = cls_future.result()
+        has_plan = has_plan_future.result()
+        custom_instructions = custom_instructions_future.result()
+
+    if cls:
+        subject = cls["subject"]
+        grade = cls["grade"]
+    else:
+        s = db.get_settings_row(user_id)
+        subject = s.get("subject", "AP Language & Composition")
+        grade = s.get("grade", "11")
+
+    # class_school, not get_user_school directly — a class pinned to a
+    # different school than the account default (migration 25) gets its OWN
+    # calendar named here, not the account's. Was "independent of cls" until
+    # school stopped being account-only.
+    school_id = db.class_school(cls, user_id)
+
+    # ChatPage already resolves effectiveWeek client-side and even says it
+    # aloud in the empty chat's own greeting ("I'll build Week 03…") — but
+    # never sent it here, so this conversational model had no idea, and
+    # could ask the teacher which week it was for right after the UI had
+    # just told them. Resolved the same way generate_stream's _with_week
+    # does: looked up in schoolcal.school_weeks(), never guessed, and
+    # silently skipped if the number doesn't match a real week.
+    week_row = None
+    if week_number is not None:
+        week_row = next((w for w in schoolcal.school_weeks(school_id) if w["week"] == week_number), None)
+
+    unit_row = curriculum.unit_for_calendar_week(user_id, subject, week_row) if week_row else None
+
+    return {
+        "cls": cls,
+        "subject": subject,
+        "grade": grade,
+        "school_id": school_id,
+        "week_row": week_row,
+        "unit_row": unit_row,
+        "has_plan": has_plan,
+        "custom_instructions": custom_instructions,
+    }
+
+
+def build_system_prompt(ctx: dict, mode: str, *, voice: bool) -> str:
+    """The system prompt text shared by chat_stream and the realtime voice
+    session (routes/realtime.py) — everything that doesn't depend on the
+    conversation's actual messages (map_context_for's RAG lookup is the one
+    exception; chat_stream appends that itself, see its own comment)."""
+    subject, grade = ctx["subject"], ctx["grade"]
+    week_row, unit_row = ctx["week_row"], ctx["unit_row"]
+
+    system_prompt = (
+        f"You are an expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
+        "The teacher is preparing to generate or revise a weekly lesson plan. "
+    )
+
+    if week_row:
+        system_prompt += f"\n\nTHE TEACHER IS CURRENTLY WORKING ON {schoolcal.label_for(week_row)}"
+        # Cross-referenced against the teacher's OWN uploaded pacing guide —
+        # not units.unit_for_week()'s hardcoded AP-Lang-only 9-unit map,
+        # which falls back to a bare "Week N" for every other subject and
+        # is meant for labeling an already-built plan, not for telling this
+        # model what's coming up in a subject it has no map for.
+        if unit_row:
+            system_prompt += f", which their own pacing guide names as {unit_row['unit']}"
+        system_prompt += (
+            ". Treat the week"
+            + (" and unit" if unit_row else "")
+            + " as already settled — don't ask which one this is unless the "
+            "teacher's own message clearly means a different week."
+        )
+
+    # Same field llm.py's plan-writing prompts read (settings page, like
+    # Claude's own custom instructions) — appended once here, mode-
+    # agnostically, since none of the three modes below have any
+    # retrieval-grounding language for it to need to sit after.
+    if ctx["custom_instructions"]:
+        system_prompt += (
+            "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only:\n\n"
+            + ctx["custom_instructions"]
+        )
+
+    has_plan = ctx["has_plan"]
+    if mode == "interview":
+        system_prompt += (
+            "Your job is to INTERVIEW the teacher to figure out what they want to teach. "
+            "Ask inquisitive, guiding questions one at a time. Be conversational, exactly like Claude does when asked to interview a user. "
+            "When you have enough information to build the 5-day week, call the `generate_lesson_plan` tool."
+        )
+    elif mode == "standards":
+        system_prompt += (
+            "Your job is to help the teacher find the perfect academic standards for their upcoming week. "
+            "Suggest broad topics and narrow down what standards they should focus on. "
+            "When they are ready to build the plan, call the `generate_lesson_plan` tool."
+        )
+    else:
+        system_prompt += (
+            "Have a natural back-and-forth conversation to brainstorm ideas for their upcoming week, or discuss revisions to an existing week. "
+            "Engage with the IDEA before the logistics: when a teacher names a text, a skill, or an angle, "
+            "react to it specifically — what's interesting about it, how it might play out across the "
+            "week, a related angle worth considering — the way a colleague thinking out loud with them "
+            "would, not the way a form fills in a field. Concise is not the same as terse: a genuine "
+            "reaction in one sentence beats a bare acknowledgment, even though both are short.\n\n"
+            "When you have enough information and the user is ready to build or revise the plan, call the `generate_lesson_plan` tool. "
+            "If their most recent message is genuinely too vague to act on — a new request like \"I want to "
+            "make a lesson\" with no text, topic, or skill named, a brainstorming reply that doesn't narrow "
+            "anything down, or a revision ask like \"can you change Thursday?\" with no hint of how — call "
+            "`ask_clarifying_questions` INSTEAD, with 2-4 short questions and a few clickable options each. "
+            "This isn't limited to the first message of a request: reach for it again later in the same "
+            "conversation if a later turn is just as vague, but never re-ask about something the teacher "
+            "already told you or already picked from a previous round — build on what they gave you.\n\n"
+            "Hold the line on having an actual plan before you build one: `generate_lesson_plan` needs "
+            "WHICH WEEK OR UNIT and WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
+            "focus). If the week/unit was already named for you above, treat that half as settled — "
+            "don't ask about it again unless the teacher's own message clearly points at a different "
+            "week. WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
+            "you; missing that, ask rather than build — a week generated from a one-line request "
+            "costs the teacher more time correcting it than answering one question would have.\n\n"
+            "Having both of those facts means you COULD build, which is not always the same as SHOULD "
+            "build yet. Read the register of the message: a DIRECTIVE turn (\"plan a week on X\", "
+            "\"let's build it around Y\", or a reply that's clearly just answering what you asked) means "
+            "build immediately — that teacher wants the plan, not more conversation, and making them ask "
+            "twice is its own kind of friction. An EXPLORATORY turn (musing about an idea, thinking out "
+            "loud, asking what you think of an angle) means the topic exists but the teacher hasn't "
+            "actually asked you to build yet — engage with the idea, and if it's developed enough to "
+            "build, OFFER to (\"Want me to put that together?\") rather than building unasked. Once "
+            "you've offered, treat their very next message as the answer to that offer: anything that "
+            "isn't a clear redirect counts as yes.\n\n"
+            "When you do call `generate_lesson_plan`, say something first that names what you're "
+            "actually building — the text, the skill, the throughline you two landed on — not a generic "
+            "\"Sure, building now.\" That line is what the teacher sees while the document is being "
+            "written, and a generic one reads as though the specific conversation you just had didn't "
+            "register.\n\n"
+            + (
+                "A plan already exists for this conversation. If the teacher explicitly asks for a "
+                "quiz, test, or assessment as a downloadable file: when their request ALREADY names "
+                "which question type(s) they want (multiple choice, true/false, short answer, "
+                "matching) AND roughly how many questions, call `generate_quiz` with those values "
+                "directly. Otherwise call `ask_clarifying_questions` INSTEAD — two short questions, "
+                "each with a few tappable options, e.g. 'What kind of questions?' (Multiple choice / "
+                "True or false / Short answer / Matching / A mix) and 'About how many?' (5 / 10 / 15 "
+                "/ 20). Only ask about whichever of the two the teacher didn't already specify — if "
+                "they said '10 multiple choice questions' that's already both answered, build "
+                "immediately. Never call `generate_quiz` unasked, and never alongside "
+                "`generate_lesson_plan` in the same turn."
+                if has_plan
+                else "No plan exists yet for this conversation, so `generate_quiz` cannot be called — "
+                "if the teacher asks for a quiz before there is a week to test, tell them to build "
+                "the week first."
+            )
+        )
+
+    # Voice mode's own turn-taking, not just a shorter version of the
+    # written prompt above. A written reply gets skimmed; a spoken
+    # one has to be LISTENED to in real time, so length is not a
+    # style preference here, it's what makes the mic able to hear
+    # the teacher again before they've given up and talked over it.
+    # Same reasoning for one question at a time: ask_clarifying_
+    # questions' 2-4-questions-with-several-options-each shape is
+    # built for tappable cards (LessonQuestions) — read aloud as a
+    # single paragraph, it's not answerable in one breath.
+    if voice:
+        system_prompt += (
+            "\n\nTHIS IS A LIVE SPOKEN CONVERSATION, read aloud by text-to-speech and answered "
+            "by transcribing the teacher's voice — not a written chat. Reply the way a person "
+            "actually talks: ONE short sentence, sometimes two, never more. Never a list, "
+            "never a paragraph, never more than one question in a turn. Get to the point; a "
+            "teacher mid-conversation can always ask you to say more.\n\n"
+            "WHEN SOMETHING IS UNDERSPECIFIED, call `ask_clarifying_questions` with exactly "
+            "ONE question and 3-4 short options. The options are rendered as buttons the "
+            "teacher can tap, so make each one a concrete, distinct choice of a few words — "
+            "never 'other' or 'something else', and never options that are rephrasings of "
+            "each other. Your spoken text alongside it should be just the question itself; "
+            "do NOT read the options aloud, they are already on screen.\n\n"
+            "DO NOT call `generate_lesson_plan` until you actually have a week's worth of "
+            "plan to build: at minimum you must know WHICH WEEK OR UNIT (already named for you "
+            "above if it was resolved — don't ask about it again unless the teacher says "
+            "otherwise) and WHAT THE WEEK IS ABOUT — an anchor text, a skill, or a specific "
+            "focus. If that's genuinely missing, ask for it instead of building. Building a week "
+            "off a one-line request wastes the teacher's time correcting a plan they never "
+            "described."
+        )
+
+    return system_prompt
+
+
 @router.post("/chat_stream")
 def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)):
     """Stream a standard conversational response, not a JSON schema."""
@@ -262,81 +477,8 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
 
     def event_stream():
         try:
-            # We construct a system prompt based on the user's settings and chosen mode.
-            #
-            # These three are each their own DB (or DB+network) round trip
-            # and none depends on another's result, so they used to cost a
-            # sequential ~4 round trips before the model call could even
-            # start — the teacher's very first sign anything is happening.
-            # Fired together instead; only custom_instructions_for's result
-            # is used further down, but has_plan and cls are worth starting
-            # now too since they're needed almost immediately after.
-            with ThreadPoolExecutor(max_workers=3) as pool:
-                cls_future = pool.submit(_chat_class, user_id, req.chat_id)
-                # Whether generate_quiz is even callable right now — it needs
-                # a plan to build over, and "ask the model to check the
-                # conversation for one" is exactly the kind of inference this
-                # app avoids everywhere else an id already answers the
-                # question directly (see _chat_class itself, or
-                # db.class_school).
-                has_plan_future = pool.submit(
-                    lambda: bool(req.chat_id) and db.list_plans(user_id, chat_id=req.chat_id, limit=1)["total"] > 0
-                )
-                custom_instructions_future = pool.submit(llm.custom_instructions_for, user_id)
-
-                # Prefer the class this chat actually belongs to over
-                # get_settings_row(user_id) — see _chat_class's own docstring.
-                cls = cls_future.result()
-                has_plan = has_plan_future.result()
-
-            if cls:
-                subject = cls["subject"]
-                grade = cls["grade"]
-            else:
-                s = db.get_settings_row(user_id)
-                subject = s.get("subject", "AP Language & Composition")
-                grade = s.get("grade", "11")
-
-            # class_school, not get_user_school directly — a class pinned to
-            # a different school than the account default (migration 25)
-            # gets its OWN calendar named here, not the account's. Was
-            # "independent of cls" until school stopped being account-only.
-            school_id = db.class_school(cls, user_id)
-
-            system_prompt = (
-                f"You are an expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
-                "The teacher is preparing to generate or revise a weekly lesson plan. "
-            )
-
-            # ChatPage already resolves effectiveWeek client-side and even says it
-            # aloud in the empty chat's own greeting ("I'll build Week 03…") — but
-            # never sent it here, so this conversational model had no idea, and
-            # could ask the teacher which week it was for right after the UI had
-            # just told them. Resolved the same way generate_stream's _with_week
-            # does: looked up in schoolcal.school_weeks(), never guessed, and
-            # silently skipped if the number doesn't match a real week.
-            week_row = None
-            if req.week_number is not None:
-                week_row = next(
-                    (w for w in schoolcal.school_weeks(school_id) if w["week"] == req.week_number), None
-                )
-
-            if week_row:
-                system_prompt += f"\n\nTHE TEACHER IS CURRENTLY WORKING ON {schoolcal.label_for(week_row)}"
-                # Cross-referenced against the teacher's OWN uploaded pacing guide —
-                # not units.unit_for_week()'s hardcoded AP-Lang-only 9-unit map,
-                # which falls back to a bare "Week N" for every other subject and
-                # is meant for labeling an already-built plan, not for telling this
-                # model what's coming up in a subject it has no map for.
-                unit_row = curriculum.unit_for_calendar_week(user_id, subject, week_row)
-                if unit_row:
-                    system_prompt += f", which their own pacing guide names as {unit_row['unit']}"
-                system_prompt += (
-                    ". Treat the week"
-                    + (" and unit" if unit_row else "")
-                    + " as already settled — don't ask which one this is unless the "
-                    "teacher's own message clearly means a different week."
-                )
+            ctx = resolve_conversation_context(user_id, req.chat_id, req.week_number)
+            system_prompt = build_system_prompt(ctx, req.mode, voice=req.voice)
 
             # The pacing guide a teacher uploads in settings was only ever read
             # by the plan-WRITING calls (llm.generate_plan / stream_plan) — this
@@ -345,11 +487,15 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
             # settings or any attachments", true of the code but wrong about the
             # product: the document exists and the plan writer already uses it.
             # Queried on the latest user turn, same as plan generation queries on
-            # a single string rather than the whole transcript.
+            # a single string rather than the whole transcript. Kept here rather
+            # than in build_system_prompt: this is the one piece of the prompt
+            # that needs an actual message to key off of, which is exactly what
+            # a realtime voice session (routes/realtime.py) doesn't have yet at
+            # the moment its instructions are set.
             last_user = next(
                 (m.content for m in reversed(req.messages) if m.role == "user"), ""
             )
-            map_context = llm.map_context_for(user_id, subject, last_user) if last_user else ""
+            map_context = llm.map_context_for(user_id, ctx["subject"], last_user) if last_user else ""
             if map_context:
                 system_prompt += (
                     "\n\nTHE TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — relevant excerpts below. "
@@ -359,123 +505,12 @@ def chat_stream(req: ChatStreamRequest, user_id: str = Depends(get_current_user)
                     + map_context
                 )
 
-            # Same field llm.py's plan-writing prompts read (settings page,
-            # like Claude's own custom instructions) — appended once here,
-            # mode-agnostically, since none of the three modes below have any
-            # retrieval-grounding language for it to need to sit after.
-            custom_instructions = custom_instructions_future.result()
-            if custom_instructions:
-                system_prompt += (
-                    "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only:\n\n"
-                    + custom_instructions
-                )
-
-            if req.mode == "interview":
-                system_prompt += (
-                "Your job is to INTERVIEW the teacher to figure out what they want to teach. "
-                "Ask inquisitive, guiding questions one at a time. Be conversational, exactly like Claude does when asked to interview a user. "
-                "When you have enough information to build the 5-day week, call the `generate_lesson_plan` tool."
-                )
-            elif req.mode == "standards":
-                system_prompt += (
-                    "Your job is to help the teacher find the perfect academic standards for their upcoming week. "
-                    "Suggest broad topics and narrow down what standards they should focus on. "
-                    "When they are ready to build the plan, call the `generate_lesson_plan` tool."
-                )
-            else:
-                system_prompt += (
-                    "Have a natural back-and-forth conversation to brainstorm ideas for their upcoming week, or discuss revisions to an existing week. "
-                    "Engage with the IDEA before the logistics: when a teacher names a text, a skill, or an angle, "
-                    "react to it specifically — what's interesting about it, how it might play out across the "
-                    "week, a related angle worth considering — the way a colleague thinking out loud with them "
-                    "would, not the way a form fills in a field. Concise is not the same as terse: a genuine "
-                    "reaction in one sentence beats a bare acknowledgment, even though both are short.\n\n"
-                    "When you have enough information and the user is ready to build or revise the plan, call the `generate_lesson_plan` tool. "
-                    "If their most recent message is genuinely too vague to act on — a new request like \"I want to "
-                    "make a lesson\" with no text, topic, or skill named, a brainstorming reply that doesn't narrow "
-                    "anything down, or a revision ask like \"can you change Thursday?\" with no hint of how — call "
-                    "`ask_clarifying_questions` INSTEAD, with 2-4 short questions and a few clickable options each. "
-                    "This isn't limited to the first message of a request: reach for it again later in the same "
-                    "conversation if a later turn is just as vague, but never re-ask about something the teacher "
-                    "already told you or already picked from a previous round — build on what they gave you.\n\n"
-                    "Hold the line on having an actual plan before you build one: `generate_lesson_plan` needs "
-                    "WHICH WEEK OR UNIT and WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
-                    "focus). If the week/unit was already named for you above, treat that half as settled — "
-                    "don't ask about it again unless the teacher's own message clearly points at a different "
-                    "week. WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
-                    "you; missing that, ask rather than build — a week generated from a one-line request "
-                    "costs the teacher more time correcting it than answering one question would have.\n\n"
-                    "Having both of those facts means you COULD build, which is not always the same as SHOULD "
-                    "build yet. Read the register of the message: a DIRECTIVE turn (\"plan a week on X\", "
-                    "\"let's build it around Y\", or a reply that's clearly just answering what you asked) means "
-                    "build immediately — that teacher wants the plan, not more conversation, and making them ask "
-                    "twice is its own kind of friction. An EXPLORATORY turn (musing about an idea, thinking out "
-                    "loud, asking what you think of an angle) means the topic exists but the teacher hasn't "
-                    "actually asked you to build yet — engage with the idea, and if it's developed enough to "
-                    "build, OFFER to (\"Want me to put that together?\") rather than building unasked. Once "
-                    "you've offered, treat their very next message as the answer to that offer: anything that "
-                    "isn't a clear redirect counts as yes.\n\n"
-                    "When you do call `generate_lesson_plan`, say something first that names what you're "
-                    "actually building — the text, the skill, the throughline you two landed on — not a generic "
-                    "\"Sure, building now.\" That line is what the teacher sees while the document is being "
-                    "written, and a generic one reads as though the specific conversation you just had didn't "
-                    "register.\n\n"
-                    + (
-                        "A plan already exists for this conversation. If the teacher explicitly asks for a "
-                        "quiz, test, or assessment as a downloadable file: when their request ALREADY names "
-                        "which question type(s) they want (multiple choice, true/false, short answer, "
-                        "matching) AND roughly how many questions, call `generate_quiz` with those values "
-                        "directly. Otherwise call `ask_clarifying_questions` INSTEAD — two short questions, "
-                        "each with a few tappable options, e.g. 'What kind of questions?' (Multiple choice / "
-                        "True or false / Short answer / Matching / A mix) and 'About how many?' (5 / 10 / 15 "
-                        "/ 20). Only ask about whichever of the two the teacher didn't already specify — if "
-                        "they said '10 multiple choice questions' that's already both answered, build "
-                        "immediately. Never call `generate_quiz` unasked, and never alongside "
-                        "`generate_lesson_plan` in the same turn."
-                        if has_plan
-                        else "No plan exists yet for this conversation, so `generate_quiz` cannot be called — "
-                        "if the teacher asks for a quiz before there is a week to test, tell them to build "
-                        "the week first."
-                    )
-                )
-
-            # Voice mode's own turn-taking, not just a shorter version of the
-            # written prompt above. A written reply gets skimmed; a spoken
-            # one has to be LISTENED to in real time, so length is not a
-            # style preference here, it's what makes the mic able to hear
-            # the teacher again before they've given up and talked over it.
-            # Same reasoning for one question at a time: ask_clarifying_
-            # questions' 2-4-questions-with-several-options-each shape is
-            # built for tappable cards (LessonQuestions) — read aloud as a
-            # single paragraph, it's not answerable in one breath.
-            if req.voice:
-                system_prompt += (
-                    "\n\nTHIS IS A LIVE SPOKEN CONVERSATION, read aloud by text-to-speech and answered "
-                    "by transcribing the teacher's voice — not a written chat. Reply the way a person "
-                    "actually talks: ONE short sentence, sometimes two, never more. Never a list, "
-                    "never a paragraph, never more than one question in a turn. Get to the point; a "
-                    "teacher mid-conversation can always ask you to say more.\n\n"
-                    "WHEN SOMETHING IS UNDERSPECIFIED, call `ask_clarifying_questions` with exactly "
-                    "ONE question and 3-4 short options. The options are rendered as buttons the "
-                    "teacher can tap, so make each one a concrete, distinct choice of a few words — "
-                    "never 'other' or 'something else', and never options that are rephrasings of "
-                    "each other. Your spoken text alongside it should be just the question itself; "
-                    "do NOT read the options aloud, they are already on screen.\n\n"
-                    "DO NOT call `generate_lesson_plan` until you actually have a week's worth of "
-                    "plan to build: at minimum you must know WHICH WEEK OR UNIT (already named for you "
-                    "above if it was resolved — don't ask about it again unless the teacher says "
-                    "otherwise) and WHAT THE WEEK IS ABOUT — an anchor text, a skill, or a specific "
-                    "focus. If that's genuinely missing, ask for it instead of building. Building a week "
-                    "off a one-line request wastes the teacher's time correcting a plan they never "
-                    "described."
-                )
-
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
-            
+
             for event in llm.stream_chat(user_id, messages, voice=req.voice):
                 yield _sse(event)
-                
+
             yield _sse({"done": True})
         except (AppError, SchemaError) as e:
             log.warning("chat stream failed code=%s", e.code)
