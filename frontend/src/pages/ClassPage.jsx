@@ -757,7 +757,13 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
 
   return (
     <li className="border-b border-edge last:border-b-0">
-      <div className="flex items-center gap-2 px-3 py-2">
+      {/* flex-wrap + the name's own basis-full below 480px: six fixed-width
+          controls (arrows, pencil, Weeks, Documents, trash) sharing one
+          non-wrapping row left the name almost no space at phone width —
+          "AP Language & Composition" truncated to "AP …" even though nothing
+          else on the row was fighting for room a second line couldn't give
+          it. Above sm the row is one line exactly as it always was. */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         {/* A check, not a radio. This shows which class you are IN — the URL
             decides that, and the rail switcher is the one control that changes
             it. The radio that used to be here was a second writer of the same
@@ -791,7 +797,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           to={`/c/${cls.id}/class`}
           aria-current={isActive ? 'true' : undefined}
           title={isActive ? `${cls.name} — already selected` : `Switch to ${cls.name}`}
-          className="min-w-0 flex-1 truncate rounded-md px-1.5 py-1 text-sm font-medium text-ink no-underline transition-colors hover:bg-paper-sunken"
+          className="min-w-0 basis-full truncate rounded-md px-1.5 py-1 text-sm font-medium text-ink no-underline transition-colors hover:bg-paper-sunken sm:basis-0 sm:flex-1"
         >
           {cls.name}
         </Link>
