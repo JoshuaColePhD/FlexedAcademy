@@ -2960,18 +2960,18 @@
     bottom: 0;
   }
   .msg-user-bubble::before {
-    right: 2px;
-    width: 16px;
-    height: 16px;
+    right: -3px;
+    width: 26px;
+    height: 26px;
     background: var(--accent-tint);
-    border-bottom-left-radius: 16px;
+    border-bottom-left-radius: 26px;
   }
   .msg-user-bubble::after {
-    right: -9px;
-    width: 11px;
-    height: 16px;
+    right: -18px;
+    width: 16px;
+    height: 26px;
     background: var(--paper);
-    border-bottom-left-radius: 16px;
+    border-bottom-left-radius: 22px;
   }
 
   /* A reply that is a failure, marked as one. Same apparatus as .marginalia:
