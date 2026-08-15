@@ -78,7 +78,11 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
   if (isUser && editing) {
     return (
       <div className="group flex w-full justify-end">
-        <div className="neo-inset w-full max-w-[85%] rounded-xl bg-paper-sunken p-4">
+        {/* Same neo-raised + accent-tint bubble as the sent message, not the
+            paper-sunken groove this used to be — editing your own turn
+            should still read as your turn, not switch to a different
+            surface mid-edit. */}
+        <div className="msg-user-bubble neo-raised w-full max-w-[85%] rounded-2xl rounded-br-none bg-accent-tint p-4">
           <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
             Edit your message
           </label>
@@ -86,7 +90,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             id={`edit-${message.id}`}
             ref={ref}
             value={draft}
-            className="min-h-[60px] w-full resize-none border-none bg-transparent text-[0.9375rem] text-ink outline-none"
+            className="min-h-[60px] w-full resize-none border-none bg-transparent text-[0.9375rem] text-accent-text outline-none placeholder:text-accent-text/60"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
@@ -112,11 +116,12 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             </button>
             <button
               type="button"
-              /* bg-accent-tint + accent text, not a solid ink fill — the
-                 app's one primary-button treatment (see AppShell's "New
-                 plan"), so "send again" reads the same as every other
-                 commit action instead of a black slab. */
-              className="neo-raised rounded-full bg-accent-tint px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
+              /* bg-paper, not the usual bg-accent-tint: the box around this
+                 button IS accent-tint now (the bubble itself), so the
+                 primary-button treatment inverts to stay legible — accent
+                 text still marks it as "the" action, but the fill has to
+                 read against the tint instead of matching it. */
+              className="neo-raised rounded-full bg-paper px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
               disabled={!draft.trim()}
               onClick={() => {
                 setEditing(false)
@@ -156,10 +161,12 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                    accent-tint combo the app already uses for its one
                    primary-action treatment (see "Send again" below, or the
                    "New plan" button), so "said by you" reads as the
-                   prominent, colored voice in the exchange. The tighter
-                   bottom-right radius gives it an iMessage-style pinched
-                   corner without a literal tail. */
-                'neo-raised rounded-2xl rounded-br-md bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
+                   prominent, colored voice in the exchange. The bottom-right
+                   corner is squared off (rounded-br-none) so .msg-user-bubble's
+                   CSS tail (base.css) has a flush corner to grow out of,
+                   instead of fighting a rounded one and leaving a visible
+                   notch. */
+                'msg-user-bubble neo-raised rounded-2xl rounded-br-none bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
                 : 'text-[0.9375rem] leading-relaxed text-ink'

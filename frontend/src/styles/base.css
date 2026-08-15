@@ -2938,6 +2938,37 @@
     }
   }
 
+  /* The iMessage-style tail on the teacher's own bubble (see .msg-user-bubble
+     in Message.jsx) — two overlapping pseudo-elements, the classic CSS-only
+     recipe: ::before draws a small rounded flap the same colour as the
+     bubble, ::after sits just past its outer edge in the *page's* colour and
+     carves it back into a curve. That only works because this bubble always
+     sits on a flat, known --paper — the moment it's used somewhere with a
+     different ground (a modal, a tinted card), the mask colour would need to
+     change to match, or the seam shows. */
+  .msg-user-bubble {
+    position: relative;
+  }
+  .msg-user-bubble::before,
+  .msg-user-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    height: 20px;
+  }
+  .msg-user-bubble::before {
+    right: -8px;
+    width: 20px;
+    background: var(--accent-tint);
+    border-bottom-left-radius: 20px;
+  }
+  .msg-user-bubble::after {
+    right: -20px;
+    width: 12px;
+    background: var(--paper);
+    border-bottom-left-radius: 20px;
+  }
+
   /* A reply that is a failure, marked as one. Same apparatus as .marginalia:
      a coloured left edge and a tinted ground, so it reads as an annotation on
      the conversation rather than as the app's own voice. */
