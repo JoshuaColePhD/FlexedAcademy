@@ -34,7 +34,7 @@ function Chip({ file, onRemove }) {
       <span className="max-w-[120px] truncate">{file.filename}</span>
       <button
         type="button"
-        className="ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+        className="fa-press ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
         aria-label={`Remove ${file.filename}`}
         onClick={() => setRemoving(true)}
       >
@@ -282,7 +282,11 @@ export function Composer({
             ) : isRecording ? (
               <button
                 type="button"
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint md:h-9 md:w-9"
+                /* fa-listening: the tinted background already says "recording
+                   is on," a fact — this ring says the mic is live RIGHT NOW,
+                   an ongoing one, the way a hardware recording light doesn't
+                   just switch on but keeps pulsing for as long as it's true. */
+                className="fa-listening tap-target flex h-11 w-11 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint md:h-9 md:w-9"
                 onClick={stopRecording}
                 aria-label="Stop recording"
               >
@@ -308,7 +312,7 @@ export function Composer({
             {isStreaming && onStop ? (
               <button
                 type="button"
-                className="neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full bg-mark-tint text-mark transition-shadow md:h-9 md:w-9"
+                className="fa-press neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full bg-mark-tint text-mark transition-shadow md:h-9 md:w-9"
                 onClick={onStop}
                 aria-label="Stop generating"
               >
@@ -346,7 +350,7 @@ export function Composer({
                    filled buttons on ClassPage) — a plain black circle here
                    just wasn't reading as the one button that matters on the
                    whole bar. */
-                className={`tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
+                className={`fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
                   canSend
                     ? 'neo-raised bg-accent-tint text-accent-text'
                     : /* Inset, not a flat grey disc: unavailable reads as

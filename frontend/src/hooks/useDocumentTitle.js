@@ -7,9 +7,9 @@ import { useEffect } from 'react'
  * week goes first — a tab strip truncates from the right. */
 export function useDocumentTitle(title) {
   useEffect(() => {
-    document.title = title ? `${title} — Flexed Academy` : 'Flexed Academy'
+    document.title = title ? `${title} — FlexEd Academy` : 'FlexEd Academy'
     return () => {
-      document.title = 'Flexed Academy'
+      document.title = 'FlexEd Academy'
     }
   }, [title])
 }

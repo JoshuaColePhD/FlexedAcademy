@@ -128,7 +128,7 @@ function Rail({ onNavigate, onClose }) {
     <>
       <div className="flex h-14 shrink-0 items-center gap-2 px-3">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-ink">
-          Flexed Academy
+          FlexEd Academy
         </span>
         {onClose ? (
           <button type="button" className="btn-icon" aria-label="Close menu" onClick={onClose}>
@@ -344,7 +344,7 @@ export function AppShell({ children }) {
                 it against the wrong span and it read as off-center next to
                 a button with no matching weight on the right. */}
             <span className="pointer-events-none absolute inset-x-0 truncate text-center text-sm font-semibold tracking-tight text-ink">
-              Flexed Academy
+              FlexEd Academy
             </span>
           </div>
         ) : null}

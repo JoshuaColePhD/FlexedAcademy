@@ -38,11 +38,11 @@ The mechanism a competitor can't just claim: retrieval-first generation with a p
 
 ## Brand Commitments
 
-- Name: **Flexed Academy** (also "FlexedAcademy" in code/docs).
+- Name: **FlexEd Academy** (also "FlexedAcademy" in code/docs).
 - Built by a working Florence, Alabama high-school teacher — real and stateable, not a marketing invention.
 - Visual identity: the public-facing "door" (landing/marketing surfaces) uses `--brand`, a violet that appears nowhere else in the product. Inside the app, `--accent` is the Florence City Schools district blue that is also printed on the generated .docx — that color means something operationally and must stay reserved for the app's actual UI, not be reused as a marketing color. This violet/blue split is a deliberate, existing decision (see `frontend/src/styles/tokens.css`) and should be preserved, not re-litigated, by this redesign.
 - Tone: plain, factual, a little understated — the existing copy states the grounding claim once, precisely, rather than with marketing superlatives. ("A week of plans that cite their sources.")
-- Logo mark: a faceted, geometric compass-star/brain mark, supplied as `frontend/public/logo-mark.png` (source: `Projects/FlexedAcademy/logo/purple_ai_logo_1785784407965.jpg`). Tried on the redesigned landing header and removed at Josh's request — the file is a flat opaque PNG (no alpha channel, converted from a JPEG), so it rendered as a hard white-cornered square against the violet ground rather than blending in. The header is text-only ("Flexed Academy") until a transparent-background version of the mark exists.
+- Logo mark: a faceted, geometric compass-star/brain mark, supplied as `frontend/public/logo-mark.png` (source: `Projects/FlexedAcademy/logo/purple_ai_logo_1785784407965.jpg`). Tried on the redesigned landing header and removed at Josh's request — the file is a flat opaque PNG (no alpha channel, converted from a JPEG), so it rendered as a hard white-cornered square against the violet ground rather than blending in. The header is text-only ("FlexEd Academy") until a transparent-background version of the mark exists.
 
 ## Evidence on Hand
 

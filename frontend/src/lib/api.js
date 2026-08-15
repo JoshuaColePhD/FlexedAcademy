@@ -202,6 +202,22 @@ export const api = {
       method: 'POST',
       body: { is_good: isGood, ...(notes ? { notes } : {}) },
     }),
+  /* Share via Google — a separate Google integration from sign-in (see
+   * backend/routes/drive.py). driveConnectUrl is a plain navigable URL, not
+   * a fetch: Google's consent screen has to be a real top-level page the
+   * browser visits, the same reason planDownloadUrl below is a URL and not
+   * a request() call. */
+  driveStatus: ({ signal } = {}) => request('/api/drive/status', { signal }),
+  driveConnectUrl: (returnTo) =>
+    `${API_BASE}/api/drive/connect?return_to=${encodeURIComponent(returnTo)}`,
+  driveDisconnect: () => request('/api/drive/disconnect', { method: 'POST' }),
+  sharePlan: (planId, { email, role = 'reader' } = {}) =>
+    request(`/api/plans/${planId}/share`, {
+      method: 'POST',
+      body: { email, role },
+    }),
+  listPlanShares: (planId, { signal } = {}) =>
+    request(`/api/plans/${planId}/shares`, { signal }),
   planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,
   /* A plan can have several quizzes (backend db.py migration 26) — each ask
    *  for one ("make a matching quiz") is its own row, never overwriting an

@@ -28,7 +28,7 @@ const TABS = [
 ]
 
 /* One human-readable line per admin_audit_log row (backend/db.py migration
-   27). Kept next to the log fetch rather than in a shared util — nothing
+   28). Kept next to the log fetch rather than in a shared util — nothing
    else in the app renders this shape, and it would be one more file to open
    to follow what "comp_grant" means. */
 function describeAuditEntry(entry) {

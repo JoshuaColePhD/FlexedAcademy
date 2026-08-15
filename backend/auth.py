@@ -160,6 +160,58 @@ def verify_reset_fingerprint(payload: dict, current_password_hash: str | None) -
     return payload.get("pwfp") == _password_fingerprint(current_password_hash)
 
 
+DRIVE_STATE_MAX_AGE_SECONDS = 10 * 60  # long enough to sit on Google's consent
+# screen and read it, short enough that a leaked/logged `state` value is
+# useless within the hour.
+
+
+def create_drive_state_token(user_id: str, return_to: str) -> str:
+    """The OAuth `state` param round-tripped through Google's consent screen
+    and back (routes/drive.py). Signed the same way create_reset_token is,
+    for the same reason: this app never sees Google's callback until the
+    browser hits it, so anything the callback trusts (which account this
+    grant belongs to, where to send the browser back) has to travel WITH the
+    request and be provable as ours, not just read off an unauthenticated
+    query string."""
+    payload = json.dumps(
+        {
+            "uid": user_id,
+            "return_to": return_to,
+            "exp": int(time.time()) + DRIVE_STATE_MAX_AGE_SECONDS,
+            "purpose": "drive_state",
+        }
+    ).encode("utf-8")
+    payload_b64 = _b64encode(payload)
+    sig = hmac.new(settings.session_secret.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{sig}"
+
+
+def decode_drive_state_token(token: str) -> dict | None:
+    """{uid, return_to} if the state Google handed back is genuinely one this
+    app minted, unexpired, and for this exact purpose — None otherwise,
+    which routes/drive.py treats as "reject the callback outright"."""
+    try:
+        payload_b64, sig = token.split(".", 1)
+    except ValueError:
+        return None
+    expected_sig = hmac.new(
+        settings.session_secret.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(sig, expected_sig):
+        return None
+    try:
+        payload = json.loads(_b64decode(payload_b64))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("purpose") != "drive_state":
+        return None
+    if "uid" not in payload or "exp" not in payload:
+        return None
+    if int(payload["exp"]) < int(time.time()):
+        return None
+    return payload
+
+
 def verify_google_token(token: str) -> dict | None:
     """Verifies a Google OAuth ID token and returns the payload if valid."""
     if not settings.google_client_id:

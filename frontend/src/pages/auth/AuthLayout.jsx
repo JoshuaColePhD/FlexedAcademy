@@ -65,9 +65,9 @@ export function AuthLayout({ title, subtitle, children, footer }) {
           <Link
             to="/"
             className="flex w-fit items-center gap-2.5 rounded-md transition-opacity hover:opacity-80"
-            aria-label="Flexed Academy — back to the home page"
+            aria-label="FlexEd Academy — back to the home page"
           >
-            <span className="text-sm font-semibold tracking-tight text-ink">Flexed Academy</span>
+            <span className="text-sm font-semibold tracking-tight text-ink">FlexEd Academy</span>
           </Link>
 
           <h1 className="text-2xl font-semibold leading-snug tracking-tight text-ink">

@@ -90,7 +90,11 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
                       view actually needs (this is evidence FOR a specific
                       day, not a progress report). */}
                   {writing && day ? (
-                    <Check size={14} aria-hidden="true" />
+                    // The row already remounts on this status change (the key
+                    // above is `${name}-${status}`), so the pop replays for
+                    // every day as it lands — not just the first one — the
+                    // same moment fa-rise is announcing on the row itself.
+                    <Check size={14} className="fa-pop" aria-hidden="true" />
                   ) : isWriting ? (
                     <Loader2 size={14} className="animate-spin" aria-hidden="true" />
                   ) : (
