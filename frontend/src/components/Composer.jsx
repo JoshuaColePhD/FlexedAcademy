@@ -34,7 +34,7 @@ function Chip({ file, onRemove }) {
       <span className="max-w-[120px] truncate">{file.filename}</span>
       <button
         type="button"
-        className="ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+        className="fa-press ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
         aria-label={`Remove ${file.filename}`}
         onClick={() => setRemoving(true)}
       >

@@ -102,7 +102,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           <div className="mt-3 flex justify-end gap-2">
             <button
               type="button"
-              className="neo-raised rounded-full px-4 py-1.5 text-sm font-medium text-ink-soft transition-shadow"
+              className="fa-press neo-raised rounded-full px-4 py-1.5 text-sm font-medium text-ink-soft transition-shadow"
               onClick={() => {
                 setDraft(message.content)
                 setEditing(false)
@@ -116,7 +116,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                  app's one primary-button treatment (see AppShell's "New
                  plan"), so "send again" reads the same as every other
                  commit action instead of a black slab. */
-              className="neo-raised rounded-full bg-accent-tint px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
+              className="fa-press neo-raised rounded-full bg-accent-tint px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
               disabled={!draft.trim()}
               onClick={() => {
                 setEditing(false)
