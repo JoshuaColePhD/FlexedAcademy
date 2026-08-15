@@ -2574,12 +2574,31 @@
     display: flex;
     flex-direction: column;
   }
+  /* Scrolls instead of squeezing: a docked panel's width is whatever the chat
+     pane's own minimum leaves over, which at ordinary laptop widths (1366×768
+     docked left ~450px) is well under six columns' worth of legible text.
+     min-width was 0 here so the table would always match the panel exactly —
+     with table-layout:fixed that meant every column shrank in step, down to
+     one word per line. The floor below is the same one Print already uses
+     (.plan-table's base min-width), just narrower, since Fit still has
+     nowhere else to send the width Print's own scroll container gives it. */
+  .plan-fit-scroll {
+    overflow-x: auto;
+  }
   .plan-fit-eyebrow {
     margin: 22px 0 10px;
   }
   .plan-table.is-fit {
     min-width: 0;
     table-layout: fixed;
+  }
+  /* Only the six-column summary grid needs the floor above — .plan-fit-scroll
+     is what gives it somewhere to send the overflow. The two-column detail
+     table isn't wrapped in that scroller: its narrative column just wraps
+     text at any width, the way a paragraph always has, so forcing a floor on
+     it would only add a stray scrollbar with nothing worth scrolling to. */
+  .plan-table.is-fit:not(.is-detail) {
+    min-width: 720px;
   }
   /* With table-layout:fixed the header row sets every column, so the label
      column has to be told its width here — and the labels have to be allowed to

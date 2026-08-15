@@ -629,6 +629,15 @@ function FittedPlan({
 
   return (
     <div className="plan-fit">
+      {/* Scrolls rather than squeezes: a docked panel's width comes from
+          whatever the chat pane's own minimum leaves over, which at common
+          laptop widths (1366×768 docked left ~450px) is well under what six
+          columns can show a word in. table-layout:fixed with no floor just
+          divided that shortfall evenly, so every cell wrapped one word per
+          line. A minimum width plus horizontal scroll is what Print already
+          does for the same reason — this gives Fit the same floor instead of
+          a second, unguarded way to hit the identical failure. */}
+      <div className="plan-fit-scroll">
       <table className="plan-table is-fit">
         <caption className="visually-hidden">
           Weekly lesson plan, Monday to Friday — targets, standards and strategy
@@ -728,6 +737,7 @@ function FittedPlan({
           ))}
         </tbody>
       </table>
+      </div>
 
       {teaching.length ? (
         <>
