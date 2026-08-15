@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Calendar, ChevronLeft, Download, FileText, ListChecks, Loader2 } from 'lucide-react'
+import { BookOpen, Calendar, ChevronLeft, Download, FileText, ListChecks, Loader2, Share2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
@@ -8,6 +9,7 @@ import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { DecisionStack } from './DecisionStack'
+import { ShareDialog } from './ShareDialog'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
    an open notebook, not a stock "empty box" glyph. Authored, not a Unicode
@@ -201,6 +203,7 @@ export function ArtifactRail({
   onOpenCalendar,
   onOpenDocument,
 }) {
+  const [shareOpen, setShareOpen] = useState(false)
   const plan = artifact?.plan
   const planId = artifact?.planId
   /* Every quiz already built for this plan (backend db.py migration 26) —
@@ -300,6 +303,18 @@ export function ArtifactRail({
                   separate "open" icon here was a third way to do the exact
                   same thing Download's own stopPropagation exists to keep
                   distinct from. */}
+              <button
+                type="button"
+                className="rail-open fa-press"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShareOpen(true)
+                }}
+                aria-label="Save to Google Drive or Share"
+                title="Save to Google Drive or Share"
+              >
+                <Share2 size={13} aria-hidden="true" />
+              </button>
               <a
                 className="rail-open fa-press"
                 href={api.planDownloadUrl(planId)}
@@ -420,6 +435,13 @@ export function ArtifactRail({
           />
         </div>
       ) : null}
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        planId={planId}
+        weekLabel={plan?.week_of}
+      />
     </aside>
   )
 }

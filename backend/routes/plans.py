@@ -43,7 +43,7 @@ class QuizRequest(BaseModel):
 
 
 class SharePlan(BaseModel):
-    email: EmailStr
+    email: EmailStr | None = None
     # "reader" by default — a co-teacher gets to actually see the week
     # before they get to change it, and role is exactly the choice Drive's
     # own share dialog would offer.
@@ -313,8 +313,9 @@ def share_plan(plan_id: str, body: SharePlan, user_id: str = Depends(get_current
         db.set_plan_drive_file(user_id, plan_id, file_id=result["id"], web_link=result["webViewLink"])
         row = _require_plan(user_id, plan_id)
 
-    google_drive.share_file(access_token, row["drive_file_id"], email=body.email, role=body.role)
-    db.add_plan_share(plan_id, email=body.email, role=body.role)
+    if body.email:
+        google_drive.share_file(access_token, row["drive_file_id"], email=body.email, role=body.role)
+        db.add_plan_share(plan_id, email=body.email, role=body.role)
     return {"web_link": row["drive_web_link"], "shares": db.list_plan_shares(plan_id)}
 
 

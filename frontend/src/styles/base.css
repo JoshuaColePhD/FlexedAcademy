@@ -1987,7 +1987,8 @@
   .rail-card {
     display: flex;
     width: 100%;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
     gap: 9px;
     padding: 13px;
     text-align: left;
@@ -2011,6 +2012,8 @@
     display: flex;
     align-items: center;
     gap: 9px;
+    min-width: 0;
+    flex: 1;
   }
   /* --paper-inset alone was just a flat, slightly-darker fill — the actual
      "stamped into the surface" read needs the inset pair, not just the tone

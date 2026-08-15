@@ -10,12 +10,12 @@
 export function BootScreen() {
   return (
     <div className="flex h-app w-full overflow-hidden bg-paper" aria-busy="true">
-      <span className="visually-hidden" role="status">Loading Flexed Academy…</span>
+      <span className="visually-hidden" role="status">Loading FlexEd Academy…</span>
 
       {/* the rail */}
       <div className="hidden w-[264px] shrink-0 flex-col gap-4 border-r border-edge bg-paper-sunken p-4 lg:flex">
         <div className="flex items-center gap-2.5">
-          <span className="text-sm font-semibold tracking-tight text-ink">Flexed Academy</span>
+          <span className="text-sm font-semibold tracking-tight text-ink">FlexEd Academy</span>
         </div>
         <div className="mt-2 flex flex-col gap-2">
           {[0, 1, 2, 3].map((i) => (

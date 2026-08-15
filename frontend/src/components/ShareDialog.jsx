@@ -81,16 +81,16 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!email.trim() || submitting) return
+    if (submitting) return
     setSubmitting(true)
     try {
       const result = await api.sharePlan(planId, { email: email.trim(), role })
       setWebLink(result.web_link)
       setShares(result.shares || [])
       setEmail('')
-      toast.success('Shared', `${weekLabel || 'The plan'} was shared as a Google Doc.`)
+      toast.success('Saved to Drive', `${weekLabel || 'The plan'} is now in your Google Drive.`)
     } catch (err) {
-      toast.apiError('Could not share that plan', err)
+      toast.apiError('Could not save to Drive', err)
     } finally {
       setSubmitting(false)
     }
@@ -141,15 +141,14 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
         ) : (
           <form onSubmit={submit}>
             <p>
-              Shares the .docx as a real, editable Google Doc — the recipient gets Google’s own
-              “shared with you” email.
+              Save the .docx to your Google Drive as a real, editable Google Doc. 
+              You can optionally share it with a colleague's Google account right now.
             </p>
             <label className="mt-4 block">
-              <span className="mb-1 block text-xs text-ink-muted">Google account email</span>
+              <span className="mb-1 block text-xs text-ink-muted">Google account email (optional)</span>
               <input
                 ref={emailRef}
                 type="email"
-                required
                 className="input"
                 placeholder="name@school.org"
                 value={email}
@@ -196,9 +195,9 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
               <button
                 type="submit"
                 className="btn btn-primary fa-press"
-                disabled={!email.trim() || submitting}
+                disabled={submitting}
               >
-                {submitting ? 'Sharing…' : 'Share'}
+                {submitting ? 'Saving…' : email.trim() ? 'Save & Share' : 'Save to My Drive'}
               </button>
             </div>
           </form>

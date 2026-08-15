@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     # Resend's own sandbox address. Works with zero setup, but only delivers
     # to the inbox that owns the API key until a real sending domain is
     # verified in the Resend dashboard and this is pointed at it.
-    email_from: str = "Flexed Academy <onboarding@resend.dev>"
+    email_from: str = "FlexEd Academy <onboarding@resend.dev>"
 
     # ── billing ──────────────────────────────────────────────────────────────
     # Unlimited plans; the free tier is capped on actual API spend instead. The

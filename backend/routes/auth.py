@@ -236,14 +236,14 @@ class ChangePasswordBody(BaseModel):
 
 
 _RESET_EMAIL_HTML = """\
-<p>Someone asked to reset the password on this Flexed Academy account.</p>
+<p>Someone asked to reset the password on this FlexEd Academy account.</p>
 <p><a href="{link}">Set a new password</a></p>
 <p>This link works once, for one hour. If you didn't ask for this, nothing
 happens — your password stays what it was.</p>
 """
 
 _GOOGLE_ACCOUNT_EMAIL_HTML = """\
-<p>Someone asked to reset the password on this Flexed Academy account, but
+<p>Someone asked to reset the password on this FlexEd Academy account, but
 this account signs in with Google — there's no password to reset.</p>
 <p>Use "Continue with Google" on the sign-in page instead.</p>
 """
@@ -262,7 +262,7 @@ def forgot_password(body: ForgotPasswordBody, request: Request):
         link = f"{_frontend_url(request)}/reset-password?token={token}"
         mail.send(
             to=user["email"],
-            subject="Reset your Flexed Academy password",
+            subject="Reset your FlexEd Academy password",
             html=_RESET_EMAIL_HTML.format(link=link),
         )
     elif user:
@@ -271,7 +271,7 @@ def forgot_password(body: ForgotPasswordBody, request: Request):
         # can't be visible in the API response to the anonymous caller.
         mail.send(
             to=user["email"],
-            subject="About your Flexed Academy password",
+            subject="About your FlexEd Academy password",
             html=_GOOGLE_ACCOUNT_EMAIL_HTML,
         )
     else:
