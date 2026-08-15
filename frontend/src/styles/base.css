@@ -4061,6 +4061,14 @@
   .fa-pop {
     animation: fa-pop 320ms var(--ease-spring) both;
   }
+  /* A ring expanding out from the Stop-recording button and fading as it
+     goes — the classic "live" pulse, so dictation reads as an ongoing state
+     rather than a one-time toggle. Loops for as long as isRecording is true;
+     the button's own tinted background is the part that says so at a
+     glance, this is the part that keeps saying it. */
+  .fa-listening {
+    animation: fa-listening 1.6s var(--ease) infinite;
+  }
   /* Voice mode's decision cards, settling into place at the bottom of the
      column as each one is decided. Scale, not just fade: a card that
      resolves out of slightly-too-small reads as landing ON the stack,
@@ -4159,6 +4167,17 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+@keyframes fa-listening {
+  0% {
+    box-shadow: 0 0 0 0 rgb(var(--mark-rgb) / 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgb(var(--mark-rgb) / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(var(--mark-rgb) / 0);
   }
 }
 /* The hero's verification seal draws itself in once, on load — a stamp being

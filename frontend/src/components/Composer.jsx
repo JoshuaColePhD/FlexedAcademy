@@ -282,7 +282,11 @@ export function Composer({
             ) : isRecording ? (
               <button
                 type="button"
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint md:h-9 md:w-9"
+                /* fa-listening: the tinted background already says "recording
+                   is on," a fact — this ring says the mic is live RIGHT NOW,
+                   an ongoing one, the way a hardware recording light doesn't
+                   just switch on but keeps pulsing for as long as it's true. */
+                className="fa-listening tap-target flex h-11 w-11 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint md:h-9 md:w-9"
                 onClick={stopRecording}
                 aria-label="Stop recording"
               >
