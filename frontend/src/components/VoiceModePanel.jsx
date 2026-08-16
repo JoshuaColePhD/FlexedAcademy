@@ -1382,7 +1382,7 @@ export function VoiceModePanel({
           instead of the checklist below getting shoved down in one abrupt
           jump every time a caption appears or clears. */}
       <div className={`caption-line shrink-0${captionBlock ? ' is-visible' : ''}`}>
-        <div aria-live="polite" className="caption-line-inner">
+        <div aria-live="polite" className={`caption-line-inner ${justInterrupted ? 'barge-in-shatter' : ''}`}>
           {captionBlock}
         </div>
       </div>
