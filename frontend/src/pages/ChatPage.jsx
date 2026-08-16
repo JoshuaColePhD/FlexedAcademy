@@ -17,6 +17,7 @@ import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
+import { splitDecisions } from '../lib/decisionChecklist'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -1536,6 +1537,29 @@ export function ChatPage() {
   // of the two `artifactEl` renders.
   const viewLabel = VIEW_KIND_LABELS[viewKind] || VIEW_KIND_LABELS.plan
 
+  const { checklist: coreChecklist } = useMemo(() => splitDecisions(decisions), [decisions])
+  const nextUndecided = coreChecklist.find((c) => c.value == null)
+
+  let contextualSuggestion = ''
+  if (nextUndecided && !hasArtifact) {
+    if (nextUndecided.key === 'week' && calendar?.weeks) {
+      const nextWeek = calendar.weeks.find((w) => !w.built)
+      if (nextWeek) contextualSuggestion = `Let's plan Week ${nextWeek.week}`
+    } else if (nextUndecided.key === 'anchor') {
+      const selectedWeekDec = coreChecklist.find((c) => c.key === 'week')
+      const weekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\D/g, ''), 10) : null
+      const weekData = calendar?.weeks?.find((w) => w.week === weekNum)
+      if (weekData?.notes) contextualSuggestion = `Let's use the text from the calendar: ${weekData.notes}`
+    } else if (nextUndecided.key === 'skill') {
+      const selectedWeekDec = coreChecklist.find((c) => c.key === 'week')
+      const weekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\D/g, ''), 10) : null
+      const weekData = calendar?.weeks?.find((w) => w.week === weekNum)
+      if (weekData?.topic || weekData?.unit) contextualSuggestion = `Let's focus on ${weekData.topic || weekData.unit}`
+    } else if (nextUndecided.key === 'assessment') {
+      contextualSuggestion = 'Let us do a multiple choice quiz'
+    }
+  }
+
   const artifactEl =
     viewKind === 'plan' ? (
       <ArtifactPanel
@@ -1598,7 +1622,9 @@ export function ChatPage() {
         <Greeting className={activeClass?.name} onOpenVoice={openVoice} week={displayWeek} />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
-          <div className="chat-column mx-auto flex w-full max-w-measure flex-col gap-7 px-gutter py-8">
+          <div className={`chat-column mx-auto flex w-full flex-col gap-7 px-gutter py-8 transition-all duration-500 ease-out ${
+            voiceOpen ? 'max-w-measure-wide' : 'max-w-measure-narrow'
+          }`}>
             {messages.map((m, i) => (
               <Message
                 key={m.id}
@@ -1672,20 +1698,20 @@ export function ChatPage() {
         </div>
       )}
 
-      {latestPill.mounted ? (
-        <div className="pointer-events-none absolute bottom-[92px] left-0 right-0 z-10 flex justify-center">
-          <button
-            type="button"
-            className={`fa-rise fa-press pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
-            onClick={() => {
-              setAtBottom(true)
-              endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-            }}
-          >
-            <ArrowDown size={13} aria-hidden="true" /> Latest
-          </button>
-        </div>
-      ) : null}
+      <div className="relative shrink-0 z-10">
+        {latestPill.mounted ? (
+          <div className="pointer-events-none absolute bottom-full left-0 right-0 mb-4 flex justify-center">
+            <button
+              type="button"
+              className={`fa-rise fa-press pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
+              onClick={() => {
+                endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+              }}
+            >
+              <ArrowDown size={13} aria-hidden="true" /> Latest
+            </button>
+          </div>
+        ) : null}
 
       {/* On a phone the 240px rail has nowhere to go, so the artifact becomes a
           one-row bar above the composer. Without it the only way to the .docx
@@ -1711,8 +1737,10 @@ export function ChatPage() {
           the empty/non-empty transition — it owns a MediaRecorder, a
           ResizeObserver and an autosized inline height, all of which die on
           remount. Only the wrapper's className may change. */}
-      <div className="shrink-0 bg-paper px-gutter pb-5 pt-3">
-        <div className="mx-auto w-full max-w-4xl">
+      <div className="shrink-0 bg-paper pb-5 pt-3">
+        <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
+          voiceOpen ? 'max-w-measure-wide' : 'max-w-measure-narrow'
+        }`}>
           <Composer
             value={query}
             onChange={setQuery}
@@ -1726,6 +1754,7 @@ export function ChatPage() {
             setAttachments={setAttachments}
             onOpenVoice={openVoice}
             voiceModeActive={voiceOpen}
+            suggestion={contextualSuggestion}
             voicePanel={
               voiceExit.mounted ? (
                 <div className={`voice-dock${voiceOpen ? ' is-open' : ''}`}>
@@ -1738,6 +1767,8 @@ export function ChatPage() {
                       caption={voiceCaption}
                       decisions={decisions}
                       messages={messages}
+                      activeClass={activeClass}
+                      calendar={calendar}
                       onBuild={() => submit('Looks good, build the lesson plan.')}
                       /* Replay button: speaks the last reply again through the same
                          shared <audio> element, and re-primes the caption so the
@@ -1806,6 +1837,7 @@ export function ChatPage() {
             sendLabel={artifact?.planId ? 'Revise the plan' : 'Build the lesson plan'}
           />
         </div>
+      </div>
       </div>
     </div>
   )

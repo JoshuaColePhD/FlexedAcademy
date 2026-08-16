@@ -70,6 +70,7 @@ export default {
       maxWidth: {
         measure: 'var(--measure)',
         'measure-form': 'var(--measure-form)',
+        'measure-narrow': 'var(--measure-narrow)',
         'measure-wide': 'var(--measure-wide)',
       },
 

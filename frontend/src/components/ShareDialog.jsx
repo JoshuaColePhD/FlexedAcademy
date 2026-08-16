@@ -20,7 +20,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
  *   connected    — the actual share form: an email, a role, a Share button,
  *                  and whoever this plan has already been shared with.
  */
-export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
+export function ShareDialog({ open, onClose, planId, isQuiz, documentName, downloadUrl }) {
   const toast = useToast()
   const { mounted, closing } = useExitTransition(open, 200)
   const dialogRef = useRef(null)
@@ -46,7 +46,7 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
   }, [open, planId])
 
   useEffect(() => {
-    if (!open) return undefined
+    if (!open || isQuiz) return undefined
     let cancelled = false
     ;(async () => {
       try {
@@ -66,17 +66,17 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
     return () => {
       cancelled = true
     }
-  }, [open, planId])
+  }, [open, planId, isQuiz])
 
   useFocusTrap(dialogRef, {
     active: open,
     trap: true,
-    initialFocus: status === 'connected' ? emailRef : undefined,
+    initialFocus: isQuiz ? undefined : status === 'connected' ? emailRef : undefined,
     onEscape: onClose,
   })
 
   const connect = () => {
-    window.location.assign(api.driveConnectUrl(returnTo))
+    window.location.assign(api.driveConnectUrl())
   }
 
   const submit = async (e) => {
@@ -88,7 +88,7 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
       setWebLink(result.web_link)
       setShares(result.shares || [])
       setEmail('')
-      toast.success('Saved to Drive', `${weekLabel || 'The plan'} is now in your Google Drive.`)
+      toast.success('Saved to Drive', `${documentName || 'The plan'} is now in your Google Drive.`)
     } catch (err) {
       toast.apiError('Could not save to Drive', err)
     } finally {
@@ -111,16 +111,34 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
         aria-modal="true"
         aria-labelledby="share-title"
       >
-        <h2 id="share-title">Share {weekLabel ? `“${weekLabel}”` : 'this plan'}</h2>
+        <h2 id="share-title">Export {documentName ? `“${documentName}”` : 'this file'}</h2>
 
-        {status === 'loading' ? (
-          <p className="flex items-center gap-2">
+        <div className="mb-6 rounded-lg bg-paper-sunken p-4 border border-edge">
+          <h3 className="text-sm font-medium">Download to your computer</h3>
+          <p className="mt-1 text-sm text-ink-soft">
+            {isQuiz 
+              ? 'Download the quiz as a QTI .zip file, which you can import directly into Canvas.'
+              : 'Download the lesson plan as a Microsoft Word (.docx) file.'}
+          </p>
+          <div className="mt-4">
+            <a href={downloadUrl} className="btn w-full justify-center" download onClick={onClose}>
+              <Download size={14} className="mr-1.5" aria-hidden="true" /> Download {isQuiz ? 'Quiz' : 'Plan'}
+            </a>
+          </div>
+        </div>
+
+        <h3 className="text-sm font-medium mb-3">Save to Google Drive</h3>
+        
+        {isQuiz ? (
+          <p className="text-sm text-ink-soft">Google Drive export is only supported for Lesson Plans, as quizzes are Canvas QTI .zip files.</p>
+        ) : status === 'loading' ? (
+          <p className="flex items-center gap-2 text-sm text-ink-soft">
             <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Checking Google Drive…
           </p>
         ) : status === 'unconfigured' ? (
           <>
-            <p>Sharing via Google isn’t set up for this account yet.</p>
-            <div className="dialog-actions">
+            <p className="text-sm text-ink-soft">Sharing via Google isn’t set up for this account yet.</p>
+            <div className="dialog-actions mt-4">
               <button type="button" className="btn" onClick={onClose}>
                 Close
               </button>
@@ -128,8 +146,8 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
           </>
         ) : status === 'disconnected' ? (
           <>
-            <p>Connect your Google account to share this week as a Google Doc.</p>
-            <div className="dialog-actions">
+            <p className="text-sm text-ink-soft">Connect your Google account to share this week as a Google Doc.</p>
+            <div className="dialog-actions mt-4">
               <button type="button" className="btn" onClick={onClose}>
                 Cancel
               </button>
@@ -140,7 +158,7 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
           </>
         ) : (
           <form onSubmit={submit}>
-            <p>
+            <p className="text-sm text-ink-soft">
               Save the .docx to your Google Drive as a real, editable Google Doc. 
               You can optionally share it with a colleague's Google account right now.
             </p>
@@ -149,7 +167,7 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
               <input
                 ref={emailRef}
                 type="email"
-                className="input"
+                className="input w-full"
                 placeholder="name@school.org"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -157,7 +175,7 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
             </label>
             <label className="mt-3 block">
               <span className="mb-1 block text-xs text-ink-muted">Access</span>
-              <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
+              <select className="input w-full" value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="reader">Can view</option>
                 <option value="writer">Can edit</option>
               </select>
@@ -188,7 +206,7 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
               </a>
             ) : null}
 
-            <div className="dialog-actions">
+            <div className="dialog-actions mt-6">
               <button type="button" className="btn" onClick={onClose}>
                 Close
               </button>

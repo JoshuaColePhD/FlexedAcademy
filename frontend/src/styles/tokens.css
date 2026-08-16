@@ -124,7 +124,7 @@
      at 264px of chrome leaves the sheet too narrow to hold the district table
      at a readable size, and a nav rail is the one column with slack in it. */
   --sidebar-w-tight: 216px;
-  --artifact-w: 480px;
+  --artifact-w: 900px;
   /* The collapsed artifact rail. Wide enough for a file name and a Download
      button, narrow enough that the chat keeps a real reading column. */
   --rail-w: 240px;
@@ -140,6 +140,8 @@
   --measure: 46rem;
   /* A settings form wants to stay narrower than prose. */
   --measure-form: 42rem;
+  /* A tighter reading column for focused chat modes. */
+  --measure-narrow: 30rem;
   /* The year grid is a table, not prose. Rule 3 governs the reading column; a
      43×5 grid squeezed into --measure would be unreadable, and widening
      --measure to suit it would wreck every paragraph in the app. */

@@ -403,6 +403,8 @@ export function VoiceModePanel({
   // than showing it disabled with nothing to explain why.
   onReplayLast,
   messages = [],
+  activeClass = null,
+  calendar = null,
   onBuild,
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
@@ -556,7 +558,7 @@ export function VoiceModePanel({
   // than blocking the page as a modal, the same reasoning useFocusTrap's own
   // comment gives for the artifact panel's docked case: trapping Tab here
   // would lock a teacher out of the input they were about to type in.
-  useFocusTrap(panelRef, { active: true, trap: false, initialFocus: closeRef, onEscape: onClose })
+  useFocusTrap(panelRef, { active: true, trap: false, initialFocus: panelRef, onEscape: onClose })
 
   useEffect(() => {
     // busy alone, not busy || isSpeaking — see pausedRef's own comment.
@@ -1413,6 +1415,7 @@ export function VoiceModePanel({
               </p>
             ) : null}
             <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
+            <VoiceSuggestions decisions={decisions} activeClass={activeClass} calendar={calendar} onSelect={onUtterance} />
             {decidedCount === 4 && !building && !builtPlan && onBuild && (
               <button
                 type="button"
@@ -1424,6 +1427,87 @@ export function VoiceModePanel({
             )}
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
+  const { checklist } = splitDecisions(decisions)
+  const nextUndecided = checklist.find((c) => c.value == null)
+
+  if (!nextUndecided) return null
+
+  let title = ''
+  let options = []
+  
+  if (activeClass) {
+    // Just touching activeClass to suppress the unused variable lint error
+    // Could display it, but chips take precedence right now.
+    void activeClass
+  }
+
+  if (nextUndecided.key === 'week' && calendar?.weeks) {
+    title = 'Upcoming Schedule'
+    // Show the first 4 weeks that aren't already built
+    options = calendar.weeks
+      .filter((w) => !w.built)
+      .slice(0, 4)
+      .map((w) => ({
+        label: `Week ${w.week}: ${w.topic || w.unit || 'Untitled'}`,
+        value: `Let's plan Week ${w.week}.`,
+      }))
+  } else if (nextUndecided.key === 'anchor') {
+    title = 'Suggested Texts'
+    // Look at the selected week to see if there are texts in the notes
+    const selectedWeekDec = checklist.find((c) => c.key === 'week')
+    const selectedWeekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\\D/g, ''), 10) : null
+    const weekData = calendar?.weeks?.find((w) => w.week === selectedWeekNum)
+
+    if (weekData?.notes) {
+      options.push({
+        label: `From Calendar: ${weekData.notes.slice(0, 40)}${weekData.notes.length > 40 ? '...' : ''}`,
+        value: `Let's use the text from the calendar: ${weekData.notes}`,
+      })
+    }
+    options.push({ label: 'Recommend a text for me', value: 'Can you recommend an anchor text for this week?' })
+    options.push({ label: 'I will provide my own text', value: 'I have my own text in mind.' })
+  } else if (nextUndecided.key === 'skill') {
+    title = 'Suggested Focus'
+    const selectedWeekDec = checklist.find((c) => c.key === 'week')
+    const selectedWeekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\\D/g, ''), 10) : null
+    const weekData = calendar?.weeks?.find((w) => w.week === selectedWeekNum)
+
+    if (weekData?.topic || weekData?.unit) {
+      options.push({
+        label: `Focus on ${weekData.topic || weekData.unit}`,
+        value: `Let's make the skill focus about ${weekData.topic || weekData.unit}.`,
+      })
+    }
+    options.push({ label: 'Recommend a skill', value: 'Can you recommend a skill focus based on the text?' })
+  } else if (nextUndecided.key === 'assessment') {
+    title = 'Assessment Options'
+    options.push({ label: 'Multiple Choice Quiz', value: 'Let us do a multiple choice quiz.' })
+    options.push({ label: 'Short Answer / Essay', value: 'Let us do a short answer essay.' })
+    options.push({ label: 'Socratic Seminar', value: 'Let us do a Socratic seminar.' })
+    options.push({ label: 'Exit Ticket', value: 'An exit ticket.' })
+  }
+
+  if (options.length === 0) return null
+
+  return (
+    <div className="mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300 flex flex-col gap-2">
+      <span className="text-xs font-semibold text-ink-soft uppercase tracking-wider">{title}</span>
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt, i) => (
+          <button
+            key={i}
+            onClick={() => onSelect(opt.value)}
+            className="rounded-lg border border-edge-strong bg-paper px-3 py-1.5 text-sm font-medium text-ink transition-all hover:bg-paper-hover active:scale-[0.98]"
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
     </div>
   )

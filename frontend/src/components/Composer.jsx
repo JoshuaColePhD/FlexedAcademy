@@ -197,6 +197,14 @@ export function Composer({
   }
 
   const onKeyDown = (e) => {
+    if (e.key === 'Tab' && !value) {
+      const fillText = suggestion || (placeholder.includes(' — e.g. ') ? placeholder.split(' — e.g. ')[1] : '')
+      if (fillText) {
+        e.preventDefault()
+        onChange(fillText)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (canSend) submit()
@@ -240,7 +248,7 @@ export function Composer({
               this makes the actual button that size instead of just its
               hit box. */}
           <label
-            className="tap-target flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
+            className="tap-target mb-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:mb-2 md:h-9 md:w-9"
             htmlFor="composer-file"
           >
             {isAttaching ? (
@@ -270,7 +278,7 @@ export function Composer({
                 ? 'Listening…'
                 : isTranscribing
                   ? 'Transcribing…'
-                  : placeholder
+                  : suggestion || placeholder
             }
             title="Enter to send · Shift+Enter for a new line"
             className="composer-input max-h-[220px] flex-1 resize-none overflow-y-auto border-none bg-transparent px-2 py-[0.9375rem] text-[0.9375rem] leading-relaxed text-ink outline-none placeholder:font-normal placeholder:text-ink-faint"
@@ -282,7 +290,7 @@ export function Composer({
           {/* gap-1.5, not gap-1 — at 44px buttons the tighter gap read as
               the icons overlapping their own tap targets. md:gap-1 restores
               the denser desktop spacing these were tuned for. */}
-          <div className="flex shrink-0 items-center gap-1.5 pb-0.5 md:gap-1">
+          <div className="flex shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
             {isTranscribing ? (
               <button
                 type="button"

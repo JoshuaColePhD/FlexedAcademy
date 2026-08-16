@@ -109,7 +109,7 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
  * that second control was a destructive action sitting next to the one a
  * teacher actually came for, answering a question ("why would you want to
  * delete it?") nobody was asking. Download is the row's only action now. */
-function QuizRow({ quiz, planId, index = 0, onOpen, color }) {
+function QuizRow({ quiz, planId, index = 0, onOpen, color, onShare }) {
   const style = { animationDelay: `${index * 60}ms` }
 
   return (
@@ -151,28 +151,26 @@ function QuizRow({ quiz, planId, index = 0, onOpen, color }) {
         )}
       </span>
       <span className="rail-actions">
-        {/* An icon-only download, the same shape the plan card's own
-            "Open the document" button already uses — the labeled pill this
-            replaced was sized for sharing a row with a second (Remove)
-            action, which is gone now that this is the row's only control. */}
         {quiz.has_qti ? (
-          <a
+          <button
+            type="button"
             className="rail-open fa-press"
-            href={api.quizDownloadUrl(planId, quiz.id)}
-            download
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`Download ${quiz.title} as a QTI zip`}
-            title="Download as a QTI zip — imports into Canvas as a Classic Quiz"
+            onClick={(e) => {
+              e.stopPropagation()
+              onShare(quiz)
+            }}
+            aria-label={`Export ${quiz.title}`}
+            title="Download or share this quiz"
           >
-            <Download size={13} aria-hidden="true" />
-          </a>
+            <Share2 size={13} aria-hidden="true" />
+          </button>
         ) : (
           <span
             className="rail-open is-disabled"
             aria-disabled="true"
             title="The file failed to build — ask again in chat to rebuild it"
           >
-            <Download size={13} aria-hidden="true" />
+            <Share2 size={13} aria-hidden="true" />
           </span>
         )}
       </span>
@@ -203,7 +201,7 @@ export function ArtifactRail({
   onOpenCalendar,
   onOpenDocument,
 }) {
-  const [shareOpen, setShareOpen] = useState(false)
+  const [shareTarget, setShareTarget] = useState(null)
   const plan = artifact?.plan
   const planId = artifact?.planId
   /* Every quiz already built for this plan (backend db.py migration 26) —
@@ -308,23 +306,13 @@ export function ArtifactRail({
                 className="rail-open fa-press"
                 onClick={(e) => {
                   e.stopPropagation()
-                  setShareOpen(true)
+                  setShareTarget({ type: 'plan' })
                 }}
-                aria-label="Save to Google Drive or Share"
-                title="Save to Google Drive or Share"
+                aria-label="Save to Google Drive or Download"
+                title="Save to Google Drive or Download"
               >
                 <Share2 size={13} aria-hidden="true" />
               </button>
-              <a
-                className="rail-open fa-press"
-                href={api.planDownloadUrl(planId)}
-                download
-                onClick={(e) => e.stopPropagation()}
-                aria-label="Download the document"
-                title="Download the document"
-              >
-                <Download size={13} aria-hidden="true" />
-              </a>
             </span>
           </div>
         ) : busy ? (
@@ -380,7 +368,7 @@ export function ArtifactRail({
             </div>
           ) : null}
           {quizzes.map((quiz, i) => (
-            <QuizRow key={quiz.id} quiz={quiz} planId={planId} index={i} onOpen={onOpenQuiz} color={color} />
+            <QuizRow key={quiz.id} quiz={quiz} planId={planId} index={i} onOpen={onOpenQuiz} color={color} onShare={(q) => setShareTarget({ type: 'quiz', quiz: q })} />
           ))}
         </div>
       ) : null}
@@ -437,10 +425,12 @@ export function ArtifactRail({
       ) : null}
 
       <ShareDialog
-        open={shareOpen}
-        onClose={() => setShareOpen(false)}
+        open={!!shareTarget}
+        onClose={() => setShareTarget(null)}
         planId={planId}
-        weekLabel={plan?.week_of}
+        isQuiz={shareTarget?.type === 'quiz'}
+        documentName={shareTarget?.type === 'quiz' ? shareTarget.quiz.title : plan?.week_of}
+        downloadUrl={shareTarget?.type === 'quiz' ? api.quizDownloadUrl(planId, shareTarget.quiz.id) : api.planDownloadUrl(planId)}
       />
     </aside>
   )

@@ -83,7 +83,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             paper-sunken groove this used to be — editing your own turn
             should still read as your turn, not switch to a different
             surface mid-edit. */}
-        <div className="neo-raised w-full max-w-[85%] rounded-2xl bg-accent-tint p-4">
+        <div className="neo-raised w-full max-w-full rounded-2xl bg-accent-tint p-4">
           <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
             Edit your message
           </label>
@@ -148,7 +148,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
      worse than no animation at all. The entry reads fine without it. */
   return (
     <div className={`fa-rise group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex max-w-[92%] flex-col ${isUser ? 'items-end' : 'w-full items-start'}`}>
+      <div className={`flex max-w-full flex-col ${isUser ? 'items-end' : 'w-full items-start'}`}>
         {/* An error reply used to render as ordinary assistant body copy, on
             the same ruled lines as a real plan — `isError` only tinted the
             hover-only icon row, so "The connection closed before the plan was
