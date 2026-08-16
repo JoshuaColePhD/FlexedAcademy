@@ -1652,6 +1652,26 @@
     }
   }
 
+  /* VoiceModePanel's own caption line — what's currently being said, above
+     the checklist. Always mounted now (it used to mount/unmount outright),
+     so this 0fr/1fr grid row (the same technique .voice-dock uses for its
+     own much bigger open/close, just one line tall here) can actually
+     transition between nothing and one line, instead of the checklist
+     below it jumping down in a single abrupt step every time a caption
+     appears or clears. */
+  .caption-line {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--t-fast) var(--ease-out);
+  }
+  .caption-line.is-visible {
+    grid-template-rows: 1fr;
+  }
+  .caption-line-inner {
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .dialog h2 {
     margin: 0;
     font-size: var(--fs-lg);

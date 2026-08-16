@@ -1582,9 +1582,11 @@ export function ChatPage() {
                 <Message
                   message={{ id: 'chat-stream-live', role: 'assistant', content: chatStream.text, streaming: true }}
                 />
-              ) : (
+              ) : /* voice mode's own status pill already says "Thinking…" —
+                     showing it again here read as two different things
+                     happening instead of one. */ !voiceOpen ? (
                 <p className="eyebrow">Thinking…</p>
-              )
+              ) : null
             ) : null}
 
             {/* Progress is the week filling in, not three bouncing dots — a
@@ -1762,6 +1764,7 @@ export function ChatPage() {
             attachments={attachments}
             setAttachments={setAttachments}
             onOpenVoice={openVoice}
+            voiceModeActive={voiceOpen}
             /* The example is worth its length on a laptop and clipped on a
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */

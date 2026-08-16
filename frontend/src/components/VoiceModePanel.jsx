@@ -339,6 +339,13 @@ export function VoiceModePanel({
   const prevCaptionRef = useRef('')
   const panelRef = useRef(null)
   const closeRef = useRef(null)
+  // The status pill's own dot — the one bit of "is it actually hearing me"
+  // feedback left once the big level-driven orb was dropped (see the top
+  // comment). Updated imperatively from the VAD's tick loop below, not
+  // React state: the orb used to repaint a canvas every frame the same
+  // way, and a dot is cheap enough to drive the identical way without ever
+  // re-rendering the component at 60fps for it.
+  const dotRef = useRef(null)
 
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
@@ -651,8 +658,20 @@ export function VoiceModePanel({
       // level itself still drives the VAD logic below (endpointing,
       // barge-in, the quiet/miss hints) — only the orb that used to paint
       // it as a pulsing waveform is gone now that the checklist is the
-      // panel's whole point; statusPill's own dot (below) is the entire
-      // "is it hearing me" indicator now.
+      // panel's whole point. Its replacement: the status pill's own dot,
+      // scaled directly off this same level, imperatively (a style write,
+      // not React state) so this stays as cheap as the orb's canvas redraw
+      // was — 60fps of "is it hearing me" with no re-render behind it.
+      // Damped to a flat scale under the same conditions the orb used to
+      // damp to (paused/muted/mid-transcribe): the mic is still capturing
+      // then (barge-in still has to work), but a level reading dominated by
+      // the assistant's own voice bleeding back in, or by nothing at all
+      // while muted, isn't real feedback about the teacher's own voice.
+      if (dotRef.current) {
+        const damped = pausedRef.current || mutedRef.current || processingRef.current
+        const scale = damped ? 1 : 1 + Math.min(1, level * 5) * 0.9
+        dotRef.current.style.transform = `scale(${scale.toFixed(3)})`
+      }
 
       // Muted: nothing below this line runs — no endpointing, no
       // barge-in, no quiet-hint accumulation. The track is already
@@ -890,10 +909,18 @@ export function VoiceModePanel({
       }`}
     >
       <span
+        ref={dotRef}
         aria-hidden="true"
-        className={`h-1.5 w-1.5 rounded-full ${
+        /* While actually listening, this dot's scale is driven straight
+           from the live mic level (see the VAD tick loop) instead of the
+           generic animate-pulse below — the one thing worth knowing
+           mid-sentence is "is it actually hearing volume right now," which
+           a fixed-rhythm pulse can't say. Other states (requesting mic,
+           transcribing) keep the generic pulse — there's no live level
+           worth reflecting yet. */
+        className={`h-1.5 w-1.5 rounded-full transition-transform duration-75 ${
           status === 'error' ? 'bg-mark' : muted ? 'bg-ink-faint' : 'bg-accent'
-        } ${status === 'error' || muted ? '' : 'animate-pulse'}`}
+        } ${status === 'error' || muted ? '' : status === 'listening' ? '' : 'animate-pulse'}`}
       />
       {label}
     </span>
@@ -979,12 +1006,17 @@ export function VoiceModePanel({
         {statusPill}
         <div className="flex items-center gap-2">
           {muteButton}
+          {/* Quieter than muteButton on purpose — no neo-raised emboss, no
+             shadow, just the glyph with a hover state. Mute is the control
+             actually used mid-conversation; Close ends it. Giving both the
+             same raised-pill treatment made them read as equally weighted
+             choices when they aren't. */}
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="Close voice conversation"
-            className="neo-raised tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-soft"
+            className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink-soft"
           >
             <X size={16} aria-hidden="true" />
           </button>
@@ -994,13 +1026,16 @@ export function VoiceModePanel({
       {/* What's currently being said, either side — a single line under
           the status bar rather than a boxed caption card, since it's
           secondary now: worth showing, not worth the space a whole panel
-          of its own used to cost. Renders nothing (and takes no space)
-          once there's nothing to say — see captionBlock's own branches. */}
-      {captionBlock ? (
-        <div aria-live="polite" className="shrink-0">
+          of its own used to cost. Always mounted (unlike before) so its
+          height can actually TRANSITION between nothing and one line
+          (.caption-line's own grid-rows trick, same shape as .voice-dock's)
+          instead of the checklist below getting shoved down in one abrupt
+          jump every time a caption appears or clears. */}
+      <div className={`caption-line shrink-0${captionBlock ? ' is-visible' : ''}`}>
+        <div aria-live="polite" className="caption-line-inner">
           {captionBlock}
         </div>
-      ) : null}
+      </div>
 
       {/* The checklist — or whichever of questions/build progress/built
           plan currently owns this slot, same rotation the old side column
@@ -1014,7 +1049,21 @@ export function VoiceModePanel({
         ) : builtPlan ? (
           <BuiltPlanCard builtPlan={builtPlan} fill={false} />
         ) : (
-          <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
+          <>
+            {/* A checklist that's still all "Not yet decided" is a cold
+                open for a first-time voice conversation — the old
+                full-screen takeover had a spoken greeting to lean on, but
+                nothing on screen ever said what the checklist below it was
+                even for. One line, gone the moment anything's actually
+                settled (see decisions.length), so it never argues with the
+                real progress once there is some. */}
+            {decisions.length === 0 ? (
+              <p className="mb-2 px-1 text-sm text-ink-muted">
+                Tell me the week, the anchor text, and the skill focus — I'll check these off as we go.
+              </p>
+            ) : null}
+            <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
+          </>
         )}
       </div>
     </div>
