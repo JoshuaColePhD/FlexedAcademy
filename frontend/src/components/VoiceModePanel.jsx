@@ -1293,16 +1293,7 @@ export function VoiceModePanel({
       tabIndex={-1}
       role="region"
       aria-label="Voice conversation"
-      /* Same bg-paper the chat pane and the composer dock below both wear,
-         and the same border-t + px-gutter language the composer dock uses
-         for ITS OWN top edge — no raised card shadow, no separate rounded
-         corners. The point is that this reads as the chat box's own
-         surface continuing upward to make room, not a distinct panel that
-         happened to land above the composer. neo-world stays (not
-         neo-panel): the pill/buttons inside still read their emboss and
-         accent color from it, that's just no longer paired with an outer
-         card shadow of its own. */
-      className={`neo-world relative flex w-full flex-col gap-3 border-t border-edge bg-paper px-gutter pb-3 pt-4 transition-colors ${
+      className={`relative flex w-full flex-col gap-3 px-3 pb-3 pt-4 transition-colors ${
         isSpeaking || busy ? 'aurora-glow' : ''
       }`}
     >
