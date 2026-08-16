@@ -44,38 +44,34 @@ export function Greeting({ onOpenVoice, className: courseName, week }) {
 
   return (
     <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-gutter py-8">
-      <div className="w-full max-w-measure">
-        <h1 className="text-2xl font-semibold tracking-display text-ink">
+      <div className="w-full max-w-measure flex flex-col items-center justify-center text-center fa-rise">
+        
+        <div className="mb-8 rounded-3xl bg-gradient-to-br from-primary/10 to-primary/5 p-6 ring-1 ring-inset ring-ink/5 shadow-sm">
+          <svg className="h-10 w-10 text-primary opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+          </svg>
+        </div>
+
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-ink mb-4">
           {hourGreeting()}
           {firstName ? `, ${firstName}` : ''}
         </h1>
-        <p className="mt-1.5 text-sm text-ink-muted">
+        
+        <p className="max-w-xl text-base sm:text-lg text-ink-muted leading-relaxed">
           Say what you need and I’ll build{' '}
-          {weekLabel ? <span className="font-medium text-ink">{weekLabel}</span> : 'the week'}
+          {weekLabel ? <span className="font-medium text-ink bg-paper-sunken px-2 py-0.5 rounded-md border border-ink/5 shadow-sm">{weekLabel}</span> : 'the week'}
           {courseName ? ` for ${courseName}` : ''}. Standards are quoted straight from the source,
-          formatted in the district template.
+          formatted directly into your district template.
         </p>
 
-        {/* Phone only — on a desktop the composer's own waveform icon sits
-            right there next to Send; on a phone it's a small icon buried at
-            the end of the dock, easy to never notice. Opens the same live
-            voice conversation (VoiceModePanel) that icon does, just given
-            the room to be found.
-
-            neo-world + neo-raised, same as every surface INSIDE the panel
-            this opens — the button is the doorway to that world, so it
-            should already look like it. Applied to the button itself, not
-            a wrapping div: .neo-world sets its own background, so the
-            button reads as a floating embossed pill regardless of the
-            (unstyled, ordinary) page behind it, with no seam to manage. */}
         {onOpenVoice ? (
           <button
             type="button"
             onClick={onOpenVoice}
-            className="neo-world neo-raised mx-auto mt-4 flex min-h-touch w-2/3 items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium text-accent-text md:hidden"
+            className="neo-world neo-raised mx-auto mt-8 flex min-h-touch w-2/3 max-w-[240px] items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium text-accent-text md:hidden"
           >
             <AudioLines size={18} aria-hidden="true" />
-            Chat
+            Voice Mode
           </button>
         ) : null}
       </div>

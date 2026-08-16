@@ -1008,9 +1008,17 @@ export function ChatPage() {
             },
           ])
         }
+
+        // Show skeleton
+        setViewKind('quiz')
+        setViewingQuiz(null)
+        if (!expanded && !isPhone) setExpanded(true)
+        if (isPhone) setRailOpen(false)
+
         try {
           const quiz = await api.createQuiz(artifact.planId, chatResult.quizRequested)
           qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
+          setViewingQuiz(quiz)
           setMessages((prev) => [
             ...prev,
             {
@@ -1575,6 +1583,7 @@ export function ChatPage() {
         onReviseDay={!isPhone && artifact?.planId ? reviseDay : undefined}
         onPlanRevised={onPlanRevised}
         busy={busy}
+        preparing={preparing}
         streamingText={stream.text}
         openTweak={openTweak}
         setOpenTweak={setOpenTweak}
@@ -1587,6 +1596,8 @@ export function ChatPage() {
         planId={artifact?.planId}
         plan={livePlan}
         subject={activeClass?.subject}
+        quiz={viewingQuiz}
+        quizBuilding={quizBuilding}
         doc={viewingDoc}
         grounded={grounded}
         ungrounded={ungrounded}

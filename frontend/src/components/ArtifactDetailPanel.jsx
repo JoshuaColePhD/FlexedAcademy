@@ -10,6 +10,7 @@ import { unitSuffix } from '../lib/planShape'
 import { shortRange } from '../lib/dates'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
+import { Skeleton, SkeletonText } from './Skeleton'
 
 /* The same embossed shell ArtifactPanel uses for the lesson plan itself
  * (.doc-shell/.doc-head/.doc-body — see that component's own header
@@ -160,6 +161,30 @@ function QuizQuestionCard({ q, index, onUpdate }) {
           ))}
         </ul>
       ) : null}
+    </div>
+  )
+}
+
+function QuizSkeleton() {
+  return (
+    <div className="detail-card-stack">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="detail-card neo-raised">
+          <div className="detail-card-head mb-4">
+            <Skeleton width="2rem" height="1.25rem" />
+            <Skeleton width="5rem" height="1.25rem" />
+          </div>
+          <SkeletonText lines={2} />
+          <div className="mt-4 flex flex-col gap-2">
+            {Array.from({ length: 4 }).map((_, j) => (
+              <div key={j} className="flex items-center gap-2">
+                <Skeleton width="1rem" height="1rem" radius="var(--r-full)" />
+                <Skeleton width={['60%', '40%', '80%', '50%'][j]} height="1rem" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -397,6 +422,7 @@ export function ArtifactDetailPanel({
   classId,
   onCollapse,
   quiz,
+  quizBuilding,
   doc,
   plan,
   planId,
@@ -468,7 +494,9 @@ export function ArtifactDetailPanel({
 
       <div className="doc-body" tabIndex={0} role="region" aria-label={title}>
         <div className="doc-sheet doc-sheet-plain">
-          {kind === 'quiz' ? <QuizBody quiz={quiz} /> : null}
+          {kind === 'quiz' ? (
+            quizBuilding ? <QuizSkeleton /> : <QuizBody quiz={quiz} />
+          ) : null}
           {kind === 'standards' ? (
             <StandardsBody grounded={grounded} ungrounded={ungrounded} subject={subject} />
           ) : null}

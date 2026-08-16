@@ -10,6 +10,7 @@ import { unitSuffix } from '../lib/planShape'
 import { LessonPlanTable } from './LessonPlanTable'
 import { Marginalia } from './Marginalia'
 import { ShareDialog } from './ShareDialog'
+import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
 
 /* The artifact, expanded into a working document.
  *
@@ -31,6 +32,27 @@ import { ShareDialog } from './ShareDialog'
  * The page fits the container and is never a fixed 900px sheet: a fixed page in
  * a narrow canvas clips its own title, which is the defect this replaces.
  */
+function PlanSkeleton() {
+  return (
+    <div className="doc-sheet overflow-hidden">
+      <div className="mb-8 border-b border-paper-sunken pb-6">
+        <Skeleton width="40%" height="2rem" className="mb-4" />
+        <SkeletonText lines={2} width="80%" />
+      </div>
+      
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="mb-6 rounded-lg border border-paper-sunken p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <Skeleton width="15%" height="1.5rem" />
+            <Skeleton width="20%" height="1.25rem" />
+          </div>
+          <SkeletonRows rows={2} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ArtifactPanel({
   artifact,
   classId,
@@ -39,6 +61,7 @@ export function ArtifactPanel({
   onReviseDay,
   onPlanRevised,
   busy,
+  preparing,
   streamingText,
   missingDays,
   flashCells,
@@ -197,10 +220,12 @@ export function ArtifactPanel({
             {streamingText}
           </pre>
         ) : (
-          <div className="flex min-h-[300px] flex-col items-center justify-center gap-4 text-center">
-            <Loader2 size={22} className="animate-spin text-ink-muted" aria-hidden="true" />
-            <p className="note">Retrieving standards, then writing Monday…</p>
-          </div>
+          preparing ? <PlanSkeleton /> : (
+            <div className="flex min-h-[300px] flex-col items-center justify-center gap-4 text-center">
+              <Loader2 size={22} className="animate-spin text-ink-muted" aria-hidden="true" />
+              <p className="note">Waiting for generation to begin...</p>
+            </div>
+          )
         )}
       </div>
 
