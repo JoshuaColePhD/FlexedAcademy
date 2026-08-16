@@ -204,12 +204,13 @@
      one sits at the LEFT edge of a panel that grows leftward, this one sits
      at the RIGHT edge of a panel that grows rightward, so the chevron points
      the opposite way (right, not left) while collapsed. Widened from 14px to
-     22px (with .artifact-drawer-handle) — the panel widths themselves were
-     fine, it was this strip that was too thin to reliably see or click. */
+     18px (with .artifact-drawer-handle) — the panel widths themselves were
+     fine, it was this strip that was too thin to reliably see or click, and
+     22px (a first pass at that) read as too heavy a bar down the screen. */
   .app-rail-handle {
     position: relative;
     flex-shrink: 0;
-    width: 22px;
+    width: 18px;
     align-self: stretch;
     display: flex;
     align-items: center;
@@ -1769,10 +1770,10 @@
     display: flex;
     flex-shrink: 0;
     /* Matches .artifact-drawer-handle's own width below — collapsed, this
-       whole strip IS the handle. Widened from 14px to 22px (with it): the
+       whole strip IS the handle. Widened from 14px to 18px (with it): the
        panel width itself was fine, it was this collapsed sliver that was
        too thin to reliably see or click. */
-    width: 22px;
+    width: 18px;
     transition: width var(--t-base) var(--ease-out);
   }
   .artifact-drawer.is-open {
@@ -1790,8 +1791,8 @@
   .artifact-drawer-handle {
     position: relative;
     flex-shrink: 0;
-    /* Same 22px as .artifact-drawer's own collapsed width, above. */
-    width: 22px;
+    /* Same 18px as .artifact-drawer's own collapsed width, above. */
+    width: 18px;
     align-self: stretch;
     /* Centers the arrow below without it needing its own margin math. */
     display: flex;
@@ -1838,9 +1839,9 @@
   }
   /* The handle's own groove is already the primary affordance (found by
      hover/touch); this answers "does this do something" for a teacher who
-     hasn't tried yet. Sized under the 22px strip's own width so it never
+     hasn't tried yet. Sized under the 18px strip's own width so it never
      forces the groove wider — bumped from 10px/opacity 0.7 alongside the
-     strip's own 14px->22px widening, since "hard to see, hard to click"
+     strip's own 14px->18px widening, since "hard to see, hard to click"
      was the whole complaint this strip existed to answer. */
   .artifact-drawer-arrow {
     width: 13px;
