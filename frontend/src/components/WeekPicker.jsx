@@ -28,7 +28,12 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
      the control simply vanished and took the explanation with it: no week
      on screen, no week in the prompt, and nothing anywhere saying why or
      for which school. Naming the school is the whole point — "no calendar"
-     is useless without "whose". */
+     is useless without "whose". The school's own name used to live INSIDE
+     this row too (a visible label next to the select) — pulled out into its
+     own leading badge in ChatPage.jsx on request (school, then course, then
+     date, left to right), so it's kept here only for the empty-state
+     message and the select's accessible name, neither of which is visible
+     text anymore. */
   if (!options.length) {
     return (
       <p className="chat-week">
@@ -41,15 +46,6 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
   return (
     <div className="chat-week">
       <CalendarDays size={12} aria-hidden="true" />
-      {/* The school's own name in place of a generic "Planning" label: every
-          week in the dropdown is one district's real teaching calendar, and
-          a teacher who has more than one school on file (or is checking
-          they picked the right one) can't tell that from a bare week
-          number. Costs no extra room — it replaces a word rather than
-          adding a line. */}
-      <label htmlFor="week-picker" className="min-w-0 shrink truncate">
-        {schoolName || 'Planning'}
-      </label>
       {/* min-w-0 alone does NOT stop a native <select> sizing itself to its
           longest option's text — that's the box's intrinsic content width,
           which flex-shrink doesn't reliably override for form controls on
@@ -60,6 +56,7 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
           width, so the OS clips the rendered text instead. */}
       <select
         id="week-picker"
+        aria-label={schoolName ? `${schoolName} week` : 'Week'}
         value={value ?? ''}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
