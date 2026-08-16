@@ -3332,24 +3332,29 @@
     top: -8%;
     left: 50%;
     transform: translateX(-50%);
-    width: min(72vw, 720px);
-    height: min(72vw, 720px);
+    /* Was min(72vw, 720px) — capped out at a 1000px-wide viewport and never
+       grew past it, same plateau .land-title's own font-size had. Raised by
+       the same ~1.25x .land-title's ceiling grew by, so the wash keeps
+       pace with the now-bigger headline instead of looking undersized
+       beneath it on a wide screen. */
+    width: min(72vw, 900px);
+    height: min(72vw, 900px);
     /* Radii scale with the box instead of a flat px number: the box itself is
-       min(72vw, 720px), so each radius is min(Nvw, Npx) with N tuned so the
-       two caps land together (e.g. 150px is 150/720 of the box, and
-       72 * 150/720 = 15, so min(15vw, 150px) tracks the box at every width
-       instead of just at its 720px ceiling). Fixed px radii here used to be
+       min(72vw, 900px), so each radius is min(Nvw, Npx) with N tuned so the
+       two caps land together (e.g. 188px is ~188/900 of the box, and
+       72 * 188/900 = 15, so min(15vw, 188px) tracks the box at every width
+       instead of just at its 900px ceiling). Fixed px radii here used to be
        sized for the desktop box only — on a ~270px-wide iPhone box the same
-       140-150px circles overlapped edge to edge with no transparent margin
-       left to fade into, reading as a flat, hard-edged rectangle instead of
-       a soft wash. Keeping each radius small relative to the (roughly
-       square) box leaves a genuinely transparent margin all the way around
-       for the fade to land inside, at every viewport width. */
-    background: radial-gradient(circle min(15vw, 150px) at 30% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 140px) at 58% 20%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 140px) at 74% 42%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle min(14.5vw, 145px) at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 140px) at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
+       circles overlapped edge to edge with no transparent margin left to
+       fade into, reading as a flat, hard-edged rectangle instead of a soft
+       wash. Keeping each radius small relative to the (roughly square) box
+       leaves a genuinely transparent margin all the way around for the
+       fade to land inside, at every viewport width. */
+    background: radial-gradient(circle min(15vw, 188px) at 30% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 58% 20%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 74% 42%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(14.5vw, 181px) at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
     pointer-events: none;
     /* Slow drift, on request — background-position, not transform: the box
        already carries a static transform (translateX(-50%), for centering)
@@ -3408,7 +3413,16 @@
     max-width: 16ch;
     margin: 0;
     font-family: var(--font-display);
-    font-size: clamp(2.5rem, 7vw, 5.5rem);
+    /* Was clamp(2.5rem, 7vw, 5.5rem) — 7vw hits the 5.5rem ceiling at
+       ~1257px, so every screen wider than a small laptop rendered the exact
+       same fixed-size headline while the empty margin on either side kept
+       growing. Raising the ceiling (and easing the vw rate slightly so it
+       doesn't overshoot before then) lets the hero keep growing into an
+       actually wide viewport instead of sitting as a fixed-size island on
+       one — the emptiness READ as "not full width" even though the
+       section's own background already spans it; the fix is the content
+       filling more of it, not the section. */
+    font-size: clamp(2.5rem, 6.5vw, 7rem);
     font-weight: 800;
     line-height: 1.05;
     letter-spacing: -0.02em;
@@ -3468,9 +3482,12 @@
   .land-sub {
     position: relative;
     z-index: 1;
-    max-width: 38ch;
+    max-width: 42ch;
     margin: clamp(var(--sp-6), 4vw, var(--sp-8)) auto 0;
-    font-size: var(--fs-lg);
+    /* Was the fixed --fs-lg token — fine under the old fixed-size headline,
+       undersized under the bigger one above. A gentle vw component keeps it
+       proportional without turning it into a second display size. */
+    font-size: clamp(var(--fs-lg), 1.1vw, 1.25rem);
     line-height: var(--lh-relaxed);
     color: var(--brand-muted);
     text-wrap: pretty;
