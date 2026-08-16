@@ -317,11 +317,12 @@ export function AdminPage() {
   )
 }
 
-/* Pulled out of AdminPage's own render, same reasoning as SettingsPage's
- * own SettingsBody — a direct/bookmarked visit to `/admin` still wants a
- * full page (with its own "Back to the app" link and heading), but opening
- * it from AccountMenu overlays the chat with AdminModal instead, and both
- * shells render this exact same body. */
+/* Pulled out of AdminPage's own render, same reasoning as SettingsPage's own
+ * SettingsBody — an AdminModal briefly overlaid the chat with this same
+ * content (since removed on request in favor of a real Account page, see
+ * AccountPage.jsx), and this split let both shells render it identically.
+ * Kept even with one consumer now, same reasoning SettingsBody's own comment
+ * gives. */
 export function AdminBody() {
   const toast = useToast()
   const confirm = useConfirm()

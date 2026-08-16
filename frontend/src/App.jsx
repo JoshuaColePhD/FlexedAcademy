@@ -25,12 +25,11 @@ import { useClasses } from './hooks/useAppData'
 import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { SettingsModal } from './components/SettingsModal'
+import { AccountPage } from './pages/AccountPage'
 import { PlansPage } from './pages/PlansPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
 import { AdminPage } from './pages/AdminPage'
-import { AdminModal } from './components/AdminModal'
 import { LandingPage } from './pages/LandingPage'
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
@@ -168,25 +167,19 @@ function RememberClass() {
   return null
 }
 
-/** Settings opens as a dialog over whatever you were already looking at,
- *  the same "modal route" react-router pattern Claude's own desktop
- *  settings uses under the hood — AccountMenu navigates to `settings` with
- *  `state: { background: location }` (see AccountMenu.jsx) instead of a
- *  plain Link, so the CURRENT location is the one to render as a dialog and
- *  the location it carries in `background` is the one to render as the
- *  page underneath. A bookmarked or refreshed `/c/:id/settings` visit has
- *  no such state — `background` is undefined, both `<Routes>` below match
- *  the real location, and it falls back to rendering as an ordinary full
- *  page (SettingsPage), never a dialog with nothing behind it. */
+/** Plain full-page routes — no modal-over-chat trick. Settings and Account
+ *  used to open as dialogs (react-router's "background location" pattern);
+ *  replaced on request with a different shape: clicking the account trigger
+ *  slides the rail shut (AppShell.jsx, keyed on the route itself) and the
+ *  chat pane is replaced by a full, well-organized page instead — same
+ *  "drill in, then come back" feel as a mobile settings screen, not a
+ *  popover or an overlay. */
 function ClassRoutes() {
-  const location = useLocation()
-  const background = location.state?.background
-
   return (
     <>
       <RememberClass />
       <AppShell>
-        <Routes location={background || location}>
+        <Routes>
           {/* A new plan IS the home screen. There is no calendar route: the
               school calendar still shapes every generation, from
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
@@ -195,14 +188,10 @@ function ClassRoutes() {
           <Route path="plans" element={<PlansPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="class" element={<ClassPage />} />
+          <Route path="account" element={<AccountPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
-        {background ? (
-          <Routes>
-            <Route path="settings" element={<SettingsModal />} />
-          </Routes>
-        ) : null}
       </AppShell>
     </>
   )
@@ -295,47 +284,24 @@ function Gate() {
     )
   }
 
-  /* Same "modal route" pattern as ClassRoutes' own Settings overlay (see its
-     comment there) — AccountMenu navigates to /admin with
-     `state: { adminBackground: location }` instead of a plain Link, so
-     /admin opens as a dialog over whatever chat was already open instead of
-     replacing it. A direct/bookmarked /admin visit has no such state —
-     `background` is undefined, both `<Routes>` below match the real
-     location, and it falls back to AdminPage as an ordinary full page.
-     A DIFFERENT key than Settings' own `background` on purpose: this
-     `<Routes location={...}>` override is ambient for its entire subtree,
-     which includes ClassRoutes — reusing the same key meant clicking
-     Settings (which sets `state.background` one level down, for ITS OWN
-     modal) ALSO tripped this top-level override, which then rendered
-     ClassRoutes against the wrong location and silently swallowed the
-     Settings modal before ClassRoutes ever got a real location to react to. */
-  const background = location.state?.adminBackground
-
   return (
-    <>
-      <Routes location={background || location}>
-        <Route path="/" element={<RootRedirect />} />
-        <Route path="/welcome" element={<WelcomePage />} />
-        {/* Already signed in — bounce off the auth pages rather than showing a
-            sign-in form to someone who is signed in. */}
-        <Route path="/login" element={<AfterAuthRedirect />} />
-        <Route path="/signup" element={<AfterAuthRedirect />} />
-        {/* Already signed in — the emailed link's job (log them in) is already
-            done, and change-password now lives in settings. */}
-        <Route path="/reset-password" element={<AfterAuthRedirect />} />
-        <Route path="/c/:classId/*" element={<ClassRoutes />} />
-        {/* Gated again server-side by every request the page makes — reaching
-            this route with a non-admin session gets the page shell and then a
-            403 from /api/admin/accounts, not real data. */}
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-      {background ? (
-        <Routes>
-          <Route path="/admin" element={<AdminModal />} />
-        </Routes>
-      ) : null}
-    </>
+    <Routes>
+      <Route path="/" element={<RootRedirect />} />
+      <Route path="/welcome" element={<WelcomePage />} />
+      {/* Already signed in — bounce off the auth pages rather than showing a
+          sign-in form to someone who is signed in. */}
+      <Route path="/login" element={<AfterAuthRedirect />} />
+      <Route path="/signup" element={<AfterAuthRedirect />} />
+      {/* Already signed in — the emailed link's job (log them in) is already
+          done, and change-password now lives in settings. */}
+      <Route path="/reset-password" element={<AfterAuthRedirect />} />
+      <Route path="/c/:classId/*" element={<ClassRoutes />} />
+      {/* Gated again server-side by every request the page makes — reaching
+          this route with a non-admin session gets the page shell and then a
+          403 from /api/admin/accounts, not real data. */}
+      <Route path="/admin" element={<AdminPage />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
   )
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, Download, HardDrive, Sparkles } from 'lucide-react'
+import { Link, useParams } from 'react-router-dom'
+import { ArrowLeft, CreditCard, Download, HardDrive, Sparkles } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -612,6 +613,7 @@ function Diagnostics() {
 }
 
 export function SettingsPage() {
+  const { classId } = useParams()
   const qc = useQueryClient()
   const toast = useToast()
   const meState = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
@@ -642,7 +644,19 @@ export function SettingsPage() {
 
   return (
     <div className="column">
-      <header className="flex h-14 shrink-0 items-center px-gutter">
+      <header className="flex h-14 shrink-0 items-center gap-2 px-gutter">
+        {/* Back to Account, not the chat directly — Settings is reached by
+            drilling into Account (AccountPage.jsx), so "back" should retrace
+            that same step rather than skip past it. A direct/bookmarked
+            visit still lands here fine; this link just always points at the
+            same place regardless of how the page was reached. */}
+        <Link
+          to={`/c/${classId}/account`}
+          aria-label="Back to your account"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+        </Link>
         <h1 className="text-sm font-semibold text-ink">Settings</h1>
       </header>
 
@@ -662,13 +676,12 @@ export function SettingsPage() {
   )
 }
 
-/* Pulled out of SettingsPage's own render so SettingsModal (opened from
- * AccountMenu, overlaying the chat) can render the exact same fields —
- * one body, two shells: a full page for a direct/bookmarked visit to
- * `/settings`, a dialog overlay for the normal in-app path. State stays up
- * in SettingsPage/SettingsModal (whichever mounted) and is only passed down,
- * so there's exactly one copy of "what's the teacher's name doing right
- * now," not two components each independently racing the same query. */
+/* Pulled out of SettingsPage's own render — a settings dialog briefly lived
+ * here (SettingsModal, since removed on request in favor of the account
+ * trigger navigating to a real page instead), and this split let both
+ * shells render the exact same fields. Kept even with one consumer now:
+ * the state/hooks stay in SettingsPage and only get passed down, so there's
+ * exactly one copy of "what's the teacher's name doing right now." */
 export function SettingsBody({ teacher, setTeacher, savedName, commitTeacher, meState, qc }) {
   return (
     <>
