@@ -1624,7 +1624,7 @@ export function ChatPage() {
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className={`chat-column mx-auto flex w-full flex-col gap-7 px-gutter py-8 transition-all duration-500 ease-out ${
-            voiceOpen ? 'max-w-measure-wide' : 'max-w-measure'
+            voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
           }`}>
             {messages.map((m, i) => (
               <Message
@@ -1740,7 +1740,7 @@ export function ChatPage() {
           remount. Only the wrapper's className may change. */}
       <div className="shrink-0 bg-paper pb-5 pt-3">
         <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
-          voiceOpen ? 'max-w-measure-wide' : 'max-w-measure'
+          voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
         }`}>
           <Composer
             value={query}
