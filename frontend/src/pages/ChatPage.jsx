@@ -1673,14 +1673,14 @@ export function ChatPage() {
           content it affects. Right-aligned so it sits at the seam with
           whatever's docked on the right (the plans rail, or the open
           document), not lost against the far edge of the screen. */}
-      {/* The top header bar: Theme toggle pinned right; the week picker used to
-          sit beside it (justify-end put both on the right edge, crowded
-          together) — centered now via absolute positioning within this
-          `relative` bar, so it reads as the bar's own focal point rather than
-          a second control tucked next to the toggle. */}
-      <div className="relative flex h-11 shrink-0 items-center border-b border-edge px-2">
+      {/* The top header bar: Theme toggle pinned right. The class/week row
+          used to be centered via absolute positioning — on Josh's own ask,
+          it's a plain leading flex item now, flush against the same left
+          edge as the message list and composer below it, not floating apart
+          from the rest of the pane's own left margin. */}
+      <div className="flex h-11 shrink-0 items-center border-b border-edge px-2">
         {!docOpen ? (
-          <div className="chat-head pointer-events-auto absolute left-1/2 flex max-w-[92%] -translate-x-1/2 flex-nowrap items-center">
+          <div className="chat-head pointer-events-auto flex min-w-0 max-w-[70%] flex-nowrap items-center">
             {/* Which prep, directly left of which week — the two questions
                 that together answer "what is this conversation about,"
                 read as one row instead of a switcher a whole sidebar away
