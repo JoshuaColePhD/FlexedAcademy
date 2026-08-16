@@ -92,7 +92,7 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
      stays a fixed-width card either way; only the trigger's shape and the
      popup's anchoring edge change. */
   return (
-    <div className={inline ? 'relative' : 'relative px-2 pb-1'} ref={ref}>
+    <div className={inline ? 'relative min-w-0 shrink' : 'relative px-2 pb-1'} ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

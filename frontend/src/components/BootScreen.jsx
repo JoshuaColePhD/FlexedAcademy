@@ -13,7 +13,7 @@ export function BootScreen() {
       <span className="visually-hidden" role="status">Loading FlexEd Academy…</span>
 
       {/* the rail */}
-      <div className="hidden w-[396px] shrink-0 flex-col gap-4 border-r border-edge bg-paper-sunken p-4 lg:flex">
+      <div className="hidden w-[264px] shrink-0 flex-col gap-4 border-r border-edge bg-paper-sunken p-4 lg:flex">
         <div className="flex items-center gap-2.5">
           <span className="text-sm font-semibold tracking-tight text-ink">FlexEd Academy</span>
         </div>
