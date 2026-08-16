@@ -735,6 +735,47 @@ export function VoiceModePanel({
     stopRecorder()
   }
 
+  // Keep fresh references for the global keyboard listener without re-binding it on every render
+  const latestHandlersRef = useRef({ startPttRecording, stopPttRecording, toggleMute })
+  latestHandlersRef.current = { startPttRecording, stopPttRecording, toggleMute }
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignore if typing in a text field or if focus is on a button (buttons natively use Space to click)
+      if (['INPUT', 'TEXTAREA', 'BUTTON'].includes(e.target.tagName)) return
+      if (e.code === 'Space') {
+        e.preventDefault() // Prevent page scrolling
+        if (e.repeat) return // Prevent auto-repeat from spamming
+
+        if (modeRef.current === 'ptt') {
+          latestHandlersRef.current.startPttRecording()
+        } else {
+          latestHandlersRef.current.toggleMute()
+        }
+      }
+    }
+
+    const handleKeyUp = (e) => {
+      if (['INPUT', 'TEXTAREA', 'BUTTON'].includes(e.target.tagName)) return
+      if (e.code === 'Space') {
+        e.preventDefault()
+        if (modeRef.current === 'ptt') {
+          latestHandlersRef.current.stopPttRecording()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      // Safety catch: if they release space while focused elsewhere, ensure we stop PTT
+      if (modeRef.current === 'ptt') latestHandlersRef.current.stopPttRecording()
+    }
+  }, [])
+
   // rec.stop() is ASYNCHRONOUS — the 'stop' event (and so handleUtteranceReady,
   // wired up as rec.onstop) doesn't fire until the recorder finishes
   // flushing. This used to null out speechStartRef/vadStateRef/
