@@ -1509,6 +1509,50 @@ export function VoiceModePanel({
   )
 }
 
+/* Assessment suggestions tailored to the class's own subject and to the
+ * skill focus already decided — was four hardcoded options regardless of
+ * either. `subject` is the raw framework id (e.g. "ap-lang", "algebra-1"),
+ * not a full framework record — good enough for a coarse ELA/math/science/
+ * history split without plumbing the whole /api/frameworks list through
+ * ChatPage just for four suggestion chips. Capped at 4 so the row never
+ * outgrows what a phone can show in one wrap. */
+function assessmentOptions(subject, skillValue) {
+  const subj = (subject || '').toLowerCase()
+  const skill = (skillValue || '').toLowerCase()
+  const isELA = /english|lang|ela|literature|composition|reading|writing|literacy/.test(subj)
+  const isMath = /math|algebra|geometry|calculus|statistics|precalculus/.test(subj)
+  const isScience = /science|biology|chemistry|physics|environmental/.test(subj)
+  const isHistory = /history|social studies|government|geography|economics|psychology/.test(subj)
+  const wantsAnalysis = /rhetoric|analysis|argument|persuas/.test(skill)
+  const wantsNarrative = /narrative|creative|voice/.test(skill)
+
+  const opts = []
+  if (isELA) {
+    if (wantsAnalysis) {
+      opts.push({ label: 'Timed Write / Rhetorical Précis', value: 'Let us do a timed write, like a rhetorical précis.' })
+    }
+    if (wantsNarrative) {
+      opts.push({ label: 'Creative / Narrative Response', value: 'Let us do a creative narrative response.' })
+    }
+    opts.push({ label: 'Socratic Seminar', value: 'Let us do a Socratic seminar.' })
+    opts.push({ label: 'Short Answer / Essay', value: 'Let us do a short answer essay.' })
+  } else if (isMath || isScience) {
+    opts.push({ label: 'Problem Set', value: 'Let us do a problem set.' })
+    if (isScience) opts.push({ label: 'Lab Report', value: 'Let us do a lab report.' })
+    opts.push({ label: 'Multiple Choice Quiz', value: 'Let us do a multiple choice quiz.' })
+  } else if (isHistory) {
+    opts.push({ label: 'Document-Based Question (DBQ)', value: 'Let us do a document-based question.' })
+    opts.push({ label: 'Socratic Seminar', value: 'Let us do a Socratic seminar.' })
+    opts.push({ label: 'Multiple Choice Quiz', value: 'Let us do a multiple choice quiz.' })
+  } else {
+    opts.push({ label: 'Multiple Choice Quiz', value: 'Let us do a multiple choice quiz.' })
+    opts.push({ label: 'Short Answer / Essay', value: 'Let us do a short answer essay.' })
+    opts.push({ label: 'Socratic Seminar', value: 'Let us do a Socratic seminar.' })
+  }
+  opts.push({ label: 'Exit Ticket', value: 'An exit ticket.' })
+  return opts.slice(0, 4)
+}
+
 function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
   const { checklist } = splitDecisions(decisions)
   const nextUndecided = checklist.find((c) => c.value == null)
@@ -1517,12 +1561,12 @@ function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
 
   let title = ''
   let options = []
-  
-  if (activeClass) {
-    // Just touching activeClass to suppress the unused variable lint error
-    // Could display it, but chips take precedence right now.
-    void activeClass
-  }
+  // Set on the one option actually pulled from real class/calendar data
+  // (the week's own notes, its own topic, or an assessment tailored to the
+  // class's subject) — a faint accent tint distinguishes "this came from
+  // your own calendar" from "this is a generic fallback," which plain
+  // identical chips couldn't say on their own.
+  let smartIdx = -1
 
   if (nextUndecided.key === 'week' && calendar?.weeks) {
     title = 'Upcoming Schedule'
@@ -1536,9 +1580,13 @@ function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
       }))
   } else if (nextUndecided.key === 'anchor') {
     title = 'Suggested Texts'
-    // Look at the selected week to see if there are texts in the notes
+    // Look at the selected week to see if there are texts in the notes.
+    // Was `.replace(/\\D/g, '')` — a doubled backslash, which as a regex
+    // literal matches the two-character string "\D" rather than "any
+    // non-digit" — so this always returned NaN and weekData never resolved,
+    // silently disabling the one truly contextual suggestion below.
     const selectedWeekDec = checklist.find((c) => c.key === 'week')
-    const selectedWeekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\\D/g, ''), 10) : null
+    const selectedWeekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\D/g, ''), 10) : null
     const weekData = calendar?.weeks?.find((w) => w.week === selectedWeekNum)
 
     if (weekData?.notes) {
@@ -1546,13 +1594,14 @@ function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
         label: `From Calendar: ${weekData.notes.slice(0, 40)}${weekData.notes.length > 40 ? '...' : ''}`,
         value: `Let's use the text from the calendar: ${weekData.notes}`,
       })
+      smartIdx = 0
     }
     options.push({ label: 'Recommend a text for me', value: 'Can you recommend an anchor text for this week?' })
     options.push({ label: 'I will provide my own text', value: 'I have my own text in mind.' })
   } else if (nextUndecided.key === 'skill') {
     title = 'Suggested Focus'
     const selectedWeekDec = checklist.find((c) => c.key === 'week')
-    const selectedWeekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\\D/g, ''), 10) : null
+    const selectedWeekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\D/g, ''), 10) : null
     const weekData = calendar?.weeks?.find((w) => w.week === selectedWeekNum)
 
     if (weekData?.topic || weekData?.unit) {
@@ -1560,14 +1609,13 @@ function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
         label: `Focus on ${weekData.topic || weekData.unit}`,
         value: `Let's make the skill focus about ${weekData.topic || weekData.unit}.`,
       })
+      smartIdx = 0
     }
     options.push({ label: 'Recommend a skill', value: 'Can you recommend a skill focus based on the text?' })
   } else if (nextUndecided.key === 'assessment') {
     title = 'Assessment Options'
-    options.push({ label: 'Multiple Choice Quiz', value: 'Let us do a multiple choice quiz.' })
-    options.push({ label: 'Short Answer / Essay', value: 'Let us do a short answer essay.' })
-    options.push({ label: 'Socratic Seminar', value: 'Let us do a Socratic seminar.' })
-    options.push({ label: 'Exit Ticket', value: 'An exit ticket.' })
+    const skillDec = checklist.find((c) => c.key === 'skill')
+    options = assessmentOptions(activeClass?.subject, skillDec?.value)
   }
 
   if (options.length === 0) return null
@@ -1580,7 +1628,11 @@ function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
           <button
             key={i}
             onClick={() => onSelect(opt.value)}
-            className="rounded-lg border border-edge-strong bg-paper px-3 py-1.5 text-sm font-medium text-ink transition-all hover:bg-paper-hover active:scale-[0.98]"
+            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-all hover:bg-accent-tint hover:text-accent-text hover:border-transparent active:scale-[0.98] ${
+              i === smartIdx
+                ? 'border-transparent bg-accent-tint text-accent-text'
+                : 'border-edge-strong bg-paper text-ink'
+            }`}
           >
             {opt.label}
           </button>
