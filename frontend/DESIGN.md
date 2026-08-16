@@ -1,5 +1,5 @@
 ---
-name: Flexed Academy
+name: FlexEd Academy
 description: Warm-paper, district-blue lesson planner; a verified seal on violet at the door.
 colors:
   paper: "#f6f4ec"
@@ -60,7 +60,7 @@ components:
     rounded: "{rounded.sm}"
 ---
 
-# Design System: Flexed Academy
+# Design System: FlexEd Academy
 
 ## Overview
 
@@ -68,7 +68,7 @@ components:
 
 The product itself is a plain, warm-neutral document tool: paper and ink, one district blue that means something because it is the exact color printed on the .docx a teacher hands in. (The app's paper was cool-neutral through an earlier iteration; it's warm now, closer to Claude's own palette, per direct product direction — see the header of tokens.css.) The landing page is the one deliberate exception: it commits to a violet-ground brand world — always, regardless of the visitor's OS light/dark setting — rather than a thin violet accent on white.
 
-The original direction took its cue from a supplied logo mark (a violet gem glowing on near-black), but that file turned out to be a flat opaque PNG with no alpha channel — it rendered as a hard white-cornered square against the violet ground rather than blending in, and was removed at Josh's request. The header is text-only ("Flexed Academy") until a transparent-background version of the mark exists; the violet-ground world itself stands on its own and doesn't require the mark to justify it.
+The original direction took its cue from a supplied logo mark (a violet gem glowing on near-black), but that file turned out to be a flat opaque PNG with no alpha channel — it rendered as a hard white-cornered square against the violet ground rather than blending in, and was removed at Josh's request. The header is text-only ("FlexEd Academy") until a transparent-background version of the mark exists; the violet-ground world itself stands on its own and doesn't require the mark to justify it.
 
 Gold is the second color, and it has exactly one job: it is the "verified" mark. A hand-drawn seal (a circle and a checkmark, stroke-drawn on load) sits beside the headline's claim and again beside the cited standard in the proof section — gold never appears as generic decoration, only as evidence a claim was checked. The one warm, paper-toned section breaks from violet on purpose: it is showing an excerpt of an actual paper standards document, and it earns that warmth exactly there, not as the page's whole personality.
 

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { ChevronsRight, Download, Loader2, RefreshCw } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import { ChevronsRight, Download, Loader2, RefreshCw, Share2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -8,6 +9,7 @@ import { classColor } from '../lib/classColor'
 import { unitSuffix } from '../lib/planShape'
 import { LessonPlanTable } from './LessonPlanTable'
 import { Marginalia } from './Marginalia'
+import { ShareDialog } from './ShareDialog'
 
 /* The artifact, expanded into a working document.
  *
@@ -19,16 +21,16 @@ import { Marginalia } from './Marginalia'
  *  - Edit. An edit mode is a second writer of the same artifact and would drift
  *    against chat-driven revision. Every revision goes through the composer or a
  *    cell tweak, so there is exactly one path a change can take.
+ *  - A Days/Fit/Print toggle. Three ways to read one week was two more
+ *    decisions than a teacher opening this panel actually has: what a plan
+ *    "really" looks like is the district table it prints to, so that is the
+ *    only shape a non-phone screen ever shows now — see PRINT below. Fit's
+ *    own compact grid is gone with it, not just hidden, since nothing can
+ *    reach it anymore.
  *
  * The page fits the container and is never a fixed 900px sheet: a fixed page in
  * a narrow canvas clips its own title, which is the defect this replaces.
  */
-const VIEWS = [
-  { id: 'days', label: 'Days', hint: 'One card per day' },
-  { id: 'fit', label: 'Fit', hint: 'Fitted to this width' },
-  { id: 'print', label: 'Print', hint: 'The district table at its printed width' },
-]
-
 export function ArtifactPanel({
   artifact,
   classId,
@@ -44,7 +46,9 @@ export function ArtifactPanel({
   setOpenTweak,
 }) {
   const [rebuilding, setRebuilding] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const toast = useToast()
+  const location = useLocation()
   const panelRef = useRef(null)
   const titleRef = useRef(null)
   const color = classColor(classId)
@@ -56,11 +60,11 @@ export function ArtifactPanel({
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
   const isPhone = useLayoutMode() === 'phone'
 
-  /* One control, three views — see VIEWS below. Derived until the teacher
-     picks, then sticky. `useState(!isOverlay)` never re-evaluated, so a wrong
-     answer at mount time was permanent. */
-  const [chosen, setChosen] = useState(null)
-  const view = chosen ?? (isPhone ? 'days' : 'fit')
+  // Days is the phone shape — the district table has a min-width and a
+  // teacher on a phone reads one day at a time anyway. Everyone else gets
+  // Print, the actual district table: no picking required, because there is
+  // nothing left to pick between.
+  const view = isPhone ? 'days' : 'print'
   /* Escape peels one layer at a time, innermost first: an open cell tweak, then
      the document. It has to be decided HERE rather than in the tweak input,
      because useFocusTrap binds a native listener on this container — which runs
@@ -121,30 +125,20 @@ export function ArtifactPanel({
 
         <span className="flex-1" />
 
-        {/* One control where there were two — a `Fit width` button up here and
-            a `View as the district table` button down in the table, which
-            could contradict each other and which left the deck unreachable
-            above 1024px. */}
-        <div className="doc-views" role="group" aria-label="How to show the plan">
-          {VIEWS.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              className="doc-view"
-              aria-pressed={view === v.id}
-              onClick={() => setChosen(v.id)}
-              title={v.hint}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-
         {planId ? (
           <>
-            {/* Not on a phone: collapse + the view control + Download already
-                fill 375px, and Rebuild is a power action where Download is the
-                reason the app exists. */}
+            {/* Not on a phone: collapse + Download already fill 375px, and
+                both Rebuild and Share are power actions where Download is
+                the reason the app exists. */}
+            <button
+              type="button"
+              className={`btn-icon${isPhone ? ' hidden' : ''}`}
+              onClick={() => setShareOpen(true)}
+              aria-label="Share this plan via Google"
+              title="Share via Google"
+            >
+              <Share2 size={16} aria-hidden="true" />
+            </button>
             <button
               type="button"
               className={`btn-icon${isPhone ? ' hidden' : ''}`}
@@ -209,6 +203,14 @@ export function ArtifactPanel({
           </div>
         )}
       </div>
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        planId={planId}
+        weekLabel={plan?.week_of}
+        returnTo={`${location.pathname}${location.search}`}
+      />
     </section>
   )
 }

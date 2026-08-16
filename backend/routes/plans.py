@@ -3,17 +3,18 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
-from .. import db, docx_build, llm, qti_build, schema, service, units
+from .. import db, docx_build, google_drive, llm, qti_build, schema, service, units
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from .drive import get_valid_access_token
 
 router = APIRouter(prefix="/api/plans", tags=["plans"])
 
@@ -39,6 +40,14 @@ class PlanFeedback(BaseModel):
 class QuizRequest(BaseModel):
     question_types: list[str] = Field(min_length=1, max_length=len(schema.QUESTION_TYPES))
     num_questions: int = Field(default=10, ge=1, le=40)
+
+
+class SharePlan(BaseModel):
+    email: EmailStr | None = None
+    # "reader" by default — a co-teacher gets to actually see the week
+    # before they get to change it, and role is exactly the choice Drive's
+    # own share dialog would offer.
+    role: Literal["reader", "writer"] = "reader"
 
 
 def _require_id(plan_id: str) -> None:
@@ -229,9 +238,11 @@ def post_plan_feedback(plan_id: str, body: PlanFeedback, user_id: str = Depends(
     return {"status": "ok"}
 
 
-@router.get("/{plan_id}/download")
-def download_plan(plan_id: str, user_id: str = Depends(get_current_user)):
-    row = _require_plan(user_id, plan_id)
+def _require_docx_path(row: dict) -> Path:
+    """The same three checks download_plan and the share endpoint below both
+    need before touching the file on disk: has a build even finished, did it
+    fail outright, and is the path it left behind still real. Shared so the
+    two only disagree if someone edits one and forgets the other."""
     path_str = row.get("docx_path")
     if not path_str:
         # "No docx yet" has two very different causes and they used to be
@@ -248,7 +259,7 @@ def download_plan(plan_id: str, user_id: str = Depends(get_current_user)):
             "docx_pending",
             "This plan's document is still generating in the background.",
             status=409,
-            hint="Please wait a moment and try downloading again.",
+            hint="Please wait a moment and try again.",
         )
     p = Path(path_str).resolve()
     if not p.is_relative_to(Path(settings.plans_dir).resolve()) or not p.is_file():
@@ -258,11 +269,60 @@ def download_plan(plan_id: str, user_id: str = Depends(get_current_user)):
             status=404,
             hint="Rebuild it from the stored plan — the content is safe in the database.",
         )
+    return p
+
+
+@router.get("/{plan_id}/download")
+def download_plan(plan_id: str, user_id: str = Depends(get_current_user)):
+    row = _require_plan(user_id, plan_id)
+    p = _require_docx_path(row)
     return FileResponse(
         path=str(p),
         filename=f"{docx_build.safe_filename(row['week_label'])}.docx",
         media_type=DOCX_MIME,
     )
+
+
+@router.post("/{plan_id}/share")
+def share_plan(plan_id: str, body: SharePlan, user_id: str = Depends(get_current_user)) -> dict:
+    """Shares this plan's .docx as a Google Doc with `body.email`, creating
+    that Doc the first time (see docstring on google_drive.upload_as_google_doc
+    for why it's a real Doc and not a Drive-hosted copy of the .docx bytes).
+
+    Every share after the first reuses the same Doc — drive_file_id is set
+    once and never overwritten — rather than minting a fresh copy on every
+    click, which would leave a trail of near-duplicate Docs for one plan.
+    """
+    if not settings.drive_share_enabled:
+        raise AppError(
+            "drive_unconfigured",
+            "Google Drive sharing isn't set up yet.",
+            status=503,
+        )
+    row = _require_plan(user_id, plan_id)
+    access_token = get_valid_access_token(user_id)
+
+    if not row.get("drive_file_id"):
+        p = _require_docx_path(row)
+        result = google_drive.upload_as_google_doc(
+            access_token,
+            filename=docx_build.safe_filename(row["week_label"]),
+            content=p.read_bytes(),
+            source_mime=DOCX_MIME,
+        )
+        db.set_plan_drive_file(user_id, plan_id, file_id=result["id"], web_link=result["webViewLink"])
+        row = _require_plan(user_id, plan_id)
+
+    if body.email:
+        google_drive.share_file(access_token, row["drive_file_id"], email=body.email, role=body.role)
+        db.add_plan_share(plan_id, email=body.email, role=body.role)
+    return {"web_link": row["drive_web_link"], "shares": db.list_plan_shares(plan_id)}
+
+
+@router.get("/{plan_id}/shares")
+def get_plan_shares(plan_id: str, user_id: str = Depends(get_current_user)) -> dict:
+    row = _require_plan(user_id, plan_id)
+    return {"web_link": row.get("drive_web_link"), "shares": db.list_plan_shares(plan_id)}
 
 
 @router.get("/{plan_id}/quizzes")

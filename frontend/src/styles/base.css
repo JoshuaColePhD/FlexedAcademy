@@ -1103,6 +1103,28 @@
       inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
       inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
   }
+  /* The plan feedback thumbs, once sent: disabling both on a plain boolean
+     left no trace of which one you'd actually picked, only a toast that had
+     already faded by the time you looked back. Pressed in and tinted, the
+     same "selected" language .neo-inset uses everywhere else, so the choice
+     stays visible rather than both buttons just going flat and grey. */
+  .btn-icon.is-good:disabled,
+  .btn-icon.is-bad:disabled {
+    opacity: 1;
+    border-color: transparent;
+    cursor: default;
+    box-shadow:
+      inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.5),
+      inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.7);
+  }
+  .btn-icon.is-good:disabled {
+    color: var(--accent-text);
+    background: var(--accent-tint);
+  }
+  .btn-icon.is-bad:disabled {
+    color: var(--mark);
+    background: var(--mark-tint);
+  }
 
   .btn-send {
     display: inline-flex;
@@ -1593,83 +1615,95 @@
     }
   }
 
-  /* The voice panel's ambient glow, behind its waveform canvas. Deliberately
-     NOT driven by the live audio level (that's the canvas's own job, redrawn
-     every frame from the AnalyserNode) — this is a slow, constant breathing
-     independent of whether anyone is talking, the difference between "a
-     meter" and "a room with some light in it." rgb(var(--accent-rgb)), the
-     primitive, not --accent-tint or any other alias: this sits behind a
-     canvas painted from the SAME primitive read via getComputedStyle in
-     VoiceModePanel.jsx, and the two have to agree on where the color comes
-     from or a future retint of one silently stops matching the other. */
-  .voice-glow {
-    position: absolute;
-    inset: -35%;
-    z-index: -1;
-    border-radius: 50%;
-    background: radial-gradient(closest-side, rgb(var(--accent-rgb) / 0.4), transparent 70%);
-    filter: blur(28px);
-    animation: voice-glow-pulse 4.5s var(--ease) infinite;
-    pointer-events: none;
-  }
-  @keyframes voice-glow-pulse {
-    0%, 100% {
-      opacity: 0.35;
-      transform: scale(0.9);
-    }
-    50% {
-      opacity: 0.7;
-      transform: scale(1.08);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .voice-glow {
-      animation: none;
-      opacity: 0.5;
-    }
-  }
+  /* Voice mode's dock, above the composer (ChatPage.jsx) — it used to be a
+     full-screen/dialog takeover with its own mount/unmount and no exit
+     animation at all. Now the chat box itself grows to make room for it:
+     the message list above compresses (ordinary flex layout — this sits
+     between it and the composer in the same flex column) while THIS
+     wrapper's own height animates from nothing up to its content's real
+     size, so the whole thing reads as the chat pane pushing up from the
+     bottom rather than a separate card dropping in on top of it.
 
-  /* A highlight chasing the ring's own edge, independent of the level-driven
-     canvas inside it — the canvas answers "is it hearing volume," this
-     answers "is it alive" even mid-silence. A conic gradient masked down to
-     a thin annulus at the ring's outer edge, not a filled wedge — the mask's
-     inner stop sits just inside the ring's own border so the sheen reads as
-     riding along it. */
-  .voice-orb-sheen {
-    position: absolute;
-    inset: -6px;
-    border-radius: 50%;
-    background: conic-gradient(
-      from 0deg,
-      transparent 0deg,
-      rgb(var(--accent-rgb) / 0.6) 30deg,
-      transparent 75deg,
-      transparent 360deg
-    );
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
-    animation: voice-orb-spin 5s linear infinite;
-    pointer-events: none;
+     grid-template-rows: 0fr → 1fr, not a max-height guess: max-height has
+     to animate toward some fixed number that either clips a taller panel
+     (a two-question round, say) or leaves a dead gap under a shorter one —
+     neither reads as "organic." A 0fr/1fr grid row animates to the
+     content's OWN height every time, whatever that happens to be, the same
+     shape browsers now recommend for this exact "height: auto" gap. The
+     single grid child (voice-dock-body) needs overflow+min-height: 0 for
+     the trick to actually clip during the animation — grid items default
+     to min-height: auto, which refuses to shrink below content size and
+     would otherwise cancel this out entirely.
+
+     Kept mounted one beat longer on close (useExitTransition) so the
+     content still fades out rather than the row simply snapping shut with
+     the panel yanked out from under it — same two-part open/close shape
+     .artifact-drawer already uses beside it, vertical here where the
+     drawer's is horizontal. */
+  .voice-dock {
+    display: grid;
+    flex-shrink: 0;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--t-base) var(--ease-out);
   }
-  @keyframes voice-orb-spin {
+  .voice-dock.is-open {
+    grid-template-rows: 1fr;
+  }
+  .voice-dock-body {
+    min-height: 0;
+    /* A sane ceiling, not the height itself — the row above still grows to
+       fit real content (a one-line "listening…" state and a two-question
+       round land at genuinely different heights, on purpose). This only
+       stops something unusually tall from pushing the composer off the
+       bottom of a short screen; past it the panel scrolls internally
+       instead of the page growing without end. */
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    animation: voice-dock-body-in var(--t-base) var(--ease-out) both;
+  }
+  .voice-dock-body.is-closing {
+    animation: voice-dock-body-out var(--t-fast) var(--ease) both;
+  }
+  @keyframes voice-dock-body-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
     to {
-      transform: rotate(360deg);
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes voice-dock-body-out {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateY(10px);
     }
   }
 
-  /* Runs behind all three desktop columns (Transcript/orb/DecisionStack) —
-     each card's own opaque bg-paper-raised covers it everywhere except the
-     two gaps between them, which is the point: it should read as one
-     thread ducking under three cards, not a line drawn across the page. */
-  .voice-thread {
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgb(var(--accent-rgb) / 0.5) 15%,
-      rgb(var(--accent-rgb) / 0.5) 85%,
-      transparent 100%
-    );
+  /* VoiceModePanel's own caption line — what's currently being said, above
+     the checklist. Always mounted now (it used to mount/unmount outright),
+     so this 0fr/1fr grid row (the same technique .voice-dock uses for its
+     own much bigger open/close, just one line tall here) can actually
+     transition between nothing and one line, instead of the checklist
+     below it jumping down in a single abrupt step every time a caption
+     appears or clears. */
+  .caption-line {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--t-fast) var(--ease-out);
+  }
+  .caption-line.is-visible {
+    grid-template-rows: 1fr;
+  }
+  .caption-line-inner {
+    min-height: 0;
+    overflow: hidden;
   }
 
   .dialog h2 {
@@ -1945,11 +1979,16 @@
        instead of its right. */
     box-shadow: -5px 0 12px rgb(var(--neo-dark-rgb) / 0.35);
   }
-  /* The phone form: one row above the composer, not a column beside the chat. */
+  /* The phone form: one row per group above the composer, not a column
+     beside the chat. Was flex-direction: row for a single group (the plan
+     card) — once Quizzes became reachable here too (a built quiz is a real
+     deliverable, not something worth hiding on a phone), a second
+     .rail-group needed its own line rather than fighting the first one for
+     width in the same row. */
   .artifact-rail.is-bar {
     width: 100%;
-    flex-direction: row;
-    align-items: center;
+    flex-direction: column;
+    gap: var(--sp-2);
     overflow: visible;
     border-left: none;
     border-top: 1px solid var(--edge);
@@ -1994,7 +2033,8 @@
   .rail-card {
     display: flex;
     width: 100%;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
     gap: 9px;
     padding: 13px;
     text-align: left;
@@ -2018,6 +2058,8 @@
     display: flex;
     align-items: center;
     gap: 9px;
+    min-width: 0;
+    flex: 1;
   }
   /* --paper-inset alone was just a flat, slightly-darker fill — the actual
      "stamped into the surface" read needs the inset pair, not just the tone
@@ -2079,42 +2121,6 @@
     display: flex;
     gap: 5px;
   }
-  /* The reason a teacher opened the app: the one filled control in the rail.
-     Was a flat solid --accent fill — the only button in the whole rail with
-     no shadow physics at all. Matches the rail-cta's own "New plan" recipe
-     (AppShell.jsx) now: the tint carries the accent, .neo-raised carries the
-     emboss, so it floats above the card instead of sitting flush with it. */
-  .rail-download {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 6px;
-    font-size: var(--fs-2xs);
-    font-weight: var(--fw-semibold);
-    color: var(--accent-text);
-    background: var(--accent-tint);
-    border-radius: var(--r-md);
-    text-decoration: none;
-    box-shadow: 2px 2px 5px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 5px rgb(var(--neo-light-rgb) / 0.75);
-    transition: box-shadow var(--t-fast) var(--ease);
-  }
-  .rail-download:active {
-    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
-  }
-  /* A quiz whose zip write failed (has_qti false — see QuizRow's own
-     comment) used to drop Download entirely, leaving only Remove: a card
-     that looks like it can only be deleted, never retried. Same slot, same
-     shape, just inert — flat instead of raised, no press feedback — so the
-     card still reads as "this is what Download normally looks like here,"
-     not as a second unrelated control. */
-  .rail-download.is-disabled {
-    color: var(--ink-faint);
-    background: var(--paper-inset);
-    box-shadow: none;
-    cursor: default;
-  }
   .rail-open {
     display: grid;
     width: 28px;
@@ -2133,6 +2139,18 @@
   }
   .rail-open:active {
     box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
+  }
+  /* A quiz whose zip write failed (has_qti false — see QuizRow's own
+     comment) used to drop Download entirely, leaving only Remove: a card
+     that looks like it can only be deleted, never retried. Same slot, same
+     shape, just inert — flat instead of raised, no press feedback — so the
+     card still reads as "this is what Download normally looks like here,"
+     not as a second unrelated control. */
+  .rail-open.is-disabled {
+    color: var(--ink-faint);
+    background: var(--paper-inset);
+    box-shadow: none;
+    cursor: default;
   }
 
   /* A secondary rail line: a source the plan was built from. Unfilled, so the
@@ -2321,10 +2339,25 @@
   /* On a phone the header's fixed items (collapse, the view control, Download)
      leave the title about 40px, so it rendered as "We…" over "Save…". The sheet
      immediately below states the week as its own heading, so this is the one
-     thing in the header that can go. */
+     thing in the header that can go.
+
+     .doc-head-keep-title opts back in — ArtifactDetailPanel's four kinds
+     (quiz/standards/calendar/document) have no restated heading below,
+     so hiding it there left a phone with no idea what it was looking at. */
   @media (max-width: 767.98px) {
     .doc-titles {
       display: none;
+    }
+    .doc-head-keep-title .doc-titles {
+      display: flex;
+    }
+    /* Same 40px-left-for-the-title problem this whole rule exists to solve,
+       just without a view control competing for room — one less fixed item,
+       but Download's label is real text, not an icon, so the title still
+       needs the same truncate-not-overflow treatment on a phone as it gets
+       everywhere wider. */
+    .doc-head-keep-title .doc-title {
+      font-size: var(--fs-sm);
     }
   }
   .doc-title {
@@ -2342,44 +2375,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* Days | Fit | Print. Replaces a `Fit width` button here and a `View as the
-     district table` button inside the table — two controls answering the same
-     question, which could disagree and which between them left the day deck
-     unreachable above 1024px. */
-  /* A groove, not just a darker fill — the track a physical tab would sit in. */
-  .doc-views {
-    display: inline-flex;
-    flex-shrink: 0;
-    gap: 2px;
-    padding: 2px;
-    background: var(--paper-inset);
-    border-radius: var(--r-md);
-    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
-  }
-  .doc-view {
-    padding: 4px var(--sp-2);
-    font-family: var(--font-mono);
-    font-size: var(--fs-2xs);
-    color: var(--ink-muted);
-    background: transparent;
-    border: none;
-    border-radius: var(--r-sm);
-    cursor: pointer;
-    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
-  }
-  .doc-view:hover {
-    color: var(--ink);
-  }
-  /* Standing up out of the groove above, not just a lighter fill against it —
-     the same raised/inset contrast every other selected-vs-not pair in the
-     app already uses (see .neo-inset on the sidebar's active chat row). */
-  .doc-view[aria-pressed='true'] {
-    color: var(--ink);
-    background: var(--paper-raised);
-    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.45), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.75);
-  }
-  /* Same recipe as .rail-download, just at the expanded document's own scale
-     — the tint carries the accent, the shadow carries the "come here". */
+  /* The tint carries the accent, the shadow carries the "come here" — the
+     one filled control in the document header, the same way Download used
+     to be the one filled control in the rail before both plan and quiz
+     cards there settled on an icon-only button instead (see .rail-open). */
   .doc-download {
     display: flex;
     flex-shrink: 0;
@@ -2429,8 +2428,21 @@
      calendar week or a document's metadata is not a printed page, so the
      district-blue "this simulates paper" treatment .doc-sheet otherwise
      carries would be a claim this content doesn't make. Same padding and
-     shadow, a plain embossed panel background instead. */
+     shadow, a plain embossed panel background instead.
+
+     --artifact-w was always the intended width of this panel (see the xl
+     breakpoint's own math in lib/breakpoints.js) but nothing ever actually
+     enforced it — .doc-shell just flexes to fill whatever the chat pane's
+     own minimum leaves over, docked or fully overlaid, with no cap. A
+     district TABLE fills a wide measure the way the printed page it mirrors
+     does; a standards card or a calendar row does not, and a stack of them
+     stretched across a 1500px overlay reads as a small note lost in a huge
+     blank room instead of a compact side panel. Centered, not left-pinned,
+     so the extra room reads as margin instead of the panel being off-centre
+     in its own overlay. */
   .doc-sheet-plain {
+    max-width: var(--artifact-w);
+    margin: 0 auto;
     background: var(--paper-raised);
   }
   .detail-card-stack {
@@ -2581,64 +2593,6 @@
      it into the cell narrows the scope to a day AND a field — see
      backend/service.py's merge-one-key path, which is what stops "shorten the
      Do Now" from re-rolling that day's standards. */
-  /* The fitted view: a summary grid, then a per-day block for the narrative.
-     Both are still .plan-table, so the district blue, the hairlines and the
-     header treatment are one definition — only the column shape differs. */
-  .plan-fit {
-    display: flex;
-    flex-direction: column;
-  }
-  .plan-fit-eyebrow {
-    margin: 22px 0 10px;
-  }
-  .plan-table.is-fit {
-    min-width: 0;
-    table-layout: fixed;
-  }
-  /* With table-layout:fixed the header row sets every column, so the label
-     column has to be told its width here — and the labels have to be allowed to
-     wrap, because "Engagement Strategy" does not fit on one line in it. */
-  .plan-table.is-fit thead th:first-child {
-    width: 8.5rem;
-  }
-  .plan-table.is-fit tbody th {
-    width: auto;
-    white-space: normal;
-    hyphens: auto;
-  }
-  /* The detail table has no header row, so its label column is set here. This
-     is the whole point of the split: one wide column for the paragraphs that
-     were being squeezed into a fifth of the page. */
-  /* The day column. On the <col>, because that is what fixed layout reads. */
-  .plan-detail-day {
-    width: 8.5rem;
-  }
-  .plan-table.is-detail tbody th {
-    vertical-align: top;
-  }
-  .plan-table.is-detail td {
-    line-height: var(--lh-relaxed);
-  }
-  /* In the detail table the part label sits above its paragraph rather than
-     inline — there is room for it now. */
-  .plan-table.is-detail .plan-lesson-part b {
-    display: block;
-    margin-bottom: var(--sp-1);
-    font-size: 10px;
-    font-weight: var(--fw-semibold);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-    color: var(--ink-muted);
-  }
-  .plan-table.is-detail .plan-lesson-part {
-    margin-bottom: var(--sp-4);
-    padding: 2px var(--sp-1);
-    margin-left: calc(var(--sp-1) * -1);
-    border-radius: var(--r-sm);
-  }
-  .plan-table.is-detail .plan-lesson-part:last-child {
-    margin-bottom: 0;
-  }
   .plan-lesson-part.is-editable {
     cursor: text;
     transition: background var(--t-fast) var(--ease);
@@ -3380,18 +3334,22 @@
     transform: translateX(-50%);
     width: min(72vw, 720px);
     height: min(72vw, 720px);
-    /* Explicit pixel radii well under half the box's own smaller dimension,
-       not the "circle"/"farthest-corner" default: that default sizes the
-       circle to reach the box's farthest corner, so on the box's short axis
-       the color never gets a chance to fade before hitting the edge — it
-       reads as a hard-edged rectangle instead of a soft wash. Keeping each
-       radius small relative to the (roughly square) box leaves a genuinely
-       transparent margin all the way around for the fade to land inside. */
-    background: radial-gradient(circle 150px at 30% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
-      radial-gradient(circle 140px at 58% 20%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
-      radial-gradient(circle 140px at 74% 42%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle 145px at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle 140px at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
+    /* Radii scale with the box instead of a flat px number: the box itself is
+       min(72vw, 720px), so each radius is min(Nvw, Npx) with N tuned so the
+       two caps land together (e.g. 150px is 150/720 of the box, and
+       72 * 150/720 = 15, so min(15vw, 150px) tracks the box at every width
+       instead of just at its 720px ceiling). Fixed px radii here used to be
+       sized for the desktop box only — on a ~270px-wide iPhone box the same
+       140-150px circles overlapped edge to edge with no transparent margin
+       left to fade into, reading as a flat, hard-edged rectangle instead of
+       a soft wash. Keeping each radius small relative to the (roughly
+       square) box leaves a genuinely transparent margin all the way around
+       for the fade to land inside, at every viewport width. */
+    background: radial-gradient(circle min(15vw, 150px) at 30% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 140px) at 58% 20%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 140px) at 74% 42%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(14.5vw, 145px) at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 140px) at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
     pointer-events: none;
   }
   .land-eyebrow {
@@ -3474,8 +3432,8 @@
     animation: land-seal-disc-in 350ms var(--ease-out) 550ms both;
   }
   .land-seal-check {
-    stroke-dasharray: 34;
-    stroke-dashoffset: 34;
+    stroke-dasharray: 40;
+    stroke-dashoffset: 40;
     animation: land-seal-draw 400ms var(--ease-out) 950ms both;
   }
   .land-sub {
@@ -4194,6 +4152,30 @@
   .fa-flash {
     animation: fa-flash 2.2s ease-out both;
   }
+  /* A confirmation icon (Copy → Check) arriving with a touch of overshoot
+     rather than just replacing the glyph in place — the same "settling into
+     view" idea fa-card-drop carries, scaled down to icon size for a state
+     that lasts under two seconds. */
+  .fa-pop {
+    animation: fa-pop 320ms var(--ease-spring) both;
+  }
+  /* A ring expanding out from the Stop-recording button and fading as it
+     goes — the classic "live" pulse, so dictation reads as an ongoing state
+     rather than a one-time toggle. Loops for as long as isRecording is true;
+     the button's own tinted background is the part that says so at a
+     glance, this is the part that keeps saying it. */
+  .fa-listening {
+    animation: fa-listening 1.6s var(--ease) infinite;
+  }
+  /* The streaming reply's own cursor. Was Tailwind's stock animate-pulse
+     (a 2s ease-in-out fade to 50% opacity) — serviceable, but the one
+     motion in the whole chat not drawn from this app's own --ease/--t-*
+     vocabulary. A sharper on/off blink at a real cursor's cadence, eased
+     through --ease instead of snapping, reads less like a loading skeleton
+     and more like a caret actually waiting to write the next word. */
+  .fa-cursor {
+    animation: fa-cursor-blink 900ms var(--ease) infinite;
+  }
   /* Voice mode's decision cards, settling into place at the bottom of the
      column as each one is decided. Scale, not just fade: a card that
      resolves out of slightly-too-small reads as landing ON the stack,
@@ -4282,6 +4264,35 @@
   }
   100% {
     background: transparent;
+  }
+}
+@keyframes fa-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fa-listening {
+  0% {
+    box-shadow: 0 0 0 0 rgb(var(--mark-rgb) / 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgb(var(--mark-rgb) / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(var(--mark-rgb) / 0);
+  }
+}
+@keyframes fa-cursor-blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
   }
 }
 /* The hero's verification seal draws itself in once, on load — a stamp being

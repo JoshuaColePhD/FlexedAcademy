@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CreditCard, LogOut, Settings, Sparkles, User, ShieldCheck, Info } from 'lucide-react'
+import { LogOut, Settings, User, ShieldCheck, Info } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
-import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-import { ThemeToggle } from './ThemeToggle'
 
 /* The rail footer, and the home of the control that did not exist.
  *
@@ -18,7 +16,6 @@ import { ThemeToggle } from './ThemeToggle'
  * look for it. */
 export function AccountMenu({ classPath }) {
   const { user, logout } = useAuth()
-  const { entitlement, billingEnabled, openPaywall, manage } = useBilling()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const popoverRef = useRef(null)
@@ -66,7 +63,14 @@ export function AccountMenu({ classPath }) {
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
       </button>
 
-      <ThemeToggle />
+      <Link
+        to={`${classPath}/class`}
+        className="btn-icon"
+        aria-label="Classes & settings"
+        title="Classes & settings"
+      >
+        <Settings size={16} aria-hidden="true" />
+      </Link>
 
       {open ? (
         <div
@@ -79,42 +83,6 @@ export function AccountMenu({ classPath }) {
           {user?.email ? (
             <p className="truncate px-3 py-1.5 text-2xs text-ink-muted">{user.email}</p>
           ) : null}
-          {/* Subscription. Hidden entirely while billing is unconfigured — an
-              account menu offering to manage a subscription that cannot exist
-              is worse than no row at all. */}
-          {billingEnabled ? (
-            entitlement?.subscribed ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false)
-                  manage()
-                }}
-                className="flex min-h-touch w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-              >
-                <CreditCard size={14} aria-hidden="true" /> Manage subscription
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false)
-                  openPaywall()
-                }}
-                className="flex min-h-touch w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-              >
-                <Sparkles size={14} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">Subscribe</span>
-                {/* Plans are unlimited on the free tier now (see
-                    entitlement.py) — nothing left to count down, so this only
-                    has something to say once the weekly usage cap is
-                    actually hit, not on every ordinary week of use. */}
-                {entitlement && !entitlement.may_generate ? (
-                  <span className="shrink-0 text-2xs text-mark">Limit reached</span>
-                ) : null}
-              </button>
-            )
-          ) : null}
           {user?.is_admin ? (
             <Link
               to="/admin"
@@ -125,29 +93,33 @@ export function AccountMenu({ classPath }) {
             </Link>
           ) : null}
           <Link
-            to={`${classPath}/class`}
-            onClick={() => setOpen(false)}
-            className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-          >
-            <Settings size={14} aria-hidden="true" /> Classes &amp; settings
-          </Link>
-          <Link
             to="/privacy"
             onClick={() => setOpen(false)}
             className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
           >
             <Info size={14} aria-hidden="true" /> Privacy &amp; data policy
           </Link>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false)
-              logout()
-            }}
-            className="flex min-h-touch w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-          >
-            <LogOut size={14} aria-hidden="true" /> Sign out
-          </button>
+          <div className="flex items-stretch border-t border-hairline mt-1 pt-1">
+            <Link
+              to={`${classPath}/class`}
+              onClick={() => setOpen(false)}
+              className="flex-1 flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+            >
+              <Settings size={14} aria-hidden="true" /> Classes &amp; settings
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                logout()
+              }}
+              title="Sign out"
+              aria-label="Sign out"
+              className="flex min-h-touch w-10 shrink-0 items-center justify-center text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink border-l border-hairline"
+            >
+              <LogOut size={14} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

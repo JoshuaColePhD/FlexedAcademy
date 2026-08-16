@@ -20,6 +20,7 @@ import { questionTypesProse } from '../lib/quizShape'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { WeekPicker } from '../components/WeekPicker'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
@@ -487,6 +488,34 @@ export function ChatPage() {
     )
   }, [chatId, searchParams, setSearchParams])
 
+  /* Back from Google's consent screen (routes/drive.py's /callback) — the
+     browser lands right back on this same chat with ?drive=connected,
+     cancelled, or error appended to whatever `return_to` was when Share was
+     clicked. Same shape as BillingProvider's own "back from Stripe"
+     handling: strip the marker first so a reload doesn't replay the toast,
+     then react to it. There's nothing to poll for here the way a
+     subscription's webhook needs — the connection either exists by the time
+     this fires or it doesn't. */
+  useEffect(() => {
+    const outcome = searchParams.get('drive')
+    if (!outcome) return
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('drive')
+        return next
+      },
+      { replace: true }
+    )
+    if (outcome === 'connected') {
+      toast.success('Google Drive connected', 'Open Share again to finish sending it.')
+    } else if (outcome === 'cancelled') {
+      toast.info('Google Drive wasn’t connected — nothing was shared.')
+    } else if (outcome === 'error') {
+      toast.error('Couldn’t connect Google Drive', 'Try again in a moment.')
+    }
+  }, [searchParams, setSearchParams, toast])
+
   /** Mark cells as just-changed. Cleared after the flash has finished playing. */
   const flash = useCallback((keys) => {
     if (!keys.length) return
@@ -693,6 +722,33 @@ export function ChatPage() {
       voice.speak(VOICE_GREETING)
     }
   }, [voice, messages])
+
+  /* Factored out of the docked panel's own onClose so the ⌘⇧V hotkey below
+     can end the conversation exactly the same way a click on Close does —
+     silencing the shared <audio> element too (see its own comment), not
+     just the panel's own local state. */
+  const closeVoice = useCallback(() => {
+    voice.stop()
+    setVoiceOpen(false)
+    setVoiceCaption('')
+    setDecisions([])
+  }, [voice])
+
+  /* ⌘/Ctrl+Shift+V toggles voice mode from anywhere on the page — the same
+     "reach for it without touching the mouse" convenience CommandK (App.jsx)
+     already gives "start a new plan." Shift, not bare ⌘V: that's Paste, and
+     stealing it would silently break pasting text into the composer. */
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        if (voiceOpen) closeVoice()
+        else openVoice()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [voiceOpen, openVoice, closeVoice])
 
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
@@ -1252,6 +1308,18 @@ export function ChatPage() {
     return { message: last, questions: last.questions }
   }, [messages])
 
+  /* What voice mode's own Replay button (below) reads out loud — the exact
+     same "spokenContent, when set, else content" the auto-speak effect
+     already uses (see its own comment), so replaying can never say
+     something different than what was actually spoken the first time.
+     null while there's nothing to replay yet, or while a reply is still
+     mid-stream (streaming text isn't the finished line worth replaying). */
+  const lastReplyText = useMemo(() => {
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || last.streaming) return null
+    return last.spokenContent || last.content || null
+  }, [messages])
+
   const livePlan = artifact?.plan || stream.preview
   const liveArtifact = useMemo(
     () =>
@@ -1269,6 +1337,17 @@ export function ChatPage() {
   const docOpen = expanded && hasArtifact && !isOverlay
   const overlayOpen = expanded && hasArtifact && isOverlay
   const overlayExit = useExitTransition(overlayOpen, 130)
+  /* Voice mode used to be a full-screen/dialog takeover, mounted and
+     unmounted outright with no exit of its own. Now it's a dock that grows
+     out of the chat box itself, right above the composer — same
+     mount-a-beat-longer-to-play-the-exit shape as overlayExit above. */
+  const voiceExit = useExitTransition(voiceOpen, 180)
+  /* The "Latest" jump-to-bottom pill used to unmount the instant atBottom
+     flipped true — the one piece of chat chrome still doing a hard cut
+     while every other transient here (toasts, attachment chips) plays a
+     matched exit. 150ms, same as the attachment chip's own removal: both
+     are a small pill leaving the page, not a panel. */
+  const latestPill = useExitTransition(!atBottom && !isEmpty, 150)
 
   /* The docked split's own width, draggable via the handle rendered between
      the two panes below. null means "use --chat-w-narrow, the CSS default";
@@ -1492,6 +1571,15 @@ export function ChatPage() {
 
   const chatPane = (
     <div className="relative flex h-full min-h-0 flex-col bg-paper">
+      {/* Always on, unlike chat-head below it — the theme toggle used to live
+          in the account rail, but that put it a whole scroll away from the
+          content it affects. Right-aligned so it sits at the seam with
+          whatever's docked on the right (the plans rail, or the open
+          document), not lost against the far edge of the screen. */}
+      <div className="flex h-11 shrink-0 items-center justify-end border-b border-edge px-2">
+        <ThemeToggle />
+      </div>
+
       {/* What week am I in, and for which class. Two facts that were only
           available by opening the document or reading the sidebar's highlight.
           Hidden once the document opens — it says the same thing in its own
@@ -1543,9 +1631,11 @@ export function ChatPage() {
                 <Message
                   message={{ id: 'chat-stream-live', role: 'assistant', content: chatStream.text, streaming: true }}
                 />
-              ) : (
+              ) : /* voice mode's own status pill already says "Thinking…" —
+                     showing it again here read as two different things
+                     happening instead of one. */ !voiceOpen ? (
                 <p className="eyebrow">Thinking…</p>
-              )
+              ) : null
             ) : null}
 
             {/* Progress is the week filling in, not three bouncing dots — a
@@ -1579,11 +1669,11 @@ export function ChatPage() {
         </div>
       )}
 
-      {!atBottom && !isEmpty ? (
+      {latestPill.mounted ? (
         <div className="pointer-events-none absolute bottom-[92px] left-0 right-0 z-10 flex justify-center">
           <button
             type="button"
-            className="pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge"
+            className={`fa-rise fa-press pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
             onClick={() => {
               setAtBottom(true)
               endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -1607,17 +1697,89 @@ export function ChatPage() {
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
           onExpand={() => openDocument()}
+          onOpenQuiz={openQuiz}
           busy={busy}
           quizBuilding={quizBuilding}
           variant="bar"
         />
       ) : null}
 
+      {/* Voice mode, docked. It used to open a different screen entirely (a
+          full-screen takeover on a phone, a centered dialog with a scrim on
+          desktop) — now it grows out of the chat box itself, right above the
+          composer, the same "extends from here" language the artifact
+          drawer already speaks beside the chat on desktop. The message list
+          stays visible and live behind/above it (utterances land in
+          `messages` the same way typed turns do — see `submit` below), so
+          this panel only has to carry what the chat itself doesn't: mic
+          state and the running checklist. */}
+      {voiceExit.mounted ? (
+        <div className={`voice-dock${voiceOpen ? ' is-open' : ''}`}>
+          <div className={`voice-dock-body${voiceExit.closing ? ' is-closing' : ''}`}>
+            <VoiceModePanel
+              onClose={closeVoice}
+              onUtterance={submit}
+              busy={busy}
+              isSpeaking={voice.speaking}
+              caption={voiceCaption}
+              decisions={decisions}
+              /* Replay button: speaks the last reply again through the same
+                 shared <audio> element, and re-primes the caption so the
+                 type-out plays a second time too. undefined (not a no-op
+                 function) when there's nothing to replay yet — VoiceModePanel
+                 hides the button outright rather than rendering it disabled. */
+              onReplayLast={
+                lastReplyText
+                  ? () => {
+                      setVoiceCaption(lastReplyText)
+                      voice.speak(lastReplyText)
+                    }
+                  : undefined
+              }
+              /* Non-null the moment a week is actually saved — see
+                 VoiceModePanel's BuiltPlanCard, which takes over from the
+                 running decisions checklist once this is set. artifact.planId,
+                 not liveArtifact/stream.preview: those cover the in-progress
+                 preview too, and this is specifically "it's done and saved,"
+                 not "it's still being written." */
+              builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
+              /* "Making it" — the same stream.preview days feeding the text
+                 chat's own WeekStrip (see the "Writing the week" block
+                 above), read here too rather than re-fetched, so voice mode
+                 and the text view can never show two different days-done
+                 counts for the same in-flight generation. */
+              building={stream.isStreaming}
+              buildDays={stream.preview?.days}
+              /* Barge-in: silence the reply AND abort the generation behind
+                 it. Stopping only the audio would leave the model still
+                 writing sentences that VoiceProvider would dutifully queue
+                 up and speak the moment the teacher stopped talking —
+                 interrupted in sound only, not in fact. */
+              onInterrupt={() => {
+                voice.stop()
+                chatStream.stop()
+                liveSpeechRef.current = ''
+                setVoiceCaption('')
+              }}
+              /* The clarification cards, tappable inside the panel — voice
+                 mode asks ONE question at a time (see the backend's voice
+                 prompt) and shows its options here rather than reading them
+                 aloud. */
+              questions={pendingQuestions?.questions || null}
+              onAnswer={(text) => {
+                voice.stop()
+                onAnswerQuestions(pendingQuestions.message, text)
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {/* The dock. Composer must stay in the SAME slot of the same parent across
           the empty/non-empty transition — it owns a MediaRecorder, a
           ResizeObserver and an autosized inline height, all of which die on
           remount. Only the wrapper's className may change. */}
-      <div className="shrink-0 border-t border-edge bg-paper px-gutter pb-5 pt-3">
+      <div className="shrink-0 bg-paper px-gutter pb-5 pt-3">
         <div className="mx-auto w-full max-w-measure">
           {/* Which week this conversation is planning, and the one place to
               change it. Was a read-only readout for exactly one commit — it
@@ -1653,6 +1815,7 @@ export function ChatPage() {
             attachments={attachments}
             setAttachments={setAttachments}
             onOpenVoice={openVoice}
+            voiceModeActive={voiceOpen}
             /* The example is worth its length on a laptop and clipped on a
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */
@@ -1772,65 +1935,6 @@ export function ChatPage() {
         </>
       ) : null}
 
-      {voiceOpen ? (
-        <VoiceModePanel
-          onClose={() => {
-            // The shared <audio> element lives in VoiceProvider, at the app
-            // root — it has no idea this panel is closing, so nothing about
-            // unmounting it stops whatever's still playing through it. Ending
-            // the conversation without also silencing it meant a reply kept
-            // talking well after the "end conversation" click.
-            voice.stop()
-            setVoiceOpen(false)
-            setVoiceCaption('')
-            setDecisions([])
-          }}
-          onUtterance={submit}
-          busy={busy}
-          isSpeaking={voice.speaking}
-          isPhone={isPhone}
-          messages={messages}
-          caption={voiceCaption}
-          decisions={decisions}
-          /* Non-null the moment a week is actually saved — see
-             VoiceModePanel's BuiltPlanCard, which takes over the side
-             column from the running decisions checklist once this is set.
-             artifact.planId, not liveArtifact/stream.preview: those cover
-             the in-progress preview too, and this is specifically "it's
-             done and saved," not "it's still being written." */
-          builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
-          /* "Making it" — the same stream.preview days feeding the text
-             chat's own WeekStrip (see the "Writing the week" block above),
-             read here too rather than re-fetched, so voice mode and the
-             text view can never show two different days-done counts for
-             the same in-flight generation. */
-          building={stream.isStreaming}
-          buildDays={stream.preview?.days}
-          /* Barge-in: silence the reply AND abort the generation behind it.
-             Stopping only the audio would leave the model still writing
-             sentences that VoiceProvider would dutifully queue up and speak
-             the moment the teacher stopped talking — interrupted in sound
-             only, not in fact. */
-          onInterrupt={() => {
-            voice.stop()
-            chatStream.stop()
-            liveSpeechRef.current = ''
-            setVoiceCaption('')
-          }}
-          /* The clarification cards, tappable inside the panel — voice mode
-             asks ONE question at a time (see the backend's voice prompt) and
-             shows its options here rather than reading them aloud. */
-          questions={pendingQuestions?.questions || null}
-          onAnswer={(text) => {
-            voice.stop()
-            onAnswerQuestions(pendingQuestions.message, text)
-          }}
-          onReplay={(text) => {
-            setVoiceCaption(text)
-            voice.speak(text)
-          }}
-        />
-      ) : null}
     </div>
   )
 }

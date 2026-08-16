@@ -34,7 +34,7 @@ function Chip({ file, onRemove }) {
       <span className="max-w-[120px] truncate">{file.filename}</span>
       <button
         type="button"
-        className="ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+        className="fa-press ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
         aria-label={`Remove ${file.filename}`}
         onClick={() => setRemoving(true)}
       >
@@ -53,6 +53,14 @@ export function Composer({
   attachments,
   setAttachments,
   onOpenVoice,
+  /* True while ChatPage's own voice-dock panel is open. That panel already
+     has its own always-on mic listening for speech — letting the
+     composer's separate dictate-into-text mic run at the same time meant
+     two different "I'm listening" affordances competing for the same
+     microphone and the same attention. Dictate disables outright; the
+     "start a voice conversation" entry point (below) just hides, since the
+     conversation it starts is already the one on screen. */
+  voiceModeActive = false,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
@@ -282,7 +290,11 @@ export function Composer({
             ) : isRecording ? (
               <button
                 type="button"
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint md:h-9 md:w-9"
+                /* fa-listening: the tinted background already says "recording
+                   is on," a fact — this ring says the mic is live RIGHT NOW,
+                   an ongoing one, the way a hardware recording light doesn't
+                   just switch on but keeps pulsing for as long as it's true. */
+                className="fa-listening tap-target flex h-11 w-11 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint md:h-9 md:w-9"
                 onClick={stopRecording}
                 aria-label="Stop recording"
               >
@@ -293,8 +305,9 @@ export function Composer({
                 type="button"
                 className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50 md:h-9 md:w-9"
                 onClick={startRecording}
-                disabled={isStreaming}
-                aria-label="Dictate"
+                disabled={isStreaming || voiceModeActive}
+                aria-label={voiceModeActive ? 'Dictate (already listening in voice mode)' : 'Dictate'}
+                title={voiceModeActive ? "Already listening — it's transcribing straight into the chat" : undefined}
               >
                 <Mic size={19} className="md:size-[18px]" aria-hidden="true" />
               </button>
@@ -308,7 +321,7 @@ export function Composer({
             {isStreaming && onStop ? (
               <button
                 type="button"
-                className="neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full bg-mark-tint text-mark transition-shadow md:h-9 md:w-9"
+                className="fa-press neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full bg-mark-tint text-mark transition-shadow md:h-9 md:w-9"
                 onClick={onStop}
                 aria-label="Stop generating"
               >
@@ -321,14 +334,16 @@ export function Composer({
               >
                 <Loader2 size={17} className="animate-spin md:size-4" aria-hidden="true" />
               </span>
-            ) : !hasContent && onOpenVoice ? (
+            ) : !hasContent && onOpenVoice && !voiceModeActive ? (
               /* The send slot's idle form. Nothing typed yet means there is
                  nothing TO send — Gemini's own composer makes the same call,
                  showing the live-voice entry point here instead of a greyed-
                  out arrow with nothing to do. The instant there's a
                  character (or an attachment) this same slot becomes the real
                  Send button below; it never sits alongside it as a second,
-                 separate icon. */
+                 separate icon. Hidden (not just disabled) while voiceModeActive
+                 — the conversation this button starts is already the one
+                 open on screen, so it has nothing left to do. */
               <button
                 type="button"
                 className="tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
@@ -346,7 +361,7 @@ export function Composer({
                    filled buttons on ClassPage) — a plain black circle here
                    just wasn't reading as the one button that matters on the
                    whole bar. */
-                className={`tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
+                className={`fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
                   canSend
                     ? 'neo-raised bg-accent-tint text-accent-text'
                     : /* Inset, not a flat grey disc: unavailable reads as

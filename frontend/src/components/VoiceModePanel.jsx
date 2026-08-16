@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowLeft,
   Check,
   Download,
   FileText,
-  Keyboard,
+  Hand,
   Loader2,
   Mic,
   MicOff,
+  Pencil,
   Play,
+  Radio,
   RotateCcw,
+  X,
 } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
+import { splitDecisions } from '../lib/decisionChecklist'
 import { DecisionStack } from './DecisionStack'
 import { WeekStrip } from './WeekStrip'
 
@@ -36,18 +39,23 @@ import { WeekStrip } from './WeekStrip'
  *   assistant's own TTS output through the speaker and the panel would
  *   talk to itself.
  *
- * Layout is a phone-first full-screen takeover (a reference the user
- * supplied — a music player's big circular art + a docked mini-bar below —
- * mapped onto this: the "art" is a pulsing orb standing in for album
- * artwork, the mini-bar is the status/close row). Desktop keeps the smaller
- * centered-dialog treatment; the full takeover is what "might work best on
- * mobile" actually meant it for.
+ * Docked, not a takeover: this used to be a phone-first full-screen overlay
+ * and a centered desktop dialog with a scrim — a different screen entirely
+ * from the chat underneath it. It's now a panel that grows out of the chat
+ * box itself, right above the composer (see ChatPage's voice-dock wrapper),
+ * so the conversation it's about stays on screen the whole time. What was
+ * said either side lives in the ordinary message list behind/above this
+ * panel now (utterances land there the same way a typed turn does), which
+ * is what freed this component up to drop its own transcript column
+ * entirely — it only needs to carry what the chat itself doesn't: mic
+ * state, the live caption of whatever's currently being spoken, and the
+ * running checklist.
  *
  * Rendered in the .neo-world world (base.css) — soft embossed "neomorphic"
  * surfaces on request, matching the reference images directly rather than
  * translating them into this app's normal flat, high-contrast look. That
  * tradeoff (faint edges, low contrast) is real and is scoped to this one
- * opt-in screen on purpose — see .neo-world's own comment for why it's fine
+ * opt-in panel on purpose — see .neo-world's own comment for why it's fine
  * here and would not be fine as a default anywhere else in the app.
  */
 
@@ -86,68 +94,6 @@ const MISS_HINT_COUNT = 2
    lucky frame. */
 const BARGE_THRESHOLD = 0.13
 const BARGE_SUSTAIN_MS = 180
-
-/* What it's said — not a two-sided transcript. This used to show both
- * turns, styled after the real text chat's bubbles (teacher's own line
- * pressed into a groove, assistant's bare on the panel). But the teacher
- * already knows what they just said a moment ago; what's actually hard to
- * catch in a SPOKEN conversation is the assistant's side, especially once
- * it's scrolled past and the audio is gone. So this is now a running,
- * untruncated log of assistant replies only — the answer to "wait, what did
- * it just say?" without needing Replay for anything but the very latest
- * line. Desktop only, in the left column — on a phone this is still one
- * swipe away underneath the panel, and there's no room for a second column
- * at that width anyway. */
-// A question round with nothing extra to say gets the same fixed line every
-// time ("A couple of quick questions to get this right:" — see ChatPage's
-// onDone), which made a run of questions read as the identical bubble
-// repeated over and over in this log. spokenContent (ChatPage's own
-// speakableQuestions) already boils a question message down to the actual
-// question text — using it here too, not just for TTS, means the log and
-// the audio never disagree about what was "said."
-function saidText(m) {
-  if (!m.questions?.length) return m.content
-  return m.spokenContent || m.questions.map((q) => q.text).join(' ')
-}
-
-function Transcript({ messages, onReplay }) {
-  const said = messages.filter((m) => m.role !== 'user')
-  return (
-    <div className="neo-panel flex h-full flex-col overflow-hidden rounded-[28px] bg-paper-raised">
-      <div className="shrink-0 px-5 py-4">
-        <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-          What it's said
-        </p>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
-        {said.length ? (
-          said.map((m) => (
-            <div key={m.id} className="fa-rise group flex w-full flex-col items-start">
-              <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed text-ink">{saidText(m)}</p>
-              {/* Replay is voice mode's own affordance, with no text-chat
-                  equivalent — kept as a quiet text-and-icon action under
-                  the reply rather than the old always-visible round
-                  button, so it reads as an extra on the line instead of a
-                  second UI language next to it. */}
-              <button
-                type="button"
-                onClick={() => onReplay(saidText(m))}
-                aria-label="Replay this reply"
-                className="mt-1 flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-medium text-ink-muted opacity-0 transition-opacity hover:text-accent-text focus-within:opacity-100 group-hover:opacity-100"
-              >
-                <Play size={11} aria-hidden="true" fill="currentColor" />
-                Replay
-              </button>
-            </div>
-          ))
-        ) : (
-          <p className="px-1 py-3 text-sm text-ink-muted">Its replies will show up here.</p>
-        )}
-      </div>
-    </div>
-  )
-}
 
 /* The clarification cards. When the teacher says something too vague to
  * build from, the model asks one or more short questions (see the backend's
@@ -287,7 +233,7 @@ function BuildProgress({ days, fill = true }) {
  * instant the plan lands, but a sentence spoken once and gone is easy to
  * miss entirely if the room is noisy or attention was elsewhere. This card
  * stays up for as long as the conversation does. */
-function BuiltPlanCard({ builtPlan, fill = true }) {
+function BuiltPlanCard({ builtPlan, fill = true, onClose }) {
   return (
     <div
       className={`neo-panel flex w-full flex-col items-start gap-3 rounded-[28px] bg-paper-raised p-4 ${
@@ -306,14 +252,31 @@ function BuiltPlanCard({ builtPlan, fill = true }) {
           {builtPlan.weekLabel || 'This week'}
         </p>
       </div>
-      <a
-        href={api.planDownloadUrl(builtPlan.planId)}
-        download
-        className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-accent-text transition-shadow"
-      >
-        <Download size={12} aria-hidden="true" />
-        Download
-      </a>
+      <div className="flex flex-wrap items-center gap-2">
+        <a
+          href={api.planDownloadUrl(builtPlan.planId)}
+          download
+          className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-accent-text transition-shadow"
+        >
+          <Download size={12} aria-hidden="true" />
+          Download
+        </a>
+        {/* The "done" moment this card used to leave entirely implicit —
+            the checklist finishing was the only signal, and nothing on
+            screen ever suggested the conversation itself had a natural end.
+            Still just onClose (the same action the header's Close already
+            does); this is a second, better-timed door to it, not a new
+            behavior. */}
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-ink-soft transition-colors hover:bg-paper-sunken"
+          >
+            Done — close voice
+          </button>
+        ) : null}
+      </div>
       <p className="flex items-start gap-1.5 text-xs leading-snug text-ink-faint">
         <FileText size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
         Say what to change and I'll revise it.
@@ -322,14 +285,92 @@ function BuiltPlanCard({ builtPlan, fill = true }) {
   )
 }
 
+/* The heard-back echo, made correctable — it used to be a five-second,
+ * read-only flash of what the mic thought it heard (see heardText's own
+ * comment on why that window exists at all). By the time it's on screen
+ * the utterance has ALREADY been sent — delaying every submission to allow
+ * a correction window would slow down the other 95% of utterances that
+ * transcribed just fine, purely to hedge the rare miss. So this doesn't
+ * intercept the original send; it turns the echo into a quick way to
+ * follow up on it, the same tap-to-edit language DecisionRow already uses
+ * for correcting a settled decision, just aimed at what was HEARD instead
+ * of what was DECIDED.
+ */
+function HeardEcho({ text, onCorrect, onEditingChange }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(text)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (!editing) setDraft(text)
+  }, [text, editing])
+  useEffect(() => {
+    if (editing) inputRef.current?.select()
+  }, [editing])
+  useEffect(() => {
+    onEditingChange?.(editing)
+  }, [editing, onEditingChange])
+
+  const save = () => {
+    const next = draft.trim()
+    setEditing(false)
+    if (next && next !== text) onCorrect(next)
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          className="min-w-0 flex-1 rounded-md border border-edge bg-paper px-2 py-1 text-sm text-ink outline-none"
+        />
+        <button
+          type="button"
+          onClick={save}
+          className="neo-raised rounded-full bg-accent-tint px-3 py-1 text-xs font-medium text-accent-text transition-shadow"
+        >
+          Fix it
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="rounded-full px-3 py-1 text-xs font-medium text-ink-soft"
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      aria-label={`You said "${text}" — tap to correct it`}
+      className="fa-rise group flex w-full items-center gap-1.5 truncate text-left text-sm leading-relaxed text-ink-muted"
+    >
+      <span className="eyebrow mr-1.5 shrink-0 not-italic">You said</span>
+      <span className="truncate italic">“{text}”</span>
+      <Pencil
+        size={11}
+        aria-hidden="true"
+        className="shrink-0 text-ink-faint opacity-0 transition-opacity group-hover:opacity-100"
+      />
+    </button>
+  )
+}
+
 export function VoiceModePanel({
   onClose,
   onUtterance,
   busy,
   isSpeaking,
-  isPhone,
-  messages = [],
-  onReplay,
   // The text currently being (or about to be) spoken — the opening greeting,
   // then every later reply. Typed out below in rough sync with the TTS
   // audio, rather than dumped on screen all at once, so the panel reads as
@@ -342,8 +383,8 @@ export function VoiceModePanel({
   // takes over the side column from DecisionStack the moment this is set.
   builtPlan = null,
   // True while a week is actually being generated (ChatPage's stream.
-  // isStreaming) — see BuildProgress, which takes over the transcript
-  // (desktop) or decisions (phone) slot for as long as this holds.
+  // isStreaming) — see BuildProgress, which takes over the checklist's own
+  // slot for as long as this holds.
   building = false,
   // The plan's own day objects as they arrive mid-stream — ChatPage's
   // stream.preview?.days, the exact same value the text chat's identical
@@ -357,6 +398,10 @@ export function VoiceModePanel({
   // to answer it — see QuestionCards.
   questions = null,
   onAnswer,
+  // Speaks the last reply again — undefined (not a no-op) when there's
+  // nothing to replay yet, so the header hides the button outright rather
+  // than showing it disabled with nothing to explain why.
+  onReplayLast,
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
@@ -393,6 +438,27 @@ export function VoiceModePanel({
      open to close with no way to hold it. */
   const [muted, setMuted] = useState(false)
   const mutedRef = useRef(false)
+  /* 'auto' (the always-on VAD this whole component was built around) or
+     'ptt' (press-and-hold): a classroom is not the quiet room the VAD's
+     thresholds were tuned against, and always-on listening means every
+     aside to a student risks getting half-captured as an utterance. PTT
+     trades the hands-free default for a mode where nothing is heard
+     except while a button is actually held. A ref mirror for the same
+     reason busy/isSpeaking already have one: the VAD tick loop below reads
+     this every frame without re-subscribing to React's render cycle. */
+  const [mode, setMode] = useState('auto')
+  const modeRef = useRef('auto')
+  useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
+  // Whether a press-and-hold utterance is currently under way — guards
+  // startPttRecording/stopPttRecording (below) against a stray pointerup
+  // with no matching pointerdown, e.g. a hover that never actually pressed.
+  const pttHeldRef = useRef(false)
+  // Whether the currently-visible heard-back echo is mid-correction (see
+  // HeardEcho below) — pauses the echo's own auto-clear timeout so typing
+  // a fix doesn't have the input yanked out from under mid-edit.
+  const [editingHeard, setEditingHeard] = useState(false)
   // Bumped by "Try again" in the error state — it's the mic-setup effect's
   // only dependency, so changing it re-runs teardown + setup, which is
   // exactly what retrying permission means. Previously the error state was
@@ -410,7 +476,13 @@ export function VoiceModePanel({
   const prevCaptionRef = useRef('')
   const panelRef = useRef(null)
   const closeRef = useRef(null)
-  const canvasRef = useRef(null)
+  // The status pill's own dot — the one bit of "is it actually hearing me"
+  // feedback left once the big level-driven orb was dropped (see the top
+  // comment). Updated imperatively from the VAD's tick loop below, not
+  // React state: the orb used to repaint a canvas every frame the same
+  // way, and a dot is cheap enough to drive the identical way without ever
+  // re-rendering the component at 60fps for it.
+  const dotRef = useRef(null)
 
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
@@ -477,7 +549,11 @@ export function VoiceModePanel({
   // handler in the render below, not from the mic loop's persistent effect.
   const reviseDecision = (label, value) => onUtterance(`Change ${label.toLowerCase()} to ${value}.`)
 
-  useFocusTrap(panelRef, { active: true, trap: true, initialFocus: closeRef, onEscape: onClose })
+  // trap: false — this panel now sits docked beside a live composer rather
+  // than blocking the page as a modal, the same reasoning useFocusTrap's own
+  // comment gives for the artifact panel's docked case: trapping Tab here
+  // would lock a teacher out of the input they were about to type in.
+  useFocusTrap(panelRef, { active: true, trap: false, initialFocus: closeRef, onEscape: onClose })
 
   useEffect(() => {
     // busy alone, not busy || isSpeaking — see pausedRef's own comment.
@@ -562,16 +638,19 @@ export function VoiceModePanel({
 
   // The heard-back echo is a CHECK, not a log — it exists for the few
   // seconds between "you finished saying it" and "the reply starts," which
-  // is the whole window in which noticing a mis-hear is still useful.
-  // Whichever comes first clears it: the reply starting, or this timeout.
+  // is the whole window in which noticing a mis-hear is still useful (and,
+  // now, the window for HeardEcho below to actually fix it). Whichever
+  // comes first clears it: the reply starting, or this timeout — except
+  // while mid-correction, where yanking the input out from under a
+  // half-typed fix would be its own bug.
   useEffect(() => {
-    if (!heardText) return undefined
+    if (!heardText || editingHeard) return undefined
     const t = setTimeout(() => setHeardText(''), 5000)
     return () => clearTimeout(t)
-  }, [heardText])
+  }, [heardText, editingHeard])
   useEffect(() => {
-    if (isSpeaking || caption) setHeardText('')
-  }, [isSpeaking, caption])
+    if ((isSpeaking || caption) && !editingHeard) setHeardText('')
+  }, [isSpeaking, caption, editingHeard])
 
   useEffect(() => {
     if (!justInterrupted) return undefined
@@ -595,6 +674,30 @@ export function VoiceModePanel({
       abortUtterance()
       quietStartRef.current = null
     }
+  }
+
+  /* Push-to-talk's own start/stop — the pointerdown/pointerup pair the
+     "Hold to talk" button (below) wires up. Mirrors what the VAD's own tick
+     loop does automatically in 'auto' mode (barge-in check, then
+     beginUtterance) rather than duplicating a second recording pipeline:
+     PTT only decides WHEN to record, the recording itself is the exact
+     same MediaRecorder/beginUtterance machinery either mode uses. */
+  const startPttRecording = () => {
+    if (processingRef.current || mutedRef.current || vadStateRef.current === 'recording') return
+    pttHeldRef.current = true
+    // Holding the floor (assistant speaking or still generating) while the
+    // button is pressed is an explicit, deliberate interrupt in PTT mode —
+    // there's no threshold to clear, the press itself IS the signal.
+    if (isSpeakingRef.current || pausedRef.current) {
+      onInterruptRef.current?.()
+      setJustInterrupted(true)
+    }
+    beginUtterance()
+  }
+  const stopPttRecording = () => {
+    if (!pttHeldRef.current) return
+    pttHeldRef.current = false
+    stopRecorder()
   }
 
   // rec.stop() is ASYNCHRONOUS — the 'stop' event (and so handleUtteranceReady,
@@ -703,71 +806,6 @@ export function VoiceModePanel({
   useEffect(() => {
     let cancelled = false
 
-    // Canvas's fillStyle parser doesn't resolve CSS var() — it isn't part of
-    // the cascade — so the actual accent color has to be read out as a
-    // concrete value once, not passed through as a custom property.
-    //
-    // Read from the CANVAS element, not document.documentElement: this
-    // panel lives inside .neo-world, which redeclares --accent-rgb to its
-    // own rose rather than the app's blue, and that override only takes
-    // effect for elements actually inside the scope. Reading from the root
-    // would silently get the wrong color the moment .neo-world disagrees
-    // with :root, which is the entire point of it existing. Read once, here
-    // — the canvas is already mounted by the time an effect body runs — not
-    // per frame, which would force a style recalculation at 60fps.
-    const accentRgb = canvasRef.current
-      ? getComputedStyle(canvasRef.current).getPropertyValue('--accent-rgb').trim()
-      : ''
-    const resolvedAccentRgb = accentRgb || '47 95 191'
-
-    const draw = (level) => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext('2d')
-      const { width, height } = canvas
-      ctx.clearRect(0, 0, width, height)
-      const cx = width / 2
-      const cy = height / 2
-      const base = Math.min(width, height) * 0.16
-      // Was 0.22 — the outer layers' own pulse range was small enough next
-      // to their low alpha (below) that the whole orb read as barely
-      // reactive, not just faint.
-      const extra = Math.min(width, height) * 0.3
-      // Muted reads the same as paused here on purpose — both mean "your
-      // voice is not going anywhere right now," and that's the one thing
-      // the orb has to be honest about. (The label distinguishes them.)
-      const damped = pausedRef.current || mutedRef.current
-      const effectiveLevel = damped ? 0.05 : Math.max(0.05, level)
-      const rgb = damped ? '150 150 150' : resolvedAccentRgb
-      // Outer two layers' alpha raised (0.16→0.28, 0.28→0.44) — at the old
-      // values they mostly disappeared into the page background, leaving
-      // only the small solid core layer actually visible, which read as
-      // one weak dot rather than a set of rings.
-      const layers = [
-        { mult: 1, alpha: 0.28 },
-        { mult: 0.7, alpha: 0.44 },
-        { mult: 0.42, alpha: 0.9 },
-      ]
-      for (const { mult, alpha } of layers) {
-        const r = base * mult + extra * mult * effectiveLevel
-        ctx.beginPath()
-        ctx.arc(cx, cy, r, 0, Math.PI * 2)
-        ctx.fillStyle = `rgb(${rgb} / ${alpha})`
-        ctx.fill()
-      }
-      // A crisp stroked edge on the outermost layer only — the fills alone
-      // still fade to nothing at their own boundary, which is soft by
-      // design for the inner glow but left the whole orb without a single
-      // defined edge to actually read as a "ring."
-      const outer = layers[0]
-      const outerR = base * outer.mult + extra * outer.mult * effectiveLevel
-      ctx.beginPath()
-      ctx.arc(cx, cy, outerR, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgb(${rgb} / 0.5)`
-      ctx.lineWidth = 1.5
-      ctx.stroke()
-    }
-
     const tick = () => {
       const analyser = analyserRef.current
       if (!analyser) return
@@ -781,14 +819,35 @@ export function VoiceModePanel({
       }
       const level = Math.sqrt(sumSquares / data.length)
 
-      draw(level)
+      // level itself still drives the VAD logic below (endpointing,
+      // barge-in, the quiet/miss hints) — only the orb that used to paint
+      // it as a pulsing waveform is gone now that the checklist is the
+      // panel's whole point. Its replacement: the status pill's own dot,
+      // scaled directly off this same level, imperatively (a style write,
+      // not React state) so this stays as cheap as the orb's canvas redraw
+      // was — 60fps of "is it hearing me" with no re-render behind it.
+      // Damped to a flat scale under the same conditions the orb used to
+      // damp to (paused/muted/mid-transcribe): the mic is still capturing
+      // then (barge-in still has to work), but a level reading dominated by
+      // the assistant's own voice bleeding back in, or by nothing at all
+      // while muted, isn't real feedback about the teacher's own voice.
+      if (dotRef.current) {
+        const damped = pausedRef.current || mutedRef.current || processingRef.current
+        const scale = damped ? 1 : 1 + Math.min(1, level * 5) * 0.9
+        dotRef.current.style.transform = `scale(${scale.toFixed(3)})`
+      }
 
-      // Muted: the orb keeps drawing (damped, above) so the panel doesn't
-      // look frozen, but nothing below this line runs — no endpointing, no
+      // Muted: nothing below this line runs — no endpointing, no
       // barge-in, no quiet-hint accumulation. The track is already
       // delivering silence (see toggleMute), this just stops the VAD from
-      // reasoning about it at all.
-      if (!processingRef.current && !mutedRef.current) {
+      // reasoning about it at all. Same for push-to-talk mode: every
+      // decision below (when to start, when a pause means "done," what
+      // counts as a deliberate interrupt) is exactly what pressing and
+      // releasing the talk button (startPttRecording/stopPttRecording)
+      // exists to make explicit instead — silence-based endpointing firing
+      // mid-hold would cut a teacher off the moment they paused to think,
+      // still holding the button down.
+      if (modeRef.current === 'auto' && !processingRef.current && !mutedRef.current) {
         const now = performance.now()
         // Whether the assistant currently owns the turn — either actively
         // speaking, or still writing the reply it's about to speak.
@@ -987,7 +1046,9 @@ export function VoiceModePanel({
                         ? "Didn't catch that — try again"
                         : quietHint
                           ? 'Having trouble hearing you — try speaking up'
-                          : 'Listening…'
+                          : mode === 'ptt'
+                            ? 'Hold to talk'
+                            : 'Listening…'
 
   /* The caption area holds CONTENT — words that were said, by either side —
      and the pill holds STATUS. They used to share: the caption fell back to
@@ -998,32 +1059,6 @@ export function VoiceModePanel({
      pill is the single place status lives. */
   const spokenText = typedCaption || ''
   const showHeard = !spokenText && Boolean(heardText)
-  // captionBlock below is a JSX element either way — always truthy — so
-  // "is there actually anything in it" has to be its own test. The phone
-  // reads this to decide whether to render its container at all, rather
-  // than docking an empty card between turns.
-  const hasCaption = status === 'error' || Boolean(spokenText) || showHeard || Boolean(isSpeaking)
-
-  // The "album art" disc itself: a big raised, ringed circle standing in
-  // for the reference's cover art, with the pulsing accent circles (drawn
-  // in the effect above) glowing inside it. Used to shrink while a question
-  // was on the table, because the cards used to live in this same column,
-  // underneath it. Now that they live in the side column instead (see
-  // QuestionCards' own comment), the orb has nothing left to make room for
-  // and stays full size regardless.
-  const orb = (
-    <div className="neo-raised neo-ring relative flex aspect-square w-full max-w-[280px] shrink-0 items-center justify-center rounded-full">
-      <div className="voice-glow" aria-hidden="true" />
-      <canvas ref={canvasRef} width={280} height={280} className="h-full w-full" />
-      {/* A slow highlight chasing the ring's own edge — the level-driven
-          canvas above already answers "is it hearing volume," this answers
-          "is it alive" independent of that, the same way a spinner keeps
-          moving even mid-silence. Purely decorative (aria-hidden), and
-          collapses under the app's global prefers-reduced-motion rule like
-          every other animation here. */}
-      <div className="voice-orb-sheen" aria-hidden="true" />
-    </div>
-  )
 
   /* The one place status lives, on BOTH layouts now — the phone used to
      have only a bare pulsing dot here (mic on/off and nothing else) and
@@ -1046,10 +1081,18 @@ export function VoiceModePanel({
       }`}
     >
       <span
+        ref={dotRef}
         aria-hidden="true"
-        className={`h-1.5 w-1.5 rounded-full ${
+        /* While actually listening, this dot's scale is driven straight
+           from the live mic level (see the VAD tick loop) instead of the
+           generic animate-pulse below — the one thing worth knowing
+           mid-sentence is "is it actually hearing volume right now," which
+           a fixed-rhythm pulse can't say. Other states (requesting mic,
+           transcribing) keep the generic pulse — there's no live level
+           worth reflecting yet. */
+        className={`h-1.5 w-1.5 rounded-full transition-transform duration-75 ${
           status === 'error' ? 'bg-mark' : muted ? 'bg-ink-faint' : 'bg-accent'
-        } ${status === 'error' || muted ? '' : 'animate-pulse'}`}
+        } ${status === 'error' || muted ? '' : status === 'listening' ? '' : 'animate-pulse'}`}
       />
       {label}
     </span>
@@ -1075,244 +1118,234 @@ export function VoiceModePanel({
     </button>
   )
 
+  /* Push-to-talk's own control, replacing Mute entirely while active — the
+     two don't coexist: PTT already only listens while physically held, so
+     a separate mute toggle on top of that has nothing left to mean.
+     Pressed-in (neo-inset) for the whole duration of the hold, the same
+     physical language every other pressed/idle pair here already speaks —
+     this is the one control in the panel where that has to track a raw
+     pointer hold rather than a click-toggle. pointerLeave/pointerCancel
+     both release it too: a press that drags off the button (or gets
+     interrupted by a system dialog) must not leave the mic silently stuck
+     open. */
+  const pttButton = (
+    <button
+      type="button"
+      onPointerDown={startPttRecording}
+      onPointerUp={stopPttRecording}
+      onPointerLeave={stopPttRecording}
+      onPointerCancel={stopPttRecording}
+      disabled={status === 'error'}
+      aria-pressed={hearing}
+      aria-label="Hold to talk"
+      className={`tap-target select-none flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-shadow disabled:cursor-not-allowed disabled:opacity-40 ${
+        hearing ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
+      }`}
+    >
+      <Mic size={15} aria-hidden="true" />
+      Hold to talk
+    </button>
+  )
+
+  /* Switches between always-listening (the VAD this panel was built
+     around) and push-to-talk — a classroom is not the quiet room the VAD's
+     thresholds assume, so this is an escape hatch for a noisy room rather
+     than a replacement default. Quiet icon-only treatment, same as Close:
+     a mode switch is a rare, deliberate choice, not something to give equal
+     visual weight to Mute/Hold-to-talk, the control actually used every
+     turn. */
+  const modeToggleButton = (
+    <button
+      type="button"
+      onClick={() => {
+        setMode((m) => {
+          const next = m === 'auto' ? 'ptt' : 'auto'
+          // PTT's own hold IS the gate on when the mic is heard — a mute
+          // left on from 'auto' mode would otherwise silently block every
+          // press with no visible reason why, since Mute itself is gone
+          // from the header the moment PTT takes its place.
+          if (next === 'ptt' && muted) {
+            setMuted(false)
+            mutedRef.current = false
+            streamRef.current?.getAudioTracks().forEach((t) => {
+              t.enabled = true
+            })
+          }
+          return next
+        })
+      }}
+      aria-label={mode === 'auto' ? 'Switch to push-to-talk' : 'Switch to always-listening'}
+      title={mode === 'auto' ? 'Switch to push-to-talk' : 'Switch to always-listening'}
+      className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink-soft"
+    >
+      {mode === 'auto' ? <Radio size={15} aria-hidden="true" /> : <Hand size={15} aria-hidden="true" />}
+    </button>
+  )
+
   /* What was actually SAID, either side of the conversation — never status
      (that's statusPill's job now; see spokenText's comment). Three states,
      in order: the assistant's reply typing itself out, the echo of what was
      just heard from the teacher, or the error state's own recovery path. */
   const captionBlock =
     status === 'error' ? (
-      <div className="flex flex-col items-center gap-3">
-        <p className="text-base leading-relaxed text-mark">{errorMessage}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm leading-relaxed text-mark">{errorMessage}</p>
         {/* The error used to be terminal — the message named the fix
             (browser settings) but left no way to act on it, so the only
             route back was closing and reopening the panel. */}
         <button
           type="button"
           onClick={retryMic}
-          className="neo-raised tap-target flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-accent-text transition-shadow"
+          className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-accent-text transition-shadow"
         >
-          <RotateCcw size={14} aria-hidden="true" />
+          <RotateCcw size={12} aria-hidden="true" />
           Try again
         </button>
       </div>
-    ) : (
-      <>
-        {spokenText ? (
-          <p className="text-base leading-relaxed text-ink-soft">{spokenText}</p>
-        ) : showHeard ? (
-          <p className="fa-rise text-base leading-relaxed text-ink-muted">
-            <span className="eyebrow mr-2 not-italic">You said</span>
-            <span className="italic">“{heardText}”</span>
-          </p>
-        ) : null}
-        {/* Barge-in is real but was never advertised — nothing on screen
-            suggested talking over a reply would do anything but collide
-            with it. Sits BELOW whatever is being said rather than instead
-            of it: while the assistant speaks there's almost always caption
-            text in the slot above, so an either/or would have meant this
-            tip effectively never rendered at the one moment it's
-            actionable. */}
-        {isSpeaking ? <p className="text-sm text-ink-faint">Talk any time to cut in.</p> : null}
-      </>
-    )
+    ) : spokenText ? (
+      <p className="truncate text-sm leading-relaxed text-ink-soft">{spokenText}</p>
+    ) : showHeard ? (
+      <HeardEcho
+        text={heardText}
+        onEditingChange={setEditingHeard}
+        onCorrect={(fixed) => {
+          // Phrased as a correction, not a repeat — a bare resend of the
+          // fixed text reads to the model as a brand new statement, not an
+          // amendment to the turn it already answered.
+          onUtterance(`Sorry, I actually said: "${fixed}"`)
+          setHeardText('')
+        }}
+      />
+    ) : isSpeaking ? (
+      <p className="text-sm text-ink-faint">
+        {mode === 'ptt' ? 'Hold the talk button to cut in.' : 'Talk any time to cut in.'}
+      </p>
+    ) : null
 
-  if (isPhone) {
-    return (
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Voice conversation"
-        className="neo-world fixed inset-0 z-50 flex flex-col bg-paper"
-      >
-        <div className="flex h-14 shrink-0 items-center px-4">
+  // The checklist is only actually on screen in its own default rotation
+  // slot (not while a question/build/built-plan state has taken it over) —
+  // showing "N of 4 decided" during those other states would describe a
+  // list that isn't even visible right now.
+  const showingChecklist = !questions?.length && !building && !builtPlan
+  const { checklist: coreChecklist } = splitDecisions(decisions)
+  const decidedCount = coreChecklist.filter((item) => item.value != null).length
+
+  return (
+    <div
+      ref={panelRef}
+      tabIndex={-1}
+      role="region"
+      aria-label="Voice conversation"
+      /* Same bg-paper the chat pane and the composer dock below both wear,
+         and the same border-t + px-gutter language the composer dock uses
+         for ITS OWN top edge — no raised card shadow, no separate rounded
+         corners. The point is that this reads as the chat box's own
+         surface continuing upward to make room, not a distinct panel that
+         happened to land above the composer. neo-world stays (not
+         neo-panel): the pill/buttons inside still read their emboss and
+         accent color from it, that's just no longer paired with an outer
+         card shadow of its own. */
+      className="neo-world flex w-full flex-col gap-3 border-t border-edge bg-paper px-gutter pb-3 pt-4"
+    >
+      {/* Header row: status (+ a running "N of 4 decided" count while the
+          checklist is actually the thing on screen) on the left, every
+          control for the conversation on the right — mirrors the artifact
+          drawer's own handle+content shape, just inline instead of a
+          separate strip, since this panel is short enough not to need one.
+          There is no orb here anymore — a big pulsing circle used to split
+          this panel's space with the checklist; the checklist is the one
+          thing this panel exists to show, so the mic gets exactly the room
+          its own status pill needs and nothing more. flex-wrap on the
+          controls cluster: Replay, the mode toggle, Mute/Hold-to-talk, and
+          Close is a lot of buttons for one row on a narrow phone. */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {statusPill}
+          {showingChecklist ? (
+            <span className="text-2xs font-semibold uppercase tracking-caps text-ink-faint">
+              {decidedCount} of {coreChecklist.length} decided
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Quiet, icon-only, same treatment as Close — the old
+              full-screen transcript column had a Replay action on every
+              reply; dropping that column when the chat's own message list
+              took over its job meant there was no way left to hear a missed
+              line again without retyping. Hidden outright (not disabled)
+              when there's nothing yet to replay. */}
+          {onReplayLast ? (
+            <button
+              type="button"
+              onClick={onReplayLast}
+              aria-label="Replay the last reply"
+              title="Replay the last reply"
+              className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink-soft"
+            >
+              <Play size={14} aria-hidden="true" fill="currentColor" />
+            </button>
+          ) : null}
+          {modeToggleButton}
+          {mode === 'ptt' ? pttButton : muteButton}
+          {/* Quieter than muteButton on purpose — no neo-raised emboss, no
+             shadow, just the glyph with a hover state. Mute is the control
+             actually used mid-conversation; Close ends it. Giving both the
+             same raised-pill treatment made them read as equally weighted
+             choices when they aren't. */}
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
-            // Matches the labeled control above the docked bar rather than
-            // the old "End voice conversation" — same action, and nothing
-            // about it ends the conversation.
-            aria-label="Back to typing"
-            className="neo-raised tap-target flex h-10 w-10 items-center justify-center rounded-full text-ink-soft"
+            aria-label="Close voice conversation"
+            className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink-soft"
           >
-            <ArrowLeft size={20} aria-hidden="true" />
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
+      </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 px-gutter pb-2">
-          {/* Was a bare pulsing dot that could only say "the mic is on" —
-              the same statusPill the desktop uses now, so a phone gets the
-              real state (hearing you, mic off, building) rather than the
-              one bit it had before. */}
-          <div className="flex shrink-0 justify-center">{statusPill}</div>
-          {/* Answering takes precedence over watching the plan build: while
-              a question is on the table it IS the conversation, and on a
-              phone there is no room to show both without shrinking the tap
-              targets that exist to be tapped. */}
-          {questions?.length ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <QuestionCards questions={questions} onAnswer={onAnswer} />
-            </div>
-          ) : building ? (
-            <BuildProgress days={buildDays} fill={false} />
-          ) : builtPlan ? (
-            <BuiltPlanCard builtPlan={builtPlan} fill={false} />
-          ) : (
+      {/* What's currently being said, either side — a single line under
+          the status bar rather than a boxed caption card, since it's
+          secondary now: worth showing, not worth the space a whole panel
+          of its own used to cost. Always mounted (unlike before) so its
+          height can actually TRANSITION between nothing and one line
+          (.caption-line's own grid-rows trick, same shape as .voice-dock's)
+          instead of the checklist below getting shoved down in one abrupt
+          jump every time a caption appears or clears. */}
+      <div className={`caption-line shrink-0${captionBlock ? ' is-visible' : ''}`}>
+        <div aria-live="polite" className="caption-line-inner">
+          {captionBlock}
+        </div>
+      </div>
+
+      {/* The checklist — or whichever of questions/build progress/built
+          plan currently owns this slot, same rotation the old side column
+          used — now full width and the clear focus of the panel: talk,
+          and watch it get checked off. */}
+      <div className="min-w-0">
+        {questions?.length ? (
+          <QuestionCards questions={questions} onAnswer={onAnswer} />
+        ) : building ? (
+          <BuildProgress days={buildDays} fill={false} />
+        ) : builtPlan ? (
+          <BuiltPlanCard builtPlan={builtPlan} fill={false} onClose={onClose} />
+        ) : (
+          <>
+            {/* A checklist that's still all "Not yet decided" is a cold
+                open for a first-time voice conversation — the old
+                full-screen takeover had a spoken greeting to lean on, but
+                nothing on screen ever said what the checklist below it was
+                even for. One line, gone the moment anything's actually
+                settled (see decisions.length), so it never argues with the
+                real progress once there is some. */}
+            {decisions.length === 0 ? (
+              <p className="mb-2 px-1 text-sm text-ink-muted">
+                Tell me the week, the anchor text, and the skill focus — I'll check these off as we go.
+              </p>
+            ) : null}
             <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
-          )}
-        </div>
-
-        {/* The reference's docked mini-player bar. Carries CONTENT now
-            (what was said, either side) rather than status — the pill above
-            took that over, which is what freed this bar up for the
-            heard-back echo it never had room for before. */}
-        <div className="shrink-0 space-y-3 px-gutter pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          {hasCaption ? (
-            <div
-              aria-live="polite"
-              className="neo-panel flex max-h-32 flex-col items-center gap-2 overflow-y-auto rounded-[28px] bg-paper-raised px-5 py-3 text-center"
-            >
-              {captionBlock}
-            </div>
-          ) : null}
-          <div className="flex items-center justify-center gap-3">
-            {muteButton}
-            {/* One labeled control, not the bare X this used to be alongside
-                a separate "Type instead" link — they both called onClose,
-                so the pair only ever posed a difference that didn't exist.
-                This is the honest description of the single action: the
-                conversation continues, typed. (The header's back arrow
-                stays as ordinary phone navigation.) */}
-            <button
-              type="button"
-              onClick={onClose}
-              className="neo-raised tap-target flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-ink-soft"
-            >
-              <Keyboard size={15} aria-hidden="true" />
-              Type instead
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className="neo-world dialog-scrim flex flex-col items-center gap-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      {/* A GRID with two fixed-width flanking columns, not flex siblings
-          that come and go. This used to mount/unmount the flanking cards
-          themselves too — Transcript only once there was a message,
-          DecisionStack only once there was a decision — so the whole
-          dialog visibly popped and resized as the conversation went, on
-          top of the column tracks already being fixed. All three boxes are
-          now permanent from the moment the panel opens: Transcript and
-          DecisionStack already have their own "nothing yet" copy for an
-          empty list (see each component), so there's always something
-          real to show in an empty box rather than an empty box appearing
-          from nothing. */}
-      <div className="relative w-full max-w-4xl">
-        {/* A literal thread running behind all three cards, only visible in
-            the gaps between them (the cards' own opaque backgrounds cover
-            the rest) — the same "several things resolving to one" motif
-            the landing page's proof/mechanism sections use, here saying
-            "these three boxes are one conversation," not three unrelated
-            panels that happen to share a row. */}
-        <div aria-hidden="true" className="voice-thread pointer-events-none absolute inset-x-8 top-1/2 -z-10 hidden -translate-y-1/2 md:block" />
-        <div className="grid w-full grid-cols-[280px_minmax(0,1fr)_280px] items-stretch gap-4">
-          {/* Building takes over the transcript's own slot rather than
-              stacking above/below it — the transcript is a log of what's
-              ALREADY been said, and there's nothing new to log while the
-              model is silently writing five days; showing both at once
-              would just be an idle box next to a busy one. */}
-          {building ? (
-            <BuildProgress days={buildDays} />
-          ) : (
-            <Transcript messages={messages} onReplay={onReplay} />
-          )}
-          <div
-            ref={panelRef}
-            tabIndex={-1}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Voice conversation"
-            className="neo-panel flex min-w-0 flex-col items-center justify-center gap-5 rounded-[28px] bg-paper-raised p-8 text-center"
-          >
-            {statusPill}
-            {orb}
-            {/* A FIXED height, not a max — a growing-then-shrinking caption
-                was the other half of the "ebb and flow" complaint alongside
-                the boxes that came and went: the orb crept up and down as
-                the line below it gained and lost lines while typing out.
-                Fixed height + scroll means this spot never moves regardless
-                of how much (or how little) the current line has to say.
-
-                h-48 and text-base, not the original h-28/text-sm: the orb
-                stays full size (it's staying, on request), so the room this
-                needs has to come from actually being bigger, not from
-                shrinking anything else — a cramped scroll box was the whole
-                complaint. Bigger text for the same reason: legible while
-                it's actively typing out, not just technically present.
-
-                It legitimately renders EMPTY between turns now, where it
-                used to fall back to the status text the pill above already
-                shows. That's the point: the reserved height keeps the orb
-                from moving, and silence here means nothing is being said
-                rather than the panel having nothing to report. */}
-            <div
-              aria-live="polite"
-              className="flex h-48 w-full flex-col items-center gap-3 overflow-y-auto"
-            >
-              {captionBlock}
-            </div>
-          </div>
-          {/* The side column: a pending clarification takes over the same
-              slot "the plan so far" normally holds — while a question is on
-              the table, what to answer next IS the working state, same as a
-              decision already locked in is once it's settled. Checking each
-              question off as it's answered (see QuestionCards) is what makes
-              this readable as a to-do list rather than a form dropped on top
-              of the conversation. Once a week actually exists, BuiltPlanCard
-              takes over instead — "the plan so far" is stale news once
-              there's an actual plan. DecisionStack, not null, is the
-              fallback default — same reasoning as Transcript above. */}
-          {questions?.length ? (
-            <QuestionCards questions={questions} onAnswer={onAnswer} />
-          ) : builtPlan ? (
-            <BuiltPlanCard builtPlan={builtPlan} />
-          ) : (
-            <DecisionStack decisions={decisions} onRevise={reviseDecision} />
-          )}
-        </div>
-      </div>
-      {/* Controls for the whole conversation, below all three panels rather
-         than pinned inside the orb's own card — the close button used to
-         live in that card (first absolute in a corner, before that stacked
-         under the caption), which made it read as belonging to that panel
-         specifically instead of to the conversation.
-
-         ONE close control, not the two that briefly sat here: "End
-         conversation" and "Type instead" both called onClose, so the pair
-         posed a distinction that didn't exist and left you guessing which
-         one lost your work. Neither does — closing returns to the same
-         chat with its history intact — so the surviving label is the one
-         that says so. Clicking the scrim or pressing Escape (useFocusTrap)
-         still close it too; this is the discoverable, labeled way. */}
-      <div className="flex items-center gap-3">
-        {muteButton}
-        <button
-          ref={closeRef}
-          type="button"
-          onClick={onClose}
-          className="neo-raised tap-target flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-ink-soft"
-        >
-          <Keyboard size={15} aria-hidden="true" />
-          Type instead
-        </button>
+          </>
+        )}
       </div>
     </div>
   )

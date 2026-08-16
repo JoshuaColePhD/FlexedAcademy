@@ -13,6 +13,7 @@ export const AuthContext = createContext(null)
  *  through every consumer of useAuth() or (worse) making AuthContext itself
  *  carry routing concerns. */
 export const EXPLICIT_SIGNOUT_KEY = 'aplang:explicit-signout'
+export const KNOWN_AUTHED_KEY = 'aplang:known-authed'
 
 export function useAuth() {
   const ctx = useContext(AuthContext)

@@ -102,7 +102,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           <div className="mt-3 flex justify-end gap-2">
             <button
               type="button"
-              className="neo-raised rounded-full px-4 py-1.5 text-sm font-medium text-ink-soft transition-shadow"
+              className="fa-press neo-raised rounded-full px-4 py-1.5 text-sm font-medium text-ink-soft transition-shadow"
               onClick={() => {
                 setDraft(message.content)
                 setEditing(false)
@@ -116,7 +116,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                  app's one primary-button treatment (see AppShell's "New
                  plan"), so "send again" reads the same as every other
                  commit action instead of a black slab. */
-              className="neo-raised rounded-full bg-accent-tint px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
+              className="fa-press neo-raised rounded-full bg-accent-tint px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
               disabled={!draft.trim()}
               onClick={() => {
                 setEditing(false)
@@ -169,7 +169,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
               <ReactMarkdown>{message.content}</ReactMarkdown>
               {message.streaming ? (
                 <span
-                  className="ml-1 inline-block h-4 w-1.5 animate-pulse bg-accent align-middle"
+                  className="fa-cursor ml-1 inline-block h-4 w-1.5 bg-accent align-middle"
                   aria-hidden="true"
                 />
               ) : null}
@@ -248,7 +248,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
         >
           <button
             type="button"
-            className="rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
+            className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
             /* The week and its codes, not just the sentence.
                An assistant reply's `content` is the fixed string "Built the
                week of X. Tell me what to change…", while the message also
@@ -257,7 +257,15 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             onClick={() => copy(copyableText(message, grounded, ungrounded))}
             aria-label={copied ? 'Copied' : 'Copy this message'}
           >
-            {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+            {/* The confirmation pops in rather than just swapping icons —
+                the click already told the finger something happened
+                (fa-press), so the eye gets its own answer a beat later
+                instead of a silent glyph replacement. */}
+            {copied ? (
+              <Check key="copied" size={14} className="fa-pop" aria-hidden="true" />
+            ) : (
+              <Copy size={14} aria-hidden="true" />
+            )}
           </button>
           {/* Guarded on onEdit, like the retry button beside it. Without the
               guard this rendered on every user message even though no caller
@@ -266,7 +274,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           {isUser && onEdit ? (
             <button
               type="button"
-              className="rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
+              className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={() => setEditing(true)}
               aria-label="Edit and send again"
             >
@@ -276,7 +284,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           {!isUser && isLast && onRetry ? (
             <button
               type="button"
-              className="rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
+              className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={onRetry}
               aria-label="Build this plan again"
             >
