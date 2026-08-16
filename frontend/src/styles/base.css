@@ -3131,6 +3131,7 @@
   .land-hero,
   .land-proof,
   .land-pipeline,
+  .land-mech,
   .land-foot {
     padding-left: clamp(var(--sp-5), 6vw, var(--sp-16));
     padding-right: clamp(var(--sp-5), 6vw, var(--sp-16));
@@ -3778,6 +3779,17 @@
     align-items: center;
     gap: var(--sp-4);
     margin-top: clamp(var(--sp-8), 5vw, var(--sp-10));
+    /* Each card is flex: 1 — fine when the row itself is a reasonable
+       width, but with nothing capping THIS width, the row was the full
+       (now-padded, see .land-mech above) section width, so on a wide
+       screen each of the three cards stretched to a third of the entire
+       viewport. --measure-wide is the same "wide but still a deliberate
+       column" cap the year grid uses elsewhere in the app — three cards
+       this size, centered, read as a considered row; three cards a third
+       of an ultrawide monitor read as the layout not having an opinion. */
+    max-width: var(--measure-wide);
+    margin-left: auto;
+    margin-right: auto;
   }
   .land-mech-step {
     flex: 1;
