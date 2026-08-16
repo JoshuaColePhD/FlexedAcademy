@@ -1596,7 +1596,6 @@ export function ChatPage() {
             schoolName={calendar?.school?.name}
             disabled={busy}
           />
-          {activeClass?.name ? <span className="ml-2 font-medium">· {activeClass.name}</span> : null}
         </div>
       ) : null}
 
