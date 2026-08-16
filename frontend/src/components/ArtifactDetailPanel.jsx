@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronsRight, Download, Loader2, Edit2, Save, X } from 'lucide-react'
+import { ChevronsRight, Download, Loader2, Edit2, Save, Share2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -10,6 +10,7 @@ import { unitSuffix } from '../lib/planShape'
 import { shortRange } from '../lib/dates'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
+import { ShareDialog } from './ShareDialog'
 import { Skeleton, SkeletonText } from './Skeleton'
 
 /* The same embossed shell ArtifactPanel uses for the lesson plan itself
@@ -436,6 +437,12 @@ export function ArtifactDetailPanel({
   const titleRef = useRef(null)
   const color = classColor(classId)
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
+  // Was rail-card-only — sharing a quiz meant collapsing back out of the
+  // very view you were reading it in, unlike the plan viewer (ArtifactPanel),
+  // which has always had Share right in its own header. Same ShareDialog
+  // ArtifactRail's collapsed card already opens for a quiz, just triggered
+  // from here too now.
+  const [shareOpen, setShareOpen] = useState(false)
 
   useFocusTrap(panelRef, {
     active: true,
@@ -485,6 +492,20 @@ export function ArtifactDetailPanel({
 
         <span className="flex-1" />
 
+        {/* has_qti-gated, same as Download beside it and the rail card's own
+            Share (ArtifactRail.jsx's QuizRow) — nothing to export or share
+            until the file actually built. */}
+        {kind === 'quiz' && quiz?.has_qti && planId ? (
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={() => setShareOpen(true)}
+            aria-label="Share this quiz via Google"
+            title="Share via Google"
+          >
+            <Share2 size={16} aria-hidden="true" />
+          </button>
+        ) : null}
         {kind === 'quiz' && quiz?.has_qti && planId ? (
           <a className="doc-download fa-press" href={api.quizDownloadUrl(planId, quiz.id)} download>
             <Download size={14} aria-hidden="true" /> Download
@@ -506,6 +527,18 @@ export function ArtifactDetailPanel({
           {kind === 'document' ? <DocumentBody doc={doc} /> : null}
         </div>
       </div>
+
+      {kind === 'quiz' ? (
+        <ShareDialog
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          planId={planId}
+          isQuiz
+          quizId={quiz?.id}
+          documentName={quiz?.title}
+          downloadUrl={quiz?.id && planId ? api.quizDownloadUrl(planId, quiz.id) : undefined}
+        />
+      ) : null}
     </section>
   )
 }

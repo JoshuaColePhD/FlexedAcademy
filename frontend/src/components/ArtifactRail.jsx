@@ -429,6 +429,7 @@ export function ArtifactRail({
         onClose={() => setShareTarget(null)}
         planId={planId}
         isQuiz={shareTarget?.type === 'quiz'}
+        quizId={shareTarget?.type === 'quiz' ? shareTarget.quiz.id : undefined}
         documentName={shareTarget?.type === 'quiz' ? shareTarget.quiz.title : plan?.week_of}
         downloadUrl={shareTarget?.type === 'quiz' ? api.quizDownloadUrl(planId, shareTarget.quiz.id) : api.planDownloadUrl(planId)}
       />
