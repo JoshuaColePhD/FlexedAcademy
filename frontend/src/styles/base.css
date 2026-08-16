@@ -2788,8 +2788,6 @@
     display: flex;
     align-items: center;
     gap: var(--sp-2);
-    margin: 0 0 var(--sp-2);
-    padding-left: var(--sp-1);
     font-family: var(--font-mono);
     font-size: var(--fs-xs);
     letter-spacing: var(--tracking-caps);
@@ -4342,4 +4340,46 @@
     overscroll-behavior-x: contain;
     touch-action: pan-x;
   }
+}
+
+/* Voice Panel UI/UX Enhancements */
+
+.aurora-glow::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: inherit;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(var(--accent-rgb) / 0.15) 0%, transparent 70%);
+  animation: aurora-breathe 4s ease-in-out infinite alternate;
+}
+
+@keyframes aurora-breathe {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  100% { transform: scale(1.1); opacity: 1; }
+}
+
+.karaoke-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(4px);
+  animation: slide-up-fade 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes slide-up-fade {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fa-check-pop {
+  animation: check-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes check-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }

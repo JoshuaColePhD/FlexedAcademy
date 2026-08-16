@@ -1580,14 +1580,23 @@ export function ChatPage() {
         <ThemeToggle />
       </div>
 
-      {/* What week am I in, and for which class. Two facts that were only
-          available by opening the document or reading the sidebar's highlight.
+      {/* Which week this conversation is planning, and the one place to change it.
+          It used to live above the Composer, but was moved to the top left (replacing
+          the static chat-head) to make room for the Voice panel to expand fluidly
+          from the Composer itself.
+          
           Hidden once the document opens — it says the same thing in its own
           header two inches to the right. */}
-      {!isEmpty && !docOpen && (livePlan?.week_of || activeClass?.name) ? (
-        <div className="chat-head">
-          {livePlan?.week_of ? <strong>{livePlan.week_of}</strong> : null}
-          {activeClass?.name ? <span>· {activeClass.name}</span> : null}
+      {!docOpen ? (
+        <div className="chat-head pointer-events-auto">
+          <WeekPicker
+            options={weekOptions}
+            value={conversationWeek}
+            onChange={changeWeek}
+            schoolName={calendar?.school?.name}
+            disabled={busy}
+          />
+          {activeClass?.name ? <span className="ml-2 font-medium">· {activeClass.name}</span> : null}
         </div>
       ) : null}
 
@@ -1704,105 +1713,12 @@ export function ChatPage() {
         />
       ) : null}
 
-      {/* Voice mode, docked. It used to open a different screen entirely (a
-          full-screen takeover on a phone, a centered dialog with a scrim on
-          desktop) — now it grows out of the chat box itself, right above the
-          composer, the same "extends from here" language the artifact
-          drawer already speaks beside the chat on desktop. The message list
-          stays visible and live behind/above it (utterances land in
-          `messages` the same way typed turns do — see `submit` below), so
-          this panel only has to carry what the chat itself doesn't: mic
-          state and the running checklist. */}
-      {voiceExit.mounted ? (
-        <div className={`voice-dock${voiceOpen ? ' is-open' : ''}`}>
-          <div className={`voice-dock-body${voiceExit.closing ? ' is-closing' : ''}`}>
-            <VoiceModePanel
-              onClose={closeVoice}
-              onUtterance={submit}
-              busy={busy}
-              isSpeaking={voice.speaking}
-              caption={voiceCaption}
-              decisions={decisions}
-              /* Replay button: speaks the last reply again through the same
-                 shared <audio> element, and re-primes the caption so the
-                 type-out plays a second time too. undefined (not a no-op
-                 function) when there's nothing to replay yet — VoiceModePanel
-                 hides the button outright rather than rendering it disabled. */
-              onReplayLast={
-                lastReplyText
-                  ? () => {
-                      setVoiceCaption(lastReplyText)
-                      voice.speak(lastReplyText)
-                    }
-                  : undefined
-              }
-              /* Non-null the moment a week is actually saved — see
-                 VoiceModePanel's BuiltPlanCard, which takes over from the
-                 running decisions checklist once this is set. artifact.planId,
-                 not liveArtifact/stream.preview: those cover the in-progress
-                 preview too, and this is specifically "it's done and saved,"
-                 not "it's still being written." */
-              builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
-              /* "Making it" — the same stream.preview days feeding the text
-                 chat's own WeekStrip (see the "Writing the week" block
-                 above), read here too rather than re-fetched, so voice mode
-                 and the text view can never show two different days-done
-                 counts for the same in-flight generation. */
-              building={stream.isStreaming}
-              buildDays={stream.preview?.days}
-              /* Barge-in: silence the reply AND abort the generation behind
-                 it. Stopping only the audio would leave the model still
-                 writing sentences that VoiceProvider would dutifully queue
-                 up and speak the moment the teacher stopped talking —
-                 interrupted in sound only, not in fact. */
-              onInterrupt={() => {
-                voice.stop()
-                chatStream.stop()
-                liveSpeechRef.current = ''
-                setVoiceCaption('')
-              }}
-              /* The clarification cards, tappable inside the panel — voice
-                 mode asks ONE question at a time (see the backend's voice
-                 prompt) and shows its options here rather than reading them
-                 aloud. */
-              questions={pendingQuestions?.questions || null}
-              onAnswer={(text) => {
-                voice.stop()
-                onAnswerQuestions(pendingQuestions.message, text)
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
-
       {/* The dock. Composer must stay in the SAME slot of the same parent across
           the empty/non-empty transition — it owns a MediaRecorder, a
           ResizeObserver and an autosized inline height, all of which die on
           remount. Only the wrapper's className may change. */}
       <div className="shrink-0 bg-paper px-gutter pb-5 pt-3">
         <div className="mx-auto w-full max-w-measure">
-          {/* Which week this conversation is planning, and the one place to
-              change it. Was a read-only readout for exactly one commit — it
-              answered "which week" but left changing it to a trip out to My
-              classes and a scroll through 36 rows, which is friction on the
-              single most common thing a teacher does here.
-
-              Sits above the Composer rather than inside it (where the
-              original lived, before eda8141 removed it for crowding that
-              dock): the Composer owns a MediaRecorder and a ResizeObserver
-              that don't survive a remount, so nothing is added to its
-              subtree. */}
-          <WeekPicker
-            options={weekOptions}
-            value={conversationWeek}
-            onChange={changeWeek}
-            /* Whose calendar these weeks are. Comes down with the board
-               itself (db.week_board) rather than being looked up separately,
-               so the name and the weeks can never disagree about which
-               school they describe. */
-            schoolName={calendar?.school?.name}
-            disabled={busy}
-          />
           <Composer
             value={query}
             onChange={setQuery}
@@ -1816,6 +1732,69 @@ export function ChatPage() {
             setAttachments={setAttachments}
             onOpenVoice={openVoice}
             voiceModeActive={voiceOpen}
+            voicePanel={
+              voiceExit.mounted ? (
+                <div className={`voice-dock${voiceOpen ? ' is-open' : ''}`}>
+                  <div className={`voice-dock-body${voiceExit.closing ? ' is-closing' : ''}`}>
+                    <VoiceModePanel
+                      onClose={closeVoice}
+                      onUtterance={submit}
+                      busy={busy}
+                      isSpeaking={voice.speaking}
+                      caption={voiceCaption}
+                      decisions={decisions}
+                      /* Replay button: speaks the last reply again through the same
+                         shared <audio> element, and re-primes the caption so the
+                         type-out plays a second time too. undefined (not a no-op
+                         function) when there's nothing to replay yet — VoiceModePanel
+                         hides the button outright rather than rendering it disabled. */
+                      onReplayLast={
+                        lastReplyText
+                          ? () => {
+                              setVoiceCaption(lastReplyText)
+                              voice.speak(lastReplyText)
+                            }
+                          : undefined
+                      }
+                      /* Non-null the moment a week is actually saved — see
+                         VoiceModePanel's BuiltPlanCard, which takes over from the
+                         running decisions checklist once this is set. artifact.planId,
+                         not liveArtifact/stream.preview: those cover the in-progress
+                         preview too, and this is specifically "it's done and saved,"
+                         not "it's still being written." */
+                      builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
+                      /* "Making it" — the same stream.preview days feeding the text
+                         chat's own WeekStrip (see the "Writing the week" block
+                         above), read here too rather than re-fetched, so voice mode
+                         and the text view can never show two different days-done
+                         counts for the same in-flight generation. */
+                      building={stream.isStreaming}
+                      buildDays={stream.preview?.days}
+                      /* Barge-in: silence the reply AND abort the generation behind
+                         it. Stopping only the audio would leave the model still
+                         writing sentences that VoiceProvider would dutifully queue
+                         up and speak the moment the teacher stopped talking —
+                         interrupted in sound only, not in fact. */
+                      onInterrupt={() => {
+                        voice.stop()
+                        chatStream.stop()
+                        liveSpeechRef.current = ''
+                        setVoiceCaption('')
+                      }}
+                      /* The clarification cards, tappable inside the panel — voice
+                         mode asks ONE question at a time (see the backend's voice
+                         prompt) and shows its options here rather than reading them
+                         aloud. */
+                      questions={pendingQuestions?.questions || null}
+                      onAnswer={(text) => {
+                        voice.stop()
+                        onAnswerQuestions(pendingQuestions.message, text)
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null
+            }
             /* The example is worth its length on a laptop and clipped on a
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */

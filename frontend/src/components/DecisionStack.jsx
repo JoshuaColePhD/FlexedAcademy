@@ -102,7 +102,7 @@ function DecisionRow({ label, value, onRevise }) {
             (see its own comment), just keyed on the value instead of a
             remounted row, since this row's editing state has to survive
             the value changing underneath it. */}
-        {settled ? <Check key={value} size={11} strokeWidth={3} className="fa-pop" /> : null}
+        {settled ? <Check key={value} size={11} strokeWidth={3} className="fa-check-pop" /> : null}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">{label}</span>

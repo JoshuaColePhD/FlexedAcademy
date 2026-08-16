@@ -154,7 +154,7 @@ function QuestionCards({ questions, onAnswer }) {
                     answered ? 'neo-inset text-accent-text' : 'neo-raised text-ink-faint'
                   }`}
                 >
-                  {answered ? <Check size={11} strokeWidth={3} /> : null}
+                  {answered ? <Check size={11} strokeWidth={3} className="fa-check-pop" /> : null}
                 </span>
                 <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-ink">{q.text}</p>
               </div>
@@ -486,6 +486,7 @@ export function VoiceModePanel({
 
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
+  const canvasRef = useRef(null)
   const analyserRef = useRef(null)
   const rafRef = useRef(null)
   const recorderRef = useRef(null)
@@ -831,10 +832,49 @@ export function VoiceModePanel({
       // then (barge-in still has to work), but a level reading dominated by
       // the assistant's own voice bleeding back in, or by nothing at all
       // while muted, isn't real feedback about the teacher's own voice.
+      const damped = pausedRef.current || mutedRef.current || processingRef.current
+
       if (dotRef.current) {
-        const damped = pausedRef.current || mutedRef.current || processingRef.current
         const scale = damped ? 1 : 1 + Math.min(1, level * 5) * 0.9
         dotRef.current.style.transform = `scale(${scale.toFixed(3)})`
+      }
+
+      if (canvasRef.current) {
+        const canvas = canvasRef.current
+        const ctx = canvas.getContext('2d')
+        const width = canvas.width
+        const height = canvas.height
+        
+        ctx.clearRect(0, 0, width, height)
+        
+        // Use frequency data for the bar visualizer
+        if (!analyserRef.current._freqData) {
+          analyserRef.current._freqData = new Uint8Array(analyser.frequencyBinCount)
+        }
+        const freqData = analyserRef.current._freqData
+        analyser.getByteFrequencyData(freqData)
+        
+        const barCount = 12
+        const gap = 2
+        const barWidth = (width - gap * (barCount - 1)) / barCount
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
+        for (let i = 0; i < barCount; i++) {
+          // sample from the lower frequency bands (human voice)
+          const dataIndex = Math.floor((i / barCount) * (freqData.length / 4))
+          const value = freqData[dataIndex] || 0
+          
+          // Smoothed height mapping
+          const mappedValue = damped ? 3 : Math.max(3, (value / 255) * height)
+          
+          // Draw rounded bar
+          const x = i * (barWidth + gap)
+          const y = (height - mappedValue) / 2
+          
+          ctx.beginPath()
+          ctx.roundRect(x, y, barWidth, mappedValue, barWidth / 2)
+          ctx.fill()
+        }
       }
 
       // Muted: nothing below this line runs — no endpointing, no
@@ -1041,7 +1081,7 @@ export function VoiceModePanel({
                   : busy
                     ? 'Thinking…'
                     : isSpeaking
-                      ? 'Speaking…'
+                      ? 'Speaking… (Talk to interrupt)'
                       : missHint
                         ? "Didn't catch that — try again"
                         : quietHint
@@ -1092,7 +1132,14 @@ export function VoiceModePanel({
            worth reflecting yet. */
         className={`h-1.5 w-1.5 rounded-full transition-transform duration-75 ${
           status === 'error' ? 'bg-mark' : muted ? 'bg-ink-faint' : 'bg-accent'
-        } ${status === 'error' || muted ? '' : status === 'listening' ? '' : 'animate-pulse'}`}
+        } ${status === 'error' || muted ? '' : status === 'listening' ? 'hidden' : 'animate-pulse'}`}
+      />
+      <canvas
+        ref={canvasRef}
+        width={48}
+        height={14}
+        aria-hidden="true"
+        className={`h-3.5 w-12 shrink-0 ${status === 'listening' && !muted && status !== 'error' ? 'block' : 'hidden'}`}
       />
       {label}
     </span>
@@ -1203,7 +1250,17 @@ export function VoiceModePanel({
         </button>
       </div>
     ) : spokenText ? (
-      <p className="truncate text-sm leading-relaxed text-ink-soft">{spokenText}</p>
+      <p className="truncate text-sm leading-relaxed text-ink-soft">
+        {spokenText.split(/(\s+)/).map((w, i) =>
+          w.trim() ? (
+            <span key={i} className="karaoke-word">
+              {w}
+            </span>
+          ) : (
+            <span key={i}>{w}</span>
+          )
+        )}
+      </p>
     ) : showHeard ? (
       <HeardEcho
         text={heardText}
@@ -1245,7 +1302,9 @@ export function VoiceModePanel({
          neo-panel): the pill/buttons inside still read their emboss and
          accent color from it, that's just no longer paired with an outer
          card shadow of its own. */
-      className="neo-world flex w-full flex-col gap-3 border-t border-edge bg-paper px-gutter pb-3 pt-4"
+      className={`neo-world relative flex w-full flex-col gap-3 border-t border-edge bg-paper px-gutter pb-3 pt-4 transition-colors ${
+        isSpeaking || busy ? 'aurora-glow' : ''
+      }`}
     >
       {/* Header row: status (+ a running "N of 4 decided" count while the
           checklist is actually the thing on screen) on the left, every

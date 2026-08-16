@@ -61,6 +61,7 @@ export function Composer({
      "start a voice conversation" entry point (below) just hides, since the
      conversation it starts is already the one on screen. */
   voiceModeActive = false,
+  voicePanel = null,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
@@ -205,9 +206,13 @@ export function Composer({
   return (
     <div className="relative w-full">
       <div
-        className="composer-shell relative flex w-full flex-col overflow-hidden rounded-xl border border-edge bg-paper-raised transition-colors"
+        className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised transition-all ${
+          voiceModeActive ? 'rounded-3xl' : 'rounded-xl'
+        }`}
         ref={wrapperRef}
       >
+        {voicePanel}
+
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-3 pt-2.5">
             {attachments.map((f, i) => (

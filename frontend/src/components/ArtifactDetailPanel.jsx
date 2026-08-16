@@ -209,9 +209,8 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
         const style = { animationDelay: `${Math.min(i * 40, 360)}ms` }
         const row = (
           <div
-            className={`detail-card neo-raised fa-rise${w.no_school ? ' is-closed' : ''}${
-              isThisPlan ? ' is-current' : ''
-            }`}
+            className={`detail-card neo-raised fa-rise${w.no_school ? ' is-closed' : ''}${isThisPlan ? ' is-current' : ''
+              }`}
             style={style}
           >
             <div className="detail-card-head">
