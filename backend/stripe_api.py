@@ -120,7 +120,8 @@ def get_price(price_id: str) -> dict:
 
 
 def create_checkout_session(*, price_id: str, customer_id: str | None, email: str,
-                            user_id: str, success_url: str, cancel_url: str) -> dict:
+                            user_id: str, success_url: str, cancel_url: str,
+                            trial_days: int = 0) -> dict:
     data: dict = {
         "mode": "subscription",
         "line_items": [{"price": price_id, "quantity": 1}],
@@ -137,6 +138,12 @@ def create_checkout_session(*, price_id: str, customer_id: str | None, email: st
         data["customer"] = customer_id
     else:
         data["customer_email"] = email
+    # trial_days=0 (the caller's own choice, not this function's) omits the
+    # key entirely rather than sending trial_period_days=0 — Stripe treats
+    # the key's mere presence as "this is a trialing subscription" for some
+    # API versions even at 0, which is not what "no trial" should mean.
+    if trial_days > 0:
+        data["subscription_data"]["trial_period_days"] = trial_days
     return _call("POST", "/checkout/sessions", data)
 
 

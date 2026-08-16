@@ -47,7 +47,13 @@ function priceLine(data) {
   }).format(p.amount / 100)
   const every =
     p.interval_count > 1 ? `${p.interval_count} ${p.interval}s` : p.interval || 'month'
-  return `Free to start, ${money} a ${every}. Cancel any time.`
+  // The real trial length, read from the same place Checkout itself reads
+  // it (routes/billing.py) — not hardcoded here, so this line can't
+  // promise a number Stripe isn't actually configured to honor.
+  const days = data?.trial_period_days
+  return days > 0
+    ? `Free for ${days} days, then ${money} a ${every}. Cancel any time.`
+    : `Free to start, ${money} a ${every}. Cancel any time.`
 }
 
 function useInView() {

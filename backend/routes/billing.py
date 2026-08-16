@@ -69,12 +69,23 @@ def public_price():
     if not settings.billing_enabled:
         # Fallback price so the landing page can list $11.99/mo before Stripe is live.
         mock_price = {"amount": 1199, "currency": "USD", "interval": "month", "interval_count": 1}
-        return {"price": mock_price, "free_weekly_token_cap": settings.free_weekly_token_cap}
+        return {
+            "price": mock_price,
+            "free_weekly_token_cap": settings.free_weekly_token_cap,
+            "trial_period_days": settings.trial_period_days,
+        }
     try:
         price = stripe_api.get_price(settings.stripe_price_id)
     except AppError:
         price = None
-    return {"price": price, "free_weekly_token_cap": settings.free_weekly_token_cap}
+    return {
+        "price": price,
+        "free_weekly_token_cap": settings.free_weekly_token_cap,
+        # Read here too, not hardcoded in the frontend — same reasoning as
+        # the price itself: if this changes, the copy that promises it
+        # should change with it, not drift out of sync with a redeploy.
+        "trial_period_days": settings.trial_period_days,
+    }
 
 
 @router.get("")
@@ -92,7 +103,17 @@ def billing_status(request: Request, user_id: str = Depends(get_current_user)):
     else:
         # Fallback price so the paywall can list $11.99/mo before Stripe is live.
         price = {"amount": 1199, "currency": "USD", "interval": "month", "interval_count": 1}
-    return {**ent, "price": price}
+    user = db.get_user_by_id(user_id) or {}
+    return {
+        **ent,
+        "price": price,
+        "trial_period_days": settings.trial_period_days,
+        # Whether THIS account would actually get the trial if it checked
+        # out right now — see checkout()'s own reasoning. Lets the paywall
+        # say "start your free week" only when that's true, rather than
+        # promising a trial to someone who's already used theirs.
+        "trial_eligible": settings.trial_period_days > 0 and not user.get("stripe_customer_id"),
+    }
 
 
 @router.post("/checkout")
@@ -104,13 +125,23 @@ def checkout(request: Request, user_id: str = Depends(get_current_user)):
         raise AppError("not_authenticated", "Not logged in.", status=401)
 
     base = _return_url(request)
+    existing_customer = user.get("stripe_customer_id")
     session = stripe_api.create_checkout_session(
         price_id=settings.stripe_price_id,
-        customer_id=user.get("stripe_customer_id"),
+        customer_id=existing_customer,
         email=user["email"],
         user_id=user_id,
         success_url=f"{base}/?checkout=success",
         cancel_url=f"{base}/?checkout=cancelled",
+        # Only ever offered on this account's FIRST checkout — a
+        # stripe_customer_id already on file means they've been through this
+        # flow before (an earlier trial, a lapsed subscription), and letting
+        # a cancel-then-resubscribe loop mint a fresh trial each time would
+        # turn a one-week goodwill offer into an unlimited one. This doesn't
+        # stop someone from deleting the account and signing up again under
+        # a new email — that's a different, harder problem this doesn't
+        # attempt to solve.
+        trial_days=0 if existing_customer else settings.trial_period_days,
     )
     return {"url": session["url"]}
 

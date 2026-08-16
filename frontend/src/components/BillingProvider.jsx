@@ -44,6 +44,13 @@ export function BillingProvider({ children }) {
 
   const [open, setOpen] = useState(false)
   const [price, setPrice] = useState(null)
+  // Whether THIS account still gets Stripe's trial_period_days if it checks
+  // out right now — see routes/billing.py's own trial_eligible reasoning
+  // (an account that's already been a Stripe customer once doesn't get a
+  // second trial). null until the /api/billing fetch below lands, same as
+  // price — the copy below treats null the same as "no trial" rather than
+  // flashing trial language and then retracting it.
+  const [trial, setTrial] = useState(null)
   const [busy, setBusy] = useState(false)
   const dialogRef = useRef(null)
   const subscribeRef = useRef(null)
@@ -64,7 +71,11 @@ export function BillingProvider({ children }) {
     let cancelled = false
     api
       .billing()
-      .then((b) => !cancelled && setPrice(b.price || null))
+      .then((b) => {
+        if (cancelled) return
+        setPrice(b.price || null)
+        setTrial({ days: b.trial_period_days || 0, eligible: !!b.trial_eligible })
+      })
       .catch(() => {})
     return () => {
       cancelled = true
@@ -179,15 +190,21 @@ export function BillingProvider({ children }) {
           >
             <h2 id="paywall-title">You’ve reached this week’s usage limit</h2>
             <p id="paywall-body">
-              It resets on a rolling week, or subscribe now for a much higher
-              limit{priceLabel ? ` — ${priceLabel}` : ''}. Everything you’ve already
-              made stays yours either way.
+              It resets on a rolling week, or {trial?.eligible && trial.days > 0 ? (
+                <>start a free {trial.days}-day trial</>
+              ) : (
+                <>subscribe now</>
+              )} for a much higher limit
+              {priceLabel ? ` — ${priceLabel}${trial?.eligible && trial.days > 0 ? ' after the trial' : ''}` : ''}.
+              Everything you’ve already made stays yours either way.
             </p>
             <ul className="mb-4 mt-1 space-y-1.5 text-xs text-ink-soft">
               {[
                 'A much higher weekly usage limit',
                 'Grounded in your standards and your pacing guide',
-                'Cancel any time, from your account',
+                trial?.eligible && trial.days > 0
+                  ? `Free for ${trial.days} days — cancel before it ends and you won’t be charged`
+                  : 'Cancel any time, from your account',
               ].map((line) => (
                 <li key={line} className="flex items-start gap-2">
                   <Check size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-ink-faint" />
@@ -206,7 +223,11 @@ export function BillingProvider({ children }) {
                 onClick={subscribe}
                 disabled={busy}
               >
-                {busy ? 'Opening…' : 'Subscribe'}
+                {busy
+                  ? 'Opening…'
+                  : trial?.eligible && trial.days > 0
+                    ? `Start free trial`
+                    : 'Subscribe'}
               </button>
             </div>
           </div>
