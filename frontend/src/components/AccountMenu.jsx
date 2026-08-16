@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { LogOut, Settings, User, ShieldCheck } from 'lucide-react'
+import { LogOut, User, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-import { ThemeToggle } from './ThemeToggle'
 
 /* The rail footer, and the home of the control that did not exist.
  *
@@ -15,7 +14,7 @@ import { ThemeToggle } from './ThemeToggle'
  *
  * It goes next to the teacher's own name because that is where people already
  * look for it. */
-export function AccountMenu({ classPath }) {
+export function AccountMenu() {
   const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -64,8 +63,6 @@ export function AccountMenu({ classPath }) {
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
       </button>
 
-      <ThemeToggle />
-
       {open ? (
         <div
           ref={popoverRef}
@@ -86,25 +83,19 @@ export function AccountMenu({ classPath }) {
               <ShieldCheck size={14} aria-hidden="true" /> Admin
             </Link>
           ) : null}
+          {/* Was a two-up row shared with "Classes & settings" — that link is
+              now the always-visible gear at each end of the rail footer
+              (see AppShell's Rail), so Sign out gets the row to itself. */}
           <div className="flex items-stretch border-t border-hairline mt-1 pt-1">
-            <Link
-              to={`${classPath}/class`}
-              onClick={() => setOpen(false)}
-              className="flex-1 flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-            >
-              <Settings size={14} aria-hidden="true" /> Classes &amp; settings
-            </Link>
             <button
               type="button"
               onClick={() => {
                 setOpen(false)
                 logout()
               }}
-              title="Sign out"
-              aria-label="Sign out"
-              className="flex min-h-touch w-10 shrink-0 items-center justify-center text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink border-l border-hairline"
+              className="flex flex-1 min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
             >
-              <LogOut size={14} aria-hidden="true" />
+              <LogOut size={14} aria-hidden="true" /> Sign out
             </button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ChevronRight, FileText, PanelLeft, Pencil, Plus, Settings, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -11,6 +11,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { ClassSwitcher } from './ClassSwitcher'
 import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
+import { ThemeToggle } from './ThemeToggle'
 
 /* The frame. A chat client's shape, which is what this is now.
  *
@@ -207,10 +208,36 @@ function Rail({ onNavigate, onClose }) {
         >
           <FileText size={15} aria-hidden="true" /> Library
         </NavLink>
-        {/* Only rendered for is_admin accounts — everyone else never sees this
-            link exists. The route and every request it makes are gated again
-            server-side, so this is convenience, not the security boundary. */}
-        <AccountMenu classPath={classPath} />
+        {/* Two identical links to the same "Classes & settings" page, one at
+            each end of the footer row — the gear used to live only inside
+            AccountMenu's dropdown, a click behind the account name. Both
+            reach ClassPage; neither is more canonical than the other. */}
+        <div className="flex items-center gap-1 px-1">
+          <Link
+            to={`${classPath}/class`}
+            onClick={onNavigate}
+            className="btn-icon"
+            aria-label="Classes & settings"
+            title="Classes & settings"
+          >
+            <Settings size={15} aria-hidden="true" />
+          </Link>
+          {/* Only rendered for is_admin accounts — everyone else never sees this
+              link exists. The route and every request it makes are gated again
+              server-side, so this is convenience, not the security boundary. */}
+          <div className="min-w-0 flex-1">
+            <AccountMenu />
+          </div>
+          <Link
+            to={`${classPath}/class`}
+            onClick={onNavigate}
+            className="btn-icon"
+            aria-label="Classes & settings"
+            title="Classes & settings"
+          >
+            <Settings size={15} aria-hidden="true" />
+          </Link>
+        </div>
       </div>
     </>
   )
@@ -346,8 +373,20 @@ export function AppShell({ children }) {
             <span className="pointer-events-none absolute inset-x-0 truncate text-center text-sm font-semibold tracking-tight text-ink">
               FlexEd Academy
             </span>
+            <ThemeToggle />
           </div>
-        ) : null}
+        ) : (
+          /* Desktop had no header of its own at all — the theme toggle used to
+             live at the bottom of the rail (AccountMenu), on the opposite
+             corner of the screen from where a right-hand panel (the artifact
+             drawer, ChatPage's own ArtifactDrawer) can open. This bar is the
+             one thing every page under AppShell shares, so the toggle is here
+             rather than duplicated per page — top-right, above wherever that
+             drawer sits once a page renders one. */
+          <div className="flex h-12 shrink-0 items-center justify-end border-b border-edge px-3">
+            <ThemeToggle />
+          </div>
+        )}
         <div className="min-h-0 flex-1">{children}</div>
       </div>
     </div>
