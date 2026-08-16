@@ -1,7 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Search, ShieldCheck, Trash2, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Search,
+  ShieldCheck,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
@@ -20,23 +29,14 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle'
  * makes (see deps.get_current_admin) — a non-admin hitting /admin by URL sees
  * the same "Not authorized" the API would have given them anyway.
  *
- * Widened on Josh's own ask ("needs to give me a lot more control"): the old
- * page could only tell an account "the ordinary tier cap" or "unlimited" —
- * nothing in between, and nothing said which accounts were actually close to
- * their cap RIGHT NOW versus just building steadily. Three additions, all
- * read-or-act on data the backend already had (list_accounts_with_stats
- * already computed tokens_7d/30d; this just adds the burst window and a
- * per-account override on top):
- *   - An estimated $ cost per account, not just a raw token count — the
- *     actual question a cap exists to answer.
- *   - An at-a-glance status (fine / near cap / capped right now), reading
- *     the same weekly+burst thresholds entitlement.py itself gates on.
- *   - A per-account cap override — the missing middle ground between the
- *     free tier and comped (unlimited).
- * Plus a search box (the table has no other way to find one account once
- * there are more than a screenful) and a card layout below `lg`, where a
- * 9-column table stops being something a phone or a tablet in portrait can
- * show without horizontal scrolling.
+ * Widened twice on Josh's own ask ("needs to give me a lot more control").
+ * First pass (still here): an estimated $ cost per account, an at-a-glance
+ * cap status, a per-account cap override, search, and a card layout below
+ * `lg`. Second pass, this one: summary stats at a glance, sortable columns
+ * and a status filter (so "who's actually close to their cap" doesn't mean
+ * scanning every row by eye), a site-wide weekly usage trend (a single 7-day
+ * snapshot says how much, never whether it's growing), and bulk actions
+ * (grant/revoke/cap several accounts at once instead of one row at a time).
  */
 
 const ENTITLED = new Set(['active', 'trialing', 'past_due', 'comped'])
@@ -66,6 +66,18 @@ function relative(iso) {
 
 function estCost(tokens) {
   return `$${((tokens / 1_000_000) * BLENDED_RATE_PER_1M).toFixed(2)}`
+}
+
+/* free / subscribed / comped — the three states the status filter and the
+   summary cards both read off of. Not the same partition as ENTITLED
+   (which lumps comped in with active/trialing/past_due for "may generate")
+   — an admin looking at the account list wants comped called out on its
+   own, since it's the one status THIS page can flip, unlike a real Stripe
+   subscription. */
+function tier(account) {
+  if (account.subscription_status === 'comped') return 'comped'
+  if (ENTITLED.has(account.subscription_status)) return 'subscribed'
+  return 'free'
 }
 
 /* The cap actually in effect for one account, and how close it's running to
@@ -178,6 +190,127 @@ function CustomCapEditor({ account }) {
         {saving ? '…' : 'Save'}
       </button>
     </div>
+  )
+}
+
+/* Four numbers worth seeing before scrolling into the table at all — how
+   many accounts exist, how many of those are real subscribers vs comped vs
+   just on the free week, and what the whole roster is costing right now.
+   Plain divs, not a chart: this is a glance, not an analysis. */
+function StatCard({ label, value }) {
+  return (
+    <div className="neo-world neo-panel rounded-xl p-3">
+      <p className="text-2xs font-medium uppercase tracking-wide text-ink-muted">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
+    </div>
+  )
+}
+
+function StatsCards({ accounts }) {
+  const stats = useMemo(() => {
+    let subscribed = 0
+    let comped = 0
+    let cost7d = 0
+    for (const a of accounts) {
+      const t = tier(a)
+      if (t === 'subscribed') subscribed += 1
+      else if (t === 'comped') comped += 1
+      cost7d += a.tokens_7d || 0
+    }
+    return { subscribed, comped, cost7d }
+  }, [accounts])
+
+  return (
+    <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <StatCard label="Accounts" value={accounts.length} />
+      <StatCard label="Subscribed" value={stats.subscribed} />
+      <StatCard label="Comped" value={stats.comped} />
+      <StatCard label="Est. cost, 7d" value={estCost(stats.cost7d)} />
+    </div>
+  )
+}
+
+/* A single 7-day snapshot per account says how much; it can't say whether
+   usage is growing, flat, or falling off — the question that actually
+   matters for "is the current pricing still working." Plain divs sized by
+   inline height, not a charting library, for the same reason the rest of
+   this page stays plain HTML: eight bars is not something that needs a
+   dependency. */
+function UsageTrendChart() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: qk.adminUsageTrend,
+    queryFn: () => api.adminUsageTrend(),
+  })
+  const weeks = data?.weeks ?? []
+
+  if (isLoading || isError || !weeks.length) return null
+
+  const max = Math.max(...weeks.map((w) => w.tokens), 1)
+
+  return (
+    <div className="neo-world neo-panel mb-6 rounded-xl p-4">
+      <p className="text-sm font-semibold text-ink">Weekly usage</p>
+      <p className="mt-0.5 text-2xs text-ink-muted">
+        Tokens across every account, by week — {weeks.length} week{weeks.length === 1 ? '' : 's'}.
+      </p>
+      <div className="mt-3 flex h-20 items-end gap-1.5">
+        {weeks.map((w) => (
+          <div
+            key={w.week_start}
+            className="group relative flex h-full flex-1 items-end"
+            title={`Week of ${new Date(w.week_start).toLocaleDateString()}: ${w.tokens.toLocaleString()} tokens (${estCost(
+              w.tokens
+            )})`}
+          >
+            <div
+              className="w-full rounded-t bg-accent/60 transition-colors group-hover:bg-accent"
+              style={{ height: `${Math.max(4, Math.round((w.tokens / max) * 100))}%` }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const STATUS_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'free', label: 'Free' },
+  { key: 'subscribed', label: 'Subscribed' },
+  { key: 'comped', label: 'Comped' },
+]
+
+// What each sortable column actually sorts on — plain values, so the same
+// comparator works for every column instead of one bespoke sort per column.
+const SORT_ACCESSORS = {
+  name: (a) => (a.name || a.email || '').toLowerCase(),
+  status: (a) => a.subscription_status || '',
+  plans_built: (a) => a.plans_built || 0,
+  tokens_7d: (a) => a.tokens_7d || 0,
+  avg_day: (a) => a.tokens_avg_day_30d || 0,
+  last_active: (a) => a.last_plan_at || '',
+  joined: (a) => a.created_at || '',
+}
+
+function SortHeader({ label, sortKey, sort, onSort }) {
+  const active = sort.key === sortKey
+  return (
+    <th className="px-3 py-2 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 transition-colors hover:text-ink"
+      >
+        {label}
+        {active ? (
+          sort.dir === 'asc' ? (
+            <ChevronUp size={12} aria-hidden="true" />
+          ) : (
+            <ChevronDown size={12} aria-hidden="true" />
+          )
+        ) : null}
+      </button>
+    </th>
   )
 }
 
@@ -329,6 +462,11 @@ export function AdminBody() {
   const qc = useQueryClient()
   const [pending, setPending] = useState(null)
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sort, setSort] = useState({ key: 'joined', dir: 'desc' })
+  const [selected, setSelected] = useState(() => new Set())
+  const [bulkCap, setBulkCap] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin', 'accounts'],
@@ -337,15 +475,51 @@ export function AdminBody() {
 
   const accounts = data?.accounts ?? []
 
-  // Substring match on name/email — the table had no other way to find one
-  // account among many besides scrolling and reading. No useMemo: `accounts`
-  // is a fresh array every render already (data?.accounts ?? []), so memoizing
-  // against it would never actually skip work — and an admin's account list
-  // is small enough that filtering on every render costs nothing real.
+  const onSort = (key) => {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
+  }
+
+  // Substring match on name/email, a status tier, then a sort — three plain
+  // array operations, not a single clever one, so any of the three can
+  // change independently without the other two needing to be re-derived.
+  // No useMemo: `accounts` is a fresh array every render already
+  // (data?.accounts ?? []), so memoizing against it would never actually
+  // skip work — and an admin's account list is small enough that this costs
+  // nothing real even run on every render.
   const q = search.trim().toLowerCase()
-  const filtered = q
-    ? accounts.filter((a) => a.name?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q))
-    : accounts
+  const filtered = accounts
+    .filter((a) => (q ? a.name?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q) : true))
+    .filter((a) => (statusFilter === 'all' ? true : tier(a) === statusFilter))
+  const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.joined
+  const sorted = [...filtered].sort((a, b) => {
+    const av = accessor(a)
+    const bv = accessor(b)
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0
+    return sort.dir === 'asc' ? cmp : -cmp
+  })
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const allVisibleSelected = sorted.length > 0 && sorted.every((a) => selected.has(a.id))
+  const toggleSelectAllVisible = () => {
+    setSelected((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev)
+        sorted.forEach((a) => next.delete(a.id))
+        return next
+      }
+      const next = new Set(prev)
+      sorted.forEach((a) => next.add(a.id))
+      return next
+    })
+  }
+  const clearSelection = () => setSelected(new Set())
 
   const toggleComp = async (account) => {
     const nextComped = account.subscription_status !== 'comped'
@@ -376,10 +550,99 @@ export function AdminBody() {
     }
   }
 
+  // Loops the same per-account endpoints the single-row actions already
+  // use — the account list here is small enough (per this page's own
+  // "deliberately narrow" framing) that N sequential-ish requests is
+  // simpler and safer than a new bulk backend endpoint with its own
+  // partial-failure semantics to get right.
+  const bulkComp = async (comped) => {
+    const ids = [...selected]
+    if (!ids.length) return
+    const ok = await confirm({
+      title: comped
+        ? `Grant unlimited access to ${ids.length} account${ids.length === 1 ? '' : 's'}?`
+        : `Revoke unlimited access from ${ids.length} account${ids.length === 1 ? '' : 's'}?`,
+      body: comped
+        ? 'None of them will hit the free-week limit until this is revoked.'
+        : 'They will all fall back to the ordinary one-week-free limit.',
+      confirmLabel: comped ? 'Grant' : 'Revoke',
+      tone: comped ? 'default' : 'danger',
+    })
+    if (!ok) return
+    setBulkBusy(true)
+    try {
+      const results = await Promise.allSettled(ids.map((id) => api.adminSetComped(id, comped)))
+      const failed = results.filter((r) => r.status === 'rejected').length
+      await qc.invalidateQueries({ queryKey: ['admin', 'accounts'] })
+      if (failed) {
+        toast.error(`${ids.length - failed} of ${ids.length} updated — ${failed} failed`)
+      } else {
+        toast.success(`${ids.length} account${ids.length === 1 ? '' : 's'} updated`)
+      }
+      clearSelection()
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  const bulkSetCap = async () => {
+    const ids = [...selected]
+    if (!ids.length) return
+    const cap = bulkCap === '' ? null : Math.max(0, parseInt(bulkCap, 10) || 0)
+    const ok = await confirm({
+      title:
+        cap == null
+          ? `Clear the custom cap on ${ids.length} account${ids.length === 1 ? '' : 's'}?`
+          : `Cap ${ids.length} account${ids.length === 1 ? '' : 's'} at ${cap.toLocaleString()} tokens/week?`,
+      body:
+        cap == null
+          ? 'Each falls back to its ordinary tier default.'
+          : 'Overrides each account’s tier default until cleared, in either direction.',
+      confirmLabel: cap == null ? 'Clear' : 'Set cap',
+    })
+    if (!ok) return
+    setBulkBusy(true)
+    try {
+      const results = await Promise.allSettled(ids.map((id) => api.adminSetCustomCap(id, cap)))
+      const failed = results.filter((r) => r.status === 'rejected').length
+      await qc.invalidateQueries({ queryKey: ['admin', 'accounts'] })
+      if (failed) {
+        toast.error(`${ids.length - failed} of ${ids.length} updated — ${failed} failed`)
+      } else {
+        toast.success(`${ids.length} account${ids.length === 1 ? '' : 's'} updated`)
+      }
+      clearSelection()
+      setBulkCap('')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  if (isLoading) return <p className="text-sm text-ink-muted">Loading…</p>
+  if (isError) return <p className="text-sm text-mark">{error?.message || 'Could not load accounts.'}</p>
+
   return (
     <>
-      {accounts.length ? (
-        <div className="mb-6 flex justify-end">
+      <StatsCards accounts={accounts} />
+      <UsageTrendChart />
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-1.5">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setStatusFilter(f.key)}
+              aria-pressed={statusFilter === f.key}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                statusFilter === f.key ? 'bg-accent text-ink-inverse' : 'bg-paper-inset text-ink-muted hover:text-ink'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {accounts.length ? (
           <div className="relative w-full max-w-56">
             <Search
               size={14}
@@ -404,15 +667,50 @@ export function AdminBody() {
               </button>
             ) : null}
           </div>
+        ) : null}
+      </div>
+
+      {/* Only appears once something is selected — an empty toolbar sitting
+          above the table all the time would be furniture most visits, since
+          most admin work here is still one account at a time. */}
+      {selected.size > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-accent/30 bg-accent-tint px-3 py-2">
+          <span className="text-xs font-medium text-accent-text">
+            {selected.size} selected
+          </span>
+          <button type="button" className="btn text-xs" disabled={bulkBusy} onClick={() => bulkComp(true)}>
+            Grant unlimited
+          </button>
+          <button type="button" className="btn text-xs" disabled={bulkBusy} onClick={() => bulkComp(false)}>
+            Revoke unlimited
+          </button>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={0}
+              step={1000}
+              value={bulkCap}
+              onChange={(e) => setBulkCap(e.target.value)}
+              placeholder="tier default"
+              aria-label="Custom weekly token cap for selected accounts"
+              className="w-28 rounded-md border border-edge bg-paper px-2 py-1 text-xs text-ink outline-none focus:border-accent"
+            />
+            <button type="button" className="btn text-xs" disabled={bulkBusy} onClick={bulkSetCap}>
+              Set cap
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="ml-auto text-xs text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+          >
+            Clear
+          </button>
         </div>
       ) : null}
 
-      {isLoading ? (
-        <p className="text-sm text-ink-muted">Loading…</p>
-      ) : isError ? (
-        <p className="text-sm text-mark">{error?.message || 'Could not load accounts.'}</p>
-      ) : filtered.length === 0 && search ? (
-        <p className="text-sm text-ink-muted">No account matches “{search}.”</p>
+      {sorted.length === 0 && (search || statusFilter !== 'all') ? (
+        <p className="text-sm text-ink-muted">No account matches.</p>
       ) : (
         <>
           {/* Desktop: the full table, every column at once. Below `lg` a
@@ -430,22 +728,38 @@ export function AdminBody() {
               <table className="w-full text-sm whitespace-nowrap">
                 <thead>
                   <tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted">
-                    <th className="px-3 py-2 font-medium">Account</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="w-8 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleSelectAllVisible}
+                        aria-label="Select every visible account"
+                      />
+                    </th>
+                    <SortHeader label="Account" sortKey="name" sort={sort} onSort={onSort} />
+                    <SortHeader label="Status" sortKey="status" sort={sort} onSort={onSort} />
                     <th className="px-3 py-2 font-medium">Cap status</th>
-                    <th className="px-3 py-2 font-medium">Plans built</th>
-                    <th className="px-3 py-2 font-medium">Tokens 7d</th>
+                    <SortHeader label="Plans built" sortKey="plans_built" sort={sort} onSort={onSort} />
+                    <SortHeader label="Tokens 7d" sortKey="tokens_7d" sort={sort} onSort={onSort} />
                     <th className="px-3 py-2 font-medium">Est. cost 7d</th>
-                    <th className="px-3 py-2 font-medium">Avg/day (30d)</th>
-                    <th className="px-3 py-2 font-medium">Last active</th>
-                    <th className="px-3 py-2 font-medium">Joined</th>
+                    <SortHeader label="Avg/day (30d)" sortKey="avg_day" sort={sort} onSort={onSort} />
+                    <SortHeader label="Last active" sortKey="last_active" sort={sort} onSort={onSort} />
+                    <SortHeader label="Joined" sortKey="joined" sort={sort} onSort={onSort} />
                     <th className="px-3 py-2 font-medium">Custom cap</th>
                     <th className="px-3 py-2 font-medium" />
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((a) => (
+                  {sorted.map((a) => (
                     <tr key={a.id} className="border-b border-edge last:border-0">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(a.id)}
+                          onChange={() => toggleSelect(a.id)}
+                          aria-label={`Select ${a.email}`}
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <div className="font-medium text-ink">{a.name}</div>
                         <div className="text-2xs text-ink-muted">
@@ -489,14 +803,23 @@ export function AdminBody() {
               stacked instead of squeezed into columns nothing that width can
               show. */}
           <ul className="flex flex-col gap-3 lg:hidden">
-            {filtered.map((a) => (
+            {sorted.map((a) => (
               <li key={a.id} className="neo-world neo-panel rounded-xl p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-ink">{a.name}</div>
-                    <div className="truncate text-2xs text-ink-muted">
-                      {a.email}
-                      {a.is_admin ? ' · admin' : ''}
+                  <div className="flex min-w-0 items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(a.id)}
+                      onChange={() => toggleSelect(a.id)}
+                      aria-label={`Select ${a.email}`}
+                      className="mt-1 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-ink">{a.name}</div>
+                      <div className="truncate text-2xs text-ink-muted">
+                        {a.email}
+                        {a.is_admin ? ' · admin' : ''}
+                      </div>
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">

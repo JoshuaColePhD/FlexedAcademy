@@ -26,6 +26,14 @@ def list_accounts(_admin: str = Depends(get_current_admin)):
     return {"accounts": db.list_accounts_with_stats()}
 
 
+@router.get("/usage-trend")
+def usage_trend(_admin: str = Depends(get_current_admin)):
+    """Site-wide weekly usage for the admin panel's trend chart — see
+    db.weekly_usage_series's own docstring for why this is a separate,
+    bucketed query rather than something list_accounts already carries."""
+    return {"weeks": db.weekly_usage_series()}
+
+
 class CompBody(BaseModel):
     comped: bool
 

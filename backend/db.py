@@ -2138,6 +2138,35 @@ def list_accounts_with_stats() -> list[dict]:
     return res
 
 
+def weekly_usage_series(weeks: int = 8) -> list[dict]:
+    """Site-wide token usage, bucketed by week — the admin panel's trend
+    chart. list_accounts_with_stats already answers "how much right now"
+    (a 7-day snapshot per account); this answers "is it growing," which a
+    single snapshot can't, no matter how often it's refreshed.
+
+    date_trunc, not a Python-side groupby — usage_events can be a real
+    table by the time anyone's looking at eight weeks of it, and letting
+    Postgres do the bucketing means one aggregate query instead of hauling
+    every row of eight weeks across the wire to sum in Python.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(weeks=weeks)).isoformat(timespec="seconds")
+    rows = _rows(
+        """
+        SELECT date_trunc('week', created_at::timestamptz) AS week_start,
+               SUM(tokens_in + tokens_out) AS tokens
+        FROM usage_events
+        WHERE created_at >= ?
+        GROUP BY week_start
+        ORDER BY week_start ASC
+        """,
+        (since,),
+    )
+    return [
+        {"week_start": r["week_start"].isoformat(), "tokens": int(r["tokens"] or 0)}
+        for r in rows
+    ]
+
+
 def set_custom_token_cap(user_id: str, cap: int | None) -> None:
     """An admin override on top of the two tier defaults (config.py) — see
     migration 28. `cap=None` clears it back to "use the tier's own cap"."""

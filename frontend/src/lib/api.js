@@ -274,6 +274,7 @@ export const api = {
      account gets the normal 403 envelope, not a hidden feature that merely
      isn't linked to. */
   adminListAccounts: ({ signal } = {}) => request('/api/admin/accounts', { signal }),
+  adminUsageTrend: ({ signal } = {}) => request('/api/admin/usage-trend', { signal }),
   adminSetComped: (accountId, comped) =>
     request(`/api/admin/accounts/${accountId}/comp`, { method: 'POST', body: { comped } }),
   // cap: null clears the override back to the account's ordinary tier cap.
