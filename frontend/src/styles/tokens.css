@@ -141,7 +141,7 @@
   /* A settings form wants to stay narrower than prose. */
   --measure-form: 42rem;
   /* A tighter reading column for focused chat modes. */
-  --measure-narrow: 26rem;
+  --measure-narrow: 30rem;
   /* The year grid is a table, not prose. Rule 3 governs the reading column; a
      43×5 grid squeezed into --measure would be unreadable, and widening
      --measure to suit it would wreck every paragraph in the app. */
