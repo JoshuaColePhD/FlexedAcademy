@@ -23,6 +23,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { WeekPicker } from '../components/WeekPicker'
+import { ClassSwitcher } from '../components/ClassSwitcher'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
@@ -116,7 +117,7 @@ export function ChatPage() {
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
-  const { activeClass } = useActiveClass()
+  const { classes, activeClass } = useActiveClass()
   const { data: chats = [] } = useChats()
   const { data: calendar } = useCalendar(classId)
   const { setDocOpen } = useShell()
@@ -1680,6 +1681,16 @@ export function ChatPage() {
       <div className="relative flex h-11 shrink-0 items-center border-b border-edge px-2">
         {!docOpen ? (
           <div className="chat-head pointer-events-auto absolute left-1/2 flex -translate-x-1/2 items-center">
+            {/* Which prep, directly left of which week — the two questions
+                that together answer "what is this conversation about,"
+                read as one row instead of a switcher a whole sidebar away
+                from the week it scopes. */}
+            <ClassSwitcher
+              classes={classes}
+              activeClass={activeClass}
+              classPath={`/c/${classId}`}
+              inline
+            />
             <WeekPicker
               options={weekOptions}
               value={conversationWeek}

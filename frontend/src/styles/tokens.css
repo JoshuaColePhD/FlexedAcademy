@@ -119,11 +119,11 @@
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
   /* ── layout ────────────────────────────────────────────────────────────── */
-  --sidebar-w: 264px;
+  --sidebar-w: 396px;
   /* The nav tightens when the document is open. Three columns plus a document
      at 264px of chrome leaves the sheet too narrow to hold the district table
      at a readable size, and a nav rail is the one column with slack in it. */
-  --sidebar-w-tight: 216px;
+  --sidebar-w-tight: 324px;
   --artifact-w: 900px;
   /* The collapsed artifact rail. Wide enough for a file name and a Download
      button, narrow enough that the chat keeps a real reading column. */
