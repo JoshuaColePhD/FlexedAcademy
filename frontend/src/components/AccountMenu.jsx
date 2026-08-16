@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { LogOut, Settings, User, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-import { ThemeToggle } from './ThemeToggle'
 
 /* The rail footer, and the home of the control that did not exist.
  *
@@ -64,7 +63,14 @@ export function AccountMenu({ classPath }) {
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
       </button>
 
-      <ThemeToggle />
+      <Link
+        to={`${classPath}/class`}
+        className="btn-icon"
+        aria-label="Classes & settings"
+        title="Classes & settings"
+      >
+        <Settings size={16} aria-hidden="true" />
+      </Link>
 
       {open ? (
         <div

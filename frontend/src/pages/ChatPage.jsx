@@ -20,6 +20,7 @@ import { questionTypesProse } from '../lib/quizShape'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { WeekPicker } from '../components/WeekPicker'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
@@ -1570,6 +1571,15 @@ export function ChatPage() {
 
   const chatPane = (
     <div className="relative flex h-full min-h-0 flex-col bg-paper">
+      {/* Always on, unlike chat-head below it — the theme toggle used to live
+          in the account rail, but that put it a whole scroll away from the
+          content it affects. Right-aligned so it sits at the seam with
+          whatever's docked on the right (the plans rail, or the open
+          document), not lost against the far edge of the screen. */}
+      <div className="flex h-11 shrink-0 items-center justify-end border-b border-edge px-2">
+        <ThemeToggle />
+      </div>
+
       {/* What week am I in, and for which class. Two facts that were only
           available by opening the document or reading the sidebar's highlight.
           Hidden once the document opens — it says the same thing in its own
@@ -1769,7 +1779,7 @@ export function ChatPage() {
           the empty/non-empty transition — it owns a MediaRecorder, a
           ResizeObserver and an autosized inline height, all of which die on
           remount. Only the wrapper's className may change. */}
-      <div className="shrink-0 border-t border-edge bg-paper px-gutter pb-5 pt-3">
+      <div className="shrink-0 bg-paper px-gutter pb-5 pt-3">
         <div className="mx-auto w-full max-w-measure">
           {/* Which week this conversation is planning, and the one place to
               change it. Was a read-only readout for exactly one commit — it

@@ -3300,18 +3300,22 @@
     transform: translateX(-50%);
     width: min(72vw, 720px);
     height: min(72vw, 720px);
-    /* Explicit pixel radii well under half the box's own smaller dimension,
-       not the "circle"/"farthest-corner" default: that default sizes the
-       circle to reach the box's farthest corner, so on the box's short axis
-       the color never gets a chance to fade before hitting the edge — it
-       reads as a hard-edged rectangle instead of a soft wash. Keeping each
-       radius small relative to the (roughly square) box leaves a genuinely
-       transparent margin all the way around for the fade to land inside. */
-    background: radial-gradient(circle 150px at 30% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
-      radial-gradient(circle 140px at 58% 20%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
-      radial-gradient(circle 140px at 74% 42%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle 145px at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle 140px at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
+    /* Radii scale with the box instead of a flat px number: the box itself is
+       min(72vw, 720px), so each radius is min(Nvw, Npx) with N tuned so the
+       two caps land together (e.g. 150px is 150/720 of the box, and
+       72 * 150/720 = 15, so min(15vw, 150px) tracks the box at every width
+       instead of just at its 720px ceiling). Fixed px radii here used to be
+       sized for the desktop box only — on a ~270px-wide iPhone box the same
+       140-150px circles overlapped edge to edge with no transparent margin
+       left to fade into, reading as a flat, hard-edged rectangle instead of
+       a soft wash. Keeping each radius small relative to the (roughly
+       square) box leaves a genuinely transparent margin all the way around
+       for the fade to land inside, at every viewport width. */
+    background: radial-gradient(circle min(15vw, 150px) at 30% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 140px) at 58% 20%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 140px) at 74% 42%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(14.5vw, 145px) at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 140px) at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
     pointer-events: none;
   }
   .land-eyebrow {
