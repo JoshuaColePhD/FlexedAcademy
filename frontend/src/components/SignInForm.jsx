@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { GoogleLogin } from '@react-oauth/google'
 import { useAuth } from '../lib/authContext'
 import { api } from '../lib/api'
 import { authInputClass } from '../pages/auth/AuthLayout'
+import { GoogleAuthButton } from './GoogleAuthButton'
 
 /* The actual sign-in mechanics — Google button, divider, email/password
  * form, the "forgot password" disclosure and the "create an account" link —
@@ -82,27 +82,18 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
 
   return (
     <div className="flex flex-col">
-      {/* neo-raised + overflow-hidden: Google's own widget renders as a flat
-          white rectangle regardless of the `theme` prop we hand it — fine
-          on the plain white /login page, a jarring foreign object dropped
-          into this app's soft embossed world otherwise. The wrapper gives
-          it the same raised-shadow frame every other control here has;
-          filled_black (not the old compact-only 'outline') gives it the
-          same solid-dark fill as the "Sign in" button just below it, so
-          the two read as a matched pair instead of a white box sitting
-          above a dark one. */}
+      {/* GoogleAuthButton: filled_black + the same raised-shadow frame every
+          other control in this world has, matching the "Sign in" button
+          just below it instead of clashing with it as a plain white box —
+          see that component's own comment for why it measures its own
+          width instead of the "100%" this used to pass straight through. */}
       <div className="flex justify-center">
-        <div className="neo-raised w-full overflow-hidden rounded-lg">
-          <GoogleLogin
-            onSuccess={handleGoogleSuccess}
-            onError={() => setError('Google sign-in didn’t complete. Try again.')}
-            theme="filled_black"
-            size={compact ? 'medium' : 'large'}
-            width="100%"
-            text="continue_with"
-            shape="rectangular"
-          />
-        </div>
+        <GoogleAuthButton
+          onSuccess={handleGoogleSuccess}
+          onError={() => setError('Google sign-in didn’t complete. Try again.')}
+          size={compact ? 'medium' : 'large'}
+          text="continue_with"
+        />
       </div>
 
       <div className={`flex items-center gap-3 ${compact ? 'my-4' : 'my-6'}`}>

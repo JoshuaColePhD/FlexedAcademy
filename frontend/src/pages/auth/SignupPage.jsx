@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { GoogleLogin } from '@react-oauth/google'
 import { useAuth } from '../../lib/authContext'
 import { AuthLayout, authInputClass } from './AuthLayout'
+import { GoogleAuthButton } from '../../components/GoogleAuthButton'
 
 /* POST /api/auth/signup has existed since the multi-tenant work, api.signup has
  * existed, AuthProvider.signup has existed — and nothing called any of them.
@@ -63,23 +63,18 @@ export default function SignupPage() {
         </>
       }
     >
-      {/* neo-raised wrapper — same reasoning as SignInForm's own Google
-          button: the widget renders as a flat rectangle regardless of
-          theme, which reads as a foreign object dropped into this page's
-          soft embossed world (AuthLayout wears .neo-world) without a
-          matching raised frame around it. */}
+      {/* GoogleAuthButton — same reasoning as SignInForm's own version:
+          neo-raised frame to match this page's embossed world (AuthLayout
+          wears .neo-world), and a real measured pixel width handed to
+          Google instead of the "100%" that doesn't mean anything to its
+          own API. */}
       <div className="mt-6 flex justify-center">
-        <div className="neo-raised w-full overflow-hidden rounded-lg">
-          <GoogleLogin
-            onSuccess={handleGoogleSuccess}
-            onError={() => setError('Google sign-in didn’t complete. Try again.')}
-            theme="filled_black"
-            size="large"
-            width="100%"
-            text="signup_with"
-            shape="rectangular"
-          />
-        </div>
+        <GoogleAuthButton
+          onSuccess={handleGoogleSuccess}
+          onError={() => setError('Google sign-in didn’t complete. Try again.')}
+          size="large"
+          text="signup_with"
+        />
       </div>
 
       <div className="my-6 flex items-center gap-3">
