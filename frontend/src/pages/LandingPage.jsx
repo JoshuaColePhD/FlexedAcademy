@@ -256,7 +256,7 @@ function SignInPopover() {
       </button>
       {open ? (
         <div className="land-signin-pop neo-world" role="dialog" aria-label="Sign in">
-          <SignInForm compact idPrefix="land-" />
+          <SignInForm compact idPrefix="land-" onClose={() => setOpen(false)} />
         </div>
       ) : null}
     </div>

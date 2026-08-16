@@ -1,9 +1,20 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { Eye, EyeOff, Lock, Mail, X } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { api } from '../lib/api'
-import { authInputClass } from '../pages/auth/AuthLayout'
 import { GoogleAuthButton } from './GoogleAuthButton'
+
+/* Local to this form, not a variant of the shared authInputClass (used
+   as-is by SignupPage/ResetPasswordPage — this redesign is scoped to
+   sign-in, not every auth form) — and built with explicit pl/pr rather
+   than overriding authInputClass's own px-3.5 with a bolted-on pl-10.
+   Tailwind resolves two classes touching the same property (px-3.5 and
+   pl-10) by which one the generated stylesheet happens to place last, not
+   by which comes last in the className string — a real footgun, not a
+   style preference, so this just never creates the conflict. */
+const iconInputClass =
+  'block w-full rounded-lg border border-edge bg-paper-raised py-2.5 pl-10 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent neo-inset'
 
 /* The actual sign-in mechanics — Google button, divider, email/password
  * form, the "forgot password" disclosure and the "create an account" link —
@@ -18,12 +29,20 @@ import { GoogleAuthButton } from './GoogleAuthButton'
  * a full page — never drops a field or a link; a "quick" sign-in that's
  * secretly missing "Forgot your password?" is a support ticket waiting to
  * happen.
+ *
+ * `onClose`: only meaningful (and only rendered as a button) when compact —
+ * the full /login page has no "close" concept, it's a whole page, and
+ * AuthLayout already gives it a way back (the wordmark link). The popover
+ * had no way to dismiss it besides Escape, an outside click, or tabbing
+ * past the last field — real but undiscoverable; a visible close button is
+ * the same affordance every other dismissible panel in this app has.
  */
-export function SignInForm({ compact = false, idPrefix = '' }) {
+export function SignInForm({ compact = false, idPrefix = '', onClose }) {
   const { login, loginWithGoogle } = useAuth()
   const [params] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
@@ -82,6 +101,30 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
 
   return (
     <div className="flex flex-col">
+      {/* Compact-only: the full /login page already has its own "Sign in"
+          heading via AuthLayout's title prop, rendered above {children}
+          (this form). Repeating it here would be two headings stacked for
+          one form; the popover has neither, so it opened straight into a
+          Google button with zero context. */}
+      {compact ? (
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-ink">Welcome back</h3>
+            <p className="text-xs text-ink-muted">Sign in to keep planning.</p>
+          </div>
+          {onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="btn-icon -mr-1.5 -mt-1 shrink-0"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* GoogleAuthButton: filled_black + the same raised-shadow frame every
           other control in this world has, matching the "Sign in" button
           just below it instead of clashing with it as a plain white box —
@@ -112,8 +155,13 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
           </p>
         ) : null}
 
-        <div>
+        <div className="relative">
           <label className="visually-hidden" htmlFor={`${idPrefix}email`}>Email address</label>
+          <Mail
+            size={16}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint"
+          />
           <input
             id={`${idPrefix}email`}
             type="email"
@@ -122,21 +170,35 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email address"
-            className={authInputClass}
+            className={`${iconInputClass} pr-3.5`}
           />
         </div>
-        <div>
+        <div className="relative">
           <label className="visually-hidden" htmlFor={`${idPrefix}password`}>Password</label>
+          <Lock
+            size={16}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint"
+          />
           <input
             id={`${idPrefix}password`}
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             required
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
-            className={authInputClass}
+            className={`${iconInputClass} pr-10`}
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword((s) => !s)}
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            title={showPassword ? 'Hide password' : 'Show password'}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-ink-faint transition-colors hover:text-ink-soft"
+          >
+            {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+          </button>
         </div>
 
         {/* --ink, not --accent: a filled accent button with a white label is the
@@ -181,16 +243,23 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
                 <label className="sr-only" htmlFor={`${idPrefix}reset-email`}>
                   Email address
                 </label>
-                <input
-                  id={`${idPrefix}reset-email`}
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={resetEmail}
-                  onChange={(e) => setResetEmail(e.target.value)}
-                  placeholder="Email address"
-                  className={`${authInputClass} flex-1`}
-                />
+                <div className="relative min-w-0 flex-1">
+                  <Mail
+                    size={16}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint"
+                  />
+                  <input
+                    id={`${idPrefix}reset-email`}
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="Email address"
+                    className={`${iconInputClass} pr-3.5`}
+                  />
+                </div>
                 <button
                   type="submit"
                   disabled={resetLoading}
