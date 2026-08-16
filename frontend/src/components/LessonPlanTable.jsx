@@ -131,19 +131,19 @@ export function LessonPlanTable({
   onPlanRevised,
   busy,
   missingDays = 'no_school',
-  /* 'days' | 'fit' | 'print'. The panel owns this now.
-     It used to be two separate controls that could contradict each other: a
-     `fitWidth` prop from the header and a `rawTable` toggle down here. Between
-     1024 and 1279 the deck was unreachable AND fitWidth defaulted false, so the
-     only thing you could get was the 860px district table inside a 480px
-     drawer. One value cannot disagree with itself. */
-  view = 'fit',
+  /* 'days' | 'print'. The panel owns this now — see ArtifactPanel, which
+     picks Days on a phone and Print everywhere else, with no control left
+     to switch between them. */
+  view = 'print',
   flashCells,
   openTweak,
   setOpenTweak,
 }) {
   const [draft, setDraft] = useState('')
-  const [feedbackSent, setFeedbackSent] = useState(false)
+  // null = not sent yet; true/false = which thumb was actually clicked, not
+  // just "sent" — disabling both buttons on a plain boolean left no visible
+  // trace of which one you'd picked, only a toast that had already faded.
+  const [feedbackSent, setFeedbackSent] = useState(null)
   const [revisingWholePlan, setRevisingWholePlan] = useState(false)
   const mode = useLayoutMode()
   const toast = useToast()
@@ -155,13 +155,13 @@ export function LessonPlanTable({
      send the session cookie, surface a {code,message,hint} error, and reach the
      global 401 handler. */
   const handleFeedback = async (isGood) => {
-    if (!planId || feedbackSent) return
-    setFeedbackSent(true)
+    if (!planId || feedbackSent !== null) return
+    setFeedbackSent(isGood)
     try {
       await api.planFeedback(planId, isGood)
       toast.success(isGood ? 'Thanks — noted.' : 'Thanks. That helps tune the prompt.')
     } catch (e) {
-      setFeedbackSent(false)
+      setFeedbackSent(null)
       toast.apiError("Couldn't send that", e)
     }
   }
@@ -232,23 +232,23 @@ export function LessonPlanTable({
             </button>
             <button
               type="button"
-              className="btn-icon"
-              disabled={feedbackSent}
+              className={`btn-icon${feedbackSent === true ? ' is-good' : ''}`}
+              disabled={feedbackSent !== null}
               onClick={() => handleFeedback(true)}
               aria-label="This plan is good"
               title="This plan is good"
             >
-              <ThumbsUp size={16} aria-hidden="true" />
+              <ThumbsUp size={16} className={feedbackSent === true ? 'fa-pop' : ''} aria-hidden="true" />
             </button>
             <button
               type="button"
-              className="btn-icon"
-              disabled={feedbackSent}
+              className={`btn-icon${feedbackSent === false ? ' is-bad' : ''}`}
+              disabled={feedbackSent !== null}
               onClick={() => handleFeedback(false)}
               aria-label="This plan needs work"
               title="This plan needs work"
             >
-              <ThumbsDown size={16} aria-hidden="true" />
+              <ThumbsDown size={16} className={feedbackSent === false ? 'fa-pop' : ''} aria-hidden="true" />
             </button>
           </div>
         ) : null}
@@ -275,45 +275,25 @@ export function LessonPlanTable({
         ) : null}
       </div>
 
-      {/* THREE ways to read one week, chosen by a single control in the
-          document header. Only ever ONE in the DOM: rendering two and hiding
-          one makes a screen reader read the whole week twice.
+      {/* TWO ways to read one week, picked by width alone now (see
+          ArtifactPanel), not by a control a teacher had to choose from.
 
-          DAYS  — one card per day. The phone default, and now reachable at
-                  every width; it used to be gated on `mode !== 'desktop'`, so
-                  from 1024px up it could not be opened at all.
-          FIT   — a compact grid for the one-line fields, then a per-day block
-                  at full width for the lesson narrative. do_now/during/
-                  assessment are most of the words, and the district shape
-                  gives them a fifth of the page.
+          DAYS  — one card per day. The phone shape: the district table has
+                  a min-width no phone screen clears, and a teacher on one
+                  reads a day at a time anyway.
           PRINT — the district table itself, 5x6 at 860px, the exact shape of
                   the .docx. The app's promise: a teacher must always be able
                   to hold the screen against the printed page. */}
       {/* key={view}, not just the conditional: guarantees a fresh mount (and
           so a replayed fa-rise) on every switch regardless of how React
-          might otherwise choose to reconcile three different component
-          types at the same position — this was a hard content swap with
-          no transition before. */}
+          might otherwise choose to reconcile two different component types
+          at the same position — this was a hard content swap with no
+          transition before. */}
       <div key={view} className="fa-rise">
         {view === 'days' ? (
           <PlanDayCards plan={plan} subject={subject} groundedCodes={groundedCodes} missingDays={missingDays} />
-        ) : view === 'print' ? (
-          <PlanTable
-            ordered={ordered}
-            groundedCodes={groundedCodes}
-            subject={subject}
-            busy={busy}
-            flashCells={flashCells}
-            canTweak={canTweak}
-            openTweak={canTweak ? openTweak : null}
-            openCell={openCell}
-            closeCell={closeCell}
-            applyTweak={applyTweak}
-            draft={draft}
-            setDraft={setDraft}
-          />
         ) : (
-          <FittedPlan
+          <PlanTable
             ordered={ordered}
             groundedCodes={groundedCodes}
             subject={subject}
@@ -398,11 +378,6 @@ function cellKit({
   return { isOpen, flashed, editableProps, Trigger, tweakBody }
 }
 
-/** The value a tweak editor shows as "what this says now". */
-const currentValue = (day, field) =>
-  field === 'engagement_strategy'
-    ? (Array.isArray(day[field]) ? day[field] : []).join(', ')
-    : day[field]
 
 /* The district table itself. It mirrors the .docx and its faithfulness is the
    product, so the only thing in-cell editing is allowed to change is what
@@ -582,205 +557,3 @@ function PlanTable({
   )
 }
 
-/* The fitted view — the same week, reshaped to the width it actually has.
- *
- * The district table gives every field a fifth of the page. That is right for
- * the printed document, where the page is 11 inches wide and the reader is
- * holding it. It is wrong on screen: `do_now`, `during` and `assessment` are
- * most of the words in a plan, and a fifth of a 700px canvas is 130px, which
- * turns a paragraph into a column of single words.
- *
- * So the one-line fields keep the grid — that is what they are, five short
- * answers to the same question — and the lesson narrative gets a row per day at
- * full width. No field is dropped and the order is the document's order. The
- * teacher who needs the literal .docx shape presses "Printed width".
- */
-function FittedPlan({
-  ordered,
-  groundedCodes,
-  subject,
-  busy,
-  flashCells,
-  canTweak,
-  openTweak,
-  openCell,
-  closeCell,
-  applyTweak,
-  draft,
-  setDraft,
-}) {
-  const kit = cellKit({
-    busy,
-    flashCells,
-    canTweak,
-    openTweak,
-    openCell,
-    closeCell,
-    applyTweak,
-    draft,
-    setDraft,
-  })
-  const { isOpen, flashed, editableProps, Trigger, tweakBody } = kit
-
-  const summaryRows = ROWS.filter((r) => r.key !== null)
-  const teaching = ordered
-    .map((day, dayIndex) => ({ day, dayIndex }))
-    .filter(({ day }) => !day.no_school && !day.pending && !day.incomplete)
-
-  return (
-    <div className="plan-fit">
-      <table className="plan-table is-fit">
-        <caption className="visually-hidden">
-          Weekly lesson plan, Monday to Friday — targets, standards and strategy
-          {canTweak ? '. Click any cell to revise just that part of that day.' : ''}
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">
-              <span className="visually-hidden">Lesson plan component</span>
-            </th>
-            {ordered.map((d) => (
-              <th scope="col" key={d.name}>
-                {d.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {summaryRows.map((row, rowIndex) => (
-            <tr key={row.label}>
-              <th
-                scope="row"
-                className={openTweak?.field === row.key ? 'is-tweaking' : undefined}
-              >
-                {row.label}
-              </th>
-              {ordered.map((day, dayIndex) => {
-                /* The stamp spans the summary rows only — the lesson detail
-                   below simply has no row for a day with no class. */
-                if (day.no_school || day.pending || day.incomplete) {
-                  if (rowIndex !== 0) return null
-                  const state = day.no_school
-                    ? 'is-no-school'
-                    : day.pending
-                      ? 'is-pending'
-                      : 'is-incomplete'
-                  return (
-                    <td key={day.name} className={state} rowSpan={summaryRows.length}>
-                      {day.no_school ? (
-                        'No School'
-                      ) : day.pending ? (
-                        <>
-                          <SkeletonText lines={2} />
-                          <span className="visually-hidden">
-                            {day.name} hasn’t been written yet
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          Not generated
-                          <span className="visually-hidden">
-                            {' '}
-                            — generation stopped before {day.name} was written
-                          </span>
-                        </>
-                      )}
-                    </td>
-                  )
-                }
-
-                if (isOpen(dayIndex, row.key)) {
-                  return (
-                    <td key={day.name} className="is-tweaking">
-                      {tweakBody(row.key, currentValue(day, row.key))}
-                    </td>
-                  )
-                }
-
-                if (row.tags) {
-                  const list = Array.isArray(day[row.key]) ? day[row.key] : []
-                  return (
-                    <td key={day.name} {...editableProps(dayIndex, row.key)}>
-                      <div className="strategy-tags">
-                        {list.map((s) => (
-                          <span className="strategy-tag" key={s}>
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                      <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
-                    </td>
-                  )
-                }
-
-                return (
-                  <td key={day.name} {...editableProps(dayIndex, row.key)}>
-                    {row.cited ? (
-                      <CitedText text={day[row.key]} groundedCodes={groundedCodes} subject={subject} />
-                    ) : (
-                      day[row.key]
-                    )}
-                    <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {teaching.length ? (
-        <>
-          <p className="eyebrow plan-fit-eyebrow">Lesson detail</p>
-          <table className="plan-table is-fit is-detail">
-            {/* An explicit colgroup, not a width on the first row's <th>.
-                Under table-layout:fixed the column widths come from the first
-                row, and this table has no <thead> to carry them — the width
-                declared on the cell was being ignored and the two columns split
-                50/50, so the day label sat in half the page with one word in
-                it while the lesson narrative got the other half. A colgroup is
-                the mechanism that actually binds under fixed layout. */}
-            <colgroup>
-              <col className="plan-detail-day" />
-              <col />
-            </colgroup>
-            <caption className="visually-hidden">
-              The lesson for each teaching day: Do Now, During and Assessment
-            </caption>
-            <tbody>
-              {teaching.map(({ day, dayIndex }) => {
-                const openPart = LESSON_PARTS.find(([, key]) => isOpen(dayIndex, key))
-                return (
-                  <tr key={day.name}>
-                    <th scope="row" className={openPart ? 'is-tweaking' : undefined}>
-                      {day.name}
-                    </th>
-                    <td className={openPart ? 'is-tweaking' : undefined}>
-                      {LESSON_PARTS.map(([label, key]) =>
-                        isOpen(dayIndex, key) ? (
-                          <div key={key}>{tweakBody(key, day[key])}</div>
-                        ) : day[key] ? (
-                          <div
-                            className={`plan-lesson-part${canTweak ? ' is-editable' : ''}${
-                              flashed(dayIndex, key) ? ' fa-flash' : ''
-                            }`}
-                            key={key}
-                            onClick={canTweak ? () => openCell(dayIndex, key) : undefined}
-                          >
-                            <b>{label}</b>
-                            {day[key]}
-                            <Trigger dayIndex={dayIndex} field={key} dayName={day.name} />
-                          </div>
-                        ) : null
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </>
-      ) : null}
-    </div>
-  )
-}

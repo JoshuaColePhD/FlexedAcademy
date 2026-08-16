@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AuthContext, EXPLICIT_SIGNOUT_KEY } from '../lib/authContext'
+import { AuthContext, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from '../lib/authContext'
 import { api } from '../lib/api'
+
+function setAuthedState(val) {
+  try {
+    if (val) localStorage.setItem(KNOWN_AUTHED_KEY, '1')
+    else localStorage.removeItem(KNOWN_AUTHED_KEY)
+  } catch {
+    // ignore
+  }
+}
 
 export function AuthProvider({ children }) {
   const [status, setStatus] = useState('loading') // 'loading' | 'authed' | 'anon'
@@ -12,6 +21,7 @@ export function AuthProvider({ children }) {
       .then((u) => {
         setUser(u)
         setStatus('authed')
+        setAuthedState(true)
         // Returned, not swallowed: callers that need the *fresh* answer (the
         // return-from-checkout poll) can read it without racing React state.
         return u
@@ -19,6 +29,7 @@ export function AuthProvider({ children }) {
       .catch(() => {
         setUser(null)
         setStatus('anon')
+        setAuthedState(false)
         return null
       })
   }, [])
@@ -34,6 +45,7 @@ export function AuthProvider({ children }) {
     const onUnauthorized = () => {
       setUser(null)
       setStatus('anon')
+      setAuthedState(false)
     }
     window.addEventListener('aplang:unauthorized', onUnauthorized)
     return () => window.removeEventListener('aplang:unauthorized', onUnauthorized)
@@ -43,6 +55,7 @@ export function AuthProvider({ children }) {
     const u = await api.login(email, password)
     setUser(u)
     setStatus('authed')
+    setAuthedState(true)
     return u
   }, [])
 
@@ -50,6 +63,7 @@ export function AuthProvider({ children }) {
     const u = await api.loginWithGoogle(credential)
     setUser(u)
     setStatus('authed')
+    setAuthedState(true)
     return u
   }, [])
 
@@ -57,6 +71,7 @@ export function AuthProvider({ children }) {
     const u = await api.signup(name, email, password)
     setUser(u)
     setStatus('authed')
+    setAuthedState(true)
     return u
   }, [])
 
@@ -68,6 +83,7 @@ export function AuthProvider({ children }) {
     const u = await api.resetPassword(token, password)
     setUser(u)
     setStatus('authed')
+    setAuthedState(true)
     return u
   }, [])
 
@@ -90,6 +106,7 @@ export function AuthProvider({ children }) {
     } finally {
       setUser(null)
       setStatus('anon')
+      setAuthedState(false)
     }
   }, [])
 
@@ -107,6 +124,7 @@ export function AuthProvider({ children }) {
     } finally {
       setUser(null)
       setStatus('anon')
+      setAuthedState(false)
     }
   }, [])
 
@@ -125,6 +143,7 @@ export function AuthProvider({ children }) {
     }
     setUser(null)
     setStatus('anon')
+    setAuthedState(false)
   }, [])
 
   return (

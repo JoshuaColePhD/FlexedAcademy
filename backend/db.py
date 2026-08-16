@@ -618,6 +618,48 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_quizzes_plan ON quizzes(plan_id);
     ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 27: share a plan as a Google Doc ─────────────────────────────────────
+    #
+    # google_drive_tokens is its own table, not columns on users — a token has
+    # a lifecycle (refreshed, revoked) that has nothing to do with the rest of
+    # the account, and a NULL access_token/refresh_token pair on every teacher
+    # who's never shared anything is worse than a table that's simply empty
+    # for them. One row per user: the app only ever needs the one grant.
+    #
+    # plans.drive_file_id/drive_web_link: which Google Doc (if any) a plan has
+    # already been exported to, so sharing the same plan with a second person
+    # reuses that Doc instead of minting a new one every click.
+    #
+    # plan_shares is a log, not state anything reads back to decide access —
+    # Google's own Drive permission is what actually controls who can open the
+    # Doc. This exists so the share dialog can say "already shared with
+    # ms.jones@…" instead of a teacher re-typing an email with no memory of
+    # having done it before.
+    """
+    CREATE TABLE IF NOT EXISTS google_drive_tokens (
+        user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        access_token  TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at    TEXT NOT NULL,
+        scope         TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    );
+    ALTER TABLE google_drive_tokens ENABLE ROW LEVEL SECURITY;
+
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS drive_web_link TEXT;
+
+    CREATE TABLE IF NOT EXISTS plan_shares (
+        id         TEXT PRIMARY KEY,
+        plan_id    TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+        email      TEXT NOT NULL,
+        role       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_plan_shares_plan ON plan_shares(plan_id);
+    ALTER TABLE plan_shares ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -1160,6 +1202,31 @@ def update_plan(user_id: str, plan_id: str, **fields: Any) -> dict | None:
 
 def delete_plan(user_id: str, plan_id: str) -> bool:
     return _write("DELETE FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id)).rowcount > 0
+
+
+def set_plan_drive_file(user_id: str, plan_id: str, *, file_id: str, web_link: str) -> None:
+    """Recorded once, the first time a plan is shared — every share after
+    that reuses this same Doc rather than routes/drive.py minting a new one
+    on every click of Share."""
+    _write(
+        "UPDATE plans SET drive_file_id = ?, drive_web_link = ? WHERE id = ? AND user_id = ?",
+        (file_id, web_link, plan_id, user_id),
+    )
+
+
+def add_plan_share(plan_id: str, *, email: str, role: str) -> dict:
+    share_id = uuid.uuid4().hex
+    _write(
+        "INSERT INTO plan_shares (id, plan_id, email, role, created_at) VALUES (?,?,?,?,?)",
+        (share_id, plan_id, email, role, now()),
+    )
+    return _row("SELECT * FROM plan_shares WHERE id = ?", (share_id,))  # type: ignore[return-value]
+
+
+def list_plan_shares(plan_id: str) -> list[dict]:
+    return _rows(
+        "SELECT * FROM plan_shares WHERE plan_id = ? ORDER BY created_at DESC", (plan_id,)
+    )
 
 
 def add_plan_feedback(user_id: str, plan_id: str, is_good: bool, notes: str | None = None) -> bool:
@@ -1923,6 +1990,48 @@ def clear_subscription_status(user_id: str) -> None:
 
 def get_user_by_stripe_customer(customer_id: str) -> dict | None:
     return _row("SELECT * FROM users WHERE stripe_customer_id = ?", (customer_id,))
+
+
+def set_drive_tokens(
+    user_id: str, *, access_token: str, refresh_token: str, expires_at: str, scope: str
+) -> None:
+    """The one grant a teacher gives this app: upserted, not appended — a
+    re-authorization (say, after revoking access in their Google account and
+    reconnecting) replaces the row outright, so a stale refresh_token from a
+    dead grant can never end up paired with a fresh access_token that
+    doesn't actually go with it."""
+    _write(
+        """INSERT INTO google_drive_tokens
+               (user_id, access_token, refresh_token, expires_at, scope, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?)
+           ON CONFLICT (user_id) DO UPDATE SET
+               access_token = EXCLUDED.access_token,
+               refresh_token = EXCLUDED.refresh_token,
+               expires_at = EXCLUDED.expires_at,
+               scope = EXCLUDED.scope,
+               updated_at = EXCLUDED.updated_at""",
+        (user_id, access_token, refresh_token, expires_at, scope, now(), now()),
+    )
+
+
+def get_drive_tokens(user_id: str) -> dict | None:
+    return _row("SELECT * FROM google_drive_tokens WHERE user_id = ?", (user_id,))
+
+
+def set_drive_access_token(user_id: str, *, access_token: str, expires_at: str) -> None:
+    """Just the half a refresh actually replaces. Google's refresh_token is
+    reused across refreshes, not reissued, so overwriting it here on every
+    call would mean holding onto whichever access token happened to be
+    exchanged last while silently losing the ability to ever refresh again
+    the one time Google DOES rotate it."""
+    _write(
+        "UPDATE google_drive_tokens SET access_token = ?, expires_at = ?, updated_at = ? WHERE user_id = ?",
+        (access_token, expires_at, now(), user_id),
+    )
+
+
+def clear_drive_tokens(user_id: str) -> None:
+    _write("DELETE FROM google_drive_tokens WHERE user_id = ?", (user_id,))
 
 
 def is_admin(user_id: str) -> bool:

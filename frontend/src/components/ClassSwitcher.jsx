@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Check, ChevronsUpDown, Plus } from 'lucide-react'
 import { classColor } from '../lib/classColor'
+import { useExitTransition } from '../hooks/useExitTransition'
 
 /* Which prep you're planning for. Sits at the top of the rail because it scopes
    everything under it — the year, the week, the chats, and the class a new plan
@@ -19,6 +20,10 @@ import { classColor } from '../lib/classColor'
    why the blue had stopped meaning anything. */
 export function ClassSwitcher({ classes, activeClass, classPath }) {
   const [open, setOpen] = useState(false)
+  // The menu used to unmount the instant `open` went false — a hard cut, the
+  // one thing every other neo-panel overlay in the app (toasts, the confirm
+  // dialog, attachment chips) already avoids with a matched exit.
+  const { mounted, closing } = useExitTransition(open, 150)
   const ref = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
@@ -91,11 +96,11 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
         <ChevronsUpDown size={14} aria-hidden="true" className="shrink-0 text-ink-faint" />
       </button>
 
-      {open ? (
+      {mounted ? (
         <ul
           role="listbox"
           aria-label="Your classes"
-          className="neo-panel absolute left-2 right-2 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised py-1"
+          className={`neo-panel fa-card-drop absolute left-2 right-2 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised py-1${closing ? ' fa-chip-exit' : ''}`}
         >
           {classes.map((c) => (
             <li key={c.id}>

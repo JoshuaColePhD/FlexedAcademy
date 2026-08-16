@@ -308,7 +308,7 @@ export function LandingPage() {
       <header className={`land-bar${barHidden ? ' land-bar--hidden' : ''}`}>
         <span className="land-brand">
           <VerifySeal className="land-brand-mark" />
-          Flexed Academy
+          FlexEd Academy
         </span>
         <SignInPopover />
       </header>

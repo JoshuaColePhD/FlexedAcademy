@@ -11,6 +11,7 @@ from ..config import settings
 from ..deps import COOKIE_NAME, get_current_user
 from ..entitlement import entitlement
 from ..errors import AppError
+from ..ratelimit import limiter
 
 log = logging.getLogger("aplang.auth")
 
@@ -101,6 +102,7 @@ class GoogleLoginBody(BaseModel):
 
 
 @router.post("/signup")
+@limiter.limit("5/minute")
 def signup(body: SignupBody, request: Request, response: Response):
     existing = db.get_user_by_email(body.email)
     if existing is None:
@@ -121,6 +123,7 @@ def signup(body: SignupBody, request: Request, response: Response):
 
 
 @router.post("/login")
+@limiter.limit("10/minute")
 def login(body: LoginBody, request: Request, response: Response):
     user = db.get_user_by_email(body.email)
     if not user or not user["password_hash"] or not auth.verify_password(body.password, user["password_hash"]):
@@ -129,6 +132,7 @@ def login(body: LoginBody, request: Request, response: Response):
 
 
 @router.post("/google")
+@limiter.limit("10/minute")
 def google_login(body: GoogleLoginBody, request: Request, response: Response):
     idinfo = auth.verify_google_token(body.credential)
     if not idinfo:
@@ -232,20 +236,21 @@ class ChangePasswordBody(BaseModel):
 
 
 _RESET_EMAIL_HTML = """\
-<p>Someone asked to reset the password on this Flexed Academy account.</p>
+<p>Someone asked to reset the password on this FlexEd Academy account.</p>
 <p><a href="{link}">Set a new password</a></p>
 <p>This link works once, for one hour. If you didn't ask for this, nothing
 happens — your password stays what it was.</p>
 """
 
 _GOOGLE_ACCOUNT_EMAIL_HTML = """\
-<p>Someone asked to reset the password on this Flexed Academy account, but
+<p>Someone asked to reset the password on this FlexEd Academy account, but
 this account signs in with Google — there's no password to reset.</p>
 <p>Use "Continue with Google" on the sign-in page instead.</p>
 """
 
 
 @router.post("/forgot-password")
+@limiter.limit("5/minute")
 def forgot_password(body: ForgotPasswordBody, request: Request):
     """Deliberately the same response whether or not the email has an
     account — the status code and body can't be the tell that reveals which
@@ -257,7 +262,7 @@ def forgot_password(body: ForgotPasswordBody, request: Request):
         link = f"{_frontend_url(request)}/reset-password?token={token}"
         mail.send(
             to=user["email"],
-            subject="Reset your Flexed Academy password",
+            subject="Reset your FlexEd Academy password",
             html=_RESET_EMAIL_HTML.format(link=link),
         )
     elif user:
@@ -266,7 +271,7 @@ def forgot_password(body: ForgotPasswordBody, request: Request):
         # can't be visible in the API response to the anonymous caller.
         mail.send(
             to=user["email"],
-            subject="About your Flexed Academy password",
+            subject="About your FlexEd Academy password",
             html=_GOOGLE_ACCOUNT_EMAIL_HTML,
         )
     else:
@@ -275,6 +280,7 @@ def forgot_password(body: ForgotPasswordBody, request: Request):
 
 
 @router.post("/reset-password")
+@limiter.limit("10/minute")
 def reset_password(body: ResetPasswordBody, request: Request, response: Response):
     """No `user_id = Depends(get_current_user)` — this IS the logged-out
     recovery path; the token in the body is the credential, not the cookie."""
@@ -292,7 +298,8 @@ def reset_password(body: ResetPasswordBody, request: Request, response: Response
 
 
 @router.post("/change-password")
-def change_password(body: ChangePasswordBody, user_id: str = Depends(get_current_user)):
+@limiter.limit("10/minute")
+def change_password(body: ChangePasswordBody, request: Request, user_id: str = Depends(get_current_user)):
     user = db.get_user_by_id(user_id)
     if not user:
         raise AppError("not_authenticated", "Not logged in.", status=401)

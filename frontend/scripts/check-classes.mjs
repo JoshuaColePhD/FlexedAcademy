@@ -64,7 +64,7 @@ const TW = new RegExp(
       'brightness', 'contrast', 'invert', 'saturate', 'grayscale', 'sepia',
       'fill', 'stroke', 'object', 'aspect', 'list', 'underline', 'decoration',
       'indent', 'align', 'table', 'caption', 'placeholder', 'accent', 'caret',
-      'scroll', 'snap', 'touch', 'will', 'sr', 'not', 'group', 'peer', 'tabular',
+      'scroll', 'snap', 'touch', 'will', 'sr', 'not', 'group', 'peer', 'tabular', 'no',
       'antialiased', 'subpixel', 'uppercase', 'lowercase', 'capitalize', 'normal',
       'italic', 'visible', 'invisible', 'collapse', 'static', 'fixed', 'absolute',
       'relative', 'sticky', 'block', 'inline', 'hidden', 'contents', 'isolate',

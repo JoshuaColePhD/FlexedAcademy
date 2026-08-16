@@ -316,7 +316,17 @@ export function ArtifactDetailPanel({
       role={isOverlay ? 'dialog' : undefined}
       aria-modal={isOverlay ? 'true' : undefined}
     >
-      <div className="doc-head" style={{ '--doc-head-accent': `rgb(${color.rgb})` }}>
+      {/* doc-head-keep-title: the phone media query that hides .doc-titles
+          below 768px was written for ArtifactPanel's own plan view, whose
+          sheet restates the week as its own heading right below — nothing
+          here does that. Without this override, opening the quiz/standards/
+          calendar/document view on a phone showed no title at all: just
+          the collapse arrow, Download, and content with no idea what it
+          was content OF. */}
+      <div
+        className="doc-head doc-head-keep-title"
+        style={{ '--doc-head-accent': `rgb(${color.rgb})` }}
+      >
         <button
           type="button"
           className="doc-collapse fa-press"
