@@ -121,26 +121,34 @@
      .app-glow existed only to light that glass; removed along with it
      rather than left as a blurred blob with nothing left to diffuse. */
 
-  /* Same wash, scoped to the chat pane rather than the viewport — see
-     AppShell.jsx's #main. Smaller and lower-opacity than the rail's: this
-     sits directly on the pane's own flat background rather than being
-     diffused through a glass surface, so it reads as ambient tint rather
-     than the rail's lit-glass material if it's turned up any brighter. */
-  .chat-glow {
+  /* Was a single static blurred circle (.chat-glow) — replaced on request
+     with the landing hero's own aurora wash (see .land-blob) scoped down to
+     the app pane instead of the viewport, so the app's main column carries
+     the same drifting, multi-hue atmosphere the marketing hero does rather
+     than a different, quieter effect. Same technique for the same WebKit
+     reason: layered radial gradients that already fade to transparent, no
+     filter: blur() forcing a backing layer that tiles on scroll. Lower
+     opacities than .land-blob's — this sits directly behind real UI a
+     teacher reads and clicks through, not an otherwise-empty hero, so it
+     has to stay atmosphere rather than compete with content. Positioned
+     against #main (AppShell.jsx), which is already `relative` + `overflow-
+     hidden`, so no isolation/contain of its own is needed here. */
+  .app-blob {
     position: absolute;
-    top: -120px;
-    left: -80px;
+    top: -10%;
+    left: 0;
     z-index: -1;
-    height: 380px;
-    width: 380px;
-    border-radius: var(--r-full);
-    background: radial-gradient(
-      circle,
-      rgb(var(--rail-pop-rgb) / 0.22) 0%,
-      rgb(var(--rail-pop-2-rgb) / 0.14) 55%,
-      transparent 78%
-    );
-    filter: blur(20px);
+    width: 100%;
+    height: min(40vw, 480px);
+    background: radial-gradient(circle min(11vw, 140px) at 18% 28%, rgb(167 139 250 / 0.22) 0%, transparent 100%),
+      radial-gradient(circle min(10vw, 130px) at 42% 14%, rgb(244 114 182 / 0.2) 0%, transparent 100%),
+      radial-gradient(circle min(10vw, 130px) at 64% 34%, rgb(251 146 60 / 0.18) 0%, transparent 100%),
+      radial-gradient(circle min(10.5vw, 135px) at 48% 56%, rgb(52 211 153 / 0.18) 0%, transparent 100%),
+      radial-gradient(circle min(10vw, 130px) at 24% 52%, rgb(96 165 250 / 0.18) 0%, transparent 100%);
+    background-size: 180% 180%;
+    /* Same keyframes as .land-blob — one drift timing for "floating" across
+       the whole app, not a second one to keep in sync by hand. */
+    animation: land-blob-drift 22s ease-in-out infinite alternate;
     pointer-events: none;
   }
 
@@ -1568,6 +1576,20 @@
   }
   .dialog.is-closing {
     animation: dialog-out var(--t-fast) var(--ease) both;
+  }
+  /* A second size for the same chrome (background/border/radius/shadow/
+     animation all still come from .dialog) — for a dialog with a whole
+     settings page's worth of fields rather than a title, a sentence and two
+     buttons. padding: 0 because this variant lays out its own header/body
+     instead of one block of padded content, so header and body can each
+     carry the right padding without the header scrolling away with the
+     rest. */
+  .dialog.dialog-wide {
+    width: min(720px, 96vw);
+    max-height: min(85vh, 820px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
   }
   @keyframes dialog-in {
     from {

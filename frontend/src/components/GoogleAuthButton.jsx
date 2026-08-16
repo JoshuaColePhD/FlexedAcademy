@@ -15,6 +15,18 @@ import { GoogleLogin } from '@react-oauth/google'
  * The actual fix: measure the frame's own pixel width and hand Google a
  * real number, via ResizeObserver so it stays correct across a resize
  * instead of freezing at whatever width existed on first mount.
+ *
+ * Two more corners of the same bug, found from a screenshot of the icon
+ * itself sliced off by a flat edge (not just missing/shrunk — an actual
+ * straight cut through the rounded corner): Google renders this button as
+ * a full pill (fully rounded ends), but the wrapper's own corners were only
+ * `rounded-xl` (12px) — a real geometry mismatch, not just a size one, so
+ * `overflow-hidden` was clipping a dead-straight edge through Google's own
+ * curve right where the icon sits. And `Math.round()` on the measured
+ * width can round UP a fraction of a pixel past what the container
+ * actually has, hand Google a width it then draws 1px wider than its own
+ * box — `Math.floor()` guarantees the number handed over never exceeds the
+ * real available space.
  */
 export function GoogleAuthButton({ onSuccess, onError, size = 'large', text = 'continue_with' }) {
   const wrapRef = useRef(null)
@@ -25,7 +37,7 @@ export function GoogleAuthButton({ onSuccess, onError, size = 'large', text = 'c
     if (!el) return
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width
-      if (w) setWidth(Math.round(w))
+      if (w) setWidth(Math.floor(w))
     })
     ro.observe(el)
     return () => ro.disconnect()
@@ -38,8 +50,10 @@ export function GoogleAuthButton({ onSuccess, onError, size = 'large', text = 'c
     // form would be the one leftover piece still speaking the old design's
     // language. This reads fine in SignupPage's still-neo-world context too
     // — a clean bordered box doesn't clash with a cream background the way
-    // a stark flat rectangle used to.
-    <div ref={wrapRef} className="w-full overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+    // a stark flat rectangle used to. `rounded-full`, not `rounded-xl` —
+    // matches the pill Google actually renders, so overflow-hidden (still
+    // here as a safety net) never has a corner to disagree with.
+    <div ref={wrapRef} className="w-full overflow-hidden rounded-full border border-slate-200 shadow-sm">
       {/* Nothing to render until the real width is known — a 0 or stale
           width handed to Google's own renderButton call is the exact bug
           this component exists to avoid. */}

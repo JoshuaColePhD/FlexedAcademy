@@ -35,7 +35,7 @@ function DesignSkinSection() {
   const { skin, setSkin } = useDesignSkin()
   const OPTIONS = [
     { value: 'neo', label: 'Neomorphic', hint: 'Soft embossed shadows, cream & rose' },
-    { value: 'skeu', label: 'Skeuomorphic', hint: 'Real shadows, warm parchment & ink' },
+    { value: 'skeu', label: 'Skeuomorphic', hint: 'Real shadows, crisp white & slate' },
   ]
   return (
     <div className="mt-5">
@@ -575,60 +575,82 @@ export function SettingsPage() {
 
       <div className="page scroll-y">
         <div className="mx-auto w-full max-w-measure-form">
-          {/* ── your name, once ─────────────────────────────────────────── */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <label htmlFor="teacher" className="text-sm text-ink-muted">
-              Plans are signed
-            </label>
-            <input
-              id="teacher"
-              value={teacher}
-              onChange={(e) => setTeacher(e.target.value)}
-              onBlur={commitTeacher}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur()
-                if (e.key === 'Escape') setTeacher(savedName)
-              }}
-              placeholder="Mr. Cole"
-              className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-faint hover:bg-paper-sunken focus:bg-paper-sunken"
-            />
-          </div>
-
-          {/* ── appearance ───────────────────────────────────────────────── */}
-          <DesignSkinSection />
-
-          {/* ── school ───────────────────────────────────────────────────── */}
-          <SchoolPicker
-            value={meState.data?.school}
-            onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+          <SettingsBody
+            teacher={teacher}
+            setTeacher={setTeacher}
+            savedName={savedName}
+            commitTeacher={commitTeacher}
+            meState={meState}
+            qc={qc}
           />
-
-          {/* ── custom instructions ─────────────────────────────────────── */}
-          <CustomInstructions
-            value={meState.data?.custom_instructions}
-            onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
-          />
-
-          {/* ── password ─────────────────────────────────────────────────── */}
-          {meState.data && meState.data.has_password ? (
-            <div className="mt-5">
-              <h2 className="text-sm font-semibold text-ink">Password</h2>
-              <ChangePassword />
-            </div>
-          ) : meState.data ? (
-            <p className="mt-5 text-xs text-ink-muted">
-              This account signs in with Google — there’s no password to change here.
-            </p>
-          ) : null}
-
-          {/* ── billing ──────────────────────────────────────────────────── */}
-          <BillingSection />
-
-          <AccountSafety />
-
-          <Diagnostics />
         </div>
       </div>
     </div>
+  )
+}
+
+/* Pulled out of SettingsPage's own render so SettingsModal (opened from
+ * AccountMenu, overlaying the chat) can render the exact same fields —
+ * one body, two shells: a full page for a direct/bookmarked visit to
+ * `/settings`, a dialog overlay for the normal in-app path. State stays up
+ * in SettingsPage/SettingsModal (whichever mounted) and is only passed down,
+ * so there's exactly one copy of "what's the teacher's name doing right
+ * now," not two components each independently racing the same query. */
+export function SettingsBody({ teacher, setTeacher, savedName, commitTeacher, meState, qc }) {
+  return (
+    <>
+      {/* ── your name, once ─────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <label htmlFor="teacher" className="text-sm text-ink-muted">
+          Plans are signed
+        </label>
+        <input
+          id="teacher"
+          value={teacher}
+          onChange={(e) => setTeacher(e.target.value)}
+          onBlur={commitTeacher}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') setTeacher(savedName)
+          }}
+          placeholder="Mr. Cole"
+          className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-faint hover:bg-paper-sunken focus:bg-paper-sunken"
+        />
+      </div>
+
+      {/* ── appearance ───────────────────────────────────────────────── */}
+      <DesignSkinSection />
+
+      {/* ── school ───────────────────────────────────────────────────── */}
+      <SchoolPicker
+        value={meState.data?.school}
+        onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+      />
+
+      {/* ── custom instructions ─────────────────────────────────────── */}
+      <CustomInstructions
+        value={meState.data?.custom_instructions}
+        onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+      />
+
+      {/* ── password ─────────────────────────────────────────────────── */}
+      {meState.data && meState.data.has_password ? (
+        <div className="mt-5">
+          <h2 className="text-sm font-semibold text-ink">Password</h2>
+          <ChangePassword />
+        </div>
+      ) : meState.data ? (
+        <p className="mt-5 text-xs text-ink-muted">
+          This account signs in with Google — there’s no password to change here.
+        </p>
+      ) : null}
+
+      {/* ── billing ──────────────────────────────────────────────────── */}
+      <BillingSection />
+
+      <AccountSafety />
+
+      <Diagnostics />
+    </>
   )
 }

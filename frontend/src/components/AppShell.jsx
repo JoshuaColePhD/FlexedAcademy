@@ -344,13 +344,14 @@ export function AppShell({ children }) {
       ) : null}
 
       <div className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden" id="main">
-        {/* Same wash as the rail's two glows, scoped to this pane instead of
-            the viewport — the chat column read as a flat, unlit rectangle
-            next to the rail's lit glass. z-index: -1 keeps it under #main's
-            own content (the header bar and children below) without needing
-            to touch either of those. Was wired up as a comment with no div —
-            .chat-glow existed in base.css with nothing rendering it. */}
-        <div className="chat-glow" aria-hidden="true" />
+        {/* The landing hero's own floating aurora (see .app-blob in
+            base.css), scoped to this pane instead of the viewport — on
+            request, so every page behind the rail carries the same
+            drifting wash the marketing hero does instead of a plainer,
+            static glow. z-index: -1 keeps it under #main's own content
+            (the header bar and children below) without needing to touch
+            either of those. */}
+        <div className="app-blob" aria-hidden="true" />
         {isNarrow ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button

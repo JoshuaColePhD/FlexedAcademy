@@ -25,6 +25,7 @@ import { useClasses } from './hooks/useAppData'
 import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { SettingsModal } from './components/SettingsModal'
 import { PlansPage } from './pages/PlansPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
@@ -166,12 +167,25 @@ function RememberClass() {
   return null
 }
 
+/** Settings opens as a dialog over whatever you were already looking at,
+ *  the same "modal route" react-router pattern Claude's own desktop
+ *  settings uses under the hood — AccountMenu navigates to `settings` with
+ *  `state: { background: location }` (see AccountMenu.jsx) instead of a
+ *  plain Link, so the CURRENT location is the one to render as a dialog and
+ *  the location it carries in `background` is the one to render as the
+ *  page underneath. A bookmarked or refreshed `/c/:id/settings` visit has
+ *  no such state — `background` is undefined, both `<Routes>` below match
+ *  the real location, and it falls back to rendering as an ordinary full
+ *  page (SettingsPage), never a dialog with nothing behind it. */
 function ClassRoutes() {
+  const location = useLocation()
+  const background = location.state?.background
+
   return (
     <>
       <RememberClass />
       <AppShell>
-        <Routes>
+        <Routes location={background || location}>
           {/* A new plan IS the home screen. There is no calendar route: the
               school calendar still shapes every generation, from
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
@@ -183,6 +197,11 @@ function ClassRoutes() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+        {background ? (
+          <Routes>
+            <Route path="settings" element={<SettingsModal />} />
+          </Routes>
+        ) : null}
       </AppShell>
     </>
   )
