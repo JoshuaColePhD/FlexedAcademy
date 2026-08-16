@@ -21,7 +21,7 @@ import { AdminBody } from '../pages/AdminPage'
 export function AdminModal() {
   const navigate = useNavigate()
   const location = useLocation()
-  const background = location.state?.background
+  const background = location.state?.adminBackground
   const isNeo = background?.pathname?.startsWith('/c/') ?? false
 
   const close = () => navigate(-1)

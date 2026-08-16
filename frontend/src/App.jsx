@@ -297,12 +297,19 @@ function Gate() {
 
   /* Same "modal route" pattern as ClassRoutes' own Settings overlay (see its
      comment there) — AccountMenu navigates to /admin with
-     `state: { background: location }` instead of a plain Link, so /admin
-     opens as a dialog over whatever chat was already open instead of
+     `state: { adminBackground: location }` instead of a plain Link, so
+     /admin opens as a dialog over whatever chat was already open instead of
      replacing it. A direct/bookmarked /admin visit has no such state —
      `background` is undefined, both `<Routes>` below match the real
-     location, and it falls back to AdminPage as an ordinary full page. */
-  const background = location.state?.background
+     location, and it falls back to AdminPage as an ordinary full page.
+     A DIFFERENT key than Settings' own `background` on purpose: this
+     `<Routes location={...}>` override is ambient for its entire subtree,
+     which includes ClassRoutes — reusing the same key meant clicking
+     Settings (which sets `state.background` one level down, for ITS OWN
+     modal) ALSO tripped this top-level override, which then rendered
+     ClassRoutes against the wrong location and silently swallowed the
+     Settings modal before ClassRoutes ever got a real location to react to. */
+  const background = location.state?.adminBackground
 
   return (
     <>

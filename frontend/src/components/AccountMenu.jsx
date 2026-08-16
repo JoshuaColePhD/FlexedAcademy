@@ -179,7 +179,7 @@ export function AccountMenu({ classPath }) {
             <div className="mt-1 border-t border-hairline pt-1">
               <Link
                 to="/admin"
-                state={{ background: location }}
+                state={{ adminBackground: location }}
                 onClick={() => setOpen(false)}
                 className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
               >
