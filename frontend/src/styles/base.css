@@ -3330,60 +3330,59 @@
   .land-blob {
     position: absolute;
     top: -8%;
-    left: 50%;
-    transform: translateX(-50%);
-    /* Was min(72vw, 720px) — capped out at a 1000px-wide viewport and never
-       grew past it, same plateau .land-title's own font-size had. Raised by
-       the same ~1.25x .land-title's ceiling grew by, so the wash keeps
-       pace with the now-bigger headline instead of looking undersized
-       beneath it on a wide screen. */
-    width: min(72vw, 900px);
-    height: min(72vw, 900px);
-    /* Radii scale with the box instead of a flat px number: the box itself is
-       min(72vw, 900px), so each radius is min(Nvw, Npx) with N tuned so the
-       two caps land together (e.g. 188px is ~188/900 of the box, and
-       72 * 188/900 = 15, so min(15vw, 188px) tracks the box at every width
-       instead of just at its 900px ceiling). Fixed px radii here used to be
-       sized for the desktop box only — on a ~270px-wide iPhone box the same
-       circles overlapped edge to edge with no transparent margin left to
-       fade into, reading as a flat, hard-edged rectangle instead of a soft
-       wash. Keeping each radius small relative to the (roughly square) box
-       leaves a genuinely transparent margin all the way around for the
-       fade to land inside, at every viewport width. */
-    background: radial-gradient(circle min(15vw, 188px) at 30% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 58% 20%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 74% 42%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle min(14.5vw, 181px) at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
+    /* Was left: 50% + a fixed min(72vw, 900px) box, centered by transform —
+       a square island that stopped growing at 900px while the page around
+       it kept going, which is what read as "the image lives in a box." A
+       wash is supposed to be atmosphere behind the whole hero, not a
+       medallion sized to itself; left: 0 + width: 100% ties it to the
+       SECTION's own full width (which was already unbounded) instead of an
+       independent cap that could fall behind it. The five gradients' own
+       `at X% Y%` anchors don't need retuning for this — they're already
+       percentages of the box, so a wider box spreads them proportionally
+       further apart on its own. */
+    left: 0;
+    width: 100%;
+    height: min(60vw, 820px);
+    background: radial-gradient(circle min(15vw, 188px) at 22% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 46% 18%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 68% 40%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(14.5vw, 181px) at 50% 62%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 28% 58%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
     pointer-events: none;
-    /* Slow drift, on request — background-position, not transform: the box
-       already carries a static transform (translateX(-50%), for centering)
-       and background-position leaves that alone. Also, deliberately, not
-       filter: blur() animating anything — see this rule's own comment above
+    /* Slow drift, on request — background-position, not transform: no
+       transform is left on this box to fight (it used to carry a static
+       translateX(-50%) for centering, gone along with left: 50%). Also,
+       deliberately, not filter: blur() animating anything — see this
+       rule's own comment above
        on the WebKit tiling bug that a blurred layer triggers inside a
        scrolling overflow:hidden ancestor; a background-position animation
        never forces that kind of compositing layer.
-       background-size is bumped past 100% first — panning a background that
-       exactly fills its box moves nothing, since there's no slack to reveal.
-       40 seconds and ease-in-out, not linear: linear panning at this scale
-       reads as a treadmill; easing in and out of each waypoint reads as
-       actual drift. Already covered by the app's global
-       prefers-reduced-motion block (collapses to a single 0.01ms frame). */
-    background-size: 140% 140%;
-    animation: land-blob-drift 40s ease-in-out infinite alternate;
+       Was 140%/40s/alternate — technically animating, but panning a
+       gradient that's only 40% oversized, eased across a 40-SECOND round
+       trip, moves at a rate nobody watching for a normal few seconds would
+       actually perceive; it read as "not moving" even though DevTools could
+       see the computed value changing. 180% gives real slack to pan
+       through, and 22s means a glance that lingers a moment actually
+       catches it drifting rather than needing to sit and stare. Still slow
+       relative to anything ELSE that moves on this page (fa-press, message
+       entrances) — "floating," not "spinning." Already covered by the
+       app's global prefers-reduced-motion block (collapses to a single
+       0.01ms frame). */
+    background-size: 180% 180%;
+    animation: land-blob-drift 22s ease-in-out infinite alternate;
   }
   @keyframes land-blob-drift {
     0% {
-      background-position: 15% 20%;
+      background-position: 10% 20%;
     }
     33% {
-      background-position: 40% 45%;
+      background-position: 55% 50%;
     }
     66% {
-      background-position: 20% 55%;
+      background-position: 20% 65%;
     }
     100% {
-      background-position: 45% 15%;
+      background-position: 60% 10%;
     }
   }
   .land-eyebrow {
