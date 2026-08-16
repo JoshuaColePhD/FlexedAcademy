@@ -660,6 +660,24 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_plan_shares_plan ON plan_shares(plan_id);
     ALTER TABLE plan_shares ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 28: a default Drive destination folder ───────────────────────────────
+    #
+    # On google_drive_tokens, not a new table — same one-row-per-teacher
+    # lifecycle as the tokens themselves (cleared together on disconnect, see
+    # routes/drive.py's disconnect()). Chosen via the Google Picker widget
+    # (frontend/src/lib/googlePicker.js), not typed in: the drive.file OAuth
+    # scope this app requests means it can't browse a teacher's existing
+    # folders at all on its own (see google_drive.py's own comment on why that
+    # scope was chosen) — Picker is Google's own sanctioned workaround,
+    # granting the app access to whatever specific folder the teacher selects
+    # without widening the scope.
+    #
+    # folder_name is a display convenience only, never trusted for access —
+    # folder_id is what every upload's `parents` field actually uses.
+    """
+    ALTER TABLE google_drive_tokens ADD COLUMN IF NOT EXISTS default_folder_id TEXT;
+    ALTER TABLE google_drive_tokens ADD COLUMN IF NOT EXISTS default_folder_name TEXT;
+    """,
 ]
 
 
@@ -2032,6 +2050,17 @@ def set_drive_access_token(user_id: str, *, access_token: str, expires_at: str) 
 
 def clear_drive_tokens(user_id: str) -> None:
     _write("DELETE FROM google_drive_tokens WHERE user_id = ?", (user_id,))
+
+
+def set_drive_default_folder(user_id: str, *, folder_id: str | None, folder_name: str | None) -> None:
+    """Both None clears it back to "wherever Drive puts new root-level
+    files" — the same reset routes/plans.py's own fallback reaches for when
+    a previously-chosen folder turns out to be unwritable (see share_plan's
+    own comment)."""
+    _write(
+        "UPDATE google_drive_tokens SET default_folder_id = ?, default_folder_name = ?, updated_at = ? WHERE user_id = ?",
+        (folder_id, folder_name, now(), user_id),
+    )
 
 
 def is_admin(user_id: str) -> bool:

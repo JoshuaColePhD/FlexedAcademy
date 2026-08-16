@@ -302,21 +302,54 @@ def share_plan(plan_id: str, body: SharePlan, user_id: str = Depends(get_current
     row = _require_plan(user_id, plan_id)
     access_token = get_valid_access_token(user_id)
 
+    folder_fallback = False
     if not row.get("drive_file_id"):
         p = _require_docx_path(row)
-        result = google_drive.upload_as_google_doc(
-            access_token,
-            filename=docx_build.safe_filename(row["week_label"]),
-            content=p.read_bytes(),
-            source_mime=DOCX_MIME,
-        )
+        # A teacher's chosen destination (Settings → Google Drive, picked via
+        # frontend/src/lib/googlePicker.js), if any — google_drive_tokens is
+        # already fetched by get_valid_access_token above, but that only
+        # returns the bare token string, so the folder columns need their own
+        # read.
+        default_folder_id = (db.get_drive_tokens(user_id) or {}).get("default_folder_id")
+        try:
+            result = google_drive.upload_as_google_doc(
+                access_token,
+                filename=docx_build.safe_filename(row["week_label"]),
+                content=p.read_bytes(),
+                source_mime=DOCX_MIME,
+                parent_id=default_folder_id,
+            )
+        except AppError as e:
+            # The chosen folder specifically is what's unwritable now (access
+            # revoked, folder deleted, or a school Workspace's external-sharing
+            # policy tightening after the fact — the scenario this whole
+            # feature has to expect) — not Drive itself. Retry once into My
+            # Drive root, which every account could already write to before
+            # this feature existed, and forget the stale folder so the next
+            # share doesn't repeat the same failure silently.
+            if default_folder_id and e.code == "drive_folder_forbidden":
+                result = google_drive.upload_as_google_doc(
+                    access_token,
+                    filename=docx_build.safe_filename(row["week_label"]),
+                    content=p.read_bytes(),
+                    source_mime=DOCX_MIME,
+                    parent_id=None,
+                )
+                db.set_drive_default_folder(user_id, folder_id=None, folder_name=None)
+                folder_fallback = True
+            else:
+                raise
         db.set_plan_drive_file(user_id, plan_id, file_id=result["id"], web_link=result["webViewLink"])
         row = _require_plan(user_id, plan_id)
 
     if body.email:
         google_drive.share_file(access_token, row["drive_file_id"], email=body.email, role=body.role)
         db.add_plan_share(plan_id, email=body.email, role=body.role)
-    return {"web_link": row["drive_web_link"], "shares": db.list_plan_shares(plan_id)}
+    return {
+        "web_link": row["drive_web_link"],
+        "shares": db.list_plan_shares(plan_id),
+        "folder_fallback": folder_fallback,
+    }
 
 
 @router.get("/{plan_id}/shares")

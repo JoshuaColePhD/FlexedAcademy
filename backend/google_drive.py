@@ -142,7 +142,9 @@ def revoke(token: str) -> None:
         log.warning("google revoke unreachable: %s", e)
 
 
-def upload_as_google_doc(access_token: str, *, filename: str, content: bytes, source_mime: str) -> dict:
+def upload_as_google_doc(
+    access_token: str, *, filename: str, content: bytes, source_mime: str, parent_id: str | None = None
+) -> dict:
     """Uploads `content` and asks Drive to convert it on the way in, so the
     result is a native, editable Google Doc rather than an opaque .docx blob
     sitting in Drive. {id, webViewLink}.
@@ -152,13 +154,19 @@ def upload_as_google_doc(access_token: str, *, filename: str, content: bytes, so
     multipart/form-data instead, which Drive's upload endpoint does not
     accept the same way, so the body is assembled directly rather than
     reached for that shortcut.
+
+    parent_id: a folder this teacher chose via Picker (db.set_drive_default_folder)
+    — Drive's own `parents` field, included only when set so an unconfigured
+    account keeps landing in My Drive root exactly as it always has.
     """
     boundary = f"drive-{uuid.uuid4().hex}"
-    metadata = json.dumps({"name": filename, "mimeType": GOOGLE_DOC_MIME})
+    metadata: dict = {"name": filename, "mimeType": GOOGLE_DOC_MIME}
+    if parent_id:
+        metadata["parents"] = [parent_id]
     body = (
         f"--{boundary}\r\n"
         f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
-        f"{metadata}\r\n"
+        f"{json.dumps(metadata)}\r\n"
         f"--{boundary}\r\n"
         f"Content-Type: {source_mime}\r\n\r\n"
     ).encode("utf-8") + content + f"\r\n--{boundary}--".encode("utf-8")
@@ -185,6 +193,20 @@ def upload_as_google_doc(access_token: str, *, filename: str, content: bytes, so
     body_json = res.json() if res.content else {}
     if not res.ok:
         log.warning("drive upload failed: %s %s", res.status_code, body_json.get("error"))
+        # A 403/404 while writing into a CHOSEN folder specifically means the
+        # folder itself is the problem (access revoked, folder deleted, or —
+        # the thing this whole feature has to expect — a school Workspace
+        # tightening its external-sharing policy after the fact) rather than
+        # Drive generally misbehaving. routes/plans.py's share_plan uses this
+        # distinct code to retry into My Drive root and forget the stale
+        # folder, instead of just failing outright.
+        if parent_id and res.status_code in (403, 404):
+            raise AppError(
+                "drive_folder_forbidden",
+                "Your chosen Drive folder isn't accessible anymore.",
+                status=502,
+                hint="Pick a different default folder in Settings.",
+            )
         raise AppError(
             "drive_upload_failed",
             "Google Drive couldn't create the document.",

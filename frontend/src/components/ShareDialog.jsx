@@ -32,6 +32,11 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('reader')
   const [submitting, setSubmitting] = useState(false)
+  // The account-level default folder (Settings → Google Drive), shown here
+  // so a teacher isn't surprised where this lands — read-only in this
+  // dialog on purpose; changing it lives in Settings, not buried in a
+  // per-share form.
+  const [defaultFolderName, setDefaultFolderName] = useState(null)
 
   // Reset to a clean loading state every time the dialog opens on a
   // (possibly different) plan, rather than flashing the previous plan's
@@ -54,6 +59,7 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
         if (cancelled) return
         if (!s.enabled) return setStatus('unconfigured')
         if (!s.connected) return setStatus('disconnected')
+        setDefaultFolderName(s.default_folder_name || null)
         const { web_link, shares: existing } = await api.listPlanShares(planId)
         if (cancelled) return
         setWebLink(web_link || null)
@@ -88,7 +94,19 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
       setWebLink(result.web_link)
       setShares(result.shares || [])
       setEmail('')
-      toast.success('Saved to Drive', `${weekLabel || 'The plan'} is now in your Google Drive.`)
+      // The backend already retried into My Drive root and forgot the stale
+      // folder (see routes/plans.py's share_plan) — this is just telling the
+      // teacher it happened, and why their next share won't ask about a
+      // folder that isn't there anymore.
+      if (result.folder_fallback) {
+        setDefaultFolderName(null)
+        toast.info(
+          'Saved to My Drive instead',
+          'Your chosen folder wasn’t accessible, so this went to My Drive. Pick a new default in Settings if you’d like.'
+        )
+      } else {
+        toast.success('Saved to Drive', `${weekLabel || 'The plan'} is now in your Google Drive.`)
+      }
     } catch (err) {
       toast.apiError('Could not save to Drive', err)
     } finally {
@@ -141,8 +159,10 @@ export function ShareDialog({ open, onClose, planId, weekLabel, returnTo }) {
         ) : (
           <form onSubmit={submit}>
             <p>
-              Save the .docx to your Google Drive as a real, editable Google Doc. 
-              You can optionally share it with a colleague's Google account right now.
+              Save the .docx to your Google Drive as a real, editable Google Doc — into{' '}
+              <strong>{defaultFolderName || 'My Drive'}</strong>
+              {defaultFolderName ? '' : ', unless you set a default folder in Settings'}. You can
+              optionally share it with a colleague's Google account right now.
             </p>
             <label className="mt-4 block">
               <span className="mb-1 block text-xs text-ink-muted">Google account email (optional)</span>

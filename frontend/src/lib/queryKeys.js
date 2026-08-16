@@ -38,4 +38,7 @@ export const qk = {
   plans: (classId) => ['plans', classId ?? null],
   curriculumProgress: (classId) => ['curriculum-progress', classId ?? null],
   classDocuments: (classId) => ['class-documents', classId],
+  /** Connection + default-folder state for "Share via Google" — account-wide,
+   *  not per class, same reasoning as `me` above. */
+  driveStatus: ['drive-status'],
 }

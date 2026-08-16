@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from .. import auth, db, google_drive
 from ..config import settings
@@ -84,9 +85,14 @@ def get_valid_access_token(user_id: str) -> str:
 
 @router.get("/status")
 def drive_status(user_id: str = Depends(get_current_user)) -> dict:
+    row = db.get_drive_tokens(user_id) if settings.drive_share_enabled else None
     return {
         "enabled": settings.drive_share_enabled,
-        "connected": settings.drive_share_enabled and db.get_drive_tokens(user_id) is not None,
+        "connected": row is not None,
+        # None while disconnected, or while connected with no default set yet
+        # — both read the same to the frontend ("saving to My Drive").
+        "default_folder_id": row["default_folder_id"] if row else None,
+        "default_folder_name": row["default_folder_name"] if row else None,
     }
 
 
@@ -163,3 +169,38 @@ def disconnect(user_id: str = Depends(get_current_user)) -> dict:
         google_drive.revoke(row["refresh_token"])
         db.clear_drive_tokens(user_id)
     return {"status": "ok"}
+
+
+class DefaultFolder(BaseModel):
+    # Both None clears it back to My Drive root — see db.set_drive_default_folder.
+    folder_id: str | None = None
+    folder_name: str | None = None
+
+
+@router.post("/default-folder")
+def set_default_folder(body: DefaultFolder, user_id: str = Depends(get_current_user)) -> dict:
+    """Persists whatever folder the teacher picked in the frontend's Google
+    Picker widget (frontend/src/lib/googlePicker.js) as this account's
+    upload destination. Requires a live connection — a default folder with
+    nothing to attach it to would be dead state the moment it's read back."""
+    if not db.get_drive_tokens(user_id):
+        raise AppError("drive_not_connected", "Connect Google Drive before choosing a folder.", status=409)
+    db.set_drive_default_folder(user_id, folder_id=body.folder_id, folder_name=body.folder_name)
+    return {"status": "ok"}
+
+
+@router.get("/picker-token")
+def picker_token(user_id: str = Depends(get_current_user)) -> dict:
+    """A short-lived Drive access token, handed to the frontend so Google's
+    own Picker widget can render the teacher's folder list — Picker is a
+    client-side widget that talks to Google directly, it isn't something
+    this backend can drive on the frontend's behalf.
+
+    This is the ONE place the access token ever leaves the server. Handing
+    out the refresh_token this way would be a real problem (it's a durable,
+    reusable credential); the access token is already narrow-scoped
+    (drive.file) and expires within the hour, so a brief exposure for the
+    one moment a teacher is actively choosing a folder is a contained risk
+    the refresh_token itself is never part of.
+    """
+    return {"access_token": get_valid_access_token(user_id)}

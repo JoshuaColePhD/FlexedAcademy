@@ -6,11 +6,13 @@ import {
   CreditCard,
   Download,
   FileText,
+  FolderOpen,
   Loader2,
   Pencil,
   Plus,
   Sparkles,
   Trash2,
+  Unlink,
   Upload,
   X,
 } from 'lucide-react'
@@ -30,6 +32,7 @@ import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { unitSuffix } from '../lib/planShape'
+import { pickDriveFolder } from '../lib/googlePicker'
 
 /* Your classes.
  *
@@ -651,6 +654,167 @@ function BillingSection() {
           {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
         </button>
       </div>
+    </div>
+  )
+}
+
+/* ── Google Drive ──────────────────────────────────────────────────────────
+ * Two separate things, same as everywhere else this app touches Google: this
+ * account's Drive CONNECTION (routes/drive.py, shared with ShareDialog's
+ * per-plan Share button), and — new here — a default destination FOLDER for
+ * it, so Share doesn't have to ask every single time. Chosen with Google's
+ * own Picker widget (lib/googlePicker.js), not typed in: see that module's
+ * own comment for why this app can't browse a teacher's existing folders on
+ * its own, and why Picker is what lets "the folder my school already shared
+ * with me" work anyway despite that.
+ *
+ * Hidden entirely while unconfigured, same reasoning as BillingSection just
+ * above — no gate anyone can trip if the feature was never turned on for
+ * this deployment. */
+function GoogleDriveSection() {
+  const toast = useToast()
+  const confirm = useConfirm()
+  const qc = useQueryClient()
+  const [choosing, setChoosing] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
+  const driveState = useQuery({ queryKey: qk.driveStatus, queryFn: () => api.driveStatus() })
+  const status = driveState.data
+
+  const reload = () => qc.invalidateQueries({ queryKey: qk.driveStatus })
+
+  if (!status?.enabled) return null
+
+  const connect = () => {
+    // A real navigation, not a fetch — Google's consent screen can't be an
+    // iframe. Returns to wherever this settings page actually is (the
+    // current class's own /class route), same reasoning as ShareDialog's
+    // identical connect().
+    window.location.assign(api.driveConnectUrl(window.location.pathname + window.location.search))
+  }
+
+  const chooseFolder = async () => {
+    setChoosing(true)
+    try {
+      const { access_token: accessToken } = await api.drivePickerToken()
+      const picked = await pickDriveFolder({
+        accessToken,
+        apiKey: import.meta.env.VITE_GOOGLE_PICKER_API_KEY,
+      })
+      if (!picked) return // closed without choosing — not an error
+      await api.driveSetDefaultFolder({ folderId: picked.id, folderName: picked.name })
+      toast.success('Saved', `New plans will be saved to “${picked.name}”.`)
+      reload()
+    } catch (err) {
+      toast.apiError('Could not set that folder', err)
+    } finally {
+      setChoosing(false)
+    }
+  }
+
+  const useRootFolder = async () => {
+    try {
+      await api.driveSetDefaultFolder({ folderId: null, folderName: null })
+      toast.success('Saved', 'New plans will be saved to My Drive.')
+      reload()
+    } catch (err) {
+      toast.apiError('Could not update that', err)
+    }
+  }
+
+  const disconnect = async () => {
+    const ok = await confirm({
+      title: 'Disconnect Google Drive?',
+      body: 'Plans already shared stay shared — this only stops NEW ones from being saved there until you reconnect.',
+      confirmLabel: 'Disconnect',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setDisconnecting(true)
+    try {
+      await api.driveDisconnect()
+      reload()
+    } catch (err) {
+      toast.apiError('Could not disconnect', err)
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
+  return (
+    <div className="mt-5">
+      <h2 className="text-sm font-semibold text-ink">Google Drive</h2>
+      {!status.connected ? (
+        <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
+          <div>
+            <p className="text-sm font-medium text-ink">Not connected</p>
+            <p className="text-xs text-ink-muted">
+              Connect a Google account to save plans there as real Google Docs.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={connect}
+            className="neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-tint px-3 py-2 text-sm font-medium text-accent-text"
+          >
+            Connect Google Drive
+          </button>
+        </div>
+      ) : (
+        <div className="neo-panel mt-2 flex flex-col gap-3 rounded-xl bg-paper-raised p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-ink">
+                Saving to: {status.default_folder_name || 'My Drive'}
+              </p>
+              <p className="text-xs text-ink-muted">
+                {status.default_folder_id
+                  ? 'Pick the folder your school shares with your Google account, if you have one.'
+                  : 'Choose a folder — like one your school already shares with you — so Share doesn’t ask every time.'}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={chooseFolder}
+                disabled={choosing}
+                className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {choosing ? (
+                  <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <FolderOpen size={14} aria-hidden="true" />
+                )}
+                Choose folder
+              </button>
+              {status.default_folder_id ? (
+                <button
+                  type="button"
+                  onClick={useRootFolder}
+                  className="rounded-lg px-2 py-2 text-xs font-medium text-ink-muted transition-colors hover:text-ink"
+                >
+                  Use My Drive
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center justify-between border-t border-edge pt-3">
+            <p className="text-xs text-ink-faint">
+              If your school later restricts sharing with outside accounts, a share will fall back
+              to My Drive automatically and let you know.
+            </p>
+            <button
+              type="button"
+              onClick={disconnect}
+              disabled={disconnecting}
+              aria-label="Disconnect Google Drive"
+              title="Disconnect Google Drive"
+              className="shrink-0 rounded-lg p-2 text-ink-faint transition-colors hover:bg-mark-tint hover:text-mark disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Unlink size={14} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1324,6 +1488,9 @@ export function ClassPage() {
 
           {/* ── billing ──────────────────────────────────────────────────── */}
           <BillingSection />
+
+          {/* ── google drive ─────────────────────────────────────────────── */}
+          <GoogleDriveSection />
 
           {/* ── the classes ─────────────────────────────────────────────── */}
           <div className="mt-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

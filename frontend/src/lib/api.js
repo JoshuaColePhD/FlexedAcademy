@@ -211,6 +211,20 @@ export const api = {
   driveConnectUrl: (returnTo) =>
     `${API_BASE}/api/drive/connect?return_to=${encodeURIComponent(returnTo)}`,
   driveDisconnect: () => request('/api/drive/disconnect', { method: 'POST' }),
+  /* The default upload destination, chosen once in Settings via Google's own
+   * Picker widget (lib/googlePicker.js) rather than typed in — see that
+   * module's own comment for why a folder picker has to be Google's, not
+   * this app's. Both null clears it back to My Drive root. */
+  driveSetDefaultFolder: ({ folderId, folderName }) =>
+    request('/api/drive/default-folder', {
+      method: 'POST',
+      body: { folder_id: folderId, folder_name: folderName },
+    }),
+  /* A short-lived Drive access token, fetched fresh right before opening the
+   * Picker each time (never cached) — see routes/drive.py's picker_token for
+   * why handing this one token to the frontend is a contained exception to
+   * "the refresh_token never leaves the server." */
+  drivePickerToken: () => request('/api/drive/picker-token'),
   sharePlan: (planId, { email, role = 'reader' } = {}) =>
     request(`/api/plans/${planId}/share`, {
       method: 'POST',
