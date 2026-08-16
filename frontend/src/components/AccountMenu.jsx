@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { LogOut, Settings, User, ShieldCheck, Info } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useExitTransition } from '../hooks/useExitTransition'
 
 /* The rail footer, and the home of the control that did not exist.
  *
@@ -17,6 +18,9 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 export function AccountMenu({ classPath }) {
   const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
+  // Sits right above the trigger (bottom-full) — mirrors ClassSwitcher's own
+  // dropdown, closing shape and all, just growing up instead of dropping down.
+  const { mounted, closing } = useExitTransition(open, 150)
   const ref = useRef(null)
   const popoverRef = useRef(null)
 
@@ -63,20 +67,11 @@ export function AccountMenu({ classPath }) {
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
       </button>
 
-      <Link
-        to={`${classPath}/class`}
-        className="btn-icon"
-        aria-label="Classes & settings"
-        title="Classes & settings"
-      >
-        <Settings size={16} aria-hidden="true" />
-      </Link>
-
-      {open ? (
+      {mounted ? (
         <div
           ref={popoverRef}
           tabIndex={-1}
-          className="neo-panel absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-2xl bg-paper-raised py-1"
+          className={`neo-panel fa-pop-up absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-2xl bg-paper-raised py-1${closing ? ' fa-chip-exit' : ''}`}
         >
           {/* --ink-muted: an email address is identity, not decoration —
               --ink-faint reads under 3:1 against --paper in light mode. */}

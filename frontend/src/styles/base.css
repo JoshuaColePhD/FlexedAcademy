@@ -2403,6 +2403,8 @@
     min-height: 0;
     flex: 1;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 14px 26px 30px;
   }
   /* Fits the container, never a fixed 900px page — a fixed page in a narrow
@@ -4184,6 +4186,15 @@
   .fa-card-drop {
     animation: fa-card-drop 380ms var(--ease-out) both;
   }
+  /* fa-card-drop's mirror for a popover anchored BELOW its own trigger
+     (AccountMenu, sitting bottom-full above the name button) — grows up out
+     of the trigger instead of dropping down onto it. transform-origin: bottom
+     so the scale reads as expanding from the anchor, not shrinking toward the
+     screen center. */
+  .fa-pop-up {
+    animation: fa-pop-up 320ms var(--ease-spring) both;
+    transform-origin: bottom;
+  }
   /* A deleted list row (a plan, a chat, a class document) used to just
      vanish from the array with the rows below snapping up into the gap
      immediately — the two genuinely new shapes motion was missing here,
@@ -4232,6 +4243,16 @@
   from {
     opacity: 0;
     transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fa-pop-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
   }
   to {
     opacity: 1;

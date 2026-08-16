@@ -43,12 +43,13 @@ function useCopy() {
 
 /* One exchange on the page.
  *
- * The teacher's own message is the one that looks written: set against a tinted
- * block, the way a quoted passage sits in a text. The app's reply is unadorned
- * body copy on the ruled lines — it is the page talking, not a second speaker,
- * so it gets no bubble and no avatar. The previous version gave the assistant a
- * greyscale logo avatar and a rounded chat bubble, which framed a document tool
- * as a messaging app. */
+ * Both turns sit in the same neo-raised, rounded box now — the teacher's own
+ * message tinted with the accent color, the app's reply in the plain
+ * neutral card surface (bg-paper-raised) the rest of the app already uses
+ * for a "card." Same shape, different fill: that's what keeps "said by you"
+ * distinct from "said by the app" without giving the assistant an avatar or
+ * a second speaker's identity — it's still the page talking back, just
+ * boxed like everything else here. */
 export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, isLast }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
@@ -78,7 +79,11 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
   if (isUser && editing) {
     return (
       <div className="group flex w-full justify-end">
-        <div className="neo-inset w-full max-w-[85%] rounded-xl bg-paper-sunken p-4">
+        {/* Same neo-raised + accent-tint bubble as the sent message, not the
+            paper-sunken groove this used to be — editing your own turn
+            should still read as your turn, not switch to a different
+            surface mid-edit. */}
+        <div className="neo-raised w-full max-w-[85%] rounded-2xl bg-accent-tint p-4">
           <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
             Edit your message
           </label>
@@ -86,7 +91,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             id={`edit-${message.id}`}
             ref={ref}
             value={draft}
-            className="min-h-[60px] w-full resize-none border-none bg-transparent text-[0.9375rem] text-ink outline-none"
+            className="min-h-[60px] w-full resize-none border-none bg-transparent text-[0.9375rem] text-accent-text outline-none placeholder:text-accent-text/60"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
@@ -112,11 +117,12 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             </button>
             <button
               type="button"
-              /* bg-accent-tint + accent text, not a solid ink fill — the
-                 app's one primary-button treatment (see AppShell's "New
-                 plan"), so "send again" reads the same as every other
-                 commit action instead of a black slab. */
-              className="fa-press neo-raised rounded-full bg-accent-tint px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
+              /* bg-paper, not the usual bg-accent-tint: the box around this
+                 button IS accent-tint now (the bubble itself), so the
+                 primary-button treatment inverts to stay legible — accent
+                 text still marks it as "the" action, but the fill has to
+                 read against the tint instead of matching it. */
+              className="fa-press neo-raised rounded-full bg-paper px-4 py-1.5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-40"
               disabled={!draft.trim()}
               onClick={() => {
                 setEditing(false)
@@ -151,15 +157,24 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
         <div
           className={
             isUser
-              ? /* The teacher's own turn, pressed into the page rather than
-                   floating on it — the assistant's replies are bare text on
-                   the paper, so "said by you" reads as a groove cut into
-                   that same sheet instead of a second card competing with
-                   the reply beside it. */
-                'neo-inset rounded-2xl bg-paper-sunken px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
+              ? /* The teacher's own turn, lifted off the page as its own
+                   bubble rather than cut into it — the same neo-raised +
+                   accent-tint combo the app already uses for its one
+                   primary-action treatment (see "Send again" below, or the
+                   "New plan" button), so "said by you" reads as the
+                   prominent, colored voice in the exchange. A tail was tried
+                   three ways (squared corner, behind-the-corner CSS shape,
+                   an actual SVG path) and never earned its keep — plain and
+                   rounded reads fine on its own. */
+                'neo-raised rounded-2xl bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
-                : 'text-[0.9375rem] leading-relaxed text-ink'
+                : /* Same neo-raised box as the teacher's own bubble, but
+                     bg-paper-raised instead of bg-accent-tint — the app's
+                     existing neutral "card" surface (see DecisionStack,
+                     VoiceModePanel), not a colored one, so the two turns are
+                     still visually distinct while both read as boxed. */
+                  'neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
           }
         >
           {isUser ? (
