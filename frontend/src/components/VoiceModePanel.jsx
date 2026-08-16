@@ -402,6 +402,8 @@ export function VoiceModePanel({
   // nothing to replay yet, so the header hides the button outright rather
   // than showing it disabled with nothing to explain why.
   onReplayLast,
+  messages = [],
+  onBuild,
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
