@@ -265,6 +265,9 @@ export const api = {
   adminListAccounts: ({ signal } = {}) => request('/api/admin/accounts', { signal }),
   adminSetComped: (accountId, comped) =>
     request(`/api/admin/accounts/${accountId}/comp`, { method: 'POST', body: { comped } }),
+  // cap: null clears the override back to the account's ordinary tier cap.
+  adminSetCustomCap: (accountId, cap) =>
+    request(`/api/admin/accounts/${accountId}/cap`, { method: 'POST', body: { cap } }),
   adminCreateSchool: (id, name) =>
     request('/api/admin/schools', { method: 'POST', body: { id, name } }),
   adminDeleteSchool: (id) =>

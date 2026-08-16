@@ -49,6 +49,26 @@ def set_comped(account_id: str, body: CompBody, _admin: str = Depends(get_curren
     )}
 
 
+class CapBody(BaseModel):
+    # None clears the override back to "use the tier's own cap" — see
+    # migration 28 / entitlement.py. A real 0 is legal too (fully throttle
+    # one account without suspending it outright), so this has to stay
+    # nullable rather than defaulting to some sentinel.
+    cap: int | None = Field(default=None, ge=0)
+
+
+@router.post("/accounts/{account_id}/cap")
+def set_custom_cap(account_id: str, body: CapBody, _admin: str = Depends(get_current_admin)):
+    """The middle ground between "the ordinary tier cap" and "comped"
+    (unlimited) — give ONE account more headroom without unlocking it
+    entirely, or throttle one down without suspending it. Everyone else is
+    unaffected; this only ever touches the account named in the URL."""
+    db.set_custom_token_cap(account_id, body.cap)
+    return {"account": next(
+        (a for a in db.list_accounts_with_stats() if a["id"] == account_id), None
+    )}
+
+
 @router.get("/entitled-statuses")
 def entitled_statuses(_admin: str = Depends(get_current_admin)):
     """What the app currently treats as "may generate", for display only —

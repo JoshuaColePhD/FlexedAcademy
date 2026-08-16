@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
+import { BookOpen, ChevronsUpDown, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -41,12 +41,25 @@ function UsageMeter({ entitlement }) {
   // getting close / out" (--ok/--flag/--mark) rather than inventing a fourth
   // meaning for a fill colour.
   const tone = pct >= 100 ? 'bg-mark' : pct >= 85 ? 'bg-flag' : 'bg-ok'
+  // The bar already answers "am I fine or should I worry" at a glance — the
+  // words underneath should say the SAME thing in the only unit a teacher
+  // actually thinks in, not make them subtract two six-digit numbers to
+  // find out. The exact counts move to a smaller, secondary line instead of
+  // disappearing outright: still there for anyone (Josh included) who wants
+  // the real number, just not the first thing read.
+  const statusText =
+    pct >= 100
+      ? 'You’ve reached this week’s limit'
+      : pct >= 85
+        ? 'Getting close to this week’s limit'
+        : 'Plenty left this week'
+  const statusTextColor = pct >= 100 ? 'text-mark' : pct >= 85 ? 'text-flag' : 'text-ok'
 
   return (
     <div className="px-3 py-2">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-2xs font-medium uppercase tracking-wider text-ink-muted">Usage</span>
-        <span className="text-2xs text-ink-muted">past {days} days</span>
+        <span className="text-2xs text-ink-muted">{days === 7 ? 'resets weekly' : `resets every ${days} days`}</span>
       </div>
       <div className="neo-inset mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-paper-sunken">
         <div
@@ -54,9 +67,9 @@ function UsageMeter({ entitlement }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="mt-1 text-xs text-ink-soft">
-        {used.toLocaleString()} / {cap.toLocaleString()} tokens
-        <span className="text-ink-muted"> · {remaining.toLocaleString()} left</span>
+      <p className={`mt-1 text-xs font-medium ${statusTextColor}`}>{statusText}</p>
+      <p className="text-2xs text-ink-muted">
+        {used.toLocaleString()} / {cap.toLocaleString()} tokens · {remaining.toLocaleString()} left
       </p>
     </div>
   )
@@ -113,6 +126,11 @@ export function AccountMenu({ classPath }) {
           <User size={13} />
         </span>
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
+        {/* Same chevron ClassSwitcher already puts beside ITS trigger, right
+            above this one in the rail — nothing here previously said "this
+            opens" at all, unlike its sibling. One convention for "tap this
+            for more," not two. */}
+        <ChevronsUpDown size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
       </button>
 
       {mounted ? (
@@ -144,7 +162,18 @@ export function AccountMenu({ classPath }) {
             >
               <Settings size={14} aria-hidden="true" /> Settings
             </Link>
-            {user?.is_admin ? (
+          </div>
+
+          {/* Its own group, not lumped in with My classes/Settings above OR
+              Log out below — it used to sit one plain row above Log out,
+              same size, same grey, same divider treatment as everything
+              else, which made the one genuinely privileged link in this
+              whole menu just as easy to graze past (or mis-tap) as an
+              everyday one. A boundary on both sides is the signal, not a
+              colour change — this isn't "actionable" the way --accent means
+              elsewhere in the app, it's "different in kind." */}
+          {user?.is_admin ? (
+            <div className="mt-1 border-t border-hairline pt-1">
               <Link
                 to="/admin"
                 onClick={() => setOpen(false)}
@@ -152,8 +181,8 @@ export function AccountMenu({ classPath }) {
               >
                 <ShieldCheck size={14} aria-hidden="true" /> Admin
               </Link>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
 
           {/* Its own full-width row, not an icon squeezed beside "Classes &
               settings" — a mis-tap on a 40px-wide icon button next to the

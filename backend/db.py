@@ -660,6 +660,22 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_plan_shares_plan ON plan_shares(plan_id);
     ALTER TABLE plan_shares ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 28: a per-account cap override ───────────────────────────────────────
+    #
+    # Before this, an account's weekly token cap was one of exactly two
+    # values — the free tier's or the subscriber tier's (config.py) — with
+    # "comped" (unlimited) as the only way to give any ONE account something
+    # different. That's a real gap for an admin: no way to give a specific
+    # teacher extra headroom without going all the way to unlimited, and no
+    # way to throttle a specific account down without suspending it outright.
+    #
+    # Nullable, no default: NULL means "use the tier's own cap" (the existing
+    # behavior for every account today, unaffected by this migration).
+    # entitlement.py checks this FIRST and only falls back to the tier cap
+    # when it's unset — see its own comment.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_weekly_token_cap INTEGER;
+    """,
 ]
 
 
@@ -2063,13 +2079,19 @@ def list_accounts_with_stats() -> list[dict]:
     """
     since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
     since_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(timespec="seconds")
+    # Same 24h window entitlement.py's own burst cap checks — so this table
+    # can show which accounts are CURRENTLY riding close to it, not just
+    # their weekly total.
+    since_burst = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(timespec="seconds")
     rows = _rows(
         """
         SELECT u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
+               u.custom_weekly_token_cap,
                COUNT(p.id) AS plans_built,
                MAX(p.created_at) AS last_plan_at,
                COALESCE(ue7.tokens, 0) AS tokens_7d,
-               COALESCE(ue30.tokens, 0) AS tokens_30d
+               COALESCE(ue30.tokens, 0) AS tokens_30d,
+               COALESCE(ueburst.tokens, 0) AS tokens_burst
         FROM users u
         LEFT JOIN plans p ON p.user_id = u.id
         LEFT JOIN (
@@ -2084,10 +2106,17 @@ def list_accounts_with_stats() -> list[dict]:
             WHERE created_at >= ?
             GROUP BY user_id
         ) ue30 ON ue30.user_id = u.id
-        GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at, ue7.tokens, ue30.tokens
+        LEFT JOIN (
+            SELECT user_id, SUM(tokens_in + tokens_out) AS tokens
+            FROM usage_events
+            WHERE created_at >= ?
+            GROUP BY user_id
+        ) ueburst ON ueburst.user_id = u.id
+        GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
+                 u.custom_weekly_token_cap, ue7.tokens, ue30.tokens, ueburst.tokens
         ORDER BY u.created_at DESC
         """,
-        (since_7d, since_30d),
+        (since_7d, since_30d, since_burst),
     )
     res = []
     for r in rows:
@@ -2095,6 +2124,12 @@ def list_accounts_with_stats() -> list[dict]:
         d["tokens_avg_day_30d"] = int(d["tokens_30d"] / 30) if d.get("tokens_30d") else 0
         res.append(d)
     return res
+
+
+def set_custom_token_cap(user_id: str, cap: int | None) -> None:
+    """An admin override on top of the two tier defaults (config.py) — see
+    migration 28. `cap=None` clears it back to "use the tier's own cap"."""
+    _write("UPDATE users SET custom_weekly_token_cap = ? WHERE id = ?", (cap, user_id))
 
 
 def create_user(email: str, name: str, password_hash: str) -> dict:

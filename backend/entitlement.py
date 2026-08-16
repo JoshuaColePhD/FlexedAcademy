@@ -116,7 +116,16 @@ def entitlement(user_id: str) -> Entitlement:
     # Still worth knowing — the account menu shows it — just not what gates.
     plans_used = db.count_plans(user_id)
 
-    cap = settings.subscriber_weekly_token_cap if subscribed else settings.free_weekly_token_cap
+    # An admin override (migration 28) wins over both tier defaults — the
+    # one thing this app couldn't do before was give a SPECIFIC account
+    # something other than "the ordinary tier cap" or "unlimited (comped)."
+    # None means "no override," not "zero" — a real 0 would be indistinguishable
+    # from "unset" otherwise, and would silently lock an account out with no
+    # way to tell that apart from a bug.
+    custom_cap = user.get("custom_weekly_token_cap")
+    cap = custom_cap if custom_cap is not None else (
+        settings.subscriber_weekly_token_cap if subscribed else settings.free_weekly_token_cap
+    )
     since = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
     tokens_used = db.tokens_used_since(user_id, since)
 
