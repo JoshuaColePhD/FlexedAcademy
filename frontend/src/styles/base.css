@@ -2080,8 +2080,20 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* A tinted chip rather than just coloured text — the same fill/text pair
+     .bg-ok-tint/.text-ok already reads as a status badge elsewhere (see
+     AdminPage's entitlement pill), so "this needs a look" gets the same
+     visual weight as "this is fine" already had, instead of relying on a
+     colour shift alone against ink-faint. inline-flex + width: fit-content
+     because .rail-sub otherwise stretches to fill its flex parent. */
   .rail-sub.is-flag {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    padding: 1px 6px;
     color: var(--flag);
+    background: var(--flag-tint);
+    border-radius: var(--r-full);
   }
   .rail-actions {
     display: flex;
@@ -2463,8 +2475,16 @@
     font-weight: var(--fw-semibold);
     color: var(--ink-muted);
   }
+  /* Same tinted-chip treatment as .rail-sub.is-flag, so a flagged code reads
+     the same whether it's spotted in the rail or opened into this detail
+     card. */
   .detail-card-type.is-flag {
+    display: inline-flex;
+    width: fit-content;
+    padding: 1px 6px;
     color: var(--flag);
+    background: var(--flag-tint);
+    border-radius: var(--r-full);
   }
   .detail-card-code {
     margin-left: auto;
@@ -2536,11 +2556,18 @@
     background: var(--paper-inset);
     border-radius: var(--r-md);
   }
+  /* Was --ink on the shared --paper-inset fill — indistinguishable from an
+     un-checked code at a glance, which is the opposite of what "grounded"
+     is supposed to tell a teacher scanning the list. --ok, tinted, so
+     grounded reads as a small positive chip the same way is-flag reads as a
+     warning one just below. */
   .detail-code.is-grounded {
-    color: var(--ink);
+    color: var(--ok);
+    background: var(--ok-tint);
   }
   .detail-code.is-flag {
     color: var(--flag);
+    background: var(--flag-tint);
   }
   .detail-code-where {
     font-family: initial;

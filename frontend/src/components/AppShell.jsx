@@ -205,7 +205,21 @@ function Rail({ onNavigate, onClose }) {
             }`
           }
         >
-          <FileText size={15} aria-hidden="true" /> Library
+          {({ isActive }) => (
+            <>
+              {/* rail-pop, not --accent — this is the app's own established
+                  accent (the logo mark, the New plan CTA's idle glow), not
+                  the district blue tokens.css reserves for "something is
+                  waiting for you." The icon alone carries it so the label
+                  stays plain text. */}
+              <FileText
+                size={15}
+                aria-hidden="true"
+                style={isActive ? { color: 'rgb(var(--rail-pop-rgb))' } : undefined}
+              />
+              Library
+            </>
+          )}
         </NavLink>
         {/* Only rendered for is_admin accounts — everyone else never sees this
             link exists. The route and every request it makes are gated again
@@ -325,7 +339,9 @@ export function AppShell({ children }) {
             the viewport — the chat column read as a flat, unlit rectangle
             next to the rail's lit glass. z-index: -1 keeps it under #main's
             own content (the header bar and children below) without needing
-            to touch either of those. */}
+            to touch either of those. Was wired up as a comment with no div —
+            .chat-glow existed in base.css with nothing rendering it. */}
+        <div className="chat-glow" aria-hidden="true" />
         {isNarrow ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button

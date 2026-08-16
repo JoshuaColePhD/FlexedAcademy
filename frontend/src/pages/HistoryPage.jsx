@@ -258,7 +258,7 @@ export function HistoryPage() {
               <SkeletonText lines={10} />
             </div>
           ) : isError ? (
-            <div className="px-4">
+            <div className="mx-4 rounded-lg bg-mark-tint px-3 py-2.5">
               <p className="text-sm font-medium text-mark">Could not load history</p>
               <p className="text-xs text-ink-muted">{errorParts(error).message}</p>
             </div>

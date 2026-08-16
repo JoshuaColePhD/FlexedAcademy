@@ -112,7 +112,14 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
                   setOpen(false)
                   navigate(targetFor(c.id))
                 }}
-                className={`flex min-h-touch w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
+                /* The selected row's own fill/ink stays exactly what the
+                   comment above the component argues for (--paper-inset +
+                   --ok, never --accent). This border is additive, not a
+                   replacement for that logic — a class-coloured edge so a
+                   teacher with three preps can place each one before reading
+                   the name, same job the rail's own dot already does. */
+                style={{ borderLeft: `3px solid rgb(${classColor(c.id).rgb} / 0.7)` }}
+                className={`flex min-h-touch w-full items-center gap-2 py-1.5 pl-2.5 pr-3 text-left text-sm transition-colors ${
                   c.id === activeClass?.id
                     ? 'bg-paper-inset text-ink'
                     : 'text-ink-soft hover:bg-paper-sunken'

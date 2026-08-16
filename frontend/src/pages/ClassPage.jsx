@@ -26,6 +26,7 @@ import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
+import { classColor } from '../lib/classColor'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
@@ -507,7 +508,12 @@ function SchoolPicker({ value, onSaved }) {
           Said out loud here, after the fact, because the row is still a
           legitimate choice: it just can't schedule anything yet. */}
       {selected && selected.has_calendar === false ? (
-        <p className="mt-2 max-w-xs text-xs text-mark">
+        /* A tinted banner rather than plain small red text — this is a
+           genuine "come do something" state (no calendar means every plan
+           for this class builds worse until one is added), which is what
+           --mark-tint/--mark already exist to carry as a status colour, not
+           just a flag on prose. */
+        <p className="mt-2 max-w-xs rounded-lg bg-mark-tint px-2.5 py-2 text-xs text-mark">
           No calendar is on file for {selected.name} yet, so weeks can’t be scheduled — plans
           will build without a week or a closure to work from until one is added.
         </p>
@@ -779,6 +785,18 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           <Check size={13} />
         </span>
 
+        {/* The same per-class colour the rail dot and the artifact rail's own
+            tile already use (lib/classColor.js) — this list is the one place
+            every class a teacher has sits in a single column, which is
+            exactly the "tell two preps apart at a glance" job that palette
+            exists for. Decoration, not the only signal: the name is still
+            the text right beside it. */}
+        <span
+          className="class-dot"
+          aria-hidden="true"
+          style={{ '--class-dot-color': `rgb(${classColor(cls.id).rgb})` }}
+        />
+
         {/* Clicking the name SWITCHES to that class; it no longer edits it.
             It was a bare text input, so the row's most obvious click target
             was a rename nobody was asking for, and the one thing a list of
@@ -985,8 +1003,16 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           {/* Verification is not uniform — ELA is 100%, PE 61% — and it matters
               before trusting a plan built on this framework. */}
           {verified !== null && verified < 100 ? (
-            <p className="mb-2 text-xs text-flag">
-              {verified}% of {shortLabel(fw)} was verified word-for-word against the source PDF.
+            /* A tinted chip on the number, prose around it — the same
+               fill/text pair the rail and detail cards use for is-flag, so
+               the one number that actually matters here (61%, not 100) is
+               what catches the eye first instead of a uniform line of small
+               amber text. */
+            <p className="mb-2 text-xs text-ink-muted">
+              <span className="rounded-full bg-flag-tint px-1.5 py-0.5 font-medium text-flag">
+                {verified}% verified
+              </span>{' '}
+              of {shortLabel(fw)} word-for-word against the source PDF.
             </p>
           ) : null}
           <ClassDocuments cls={cls} onChanged={onChanged} />

@@ -293,7 +293,9 @@ export function PlansPage() {
               <SkeletonText lines={4} />
             </div>
           ) : isError ? (
-            <p className="text-sm text-mark">Couldn’t load your plans. {errorParts(error).message}</p>
+            <p className="rounded-lg bg-mark-tint px-3 py-2.5 text-sm text-mark">
+              Couldn’t load your plans. {errorParts(error).message}
+            </p>
           ) : filtered.length ? (
             <ul className="neo-panel divide-y divide-edge overflow-hidden rounded-xl bg-paper-raised">
               {filtered.map((plan) => (
