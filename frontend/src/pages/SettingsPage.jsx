@@ -72,7 +72,7 @@ function CustomInstructions({ value, onSaved }) {
           type="button"
           onClick={save}
           disabled={!dirty || saving}
-          className="neo-raised rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+          className="fa-press neo-raised rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
@@ -243,7 +243,7 @@ function ChangePassword() {
       <button
         type="submit"
         disabled={saving || !current || !next}
-        className="neo-raised rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+        className="fa-press neo-raised rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
       >
         {saving ? 'Saving…' : 'Change password'}
       </button>
@@ -287,7 +287,7 @@ function BillingSection() {
           type="button"
           onClick={entitlement.subscribed ? manage : openPaywall}
           disabled={busy}
-          className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {entitlement.subscribed ? (
             <CreditCard size={14} aria-hidden="true" />

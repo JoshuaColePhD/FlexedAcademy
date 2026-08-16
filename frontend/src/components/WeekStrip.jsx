@@ -54,7 +54,7 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
           role="group"
           aria-label={label}
         >
-          {DAYS.map((name) => {
+          {DAYS.map((name, i) => {
             const day = byName.get(name)
             const isOff = day?.no_school
             const isWriting = writing && name === nextUnwritten
@@ -67,10 +67,20 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
             // just has to change when the status does, for React to remount
             // the row and let fa-rise play again.
             const status = day ? 'done' : isWriting ? 'writing' : 'pending'
+            // The one case the reasoning above doesn't cover: a plan that's
+            // ALREADY finished the moment this mounts (reopening a chat, or
+            // any reply whose plan arrived whole rather than streamed) has
+            // no real per-row arrival time to key off — every row is "done"
+            // in the same render, so fa-rise fires on all five at once. A
+            // fixed stagger, RailRow's own trick, is the right fallback
+            // there specifically: `writing` being false is exactly the
+            // signal that there's no real timing left to prefer.
+            const dropStyle = !writing ? { animationDelay: `${i * 60}ms` } : undefined
 
             return (
               <li
                 key={`${name}-${status}`}
+                style={dropStyle}
                 className={`flex items-center gap-3 px-3 py-2 ${status === 'done' ? 'fa-rise' : ''}`}
               >
                 <span

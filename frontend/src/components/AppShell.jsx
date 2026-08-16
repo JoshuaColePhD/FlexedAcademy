@@ -151,7 +151,7 @@ function Rail({ onNavigate, onClose }) {
         <Link
           to={classPath}
           onClick={onNavigate}
-          className="neo-raised flex min-h-touch items-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-ink-inverse hover:bg-accent-hover"
+          className="fa-press neo-raised flex min-h-touch items-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-ink-inverse hover:bg-accent-hover"
         >
           <Plus size={15} aria-hidden="true" />
           <span className="flex-1">New plan</span>

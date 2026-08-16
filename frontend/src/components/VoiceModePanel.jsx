@@ -220,7 +220,7 @@ function QuestionCards({ questions, onAnswer }) {
           type="button"
           disabled={!allAnswered}
           onClick={() => send(answers)}
-          className="neo-raised mt-2 min-h-touch shrink-0 self-start rounded-full bg-accent px-5 text-sm font-medium text-ink-inverse transition-shadow hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="fa-press neo-raised mt-2 min-h-touch shrink-0 self-start rounded-full bg-accent px-5 text-sm font-medium text-ink-inverse transition-shadow hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           Continue
         </button>
@@ -364,7 +364,7 @@ function HeardEcho({ text, onCorrect, onEditingChange }) {
         <button
           type="button"
           onClick={save}
-          className="neo-raised rounded-full bg-accent px-3 py-1 text-xs font-medium text-ink-inverse transition-shadow hover:bg-accent-hover"
+          className="fa-press neo-raised rounded-full bg-accent px-3 py-1 text-xs font-medium text-ink-inverse transition-shadow hover:bg-accent-hover"
         >
           Fix it
         </button>
@@ -400,6 +400,12 @@ function HeardEcho({ text, onCorrect, onEditingChange }) {
 export function VoiceModePanel({
   onClose,
   onUtterance,
+  // ChatPage's claimWarmMic — a getUserMedia() request already started on
+  // pointerdown of whatever button opened this panel, so the permission/
+  // hardware negotiation has a head start on the mount that's about to
+  // happen. Optional: undefined just means the mic-setup effect below calls
+  // getUserMedia itself, exactly as it always did.
+  getWarmMic,
   busy,
   isSpeaking,
   // The text currently being (or about to be) spoken — the opening greeting,
@@ -1047,6 +1053,14 @@ export function VoiceModePanel({
 
     ;(async () => {
       try {
+        // A warm stream (claimed once — see getWarmMic's own comment above)
+        // skips this negotiation outright; its getUserMedia call already
+        // happened on the button's pointerdown, before this effect even
+        // existed. Falls through to a fresh request otherwise — the normal
+        // path for ⌘⇧V (no button press to warm from) and for "Try again"
+        // after an error (the warm stream, if any, is long since claimed or
+        // released by then).
+        //
         // Explicit constraints, not a bare `audio: true` — on a phone the
         // mic sits inches from the speaker this same panel is playing TTS
         // out of, and without the browser's own echo cancellation actually
@@ -1055,9 +1069,11 @@ export function VoiceModePanel({
         // resonating) and transcribes THAT — which reads as "can barely hear
         // what I'm saying" and nonsensical replies, because it isn't
         // transcribing what was said, it's transcribing an echo of itself.
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        })
+        const warm = getWarmMic?.()
+        const stream = await (warm ||
+          navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          }))
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop())
           return
@@ -1495,8 +1511,16 @@ export function VoiceModePanel({
                   onClick={onBuild}
                   /* text-ink-inverse, not text-accent-text — that paired the
                      same hue as this button's own bg-accent fill, which read
-                     as barely-there text on a solid blue button. */
-                  className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-ink-inverse shadow-sm transition-all hover:bg-accent-hover active:scale-[0.98] animate-in slide-in-from-bottom-2 fade-in"
+                     as barely-there text on a solid blue button.
+                     fa-press/fa-rise, not active:scale-[0.98]/animate-in —
+                     this was the one button in the app reaching for raw
+                     Tailwind press/entrance animation instead of the shared
+                     vocabulary every other tap target and entrance in this
+                     file already uses (QuestionCards, DecisionStack, the
+                     checklist rows below). Same visual result, one fewer
+                     animation dialect to keep in sync if the timing/easing
+                     tokens they're built from ever change. */
+                  className="fa-press fa-rise mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-ink-inverse shadow-sm transition-all hover:bg-accent-hover"
                 >
                   ✨ Build Lesson Plan
                 </button>

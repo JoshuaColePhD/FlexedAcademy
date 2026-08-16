@@ -6,11 +6,18 @@ import { splitDecisions } from '../lib/decisionChecklist'
  * there's nothing to edit yet, the teacher just hasn't said it), settled
  * (checkmark, tappable if onRevise exists), or being edited right now
  * (a real input, not a modal — this is a short correction, not a form). */
-function DecisionRow({ label, value, onRevise }) {
+function DecisionRow({ label, value, onRevise, index = 0 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value || '')
   const inputRef = useRef(null)
   const settled = value != null
+  // Staggers fa-card-drop's own entrance by row, the same 60ms-per-row
+  // rhythm ArtifactRail's RailRow already uses for "Built from" — a
+  // checklist that lands as four rows in sequence reads as the plan
+  // assembling itself; landing as one block said nothing (this only plays
+  // once per row's own mount, so it never replays on a later correction —
+  // see fa-flash below for that).
+  const dropStyle = { animationDelay: `${index * 60}ms` }
 
   useEffect(() => {
     if (editing) inputRef.current?.select()
@@ -51,7 +58,7 @@ function DecisionRow({ label, value, onRevise }) {
 
   if (editing) {
     return (
-      <li className="fa-card-drop neo-raised flex shrink-0 flex-col gap-2 rounded-2xl bg-paper-raised px-3.5 py-2.5 text-left">
+      <li style={dropStyle} className="fa-card-drop neo-raised flex shrink-0 flex-col gap-2 rounded-2xl bg-paper-raised px-3.5 py-2.5 text-left">
         <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
         <input
           ref={inputRef}
@@ -67,7 +74,7 @@ function DecisionRow({ label, value, onRevise }) {
           <button
             type="button"
             onClick={save}
-            className="neo-raised rounded-full bg-accent px-3 py-1 text-xs font-medium text-ink-inverse transition-shadow hover:bg-accent-hover"
+            className="fa-press neo-raised rounded-full bg-accent px-3 py-1 text-xs font-medium text-ink-inverse transition-shadow hover:bg-accent-hover"
           >
             Save
           </button>
@@ -135,6 +142,7 @@ function DecisionRow({ label, value, onRevise }) {
   if (settled && onRevise) {
     return (
       <li
+        style={dropStyle}
         className={`fa-card-drop neo-raised group flex shrink-0 rounded-2xl bg-paper-raised text-left ${justChanged ? 'fa-flash' : ''}`}
         onAnimationEnd={clearFlash}
       >
@@ -155,6 +163,7 @@ function DecisionRow({ label, value, onRevise }) {
 
   return (
     <li
+      style={dropStyle}
       onAnimationEnd={clearFlash}
       className={`fa-card-drop flex shrink-0 items-start gap-2.5 rounded-2xl px-3.5 py-2.5 text-left ${
         settled ? 'neo-raised bg-paper-raised' : ''
@@ -202,11 +211,17 @@ export function DecisionStack({ decisions, fill = true, onRevise }) {
       >
         <p className="eyebrow shrink-0 pb-2">The plan so far</p>
         <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
-          {checklist.map((item) => (
-            <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
+          {checklist.map((item, i) => (
+            <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} index={i} />
           ))}
-          {extra.map((item) => (
-            <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
+          {extra.map((item, i) => (
+            <DecisionRow
+              key={item.key}
+              label={item.label}
+              value={item.value}
+              onRevise={onRevise}
+              index={checklist.length + i}
+            />
           ))}
           <li ref={endRef} aria-hidden="true" />
         </ul>

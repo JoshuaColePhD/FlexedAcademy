@@ -714,6 +714,64 @@ export function ChatPage() {
     if (messages.length === 0) voice.prefetch(VOICE_GREETING)
   }, [messages.length, voice])
 
+  /* Same warm-start idea as VOICE_GREETING above, aimed at the OTHER slow
+     round trip voice mode has to clear before it's actually usable:
+     getUserMedia's permission/hardware negotiation, which VoiceModePanel's
+     own mic-setup effect currently doesn't even start until AFTER the panel
+     has mounted — the one moment guaranteed to be the worst time to start
+     it, same as the TTS fetch used to be.
+
+     Can't warm this the instant the page loads the way the greeting is,
+     though: unlike fetching a clip nobody's listening to yet, requesting
+     the microphone is a real permission prompt, and firing it just because
+     an empty chat rendered — before the teacher has shown any intent to use
+     voice at all — would be presumptuous, possibly the very first thing an
+     unfamiliar teacher sees on this page. Firing it on pointerdown of the
+     button that opens voice mode is the compromise: it's a real, deliberate
+     gesture (the same one that's about to become a click), just started
+     ~one event earlier, so the negotiation overlaps the click instead of
+     following it. If the teacher never actually opens voice mode after the
+     press (a drag-off, e.g.), the stream releases itself. */
+  const warmMicRef = useRef(null) // Promise<MediaStream> | null
+  const warmMicTimeoutRef = useRef(null)
+
+  const releaseWarmMic = useCallback(() => {
+    clearTimeout(warmMicTimeoutRef.current)
+    warmMicRef.current
+      ?.then((stream) => stream.getTracks().forEach((t) => t.stop()))
+      .catch(() => {})
+    warmMicRef.current = null
+  }, [])
+
+  const warmMic = useCallback(() => {
+    if (warmMicRef.current) return
+    warmMicRef.current = navigator.mediaDevices
+      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      .catch((err) => {
+        warmMicRef.current = null
+        throw err
+      })
+    // Unclaimed after a few seconds means the press never turned into an
+    // actual open — release it rather than leaving the mic hot (and the
+    // browser's "microphone in use" indicator lit) for a conversation that
+    // never started.
+    clearTimeout(warmMicTimeoutRef.current)
+    warmMicTimeoutRef.current = setTimeout(releaseWarmMic, 4000)
+  }, [releaseWarmMic])
+
+  // VoiceModePanel's own mic-setup effect calls this once, synchronously, the
+  // moment it mounts — claiming (not just reading) the warm stream so a
+  // second call (e.g. "Try again" after an error) falls through to its own
+  // fresh getUserMedia rather than reusing an already-consumed promise.
+  const claimWarmMic = useCallback(() => {
+    clearTimeout(warmMicTimeoutRef.current)
+    const p = warmMicRef.current
+    warmMicRef.current = null
+    return p
+  }, [])
+
+  useEffect(() => releaseWarmMic, [releaseWarmMic])
+
   const openVoice = useCallback(() => {
     if (!voice.enabled) voice.toggle()
     else voice.unlock()
@@ -1637,7 +1695,7 @@ export function ChatPage() {
       </div>
 
       {isEmpty ? (
-        <Greeting className={activeClass?.name} onOpenVoice={openVoice} week={displayWeek} />
+        <Greeting className={activeClass?.name} onOpenVoice={openVoice} onWarmVoice={warmMic} week={displayWeek} />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className={`chat-column mx-auto flex w-full flex-col gap-7 px-gutter py-8 transition-all duration-500 ease-out ${
@@ -1771,6 +1829,7 @@ export function ChatPage() {
             attachments={attachments}
             setAttachments={setAttachments}
             onOpenVoice={openVoice}
+            onWarmVoice={warmMic}
             voiceModeActive={voiceOpen}
             suggestion={contextualSuggestion}
             voicePanel={
@@ -1780,6 +1839,7 @@ export function ChatPage() {
                     <VoiceModePanel
                       onClose={closeVoice}
                       onUtterance={submit}
+                      getWarmMic={claimWarmMic}
                       busy={busy}
                       isSpeaking={voice.speaking}
                       caption={voiceCaption}

@@ -120,7 +120,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
           <button
             type="submit"
             disabled={!subject || saving}
-            className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
             Add
@@ -648,7 +648,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
               type="button"
               onClick={saveDetails}
               disabled={!editSubject || savingDetails}
-              className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               {savingDetails ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
               Save

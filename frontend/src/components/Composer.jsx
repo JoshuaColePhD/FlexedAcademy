@@ -53,6 +53,12 @@ export function Composer({
   attachments,
   setAttachments,
   onOpenVoice,
+  // Fires on pointerdown of the voice button, a beat before onOpenVoice's
+  // own click — see ChatPage's warmMic, which starts the getUserMedia
+  // negotiation right then instead of waiting for VoiceModePanel to mount
+  // and request it itself. Optional: nothing breaks if the caller doesn't
+  // wire it up, the mic just starts exactly as fast as it always did.
+  onWarmVoice,
   suggestion = null,
   /* True while ChatPage's own voice-dock panel is open. That panel already
      has its own always-on mic listening for speech — letting the
@@ -361,8 +367,18 @@ export function Composer({
                  open on screen, so it has nothing left to do. */
               <button
                 type="button"
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
+                /* text-accent-text at rest, not ink-muted — sitting right
+                   beside the plain grey dictate mic (Mic icon, above), this
+                   button used to read as a near-identical twin at a glance:
+                   same size, same neutral colour, same hover, just a
+                   different glyph. Voice mode is a whole conversation, not a
+                   second way to fill the text box, and it's the one place
+                   in the composer that's allowed to hint at that with
+                   colour — the accent tint on hover is the same "this opens
+                   something" language RailRow's own icon tiles use. */
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-full text-accent-text transition-colors hover:bg-accent-tint md:h-9 md:w-9"
                 onClick={onOpenVoice}
+                onPointerDown={onWarmVoice}
                 aria-label="Start a voice conversation"
                 title="Talk instead of type"
               >

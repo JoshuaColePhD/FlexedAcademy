@@ -28,7 +28,7 @@ function hourGreeting() {
   return 'Good evening'
 }
 
-export function Greeting({ onOpenVoice, className: courseName, week }) {
+export function Greeting({ onOpenVoice, onWarmVoice, className: courseName, week }) {
   const { data: me } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
   const firstName = (me?.name || '').trim().split(/\s+/)[0]
 
@@ -68,6 +68,7 @@ export function Greeting({ onOpenVoice, className: courseName, week }) {
           <button
             type="button"
             onClick={onOpenVoice}
+            onPointerDown={onWarmVoice}
             className="neo-world neo-raised mx-auto mt-8 flex min-h-touch w-2/3 max-w-[240px] items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium text-accent-text md:hidden"
           >
             <AudioLines size={18} aria-hidden="true" />
