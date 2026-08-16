@@ -125,7 +125,14 @@ function DecisionRow({ label, value, onRevise }) {
           settled ? 'neo-inset text-accent-text' : 'neo-raised text-ink-faint'
         }`}
       >
-        {settled ? <Check size={11} strokeWidth={3} /> : null}
+        {/* key={value}: remounts the icon on every settle AND every later
+            correction (not just the first checkmark), so .fa-pop's
+            "arriving with overshoot" spring replays each time — the same
+            reasoning WeekStrip's own day-completion checkmark already uses
+            (see its own comment), just keyed on the value instead of a
+            remounted row, since this row's editing state has to survive
+            the value changing underneath it. */}
+        {settled ? <Check key={value} size={11} strokeWidth={3} className="fa-pop" /> : null}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-2xs font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
