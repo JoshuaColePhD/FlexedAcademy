@@ -1591,6 +1591,17 @@
     display: flex;
     flex-direction: column;
   }
+  /* A third size, same chrome again — the admin accounts table has eleven
+     columns; .dialog-wide's 720px would force its "hidden lg:block" table
+     branch into permanent horizontal scroll even on a wide monitor, since
+     that breakpoint reads the VIEWPORT'S width, not this dialog's own. */
+  .dialog.dialog-xl {
+    width: min(1100px, 96vw);
+    max-height: min(85vh, 860px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
   @keyframes dialog-in {
     from {
       opacity: 0;

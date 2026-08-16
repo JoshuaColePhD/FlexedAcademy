@@ -30,6 +30,7 @@ import { PlansPage } from './pages/PlansPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
 import { AdminPage } from './pages/AdminPage'
+import { AdminModal } from './components/AdminModal'
 import { LandingPage } from './pages/LandingPage'
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
@@ -294,24 +295,40 @@ function Gate() {
     )
   }
 
+  /* Same "modal route" pattern as ClassRoutes' own Settings overlay (see its
+     comment there) — AccountMenu navigates to /admin with
+     `state: { background: location }` instead of a plain Link, so /admin
+     opens as a dialog over whatever chat was already open instead of
+     replacing it. A direct/bookmarked /admin visit has no such state —
+     `background` is undefined, both `<Routes>` below match the real
+     location, and it falls back to AdminPage as an ordinary full page. */
+  const background = location.state?.background
+
   return (
-    <Routes>
-      <Route path="/" element={<RootRedirect />} />
-      <Route path="/welcome" element={<WelcomePage />} />
-      {/* Already signed in — bounce off the auth pages rather than showing a
-          sign-in form to someone who is signed in. */}
-      <Route path="/login" element={<AfterAuthRedirect />} />
-      <Route path="/signup" element={<AfterAuthRedirect />} />
-      {/* Already signed in — the emailed link's job (log them in) is already
-          done, and change-password now lives in settings. */}
-      <Route path="/reset-password" element={<AfterAuthRedirect />} />
-      <Route path="/c/:classId/*" element={<ClassRoutes />} />
-      {/* Gated again server-side by every request the page makes — reaching
-          this route with a non-admin session gets the page shell and then a
-          403 from /api/admin/accounts, not real data. */}
-      <Route path="/admin" element={<AdminPage />} />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+    <>
+      <Routes location={background || location}>
+        <Route path="/" element={<RootRedirect />} />
+        <Route path="/welcome" element={<WelcomePage />} />
+        {/* Already signed in — bounce off the auth pages rather than showing a
+            sign-in form to someone who is signed in. */}
+        <Route path="/login" element={<AfterAuthRedirect />} />
+        <Route path="/signup" element={<AfterAuthRedirect />} />
+        {/* Already signed in — the emailed link's job (log them in) is already
+            done, and change-password now lives in settings. */}
+        <Route path="/reset-password" element={<AfterAuthRedirect />} />
+        <Route path="/c/:classId/*" element={<ClassRoutes />} />
+        {/* Gated again server-side by every request the page makes — reaching
+            this route with a non-admin session gets the page shell and then a
+            403 from /api/admin/accounts, not real data. */}
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+      {background ? (
+        <Routes>
+          <Route path="/admin" element={<AdminModal />} />
+        </Routes>
+      ) : null}
+    </>
   )
 }
 

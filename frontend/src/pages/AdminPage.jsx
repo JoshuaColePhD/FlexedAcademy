@@ -301,6 +301,28 @@ function SchoolsAdmin() {
 
 export function AdminPage() {
   useDocumentTitle('Accounts')
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <Link to="/" className="mb-6 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
+        <ArrowLeft size={15} aria-hidden="true" /> Back to the app
+      </Link>
+
+      <div className="mb-6 flex items-center gap-2">
+        <ShieldCheck size={18} aria-hidden="true" className="text-ink-muted" />
+        <h1 className="text-lg font-semibold text-ink">Accounts</h1>
+      </div>
+
+      <AdminBody />
+    </div>
+  )
+}
+
+/* Pulled out of AdminPage's own render, same reasoning as SettingsPage's
+ * own SettingsBody — a direct/bookmarked visit to `/admin` still wants a
+ * full page (with its own "Back to the app" link and heading), but opening
+ * it from AccountMenu overlays the chat with AdminModal instead, and both
+ * shells render this exact same body. */
+export function AdminBody() {
   const toast = useToast()
   const confirm = useConfirm()
   const qc = useQueryClient()
@@ -354,17 +376,9 @@ export function AdminPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <Link to="/" className="mb-6 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
-        <ArrowLeft size={15} aria-hidden="true" /> Back to the app
-      </Link>
-
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={18} aria-hidden="true" className="text-ink-muted" />
-          <h1 className="text-lg font-semibold text-ink">Accounts</h1>
-        </div>
-        {accounts.length ? (
+    <>
+      {accounts.length ? (
+        <div className="mb-6 flex justify-end">
           <div className="relative w-full max-w-56">
             <Search
               size={14}
@@ -389,8 +403,8 @@ export function AdminPage() {
               </button>
             ) : null}
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
@@ -536,6 +550,6 @@ export function AdminPage() {
       </p>
 
       <SchoolsAdmin />
-    </div>
+    </>
   )
 }
