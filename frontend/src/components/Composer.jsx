@@ -53,6 +53,7 @@ export function Composer({
   attachments,
   setAttachments,
   onOpenVoice,
+  suggestion = null,
   /* True while ChatPage's own voice-dock panel is open. That panel already
      has its own always-on mic listening for speech — letting the
      composer's separate dictate-into-text mic run at the same time meant

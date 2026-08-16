@@ -1583,7 +1583,6 @@ export function ChatPage() {
         planId={artifact?.planId}
         plan={livePlan}
         subject={activeClass?.subject}
-        quiz={viewingQuiz}
         doc={viewingDoc}
         grounded={grounded}
         ungrounded={ungrounded}
@@ -1601,7 +1600,7 @@ export function ChatPage() {
           whatever's docked on the right (the plans rail, or the open
           document), not lost against the far edge of the screen. */}
       {/* The top header bar: Week picker on the left (if doc is closed), Theme toggle on the right. */}
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-edge px-2">
+      <div className="flex h-11 shrink-0 items-center justify-end gap-3 border-b border-edge px-2">
         {!docOpen ? (
           <div className="chat-head pointer-events-auto flex items-center">
             <WeekPicker
@@ -1612,9 +1611,7 @@ export function ChatPage() {
               disabled={busy}
             />
           </div>
-        ) : (
-          <div /> /* Empty div to push ThemeToggle to the right when WeekPicker is hidden */
-        )}
+        ) : null}
         <ThemeToggle />
       </div>
 

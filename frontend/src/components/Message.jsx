@@ -202,7 +202,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
             the next message immediately), but not restricted to isLast: a
             reload's history should show what was asked even once it's moot. */}
         {!isUser && message.questions?.length && onAnswerQuestions ? (
-          <div className="mt-3 w-full max-w-sm">
+          <div className="mt-3 w-full">
             <LessonQuestions
               questions={message.questions}
               onSubmit={(text) => onAnswerQuestions(message, text)}
