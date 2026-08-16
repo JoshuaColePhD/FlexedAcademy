@@ -231,6 +231,8 @@ export const api = {
     }),
   deleteQuiz: (planId, quizId) =>
     request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'DELETE' }),
+  updateQuiz: (planId, quizId, quizJson) =>
+    request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'PUT', body: { quiz_json: quizJson } }),
   quizDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download`,
   exportQuizToCanvas: (planId, quizId) =>
     request(`/api/canvas/export_quiz?plan_id=${planId}&quiz_id=${quizId}`, { method: 'POST' }),

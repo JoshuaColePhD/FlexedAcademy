@@ -1293,6 +1293,14 @@ def get_quiz(user_id: str, quiz_id: str) -> dict | None:
     return _hydrate_quiz(row) if row else None
 
 
+def update_quiz(user_id: str, quiz_id: str, quiz_json: dict, qti_path: str | None) -> dict | None:
+    _write(
+        "UPDATE quizzes SET quiz_json = ?, qti_path = ? WHERE id = ? AND user_id = ?",
+        (json.dumps(quiz_json), qti_path, quiz_id, user_id),
+    )
+    return get_quiz(user_id, quiz_id)
+
+
 def list_quizzes_for_plan(user_id: str, plan_id: str) -> list[dict]:
     rows = _rows(
         "SELECT * FROM quizzes WHERE plan_id = ? AND user_id = ? ORDER BY created_at DESC",

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronsRight, Download } from 'lucide-react'
+import { ChevronsRight, Download, Loader2, Edit2, Save, X } from 'lucide-react'
 import { api } from '../lib/api'
+import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
@@ -23,13 +24,99 @@ import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
  * artifact.
  */
 
-function QuizQuestionCard({ q, index }) {
+function QuizQuestionCard({ q, index, onUpdate }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [draft, setDraft] = useState(q)
+
+  // Reset draft if prop changes while not editing
+  useEffect(() => {
+    if (!isEditing) setDraft(q)
+  }, [q, isEditing])
+
+  const handleSave = () => {
+    onUpdate(draft)
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setDraft(q)
+    setIsEditing(false)
+  }
+
+  if (isEditing) {
+    return (
+      <div className="detail-card neo-raised fa-rise" style={{ animationDelay: `${index * 60}ms` }}>
+        <div className="detail-card-head mb-2">
+          <span className="detail-card-index">Q{index + 1} Edit</span>
+          <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <button type="button" className="p-1 text-ink-muted hover:text-ink transition-colors" onClick={handleCancel} title="Cancel">
+              <X size={14} />
+            </button>
+            <button type="button" className="p-1 text-primary hover:text-primary-dark transition-colors" onClick={handleSave} title="Save">
+              <Save size={14} />
+            </button>
+          </div>
+        </div>
+        <textarea
+          className="input w-full text-sm mb-3 resize-y min-h-[60px]"
+          value={draft.prompt}
+          onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
+        />
+
+        {q.type === 'multiple_choice' ? (
+          <ul className="flex flex-col gap-2">
+            {(draft.choices || []).map((choice, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name={`q${index}-correct`}
+                  checked={i === draft.correct_index}
+                  onChange={() => setDraft({ ...draft, correct_index: i })}
+                  className="shrink-0"
+                />
+                <input
+                  className="input w-full text-sm py-1 px-2"
+                  value={choice}
+                  onChange={(e) => {
+                    const newChoices = [...draft.choices]
+                    newChoices[i] = e.target.value
+                    setDraft({ ...draft, choices: newChoices })
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {q.type === 'true_false' ? (
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name={`q${index}-tf`} checked={draft.correct_bool === true} onChange={() => setDraft({ ...draft, correct_bool: true })} /> True
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name={`q${index}-tf`} checked={draft.correct_bool === false} onChange={() => setDraft({ ...draft, correct_bool: false })} /> False
+            </label>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
-    <div className="detail-card neo-raised fa-rise" style={{ animationDelay: `${index * 60}ms` }}>
+    <div className="detail-card neo-raised fa-rise group" style={{ animationDelay: `${index * 60}ms` }}>
       <div className="detail-card-head">
         <span className="detail-card-index">Q{index + 1}</span>
         <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
         {q.standard_code ? <span className="detail-card-code">{q.standard_code}</span> : null}
+        <button 
+          type="button" 
+          className="ml-auto p-1 text-ink-faint hover:text-ink transition-colors opacity-0 group-hover:opacity-100" 
+          onClick={() => setIsEditing(true)}
+          title="Edit Question"
+        >
+          <Edit2 size={12} />
+        </button>
       </div>
       <p className="detail-card-prompt">{q.prompt}</p>
 
@@ -78,14 +165,43 @@ function QuizQuestionCard({ q, index }) {
 }
 
 function QuizBody({ quiz }) {
-  const questions = quiz?.quiz_json?.questions || []
+  const [questions, setQuestions] = useState(quiz?.quiz_json?.questions || [])
+  const [isSaving, setIsSaving] = useState(false)
+  const toast = useToast()
+
+  useEffect(() => {
+    setQuestions(quiz?.quiz_json?.questions || [])
+  }, [quiz])
+
   if (!questions.length) {
     return <p className="note">This quiz has no questions to show.</p>
   }
+
+  const handleUpdate = async (index, newQuestion) => {
+    const newQuestions = [...questions]
+    newQuestions[index] = newQuestion
+    setQuestions(newQuestions)
+    setIsSaving(true)
+    try {
+      await api.updateQuiz(quiz.plan_id, quiz.id, { ...quiz.quiz_json, questions: newQuestions })
+      toast.success('Quiz Updated', 'Your edits have been saved securely.')
+    } catch (err) {
+      toast.apiError('Failed to save quiz', err)
+      setQuestions(questions) // Revert
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
-    <div className="detail-card-stack">
+    <div className="detail-card-stack relative">
+      {isSaving && (
+        <div className="absolute top-0 right-0 m-2 flex items-center gap-1.5 text-xs text-ink-muted bg-paper-sunken px-2 py-1 rounded-full shadow-sm z-10">
+          <Loader2 size={12} className="animate-spin" /> Saving...
+        </div>
+      )}
       {questions.map((q, i) => (
-        <QuizQuestionCard key={i} q={q} index={i} />
+        <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} />
       ))}
     </div>
   )

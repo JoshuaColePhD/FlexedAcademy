@@ -41,6 +41,9 @@ class QuizRequest(BaseModel):
     question_types: list[str] = Field(min_length=1, max_length=len(schema.QUESTION_TYPES))
     num_questions: int = Field(default=10, ge=1, le=40)
 
+class QuizUpdateRequest(BaseModel):
+    quiz_json: dict
+
 
 class SharePlan(BaseModel):
     email: EmailStr | None = None
@@ -390,6 +393,29 @@ def create_quiz(
         warnings=warnings,
     )
 
+
+@router.put("/{plan_id}/quizzes/{quiz_id}")
+def update_quiz(
+    plan_id: str, quiz_id: str, body: QuizUpdateRequest, user_id: str = Depends(get_current_user)
+) -> dict:
+    row = _require_plan(user_id, plan_id)
+    quiz_row = db.get_quiz(user_id, quiz_id)
+    if not quiz_row:
+        raise AppError("quiz_not_found", "No such quiz.", status=404)
+
+    out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
+    try:
+        qti_build.build_qti_zip(body.quiz_json, out_path)
+        qti_path = str(out_path)
+    except Exception as e:
+        qti_path = None
+
+    return db.update_quiz(
+        user_id=user_id,
+        quiz_id=quiz_id,
+        quiz_json=body.quiz_json,
+        qti_path=qti_path,
+    )
 
 @router.delete("/{plan_id}/quizzes/{quiz_id}", status_code=204)
 def delete_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_user)) -> None:
