@@ -63,16 +63,23 @@ export default function SignupPage() {
         </>
       }
     >
+      {/* neo-raised wrapper — same reasoning as SignInForm's own Google
+          button: the widget renders as a flat rectangle regardless of
+          theme, which reads as a foreign object dropped into this page's
+          soft embossed world (AuthLayout wears .neo-world) without a
+          matching raised frame around it. */}
       <div className="mt-6 flex justify-center">
-        <GoogleLogin
-          onSuccess={handleGoogleSuccess}
-          onError={() => setError('Google sign-in didn’t complete. Try again.')}
-          theme="filled_black"
-          size="large"
-          width="100%"
-          text="signup_with"
-          shape="rectangular"
-        />
+        <div className="neo-raised w-full overflow-hidden rounded-lg">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => setError('Google sign-in didn’t complete. Try again.')}
+            theme="filled_black"
+            size="large"
+            width="100%"
+            text="signup_with"
+            shape="rectangular"
+          />
+        </div>
       </div>
 
       <div className="my-6 flex items-center gap-3">

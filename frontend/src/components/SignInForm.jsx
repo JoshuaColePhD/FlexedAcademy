@@ -82,16 +82,27 @@ export function SignInForm({ compact = false, idPrefix = '' }) {
 
   return (
     <div className="flex flex-col">
+      {/* neo-raised + overflow-hidden: Google's own widget renders as a flat
+          white rectangle regardless of the `theme` prop we hand it — fine
+          on the plain white /login page, a jarring foreign object dropped
+          into this app's soft embossed world otherwise. The wrapper gives
+          it the same raised-shadow frame every other control here has;
+          filled_black (not the old compact-only 'outline') gives it the
+          same solid-dark fill as the "Sign in" button just below it, so
+          the two read as a matched pair instead of a white box sitting
+          above a dark one. */}
       <div className="flex justify-center">
-        <GoogleLogin
-          onSuccess={handleGoogleSuccess}
-          onError={() => setError('Google sign-in didn’t complete. Try again.')}
-          theme={compact ? 'outline' : 'filled_black'}
-          size={compact ? 'medium' : 'large'}
-          width="100%"
-          text="continue_with"
-          shape="rectangular"
-        />
+        <div className="neo-raised w-full overflow-hidden rounded-lg">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => setError('Google sign-in didn’t complete. Try again.')}
+            theme="filled_black"
+            size={compact ? 'medium' : 'large'}
+            width="100%"
+            text="continue_with"
+            shape="rectangular"
+          />
+        </div>
       </div>
 
       <div className={`flex items-center gap-3 ${compact ? 'my-4' : 'my-6'}`}>
