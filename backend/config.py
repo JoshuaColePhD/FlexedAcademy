@@ -126,10 +126,26 @@ class Settings(BaseSettings):
     # week, ever." Rough ceiling at gpt-4o's own pricing: well under $5/week
     # even maxed out.
     free_weekly_token_cap: int = 150_000
-    # A safety net for a paying account, not a real limit anything should hit —
-    # normal weekly use for even several classes is a fraction of this. Exists
-    # to catch a compromised account or a runaway bug, not a teacher planning.
-    subscriber_weekly_token_cap: int = 2_000_000
+    # Sized to a dollar budget, not a round token count — the previous
+    # 2,000,000 was "a safety net, not a real limit anything should hit," but
+    # nothing else actually bounded how fast an account could reach it:
+    # generate.py's own rate limit (20-30 requests/minute) still lets a
+    # scripted caller burn 2M tokens in well under 15 minutes, every single
+    # week. At the gpt-4o-era blended rate free_weekly_token_cap's own
+    # comment already leans on (~$5/1M tokens, mixed input/output), that was
+    # $35-75/month in worst-case API spend against $11.99 of revenue — a
+    # guaranteed loss on any account that actually hit it, not a remote edge
+    # case.
+    #
+    # 110,000/week keeps worst-case spend (maxed out, every week, all month)
+    # at roughly 20% of $11.99 — a COGS ceiling, not the number normal use is
+    # expected to approach. A real subscriber planning several classes runs
+    # nowhere near this any more than they ran near the old 2M; this just
+    # means an account that DOES hit it costs at most ~$2.40/month instead of
+    # ~$50, whoever or whatever is behind it. Revisit the $5/1M assumption
+    # and this number together if the configured model's real per-token
+    # price changes — the ratio is what matters, not the literal count.
+    subscriber_weekly_token_cap: int = 110_000
 
     database_url: str = ""
     curriculum_maps_dir: Path = PROJECT_ROOT / "data" / "curriculum_maps"

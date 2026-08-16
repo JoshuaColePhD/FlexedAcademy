@@ -9,12 +9,23 @@ The rule, in full:
   * Billing not configured           -> everyone may generate. The gate is inert
                                         until Stripe keys exist, because a gate
                                         with no way through it is a broken app.
-  * Under the trailing-week token cap -> may generate. Subscribers get a much
-                                        higher cap (a safety net, not a real
-                                        limit); everyone else gets the free cap.
+  * Under the trailing-week token cap -> may generate. Subscribers get a
+                                        higher cap sized to what their own
+                                        subscription can safely absorb (see
+                                        config.py's own comment on the
+                                        number); everyone else gets the free
+                                        cap.
+  * Under the trailing-day burst cap  -> also required, on top of the above.
+                                        A weekly cap alone still lets someone
+                                        spend the WHOLE week's budget in one
+                                        sitting — fine for a bug, not fine
+                                        for a script. This just slows that
+                                        down to "a very good day," not "a bad
+                                        fifteen minutes."
   * Otherwise                        -> may NOT generate or revise until usage
-                                        from more than a week ago rolls off,
-                                        but may still open, download and read
+                                        from more than a week (or a day, for
+                                        the burst cap) ago rolls off, but may
+                                        still open, download and read
                                         everything already built. Downloads are
                                         never gated at all.
 
@@ -43,6 +54,18 @@ ENTITLED_STATUSES = frozenset({"active", "trialing", "past_due", "comped"})
 # at a time" framing closely enough without needing a stored period boundary.
 USAGE_WINDOW_DAYS = 7
 
+# The weekly cap alone bounds total spend but not the RATE of it — a script
+# with valid credentials could still spend the entire week's allowance in
+# one sitting, minutes after it starts, well within generate.py's own
+# request-rate limit. This is a second, tighter ceiling on top of the
+# weekly one: no more than this fraction of the weekly cap in any trailing
+# 24 hours. 35% comfortably covers a real teacher's heaviest realistic day
+# (building or revising several classes' weeks in one sitting) while still
+# turning "blow the whole week in 15 minutes" into "blow the whole week
+# over multiple days" — slow enough to catch and act on before it repeats.
+BURST_WINDOW_HOURS = 24
+BURST_FRACTION = 0.35
+
 
 @dataclass(frozen=True)
 class Entitlement:
@@ -54,10 +77,20 @@ class Entitlement:
     token_cap: int
     billing_enabled: bool
     period_end: str | None = None
+    # The burst side of the gate — see BURST_WINDOW_HOURS/BURST_FRACTION.
+    # Carried on the entitlement (not just used internally) so a 402 raised
+    # for burst specifically can say so, rather than pointing a teacher who
+    # tripped it mid-afternoon at "wait out the week."
+    tokens_used_recent: int = 0
+    burst_cap: int = 0
 
     @property
     def tokens_remaining(self) -> int:
         return max(0, self.token_cap - self.tokens_used)
+
+    @property
+    def burst_limited(self) -> bool:
+        return self.tokens_used_recent >= self.burst_cap
 
     def as_dict(self) -> dict:
         return {
@@ -71,6 +104,7 @@ class Entitlement:
             "usage_window_days": USAGE_WINDOW_DAYS,
             "billing_enabled": self.billing_enabled,
             "period_end": self.period_end,
+            "burst_limited": self.burst_limited,
         }
 
 
@@ -86,7 +120,11 @@ def entitlement(user_id: str) -> Entitlement:
     since = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
     tokens_used = db.tokens_used_since(user_id, since)
 
-    may_generate = not settings.billing_enabled or tokens_used < cap
+    burst_since = (datetime.now(timezone.utc) - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")
+    tokens_used_recent = db.tokens_used_since(user_id, burst_since)
+    burst_cap = int(cap * BURST_FRACTION)
+
+    may_generate = not settings.billing_enabled or (tokens_used < cap and tokens_used_recent < burst_cap)
     return Entitlement(
         may_generate=may_generate,
         subscribed=subscribed,
@@ -96,6 +134,8 @@ def entitlement(user_id: str) -> Entitlement:
         token_cap=cap,
         billing_enabled=settings.billing_enabled,
         period_end=user.get("subscription_period_end"),
+        tokens_used_recent=tokens_used_recent,
+        burst_cap=burst_cap,
     )
 
 
@@ -116,6 +156,20 @@ def require_entitlement(user_id: str) -> None:
     ent = entitlement(user_id)
     if ent.may_generate:
         return
+    # Same 402 shape either way (the paywall/account-menu UI only branches on
+    # may_generate), but the message a teacher who tripped the BURST cap
+    # mid-afternoon actually needs is different from the one who's genuinely
+    # out for the week — "wait out the week" is both wrong and alarming for
+    # something that clears in well under a day.
+    if ent.burst_limited:
+        raise AppError(
+            "subscription_required",
+            "That’s a lot of generating in a short window.",
+            status=402,
+            hint="This isn’t your weekly limit — it’s a pace check, and it clears within a day. "
+            "Everything you’ve already built stays yours — open it, revise it, download it.",
+            extra={"entitlement": ent.as_dict()},
+        )
     raise AppError(
         "subscription_required",
         "You’ve reached this week’s usage limit.",
