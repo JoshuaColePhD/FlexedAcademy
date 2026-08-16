@@ -1778,8 +1778,10 @@
        ArtifactRail ever sees a pixel — 220 total left only ~206px of
        content, which is what was truncating "Week 03…" to "We…" and
        "School calendar" to "Scho…" at ordinary laptop widths (15vw is
-       under 220px from roughly 1024–1466px wide, i.e. most laptops). */
-    width: clamp(254px, 16vw, 320px);
+       under 220px from roughly 1024–1466px wide, i.e. most laptops). 50%
+       wider across the board (254/16vw/320 -> 381/24vw/480) to match the
+       nav rail's own 50% bump. */
+    width: clamp(381px, 24vw, 480px);
   }
   .artifact-drawer-handle {
     position: relative;

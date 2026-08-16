@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -303,7 +303,10 @@ export function AppShell({ children }) {
           {/* Same seam-handle language as the artifact rail's own collapse
               control on the other side of the screen (ArtifactRail.jsx) —
               a groove found by hover/touch, not a labeled button competing
-              with everything else in the header. */}
+              with everything else in the header. The chevron is always
+              drawn (not just while collapsed) so the handle reads as
+              clickable in both states; it just flips to point whichever
+              way this click will move the rail. */}
           <button
             type="button"
             className="app-rail-handle tap-target"
@@ -312,7 +315,11 @@ export function AppShell({ children }) {
             aria-label={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
             title={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
           >
-            {railCollapsed ? <ChevronRight className="app-rail-handle-arrow" aria-hidden="true" /> : null}
+            {railCollapsed ? (
+              <ChevronRight className="app-rail-handle-arrow" aria-hidden="true" />
+            ) : (
+              <ChevronLeft className="app-rail-handle-arrow" aria-hidden="true" />
+            )}
           </button>
         </div>
       ) : null}

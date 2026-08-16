@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Calendar, ChevronLeft, Download, FileText, ListChecks, Loader2, Share2 } from 'lucide-react'
+import { BookOpen, Calendar, ChevronLeft, ChevronRight, Download, FileText, ListChecks, Loader2, Share2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
@@ -474,11 +474,17 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
               : 'Your plan will appear here'
         }
       >
-        {/* Left, not right — it points the way the drawer itself moves:
-            open pulls this edge OUT into a panel that grows leftward. Only
-            drawn while closed; once open, the panel itself is the answer to
-            "does this open." */}
-        {!open ? <ChevronLeft className="artifact-drawer-arrow" aria-hidden="true" /> : null}
+        {/* Always drawn, not just while closed, so the handle reads as
+            clickable in both states — the nav rail's own handle on the
+            other side of the screen (AppShell.jsx) does the same. Points
+            the way this click will move the drawer: left while closed
+            (pulls this edge OUT into a panel that grows leftward), right
+            once open (collapses it back). */}
+        {open ? (
+          <ChevronRight className="artifact-drawer-arrow" aria-hidden="true" />
+        ) : (
+          <ChevronLeft className="artifact-drawer-arrow" aria-hidden="true" />
+        )}
       </button>
       {mounted ? (
         <div className={`artifact-drawer-body${closing ? ' is-closing' : ''}`}>
