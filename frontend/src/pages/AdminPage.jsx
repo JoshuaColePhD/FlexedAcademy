@@ -70,9 +70,21 @@ function estCost(tokens) {
 
 /* The cap actually in effect for one account, and how close it's running to
    it — same precedence entitlement.py itself uses (custom override, then
-   tier default), and the same weekly+burst thresholds it gates generation
-   on, just read here for DISPLAY rather than enforcement. */
+   comped-is-truly-unlimited, then tier default), and the same weekly+burst
+   thresholds it gates generation on, just read here for DISPLAY rather than
+   enforcement.
+
+   'comped' with no custom override is genuinely uncapped — entitlement.py's
+   own fix (see its comment there): comped used to just mean "ride the
+   subscriber cap," which stopped being effectively unlimited the moment that
+   cap was sized to a real dollar ceiling instead of a loose round number.
+   This table would otherwise show a comped account as "near cap" or "at
+   cap," which is exactly the state that bug put real comped accounts into. */
 function capStatusFor(account) {
+  if (account.custom_weekly_token_cap == null && account.subscription_status === 'comped') {
+    return { tone: 'ok', label: 'Unlimited', cap: null }
+  }
+
   const cap =
     account.custom_weekly_token_cap ??
     (ENTITLED.has(account.subscription_status) ? SUBSCRIBER_WEEKLY_CAP : FREE_WEEKLY_CAP)

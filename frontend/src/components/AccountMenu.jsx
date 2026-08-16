@@ -33,7 +33,21 @@ import { useExitTransition } from '../hooks/useExitTransition'
  * trailing-week cap governs generation either way (backend/entitlement.py). */
 function UsageMeter({ entitlement }) {
   if (!entitlement) return null
-  const { tokens_used: used, token_cap: cap, tokens_remaining: remaining, usage_window_days: days } = entitlement
+  const { tokens_used: used, token_cap: cap, tokens_remaining: remaining, usage_window_days: days, unlimited } =
+    entitlement
+  // Genuinely uncapped (comped, no admin override) — entitlement.py sends
+  // token_cap: null for exactly this case now. Said outright rather than
+  // silently hiding the section: a blank space where the usage meter
+  // should be reads as "this is broken," not "you have nothing to worry
+  // about."
+  if (unlimited) {
+    return (
+      <div className="px-3 py-2">
+        <span className="text-2xs font-medium uppercase tracking-wider text-ink-muted">Usage</span>
+        <p className="mt-1 text-xs font-medium text-ok">Unlimited access</p>
+      </div>
+    )
+  }
   if (!cap) return null
 
   const pct = Math.min(100, Math.round((used / cap) * 100))

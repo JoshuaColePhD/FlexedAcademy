@@ -74,7 +74,7 @@ class Entitlement:
     status: str | None
     plans_used: int
     tokens_used: int
-    token_cap: int
+    token_cap: int | None
     billing_enabled: bool
     period_end: str | None = None
     # The burst side of the gate — see BURST_WINDOW_HOURS/BURST_FRACTION.
@@ -82,14 +82,22 @@ class Entitlement:
     # for burst specifically can say so, rather than pointing a teacher who
     # tripped it mid-afternoon at "wait out the week."
     tokens_used_recent: int = 0
-    burst_cap: int = 0
+    burst_cap: int | None = 0
+    # True comped/unlimited (no custom cap set) — see entitlement()'s own
+    # comment. token_cap/burst_cap are None in this state; nothing computed
+    # from them (tokens_remaining, burst_limited) makes sense to show.
+    unlimited: bool = False
 
     @property
-    def tokens_remaining(self) -> int:
+    def tokens_remaining(self) -> int | None:
+        if self.unlimited:
+            return None
         return max(0, self.token_cap - self.tokens_used)
 
     @property
     def burst_limited(self) -> bool:
+        if self.unlimited:
+            return False
         return self.tokens_used_recent >= self.burst_cap
 
     def as_dict(self) -> dict:
@@ -105,6 +113,7 @@ class Entitlement:
             "billing_enabled": self.billing_enabled,
             "period_end": self.period_end,
             "burst_limited": self.burst_limited,
+            "unlimited": self.unlimited,
         }
 
 
@@ -116,19 +125,48 @@ def entitlement(user_id: str) -> Entitlement:
     # Still worth knowing — the account menu shows it — just not what gates.
     plans_used = db.count_plans(user_id)
 
-    # An admin override (migration 28) wins over both tier defaults — the
-    # one thing this app couldn't do before was give a SPECIFIC account
-    # something other than "the ordinary tier cap" or "unlimited (comped)."
-    # None means "no override," not "zero" — a real 0 would be indistinguishable
-    # from "unset" otherwise, and would silently lock an account out with no
-    # way to tell that apart from a bug.
+    # An admin override (migration 28) wins over everything below it,
+    # comped included — a cap an admin deliberately set on THIS account is
+    # more specific than "unlimited," so it still applies. None means "no
+    # override," not "zero" — a real 0 would be indistinguishable from
+    # "unset" otherwise, and would silently lock an account out with no way
+    # to tell that apart from a bug.
     custom_cap = user.get("custom_weekly_token_cap")
-    cap = custom_cap if custom_cap is not None else (
-        settings.subscriber_weekly_token_cap if subscribed else settings.free_weekly_token_cap
-    )
+
+    # 'comped' has meant "unlimited access" since routes/admin.py's own
+    # module docstring and every "Grant unlimited" button in the admin UI —
+    # but this function never actually implemented that. It only ever chose
+    # BETWEEN the two tier caps, so a comped account was really just riding
+    # the subscriber cap, same as a paying one. Invisible while that cap was
+    # 2,000,000 (loose enough that nobody ever hit it); it stopped being
+    # invisible the moment that cap was resized to a real dollar ceiling
+    # (config.py) — a comped account hits that same real wall now, which is
+    # exactly backwards from what "unlimited" is supposed to mean. Fixed
+    # here rather than by raising the number again: the bug was that comped
+    # was never actually a distinct case, not that the cap was too small.
+    unlimited = custom_cap is None and status == "comped"
+
     since = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
     tokens_used = db.tokens_used_since(user_id, since)
 
+    if unlimited:
+        return Entitlement(
+            may_generate=True,
+            subscribed=subscribed,
+            status=status,
+            plans_used=plans_used,
+            tokens_used=tokens_used,
+            token_cap=None,
+            billing_enabled=settings.billing_enabled,
+            period_end=user.get("subscription_period_end"),
+            tokens_used_recent=0,
+            burst_cap=None,
+            unlimited=True,
+        )
+
+    cap = custom_cap if custom_cap is not None else (
+        settings.subscriber_weekly_token_cap if subscribed else settings.free_weekly_token_cap
+    )
     burst_since = (datetime.now(timezone.utc) - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")
     tokens_used_recent = db.tokens_used_since(user_id, burst_since)
     burst_cap = int(cap * BURST_FRACTION)
