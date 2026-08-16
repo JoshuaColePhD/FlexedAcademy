@@ -67,7 +67,7 @@ function DecisionRow({ label, value, onRevise }) {
           <button
             type="button"
             onClick={save}
-            className="neo-raised rounded-full bg-accent-tint px-3 py-1 text-xs font-medium text-accent-text transition-shadow"
+            className="neo-raised rounded-full bg-accent px-3 py-1 text-xs font-medium text-ink-inverse transition-shadow hover:bg-accent-hover"
           >
             Save
           </button>

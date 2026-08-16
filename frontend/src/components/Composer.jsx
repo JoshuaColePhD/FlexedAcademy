@@ -375,10 +375,12 @@ export function Composer({
                    established "this is the primary action" color (see the
                    filled buttons on ClassPage) — a plain black circle here
                    just wasn't reading as the one button that matters on the
-                   whole bar. */
+                   whole bar. Was bg-accent-tint (a pastel wash) despite this
+                   comment already arguing for the full fill — the tint never
+                   actually landed here. */
                 className={`fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
                   canSend
-                    ? 'neo-raised bg-accent-tint text-accent-text'
+                    ? 'neo-raised bg-accent text-ink-inverse hover:bg-accent-hover'
                     : /* Inset, not a flat grey disc: unavailable reads as
                          pressed into the bar and out of reach, which is the
                          same language the rest of the app uses for "not

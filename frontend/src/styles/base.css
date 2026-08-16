@@ -1202,18 +1202,25 @@
       inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.8);
   }
 
-  /* Ink ground, not accent: --accent is 3.1:1 and fails AA behind a label.
-     --ink and --ink-inverse both flip with the theme, so one rule covers light
-     and dark. */
+  /* Was ink ground, not accent — with a comment claiming --accent is 3.1:1
+     and fails AA behind a label. That was true of the orange accent this
+     replaced; the current district blue clears AA as a fill (tokens.css's
+     own contrast table: white on --accent measures 6.0:1, ~7.4:1 in dark
+     mode against --accent-on). A flat black button was reading as inert
+     next to every other primary action in the app, which already fills with
+     --accent (the Send button, New plan, Add a class, Subscribe — see their
+     own bg-accent-tint→bg-accent pass). --accent-on is --ink-inverse under
+     another name (tokens.css) — white in light mode, near-black in dark —
+     already the correct ground for text sitting on an accent fill. */
   .btn-primary {
-    color: var(--ink-inverse);
-    background: var(--ink);
-    border-color: var(--ink);
+    color: var(--accent-on);
+    background: var(--accent);
+    border-color: var(--accent);
   }
   .btn-primary:hover:not(:disabled) {
-    color: var(--ink-inverse);
-    background: var(--ink-soft);
-    border-color: var(--ink-soft);
+    color: var(--accent-on);
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
   }
 
   .btn-danger {

@@ -146,11 +146,12 @@ function Rail({ onNavigate, onClose }) {
             rose/cream palette here. neo-raised + the redeclared --accent
             tokens makes it the one floating, emphasized control in the
             rail instead — still the rarest warm note, just this world's
-            warm note. */}
+            warm note. Solid fill now, not a pastel tint — the one button in
+            the rail that should read as unmistakably "press me." */}
         <Link
           to={classPath}
           onClick={onNavigate}
-          className="neo-raised flex min-h-touch items-center gap-2 rounded-lg bg-accent-tint px-3 text-sm font-medium text-accent-text"
+          className="neo-raised flex min-h-touch items-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-ink-inverse hover:bg-accent-hover"
         >
           <Plus size={15} aria-hidden="true" />
           <span className="flex-1">New plan</span>

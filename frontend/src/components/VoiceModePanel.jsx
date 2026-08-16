@@ -220,7 +220,7 @@ function QuestionCards({ questions, onAnswer }) {
           type="button"
           disabled={!allAnswered}
           onClick={() => send(answers)}
-          className="neo-raised mt-2 min-h-touch shrink-0 self-start rounded-full bg-accent-tint px-5 text-sm font-medium text-accent-text transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
+          className="neo-raised mt-2 min-h-touch shrink-0 self-start rounded-full bg-accent px-5 text-sm font-medium text-ink-inverse transition-shadow hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           Continue
         </button>
@@ -364,7 +364,7 @@ function HeardEcho({ text, onCorrect, onEditingChange }) {
         <button
           type="button"
           onClick={save}
-          className="neo-raised rounded-full bg-accent-tint px-3 py-1 text-xs font-medium text-accent-text transition-shadow"
+          className="neo-raised rounded-full bg-accent px-3 py-1 text-xs font-medium text-ink-inverse transition-shadow hover:bg-accent-hover"
         >
           Fix it
         </button>
@@ -1493,7 +1493,10 @@ export function VoiceModePanel({
                 <button
                   type="button"
                   onClick={onBuild}
-                  className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-text shadow-sm transition-all hover:bg-accent-hover active:scale-[0.98] animate-in slide-in-from-bottom-2 fade-in"
+                  /* text-ink-inverse, not text-accent-text — that paired the
+                     same hue as this button's own bg-accent fill, which read
+                     as barely-there text on a solid blue button. */
+                  className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-ink-inverse shadow-sm transition-all hover:bg-accent-hover active:scale-[0.98] animate-in slide-in-from-bottom-2 fade-in"
                 >
                   ✨ Build Lesson Plan
                 </button>
