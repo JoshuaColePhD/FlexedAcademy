@@ -290,8 +290,9 @@ export function Composer({
 
           {/* gap-1.5, not gap-1 — at 44px buttons the tighter gap read as
               the icons overlapping their own tap targets. md:gap-1 restores
-              the denser desktop spacing these were tuned for. */}
-          <div className="flex shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
+              the denser desktop spacing these were tuned for.
+              Stacked vertically on mobile so the Send button isn't crowded. */}
+          <div className="flex flex-col sm:flex-row shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
             {isTranscribing ? (
               <button
                 type="button"

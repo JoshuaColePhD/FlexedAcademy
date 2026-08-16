@@ -19,6 +19,37 @@ import { splitDecisions } from '../lib/decisionChecklist'
 import { DecisionStack } from './DecisionStack'
 import { WeekStrip } from './WeekStrip'
 
+function SmoothHeight({ children }) {
+  const contentRef = useRef(null)
+  const [height, setHeight] = useState('auto')
+
+  useEffect(() => {
+    if (!contentRef.current) return
+    const ro = new ResizeObserver((entries) => {
+      // Avoid ResizeObserver loop limit errors
+      window.requestAnimationFrame(() => {
+        if (entries[0]) {
+          setHeight(entries[0].contentRect.height)
+        }
+      })
+    })
+    ro.observe(contentRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <div
+      style={{
+        height: height === 'auto' ? 'auto' : `${height}px`,
+        transition: 'height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+        overflow: 'hidden',
+      }}
+    >
+      <div ref={contentRef}>{children}</div>
+    </div>
+  )
+}
+
 /* Live voice mode — the thing the "Chat" control opens now, instead of
  * quietly toggling whether replies get read aloud.
  *
@@ -1394,39 +1425,41 @@ export function VoiceModePanel({
           used — now full width and the clear focus of the panel: talk,
           and watch it get checked off. */}
       <div className="min-w-0">
-        {questions?.length ? (
-          <QuestionCards questions={questions} onAnswer={onAnswer} />
-        ) : building ? (
-          <BuildProgress days={buildDays} fill={false} />
-        ) : builtPlan ? (
-          <BuiltPlanCard builtPlan={builtPlan} fill={false} onClose={onClose} />
-        ) : (
-          <>
-            {/* A checklist that's still all "Not yet decided" is a cold
-                open for a first-time voice conversation — the old
-                full-screen takeover had a spoken greeting to lean on, but
-                nothing on screen ever said what the checklist below it was
-                even for. One line, gone the moment anything's actually
-                settled (see decisions.length), so it never argues with the
-                real progress once there is some. */}
-            {decisions.length === 0 ? (
-              <p className="mb-2 px-1 text-sm text-ink-muted">
-                Tell me the week, the anchor text, and the skill focus — I'll check these off as we go.
-              </p>
-            ) : null}
-            <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
-            <VoiceSuggestions decisions={decisions} activeClass={activeClass} calendar={calendar} onSelect={onUtterance} />
-            {decidedCount === 4 && !building && !builtPlan && onBuild && (
-              <button
-                type="button"
-                onClick={onBuild}
-                className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-text shadow-sm transition-all hover:bg-accent-hover active:scale-[0.98] animate-in slide-in-from-bottom-2 fade-in"
-              >
-                ✨ Build Lesson Plan
-              </button>
-            )}
-          </>
-        )}
+        <SmoothHeight>
+          {questions?.length ? (
+            <QuestionCards questions={questions} onAnswer={onAnswer} />
+          ) : building ? (
+            <BuildProgress days={buildDays} fill={false} />
+          ) : builtPlan ? (
+            <BuiltPlanCard builtPlan={builtPlan} fill={false} onClose={onClose} />
+          ) : (
+            <div className="flex flex-col">
+              {/* A checklist that's still all "Not yet decided" is a cold
+                  open for a first-time voice conversation — the old
+                  full-screen takeover had a spoken greeting to lean on, but
+                  nothing on screen ever said what the checklist below it was
+                  even for. One line, gone the moment anything's actually
+                  settled (see decisions.length), so it never argues with the
+                  real progress once there is some. */}
+              {decisions.length === 0 ? (
+                <p className="mb-2 px-1 text-sm text-ink-muted">
+                  Tell me the week, the anchor text, and the skill focus — I'll check these off as we go.
+                </p>
+              ) : null}
+              <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
+              <VoiceSuggestions decisions={decisions} activeClass={activeClass} calendar={calendar} onSelect={onUtterance} />
+              {decidedCount === 4 && !building && !builtPlan && onBuild && (
+                <button
+                  type="button"
+                  onClick={onBuild}
+                  className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-text shadow-sm transition-all hover:bg-accent-hover active:scale-[0.98] animate-in slide-in-from-bottom-2 fade-in"
+                >
+                  ✨ Build Lesson Plan
+                </button>
+              )}
+            </div>
+          )}
+        </SmoothHeight>
       </div>
     </div>
   )
@@ -1496,7 +1529,7 @@ function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
   if (options.length === 0) return null
 
   return (
-    <div className="mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300 flex flex-col gap-2">
+    <div className="mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out flex flex-col gap-2">
       <span className="text-xs font-semibold text-ink-soft uppercase tracking-wider">{title}</span>
       <div className="flex flex-wrap gap-2">
         {options.map((opt, i) => (

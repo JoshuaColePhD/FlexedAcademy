@@ -1662,7 +1662,7 @@
   .caption-line {
     display: grid;
     grid-template-rows: 0fr;
-    transition: grid-template-rows var(--t-fast) var(--ease-out);
+    transition: grid-template-rows var(--t-base) var(--ease-out);
   }
   .caption-line.is-visible {
     grid-template-rows: 1fr;
