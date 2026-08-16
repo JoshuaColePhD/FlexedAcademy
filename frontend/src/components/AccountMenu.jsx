@@ -164,6 +164,28 @@ export function AccountMenu({ classPath }) {
 
           <UsageMeter entitlement={entitlement} />
 
+          {/* Its own group, not lumped in with My classes/Settings below —
+              it used to sit one plain row among them, same size, same grey,
+              same divider treatment as everything else, which made the one
+              genuinely privileged link in this whole menu just as easy to
+              graze past (or mis-tap) as an everyday one. A boundary is the
+              signal, not a colour change — this isn't "actionable" the way
+              --accent means elsewhere in the app, it's "different in kind."
+              Placed first (above My classes/Settings), on Josh's own ask —
+              the one control gated to admins only is the one that should be
+              hardest to scroll past, not the last thing in the list. */}
+          {user?.is_admin ? (
+            <div className="mt-1 border-t border-hairline pt-1">
+              <Link
+                to="/admin"
+                onClick={() => setOpen(false)}
+                className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <ShieldCheck size={14} aria-hidden="true" /> Admin
+              </Link>
+            </div>
+          ) : null}
+
           <div className="mt-1 border-t border-hairline pt-1">
             <Link
               to={`${classPath}/class`}
@@ -199,26 +221,6 @@ export function AccountMenu({ classPath }) {
               </button>
             </div>
           </div>
-
-          {/* Its own group, not lumped in with My classes/Settings above — it
-              used to sit one plain row above Log out, same size, same grey,
-              same divider treatment as everything else, which made the one
-              genuinely privileged link in this whole menu just as easy to
-              graze past (or mis-tap) as an everyday one. A boundary on top
-              is the signal, not a colour change — this isn't "actionable"
-              the way --accent means elsewhere in the app, it's "different
-              in kind." */}
-          {user?.is_admin ? (
-            <div className="mt-1 border-t border-hairline pt-1">
-              <Link
-                to="/admin"
-                onClick={() => setOpen(false)}
-                className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-              >
-                <ShieldCheck size={14} aria-hidden="true" /> Admin
-              </Link>
-            </div>
-          ) : null}
         </div>
       ) : null}
     </div>

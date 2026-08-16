@@ -4162,27 +4162,35 @@
      an actual single-direction drop shadow, a subtle top-highlight
      gradient suggesting a bevel, and a real border. */
   :root[data-skin='skeu'] .neo-world {
-    --paper-rgb: 250 246 234;
-    --paper-raised-rgb: 253 250 242;
-    --paper-sunken-rgb: 241 234 214;
-    --paper-inset-rgb: 233 224 198;
-    --edge-rgb: 208 194 160;
-    --edge-strong-rgb: 176 156 112;
-    --ink-rgb: 61 43 28;
-    --ink-soft-rgb: 96 74 54;
-    --ink-muted-rgb: 124 100 76;
-    --ink-faint-rgb: 156 134 106;
-    --ink-inverse-rgb: 253 250 242;
+    /* Was a warm parchment/ivory palette — Josh's own call after trying it:
+       the cream read as another version of the same problem, not a fix.
+       Crisp white + slate instead, the same direction the sign-in form's
+       own redesign already landed on and was confirmed to work. What
+       actually makes this "skeuomorphic" isn't the color, it's what's
+       below — real single-direction shadows, a bevel gradient, a visible
+       border — a material (paper/card stock on a white desk), just a
+       clean one instead of an aged one. */
+    --paper-rgb: 255 255 255;
+    --paper-raised-rgb: 255 255 255;
+    --paper-sunken-rgb: 241 245 249;
+    --paper-inset-rgb: 226 232 240;
+    --edge-rgb: 226 232 240;
+    --edge-strong-rgb: 203 213 225;
+    --ink-rgb: 15 23 42;
+    --ink-soft-rgb: 51 65 85;
+    --ink-muted-rgb: 100 116 139;
+    --ink-faint-rgb: 148 163 184;
+    --ink-inverse-rgb: 255 255 255;
     /* The real district blue, not a rose recolor — see this section's own
        header comment on why the accent doesn't change between skins. */
     --accent-rgb: 47 95 191;
     --accent-hover-rgb: 36 74 154;
     --accent-tint-rgb: 219 231 250;
     --accent-text-rgb: 36 74 154;
-    --mark-rgb: 150 42 30;
-    --mark-tint-rgb: 250 224 216;
-    --neo-light-rgb: 255 252 240;
-    --neo-dark-rgb: 120 95 60;
+    --mark-rgb: 185 28 28;
+    --mark-tint-rgb: 254 226 226;
+    --neo-light-rgb: 255 255 255;
+    --neo-dark-rgb: 100 116 139;
     background: rgb(var(--paper-rgb));
     --paper: rgb(var(--paper-rgb));
     --paper-raised: rgb(var(--paper-raised-rgb));
@@ -4203,37 +4211,37 @@
     --mark: rgb(var(--mark-rgb));
     --mark-tint: rgb(var(--mark-tint-rgb));
     /* Real shadows — one direction (down-right, as if lit from the
-       top-left), not neomorphism's light+dark pair. */
-    --shadow-xs: 0 1px 2px rgb(90 65 40 / 0.18);
-    --shadow-sm: 0 2px 5px rgb(90 65 40 / 0.2);
-    --shadow-md: 0 5px 12px rgb(90 65 40 / 0.22), 0 1px 3px rgb(90 65 40 / 0.15);
-    --shadow-lg: 0 12px 28px rgb(90 65 40 / 0.25), 0 3px 8px rgb(90 65 40 / 0.15);
-    --shadow-pop: 0 20px 48px rgb(90 65 40 / 0.3);
-    --shadow-panel: -8px 0 24px rgb(90 65 40 / 0.2);
+       top-left), not neomorphism's light+dark pair. Neutral slate now,
+       not warm umber — matches the palette above. */
+    --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.08);
+    --shadow-sm: 0 2px 5px rgb(15 23 42 / 0.1);
+    --shadow-md: 0 5px 12px rgb(15 23 42 / 0.12), 0 1px 3px rgb(15 23 42 / 0.08);
+    --shadow-lg: 0 12px 28px rgb(15 23 42 / 0.15), 0 3px 8px rgb(15 23 42 / 0.1);
+    --shadow-pop: 0 20px 48px rgb(15 23 42 / 0.18);
+    --shadow-panel: -8px 0 24px rgb(15 23 42 / 0.12);
   }
   :root[data-theme='dark'][data-skin='skeu'] .neo-world {
-    /* An aged-leather/dark-parchment variant, not an inverted one — the
-       point of a skeuomorphic skin is a material, and dark mode is "the
-       same desk at night," not a different material entirely. */
-    --paper-rgb: 38 30 22;
-    --paper-raised-rgb: 48 38 28;
-    --paper-sunken-rgb: 28 22 16;
-    --paper-inset-rgb: 58 46 34;
-    --edge-rgb: 74 58 42;
-    --edge-strong-rgb: 98 78 56;
-    --ink-rgb: 237 224 200;
-    --ink-soft-rgb: 200 184 158;
-    --ink-muted-rgb: 168 148 120;
-    --ink-faint-rgb: 130 112 88;
-    --ink-inverse-rgb: 28 22 16;
-    --accent-rgb: 122 162 240;
-    --accent-hover-rgb: 154 187 248;
-    --accent-tint-rgb: 40 52 78;
-    --accent-text-rgb: 140 175 245;
-    --mark-rgb: 240 129 120;
-    --mark-tint-rgb: 58 30 26;
-    --neo-light-rgb: 70 56 42;
-    --neo-dark-rgb: 10 8 6;
+    /* A dark slate variant, not an inverted white — same "same desk at
+       night" logic as before, just no longer a leather/parchment desk. */
+    --paper-rgb: 15 23 42;
+    --paper-raised-rgb: 30 41 59;
+    --paper-sunken-rgb: 8 13 26;
+    --paper-inset-rgb: 51 65 85;
+    --edge-rgb: 51 65 85;
+    --edge-strong-rgb: 71 85 105;
+    --ink-rgb: 241 245 249;
+    --ink-soft-rgb: 203 213 225;
+    --ink-muted-rgb: 148 163 184;
+    --ink-faint-rgb: 100 116 139;
+    --ink-inverse-rgb: 15 23 42;
+    --accent-rgb: 96 165 250;
+    --accent-hover-rgb: 147 197 253;
+    --accent-tint-rgb: 30 41 59;
+    --accent-text-rgb: 147 197 253;
+    --mark-rgb: 248 113 113;
+    --mark-tint-rgb: 69 26 26;
+    --neo-light-rgb: 71 85 105;
+    --neo-dark-rgb: 2 6 15;
     background: rgb(var(--paper-rgb));
     --paper: rgb(var(--paper-rgb));
     --paper-raised: rgb(var(--paper-raised-rgb));
