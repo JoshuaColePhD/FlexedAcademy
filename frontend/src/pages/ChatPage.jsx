@@ -1576,28 +1576,23 @@ export function ChatPage() {
           content it affects. Right-aligned so it sits at the seam with
           whatever's docked on the right (the plans rail, or the open
           document), not lost against the far edge of the screen. */}
-      <div className="flex h-11 shrink-0 items-center justify-end border-b border-edge px-2">
+      {/* The top header bar: Week picker on the left (if doc is closed), Theme toggle on the right. */}
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-edge px-2">
+        {!docOpen ? (
+          <div className="chat-head pointer-events-auto flex items-center">
+            <WeekPicker
+              options={weekOptions}
+              value={conversationWeek}
+              onChange={changeWeek}
+              schoolName={calendar?.school?.name}
+              disabled={busy}
+            />
+          </div>
+        ) : (
+          <div /> /* Empty div to push ThemeToggle to the right when WeekPicker is hidden */
+        )}
         <ThemeToggle />
       </div>
-
-      {/* Which week this conversation is planning, and the one place to change it.
-          It used to live above the Composer, but was moved to the top left (replacing
-          the static chat-head) to make room for the Voice panel to expand fluidly
-          from the Composer itself.
-          
-          Hidden once the document opens — it says the same thing in its own
-          header two inches to the right. */}
-      {!docOpen ? (
-        <div className="chat-head pointer-events-auto">
-          <WeekPicker
-            options={weekOptions}
-            value={conversationWeek}
-            onChange={changeWeek}
-            schoolName={calendar?.school?.name}
-            disabled={busy}
-          />
-        </div>
-      ) : null}
 
       {isEmpty ? (
         <Greeting className={activeClass?.name} onOpenVoice={openVoice} week={displayWeek} />
