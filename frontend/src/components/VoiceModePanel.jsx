@@ -582,14 +582,26 @@ export function VoiceModePanel({
       setTypedCaption('')
       return undefined
     }
+
+    // If the assistant isn't speaking, this is the user's live speech (or we just finished
+    // the assistant's turn). Show it instantly, bypassing the typewriter.
+    if (!isSpeaking) {
+      typedIdxRef.current = caption.length
+      prevCaptionRef.current = caption
+      setTypedCaption(caption)
+      
+      // Clear the caption entirely after a few seconds of silence so the panel 
+      // can settle back to "Listening..." instead of showing stale text forever.
+      const t = setTimeout(() => setTypedCaption(''), 4000)
+      return () => clearTimeout(t)
+    }
+
     /* A streamed reply GROWS — each finished sentence appends to the
        caption while the last one is still being typed out. Restarting from
-       zero on every change (which is what this did before sentence-level
-       streaming existed, when the caption only ever arrived whole) would
-       re-type the whole reply from the top several times per turn. Keeping
-       the cursor where it is whenever the new caption merely extends the
-       old one turns that into one continuous type-out; anything that isn't
-       an extension is a genuinely new utterance and starts over. */
+       zero on every change would re-type the whole reply from the top several 
+       times per turn. Keeping the cursor where it is whenever the new caption 
+       merely extends the old one turns that into one continuous type-out; 
+       anything that isn't an extension is a genuinely new utterance and starts over. */
     if (!caption.startsWith(prevCaptionRef.current)) typedIdxRef.current = 0
     prevCaptionRef.current = caption
     if (typedIdxRef.current >= caption.length) {
@@ -603,20 +615,7 @@ export function VoiceModePanel({
       if (typedIdxRef.current >= caption.length) clearInterval(id)
     }, CHAR_MS)
     return () => clearInterval(id)
-  }, [caption])
-
-  // Two cleanup jobs once the audio itself stops: finish the type-out
-  // instantly rather than leaving it to visibly limp to the end of a
-  // sentence nobody can still hear, then clear it a few seconds later so
-  // the panel settles back to its normal "Listening…" status instead of
-  // showing what was said forever.
-  useEffect(() => {
-    if (isSpeaking || !caption) return undefined
-    typedIdxRef.current = caption.length
-    setTypedCaption(caption)
-    const t = setTimeout(() => setTypedCaption(''), 4000)
-    return () => clearTimeout(t)
-  }, [isSpeaking, caption])
+  }, [caption, isSpeaking])
 
   // Neither hint has any OTHER path back to false if the teacher just gives
   // up rather than resolving it (speaking up, or landing a real utterance —
@@ -1229,6 +1228,10 @@ export function VoiceModePanel({
     </button>
   )
 
+  const recentAssistantMessages = messages
+    .filter((m) => m.role === 'assistant' && !m.tool_calls)
+    .slice(-2)
+
   /* What was actually SAID, either side of the conversation — never status
      (that's statusPill's job now; see spokenText's comment). Three states,
      in order: the assistant's reply typing itself out, the echo of what was
@@ -1250,17 +1253,28 @@ export function VoiceModePanel({
         </button>
       </div>
     ) : spokenText ? (
-      <p className="truncate text-sm leading-relaxed text-ink-soft">
-        {spokenText.split(/(\s+)/).map((w, i) =>
-          w.trim() ? (
-            <span key={i} className="karaoke-word">
-              {w}
-            </span>
-          ) : (
-            <span key={i}>{w}</span>
-          )
+      <div className="flex flex-col gap-2">
+        {recentAssistantMessages.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {recentAssistantMessages.map((m) => (
+              <p key={m.id} className="truncate text-xs leading-relaxed text-ink-faint">
+                {m.content}
+              </p>
+            ))}
+          </div>
         )}
-      </p>
+        <p className="truncate text-sm leading-relaxed text-ink-soft">
+          {spokenText.split(/(\s+)/).map((w, i) =>
+            w.trim() ? (
+              <span key={i} className="karaoke-word">
+                {w}
+              </span>
+            ) : (
+              <span key={i}>{w}</span>
+            )
+          )}
+        </p>
+      </div>
     ) : showHeard ? (
       <HeardEcho
         text={heardText}
@@ -1335,6 +1349,9 @@ export function VoiceModePanel({
               <Play size={14} aria-hidden="true" fill="currentColor" />
             </button>
           ) : null}
+          <span className="hidden sm:inline text-2xs font-medium uppercase tracking-wider text-ink-faint mr-1">
+            {mode === 'ptt' ? 'Hold Space to talk' : 'Press Space to toggle'}
+          </span>
           {modeToggleButton}
           {mode === 'ptt' ? pttButton : muteButton}
           {/* Quieter than muteButton on purpose — no neo-raised emboss, no
@@ -1394,6 +1411,15 @@ export function VoiceModePanel({
               </p>
             ) : null}
             <DecisionStack decisions={decisions} fill={false} onRevise={reviseDecision} />
+            {decidedCount === 4 && !building && !builtPlan && onBuild && (
+              <button
+                type="button"
+                onClick={onBuild}
+                className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-text shadow-sm transition-all hover:bg-accent-hover active:scale-[0.98] animate-in slide-in-from-bottom-2 fade-in"
+              >
+                ✨ Build Lesson Plan
+              </button>
+            )}
           </>
         )}
       </div>

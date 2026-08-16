@@ -1737,6 +1737,8 @@ export function ChatPage() {
                       isSpeaking={voice.speaking}
                       caption={voiceCaption}
                       decisions={decisions}
+                      messages={messages}
+                      onBuild={() => submit('Looks good, build the lesson plan.')}
                       /* Replay button: speaks the last reply again through the same
                          shared <audio> element, and re-primes the caption so the
                          type-out plays a second time too. undefined (not a no-op

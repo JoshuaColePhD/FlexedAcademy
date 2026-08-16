@@ -188,6 +188,7 @@ export function DecisionStack({ decisions, fill = true, onRevise }) {
   }, [decisions.length])
 
   const { checklist, extra } = splitDecisions(decisions)
+  const settledCount = [...checklist, ...extra].filter((item) => item.value != null).length
 
   return (
     /* fill: stretch to the column (voice mode's desktop dialog, where three
@@ -195,21 +196,26 @@ export function DecisionStack({ decisions, fill = true, onRevise }) {
        cards and grow downward as they land — in a narrow column or on a
        phone, stretching this to full height leaves most of the display as
        one empty embossed slab. */
-    <div
-      className={`neo-panel flex min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4 ${
-        fill ? 'h-full' : 'max-h-full'
-      }`}
-    >
-      <p className="eyebrow shrink-0 pb-2">The plan so far</p>
-      <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
-        {checklist.map((item) => (
-          <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
-        ))}
-        {extra.map((item) => (
-          <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
-        ))}
-        <li ref={endRef} aria-hidden="true" />
-      </ul>
+    <div className={`flex h-full flex-col ${fill ? '' : 'max-h-full'}`}>
+      <div
+        className={`neo-panel flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4`}
+      >
+        <p className="eyebrow shrink-0 pb-2">The plan so far</p>
+        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
+          {checklist.map((item) => (
+            <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
+          ))}
+          {extra.map((item) => (
+            <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
+          ))}
+          <li ref={endRef} aria-hidden="true" />
+        </ul>
+      </div>
+      {settledCount > 0 && onRevise && (
+        <p className="mt-3 text-center text-xs text-ink-faint animate-in fade-in">
+          💡 You can always say &ldquo;Change the plan to...&rdquo; to edit this.
+        </p>
+      )}
     </div>
   )
 }
