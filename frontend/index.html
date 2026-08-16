@@ -74,6 +74,15 @@
       } catch (e) {
         document.documentElement.setAttribute('data-theme', 'light')
       }
+      // Same reasoning, for the neomorphic/skeuomorphic skin toggle
+      // (useDesignSkin.js) — set before first paint so switching skins and
+      // reloading doesn't flash the OTHER one for a frame.
+      try {
+        var savedSkin = localStorage.getItem('aplang.skin')
+        document.documentElement.setAttribute('data-skin', savedSkin === 'skeu' ? 'skeu' : 'neo')
+      } catch (e) {
+        document.documentElement.setAttribute('data-skin', 'neo')
+      }
     </script>
   </head>
   <!-- No oncontextmenu handler. Suppressing right-click across the whole app was

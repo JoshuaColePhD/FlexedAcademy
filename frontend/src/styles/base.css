@@ -4130,6 +4130,163 @@
     border: 3px solid rgb(var(--accent-rgb) / 0.35);
   }
 
+  /* ══ SKEUOMORPHISM ════════════════════════════════════════════════════════
+     The alternative skin (useDesignSkin.js), not a variant of neomorphism —
+     picked over it after the sign-in form's own contrast problems traced
+     directly back to neumorphism's core mechanic (a light+dark shadow pair
+     drawn FROM the surface's own color, which only reads clearly when
+     foreground and background sit close in value — the opposite of what
+     text and borders need). Real single-direction shadows instead of a
+     dual emboss pair, a warm parchment/ink palette instead of cream/rose,
+     and a visible border instead of a faint tonal edge — the district blue
+     stays the accent in both skins, on purpose, since it's the one color
+     this app's whole premise (a plan that becomes a real printed document)
+     actually earns.
+
+     Higher specificity than the bare .neo-world/.neo-raised/etc. rules
+     above (an extra :root[data-skin] attribute selector), the same trick
+     :root[data-theme='dark'] already uses to override the light values —
+     so which skin wins is pure CSS specificity, no !important anywhere.
+
+     Redeclaring --neo-light-rgb/--neo-dark-rgb here also recolors every
+     ONE-OFF custom shadow elsewhere in this file that reads those two
+     variables directly (rail rows, dialog cards, plan-day-card, etc.) —
+     dozens of them, none individually rewritten to a single-direction
+     shadow. They keep neomorphism's dual-offset STRUCTURE but inherit this
+     skin's warm ink/parchment color instead of looking like a leftover
+     cream-world shadow dropped into a skeuomorphic page. The four shared
+     classes below (neo-raised/inset/panel/ring — the ones actually used in
+     buttons, cards and panels throughout the app) get the real treatment:
+     an actual single-direction drop shadow, a subtle top-highlight
+     gradient suggesting a bevel, and a real border. */
+  :root[data-skin='skeu'] .neo-world {
+    --paper-rgb: 250 246 234;
+    --paper-raised-rgb: 253 250 242;
+    --paper-sunken-rgb: 241 234 214;
+    --paper-inset-rgb: 233 224 198;
+    --edge-rgb: 208 194 160;
+    --edge-strong-rgb: 176 156 112;
+    --ink-rgb: 61 43 28;
+    --ink-soft-rgb: 96 74 54;
+    --ink-muted-rgb: 124 100 76;
+    --ink-faint-rgb: 156 134 106;
+    --ink-inverse-rgb: 253 250 242;
+    /* The real district blue, not a rose recolor — see this section's own
+       header comment on why the accent doesn't change between skins. */
+    --accent-rgb: 47 95 191;
+    --accent-hover-rgb: 36 74 154;
+    --accent-tint-rgb: 219 231 250;
+    --accent-text-rgb: 36 74 154;
+    --mark-rgb: 150 42 30;
+    --mark-tint-rgb: 250 224 216;
+    --neo-light-rgb: 255 252 240;
+    --neo-dark-rgb: 120 95 60;
+    background: rgb(var(--paper-rgb));
+    --paper: rgb(var(--paper-rgb));
+    --paper-raised: rgb(var(--paper-raised-rgb));
+    --paper-sunken: rgb(var(--paper-sunken-rgb));
+    --paper-inset: rgb(var(--paper-inset-rgb));
+    --edge: rgb(var(--edge-rgb));
+    --edge-strong: rgb(var(--edge-strong-rgb));
+    --ink: rgb(var(--ink-rgb));
+    --ink-soft: rgb(var(--ink-soft-rgb));
+    --ink-muted: rgb(var(--ink-muted-rgb));
+    --ink-faint: rgb(var(--ink-faint-rgb));
+    --ink-inverse: rgb(var(--ink-inverse-rgb));
+    --accent: rgb(var(--accent-rgb));
+    --accent-hover: rgb(var(--accent-hover-rgb));
+    --accent-tint: rgb(var(--accent-tint-rgb));
+    --accent-text: rgb(var(--accent-text-rgb));
+    --accent-ring: rgb(var(--accent-rgb) / 0.32);
+    --mark: rgb(var(--mark-rgb));
+    --mark-tint: rgb(var(--mark-tint-rgb));
+    /* Real shadows — one direction (down-right, as if lit from the
+       top-left), not neomorphism's light+dark pair. */
+    --shadow-xs: 0 1px 2px rgb(90 65 40 / 0.18);
+    --shadow-sm: 0 2px 5px rgb(90 65 40 / 0.2);
+    --shadow-md: 0 5px 12px rgb(90 65 40 / 0.22), 0 1px 3px rgb(90 65 40 / 0.15);
+    --shadow-lg: 0 12px 28px rgb(90 65 40 / 0.25), 0 3px 8px rgb(90 65 40 / 0.15);
+    --shadow-pop: 0 20px 48px rgb(90 65 40 / 0.3);
+    --shadow-panel: -8px 0 24px rgb(90 65 40 / 0.2);
+  }
+  :root[data-theme='dark'][data-skin='skeu'] .neo-world {
+    /* An aged-leather/dark-parchment variant, not an inverted one — the
+       point of a skeuomorphic skin is a material, and dark mode is "the
+       same desk at night," not a different material entirely. */
+    --paper-rgb: 38 30 22;
+    --paper-raised-rgb: 48 38 28;
+    --paper-sunken-rgb: 28 22 16;
+    --paper-inset-rgb: 58 46 34;
+    --edge-rgb: 74 58 42;
+    --edge-strong-rgb: 98 78 56;
+    --ink-rgb: 237 224 200;
+    --ink-soft-rgb: 200 184 158;
+    --ink-muted-rgb: 168 148 120;
+    --ink-faint-rgb: 130 112 88;
+    --ink-inverse-rgb: 28 22 16;
+    --accent-rgb: 122 162 240;
+    --accent-hover-rgb: 154 187 248;
+    --accent-tint-rgb: 40 52 78;
+    --accent-text-rgb: 140 175 245;
+    --mark-rgb: 240 129 120;
+    --mark-tint-rgb: 58 30 26;
+    --neo-light-rgb: 70 56 42;
+    --neo-dark-rgb: 10 8 6;
+    background: rgb(var(--paper-rgb));
+    --paper: rgb(var(--paper-rgb));
+    --paper-raised: rgb(var(--paper-raised-rgb));
+    --paper-sunken: rgb(var(--paper-sunken-rgb));
+    --paper-inset: rgb(var(--paper-inset-rgb));
+    --edge: rgb(var(--edge-rgb));
+    --edge-strong: rgb(var(--edge-strong-rgb));
+    --ink: rgb(var(--ink-rgb));
+    --ink-soft: rgb(var(--ink-soft-rgb));
+    --ink-muted: rgb(var(--ink-muted-rgb));
+    --ink-faint: rgb(var(--ink-faint-rgb));
+    --ink-inverse: rgb(var(--ink-inverse-rgb));
+    --accent: rgb(var(--accent-rgb));
+    --accent-hover: rgb(var(--accent-hover-rgb));
+    --accent-tint: rgb(var(--accent-tint-rgb));
+    --accent-text: rgb(var(--accent-text-rgb));
+    --accent-ring: rgb(var(--accent-rgb) / 0.32);
+    --mark: rgb(var(--mark-rgb));
+    --mark-tint: rgb(var(--mark-tint-rgb));
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-sm: 0 2px 5px rgb(0 0 0 / 0.45);
+    --shadow-md: 0 5px 12px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 12px 28px rgb(0 0 0 / 0.55), 0 3px 8px rgb(0 0 0 / 0.35);
+    --shadow-pop: 0 20px 48px rgb(0 0 0 / 0.6);
+    --shadow-panel: -8px 0 24px rgb(0 0 0 / 0.4);
+  }
+
+  /* The four shared effect classes, given the real treatment: a single
+     drop shadow, a top-highlight gradient suggesting a paper/card bevel,
+     and a visible border — instead of neomorphism's dual light+dark pair
+     and near-invisible edge. */
+  :root[data-skin='skeu'] .neo-raised {
+    background-image: linear-gradient(to bottom, rgb(var(--neo-light-rgb) / 0.6), rgb(var(--neo-light-rgb) / 0) 45%);
+    box-shadow: 0 3px 6px rgb(var(--neo-dark-rgb) / 0.4), 0 1px 2px rgb(var(--neo-dark-rgb) / 0.25);
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.6);
+  }
+  :root[data-skin='skeu'] .neo-raised:active {
+    background-image: none;
+    box-shadow: inset 0 2px 5px rgb(var(--neo-dark-rgb) / 0.4);
+  }
+  :root[data-skin='skeu'] .neo-inset {
+    background-image: linear-gradient(to bottom, rgb(var(--neo-dark-rgb) / 0.15), transparent 45%);
+    box-shadow: inset 0 2px 5px rgb(var(--neo-dark-rgb) / 0.35), inset 0 1px 2px rgb(var(--neo-dark-rgb) / 0.2);
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.5);
+  }
+  :root[data-skin='skeu'] .neo-panel {
+    background-image: linear-gradient(to bottom, rgb(var(--neo-light-rgb) / 0.4), rgb(var(--neo-light-rgb) / 0) 35%);
+    box-shadow: 0 12px 28px rgb(var(--neo-dark-rgb) / 0.3), 0 3px 8px rgb(var(--neo-dark-rgb) / 0.18);
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.5);
+  }
+  :root[data-skin='skeu'] .neo-ring {
+    border: 3px solid rgb(var(--accent-rgb) / 0.5);
+    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.12);
+  }
+
   /* ══ MOTION ═══════════════════════════════════════════════════════════════
      One animation carries information — fa-flash, which answers "what changed?"
      without a diff view. Everything else is entry and touch feedback. All of it

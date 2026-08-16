@@ -8,6 +8,7 @@ import { useBilling } from '../lib/billingContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { errorParts } from '../lib/apiError'
+import { useDesignSkin } from '../hooks/useDesignSkin'
 
 /* Account-level settings — split out of ClassPage (which used to be "Classes &
  * settings", one page for two different things). Everything here is about the
@@ -20,6 +21,48 @@ import { errorParts } from '../lib/apiError'
  */
 
 const CUSTOM_INSTRUCTIONS_MAX = 2000
+
+/* The neomorphic/skeuomorphic toggle (useDesignSkin.js) — added after the
+ * sign-in form's own contrast problems traced back to neomorphism's core
+ * mechanic (a soft dual light+dark shadow, which only reads clearly when
+ * foreground and background sit close in value). Rather than just
+ * replacing one skin with the other everywhere, this makes it a real
+ * setting so it can actually be compared side by side instead of taken on
+ * faith. Two buttons, not a single toggle switch — a switch implies an
+ * on/off state ("neomorphism enabled: yes/no"), and this is a choice
+ * between two distinct looks, not a binary flag. */
+function DesignSkinSection() {
+  const { skin, setSkin } = useDesignSkin()
+  const OPTIONS = [
+    { value: 'neo', label: 'Neomorphic', hint: 'Soft embossed shadows, cream & rose' },
+    { value: 'skeu', label: 'Skeuomorphic', hint: 'Real shadows, warm parchment & ink' },
+  ]
+  return (
+    <div className="mt-5">
+      <h2 className="text-sm font-semibold text-ink">Appearance</h2>
+      <p className="mt-1 text-xs text-ink-muted">
+        How raised surfaces and panels look throughout the app — try both, keep whichever reads
+        better to you.
+      </p>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => setSkin(opt.value)}
+            aria-pressed={skin === opt.value}
+            className={`neo-raised flex flex-col items-start gap-0.5 rounded-xl px-3.5 py-3 text-left transition-colors ${
+              skin === opt.value ? 'neo-inset text-accent-text' : 'text-ink-soft'
+            }`}
+          >
+            <span className="text-sm font-medium">{opt.label}</span>
+            <span className="text-2xs text-ink-muted">{opt.hint}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function CustomInstructions({ value, onSaved }) {
   const toast = useToast()
@@ -550,6 +593,9 @@ export function SettingsPage() {
               className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-faint hover:bg-paper-sunken focus:bg-paper-sunken"
             />
           </div>
+
+          {/* ── appearance ───────────────────────────────────────────────── */}
+          <DesignSkinSection />
 
           {/* ── school ───────────────────────────────────────────────────── */}
           <SchoolPicker
