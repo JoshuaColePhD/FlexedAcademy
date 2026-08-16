@@ -19,7 +19,7 @@ from .config import settings
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
 from .ratelimit import limiter, rate_limit_exceeded_handler
-from .routes import account, admin, auth, billing, classes, curriculum, drive, generate, misc, plans, standards
+from .routes import account, admin, auth, billing, canvas, classes, curriculum, drive, generate, misc, plans, standards
 from .schema import SchemaError
 
 logging.basicConfig(
@@ -113,12 +113,12 @@ app.include_router(generate.router)
 app.include_router(plans.router)
 app.include_router(standards.router)
 app.include_router(curriculum.router)
-
 app.include_router(classes.router)
 app.include_router(billing.router)
 app.include_router(admin.router)
 app.include_router(account.router)
 app.include_router(drive.router)
+app.include_router(canvas.router)
 import os
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles

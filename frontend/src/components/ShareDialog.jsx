@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Download, ExternalLink, Loader2 } from 'lucide-react'
+import { Check, Download, ExternalLink, Loader2, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -20,7 +20,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
  *   connected    — the actual share form: an email, a role, a Share button,
  *                  and whoever this plan has already been shared with.
  */
-export function ShareDialog({ open, onClose, planId, isQuiz, documentName, downloadUrl }) {
+export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentName, downloadUrl }) {
   const toast = useToast()
   const { mounted, closing } = useExitTransition(open, 200)
   const dialogRef = useRef(null)
@@ -96,6 +96,20 @@ export function ShareDialog({ open, onClose, planId, isQuiz, documentName, downl
     }
   }
 
+  const uploadToCanvas = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      await api.exportQuizToCanvas(planId, quizId)
+      toast.success('Synced to Canvas', `${documentName || 'The quiz'} has been pushed to your Canvas courses.`)
+      onClose()
+    } catch (err) {
+      toast.apiError('Could not sync to Canvas', err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (!mounted) return null
 
   return (
@@ -130,7 +144,20 @@ export function ShareDialog({ open, onClose, planId, isQuiz, documentName, downl
         <h3 className="text-sm font-medium mb-3">Save to Google Drive</h3>
         
         {isQuiz ? (
-          <p className="text-sm text-ink-soft">Google Drive export is only supported for Lesson Plans, as quizzes are Canvas QTI .zip files.</p>
+          <>
+            <p className="text-sm text-ink-soft mb-4">
+              Since your school doesn't use the Canvas API yet, we've set up a test environment where you can preview how this 1-click sync would work!
+            </p>
+            <button 
+              type="button" 
+              className="btn btn-primary w-full justify-center" 
+              onClick={uploadToCanvas}
+              disabled={submitting}
+            >
+              {submitting ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : <Upload size={14} className="mr-1.5" aria-hidden="true" />}
+              {submitting ? 'Pushing to Canvas…' : 'Push to Canvas'}
+            </button>
+          </>
         ) : status === 'loading' ? (
           <p className="flex items-center gap-2 text-sm text-ink-soft">
             <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Checking Google Drive…

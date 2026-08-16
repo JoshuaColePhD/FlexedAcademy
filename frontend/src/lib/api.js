@@ -232,6 +232,8 @@ export const api = {
   deleteQuiz: (planId, quizId) =>
     request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'DELETE' }),
   quizDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download`,
+  exportQuizToCanvas: (planId, quizId) =>
+    request(`/api/canvas/export_quiz?plan_id=${planId}&quiz_id=${quizId}`, { method: 'POST' }),
   /* The two raw SSE endpoints. generate_stream drives useLessonStream and yields
      a structured plan with grounding; chat_stream drives useChatStream and yields
      plain conversational text. They are not interchangeable. */
