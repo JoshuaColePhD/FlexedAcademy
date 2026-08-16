@@ -201,14 +201,14 @@ export function DecisionStack({ decisions, fill = true, onRevise }) {
         className={`neo-panel flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4`}
       >
         <p className="eyebrow shrink-0 pb-2">The plan so far</p>
-        <ul className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-2 content-start gap-2 overflow-y-auto pr-0.5">
+        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
           {checklist.map((item) => (
             <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
           ))}
           {extra.map((item) => (
             <DecisionRow key={item.key} label={item.label} value={item.value} onRevise={onRevise} />
           ))}
-          <li ref={endRef} aria-hidden="true" className="col-span-full" />
+          <li ref={endRef} aria-hidden="true" />
         </ul>
       </div>
       {settledCount > 0 && onRevise && (
