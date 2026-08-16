@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronsUpDown, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
+import { BookOpen, ChevronUp, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -19,9 +19,10 @@ import { useExitTransition } from '../hooks/useExitTransition'
  *
  * Redesigned on Josh's own ask (findability): "My classes" and "Settings" used
  * to be one link ("Classes & settings") pointing at one page — now they're two
- * separate rows to two separate routes (ClassPage / SettingsPage), a usage
- * readout sits under the identity block, and Log out is its own full-width row
- * instead of a bare icon squeezed beside "Classes & settings". */
+ * separate rows to two separate routes (ClassPage / SettingsPage), and a usage
+ * readout sits under the identity block. Log out sits icon-only right beside
+ * Settings, not a labeled row of its own — the label doesn't add anything a
+ * teacher hasn't already learned this icon means the one time they hover it. */
 
 /* Usage was deliberately pulled OUT of every teacher's own settings page and
  * centralized in the admin accounts panel (see SettingsPage.jsx's own
@@ -33,8 +34,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
  * trailing-week cap governs generation either way (backend/entitlement.py). */
 function UsageMeter({ entitlement }) {
   if (!entitlement) return null
-  const { tokens_used: used, token_cap: cap, tokens_remaining: remaining, usage_window_days: days, unlimited } =
-    entitlement
+  const { tokens_used: used, token_cap: cap, usage_window_days: days, unlimited } = entitlement
   // Genuinely uncapped (comped, no admin override) — entitlement.py sends
   // token_cap: null for exactly this case now. Said outright rather than
   // silently hiding the section: a blank space where the usage meter
@@ -82,8 +82,11 @@ function UsageMeter({ entitlement }) {
         />
       </div>
       <p className={`mt-1 text-xs font-medium ${statusTextColor}`}>{statusText}</p>
+      {/* The exact token counts (six-digit numbers nobody thinks in) are gone —
+          the percentage is the one number worth keeping, since it's the same
+          unit the bar above it is already drawn in. */}
       <p className="text-2xs text-ink-muted">
-        {used.toLocaleString()} / {cap.toLocaleString()} tokens · {remaining.toLocaleString()} left
+        {pct}% used · {100 - pct}% left
       </p>
     </div>
   )
@@ -140,11 +143,11 @@ export function AccountMenu({ classPath }) {
           <User size={13} />
         </span>
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
-        {/* Same chevron ClassSwitcher already puts beside ITS trigger, right
-            above this one in the rail — nothing here previously said "this
-            opens" at all, unlike its sibling. One convention for "tap this
-            for more," not two. */}
-        <ChevronsUpDown size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
+        {/* Points up, not the two-way ChevronsUpDown ClassSwitcher uses — this
+            popover only ever opens upward (bottom-full, right above the
+            trigger), so a single up-chevron says exactly what will happen
+            instead of a symbol that also implies "or down." */}
+        <ChevronUp size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
       </button>
 
       {mounted ? (
@@ -169,23 +172,42 @@ export function AccountMenu({ classPath }) {
             >
               <BookOpen size={14} aria-hidden="true" /> My classes
             </Link>
-            <Link
-              to={`${classPath}/settings`}
-              onClick={() => setOpen(false)}
-              className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-            >
-              <Settings size={14} aria-hidden="true" /> Settings
-            </Link>
+            <div className="flex items-center">
+              <Link
+                to={`${classPath}/settings`}
+                onClick={() => setOpen(false)}
+                className="flex min-h-touch min-w-0 flex-1 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <Settings size={14} aria-hidden="true" /> Settings
+              </Link>
+              {/* Icon-only, right beside Settings — no label needed once it
+                  sits next to the one thing it's most often reached for
+                  right after (or instead of). Its own hover tint (--mark)
+                  keeps it reading as the one destructive control up here,
+                  same as the full-width row this replaced. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  logout()
+                }}
+                aria-label="Log out"
+                title="Log out"
+                className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-soft transition-colors hover:bg-mark-tint hover:text-mark"
+              >
+                <LogOut size={14} aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
-          {/* Its own group, not lumped in with My classes/Settings above OR
-              Log out below — it used to sit one plain row above Log out,
-              same size, same grey, same divider treatment as everything
-              else, which made the one genuinely privileged link in this
-              whole menu just as easy to graze past (or mis-tap) as an
-              everyday one. A boundary on both sides is the signal, not a
-              colour change — this isn't "actionable" the way --accent means
-              elsewhere in the app, it's "different in kind." */}
+          {/* Its own group, not lumped in with My classes/Settings above — it
+              used to sit one plain row above Log out, same size, same grey,
+              same divider treatment as everything else, which made the one
+              genuinely privileged link in this whole menu just as easy to
+              graze past (or mis-tap) as an everyday one. A boundary on top
+              is the signal, not a colour change — this isn't "actionable"
+              the way --accent means elsewhere in the app, it's "different
+              in kind." */}
           {user?.is_admin ? (
             <div className="mt-1 border-t border-hairline pt-1">
               <Link
@@ -197,24 +219,6 @@ export function AccountMenu({ classPath }) {
               </Link>
             </div>
           ) : null}
-
-          {/* Its own full-width row, not an icon squeezed beside "Classes &
-              settings" — a mis-tap on a 40px-wide icon button next to the
-              app's own main settings link was one slip away, and the icon
-              alone (no visible label) made the control hard to even find in
-              the first place. */}
-          <div className="mt-1 border-t border-hairline pt-1">
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                logout()
-              }}
-              className="flex min-h-touch w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-ink-soft transition-colors hover:bg-mark-tint hover:text-mark"
-            >
-              <LogOut size={14} aria-hidden="true" /> Log out
-            </button>
-          </div>
         </div>
       ) : null}
     </div>

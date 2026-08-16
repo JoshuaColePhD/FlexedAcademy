@@ -4,10 +4,13 @@ import { Check, ChevronsUpDown, Plus } from 'lucide-react'
 import { classColor } from '../lib/classColor'
 import { useExitTransition } from '../hooks/useExitTransition'
 
-/* Which prep you're planning for. Sits at the top of the rail because it scopes
-   everything under it — the year, the week, the chats, and the class a new plan
-   is stamped with. Hidden entirely until a teacher has two classes: a switcher
-   with one option is furniture.
+/* Which prep you're planning for. Rendered inline in the chat's top bar,
+   directly left of WeekPicker (ChatPage.jsx) — the two controls together
+   scope the whole conversation: which class, which week. `inline` is what
+   picks that compact pill shape over the original full-width rail row;
+   both still navigate the same way and share the same popup. Hidden
+   entirely until a teacher has two classes: a switcher with one option is
+   furniture.
 
    It NAVIGATES now rather than calling a setState handed down from App. The old
    version wrote `activeClassId` into localStorage, and so did a radio button on
@@ -18,7 +21,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
    reserves blue for "something is waiting for you"; the class you are already
    looking at is not waiting for anything, and spending accent here is part of
    why the blue had stopped meaning anything. */
-export function ClassSwitcher({ classes, activeClass, classPath }) {
+export function ClassSwitcher({ classes, activeClass, classPath, inline = false }) {
   const [open, setOpen] = useState(false)
   // The menu used to unmount the instant `open` went false — a hard cut, the
   // one thing every other neo-panel overlay in the app (toasts, the confirm
@@ -46,7 +49,14 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
 
   if (classes.length === 1) {
     return (
-      <p className="flex items-center gap-2 truncate px-3 pb-1 text-sm font-medium text-ink" title={classes[0].name}>
+      <p
+        className={
+          inline
+            ? 'chat-week min-w-0 max-w-[9rem] shrink truncate normal-case tracking-normal'
+            : 'flex items-center gap-2 truncate px-3 pb-1 text-sm font-medium text-ink'
+        }
+        title={classes[0].name}
+      >
         <span
           className="class-dot"
           aria-hidden="true"
@@ -74,14 +84,25 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
     return tail === 'class' ? `/c/${id}/class` : `/c/${id}`
   }
 
+  /* Two very different homes for the same control: full-width and left-
+     anchored in the rail (the original shape), or a compact inline pill
+     sitting beside WeekPicker in the chat top bar — same `.chat-week`
+     caption language that pill already uses, so the two read as one row
+     instead of two different controls bolted together. The popup itself
+     stays a fixed-width card either way; only the trigger's shape and the
+     popup's anchoring edge change. */
   return (
-    <div className="relative px-2 pb-1" ref={ref}>
+    <div className={inline ? 'relative' : 'relative px-2 pb-1'} ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex min-h-touch w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-paper-inset"
+        className={
+          inline
+            ? 'chat-week min-w-0 max-w-[9rem] shrink rounded-md px-1 py-0.5 normal-case tracking-normal transition-colors hover:bg-paper-inset'
+            : 'flex min-h-touch w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-paper-inset'
+        }
       >
         {activeClass ? (
           <span
@@ -90,17 +111,19 @@ export function ClassSwitcher({ classes, activeClass, classPath }) {
             style={{ '--class-dot-color': `rgb(${classColor(activeClass.id).rgb})` }}
           />
         ) : null}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+        <span className={inline ? 'min-w-0 truncate' : 'min-w-0 flex-1 truncate text-sm font-medium text-ink'}>
           {activeClass?.name || 'Choose a class'}
         </span>
-        <ChevronsUpDown size={14} aria-hidden="true" className="shrink-0 text-ink-faint" />
+        <ChevronsUpDown size={inline ? 12 : 14} aria-hidden="true" className="shrink-0 text-ink-faint" />
       </button>
 
       {mounted ? (
         <ul
           role="listbox"
           aria-label="Your classes"
-          className={`neo-panel fa-card-drop absolute left-2 right-2 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised py-1${closing ? ' fa-chip-exit' : ''}`}
+          className={`neo-panel fa-card-drop absolute z-50 mt-1 w-56 overflow-hidden rounded-2xl bg-paper-raised py-1 ${
+            inline ? 'left-0' : 'left-2 right-2'
+          }${closing ? ' fa-chip-exit' : ''}`}
         >
           {classes.map((c) => (
             <li key={c.id}>

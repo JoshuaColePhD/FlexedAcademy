@@ -1,14 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
+import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { NARROW, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-import { ClassSwitcher } from './ClassSwitcher'
 import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
 
@@ -95,7 +94,6 @@ function ChatRow({ chat, classId, onDelete }) {
 function Rail({ onNavigate, onClose }) {
   const { classId } = useParams()
   const location = useLocation()
-  const { classes, activeClass } = useActiveClass()
   const { data: chats, isLoading } = useChats()
   const deleteChat = useDeleteChat()
   const confirm = useConfirm()
@@ -137,8 +135,11 @@ function Rail({ onNavigate, onClose }) {
         ) : null}
       </div>
 
-      <ClassSwitcher classes={classes} activeClass={activeClass} classPath={classPath} />
-
+      {/* The class switcher used to live here, directly under the logo — it now
+          sits inline beside WeekPicker in the chat's own top bar (ChatPage.jsx),
+          since that's the one control it always appears next to. Moving it out
+          lets "New plan" — the one thing a teacher opens this app to do — sit
+          right under the logo instead of one row down. */}
       <div className="px-2 pb-1 pt-1">
         {/* The one thing a teacher opens this app to do. Was .rail-cta's own
             --rail-pop teal (colorize.md) — a token .neo-world doesn't
@@ -303,7 +304,10 @@ export function AppShell({ children }) {
           {/* Same seam-handle language as the artifact rail's own collapse
               control on the other side of the screen (ArtifactRail.jsx) —
               a groove found by hover/touch, not a labeled button competing
-              with everything else in the header. */}
+              with everything else in the header. The chevron is always
+              drawn (not just while collapsed) so the handle reads as
+              clickable in both states; it just flips to point whichever
+              way this click will move the rail. */}
           <button
             type="button"
             className="app-rail-handle tap-target"
@@ -312,7 +316,11 @@ export function AppShell({ children }) {
             aria-label={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
             title={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
           >
-            {railCollapsed ? <ChevronRight className="app-rail-handle-arrow" aria-hidden="true" /> : null}
+            {railCollapsed ? (
+              <ChevronRight className="app-rail-handle-arrow" aria-hidden="true" />
+            ) : (
+              <ChevronLeft className="app-rail-handle-arrow" aria-hidden="true" />
+            )}
           </button>
         </div>
       ) : null}
