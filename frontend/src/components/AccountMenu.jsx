@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { LogOut, Settings, User, ShieldCheck } from 'lucide-react'
+import { BookOpen, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
+import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 
@@ -14,9 +15,56 @@ import { useExitTransition } from '../hooks/useExitTransition'
  * session for thirty days.
  *
  * It goes next to the teacher's own name because that is where people already
- * look for it. */
+ * look for it.
+ *
+ * Redesigned on Josh's own ask (findability): "My classes" and "Settings" used
+ * to be one link ("Classes & settings") pointing at one page — now they're two
+ * separate rows to two separate routes (ClassPage / SettingsPage), a usage
+ * readout sits under the identity block, and Log out is its own full-width row
+ * instead of a bare icon squeezed beside "Classes & settings". */
+
+/* Usage was deliberately pulled OUT of every teacher's own settings page and
+ * centralized in the admin accounts panel (see SettingsPage.jsx's own
+ * BillingSection comment) — that was about decluttering a page every teacher
+ * scrolls through, not about hiding a teacher's own number from them. This is
+ * the one place it comes back: your own usage, in the one popover you already
+ * open to find yourself. Rendered whenever the entitlement rode in on
+ * /api/auth/me, regardless of whether billing itself is turned on — the
+ * trailing-week cap governs generation either way (backend/entitlement.py). */
+function UsageMeter({ entitlement }) {
+  if (!entitlement) return null
+  const { tokens_used: used, token_cap: cap, tokens_remaining: remaining, usage_window_days: days } = entitlement
+  if (!cap) return null
+
+  const pct = Math.min(100, Math.round((used / cap) * 100))
+  // Same three-colour language the rest of the app already uses for "fine /
+  // getting close / out" (--ok/--flag/--mark) rather than inventing a fourth
+  // meaning for a fill colour.
+  const tone = pct >= 100 ? 'bg-mark' : pct >= 85 ? 'bg-flag' : 'bg-ok'
+
+  return (
+    <div className="px-3 py-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-2xs font-medium uppercase tracking-wider text-ink-muted">Usage</span>
+        <span className="text-2xs text-ink-muted">past {days} days</span>
+      </div>
+      <div className="neo-inset mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-paper-sunken">
+        <div
+          className={`h-full rounded-full transition-[width] ${tone}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="mt-1 text-xs text-ink-soft">
+        {used.toLocaleString()} / {cap.toLocaleString()} tokens
+        <span className="text-ink-muted"> · {remaining.toLocaleString()} left</span>
+      </p>
+    </div>
+  )
+}
+
 export function AccountMenu({ classPath }) {
   const { user, logout } = useAuth()
+  const { entitlement } = useBilling()
   const [open, setOpen] = useState(false)
   // Sits right above the trigger (bottom-full) — mirrors ClassSwitcher's own
   // dropdown, closing shape and all, just growing up instead of dropping down.
@@ -78,34 +126,50 @@ export function AccountMenu({ classPath }) {
           {user?.email ? (
             <p className="truncate px-3 py-1.5 text-2xs text-ink-muted">{user.email}</p>
           ) : null}
-          {user?.is_admin ? (
-            <Link
-              to="/admin"
-              onClick={() => setOpen(false)}
-              className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-            >
-              <ShieldCheck size={14} aria-hidden="true" /> Admin
-            </Link>
-          ) : null}
-          <div className="flex items-stretch border-t border-hairline mt-1 pt-1">
+
+          <UsageMeter entitlement={entitlement} />
+
+          <div className="mt-1 border-t border-hairline pt-1">
             <Link
               to={`${classPath}/class`}
               onClick={() => setOpen(false)}
-              className="flex-1 flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
             >
-              <Settings size={14} aria-hidden="true" /> Classes &amp; settings
+              <BookOpen size={14} aria-hidden="true" /> My classes
             </Link>
+            <Link
+              to={`${classPath}/settings`}
+              onClick={() => setOpen(false)}
+              className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+            >
+              <Settings size={14} aria-hidden="true" /> Settings
+            </Link>
+            {user?.is_admin ? (
+              <Link
+                to="/admin"
+                onClick={() => setOpen(false)}
+                className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <ShieldCheck size={14} aria-hidden="true" /> Admin
+              </Link>
+            ) : null}
+          </div>
+
+          {/* Its own full-width row, not an icon squeezed beside "Classes &
+              settings" — a mis-tap on a 40px-wide icon button next to the
+              app's own main settings link was one slip away, and the icon
+              alone (no visible label) made the control hard to even find in
+              the first place. */}
+          <div className="mt-1 border-t border-hairline pt-1">
             <button
               type="button"
               onClick={() => {
                 setOpen(false)
                 logout()
               }}
-              title="Sign out"
-              aria-label="Sign out"
-              className="flex min-h-touch w-10 shrink-0 items-center justify-center text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink border-l border-hairline"
+              className="flex min-h-touch w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-ink-soft transition-colors hover:bg-mark-tint hover:text-mark"
             >
-              <LogOut size={14} aria-hidden="true" />
+              <LogOut size={14} aria-hidden="true" /> Log out
             </button>
           </div>
         </div>

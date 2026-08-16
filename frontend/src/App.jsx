@@ -24,6 +24,7 @@ import { AppShell } from './components/AppShell'
 import { useClasses } from './hooks/useAppData'
 import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { PlansPage } from './pages/PlansPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
@@ -179,6 +180,7 @@ function ClassRoutes() {
           <Route path="plans" element={<PlansPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="class" element={<ClassPage />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AppShell>

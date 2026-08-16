@@ -1614,10 +1614,14 @@ export function ChatPage() {
           content it affects. Right-aligned so it sits at the seam with
           whatever's docked on the right (the plans rail, or the open
           document), not lost against the far edge of the screen. */}
-      {/* The top header bar: Week picker on the left (if doc is closed), Theme toggle on the right. */}
-      <div className="flex h-11 shrink-0 items-center justify-end gap-3 border-b border-edge px-2">
+      {/* The top header bar: Theme toggle pinned right; the week picker used to
+          sit beside it (justify-end put both on the right edge, crowded
+          together) — centered now via absolute positioning within this
+          `relative` bar, so it reads as the bar's own focal point rather than
+          a second control tucked next to the toggle. */}
+      <div className="relative flex h-11 shrink-0 items-center border-b border-edge px-2">
         {!docOpen ? (
-          <div className="chat-head pointer-events-auto flex items-center">
+          <div className="chat-head pointer-events-auto absolute left-1/2 flex -translate-x-1/2 items-center">
             <WeekPicker
               options={weekOptions}
               value={conversationWeek}
@@ -1627,7 +1631,9 @@ export function ChatPage() {
             />
           </div>
         ) : null}
-        <ThemeToggle />
+        <div className="ml-auto">
+          <ThemeToggle />
+        </div>
       </div>
 
       {isEmpty ? (
