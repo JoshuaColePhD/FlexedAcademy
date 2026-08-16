@@ -3237,58 +3237,30 @@
      centered under the trigger — the trigger sits at the bar's right end,
      and a centered popover would hang half off the viewport on a phone. */
   .land-signin-pop {
-    /* Every app/ink/accent token this popover (and SignInForm inside it) is
-       styled with, pinned to its LIGHT value — redeclared here rather than
-       left to inherit from :root[data-theme='dark'], because this popover
-       lives on the landing page, and the landing page is a fixed world that
-       does not follow data-theme (see the file header and --brand-rgb's own
-       comment above). Without this, a visitor who last used the app in dark
-       mode got a near-black card floating on the violet bar — technically
-       legible, but exactly the inconsistency the rest of this page goes out
-       of its way to avoid. Also wears .neo-world now (on request): its
-       primitives are declared LATER in this file, so they win outright over
-       the light values just below — this popover ends up in the same
-       cream/rose embossed world as the rest of the app, box-shadow: var(
-       --shadow-lg) included, rather than the plain drop-shadow it had before
-       neo-world existed to redeclare that token. */
-    --paper-rgb: 246 244 236;
-    --paper-raised-rgb: 253 251 246;
-    --paper-sunken-rgb: 236 233 223;
-    --paper-inset-rgb: 224 220 207;
-    --edge-rgb: 221 217 205;
-    --edge-strong-rgb: 195 189 172;
-    --ink-rgb: 20 22 26;
-    --ink-soft-rgb: 58 63 71;
-    --ink-muted-rgb: 102 109 120;
-    --ink-faint-rgb: 154 161 171;
-    --ink-inverse-rgb: 255 255 255;
-    --accent-rgb: 47 95 191;
-    --accent-hover-rgb: 36 74 154;
-    --accent-tint-rgb: 233 239 250;
-    --accent-text-rgb: 47 95 191;
-    --mark-rgb: 179 38 30;
-    --mark-tint-rgb: 253 236 234;
-
+    /* Was pinned to the app's own light-mode ink/paper/accent tokens, then
+       wrapped in .neo-world "on request" — but neo-world's own primitives
+       are declared LATER in this file, so they won outright over every
+       value declared here, silently turning the pinned district blue back
+       into neo-world's rose and the crisp paper into its cream. That's
+       exactly what read as "bad contrast, wrong colors": this class was
+       fighting a cascade it could never win. No longer wears .neo-world
+       (see the JSX) and no longer routes through the token system at all —
+       plain, explicit colors, so this reads the same regardless of
+       whatever world the rest of the landing page is in. SignInForm's own
+       redesign makes the same call for the same reason. */
     position: absolute;
     top: calc(100% + 10px);
     right: 0;
     z-index: 20;
-    width: min(340px, calc(100vw - 2 * var(--sp-5)));
+    width: min(360px, calc(100vw - 2 * var(--sp-5)));
     max-height: calc(100vh - 100%);
     overflow-y: auto;
     padding: var(--sp-5);
-    border-radius: var(--r-lg);
-    /* Each primitive channel triplet directly, not the edge/paper-raised/ink
-       ALIASES: those are declared once at root and inherit their value
-       already resolved at that declaration site, not re-resolved against
-       the redeclared primitives above — the same alias-vs-primitive gap
-       the rail's frosted glass hit earlier. */
-    border: 1px solid rgb(var(--edge-rgb));
-    background: rgb(var(--paper-raised-rgb) / 0.6);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    color: rgb(var(--ink-rgb));
-    box-shadow: var(--shadow-lg);
+    border-radius: 20px;
+    border: 1px solid rgb(226 232 240);
+    background: #ffffff;
+    color: rgb(15 23 42);
+    box-shadow: 0 20px 40px -8px rgb(15 23 42 / 0.18), 0 2px 8px rgb(15 23 42 / 0.06);
     animation: land-signin-pop-in var(--t-fast) var(--ease-out) both;
   }
   @keyframes land-signin-pop-in {

@@ -5,16 +5,20 @@ import { useAuth } from '../lib/authContext'
 import { api } from '../lib/api'
 import { GoogleAuthButton } from './GoogleAuthButton'
 
-/* Local to this form, not a variant of the shared authInputClass (used
-   as-is by SignupPage/ResetPasswordPage — this redesign is scoped to
-   sign-in, not every auth form) — and built with explicit pl/pr rather
-   than overriding authInputClass's own px-3.5 with a bolted-on pl-10.
-   Tailwind resolves two classes touching the same property (px-3.5 and
-   pl-10) by which one the generated stylesheet happens to place last, not
-   by which comes last in the className string — a real footgun, not a
-   style preference, so this just never creates the conflict. */
-const iconInputClass =
-  'block w-full rounded-lg border border-edge bg-paper-raised py-2.5 pl-10 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent neo-inset'
+/* This form's own explicit palette, not the app's ink/paper/accent tokens —
+ * a deliberate exception. Both places this renders (the landing page's
+ * popover, wrapped in .neo-world; /login, wrapped in .auth-ground.neo-world)
+ * silently override those tokens to the cream/rose emboss world, which is
+ * WHY the previous version looked washed out here regardless of what colors
+ * this file asked for: neo-world's own primitives are declared later in
+ * base.css than either wrapper's attempt to pin them back to blue, so
+ * neo-world always won the cascade. Hardcoding real colors is what makes
+ * this form look the same — crisp, high-contrast, actually blue — no matter
+ * which world it's dropped into, instead of inheriting whatever that world
+ * has decided "ink" and "accent" mean today.
+ */
+const fieldClass =
+  'block w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'
 
 /* The actual sign-in mechanics — Google button, divider, email/password
  * form, the "forgot password" disclosure and the "create an account" link —
@@ -107,29 +111,24 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
           one form; the popover has neither, so it opened straight into a
           Google button with zero context. */}
       {compact ? (
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-ink">Welcome back</h3>
-            <p className="text-xs text-ink-muted">Sign in to keep planning.</p>
+            <h3 className="text-xl font-bold text-slate-900">Welcome back</h3>
+            <p className="mt-0.5 text-sm text-slate-500">Sign in to keep planning.</p>
           </div>
           {onClose ? (
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="btn-icon -mr-1.5 -mt-1 shrink-0"
+              className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
             >
-              <X size={16} aria-hidden="true" />
+              <X size={18} aria-hidden="true" />
             </button>
           ) : null}
         </div>
       ) : null}
 
-      {/* GoogleAuthButton: filled_black + the same raised-shadow frame every
-          other control in this world has, matching the "Sign in" button
-          just below it instead of clashing with it as a plain white box —
-          see that component's own comment for why it measures its own
-          width instead of the "100%" this used to pass straight through. */}
       <div className="flex justify-center">
         <GoogleAuthButton
           onSuccess={handleGoogleSuccess}
@@ -139,17 +138,17 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
         />
       </div>
 
-      <div className={`flex items-center gap-3 ${compact ? 'my-4' : 'my-6'}`}>
-        <span className="h-px flex-1 bg-edge" />
-        <span className="text-xs text-ink-muted">or</span>
-        <span className="h-px flex-1 bg-edge" />
+      <div className={`flex items-center gap-3 ${compact ? 'my-5' : 'my-6'}`}>
+        <span className="h-px flex-1 bg-slate-200" />
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">or</span>
+        <span className="h-px flex-1 bg-slate-200" />
       </div>
 
       <form onSubmit={handleEmailLogin} className="flex flex-col gap-3">
         {error ? (
           <p
             role="alert"
-            className="fa-rise rounded-lg border border-mark/25 bg-mark-tint px-3 py-2 text-sm text-mark"
+            className="fa-rise rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700"
           >
             {error}
           </p>
@@ -158,9 +157,9 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
         <div className="relative">
           <label className="visually-hidden" htmlFor={`${idPrefix}email`}>Email address</label>
           <Mail
-            size={16}
+            size={18}
             aria-hidden="true"
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
           />
           <input
             id={`${idPrefix}email`}
@@ -170,15 +169,15 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email address"
-            className={`${iconInputClass} pr-3.5`}
+            className={`${fieldClass} pr-3.5`}
           />
         </div>
         <div className="relative">
           <label className="visually-hidden" htmlFor={`${idPrefix}password`}>Password</label>
           <Lock
-            size={16}
+            size={18}
             aria-hidden="true"
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
           />
           <input
             id={`${idPrefix}password`}
@@ -188,25 +187,28 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
-            className={`${iconInputClass} pr-10`}
+            className={`${fieldClass} pr-11`}
           />
           <button
             type="button"
             onClick={() => setShowPassword((s) => !s)}
             aria-label={showPassword ? 'Hide password' : 'Show password'}
             title={showPassword ? 'Hide password' : 'Show password'}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-ink-faint transition-colors hover:text-ink-soft"
+            className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
           >
-            {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+            {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
           </button>
         </div>
 
-        {/* --ink, not --accent: a filled accent button with a white label is the
-            one pairing the token rules forbid outright. */}
+        {/* Solid blue + white label — the app's own tokens forbid this
+            EXACT pairing elsewhere because their --accent used to be an
+            orange that failed contrast as a fill (see base.css's
+            .btn-primary comment); this is a plain, explicit blue chosen
+            for this form alone, verified against white at a real 6:1+. */}
         <button
           type="submit"
           disabled={loading}
-          className="neo-raised mt-1 min-h-touch w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-1 min-h-touch w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
@@ -222,19 +224,19 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
           Deliberately no contact address here. This form is public, and a
           personal inbox published on it is spam bait and hard to take back. */}
       <details className={compact ? 'mt-4 text-sm' : 'mt-5 text-sm'}>
-        <summary className="cursor-pointer text-ink-muted underline underline-offset-4 hover:text-ink">
+        <summary className="cursor-pointer text-slate-500 underline decoration-slate-300 underline-offset-4 hover:text-slate-900">
           Forgot your password?
         </summary>
-        <div className="fa-rise mt-2.5 flex flex-col gap-2 rounded-lg bg-paper-sunken p-3 text-ink-soft">
+        <div className="fa-rise mt-3 flex flex-col gap-2 rounded-xl bg-slate-50 p-3 text-slate-600">
           <p>
             If your email is a Google account — including a school one —{' '}
-            <strong className="font-medium text-ink">Continue with Google</strong> above will sign
-            you into the same account, password or not. Everything you’ve built is still there.
+            <strong className="font-semibold text-slate-900">Continue with Google</strong> above will
+            sign you into the same account, password or not. Everything you’ve built is still there.
           </p>
           {resetSent ? (
             <p className="fa-rise">
-              If <strong className="font-medium text-ink">{resetEmail}</strong> has an account,
-              we’ve sent a link to reset its password. It works for one hour.
+              If <strong className="font-semibold text-slate-900">{resetEmail}</strong> has an
+              account, we’ve sent a link to reset its password. It works for one hour.
             </p>
           ) : (
             <form onSubmit={handleForgotPassword} className="flex flex-col gap-2">
@@ -247,7 +249,7 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
                   <Mail
                     size={16}
                     aria-hidden="true"
-                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                   />
                   <input
                     id={`${idPrefix}reset-email`}
@@ -257,13 +259,13 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
                     placeholder="Email address"
-                    className={`${iconInputClass} pr-3.5`}
+                    className="block w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={resetLoading}
-                  className="neo-raised shrink-0 rounded-lg bg-ink px-3 text-sm font-medium text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+                  className="shrink-0 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {resetLoading ? 'Sending…' : 'Send link'}
                 </button>
@@ -273,9 +275,9 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
         </div>
       </details>
 
-      <p className="mt-4 text-center text-sm text-ink-muted">
+      <p className="mt-4 text-center text-sm text-slate-500">
         New here?{' '}
-        <Link to={signupHref} className="font-medium text-accent-text underline underline-offset-4">
+        <Link to={signupHref} className="font-semibold text-blue-600 underline underline-offset-4 hover:text-blue-700">
           Create an account
         </Link>
       </p>

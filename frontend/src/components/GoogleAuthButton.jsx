@@ -32,7 +32,14 @@ export function GoogleAuthButton({ onSuccess, onError, size = 'large', text = 'c
   }, [])
 
   return (
-    <div ref={wrapRef} className="neo-raised w-full overflow-hidden rounded-lg">
+    // A plain border + shadow, not neo-raised — SignInForm's own redesign
+    // moved off the app's embossed tokens entirely (see its own comment on
+    // why), and a neomorphic frame around an otherwise crisp white/blue
+    // form would be the one leftover piece still speaking the old design's
+    // language. This reads fine in SignupPage's still-neo-world context too
+    // — a clean bordered box doesn't clash with a cream background the way
+    // a stark flat rectangle used to.
+    <div ref={wrapRef} className="w-full overflow-hidden rounded-xl border border-slate-200 shadow-sm">
       {/* Nothing to render until the real width is known — a 0 or stale
           width handed to Google's own renderButton call is the exact bug
           this component exists to avoid. */}
