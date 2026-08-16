@@ -1712,7 +1712,7 @@ export function ChatPage() {
           ResizeObserver and an autosized inline height, all of which die on
           remount. Only the wrapper's className may change. */}
       <div className="shrink-0 bg-paper px-gutter pb-5 pt-3">
-        <div className="mx-auto w-full max-w-measure">
+        <div className="mx-auto w-full max-w-4xl">
           <Composer
             value={query}
             onChange={setQuery}
