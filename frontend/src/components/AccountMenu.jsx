@@ -16,6 +16,39 @@ import { ThemeToggle } from './ThemeToggle'
  *
  * It goes next to the teacher's own name because that is where people already
  * look for it. */
+/* Same tokens_used/token_cap bar as the settings page's BillingSection —
+ * here rather than only there, since this popover is the thing directly
+ * behind clicking your own name, and that's the point in the app where
+ * "how much have I used" is the most natural question to have. */
+function UsageRow({ entitlement }) {
+  const pct = entitlement.token_cap > 0
+    ? Math.min(100, Math.round((entitlement.tokens_used / entitlement.token_cap) * 100))
+    : 0
+  const near = pct >= 80
+
+  return (
+    <div className="px-3 py-1.5">
+      <div className="flex items-center justify-between text-2xs text-ink-muted">
+        <span>{entitlement.tokens_used.toLocaleString()} / {entitlement.token_cap.toLocaleString()} tokens this week</span>
+        <span>{pct}%</span>
+      </div>
+      <div
+        className="neo-inset mt-1 h-1 w-full overflow-hidden rounded-full bg-paper"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Weekly usage"
+      >
+        <div
+          className={`h-full rounded-full transition-[width] ${near ? 'bg-mark' : 'bg-accent'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 export function AccountMenu({ classPath }) {
   const { user, logout } = useAuth()
   const { entitlement, billingEnabled, openPaywall, manage } = useBilling()
@@ -79,6 +112,7 @@ export function AccountMenu({ classPath }) {
           {user?.email ? (
             <p className="truncate px-3 py-1.5 text-2xs text-ink-muted">{user.email}</p>
           ) : null}
+          {billingEnabled && entitlement ? <UsageRow entitlement={entitlement} /> : null}
           {/* Subscription. Hidden entirely while billing is unconfigured — an
               account menu offering to manage a subscription that cannot exist
               is worse than no row at all. */}
