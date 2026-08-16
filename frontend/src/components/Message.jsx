@@ -195,6 +195,16 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
               {message.hint}
             </small>
           ) : null}
+
+          {message.isError && isLast && onRetry ? (
+            <button
+              onClick={onRetry}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-mark px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-mark-dark sm:w-auto"
+            >
+              <RotateCcw size={16} />
+              Retry Request
+            </button>
+          ) : null}
         </div>
 
         {/* The guided alternative to typing — see LessonQuestions. Only ever
