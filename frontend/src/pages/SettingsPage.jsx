@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, Download, Sparkles } from 'lucide-react'
+import { CreditCard, Download, HardDrive, Sparkles } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -344,6 +344,79 @@ function BillingSection() {
   )
 }
 
+/* Lets a teacher connect (or disconnect) Google Drive ahead of time, instead
+ * of only discovering "Connect Google Drive" mid-export inside ShareDialog.
+ * Same status/connect/disconnect calls ShareDialog already uses
+ * (api.driveStatus/driveConnectUrl/driveDisconnect — backend/routes/drive.py)
+ * — this is just a second, proactive entry point onto the same connection.
+ * Hidden entirely when the account itself has no Drive integration
+ * configured, same reasoning as BillingSection above. */
+function GoogleDriveSection() {
+  const toast = useToast()
+  const confirm = useConfirm()
+  const driveState = useQuery({ queryKey: qk.driveStatus, queryFn: () => api.driveStatus() })
+  const [disconnecting, setDisconnecting] = useState(false)
+
+  if (!driveState.data?.enabled) return null
+
+  const connected = driveState.data.connected
+
+  const connect = () => {
+    // return_to is where /settings itself lives, not a plan — this is the
+    // proactive entry point, so there's no plan to strand the teacher back
+    // at like ShareDialog's own connect() has.
+    window.location.assign(api.driveConnectUrl('/settings'))
+  }
+
+  const disconnect = async () => {
+    const ok = await confirm({
+      title: 'Disconnect Google Drive?',
+      body: 'Plans already saved to Drive stay there — this just stops the app from creating or sharing new ones until you reconnect.',
+      confirmLabel: 'Disconnect',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setDisconnecting(true)
+    try {
+      await api.driveDisconnect()
+      driveState.refetch()
+      toast.success('Disconnected Google Drive')
+    } catch (err) {
+      toast.apiError('Could not disconnect Google Drive', err)
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
+  return (
+    <div className="mt-5">
+      <h2 className="text-sm font-semibold text-ink">Google Drive</h2>
+      <p className="mt-1 text-xs text-ink-muted">
+        Connect once so exporting a plan or quiz can save a real, editable Google Doc straight to
+        your Drive — and share it with a colleague's account, even one at a different school.
+      </p>
+      <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
+        <div className="flex items-center gap-2">
+          <HardDrive size={16} className={connected ? 'text-ok' : 'text-ink-muted'} aria-hidden="true" />
+          <p className="text-sm font-medium text-ink">{connected ? 'Connected' : 'Not connected'}</p>
+        </div>
+        <button
+          type="button"
+          onClick={connected ? disconnect : connect}
+          disabled={disconnecting}
+          className={
+            connected
+              ? 'neo-raised shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50'
+              : 'fa-press neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50'
+          }
+        >
+          {connected ? (disconnecting ? 'Disconnecting…' : 'Disconnect') : 'Connect Google Drive'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AccountSafety() {
   const { user, signOutEverywhere, deleteAccount } = useAuth()
   const confirm = useConfirm()
@@ -644,6 +717,9 @@ export function SettingsBody({ teacher, setTeacher, savedName, commitTeacher, me
           This account signs in with Google — there’s no password to change here.
         </p>
       ) : null}
+
+      {/* ── google drive ────────────────────────────────────────────── */}
+      <GoogleDriveSection />
 
       {/* ── billing ──────────────────────────────────────────────────── */}
       <BillingSection />

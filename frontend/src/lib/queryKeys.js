@@ -21,6 +21,9 @@ export const qk = {
   /** Whitelisted schools for the settings page dropdown — fixed lookup, not
    *  account data, so it isn't invalidated by anything account-related. */
   schools: ['schools'],
+  /** Connected/not for the signed-in teacher — same status ShareDialog's own
+   *  fetch checks, just also readable from Settings' proactive connect row. */
+  driveStatus: ['drive-status'],
 
   /** The year for one class. THE most-shared entry in the app. */
   calendar: (classId) => ['calendar', classId ?? null],
