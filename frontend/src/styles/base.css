@@ -203,11 +203,13 @@
      .artifact-drawer-handle on the other side of the screen, mirrored: that
      one sits at the LEFT edge of a panel that grows leftward, this one sits
      at the RIGHT edge of a panel that grows rightward, so the chevron points
-     the opposite way (right, not left) while collapsed. */
+     the opposite way (right, not left) while collapsed. Widened from 14px to
+     22px (with .artifact-drawer-handle) — the panel widths themselves were
+     fine, it was this strip that was too thin to reliably see or click. */
   .app-rail-handle {
     position: relative;
     flex-shrink: 0;
-    width: 14px;
+    width: 22px;
     align-self: stretch;
     display: flex;
     align-items: center;
@@ -218,7 +220,7 @@
       inset -2px 0 4px rgb(var(--neo-light-rgb) / 0.7);
     border: none;
     cursor: pointer;
-    opacity: 0.6;
+    opacity: 0.75;
     transition:
       opacity var(--t-fast) var(--ease),
       background-color var(--t-fast) var(--ease);
@@ -238,10 +240,10 @@
     background: var(--paper-sunken);
   }
   .app-rail-handle-arrow {
-    width: 10px;
-    height: 10px;
+    width: 13px;
+    height: 13px;
     color: var(--ink-faint);
-    opacity: 0.7;
+    opacity: 0.85;
     pointer-events: none;
   }
   .app-rail-handle:hover .app-rail-handle-arrow {
@@ -1766,7 +1768,11 @@
   .artifact-drawer {
     display: flex;
     flex-shrink: 0;
-    width: 14px;
+    /* Matches .artifact-drawer-handle's own width below — collapsed, this
+       whole strip IS the handle. Widened from 14px to 22px (with it): the
+       panel width itself was fine, it was this collapsed sliver that was
+       too thin to reliably see or click. */
+    width: 22px;
     transition: width var(--t-base) var(--ease-out);
   }
   .artifact-drawer.is-open {
@@ -1774,19 +1780,18 @@
        15vw would go unreadably narrow on a laptop split three ways and
        absurdly wide on an ultrawide monitor. The floor is 254px, not a
        rounder 220: the old fixed rail this replaced was 240px of CONTENT,
-       and this width also has to cover the 14px handle before
-       ArtifactRail ever sees a pixel — 220 total left only ~206px of
-       content, which is what was truncating "Week 03…" to "We…" and
-       "School calendar" to "Scho…" at ordinary laptop widths (15vw is
-       under 220px from roughly 1024–1466px wide, i.e. most laptops). 50%
-       wider across the board (254/16vw/320 -> 381/24vw/480) to match the
-       nav rail's own 50% bump. */
-    width: clamp(381px, 24vw, 480px);
+       and this width also has to cover the handle before ArtifactRail ever
+       sees a pixel — 220 total left only ~206px of content, which is what
+       was truncating "Week 03…" to "We…" and "School calendar" to
+       "Scho…" at ordinary laptop widths (15vw is under 220px from roughly
+       1024–1466px wide, i.e. most laptops). */
+    width: clamp(254px, 16vw, 320px);
   }
   .artifact-drawer-handle {
     position: relative;
     flex-shrink: 0;
-    width: 14px;
+    /* Same 22px as .artifact-drawer's own collapsed width, above. */
+    width: 22px;
     align-self: stretch;
     /* Centers the arrow below without it needing its own margin math. */
     display: flex;
@@ -1807,7 +1812,7 @@
       inset -2px 0 4px rgb(var(--neo-light-rgb) / 0.7);
     border: none;
     cursor: pointer;
-    opacity: 0.6;
+    opacity: 0.75;
     transition:
       opacity var(--t-fast) var(--ease),
       background-color var(--t-fast) var(--ease);
@@ -1831,15 +1836,17 @@
     opacity: 1;
     background: var(--paper-sunken);
   }
-  /* Small and quiet on purpose — the handle's own groove is already the
-     primary affordance (found by hover/touch); this just answers "does
-     this do something" for a teacher who hasn't tried yet. Sized under the
-     14px strip's own width so it never forces the groove wider. */
+  /* The handle's own groove is already the primary affordance (found by
+     hover/touch); this answers "does this do something" for a teacher who
+     hasn't tried yet. Sized under the 22px strip's own width so it never
+     forces the groove wider — bumped from 10px/opacity 0.7 alongside the
+     strip's own 14px->22px widening, since "hard to see, hard to click"
+     was the whole complaint this strip existed to answer. */
   .artifact-drawer-arrow {
-    width: 10px;
-    height: 10px;
+    width: 13px;
+    height: 13px;
     color: var(--ink-faint);
-    opacity: 0.7;
+    opacity: 0.85;
     pointer-events: none;
   }
   .artifact-drawer-handle:hover .artifact-drawer-arrow {

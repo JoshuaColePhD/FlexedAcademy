@@ -1680,24 +1680,37 @@ export function ChatPage() {
           a second control tucked next to the toggle. */}
       <div className="relative flex h-11 shrink-0 items-center border-b border-edge px-2">
         {!docOpen ? (
-          <div className="chat-head pointer-events-auto absolute left-1/2 flex -translate-x-1/2 items-center">
+          <div className="chat-head pointer-events-auto absolute left-1/2 flex max-w-[92%] -translate-x-1/2 flex-nowrap items-center">
             {/* Which prep, directly left of which week — the two questions
                 that together answer "what is this conversation about,"
                 read as one row instead of a switcher a whole sidebar away
-                from the week it scopes. */}
+                from the week it scopes. flex-nowrap overrides .chat-head's
+                own wrap (needed when it was just WeekPicker alone): with two
+                controls now sharing this row, wrapping stacked them into two
+                lines instead of the one row this is meant to read as. Each
+                child gets min-w-0 so it truncates under real width pressure
+                (an iPad's narrower chat pane, a long school name) rather
+                than forcing the row wide enough to overflow the screen. */}
             <ClassSwitcher
               classes={classes}
               activeClass={activeClass}
               classPath={`/c/${classId}`}
               inline
             />
-            <WeekPicker
-              options={weekOptions}
-              value={conversationWeek}
-              onChange={changeWeek}
-              schoolName={calendar?.school?.name}
-              disabled={busy}
-            />
+            {/* WeekPicker doesn't take a className, and .chat-week itself has
+                no min-width:0 of its own (it never needed to shrink before —
+                it was the only thing in this row). Wrapped so it can actually
+                give ground to ClassSwitcher instead of just pushing the row
+                wider. */}
+            <div className="min-w-0 shrink">
+              <WeekPicker
+                options={weekOptions}
+                value={conversationWeek}
+                onChange={changeWeek}
+                schoolName={calendar?.school?.name}
+                disabled={busy}
+              />
+            </div>
           </div>
         ) : null}
         <div className="ml-auto">

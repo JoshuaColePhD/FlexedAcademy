@@ -291,7 +291,7 @@ export function AppShell({ children }) {
         <div
           className="app-rail flex shrink-0 flex-row overflow-hidden transition-[width]"
           style={{
-            width: railCollapsed ? '14px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
+            width: railCollapsed ? '22px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
             transitionTimingFunction: 'var(--ease-out)',
           }}
