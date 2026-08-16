@@ -1,7 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Download, FileText, Loader2, Mic, MicOff, RotateCcw, X } from 'lucide-react'
+import {
+  Check,
+  Download,
+  FileText,
+  Hand,
+  Loader2,
+  Mic,
+  MicOff,
+  Pencil,
+  Play,
+  Radio,
+  RotateCcw,
+  X,
+} from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
+import { splitDecisions } from '../lib/decisionChecklist'
 import { DecisionStack } from './DecisionStack'
 import { WeekStrip } from './WeekStrip'
 
@@ -219,7 +233,7 @@ function BuildProgress({ days, fill = true }) {
  * instant the plan lands, but a sentence spoken once and gone is easy to
  * miss entirely if the room is noisy or attention was elsewhere. This card
  * stays up for as long as the conversation does. */
-function BuiltPlanCard({ builtPlan, fill = true }) {
+function BuiltPlanCard({ builtPlan, fill = true, onClose }) {
   return (
     <div
       className={`neo-panel flex w-full flex-col items-start gap-3 rounded-[28px] bg-paper-raised p-4 ${
@@ -238,19 +252,117 @@ function BuiltPlanCard({ builtPlan, fill = true }) {
           {builtPlan.weekLabel || 'This week'}
         </p>
       </div>
-      <a
-        href={api.planDownloadUrl(builtPlan.planId)}
-        download
-        className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-accent-text transition-shadow"
-      >
-        <Download size={12} aria-hidden="true" />
-        Download
-      </a>
+      <div className="flex flex-wrap items-center gap-2">
+        <a
+          href={api.planDownloadUrl(builtPlan.planId)}
+          download
+          className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-accent-text transition-shadow"
+        >
+          <Download size={12} aria-hidden="true" />
+          Download
+        </a>
+        {/* The "done" moment this card used to leave entirely implicit —
+            the checklist finishing was the only signal, and nothing on
+            screen ever suggested the conversation itself had a natural end.
+            Still just onClose (the same action the header's Close already
+            does); this is a second, better-timed door to it, not a new
+            behavior. */}
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-ink-soft transition-colors hover:bg-paper-sunken"
+          >
+            Done — close voice
+          </button>
+        ) : null}
+      </div>
       <p className="flex items-start gap-1.5 text-xs leading-snug text-ink-faint">
         <FileText size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
         Say what to change and I'll revise it.
       </p>
     </div>
+  )
+}
+
+/* The heard-back echo, made correctable — it used to be a five-second,
+ * read-only flash of what the mic thought it heard (see heardText's own
+ * comment on why that window exists at all). By the time it's on screen
+ * the utterance has ALREADY been sent — delaying every submission to allow
+ * a correction window would slow down the other 95% of utterances that
+ * transcribed just fine, purely to hedge the rare miss. So this doesn't
+ * intercept the original send; it turns the echo into a quick way to
+ * follow up on it, the same tap-to-edit language DecisionRow already uses
+ * for correcting a settled decision, just aimed at what was HEARD instead
+ * of what was DECIDED.
+ */
+function HeardEcho({ text, onCorrect, onEditingChange }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(text)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (!editing) setDraft(text)
+  }, [text, editing])
+  useEffect(() => {
+    if (editing) inputRef.current?.select()
+  }, [editing])
+  useEffect(() => {
+    onEditingChange?.(editing)
+  }, [editing, onEditingChange])
+
+  const save = () => {
+    const next = draft.trim()
+    setEditing(false)
+    if (next && next !== text) onCorrect(next)
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          className="min-w-0 flex-1 rounded-md border border-edge bg-paper px-2 py-1 text-sm text-ink outline-none"
+        />
+        <button
+          type="button"
+          onClick={save}
+          className="neo-raised rounded-full bg-accent-tint px-3 py-1 text-xs font-medium text-accent-text transition-shadow"
+        >
+          Fix it
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="rounded-full px-3 py-1 text-xs font-medium text-ink-soft"
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      aria-label={`You said "${text}" — tap to correct it`}
+      className="fa-rise group flex w-full items-center gap-1.5 truncate text-left text-sm leading-relaxed text-ink-muted"
+    >
+      <span className="eyebrow mr-1.5 shrink-0 not-italic">You said</span>
+      <span className="truncate italic">“{text}”</span>
+      <Pencil
+        size={11}
+        aria-hidden="true"
+        className="shrink-0 text-ink-faint opacity-0 transition-opacity group-hover:opacity-100"
+      />
+    </button>
   )
 }
 
@@ -286,6 +398,10 @@ export function VoiceModePanel({
   // to answer it — see QuestionCards.
   questions = null,
   onAnswer,
+  // Speaks the last reply again — undefined (not a no-op) when there's
+  // nothing to replay yet, so the header hides the button outright rather
+  // than showing it disabled with nothing to explain why.
+  onReplayLast,
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
@@ -322,6 +438,27 @@ export function VoiceModePanel({
      open to close with no way to hold it. */
   const [muted, setMuted] = useState(false)
   const mutedRef = useRef(false)
+  /* 'auto' (the always-on VAD this whole component was built around) or
+     'ptt' (press-and-hold): a classroom is not the quiet room the VAD's
+     thresholds were tuned against, and always-on listening means every
+     aside to a student risks getting half-captured as an utterance. PTT
+     trades the hands-free default for a mode where nothing is heard
+     except while a button is actually held. A ref mirror for the same
+     reason busy/isSpeaking already have one: the VAD tick loop below reads
+     this every frame without re-subscribing to React's render cycle. */
+  const [mode, setMode] = useState('auto')
+  const modeRef = useRef('auto')
+  useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
+  // Whether a press-and-hold utterance is currently under way — guards
+  // startPttRecording/stopPttRecording (below) against a stray pointerup
+  // with no matching pointerdown, e.g. a hover that never actually pressed.
+  const pttHeldRef = useRef(false)
+  // Whether the currently-visible heard-back echo is mid-correction (see
+  // HeardEcho below) — pauses the echo's own auto-clear timeout so typing
+  // a fix doesn't have the input yanked out from under mid-edit.
+  const [editingHeard, setEditingHeard] = useState(false)
   // Bumped by "Try again" in the error state — it's the mic-setup effect's
   // only dependency, so changing it re-runs teardown + setup, which is
   // exactly what retrying permission means. Previously the error state was
@@ -501,16 +638,19 @@ export function VoiceModePanel({
 
   // The heard-back echo is a CHECK, not a log — it exists for the few
   // seconds between "you finished saying it" and "the reply starts," which
-  // is the whole window in which noticing a mis-hear is still useful.
-  // Whichever comes first clears it: the reply starting, or this timeout.
+  // is the whole window in which noticing a mis-hear is still useful (and,
+  // now, the window for HeardEcho below to actually fix it). Whichever
+  // comes first clears it: the reply starting, or this timeout — except
+  // while mid-correction, where yanking the input out from under a
+  // half-typed fix would be its own bug.
   useEffect(() => {
-    if (!heardText) return undefined
+    if (!heardText || editingHeard) return undefined
     const t = setTimeout(() => setHeardText(''), 5000)
     return () => clearTimeout(t)
-  }, [heardText])
+  }, [heardText, editingHeard])
   useEffect(() => {
-    if (isSpeaking || caption) setHeardText('')
-  }, [isSpeaking, caption])
+    if ((isSpeaking || caption) && !editingHeard) setHeardText('')
+  }, [isSpeaking, caption, editingHeard])
 
   useEffect(() => {
     if (!justInterrupted) return undefined
@@ -534,6 +674,30 @@ export function VoiceModePanel({
       abortUtterance()
       quietStartRef.current = null
     }
+  }
+
+  /* Push-to-talk's own start/stop — the pointerdown/pointerup pair the
+     "Hold to talk" button (below) wires up. Mirrors what the VAD's own tick
+     loop does automatically in 'auto' mode (barge-in check, then
+     beginUtterance) rather than duplicating a second recording pipeline:
+     PTT only decides WHEN to record, the recording itself is the exact
+     same MediaRecorder/beginUtterance machinery either mode uses. */
+  const startPttRecording = () => {
+    if (processingRef.current || mutedRef.current || vadStateRef.current === 'recording') return
+    pttHeldRef.current = true
+    // Holding the floor (assistant speaking or still generating) while the
+    // button is pressed is an explicit, deliberate interrupt in PTT mode —
+    // there's no threshold to clear, the press itself IS the signal.
+    if (isSpeakingRef.current || pausedRef.current) {
+      onInterruptRef.current?.()
+      setJustInterrupted(true)
+    }
+    beginUtterance()
+  }
+  const stopPttRecording = () => {
+    if (!pttHeldRef.current) return
+    pttHeldRef.current = false
+    stopRecorder()
   }
 
   // rec.stop() is ASYNCHRONOUS — the 'stop' event (and so handleUtteranceReady,
@@ -676,8 +840,14 @@ export function VoiceModePanel({
       // Muted: nothing below this line runs — no endpointing, no
       // barge-in, no quiet-hint accumulation. The track is already
       // delivering silence (see toggleMute), this just stops the VAD from
-      // reasoning about it at all.
-      if (!processingRef.current && !mutedRef.current) {
+      // reasoning about it at all. Same for push-to-talk mode: every
+      // decision below (when to start, when a pause means "done," what
+      // counts as a deliberate interrupt) is exactly what pressing and
+      // releasing the talk button (startPttRecording/stopPttRecording)
+      // exists to make explicit instead — silence-based endpointing firing
+      // mid-hold would cut a teacher off the moment they paused to think,
+      // still holding the button down.
+      if (modeRef.current === 'auto' && !processingRef.current && !mutedRef.current) {
         const now = performance.now()
         // Whether the assistant currently owns the turn — either actively
         // speaking, or still writing the reply it's about to speak.
@@ -876,7 +1046,9 @@ export function VoiceModePanel({
                         ? "Didn't catch that — try again"
                         : quietHint
                           ? 'Having trouble hearing you — try speaking up'
-                          : 'Listening…'
+                          : mode === 'ptt'
+                            ? 'Hold to talk'
+                            : 'Listening…'
 
   /* The caption area holds CONTENT — words that were said, by either side —
      and the pill holds STATUS. They used to share: the caption fell back to
@@ -946,6 +1118,70 @@ export function VoiceModePanel({
     </button>
   )
 
+  /* Push-to-talk's own control, replacing Mute entirely while active — the
+     two don't coexist: PTT already only listens while physically held, so
+     a separate mute toggle on top of that has nothing left to mean.
+     Pressed-in (neo-inset) for the whole duration of the hold, the same
+     physical language every other pressed/idle pair here already speaks —
+     this is the one control in the panel where that has to track a raw
+     pointer hold rather than a click-toggle. pointerLeave/pointerCancel
+     both release it too: a press that drags off the button (or gets
+     interrupted by a system dialog) must not leave the mic silently stuck
+     open. */
+  const pttButton = (
+    <button
+      type="button"
+      onPointerDown={startPttRecording}
+      onPointerUp={stopPttRecording}
+      onPointerLeave={stopPttRecording}
+      onPointerCancel={stopPttRecording}
+      disabled={status === 'error'}
+      aria-pressed={hearing}
+      aria-label="Hold to talk"
+      className={`tap-target select-none flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-shadow disabled:cursor-not-allowed disabled:opacity-40 ${
+        hearing ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
+      }`}
+    >
+      <Mic size={15} aria-hidden="true" />
+      Hold to talk
+    </button>
+  )
+
+  /* Switches between always-listening (the VAD this panel was built
+     around) and push-to-talk — a classroom is not the quiet room the VAD's
+     thresholds assume, so this is an escape hatch for a noisy room rather
+     than a replacement default. Quiet icon-only treatment, same as Close:
+     a mode switch is a rare, deliberate choice, not something to give equal
+     visual weight to Mute/Hold-to-talk, the control actually used every
+     turn. */
+  const modeToggleButton = (
+    <button
+      type="button"
+      onClick={() => {
+        setMode((m) => {
+          const next = m === 'auto' ? 'ptt' : 'auto'
+          // PTT's own hold IS the gate on when the mic is heard — a mute
+          // left on from 'auto' mode would otherwise silently block every
+          // press with no visible reason why, since Mute itself is gone
+          // from the header the moment PTT takes its place.
+          if (next === 'ptt' && muted) {
+            setMuted(false)
+            mutedRef.current = false
+            streamRef.current?.getAudioTracks().forEach((t) => {
+              t.enabled = true
+            })
+          }
+          return next
+        })
+      }}
+      aria-label={mode === 'auto' ? 'Switch to push-to-talk' : 'Switch to always-listening'}
+      title={mode === 'auto' ? 'Switch to push-to-talk' : 'Switch to always-listening'}
+      className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink-soft"
+    >
+      {mode === 'auto' ? <Radio size={15} aria-hidden="true" /> : <Hand size={15} aria-hidden="true" />}
+    </button>
+  )
+
   /* What was actually SAID, either side of the conversation — never status
      (that's statusPill's job now; see spokenText's comment). Three states,
      in order: the assistant's reply typing itself out, the echo of what was
@@ -969,13 +1205,30 @@ export function VoiceModePanel({
     ) : spokenText ? (
       <p className="truncate text-sm leading-relaxed text-ink-soft">{spokenText}</p>
     ) : showHeard ? (
-      <p className="fa-rise truncate text-sm leading-relaxed text-ink-muted">
-        <span className="eyebrow mr-1.5 not-italic">You said</span>
-        <span className="italic">“{heardText}”</span>
-      </p>
+      <HeardEcho
+        text={heardText}
+        onEditingChange={setEditingHeard}
+        onCorrect={(fixed) => {
+          // Phrased as a correction, not a repeat — a bare resend of the
+          // fixed text reads to the model as a brand new statement, not an
+          // amendment to the turn it already answered.
+          onUtterance(`Sorry, I actually said: "${fixed}"`)
+          setHeardText('')
+        }}
+      />
     ) : isSpeaking ? (
-      <p className="text-sm text-ink-faint">Talk any time to cut in.</p>
+      <p className="text-sm text-ink-faint">
+        {mode === 'ptt' ? 'Hold the talk button to cut in.' : 'Talk any time to cut in.'}
+      </p>
     ) : null
+
+  // The checklist is only actually on screen in its own default rotation
+  // slot (not while a question/build/built-plan state has taken it over) —
+  // showing "N of 4 decided" during those other states would describe a
+  // list that isn't even visible right now.
+  const showingChecklist = !questions?.length && !building && !builtPlan
+  const { checklist: coreChecklist } = splitDecisions(decisions)
+  const decidedCount = coreChecklist.filter((item) => item.value != null).length
 
   return (
     <div
@@ -994,18 +1247,46 @@ export function VoiceModePanel({
          card shadow of its own. */
       className="neo-world flex w-full flex-col gap-3 border-t border-edge bg-paper px-gutter pb-3 pt-4"
     >
-      {/* Header row: status on the left, the two controls for the whole
-          conversation on the right — mirrors the artifact drawer's own
-          handle+content shape, just inline instead of a separate strip,
-          since this panel is short enough not to need one. There is no
-          orb here anymore — a big pulsing circle used to split this
-          panel's space with the checklist; the checklist is the one thing
-          this panel exists to show, so the mic gets exactly the room its
-          own status pill needs and nothing more. */}
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        {statusPill}
-        <div className="flex items-center gap-2">
-          {muteButton}
+      {/* Header row: status (+ a running "N of 4 decided" count while the
+          checklist is actually the thing on screen) on the left, every
+          control for the conversation on the right — mirrors the artifact
+          drawer's own handle+content shape, just inline instead of a
+          separate strip, since this panel is short enough not to need one.
+          There is no orb here anymore — a big pulsing circle used to split
+          this panel's space with the checklist; the checklist is the one
+          thing this panel exists to show, so the mic gets exactly the room
+          its own status pill needs and nothing more. flex-wrap on the
+          controls cluster: Replay, the mode toggle, Mute/Hold-to-talk, and
+          Close is a lot of buttons for one row on a narrow phone. */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {statusPill}
+          {showingChecklist ? (
+            <span className="text-2xs font-semibold uppercase tracking-caps text-ink-faint">
+              {decidedCount} of {coreChecklist.length} decided
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Quiet, icon-only, same treatment as Close — the old
+              full-screen transcript column had a Replay action on every
+              reply; dropping that column when the chat's own message list
+              took over its job meant there was no way left to hear a missed
+              line again without retyping. Hidden outright (not disabled)
+              when there's nothing yet to replay. */}
+          {onReplayLast ? (
+            <button
+              type="button"
+              onClick={onReplayLast}
+              aria-label="Replay the last reply"
+              title="Replay the last reply"
+              className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink-soft"
+            >
+              <Play size={14} aria-hidden="true" fill="currentColor" />
+            </button>
+          ) : null}
+          {modeToggleButton}
+          {mode === 'ptt' ? pttButton : muteButton}
           {/* Quieter than muteButton on purpose — no neo-raised emboss, no
              shadow, just the glyph with a hover state. Mute is the control
              actually used mid-conversation; Close ends it. Giving both the
@@ -1047,7 +1328,7 @@ export function VoiceModePanel({
         ) : building ? (
           <BuildProgress days={buildDays} fill={false} />
         ) : builtPlan ? (
-          <BuiltPlanCard builtPlan={builtPlan} fill={false} />
+          <BuiltPlanCard builtPlan={builtPlan} fill={false} onClose={onClose} />
         ) : (
           <>
             {/* A checklist that's still all "Not yet decided" is a cold

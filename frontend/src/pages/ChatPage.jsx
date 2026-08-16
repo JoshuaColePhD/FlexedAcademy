@@ -722,6 +722,33 @@ export function ChatPage() {
     }
   }, [voice, messages])
 
+  /* Factored out of the docked panel's own onClose so the ⌘⇧V hotkey below
+     can end the conversation exactly the same way a click on Close does —
+     silencing the shared <audio> element too (see its own comment), not
+     just the panel's own local state. */
+  const closeVoice = useCallback(() => {
+    voice.stop()
+    setVoiceOpen(false)
+    setVoiceCaption('')
+    setDecisions([])
+  }, [voice])
+
+  /* ⌘/Ctrl+Shift+V toggles voice mode from anywhere on the page — the same
+     "reach for it without touching the mouse" convenience CommandK (App.jsx)
+     already gives "start a new plan." Shift, not bare ⌘V: that's Paste, and
+     stealing it would silently break pasting text into the composer. */
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        if (voiceOpen) closeVoice()
+        else openVoice()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [voiceOpen, openVoice, closeVoice])
+
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
     async (text) => {
@@ -1280,6 +1307,18 @@ export function ChatPage() {
     return { message: last, questions: last.questions }
   }, [messages])
 
+  /* What voice mode's own Replay button (below) reads out loud — the exact
+     same "spokenContent, when set, else content" the auto-speak effect
+     already uses (see its own comment), so replaying can never say
+     something different than what was actually spoken the first time.
+     null while there's nothing to replay yet, or while a reply is still
+     mid-stream (streaming text isn't the finished line worth replaying). */
+  const lastReplyText = useMemo(() => {
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || last.streaming) return null
+    return last.spokenContent || last.content || null
+  }, [messages])
+
   const livePlan = artifact?.plan || stream.preview
   const liveArtifact = useMemo(
     () =>
@@ -1668,23 +1707,25 @@ export function ChatPage() {
         <div className={`voice-dock${voiceOpen ? ' is-open' : ''}`}>
           <div className={`voice-dock-body${voiceExit.closing ? ' is-closing' : ''}`}>
             <VoiceModePanel
-              onClose={() => {
-                // The shared <audio> element lives in VoiceProvider, at the
-                // app root — it has no idea this panel is closing, so
-                // nothing about unmounting it stops whatever's still
-                // playing through it. Ending the conversation without also
-                // silencing it meant a reply kept talking well after the
-                // "end conversation" click.
-                voice.stop()
-                setVoiceOpen(false)
-                setVoiceCaption('')
-                setDecisions([])
-              }}
+              onClose={closeVoice}
               onUtterance={submit}
               busy={busy}
               isSpeaking={voice.speaking}
               caption={voiceCaption}
               decisions={decisions}
+              /* Replay button: speaks the last reply again through the same
+                 shared <audio> element, and re-primes the caption so the
+                 type-out plays a second time too. undefined (not a no-op
+                 function) when there's nothing to replay yet — VoiceModePanel
+                 hides the button outright rather than rendering it disabled. */
+              onReplayLast={
+                lastReplyText
+                  ? () => {
+                      setVoiceCaption(lastReplyText)
+                      voice.speak(lastReplyText)
+                    }
+                  : undefined
+              }
               /* Non-null the moment a week is actually saved — see
                  VoiceModePanel's BuiltPlanCard, which takes over from the
                  running decisions checklist once this is set. artifact.planId,
