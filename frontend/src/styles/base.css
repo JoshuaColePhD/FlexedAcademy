@@ -3351,6 +3351,35 @@
       radial-gradient(circle min(14.5vw, 145px) at 56% 58%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
       radial-gradient(circle min(14vw, 140px) at 34% 54%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
     pointer-events: none;
+    /* Slow drift, on request — background-position, not transform: the box
+       already carries a static transform (translateX(-50%), for centering)
+       and background-position leaves that alone. Also, deliberately, not
+       filter: blur() animating anything — see this rule's own comment above
+       on the WebKit tiling bug that a blurred layer triggers inside a
+       scrolling overflow:hidden ancestor; a background-position animation
+       never forces that kind of compositing layer.
+       background-size is bumped past 100% first — panning a background that
+       exactly fills its box moves nothing, since there's no slack to reveal.
+       40 seconds and ease-in-out, not linear: linear panning at this scale
+       reads as a treadmill; easing in and out of each waypoint reads as
+       actual drift. Already covered by the app's global
+       prefers-reduced-motion block (collapses to a single 0.01ms frame). */
+    background-size: 140% 140%;
+    animation: land-blob-drift 40s ease-in-out infinite alternate;
+  }
+  @keyframes land-blob-drift {
+    0% {
+      background-position: 15% 20%;
+    }
+    33% {
+      background-position: 40% 45%;
+    }
+    66% {
+      background-position: 20% 55%;
+    }
+    100% {
+      background-position: 45% 15%;
+    }
   }
   .land-eyebrow {
     position: relative;
