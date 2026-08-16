@@ -1309,11 +1309,23 @@ def get_quiz(user_id: str, quiz_id: str) -> dict | None:
     return _hydrate_quiz(row) if row else None
 
 
-def update_quiz(user_id: str, quiz_id: str, quiz_json: dict, qti_path: str | None) -> dict | None:
-    _write(
-        "UPDATE quizzes SET quiz_json = ?, qti_path = ? WHERE id = ? AND user_id = ?",
-        (json.dumps(quiz_json), qti_path, quiz_id, user_id),
-    )
+def update_quiz(
+    user_id: str, quiz_id: str, quiz_json: dict, qti_path: str | None, warnings: list[str] | None = None
+) -> dict | None:
+    # warnings stays untouched (None) for the manual-edit PUT route, which
+    # re-validates in place and has no fresh warnings to report; the
+    # chat-driven revise route (routes/plans.py) always re-runs schema
+    # validation and passes its own list, even an empty one.
+    if warnings is None:
+        _write(
+            "UPDATE quizzes SET quiz_json = ?, qti_path = ? WHERE id = ? AND user_id = ?",
+            (json.dumps(quiz_json), qti_path, quiz_id, user_id),
+        )
+    else:
+        _write(
+            "UPDATE quizzes SET quiz_json = ?, qti_path = ?, warnings = ? WHERE id = ? AND user_id = ?",
+            (json.dumps(quiz_json), qti_path, json.dumps(warnings), quiz_id, user_id),
+        )
     return get_quiz(user_id, quiz_id)
 
 

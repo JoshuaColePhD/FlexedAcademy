@@ -276,7 +276,13 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
             # conversation for one" is exactly the kind of inference this
             # app avoids everywhere else an id already answers the question
             # directly (see _chat_class itself, or db.class_school).
-            has_plan = bool(req.chat_id) and db.list_plans(user_id, chat_id=req.chat_id, limit=1)["total"] > 0
+            plans_for_chat = db.list_plans(user_id, chat_id=req.chat_id, limit=1)["items"] if req.chat_id else []
+            has_plan = bool(plans_for_chat)
+            # Whether the model should be steered toward revising the quiz it
+            # already built (generate_quiz's own `revises_current` argument)
+            # instead of always building an additional one — see llm.py's
+            # revise_quiz for why iterating used to just pile up new rows.
+            has_quiz = has_plan and bool(db.list_quizzes_for_plan(user_id, plans_for_chat[0]["id"]))
 
             if cls:
                 subject = cls["subject"]
@@ -420,7 +426,18 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
                         "/ 20). Only ask about whichever of the two the teacher didn't already specify — if "
                         "they said '10 multiple choice questions' that's already both answered, build "
                         "immediately. Never call `generate_quiz` unasked, and never alongside "
-                        "`generate_lesson_plan` in the same turn."
+                        "`generate_lesson_plan` in the same turn.\n\n"
+                        + (
+                            "A quiz already exists for this conversation. If the teacher's message is asking "
+                            "to change, fix, or improve the quiz you already built ('make it harder', 'add "
+                            "two more questions', 'fix question 3', 'make these easier') — call "
+                            "`generate_quiz` again with `revises_current: true` so it updates the existing "
+                            "quiz instead of building a separate one. Only set it false (or call without it) "
+                            "when the teacher explicitly asks for an ADDITIONAL, distinct quiz — a different "
+                            "question type, or a second quiz alongside the first."
+                            if has_quiz
+                            else ""
+                        )
                         if has_plan
                         else "No plan exists yet for this conversation, so `generate_quiz` cannot be called — "
                         "if the teacher asks for a quiz before there is a week to test, tell them to build "

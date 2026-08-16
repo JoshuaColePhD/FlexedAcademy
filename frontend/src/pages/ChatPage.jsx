@@ -1057,13 +1057,28 @@ export function ChatPage() {
         // quizBuilding's own spinner in the rail already solves this for a
         // teacher watching the rail, not one watching the chat — which is
         // most of them, most of the time.
+        // Captured before setViewingQuiz(null) below clears it — this is
+        // "the quiz already open in this conversation," the same role
+        // artifact.planId already plays for plans. Iterating on a quiz used
+        // to always call createQuiz, which only ever inserts a new row
+        // (routes/plans.py), so every "make it harder" piled up a separate
+        // quiz next to the one just built instead of changing it. The model
+        // decides revise-vs-new (generate_quiz's revises_current, routed
+        // through llm.py's system prompt) since it has the conversational
+        // context to tell "make it harder" from "also make a matching
+        // quiz" — this only needs an existing quiz to revise.
+        const revisingQuizId =
+          chatResult.quizRequested.revisesCurrent && viewingQuiz?.id ? viewingQuiz.id : null
+
         if (!chatResult.text?.trim()) {
           setMessages((prev) => [
             ...prev,
             {
               id: nextId(),
               role: 'assistant',
-              content: `Building your quiz now — ${chatResult.quizRequested.numQuestions} ${questionTypesProse(chatResult.quizRequested.questionTypes)} questions.`,
+              content: revisingQuizId
+                ? 'Updating the quiz now.'
+                : `Building your quiz now — ${chatResult.quizRequested.numQuestions} ${questionTypesProse(chatResult.quizRequested.questionTypes)} questions.`,
             },
           ])
         }
@@ -1075,7 +1090,9 @@ export function ChatPage() {
         if (isPhone) setRailOpen(false)
 
         try {
-          const quiz = await api.createQuiz(artifact.planId, chatResult.quizRequested)
+          const quiz = revisingQuizId
+            ? await api.reviseQuiz(artifact.planId, revisingQuizId, content)
+            : await api.createQuiz(artifact.planId, chatResult.quizRequested)
           qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
           setViewingQuiz(quiz)
           setMessages((prev) => [
@@ -1083,11 +1100,13 @@ export function ChatPage() {
             {
               id: nextId(),
               role: 'assistant',
-              content: `Built "${quiz.title}." Download it from the plan panel — it imports into Canvas as a QTI package.`,
+              content: revisingQuizId
+                ? `Updated "${quiz.title}." Download it from the plan panel — it imports into Canvas as a QTI package.`
+                : `Built "${quiz.title}." Download it from the plan panel — it imports into Canvas as a QTI package.`,
             },
           ])
         } catch (err) {
-          toast.apiError('Could not build the quiz', err)
+          toast.apiError(revisingQuizId ? 'Could not update the quiz' : 'Could not build the quiz', err)
         } finally {
           setQuizBuilding(false)
         }

@@ -284,6 +284,49 @@ def generate_quiz(user_id: str, plan: dict, question_types: list[str], num_quest
     return loads_lenient(content or "")
 
 
+def revise_quiz(user_id: str, plan: dict, existing_quiz: dict, feedback: str) -> dict:
+    """Revise a quiz that's already been built, on the teacher's own
+    follow-up ("make it harder", "add two more questions") — the same
+    critique-and-revise shape critique_and_revise uses for a whole plan
+    (routes/plans.py's revise_whole_plan): the model sees what it already
+    wrote and what to change, not a blank page it has to reconstruct from
+    scratch and risk drifting from what the teacher actually asked to keep.
+
+    Exists because iterating on a quiz used to always call generate_quiz
+    again, which only ever inserts a new row (routes/plans.py's create_quiz)
+    — every "make it harder" produced a whole separate quiz sitting next to
+    the one just built, instead of changing it. Still grounded ONLY in the
+    plan's own content, same reasoning and same guard as generate_quiz.
+    """
+    system_prompt = (
+        "You are revising a quiz you already wrote for a lesson plan a teacher built. "
+        "Write ONLY using the content, standards, and vocabulary already present in the plan below — "
+        "never invent a standard code, term, or fact that isn't already in it. Keep the same question "
+        "types and roughly the same number of questions as the quiz below unless the teacher's feedback "
+        "says otherwise.\n\n"
+        "THE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
+        + "\n\nTHE QUIZ YOU ALREADY WROTE:\n\n" + json.dumps(existing_quiz, indent=2)
+    )
+    custom_instructions = custom_instructions_for(user_id)
+    if custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only, "
+            "never license to add content outside the plan above:\n\n" + custom_instructions
+        )
+    content = _cached_completion(
+        user_id,
+        "revise_quiz",
+        model=settings.openai_model,
+        max_completion_tokens=3000,
+        response_format=_response_format("weekly_quiz", QUIZ_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Revise the quiz above. Teacher's feedback: {feedback}"},
+        ],
+    )
+    return loads_lenient(content or "")
+
+
 def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, result: RetrievalResult) -> dict:
     """Revise one day. Emits the SAME schema as generate_plan's days.
 
@@ -740,6 +783,17 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                             "type": "integer",
                             "description": "How many questions, if the teacher named a number. Default 10.",
                         },
+                        "revises_current": {
+                            "type": "boolean",
+                            "description": (
+                                "True if the teacher is asking to change, fix, or improve the quiz you "
+                                "most recently built in this conversation ('make it harder', 'add two "
+                                "more questions', 'fix question 3') — the existing quiz gets updated in "
+                                "place. False (the default) if they're asking for an ADDITIONAL, distinct "
+                                "quiz — a different question type, or a second quiz alongside the first. "
+                                "Omit or set false if no quiz has been built yet in this conversation."
+                            ),
+                        },
                     },
                     "required": ["question_types"],
                 },
@@ -911,6 +965,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                     "tool_call": "generate_quiz",
                     "question_types": question_types,
                     "num_questions": args.get("num_questions") or 10,
+                    "revises_current": bool(args.get("revises_current")),
                 }
                 break
 

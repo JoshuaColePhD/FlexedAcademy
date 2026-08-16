@@ -45,6 +45,13 @@ class QuizUpdateRequest(BaseModel):
     quiz_json: dict
 
 
+class QuizReviseBody(BaseModel):
+    # The teacher's own message that triggered this — see ChatPage.jsx's own
+    # comment on why the chat flow passes it straight through rather than
+    # trying to summarize or structure it first.
+    feedback: str = Field(min_length=1, max_length=4000)
+
+
 class SharePlan(BaseModel):
     email: EmailStr | None = None
     # "reader" by default — a co-teacher gets to actually see the week
@@ -388,6 +395,50 @@ def create_quiz(
         plan_id=plan_id,
         title=quiz_raw.get("title") or f"{row['week_label']} Quiz",
         question_types=body.question_types,
+        quiz_json=quiz_raw,
+        qti_path=qti_path,
+        warnings=warnings,
+    )
+
+
+@router.post("/{plan_id}/quizzes/{quiz_id}/revise")
+def revise_quiz_route(
+    plan_id: str, quiz_id: str, body: QuizReviseBody, user_id: str = Depends(get_current_user)
+) -> dict:
+    """Revise an already-built quiz in place, on the teacher's own chat
+    follow-up — the chat-driven counterpart to create_quiz above, the same
+    way revise_whole_plan is the counterpart to building a plan fresh.
+
+    Gated the same as create_quiz — a real model call, same reasoning.
+    """
+    row = _require_plan(user_id, plan_id)
+    require_entitlement(user_id)
+    quiz_row = db.get_quiz(user_id, quiz_id)
+    if not quiz_row:
+        raise AppError("quiz_not_found", "No such quiz.", status=404)
+
+    quiz_raw = llm.revise_quiz(user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback)
+    try:
+        warnings = schema.validate_quiz(quiz_raw)
+    except schema.QuizSchemaError as e:
+        raise AppError(
+            "quiz_schema_error",
+            f"The revised quiz wasn't usable: {e}",
+            status=502,
+            hint="Try asking for the revision again — this is a one-sample formatting slip, not a structural problem.",
+        ) from e
+
+    out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
+    try:
+        qti_build.build_qti_zip(quiz_raw, out_path)
+        qti_path = str(out_path)
+    except Exception as e:  # noqa: BLE001 - the quiz row is worth saving even if the zip failed
+        warnings = [*warnings, f"QTI file could not be built: {e}"]
+        qti_path = None
+
+    return db.update_quiz(
+        user_id=user_id,
+        quiz_id=quiz_id,
         quiz_json=quiz_raw,
         qti_path=qti_path,
         warnings=warnings,

@@ -233,6 +233,17 @@ export const api = {
     request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'DELETE' }),
   updateQuiz: (planId, quizId, quizJson) =>
     request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'PUT', body: { quiz_json: quizJson } }),
+  /* The chat-driven counterpart to createQuiz — a follow-up like "make it
+   * harder" updates the SAME quiz row in place instead of creating another
+   * one (backend/routes/plans.py's revise_quiz_route), which is what
+   * createQuiz would otherwise always do on every iteration. `feedback` is
+   * the teacher's own message verbatim; the model already decided this was
+   * a revision (generate_quiz's revises_current), not a new quiz. */
+  reviseQuiz: (planId, quizId, feedback) =>
+    request(`/api/plans/${planId}/quizzes/${quizId}/revise`, {
+      method: 'POST',
+      body: { feedback },
+    }),
   quizDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download`,
   exportQuizToCanvas: (planId, quizId) =>
     request(`/api/canvas/export_quiz?plan_id=${planId}&quiz_id=${quizId}`, { method: 'POST' }),

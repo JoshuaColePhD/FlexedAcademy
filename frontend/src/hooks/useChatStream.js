@@ -198,6 +198,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
             quizRequested = {
               questionTypes: event.question_types || [],
               numQuestions: event.num_questions || 10,
+              revisesCurrent: !!event.revises_current,
             }
           }
 
