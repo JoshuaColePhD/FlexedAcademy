@@ -1543,8 +1543,12 @@ export function ChatPage() {
   let contextualSuggestion = ''
   if (nextUndecided && !hasArtifact) {
     if (nextUndecided.key === 'week' && calendar?.weeks) {
-      const nextWeek = calendar.weeks.find((w) => !w.built)
-      if (nextWeek) contextualSuggestion = `Let's plan Week ${nextWeek.week}`
+      if (conversationWeek) {
+        contextualSuggestion = `Let's plan Week ${conversationWeek}`
+      } else {
+        const nextWeek = calendar.weeks.find((w) => !w.built)
+        if (nextWeek) contextualSuggestion = `Let's plan Week ${nextWeek.week}`
+      }
     } else if (nextUndecided.key === 'anchor') {
       const selectedWeekDec = coreChecklist.find((c) => c.key === 'week')
       const weekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\D/g, ''), 10) : null
