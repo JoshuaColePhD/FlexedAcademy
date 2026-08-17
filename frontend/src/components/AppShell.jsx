@@ -234,17 +234,6 @@ function Rail({ onNavigate, onClose }) {
 
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
-  const location = useLocation()
-  /* Account and Settings are full, drilled-into pages now (AccountPage.jsx's
-     own comment), not a popover or a dialog stacked over a still-visible
-     chat — so the rail slides shut while either is open, the same way a
-     phone's own Settings app takes the whole screen instead of sharing it
-     with whatever list was open behind it. Keyed on the route itself, not a
-     piece of state some other component has to remember to flip: the URL is
-     already the one source of truth for "which of these two screens is
-     open," and this needs to react to it after a browser-back or a direct
-     link too, not just a click from inside the app. */
-  const hideRail = /\/(account|settings)$/.test(location.pathname)
   const [drawerOpen, setDrawerOpen] = useState(false)
   /* Owned here, set by ChatPage — see lib/shellContext.js. The rail is the one
      column with slack in it, so it gives up 48px while the document is open. */
@@ -302,12 +291,12 @@ export function AppShell({ children }) {
         <div
           className="app-rail flex shrink-0 flex-row overflow-hidden transition-[width]"
           style={{
-            width: hideRail ? '0px' : railCollapsed ? '22px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
+            width: railCollapsed ? '22px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
             transitionTimingFunction: 'var(--ease-out)',
           }}
         >
-          {!railCollapsed && !hideRail ? (
+          {!railCollapsed ? (
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <Rail />
             </div>
@@ -318,26 +307,21 @@ export function AppShell({ children }) {
               with everything else in the header. The chevron is always
               drawn (not just while collapsed) so the handle reads as
               clickable in both states; it just flips to point whichever
-              way this click will move the rail. Gone entirely while
-              `hideRail` — there's nothing to grab once the whole rail has
-              slid away for Account/Settings; showing it back is the back
-              arrow on those pages, not a second, redundant control here. */}
-          {!hideRail ? (
-            <button
-              type="button"
-              className="app-rail-handle tap-target"
-              onClick={toggleRailCollapsed}
-              aria-expanded={!railCollapsed}
-              aria-label={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
-              title={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
-            >
-              {railCollapsed ? (
-                <ChevronRight className="app-rail-handle-arrow" aria-hidden="true" />
-              ) : (
-                <ChevronLeft className="app-rail-handle-arrow" aria-hidden="true" />
-              )}
-            </button>
-          ) : null}
+              way this click will move the rail. */}
+          <button
+            type="button"
+            className="app-rail-handle tap-target"
+            onClick={toggleRailCollapsed}
+            aria-expanded={!railCollapsed}
+            aria-label={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
+            title={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
+          >
+            {railCollapsed ? (
+              <ChevronRight className="app-rail-handle-arrow" aria-hidden="true" />
+            ) : (
+              <ChevronLeft className="app-rail-handle-arrow" aria-hidden="true" />
+            )}
+          </button>
         </div>
       ) : null}
 

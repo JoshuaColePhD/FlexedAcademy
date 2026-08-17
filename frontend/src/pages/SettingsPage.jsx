@@ -613,7 +613,6 @@ function Diagnostics() {
 }
 
 export function SettingsPage() {
-  const { classId } = useParams()
   const qc = useQueryClient()
   const toast = useToast()
   const meState = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
@@ -644,19 +643,7 @@ export function SettingsPage() {
 
   return (
     <div className="column">
-      <header className="flex h-14 shrink-0 items-center gap-2 px-gutter">
-        {/* Back to Account, not the chat directly — Settings is reached by
-            drilling into Account (AccountPage.jsx), so "back" should retrace
-            that same step rather than skip past it. A direct/bookmarked
-            visit still lands here fine; this link just always points at the
-            same place regardless of how the page was reached. */}
-        <Link
-          to={`/c/${classId}/account`}
-          aria-label="Back to your account"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
-        >
-          <ArrowLeft size={16} aria-hidden="true" />
-        </Link>
+      <header className="flex h-14 shrink-0 items-center px-gutter">
         <h1 className="text-sm font-semibold text-ink">Settings</h1>
       </header>
 
