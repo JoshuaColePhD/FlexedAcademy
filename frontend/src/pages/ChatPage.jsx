@@ -128,11 +128,10 @@ export function ChatPage() {
      this chat and fetching IT specifically failed — never for "no plan
      exists yet." That distinction is the whole point: without it, a
      transient getPlan() failure on reopen fell through to the exact same
-     branch as "nothing built yet," and the rail showed decisions.length's
-     own DecisionStack (repopulated from the very transcript that proves a
-     plan WAS built) standing in for a real plan that just failed to load —
-     reading as "the plan you built doesn't exist" while the chat above it
-     says otherwise. See the reload effect below. */
+     branch as "nothing built yet," and the rail's plain empty state stood
+     in for a real plan that just failed to load — reading as "the plan you
+     built doesn't exist" while the chat above it says otherwise. See the
+     reload effect below. */
   const [artifactLoadError, setArtifactLoadError] = useState(false)
   const [query, setQuery] = useState('')
   const [attachments, setAttachments] = useState([])
@@ -397,9 +396,9 @@ export function ChatPage() {
     // One retry, not a loop — a reopened chat's getPlan() is a single request
     // right after mount, exactly where a cold connection/transient blip is
     // most likely, and this used to fail permanently on the first stumble
-    // with nothing surfaced: the rail quietly fell back to decisions.length
+    // with nothing surfaced: the app quietly fell back to decisions.length
     // (repopulated from the SAME transcript that proves a plan exists),
-    // showing "the plan so far" cards standing in for a real plan that just
+    // showing "the plan so far" list standing in for a real plan that just
     // failed to load — reading as "nothing built yet" while the chat above
     // it says otherwise.
     const getPlanWithRetry = async (id) => {
@@ -443,7 +442,7 @@ export function ChatPage() {
           if (cancelled) return
           if (!items[0]) {
             // Genuinely nothing built for this chat — the "before a plan
-            // exists" case decisions.length's own DecisionStack is for.
+            // exists" case the "plan so far" list (decisions.length) is for.
             setArtifact(null)
             return
           }
@@ -1584,23 +1583,23 @@ export function ChatPage() {
     [chatWidthPx, clampChatWidth, persistChatWidth]
   )
 
-  /* Auto-opens the drawer the moment a build starts, a plan exists, or the
-     first decision lands; after that it is the teacher's to open or close.
-     Fires at most ONCE per chat (railAutoOpenedRef) — `busy` flips true and
-     back false on every later turn too (a revision, a follow-up, a quiz),
-     and without the guard each of those turns re-ran this effect and
-     force-reopened a drawer the teacher had just closed. The decisions.length
-     > 0 case is what makes "the plan so far" (see ArtifactRail) actually
-     discoverable in text chat — without it the rail stayed closed through
-     the entire brainstorming phase and a teacher had no reason to ever open
-     it before a plan existed. */
+  /* Auto-opens the drawer the moment a build starts or a plan exists; after
+     that it is the teacher's to open or close. Fires at most ONCE per chat
+     (railAutoOpenedRef) — `busy` flips true and back false on every later
+     turn too (a revision, a follow-up, a quiz), and without the guard each
+     of those turns re-ran this effect and force-reopened a drawer the
+     teacher had just closed. "The plan so far" now lives inline in the chat
+     itself (see the decisions list rendered with the messages), not in the
+     rail, so landing a decision no longer needs to pop the rail open on its
+     own — the rail has nothing to show for that case until a build
+     actually starts. */
   useEffect(() => {
     if (railAutoOpenedRef.current) return
-    if (busy || hasArtifact || decisions.length > 0) {
+    if (busy || hasArtifact) {
       setRailOpen(true)
       railAutoOpenedRef.current = true
     }
-  }, [busy, hasArtifact, decisions.length])
+  }, [busy, hasArtifact])
 
   /** Opening the document from anywhere, optionally straight into a cell. */
   const openDocument = useCallback((tweak = null) => {
@@ -1664,7 +1663,7 @@ export function ChatPage() {
   // of the two `artifactEl` renders.
   const viewLabel = VIEW_KIND_LABELS[viewKind] || VIEW_KIND_LABELS.plan
 
-  const { checklist: coreChecklist } = useMemo(() => splitDecisions(decisions), [decisions])
+  const { checklist: coreChecklist, extra: extraDecisions } = useMemo(() => splitDecisions(decisions), [decisions])
   const nextUndecided = coreChecklist.find((c) => c.value == null)
 
   let contextualSuggestion = ''
@@ -1804,6 +1803,28 @@ export function ChatPage() {
                 onAnswerQuestions={onAnswerQuestions}
               />
             ))}
+
+            {/* "The plan so far" — used to live only in the side rail
+                (ArtifactRail's own DecisionStack), a separate card next to
+                the conversation instead of part of it. On request, a plain
+                list in the chat flow itself: no checkmarks, no tap-to-edit,
+                just what's been settled so far. Same visibility as the rail
+                version had — gone once the plan itself is being written or
+                already exists, since a built plan or its progress is a
+                clearer answer to "what's settled" than this list. */}
+            {!hasArtifact && !busy && decisions.length > 0 ? (
+              <div className="w-full">
+                <p className="eyebrow mb-2">The plan so far</p>
+                <ul className="flex flex-col gap-1 text-sm leading-relaxed text-ink-soft">
+                  {[...coreChecklist, ...extraDecisions].map((item) => (
+                    <li key={item.key}>
+                      <span className="font-medium text-ink">{item.label}:</span>{' '}
+                      {item.value != null ? item.value : <span className="italic text-ink-faint">not yet decided</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {/* The conversational reply (chat_stream, ahead of any tool call)
                 had no on-screen presence at all until its first token — the
@@ -2075,7 +2096,6 @@ export function ChatPage() {
           onOpenDocument={openDoc}
           busy={busy}
           quizBuilding={quizBuilding}
-          decisions={decisions}
           artifactLoadError={artifactLoadError}
         />
       ) : null}

@@ -19,7 +19,6 @@ import { orderedDays, unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { useExitTransition } from '../hooks/useExitTransition'
-import { DecisionStack } from './DecisionStack'
 import { ShareDialog } from './ShareDialog'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
@@ -195,7 +194,6 @@ export function ArtifactRail({
   classId,
   onExpand,
   busy,
-  decisions = [],
   variant = 'rail',
   // Whether a quiz is being generated right now for THIS plan — ChatPage's
   // own state, passed down rather than inferred here, since the request
@@ -213,11 +211,9 @@ export function ArtifactRail({
   onOpenDocument,
   // True only when a plan is KNOWN to exist for this chat (a message or
   // the plans table named its id) and fetching it failed — see ChatPage's
-  // own reload effect. Distinct from "nothing built yet" on purpose: that
-  // case is what decisions.length's own DecisionStack below is for, and
-  // conflating the two showed decisions (repopulated from the very
-  // transcript that proves a plan exists) standing in for a real plan
-  // that just failed to load.
+  // own reload effect. Distinct from "nothing built yet," the plain
+  // rail-empty state below: conflating the two would show a stale rail
+  // standing in for a real plan that just failed to load.
   artifactLoadError = false,
 }) {
   const [shareTarget, setShareTarget] = useState(null)
@@ -347,11 +343,10 @@ export function ArtifactRail({
         ) : artifactLoadError ? (
           /* A real plan exists for this chat (a message or the plans table
              named its id) and fetching it just failed — NOT the same as
-             "nothing built yet," which is what decisions.length's own
-             DecisionStack below is for. Checked first, so a failed load
-             never falls through to decisions repopulated from the very
-             transcript that proves a plan exists — reading as "nothing was
-             built" when the opposite is true. */
+             "nothing built yet," the plain rail-empty state below. Checked
+             first, so a failed load never falls through to that empty
+             state — reading as "nothing was built" when the opposite is
+             true. */
           <div className="rail-empty">
             <AlertTriangle size={20} aria-hidden="true" className="text-mark" />
             <p>Couldn’t load this week’s plan.</p>
@@ -359,14 +354,6 @@ export function ArtifactRail({
               Reload
             </button>
           </div>
-        ) : !isBar && decisions.length ? (
-          /* Before a plan exists, this is where "the plan so far" lives —
-             voice mode's own deck (see DecisionStack), shown here now too so
-             a teacher typing can see what's already been settled without
-             opening voice mode at all. Replaces the bare empty state the
-             moment there's anything to show; reverts to it if the chat
-             restarts with nothing decided yet. */
-          <DecisionStack decisions={decisions} fill={false} />
         ) : (
           <div className="rail-empty">
             {/* No room for it in the one-row phone bar — same reasoning as
