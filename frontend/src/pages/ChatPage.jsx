@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CalendarDays } from 'lucide-react'
+import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -1741,29 +1741,16 @@ export function ChatPage() {
       <div className="flex h-11 shrink-0 items-center border-b border-edge px-2">
         {!docOpen ? (
           <div className="chat-head pointer-events-auto flex min-w-0 max-w-[70%] flex-nowrap items-center">
-            {/* School, then course, then date, left to right — on request.
-                Its own leading badge rather than living inside WeekPicker
-                (which used to show it as the select's own label): a school
-                only changes when a teacher has more than one on file, so it
-                reads as context set once, not a control to interact with,
-                same shrink-last treatment as the two things after it. */}
-            {calendar?.school?.name ? (
-              <p className="chat-week shrink-0">
-                <CalendarDays size={12} aria-hidden="true" />
-                <span className="chat-head-label min-w-0 truncate">{calendar.school.name}</span>
-              </p>
-            ) : null}
-            {/* Which prep, directly after which school — the two questions
-                that together answer "what is this conversation about,"
-                read as one row instead of a switcher a whole sidebar away
-                from the week it scopes. flex-nowrap overrides .chat-head's
-                own wrap (needed when it was just WeekPicker alone): with
-                three controls now sharing this row, wrapping stacked them
-                into separate lines instead of the one row this is meant to
-                read as. Each child gets min-w-0 so it truncates under real
-                width pressure (an iPad's narrower chat pane, a long class
-                name) rather than forcing the row wide enough to overflow
-                the screen. */}
+            {/* Which prep, then which week — the two questions that together
+                answer "what is this conversation about," read as one row
+                instead of a switcher a whole sidebar away from the week it
+                scopes. flex-nowrap overrides .chat-head's own wrap (needed
+                when it was just WeekPicker alone): with two controls now
+                sharing this row, wrapping stacked them into separate lines
+                instead of the one row this is meant to read as. Each child
+                gets min-w-0 so it truncates under real width pressure (an
+                iPad's narrower chat pane, a long class name) rather than
+                forcing the row wide enough to overflow the screen. */}
             <ClassSwitcher
               classes={classes}
               activeClass={activeClass}
@@ -1787,6 +1774,11 @@ export function ChatPage() {
           </div>
         ) : null}
         <div className="ml-auto flex min-w-0 items-center gap-3">
+          {calendar?.school?.name ? (
+            <span className="hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
+              {calendar.school.name}
+            </span>
+          ) : null}
           <ThemeToggle />
         </div>
       </div>
