@@ -1781,7 +1781,11 @@ def week_board(user_id: str, class_id: str | None = None, *, around: int = 0) ->
                 "unit": (plan or {}).get("unit"),
                 "has_plan": plan is not None,
                 "is_current": bool(current and current["week"] == w["week"]),
-                "is_past": w["end"] < today,
+                # w["end"] is None for a week with no real calendar dates
+                # (schoolcal.NO_CALENDAR_SCHOOL_ID) — there's no "today" to
+                # compare against a schedule that isn't real yet, so such a
+                # week is never past, only ever upcoming until it's built.
+                "is_past": bool(w["end"]) and w["end"] < today,
             }
         )
 

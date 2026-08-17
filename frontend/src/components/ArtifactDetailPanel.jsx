@@ -364,7 +364,13 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
               </span>
               <span className="detail-card-code">{label}</span>
             </div>
-            <p className="detail-card-answer">{shortRange(w.start, w.end)}</p>
+            {/* Blank for a school with no real calendar on file yet
+                (schoolcal.py's NO_CALENDAR_SCHOOL_ID) rather than an empty
+                paragraph — shortRange itself already returns '' for a
+                week with no start/end. */}
+            {shortRange(w.start, w.end) ? (
+              <p className="detail-card-answer">{shortRange(w.start, w.end)}</p>
+            ) : null}
           </div>
         )
         return openable ? (

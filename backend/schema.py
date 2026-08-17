@@ -114,7 +114,11 @@ PLAN_JSON_SCHEMA = {
     "properties": {
         "week_of": {
             "type": "string",
-            "description": "e.g. 'Week 11 — Oct 19-23, 2026'",
+            "description": (
+                "e.g. 'Week 11 — Oct 19-23, 2026'. If the calendar context says no real dates "
+                "are on file for this school, use the week NUMBER alone (e.g. 'Week 11') — "
+                "never invent a date range."
+            ),
         },
         "days": {"type": "array", "items": DAY_JSON_SCHEMA},
     },

@@ -8,30 +8,30 @@ import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
 
-/* A REAL, working school id — backend/context/calendars/generic.md exists
- * (a copy of Florence City Schools' own calendar, retitled so its name
- * never leaks into another teacher's document), so picking this actually
- * finishes onboarding instead of stopping short. It's not gated behind a
- * `schools` table row: school_weeks()/calendar_context() (backend/
- * schoolcal.py, prompts.py) read the calendar file straight off disk by
- * id, and users.school isn't validated against the schools table either —
- * that table only feeds the picker's OWN list and a display name, neither
- * of which this hardcoded option needs.
+/* A REAL, working school id with NO real calendar behind it on purpose —
+ * backend/schoolcal.py's own NO_CALENDAR_SCHOOL_ID returns week NUMBERS
+ * only (Week 1, Week 2, ... no dates attached to any of them), so picking
+ * this finishes onboarding and lets a teacher plan by week number instead
+ * of stopping short. Not gated behind a `schools` table row: school_weeks()
+ * /calendar_context() (backend/schoolcal.py, prompts.py) special-case this
+ * id directly, and users.school isn't validated against that table either —
+ * it only feeds the picker's OWN list and a display name, neither of which
+ * this hardcoded option needs.
  *
  * Before this existed, a teacher at any school besides the one curated one
  * hit a real dead end here: get stuck, or pick a school that wasn't theirs
  * and silently generate against its calendar and holidays instead. This
- * unblocks them today, at the cost of dates/holidays that may not
- * exactly match their own district — which is exactly why the nudge
- * below asks for their real calendar, so their actual school can replace
- * this placeholder the same way the one curated school was added. */
+ * unblocks them today with honest "no date" weeks rather than another
+ * school's real dates wearing this teacher's name — which is exactly why
+ * the nudge below asks for their real calendar, so their actual school can
+ * replace this placeholder the same way the one curated school was added. */
 const GENERIC_SCHOOL = 'generic'
 
 const SCHOOL_REQUEST_MAILTO = `mailto:joshuacolephd@gmail.com?subject=${encodeURIComponent(
   'Adding my school to FlexEd Academy'
 )}&body=${encodeURIComponent(
-  "Hi Josh,\n\nI'm using the generic calendar for now. Here's what I can send over so you can add my " +
-    "actual school:\n\n" +
+  "Hi Josh,\n\nI'm planning by week number for now, with no real calendar dates yet. Here's what I " +
+    "can send over so you can add my actual school:\n\n" +
     "1. My school's teaching calendar for this year (which weeks are teaching weeks, which days are closed) — a PDF or a link to the district calendar works.\n" +
     "2. The lesson plan template my district expects, if there's a required format.\n\n" +
     'School name:\n'
@@ -170,21 +170,22 @@ export function WelcomePage() {
             {schools.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
-            <option value={GENERIC_SCHOOL}>Generic — works anywhere, for now</option>
+            <option value={GENERIC_SCHOOL}>My school isn't listed yet</option>
           </select>
         </label>
 
-        {/* Doesn't block anything below it — Generic is a real, working
-            choice (see its own comment above), just an approximate one.
-            A nudge, not a wall: asks for the real calendar so this
+        {/* Doesn't block anything below it — this is a real, working
+            choice (see its own comment above), just a dateless one. A
+            nudge, not a wall: asks for the real calendar so this
             teacher's actual school can replace the placeholder, the same
             way the one curated school got added in the first place. */}
         {usingGeneric ? (
           <div className="rounded-lg border border-edge bg-paper-sunken p-4 text-sm text-ink-soft">
             <p>
-              This uses a generic school-year calendar for now, so your dates and breaks may not
-              match your own district exactly. Send us your school's real teaching calendar and,
-              if your district has one, its lesson plan template, and we'll add your actual school.
+              You can still plan by week number — Week 1, Week 2, and so on — but there's no real
+              calendar behind it yet, so no dates or breaks until your school is added. Send us
+              your school's real teaching calendar and, if your district has one, its lesson plan
+              template, and we'll add your actual school.
             </p>
             <a
               href={SCHOOL_REQUEST_MAILTO}

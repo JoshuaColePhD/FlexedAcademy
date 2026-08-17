@@ -332,7 +332,11 @@ function ClassWeeks({ cls }) {
                 {unitSuffix(w.unit)}
               </span>
               <span className="block text-xs text-ink-muted">
-                {shortRange(w.start, w.end)} · {label}
+                {/* No calendar on file yet for this school (schoolcal.py's
+                    own synthetic weeks carry no start/end) — the status
+                    alone, not a bare "· status" with no date before it. */}
+                {shortRange(w.start, w.end) ? `${shortRange(w.start, w.end)} · ` : ''}
+                {label}
               </span>
             </span>
           </>
@@ -700,7 +704,7 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
                     offers — works with no schools table row at all
                     (backend/context/calendars/generic.md is read straight
                     off disk by id). */}
-                <option value="generic">Generic — works anywhere, for now</option>
+                <option value="generic">My school isn't listed yet</option>
               </select>
             </label>
           ) : null}

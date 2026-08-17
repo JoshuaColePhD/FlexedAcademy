@@ -73,12 +73,20 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
             Week not set
           </option>
         ) : null}
-        {options.map((w) => (
-          <option key={w.week} value={w.week}>
-            Week {String(w.week).padStart(2, '0')} · {shortRange(w.start, w.end)}
-            {w.has_plan ? ' · already planned' : ''}
-          </option>
-        ))}
+        {options.map((w) => {
+          // No calendar on file yet for this school (schoolcal.py's own
+          // synthetic weeks for that case carry no start/end) — a week
+          // number with no date range, rather than shortRange's own empty
+          // string leaving a bare trailing "· " behind.
+          const range = shortRange(w.start, w.end)
+          return (
+            <option key={w.week} value={w.week}>
+              Week {String(w.week).padStart(2, '0')}
+              {range ? ` · ${range}` : ''}
+              {w.has_plan ? ' · already planned' : ''}
+            </option>
+          )
+        })}
       </select>
     </div>
   )

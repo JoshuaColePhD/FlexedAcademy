@@ -26,6 +26,38 @@ from .config import settings
 
 log = logging.getLogger("aplang.schoolcal")
 
+# The school id a teacher lands on when their real school isn't set up yet
+# (frontend/src/pages/onboarding/WelcomePage.jsx's own picker) — no calendar
+# file exists for it on purpose. Every function below that reads a real
+# calendar's dates branches around this id instead, returning week NUMBERS
+# with no date attached to any of them, rather than either an empty "no
+# calendar" state (which used to block picking a week at all) or a
+# fabricated date range that would silently claim to be this teacher's
+# actual school year.
+NO_CALENDAR_SCHOOL_ID = "generic"
+# Long enough to cover a real school year (43 in the one real calendar on
+# file today) without needing a real end date to know when to stop.
+_NO_CALENDAR_WEEK_COUNT = 43
+
+
+def _synthetic_weeks() -> list[dict]:
+    """Week numbers only, no calendar behind them — see
+    NO_CALENDAR_SCHOOL_ID's own comment. `start`/`end` are None throughout;
+    every reader of a week dict in this module and in db.py's week_board
+    checks for that before doing date arithmetic, rather than this function
+    inventing dates nothing backs."""
+    return [
+        {
+            "week": n,
+            "start": None,
+            "end": None,
+            "notes": "",
+            "no_school": False,
+            "closures": False,
+        }
+        for n in range(1, _NO_CALENDAR_WEEK_COUNT + 1)
+    ]
+
 # "| 12 | Oct 19 | Oct 23 | |"
 _ROW = re.compile(
     r"^\|\s*(\d{1,2})\s*\|\s*([A-Z][a-z]{2}\s+\d{1,2})\s*\|\s*([A-Z][a-z]{2}\s+\d{1,2})\s*\|(.*)\|\s*$"
@@ -121,11 +153,15 @@ def school_weeks(school_id: str) -> list[dict]:
 
     Each: {week, start, end, notes, no_school, closures}
       week       int
-      start/end  ISO date strings (Monday and Friday as published)
+      start/end  ISO date strings (Monday and Friday as published) — or
+                 both None for NO_CALENDAR_SCHOOL_ID, see _synthetic_weeks()
       no_school  True when the WHOLE week is out
       closures   True when any day in it is out — a plan for such a week has
                  fewer than five teaching days
     """
+    if school_id == NO_CALENDAR_SCHOOL_ID:
+        return _synthetic_weeks()
+
     text, fall_year, spring_year = _read(school_id)
     if not text:
         return []
@@ -158,7 +194,12 @@ def school_weeks(school_id: str) -> list[dict]:
 
 def week_for(school_id: str, day: date | None = None) -> dict | None:
     """The week containing `day` — or, if that falls in a gap, the next one to
-    start. Returns None once the year is over."""
+    start. Returns None once the year is over, and also for
+    NO_CALENDAR_SCHOOL_ID: with no real dates behind any week, there's no
+    way to know which one "today" falls in — a teacher there picks their
+    own week by number instead of the app guessing one for them."""
+    if school_id == NO_CALENDAR_SCHOOL_ID:
+        return None
     day = day or date.today()
     iso = day.isoformat()
     upcoming = None
@@ -172,7 +213,14 @@ def week_for(school_id: str, day: date | None = None) -> dict | None:
 
 def label_for(week: dict) -> str:
     """The week_label the rest of the app already speaks — matches the format
-    `units.week_number` parses and `plans.week_label` stores."""
+    `units.week_number` parses and `plans.week_label` stores.
+
+    A week with no real dates (NO_CALENDAR_SCHOOL_ID) gets just its number —
+    never a fabricated date span, which is exactly the "looks right, is
+    wrong" failure this module's own scope guard elsewhere exists to
+    prevent."""
+    if not week.get("start") or not week.get("end"):
+        return f"Week {week['week']:02d}"
     start = date.fromisoformat(week["start"])
     end = date.fromisoformat(week["end"])
     span = (
@@ -261,7 +309,13 @@ def week_days(school_id: str, week: dict) -> list[dict]:
     This is what lets the interface shade a holiday IN PLACE. The week row alone
     can only say "week 15 has a closure somewhere"; deriving Wednesday from that
     in the browser is the same guessing that put a lesson plan inside Fall Break.
+
+    A week with no real dates (NO_CALENDAR_SCHOOL_ID) has no Monday to anchor
+    on and no closures on file to shade in — every day comes back a plain
+    teaching day with no date, rather than guessing one.
     """
+    if not week.get("start") or not week.get("end"):
+        return [{"date": None, "dow": _DOW[i], "is_school": True, "note": ""} for i in range(5)]
     start = date.fromisoformat(week["start"])
     end = date.fromisoformat(week["end"])
     # Anchor on the real Monday, not on `start`. Week 1 starts Wednesday and the

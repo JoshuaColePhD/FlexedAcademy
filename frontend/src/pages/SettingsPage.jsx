@@ -187,9 +187,10 @@ function SchoolPicker({ value, onSaved }) {
         ))}
         {/* Always available, not gated behind schools.length — see
             WelcomePage.jsx's own comment on why this id works with no
-            schools table row at all (backend/context/calendars/generic.md
-            is read straight off disk by id). */}
-        <option value="generic">Generic — works anywhere, for now</option>
+            schools table row at all (backend/schoolcal.py's
+            NO_CALENDAR_SCHOOL_ID special-cases it directly, synthesizing
+            dateless weeks instead of reading a calendar file). */}
+        <option value="generic">My school isn't listed yet</option>
       </select>
       {/* A school's row and its calendar are added in different places on
           purpose (see GET /api/schools) — so one can exist with no year

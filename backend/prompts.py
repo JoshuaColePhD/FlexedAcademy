@@ -18,6 +18,7 @@ from pathlib import Path
 from .config import settings
 from .retrieval import UNGROUNDABLE_FAMILIES, RetrievalResult, format_context
 from .schema import DAY_NAMES, day_schema_snippet, field_json_schema, plan_schema_snippet
+from .schoolcal import NO_CALENDAR_SCHOOL_ID
 
 log = logging.getLogger("aplang.prompts")
 
@@ -53,6 +54,19 @@ def calendar_context(school_id: str) -> str:
     of backend/schoolcal.py, which is exactly the kind of second copy that
     let the prompt and the interface disagree in the first place.
     """
+    if school_id == NO_CALENDAR_SCHOOL_ID:
+        # No real calendar on file yet for this teacher's school (see
+        # schoolcal.NO_CALENDAR_SCHOOL_ID) — told explicitly, the same
+        # reason this function exists at all: without a plain instruction
+        # to use week NUMBERS only, the model invents a plausible-looking
+        # date range for a school year it has no actual information about,
+        # which is worse than no date at all.
+        return (
+            "This school's real teaching calendar is not on file yet. Refer to weeks by NUMBER "
+            "only (e.g. \"Week 12\") — do not invent, guess, or state a specific calendar date or "
+            "date range for any week; none of the dates in this conversation are confirmed real."
+        )
+
     path = settings.calendars_dir / f"{school_id}.md"
     if not path.is_file():
         log.warning("school calendar not found at %s; dates will be guesswork", path)
