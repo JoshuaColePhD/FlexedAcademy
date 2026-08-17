@@ -11,6 +11,7 @@ import { qk } from '../lib/queryKeys'
 import { errorParts } from '../lib/apiError'
 import { useDesignSkin } from '../hooks/useDesignSkin'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
+import { SchoolSelect } from '../components/SchoolSelect'
 
 /* Account-level settings — split out of ClassPage (which used to be "Classes &
  * settings", one page for two different things). Everything here is about the
@@ -174,25 +175,19 @@ function SchoolPicker({ value, onSaved }) {
         are closed.
         {schools.length > 1 ? ' Change one class’s own school from its Edit panel below.' : ''}
       </p>
-      <select
+      <SchoolSelect
+        ariaLabel="School"
+        schools={schools}
         value={value || ''}
         disabled={saving}
-        onChange={(e) => commit(e.target.value)}
-        className="neo-select neo-inset mt-2 w-full max-w-xs rounded-lg bg-paper-raised py-2 pl-3 pr-8 text-sm text-ink disabled:opacity-60"
-      >
-        {schools.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-            {s.has_pending_calendar ? ' — pending confirmation' : s.has_calendar === false ? ' — no calendar yet' : ''}
-          </option>
-        ))}
-        {/* Always available, not gated behind schools.length — see
-            WelcomePage.jsx's own comment on why this id works with no
-            schools table row at all (backend/schoolcal.py's
-            NO_CALENDAR_SCHOOL_ID special-cases it directly, synthesizing
-            dateless weeks instead of reading a calendar file). */}
-        <option value="generic">My school isn't listed yet</option>
-      </select>
+        onChange={commit}
+        className="mt-2 w-full max-w-xs"
+        /* Always available, not gated behind schools.length — see
+           WelcomePage.jsx's own comment on why this id works with no
+           schools table row at all (backend/schoolcal.py's
+           NO_CALENDAR_SCHOOL_ID special-cases it directly, synthesizing
+           dateless weeks instead of reading a calendar file). */
+      />
       {/* A school's row and its calendar are added in different places on
           purpose (see GET /api/schools) — so one can exist with no year
           behind it, and choosing it silently empties the week board, the

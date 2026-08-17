@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
 import { CalendarPreview } from '../../components/CalendarPreview'
+import { SchoolSelect } from '../../components/SchoolSelect'
 
 /* A REAL, working school id with NO real calendar behind it on purpose —
  * backend/schoolcal.py's own NO_CALENDAR_SCHOOL_ID returns week NUMBERS
@@ -199,21 +200,16 @@ export function WelcomePage() {
           <span className="text-xs text-ink-muted">
             Sets your school calendar — which weeks are teaching weeks and which days are closed.
           </span>
-          <select
-            aria-label="School"
+          <SchoolSelect
+            ariaLabel="School"
             id="welcome-school"
+            schools={schools}
             value={school}
-            onChange={(e) => setSchool(e.target.value)}
-            className="neo-select mt-1 min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
-          >
-            <option value="" disabled>
-              Choose a school
-            </option>
-            {schools.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-            <option value={GENERIC_SCHOOL}>My school isn't listed yet</option>
-          </select>
+            onChange={setSchool}
+            genericValue={GENERIC_SCHOOL}
+            emptyOption={{ value: '', label: 'Choose a school' }}
+            inputClassName="neo-select mt-1 min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
+          />
         </label>
 
         {/* Doesn't block anything below it — this is a real, working

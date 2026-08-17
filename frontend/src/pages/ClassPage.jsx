@@ -22,6 +22,7 @@ import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
+import { SchoolSelect } from '../components/SchoolSelect'
 import { classColor } from '../lib/classColor'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
@@ -681,36 +682,17 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
           {schools.length > 1 ? (
             <label className="block max-w-xs">
               <span className="mb-1 block text-xs text-ink-muted">School</span>
-              <select
-                aria-label={`School for ${cls.name}`}
+              <SchoolSelect
+                ariaLabel={`School for ${cls.name}`}
+                schools={schools}
                 value={editSchool}
-                onChange={(e) => setEditSchool(e.target.value)}
-                className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2 pl-3 pr-8 text-sm text-ink"
-              >
-                {/* Genuinely absent for a class predating migration 25, not
-                    pre-filled with the account default — see editSchool's
-                    own comment on why guessing here would be dishonest. */}
-                {!editSchool ? (
-                  <option value="" disabled>
-                    Not set — using account default
-                  </option>
-                ) : null}
-                {schools.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                    {s.has_pending_calendar
-                      ? ' — pending confirmation'
-                      : s.has_calendar === false
-                        ? ' — no calendar yet'
-                        : ''}
-                  </option>
-                ))}
-                {/* Same fallback WelcomePage.jsx's own onboarding picker
-                    offers — works with no schools table row at all
-                    (backend/schoolcal.py's NO_CALENDAR_SCHOOL_ID
-                    special-cases it directly). */}
-                <option value="generic">My school isn't listed yet</option>
-              </select>
+                onChange={setEditSchool}
+                className="w-full"
+                /* Genuinely absent for a class predating migration 25, not
+                   pre-filled with the account default — see editSchool's
+                   own comment on why guessing here would be dishonest. */
+                emptyOption={{ value: '', label: 'Not set — using account default' }}
+              />
               {schools.find((s) => s.id === editSchool)?.has_pending_calendar ? (
                 <PendingCalendarReview schoolId={editSchool} onDecided={() => schoolsState.refetch()} />
               ) : null}
