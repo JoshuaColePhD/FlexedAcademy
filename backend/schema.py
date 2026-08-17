@@ -201,6 +201,44 @@ QUIZ_JSON_SCHEMA = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Calendar intake — parsing a teacher-uploaded school calendar into the exact
+# week-dict shape schoolcal.py's own hand-curated parser produces
+# ({week, start, end, notes, no_school, closures}), so a confirmed submission
+# is indistinguishable from a real calendar file to every downstream reader
+# (week_for, label_for, week_days, week_board).
+# ---------------------------------------------------------------------------
+
+CALENDAR_WEEK_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "week": {"type": "integer", "description": "Sequential teaching-week number, starting at 1."},
+        "start": {
+            "type": ["string", "null"],
+            "description": "ISO date (YYYY-MM-DD) the week starts (usually a Monday). Null only if genuinely not stated in the source.",
+        },
+        "end": {
+            "type": ["string", "null"],
+            "description": "ISO date (YYYY-MM-DD) the week ends (usually a Friday). Null only if genuinely not stated in the source.",
+        },
+        "notes": {"type": "string", "description": "A holiday/break/testing note for this week, or ''."},
+        "no_school": {"type": "boolean", "description": "True when the whole week is a break/closure."},
+        "closures": {"type": "boolean", "description": "True when any single day in the week is closed."},
+    },
+    "required": ["week", "start", "end", "notes", "no_school", "closures"],
+}
+
+CALENDAR_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "weeks": {"type": "array", "items": CALENDAR_WEEK_JSON_SCHEMA},
+    },
+    "required": ["weeks"],
+}
+
+
 class QuizSchemaError(Exception):
     """A question the model wrote doesn't match what its own `type` needs —
     e.g. multiple_choice with an empty `choices`, or a correct_index outside

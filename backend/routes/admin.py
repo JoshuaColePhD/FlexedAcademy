@@ -106,9 +106,13 @@ class SchoolBody(BaseModel):
 @router.post("/schools", status_code=201)
 def create_school_route(body: SchoolBody, _admin: str = Depends(get_current_admin)):
     """Registers a school that already has a calendar file — never the other
-    way around. This app deliberately has no upload/parse path for a school
-    calendar (see backend/schoolcal.py's own reasoning); an admin hand-
-    authors backend/context/calendars/<id>.md and commits it FIRST."""
+    way around. This is the hand-curated path: an admin hand-authors
+    backend/context/calendars/<id>.md and commits it FIRST, then registers
+    the row here. Teachers have a separate, parallel path that needs no
+    admin step at all — routes/school_calendars.py's upload-and-
+    peer-confirm flow creates the `schools` row itself and stores the
+    calendar as a DB row rather than a file (see schoolcal.py's own comment
+    on why both paths coexist)."""
     if db.get_school(body.id):
         raise AppError("already_exists", f"A school with id {body.id!r} already exists.", status=409)
     calendar_file = settings.calendars_dir / f"{body.id}.md"
@@ -135,3 +139,34 @@ def delete_school_route(school_id: str, _admin: str = Depends(get_current_admin)
             hint="Reassign those accounts to a different school first.",
         )
     db.delete_school(school_id)
+
+
+@router.get("/calendar-submissions")
+def list_calendar_submissions_route(status: str | None = None, _admin: str = Depends(get_current_admin)):
+    """The queue behind SchoolsAdmin's pending-calendar section — every
+    teacher-uploaded calendar, admin-wide, regardless of which school it's
+    for. `status` filters to 'pending' | 'confirmed' | 'rejected'."""
+    return {"submissions": db.list_calendar_submissions(status)}
+
+
+@router.post("/calendar-submissions/{submission_id}/approve")
+def approve_calendar_submission_route(submission_id: str, admin_id: str = Depends(get_current_admin)):
+    """Admin override — confirms directly regardless of who submitted it,
+    for the case where no second teacher at that school is around yet to
+    do the normal peer confirmation."""
+    submission = db.get_calendar_submission(submission_id)
+    if not submission:
+        raise AppError("not_found", "That submission doesn't exist.", status=404)
+    if submission["status"] != "pending":
+        raise AppError("not_pending", "That submission has already been decided.", status=409)
+    return db.confirm_calendar_submission(submission_id, admin_id)
+
+
+@router.post("/calendar-submissions/{submission_id}/reject")
+def reject_calendar_submission_route(submission_id: str, _admin: str = Depends(get_current_admin)):
+    submission = db.get_calendar_submission(submission_id)
+    if not submission:
+        raise AppError("not_found", "That submission doesn't exist.", status=404)
+    if submission["status"] != "pending":
+        raise AppError("not_pending", "That submission has already been decided.", status=409)
+    return db.reject_calendar_submission(submission_id)

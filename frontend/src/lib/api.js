@@ -285,6 +285,12 @@ export const api = {
     request('/api/admin/schools', { method: 'POST', body: { id, name } }),
   adminDeleteSchool: (id) =>
     request(`/api/admin/schools/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  adminListCalendarSubmissions: (status, { signal } = {}) =>
+    request(`/api/admin/calendar-submissions${status ? `?status=${encodeURIComponent(status)}` : ''}`, { signal }),
+  adminApproveCalendarSubmission: (id) =>
+    request(`/api/admin/calendar-submissions/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
+  adminRejectCalendarSubmission: (id) =>
+    request(`/api/admin/calendar-submissions/${encodeURIComponent(id)}/reject`, { method: 'POST' }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 
@@ -382,6 +388,24 @@ export const api = {
     }),
   /** Whitelisted schools for the settings page dropdown — one entry today. */
   listSchools: ({ signal } = {}) => request('/api/schools', { signal }),
+  /** Upload a PDF/Word doc, OR pass `sourceUrl` instead of `file` — exactly
+   *  one of the two. `schoolName` creates the school if it doesn't exist
+   *  yet (see routes/school_calendars.py's _resolve_school). Returns
+   *  {school, submission}, usable immediately by the submitter while
+   *  `submission.status` is still 'pending'. */
+  uploadSchoolCalendar: (schoolName, { file, sourceUrl, signal } = {}) => {
+    const fd = new FormData()
+    fd.append('school_name', schoolName)
+    if (file) fd.append('file', file)
+    if (sourceUrl) fd.append('source_url', sourceUrl)
+    return upload('/api/school-calendars', fd, { signal })
+  },
+  getPendingSchoolCalendar: (schoolId, { signal } = {}) =>
+    request(`/api/school-calendars/pending?school_id=${encodeURIComponent(schoolId)}`, { signal }),
+  confirmSchoolCalendar: (submissionId) =>
+    request(`/api/school-calendars/${encodeURIComponent(submissionId)}/confirm`, { method: 'POST' }),
+  rejectSchoolCalendar: (submissionId) =>
+    request(`/api/school-calendars/${encodeURIComponent(submissionId)}/reject`, { method: 'POST' }),
   listClasses: ({ signal } = {}) => request('/api/classes', { signal }),
   createClass: ({ name, subject, grade }) =>
     request('/api/classes', { method: 'POST', body: { name, subject, grade } }),

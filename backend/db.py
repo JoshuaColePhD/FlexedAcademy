@@ -718,6 +718,26 @@ MIGRATIONS: list[str] = [
         CREATE POLICY "Users can access their own cited standards" ON plan_standards USING (user_id = current_setting('app.user_id', true));
     EXCEPTION WHEN duplicate_object THEN null; END $$;
     """,
+    # Teacher-uploaded calendars, pending a second teacher's confirmation
+    # before schoolcal.py will treat them as real — see schoolcal.py's own
+    # comment on why hand-curated files stay the norm and this is additive,
+    # not a replacement.
+    """
+    CREATE TABLE IF NOT EXISTS school_calendar_submissions (
+      id            TEXT PRIMARY KEY,
+      school_id     TEXT NOT NULL,
+      submitted_by  TEXT NOT NULL,
+      submitted_at  TEXT NOT NULL,
+      source_kind   TEXT NOT NULL,
+      source_name   TEXT,
+      weeks         JSONB NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected')),
+      confirmed_by  TEXT,
+      confirmed_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_calendar_submissions_school_status ON school_calendar_submissions(school_id, status);
+    ALTER TABLE school_calendar_submissions ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -1129,6 +1149,65 @@ def count_users_with_school(school_id: str) -> int:
 def delete_school(school_id: str) -> bool:
     cur = _write("DELETE FROM schools WHERE id = ?", (school_id,))
     return cur.rowcount > 0
+
+
+def create_calendar_submission(
+    school_id: str, submitted_by: str, source_kind: str, source_name: str | None, weeks: list[dict]
+) -> dict:
+    submission_id = new_id()
+    _write(
+        """
+        INSERT INTO school_calendar_submissions
+            (id, school_id, submitted_by, submitted_at, source_kind, source_name, weeks, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, 'pending')
+        """,
+        (submission_id, school_id, submitted_by, now(), source_kind, source_name, json.dumps(weeks)),
+    )
+    return get_calendar_submission(submission_id)  # type: ignore[return-value]
+
+
+def get_calendar_submission(submission_id: str) -> dict | None:
+    return _row("SELECT * FROM school_calendar_submissions WHERE id = ?", (submission_id,))
+
+
+def get_pending_calendar_submission(school_id: str) -> dict | None:
+    return _row(
+        "SELECT * FROM school_calendar_submissions WHERE school_id = ? AND status = 'pending' ORDER BY submitted_at DESC LIMIT 1",
+        (school_id,),
+    )
+
+
+def get_confirmed_calendar_submission(school_id: str) -> dict | None:
+    return _row(
+        "SELECT * FROM school_calendar_submissions WHERE school_id = ? AND status = 'confirmed' ORDER BY confirmed_at DESC LIMIT 1",
+        (school_id,),
+    )
+
+
+def confirm_calendar_submission(submission_id: str, confirmed_by: str) -> dict | None:
+    """Caller (the route) must already have rejected confirmed_by == submitted_by
+    — a submitter cannot be their own peer confirmation."""
+    _write(
+        "UPDATE school_calendar_submissions SET status = 'confirmed', confirmed_by = ?, confirmed_at = ? WHERE id = ?",
+        (confirmed_by, now(), submission_id),
+    )
+    return get_calendar_submission(submission_id)
+
+
+def reject_calendar_submission(submission_id: str) -> dict | None:
+    _write(
+        "UPDATE school_calendar_submissions SET status = 'rejected' WHERE id = ?",
+        (submission_id,),
+    )
+    return get_calendar_submission(submission_id)
+
+
+def list_calendar_submissions(status: str | None = None) -> list[dict]:
+    if status:
+        return _rows(
+            "SELECT * FROM school_calendar_submissions WHERE status = ? ORDER BY submitted_at DESC", (status,)
+        )
+    return _rows("SELECT * FROM school_calendar_submissions ORDER BY submitted_at DESC")
 
 
 def get_user_school(user_id: str) -> str:

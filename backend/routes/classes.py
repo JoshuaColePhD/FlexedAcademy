@@ -76,18 +76,21 @@ def list_schools_route() -> list[dict]:
     this is a fixed lookup table for a dropdown, not account data.
 
     `has_calendar` rides along because the two halves of a school live in
-    different places on purpose: the row here, and the year itself as a
-    hand-authored file in version control (see schoolcal's docstring). So a
-    school can legitimately exist with no calendar yet — admin adds the row
-    before anyone writes the file — and picking one silently costs the
-    teacher their whole week board. Reporting it lets the picker say so
-    instead of letting them find out by watching the weeks disappear."""
+    different places on purpose: the row here, and the year itself as either
+    a hand-authored file in version control or a peer-confirmed teacher
+    submission (see schoolcal's docstring). So a school can legitimately
+    exist with no calendar yet — admin adds the row before anyone writes the
+    file — and picking one silently costs the teacher their whole week
+    board. Reporting it lets the picker say so instead of letting them find
+    out by watching the weeks disappear.
+
+    `has_pending_calendar` is the other case: a teacher already uploaded a
+    calendar for this school but no second teacher has confirmed it yet —
+    see schoolcal.calendar_status's own comment on why this can't just be
+    bool(schoolcal.school_weeks(...))."""
     from .. import schoolcal
 
-    return [
-        {**s, "has_calendar": bool(schoolcal.school_weeks(s["id"]))}
-        for s in db.list_schools()
-    ]
+    return [{**s, **schoolcal.calendar_status(s["id"])} for s in db.list_schools()]
 
 
 @router.patch("/me")

@@ -21,6 +21,7 @@ import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
+import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { classColor } from '../lib/classColor'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
@@ -697,15 +698,22 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
                 {schools.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
-                    {s.has_calendar === false ? ' — no calendar yet' : ''}
+                    {s.has_pending_calendar
+                      ? ' — pending confirmation'
+                      : s.has_calendar === false
+                        ? ' — no calendar yet'
+                        : ''}
                   </option>
                 ))}
                 {/* Same fallback WelcomePage.jsx's own onboarding picker
                     offers — works with no schools table row at all
-                    (backend/context/calendars/generic.md is read straight
-                    off disk by id). */}
+                    (backend/schoolcal.py's NO_CALENDAR_SCHOOL_ID
+                    special-cases it directly). */}
                 <option value="generic">My school isn't listed yet</option>
               </select>
+              {schools.find((s) => s.id === editSchool)?.has_pending_calendar ? (
+                <PendingCalendarReview schoolId={editSchool} onDecided={() => schoolsState.refetch()} />
+              ) : null}
             </label>
           ) : null}
         </div>

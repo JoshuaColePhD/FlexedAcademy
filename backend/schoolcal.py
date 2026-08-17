@@ -148,20 +148,10 @@ def _read(school_id: str) -> tuple[str, int, int]:
 
 
 @lru_cache(maxsize=None)
-def school_weeks(school_id: str) -> list[dict]:
-    """Every numbered week of one school's year, in order.
-
-    Each: {week, start, end, notes, no_school, closures}
-      week       int
-      start/end  ISO date strings (Monday and Friday as published) — or
-                 both None for NO_CALENDAR_SCHOOL_ID, see _synthetic_weeks()
-      no_school  True when the WHOLE week is out
-      closures   True when any day in it is out — a plan for such a week has
-                 fewer than five teaching days
-    """
-    if school_id == NO_CALENDAR_SCHOOL_ID:
-        return _synthetic_weeks()
-
+def _file_weeks(school_id: str) -> list[dict]:
+    """The hand-curated file path — everything school_weeks() used to do on
+    its own. Still cached indefinitely: a calendar file changes once a year,
+    same as before this function existed."""
     text, fall_year, spring_year = _read(school_id)
     if not text:
         return []
@@ -190,6 +180,68 @@ def school_weeks(school_id: str) -> list[dict]:
 
     weeks.sort(key=lambda w: w["week"])
     return weeks
+
+
+def school_weeks(school_id: str) -> list[dict]:
+    """Every numbered week of one school's year, in order.
+
+    Each: {week, start, end, notes, no_school, closures}
+      week       int
+      start/end  ISO date strings (Monday and Friday as published) — or
+                 both None for NO_CALENDAR_SCHOOL_ID, see _synthetic_weeks()
+      no_school  True when the WHOLE week is out
+      closures   True when any day in it is out — a plan for such a week has
+                 fewer than five teaching days
+
+    Deliberately UNCACHED at this level (unlike the old single cached
+    function this replaces): a teacher-submitted calendar (db.py's
+    school_calendar_submissions, confirmed by peer review) can change at any
+    moment, and this has to see that the moment it happens rather than after
+    a process restart. The DB lookup is a single indexed row read — cheap
+    enough to skip caching. The hand-curated file path underneath
+    (_file_weeks) still caches, since that only ever changes once a year.
+
+    Precedence: a CONFIRMED submission wins outright. Otherwise a PENDING
+    one is still used — better for the submitter than no dates at all — but
+    stays visibly unconfirmed in the UI (routes/classes.py's
+    has_pending_calendar) until someone else at the same school reviews it.
+    Otherwise fall back to the hand-curated file, then to dateless weeks.
+    """
+    if school_id == NO_CALENDAR_SCHOOL_ID:
+        return _synthetic_weeks()
+
+    # Local import: keeps the calendar module out of db's import cycle, same
+    # as db.py's own local `from . import schoolcal` inside week_board().
+    from . import db
+
+    confirmed = db.get_confirmed_calendar_submission(school_id)
+    if confirmed:
+        return confirmed["weeks"]
+    pending = db.get_pending_calendar_submission(school_id)
+    if pending:
+        return pending["weeks"]
+
+    return _file_weeks(school_id)
+
+
+def calendar_status(school_id: str) -> dict:
+    """{has_calendar, has_pending_calendar} — used by routes/classes.py's
+    GET /api/schools to tell a trustworthy calendar apart from a teacher
+    submission still awaiting peer review. school_weeks() itself uses a
+    pending submission as a best-effort fallback (so its own submitter can
+    use it right away), which would otherwise make it indistinguishable from
+    a confirmed one to a caller that only checked bool(school_weeks(...))."""
+    if school_id == NO_CALENDAR_SCHOOL_ID:
+        return {"has_calendar": False, "has_pending_calendar": False}
+
+    from . import db
+
+    confirmed = db.get_confirmed_calendar_submission(school_id)
+    pending = None if confirmed else db.get_pending_calendar_submission(school_id)
+    return {
+        "has_calendar": bool(confirmed) or bool(_file_weeks(school_id)),
+        "has_pending_calendar": bool(pending),
+    }
 
 
 def week_for(school_id: str, day: date | None = None) -> dict | None:

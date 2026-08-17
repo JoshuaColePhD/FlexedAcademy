@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { errorParts } from '../lib/apiError'
 import { useDesignSkin } from '../hooks/useDesignSkin'
+import { PendingCalendarReview } from '../components/PendingCalendarReview'
 
 /* Account-level settings — split out of ClassPage (which used to be "Classes &
  * settings", one page for two different things). Everything here is about the
@@ -182,7 +183,7 @@ function SchoolPicker({ value, onSaved }) {
         {schools.map((s) => (
           <option key={s.id} value={s.id}>
             {s.name}
-            {s.has_calendar === false ? ' — no calendar yet' : ''}
+            {s.has_pending_calendar ? ' — pending confirmation' : s.has_calendar === false ? ' — no calendar yet' : ''}
           </option>
         ))}
         {/* Always available, not gated behind schools.length — see
@@ -198,7 +199,9 @@ function SchoolPicker({ value, onSaved }) {
           composer's week dropdown and the week the model is told about.
           Said out loud here, after the fact, because the row is still a
           legitimate choice: it just can't schedule anything yet. */}
-      {selected && selected.has_calendar === false ? (
+      {selected?.has_pending_calendar ? (
+        <PendingCalendarReview schoolId={selected.id} onDecided={() => schoolsState.refetch()} />
+      ) : selected && selected.has_calendar === false ? (
         /* A tinted banner rather than plain small red text — this is a
            genuine "come do something" state (no calendar means every plan
            for this class builds worse until one is added), which is what

@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Mail } from 'lucide-react'
+import { ArrowRight, Loader2, Mail, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { qk } from '../../lib/queryKeys'
 import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
+import { CalendarPreview } from '../../components/CalendarPreview'
 
 /* A REAL, working school id with NO real calendar behind it on purpose —
  * backend/schoolcal.py's own NO_CALENDAR_SCHOOL_ID returns week NUMBERS
@@ -86,6 +87,47 @@ export function WelcomePage() {
   })
 
   const usingGeneric = school === GENERIC_SCHOOL
+
+  // Uploading a real calendar switches `school` away from GENERIC_SCHOOL to
+  // the newly created/matched school's own id (calSubmission.school.id) —
+  // so finishing onboarding stamps the account with a real, pending
+  // calendar instead of the dateless fallback it started on.
+  const [calSchoolName, setCalSchoolName] = useState('')
+  const [calFile, setCalFile] = useState(null)
+  const [calUrl, setCalUrl] = useState('')
+  const [calUploading, setCalUploading] = useState(false)
+  const [calSubmission, setCalSubmission] = useState(null)
+  const calFileRef = useRef(null)
+
+  const uploadCalendar = async (e) => {
+    e.preventDefault()
+    if (!calSchoolName.trim()) {
+      toast.error('Name your school first', "We'll need something to call it.")
+      return
+    }
+    if (!calFile && !calUrl.trim()) {
+      toast.error('Add a file or a link', 'Upload the calendar, or paste a link to it.')
+      return
+    }
+    setCalUploading(true)
+    try {
+      const res = await api.uploadSchoolCalendar(calSchoolName.trim(), {
+        file: calFile || undefined,
+        sourceUrl: calUrl.trim() || undefined,
+      })
+      setCalSubmission(res)
+      setSchool(res.school.id)
+      qc.invalidateQueries({ queryKey: qk.schools })
+      toast.success(
+        'Calendar submitted',
+        'Pending confirmation from a colleague at your school — you can use it right away.'
+      )
+    } catch (err) {
+      toast.apiError('Could not read that calendar', err)
+    } finally {
+      setCalUploading(false)
+    }
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -175,24 +217,82 @@ export function WelcomePage() {
         </label>
 
         {/* Doesn't block anything below it — this is a real, working
-            choice (see its own comment above), just a dateless one. A
-            nudge, not a wall: asks for the real calendar so this
-            teacher's actual school can replace the placeholder, the same
-            way the one curated school got added in the first place. */}
+            choice (see its own comment above), just a dateless one until
+            a calendar is uploaded and submitted below. */}
         {usingGeneric ? (
           <div className="rounded-lg border border-edge bg-paper-sunken p-4 text-sm text-ink-soft">
-            <p>
-              You can still plan by week number — Week 1, Week 2, and so on — but there's no real
-              calendar behind it yet, so no dates or breaks until your school is added. Send us
-              your school's real teaching calendar and, if your district has one, its lesson plan
-              template, and we'll add your actual school.
-            </p>
-            <a
-              href={SCHOOL_REQUEST_MAILTO}
-              className="mt-3 inline-flex items-center gap-1.5 font-medium text-accent-text hover:underline"
-            >
-              <Mail size={14} aria-hidden="true" /> Email joshuacolephd@gmail.com
-            </a>
+            {calSubmission ? (
+              <div className="flex flex-col gap-2">
+                <p>
+                  <span className="font-medium text-ink">{calSubmission.school.name}</span> submitted —
+                  pending confirmation from a colleague at your school. You can plan against it right
+                  away in the meantime.
+                </p>
+                <CalendarPreview weeks={calSubmission.submission.weeks} />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p>
+                  You can still plan by week number — Week 1, Week 2, and so on — but there's no real
+                  calendar behind it yet. Upload your school's real teaching calendar (a PDF, a Word
+                  doc, or a link to where it's published) and we'll parse it — a colleague at your
+                  school can then confirm it's right.
+                </p>
+                <input
+                  type="text"
+                  value={calSchoolName}
+                  onChange={(e) => setCalSchoolName(e.target.value)}
+                  placeholder="Your school's name"
+                  aria-label="Your school's name"
+                  className="rounded-lg border border-edge bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+                <input
+                  type="url"
+                  value={calUrl}
+                  onChange={(e) => setCalUrl(e.target.value)}
+                  placeholder="Or paste a link to your district's published calendar"
+                  aria-label="Link to your district's published calendar"
+                  className="rounded-lg border border-edge bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => calFileRef.current?.click()}
+                    className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:text-ink"
+                  >
+                    <Upload size={13} aria-hidden="true" />
+                    {calFile ? calFile.name : 'Choose a file'}
+                  </button>
+                  <input
+                    ref={calFileRef}
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md"
+                    hidden
+                    onChange={(e) => setCalFile(e.target.files?.[0] || null)}
+                  />
+                  <button
+                    type="button"
+                    onClick={uploadCalendar}
+                    disabled={calUploading}
+                    className="btn inline-flex items-center gap-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {calUploading ? (
+                      <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                    ) : null}
+                    {calUploading ? 'Reading…' : 'Submit calendar'}
+                  </button>
+                </div>
+                <p className="text-xs text-ink-muted">
+                  Would rather just send it to us?{' '}
+                  <a
+                    href={SCHOOL_REQUEST_MAILTO}
+                    className="inline-flex items-center gap-1 font-medium text-accent-text hover:underline"
+                  >
+                    <Mail size={12} aria-hidden="true" /> Email joshuacolephd@gmail.com
+                  </a>
+                </p>
+              </div>
+            )}
           </div>
         ) : null}
 

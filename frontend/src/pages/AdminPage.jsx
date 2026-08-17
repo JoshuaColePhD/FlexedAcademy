@@ -497,6 +497,85 @@ function SchoolsAdmin() {
           <Plus size={13} aria-hidden="true" /> Add
         </button>
       </form>
+
+      <PendingCalendarSubmissions />
+    </div>
+  )
+}
+
+/* The queue behind teacher-submitted calendars (routes/school_calendars.py)
+ * — peer confirmation is the normal path, this is the backstop for a school
+ * with only one teacher on the app so far, or a submission nobody's gotten
+ * to yet. */
+function PendingCalendarSubmissions() {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const [decidingId, setDecidingId] = useState(null)
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'calendarSubmissions', 'pending'],
+    queryFn: () => api.adminListCalendarSubmissions('pending'),
+  })
+  const submissions = data?.submissions || []
+
+  const decide = async (submission, action) => {
+    setDecidingId(submission.id)
+    try {
+      if (action === 'approve') {
+        await api.adminApproveCalendarSubmission(submission.id)
+        toast.success(`Calendar confirmed for that school`)
+      } else {
+        await api.adminRejectCalendarSubmission(submission.id)
+        toast.success('Submission rejected')
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['admin', 'calendarSubmissions', 'pending'] }),
+        qc.invalidateQueries({ queryKey: qk.schools }),
+      ])
+    } catch (err) {
+      toast.apiError('Could not decide that submission', err)
+    } finally {
+      setDecidingId(null)
+    }
+  }
+
+  if (isLoading || isError || !submissions.length) return null
+
+  return (
+    <div className="mt-5 border-t border-edge pt-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        Pending calendar submissions ({submissions.length})
+      </h3>
+      <ul className="mt-2 divide-y divide-edge">
+        {submissions.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+            <div>
+              <span className="font-medium text-ink">{s.school_id}</span>{' '}
+              <span className="text-2xs text-ink-muted">
+                submitted {new Date(s.submitted_at).toLocaleDateString()} via {s.source_kind}
+                {s.source_name ? ` (${s.source_name})` : ''} · {s.weeks?.length ?? 0} weeks
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={decidingId === s.id}
+                onClick={() => decide(s, 'approve')}
+                className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                disabled={decidingId === s.id}
+                onClick={() => decide(s, 'reject')}
+                className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Reject
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

@@ -25,7 +25,7 @@ from .config import settings
 from .errors import AppError
 from .prompts import day_field_system_prompt, day_system_prompt, week_system_prompt
 from .retrieval import RetrievalResult
-from .schema import DAY_JSON_SCHEMA, PLAN_JSON_SCHEMA, QUIZ_JSON_SCHEMA, field_json_schema, loads_lenient
+from .schema import CALENDAR_JSON_SCHEMA, DAY_JSON_SCHEMA, PLAN_JSON_SCHEMA, QUIZ_JSON_SCHEMA, field_json_schema, loads_lenient
 from . import db
 
 log = logging.getLogger("aplang.llm")
@@ -590,6 +590,39 @@ def generate_chat_title(user_id: str, message: str) -> str:
         log.warning("chat title generation failed, falling back to truncation: %s", e)
     first_line = message.split("\n")[0].strip() or "New plan"
     return first_line[:40] + ("…" if len(first_line) > 40 else "")
+
+
+_CALENDAR_PARSE_PROMPT = """You are reading the text of a school district's published academic calendar.
+Turn it into a numbered list of teaching weeks, in order, starting at week 1.
+
+For each week give:
+- week: sequential integer starting at 1 (do not skip numbers for a break week — a break is a week with no_school=true, not a gap in numbering).
+- start / end: the ISO date (YYYY-MM-DD) the week's school days begin and end. Infer the year from the calendar's own title or date range if the table itself omits it. Leave both null ONLY if this particular week's dates genuinely cannot be determined from the text — never guess or invent a date.
+- notes: a short label if the week is a holiday, break, or has a testing/early-release day — otherwise ''.
+- no_school: true only if the ENTIRE week has no school.
+- closures: true if any single day in the week is closed, even if the rest of the week is normal.
+
+Stop once the school year in the source text ends. Do not invent weeks beyond what the calendar states."""
+
+
+def parse_calendar_weeks(user_id: str, text: str) -> list[dict]:
+    """One structured-output call turning extracted calendar text into the
+    exact week-dict shape schoolcal.py's hand-curated parser produces.
+    Raises AppError/SchemaError upward on a bad response — the caller
+    (calendar_intake.py) is what runs the sanity checks on the result."""
+    content = _cached_completion(
+        user_id,
+        "parse_calendar_weeks",
+        model=settings.openai_model,
+        max_completion_tokens=4000,
+        response_format=_response_format("school_calendar", CALENDAR_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": _CALENDAR_PARSE_PROMPT},
+            {"role": "user", "content": text[:20000]},
+        ],
+    )
+    parsed = loads_lenient(content or "")
+    return parsed.get("weeks") or []
 
 
 DECISIONS_SCHEMA = {
