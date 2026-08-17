@@ -21,6 +21,7 @@ import { VoiceProvider } from './components/VoiceProvider'
 import { useAuth, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from './lib/authContext'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
+import { CommandPalette } from './components/CommandPalette'
 import { useClasses } from './hooks/useAppData'
 import { ChatPage } from './pages/ChatPage'
 import { ClassPage } from './pages/ClassPage'
@@ -341,23 +342,8 @@ function AfterAuthRedirect() {
   return <Navigate to={safe} replace />
 }
 
-/** ⌘K starts a new plan — the one action the app is for. */
-function CommandK() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  useEffect(() => {
-    const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        const m = location.pathname.match(/^\/c\/([^/]+)/)
-        if (m) navigate(`/c/${m[1]}`)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [navigate, location.pathname])
-  return null
-}
+// Replaced by CommandPalette
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -382,7 +368,7 @@ export default function App() {
                   {/* Inside AuthProvider: the entitlement rides on the user. */}
                   <BillingProvider>
                     <VoiceProvider>
-                      <CommandK />
+                      <CommandPalette />
                       <Gate />
                     </VoiceProvider>
                   </BillingProvider>

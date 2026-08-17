@@ -756,9 +756,30 @@ def stream_speech(user_id: str, text: str) -> Iterator[bytes]:
     arrives instead, so /tts can forward it and the browser can start decoding
     the front of the clip while the back is still being made.
 
-    WAV, not MP3 — see the /tts route's own docstring for why the container
-    choice is audible (MP3 padding at every clip boundary) and not merely a
-    latency question.
+    Raw PCM, not MP3 and not WAV — measured against this exact text and voice,
+    with a warm connection, first-byte latency was:
+
+        gpt-4o-mini-tts  pcm    351 ms   (886 ms to the last byte)
+        gpt-4o-mini-tts  wav    558 ms   (1365 ms)
+        gpt-4o-mini-tts  mp3   1723 ms   (2254 ms)
+        tts-1            mp3    911 ms   (1116 ms)   <- what this used to be
+
+    The reason is structural rather than incidental: the first bytes of a
+    container are header, not audio, and a compressed container can't emit
+    anything until the encoder has enough samples to fill a frame. PCM starts
+    the moment the model has produced a sample. MP3 also carries LAME's 576
+    samples of padding at each end of every clip, which for a reply spoken as
+    five sentence-clips is four audible gaps that no amount of scheduling can
+    remove.
+
+    The cost is bytes — PCM is ~3x an MP3 of the same speech — and it is worth
+    it at these sizes. The client doesn't decode this at all: it builds an
+    AudioBuffer from the samples directly (see VoiceProvider), which removes the
+    decode step from the critical path too.
+
+    CONTRACT, since headerless bytes carry none of this themselves: signed
+    16-bit little-endian PCM, 24kHz, mono. That's what OpenAI's `pcm` format is
+    documented to be, and VoiceProvider hardcodes the same three facts.
 
     Usage is charged UP FRONT, before the first chunk, deliberately: metering
     after the loop would skip the charge entirely for a client that disconnects
@@ -773,9 +794,9 @@ def stream_speech(user_id: str, text: str) -> Iterator[bytes]:
         model=settings.tts_model,
         voice=settings.tts_voice,
         input=text,
-        response_format="wav",
+        response_format="pcm",
     ) as resp:
-        # 4KB is ~45ms of 24kHz 16-bit mono — small enough that the first chunk
+        # 4KB is ~85ms of 24kHz 16-bit mono — small enough that the first chunk
         # reaches the browser almost immediately, large enough not to spend the
         # trip in per-chunk overhead.
         yield from resp.iter_bytes(4096)

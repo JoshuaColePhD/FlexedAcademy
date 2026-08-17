@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useNavigate } from 'react-router-dom'
 import { MessageSquare, Search, Trash2, CheckSquare, Square, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 import { useToast } from '../lib/toastContext'
@@ -157,8 +158,10 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
 
         <ul className="divide-y divide-edge">
           {chats.length === 0 ? (
-            <li className="px-4 py-8 text-center text-sm text-ink-muted">
-              No conversations found.
+            <li className="px-4 py-16 text-center">
+              <MessageSquare size={32} className="mx-auto text-ink-faint mb-4" />
+              <p className="text-sm font-medium text-ink">No conversations found</p>
+              <p className="text-xs text-ink-muted mt-1">Start planning to see your history here.</p>
             </li>
           ) : (
             chats.map(c => (
@@ -195,7 +198,7 @@ function ChatDetailPanel({ chat, classId, onDelete }) {
     }
     try {
       await renameChat.mutateAsync({ id: chat.id, title: title.trim() })
-    } catch (_err) {
+    } catch {
       // toast will be handled by mutation if needed, or silently fail gracefully
     } finally {
       setEditingTitle(false)
@@ -299,7 +302,7 @@ export function HistoryPage() {
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper font-sans">
       
       {/* Left Sidebar (Master) */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
+      <div className={`flex w-full md:w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken ${currentActiveChat ? 'hidden md:flex' : ''}`}>
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
           <button
             onClick={() => navigate(`/c/${classId}`)}
@@ -353,23 +356,41 @@ export function HistoryPage() {
       </div>
 
       {/* Right Content Area (Detail) */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm">
+      <div className={`flex-1 min-w-0 flex flex-col ${!currentActiveChat ? 'hidden md:flex' : ''}`}>
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-edge bg-paper/80 px-4 md:px-8 backdrop-blur-sm">
+          <button
+            onClick={() => setActiveChat(null)}
+            className="md:hidden rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+            aria-label="Back to chat list"
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+          </button>
           <div className="text-sm font-medium text-ink-muted">
             {currentActiveChat ? 'Conversation Details' : 'History Management'}
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-8 py-8">
-          {currentActiveChat ? (
-            <ChatDetailPanel chat={currentActiveChat} classId={classId} onDelete={remove} />
-          ) : (
-            <GlobalHistoryDashboard 
-              chats={filtered} 
-              deleteChat={deleteChat} 
-              onDeleteCallback={() => setActiveChat(null)}
-            />
-          )}
+        <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 overflow-x-hidden relative">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentActiveChat ? currentActiveChat.id : 'dashboard'}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15 }}
+              className="w-full"
+            >
+              {currentActiveChat ? (
+                <ChatDetailPanel chat={currentActiveChat} classId={classId} onDelete={remove} />
+              ) : (
+                <GlobalHistoryDashboard 
+                  chats={filtered} 
+                  deleteChat={deleteChat} 
+                  onDeleteCallback={() => setActiveChat(null)}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 

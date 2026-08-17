@@ -387,19 +387,18 @@ def synthesize_speech(req: TTSRequest, request: Request, user_id: str = Depends(
     Streamed, not buffered. This used to read the whole clip into memory
     (resp.content) before returning a single byte, and the client then buffered
     it AGAIN into a Blob — two full waits before any sound. Now the OpenAI
-    response body is forwarded through as it arrives, so the browser can start
-    decoding the head of the clip while the tail is still being synthesized.
+    response body is forwarded through as it arrives.
 
-    WAV rather than MP3, which matters more than it looks: every separately
-    encoded MP3 carries LAME's 576 samples of padding on each end, so a reply
-    spoken as five sentence-clips had four guaranteed audible gaps in it no
-    matter how fast the fetches were. WAV has a fixed 44-byte header and then
-    raw samples — nothing to trim, nothing to hear at the joins. It also skips
-    MP3's decode step entirely, which is the other reason it starts faster.
+    The body is headerless 16-bit little-endian PCM at 24kHz, mono — see
+    llm.stream_speech for the measurements behind that choice and for why the
+    container formats both lose. Declared as application/octet-stream because
+    that is honestly what it is: there is no audio/pcm media type that carries
+    the rate and bit depth, so the contract lives in the two functions that
+    share it rather than in a header the browser would ignore anyway.
     """
     return StreamingResponse(
         llm.stream_speech(user_id, req.text),
-        media_type="audio/wav",
+        media_type="application/octet-stream",
         # Nothing here is cacheable per-URL (it's a POST) but proxies on the
         # path shouldn't try to buffer the whole body before passing it on —
         # that would undo the streaming above.

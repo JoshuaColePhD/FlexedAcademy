@@ -9,6 +9,8 @@ import { useBilling } from '../lib/billingContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { errorParts } from '../lib/apiError'
+import { useAppShell } from '../hooks/useAppShell'
+import { useTheme } from '../hooks/useTheme'
 import { useDesignSkin } from '../hooks/useDesignSkin'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { SchoolSelect } from '../components/SchoolSelect'
@@ -732,7 +734,7 @@ export function SettingsPage() {
   const [aiTone, setAiTone] = useState('encouraging')
   const [autoSave, setAutoSave] = useState(true)
   const [classifyPlan, setClassifyPlan] = useState(false)
-  const [theme, setTheme] = useState('system')
+  const { mode, setMode } = useTheme()
   const [fontSize, setFontSize] = useState('normal')
   const [highContrast, setHighContrast] = useState(false)
   const [betaFeatures, setBetaFeatures] = useState(false)
@@ -803,7 +805,7 @@ export function SettingsPage() {
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
       
       {/* Left Sidebar (Master) */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
+      <div className="hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
           <button
             onClick={() => navigate(-1)}
@@ -836,7 +838,11 @@ export function SettingsPage() {
 
       {/* Right Content Area (Detail) */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm z-10">
+        <header className="flex md:hidden h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-4 backdrop-blur-sm z-10 gap-3">
+          <Link to="/" className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"><ArrowLeft size={16}/></Link>
+          <div className="text-sm font-semibold text-ink truncate">{tabs.find(t => t.id === activeTab)?.label}</div>
+        </header>
+        <header className="hidden md:flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm z-10">
           <div className="text-sm font-medium text-ink-muted">
             {TABS.find(t => t.id === activeTab)?.label}
           </div>
@@ -948,8 +954,8 @@ export function SettingsPage() {
                   <label className="block">
                     <span className="mb-1 block text-xs text-ink-muted">Theme</span>
                     <select
-                      value={theme}
-                      onChange={(e) => setTheme(e.target.value)}
+                      value={mode}
+                      onChange={(e) => setMode(e.target.value)}
                       className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
                     >
                       <option value="system">System Default</option>

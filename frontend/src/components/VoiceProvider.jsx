@@ -13,6 +13,13 @@ const KEY = 'aplang.voice'
    enough that there's no transient left to hear. */
 const FADE_S = 0.025
 
+/* The cushion given to the first chunk of an utterance before it starts, so a
+   network hiccup between chunk one and chunk two doesn't open a hole mid-word.
+   This is a jitter buffer and 80ms is a small one — it's added to
+   time-to-first-sound, so it's the shortest value that still absorbs an
+   ordinary stall. */
+const JITTER_S = 0.08
+
 /* Markdown syntax read literally by a TTS model is worse than no formatting
    at all — "asterisk asterisk Monday asterisk asterisk" instead of "Monday".
    Not exhaustive (this app's assistant replies are short, plain sentences by
@@ -27,20 +34,51 @@ function stripMarkdown(text) {
     .trim()
 }
 
+/* The wire format /api/tts sends: headerless signed 16-bit little-endian PCM,
+   mono. Hardcoded here because headerless bytes carry none of it — the contract
+   is shared with backend/llm.py's stream_speech and lives in both comments. */
+const TTS_RATE = 24000
+
 /* Safari wants webkitAudioContext, and has since before this app existed. */
 function AudioCtor() {
   return typeof window === 'undefined' ? null : window.AudioContext || window.webkitAudioContext
 }
 
-/* decodeAudioData is promise-based everywhere current, but Safari carried the
-   callback-only signature for years and this app's own screenshots keep coming
-   from iOS. The promise form returns undefined on those builds rather than
-   throwing, so feature-detect on the return value instead of the version. */
-function decode(ctx, bytes) {
-  return new Promise((resolve, reject) => {
-    const maybe = ctx.decodeAudioData(bytes, resolve, reject)
-    if (maybe && typeof maybe.then === 'function') maybe.then(resolve, reject)
-  })
+/* Raw samples → Float32, with no decode step at all.
+ *
+ * There used to be a decodeAudioData call here (plus a wrapper for Safari's
+ * callback-only signature), because the backend was sending a container. It
+ * isn't any more: PCM reaches first byte hundreds of milliseconds sooner than
+ * WAV and over a second sooner than MP3 on the same model (measured — see
+ * backend/llm.py's stream_speech), so the container went and the decoder went
+ * with it. The other thing that goes with it is the requirement to have the
+ * WHOLE clip before you can play any of it, which is what actually matters: a
+ * headerless stream of samples can be played a chunk at a time.
+ *
+ * Bytes are assembled by hand rather than through an Int16Array view, which
+ * makes this independent of both host endianness and buffer alignment — a view
+ * needs a 2-byte-aligned offset, and network chunk boundaries do not respect
+ * sample boundaries. `<< 16 >> 16` sign-extends the 16-bit value.
+ */
+function pcmToFloat32(bytes, sampleCount) {
+  const out = new Float32Array(sampleCount)
+  for (let i = 0, b = 0; i < sampleCount; i++, b += 2) {
+    out[i] = (((bytes[b] | (bytes[b + 1] << 8)) << 16) >> 16) / 32768
+  }
+  return out
+}
+
+/* Float32 → an AudioBuffer on the shared context.
+ *
+ * Created at the TTS rate rather than the context's. An AudioBuffer is allowed
+ * to disagree with its context and AudioBufferSourceNode resamples on playback,
+ * which is what's wanted here — forcing the context itself to 24kHz would
+ * degrade every other sound the page might make.
+ */
+function toAudioBuffer(ctx, samples) {
+  const buffer = ctx.createBuffer(1, samples.length, TTS_RATE)
+  buffer.getChannelData(0).set(samples)
+  return buffer
 }
 
 /* Speech OUT, the other half of the mic button already on the composer
@@ -52,7 +90,9 @@ function decode(ctx, bytes) {
  * every clip, so a four-sentence reply had three audible seams in it even when
  * the network was instant, and the MP3 the backend used to send added LAME's
  * 576 samples of padding at each end of every clip on top of that. Neither is
- * a tuning problem; both are structural to the primitive.
+ * a tuning problem; both are structural to the primitive. The backend now sends
+ * raw PCM (measured 351ms to first byte against MP3's 1723ms on the same
+ * model), so there is no container and no decoder left in the path either.
  *
  * AudioBufferSourceNodes scheduled against one long-lived AudioContext's own
  * clock fix it outright: source.start(t) takes a time in the context's
@@ -230,9 +270,10 @@ export function VoiceProvider({ children }) {
     nextStartRef.current = now
   }, [])
 
-  /* Puts one decoded clip on the context's timeline, immediately after
-     whatever is already scheduled. */
-  const schedule = useCallback((buffer, item) => {
+  /* Puts one buffer of samples on the context's timeline, immediately after
+     whatever is already scheduled. `head` marks the first chunk of a sentence —
+     the only one that carries the caption and the spoken-text bookkeeping. */
+  const schedule = useCallback((buffer, item, head) => {
     const ctx = ctxRef.current
     const gain = gainRef.current
     if (!ctx || !gain) return
@@ -252,10 +293,14 @@ export function VoiceProvider({ children }) {
     const src = ctx.createBufferSource()
     src.buffer = buffer
     src.connect(gain)
-    /* A 20ms floor ahead of "now" so a clip whose decode finished late still
-       starts cleanly rather than being scheduled in the past (which browsers
-       handle by playing it immediately, mid-buffer, and it is audible). */
-    const at = Math.max(ctx.currentTime + 0.02, nextStartRef.current)
+    /* JITTER_S ahead of "now" rather than a bare 20ms. Chunks arrive from the
+       network, so the very first one of an utterance needs a small cushion or
+       the second chunk can miss its slot and leave an audible hole mid-word.
+       Synthesis runs comfortably faster than realtime (roughly 3.2s of speech
+       in 1.5s of wall clock, measured), so one cushion at the head of the
+       utterance is enough — every later chunk lands well inside the audio
+       already scheduled ahead of it. */
+    const at = Math.max(ctx.currentTime + JITTER_S, nextStartRef.current)
     src.start(at)
     nextStartRef.current = at + buffer.duration
 
@@ -272,9 +317,11 @@ export function VoiceProvider({ children }) {
       }
     }
 
-    /* Everything that has to happen the moment this clip is AUDIBLE, rather
-       than the moment it was scheduled — scheduling runs about a sentence
-       ahead of playback, so the two are not the same instant.
+    if (!head) return
+
+    /* Everything that has to happen the moment this sentence becomes AUDIBLE,
+       rather than the moment its first bytes were scheduled — with the stream
+       running a little ahead of playback, the two are not the same instant.
 
        `at` is in the context's clock, so the delay to it is exact. Two things
        hang off it: the caption (which is why it now tracks the voice instead
@@ -296,11 +343,20 @@ export function VoiceProvider({ children }) {
     captionTimersRef.current.add(timer)
   }, [])
 
-  /* Pulls queued sentences through fetch → decode → schedule, strictly in
-     order. Serial on purpose: the fetches themselves already run in parallel
-     (enqueue starts each one the moment it's queued), so what's left to
-     serialise is only the scheduling, and that has to happen in order or the
-     reply comes out shuffled. */
+  /* Pulls queued sentences through fetch → schedule, strictly in order.
+   *
+   * The important part is that a sentence is scheduled INCREMENTALLY, as its
+   * bytes arrive, rather than after the whole clip has downloaded. That's the
+   * entire reason the backend streams and the entire reason the format is
+   * headerless PCM: every chunk off the wire is independently playable, so the
+   * first ~85ms of speech can be on the timeline while the rest is still being
+   * synthesized. Awaiting the complete body first (which is what an
+   * .arrayBuffer() here would do) would have thrown the streaming away and left
+   * only the model change as a win.
+   *
+   * Serial across sentences on purpose: order matters, and a later sentence must
+   * not be scheduled before an earlier one has finished arriving.
+   */
   const drain = useCallback(async () => {
     if (drainingRef.current) return
     drainingRef.current = true
@@ -309,19 +365,60 @@ export function VoiceProvider({ children }) {
       while (queueRef.current.length) {
         if (gen !== genRef.current) return
         const item = queueRef.current.shift()
-        let buffer = null
+        const ctx = ensureCtx()
+        if (!ctx) return
+        if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
+
         try {
-          const bytes = await item.bytes
-          if (gen !== genRef.current) return
-          const ctx = ensureCtx()
-          if (!ctx || !bytes) throw new Error('No audio came back.')
-          if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
-          /* slice(0), not the buffer itself: decodeAudioData DETACHES the
-             ArrayBuffer it's given. The cache hands the same bytes to a
-             replay or to a prefetch-then-enqueue pair, and the second read
-             of a detached buffer throws. Copying is cheap next to a network
-             round trip. */
-          buffer = await decode(ctx, bytes.slice(0))
+          if (item.cached) {
+            /* Already fetched whole by prefetch() — there's nothing to stream,
+               the bytes are local. Reads without consuming, so a replay or a
+               second enqueue of the same text can use the cache entry again. */
+            const bytes = await item.cached
+            if (gen !== genRef.current) return
+            const view = new Uint8Array(bytes)
+            const samples = pcmToFloat32(view, Math.floor(view.length / 2))
+            if (!samples.length) throw new Error('No audio came back.')
+            schedule(toAudioBuffer(ctx, samples), item, true)
+          } else {
+            const reader = await api.openSpeechStream(item.text)
+            if (gen !== genRef.current) {
+              reader.cancel().catch(() => {})
+              return
+            }
+            let head = true
+            // A chunk boundary can split a sample in half; the odd byte waits
+            // here for its partner in the next chunk.
+            let carry = null
+            for (;;) {
+              const { value, done } = await reader.read()
+              if (gen !== genRef.current) {
+                reader.cancel().catch(() => {})
+                return
+              }
+              if (done) break
+              if (!value || !value.length) continue
+
+              let data = value
+              if (carry) {
+                const merged = new Uint8Array(carry.length + data.length)
+                merged.set(carry, 0)
+                merged.set(data, carry.length)
+                data = merged
+                carry = null
+              }
+              const whole = data.length - (data.length % 2)
+              if (whole < data.length) carry = data.slice(whole)
+              if (whole === 0) continue
+
+              const samples = pcmToFloat32(data, whole / 2)
+              schedule(toAudioBuffer(ctx, samples), item, head)
+              head = false
+            }
+            // Nothing arrived at all — treat it as a failure rather than
+            // silently skipping the sentence.
+            if (head) throw new Error('No audio came back.')
+          }
         } catch (err) {
           // One bad sentence shouldn't kill the rest of the reply.
           if (gen === genRef.current && !warnedRef.current) {
@@ -330,8 +427,6 @@ export function VoiceProvider({ children }) {
           }
           continue
         }
-        if (gen !== genRef.current) return
-        schedule(buffer, item)
       }
     } finally {
       drainingRef.current = false
@@ -348,18 +443,13 @@ export function VoiceProvider({ children }) {
     (text, { track = false } = {}) => {
       const clean = stripMarkdown(text)
       if (!clean) return
-      // Reuse a prefetch() already in flight for this exact text instead of
-      // starting a second identical fetch — see prefetch() below.
-      let fetched = cacheRef.current.get(clean)
-      if (!fetched) {
-        fetched = api.synthesizeSpeech(clean)
-        cacheRef.current.set(clean, fetched)
-      }
-      const bytes = fetched.catch(() => {
-        cacheRef.current.delete(clean)
-        return null
-      })
-      queueRef.current.push({ bytes, text: clean, track })
+      /* A prefetch() for this exact text is reused if one exists — that's the
+         greeting, warmed before voice mode was even opened. Everything else is
+         left for drain() to STREAM, rather than starting a whole-clip fetch
+         here: the point of the streaming path is that playback begins on the
+         first chunk, and pre-resolving the bytes would defeat it. */
+      const cached = cacheRef.current.get(clean)
+      queueRef.current.push({ text: clean, track, cached })
       // Optimistic, ahead of the audio actually starting: the fetch takes a
       // few hundred ms, and VoiceModePanel reads `speaking` to decide
       // whether an incoming utterance is a barge-in. Flipping it only once

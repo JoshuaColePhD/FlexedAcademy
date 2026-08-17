@@ -1,22 +1,23 @@
+import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  Check,
+  
   FileText,
   Loader2,
-  Pencil,
+  
   Plus,
   Trash2,
   Upload,
   X,
 } from 'lucide-react'
 import { api } from '../lib/api'
-import { useToast } from '../lib/toastContext'
+
 import { useConfirm } from '../lib/confirmContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
 import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
@@ -75,8 +76,7 @@ const shortLabel = (fw, fallback) =>
 /* ── add a class: two picks, inline ─────────────────────────────────────────
    The name is derived and shown so it can be corrected, not demanded up front. */
 function AddClass({ frameworks, onCreated, onCancel }) {
-  const toast = useToast()
-  const [subject, setSubject] = useState('')
+    const [subject, setSubject] = useState('')
   const [grade, setGrade] = useState('11')
   const [saving, setSaving] = useState(false)
 
@@ -157,8 +157,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
    A class holds several: the old table allowed exactly one per framework, so
    uploading a syllabus silently deactivated the pacing guide. */
 function ClassDocuments({ cls, onChanged }) {
-  const toast = useToast()
-  const confirm = useConfirm()
+    const confirm = useConfirm()
   const fileRef = useRef(null)
   const [kind, setKind] = useState('pacing_guide')
   const [uploading, setUploading] = useState(false)
@@ -381,10 +380,8 @@ function ClassWeeks({ cls }) {
 
 /* ── one class details (Right Pane) ────────────────────────────────────────── */
 function ClassDetail({ cls, frameworks, onChanged }) {
-  const toast = useToast()
-  const confirm = useConfirm()
-  const navigate = useNavigate()
-  
+    const confirm = useConfirm()
+    
   const [name, setName] = useState(cls.name)
   const [editSubject, setEditSubject] = useState(cls.subject)
   const [editGrade, setEditGrade] = useState(cls.grade || '11')
@@ -605,8 +602,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
 
 
 function GlobalClassDashboard({ classes, onUpdated }) {
-  const toast = useToast()
-  const [selectedIds, setSelectedIds] = useState(new Set())
+    const [selectedIds, setSelectedIds] = useState(new Set())
   const [archiving, setArchiving] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
 
@@ -722,9 +718,7 @@ function GlobalClassDashboard({ classes, onUpdated }) {
 /* ── Your classes layout (Master-Detail) ──────────────────────────────────── */
 
 export function ClassPage() {
-  const toast = useToast()
-  const navigate = useNavigate()
-  const qc = useQueryClient()
+      const qc = useQueryClient()
   const { classes, activeClass, isLoading: classesLoading } = useActiveClass()
 
   const frameworksState = useQuery({
@@ -742,7 +736,7 @@ export function ClassPage() {
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
       
       {/* Left Sidebar (Master) */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
+      <div className={`flex w-full md:w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken ${activeClass ? 'hidden md:flex' : ''}`}>
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
           <Link
             to={`/c/${activeClass?.id || ''}`}
@@ -825,23 +819,41 @@ export function ClassPage() {
       </div>
 
       {/* Right Content Area (Detail) */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm">
+      <div className={`flex-1 min-w-0 flex flex-col ${!activeClass ? 'hidden md:flex' : ''}`}>
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-edge bg-paper/80 px-4 md:px-8 backdrop-blur-sm">
+          <Link
+            to="/c"
+            className="md:hidden rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+            aria-label="Back to class list"
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+          </Link>
           <div className="text-sm font-medium text-ink-muted">
             {activeClass ? 'Class Configuration' : ''}
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-8 py-8">
-          {activeClass ? (
-            <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
-          ) : classesLoading ? (
-            <div className="w-full max-w-3xl">
-              <SkeletonText lines={5} />
-            </div>
-          ) : (
-            <GlobalClassDashboard classes={classes} onUpdated={reloadClasses} />
-          )}
+        <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 overflow-x-hidden relative">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeClass ? activeClass.id : 'dashboard'}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15 }}
+              className="w-full"
+            >
+              {activeClass ? (
+                <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
+              ) : classesLoading ? (
+                <div className="w-full max-w-3xl">
+                  <SkeletonText lines={5} />
+                </div>
+              ) : (
+                <GlobalClassDashboard classes={classes} onUpdated={reloadClasses} />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 

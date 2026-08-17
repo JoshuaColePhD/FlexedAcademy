@@ -781,7 +781,7 @@ export function AdminPage() {
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
       
       {/* Left Sidebar */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
+      <div className="hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
           <Link
             to="/"
@@ -817,7 +817,11 @@ export function AdminPage() {
 
       {/* Right Content Area */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm z-10">
+        <header className="flex md:hidden h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-4 backdrop-blur-sm z-10 gap-3">
+          <Link to="/" className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"><ArrowLeft size={16}/></Link>
+          <div className="text-sm font-semibold text-ink truncate">{tabs.find(t => t.id === activeTab)?.label}</div>
+        </header>
+        <header className="hidden md:flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm z-10">
           <div className="text-sm font-medium text-ink-muted">
             {tabs.find(t => t.id === activeTab)?.label}
           </div>

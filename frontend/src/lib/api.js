@@ -336,14 +336,36 @@ export const api = {
     fd.append('audio', blob, `recording.${ext}`)
     return upload('/api/transcribe', fd, { signal })
   },
-  /* The other direction from transcribe() above — text in, raw audio bytes
-     out. Not routed through request(): that helper always calls res.json(),
-     and this response is a WAV body, not JSON.
+  /* The other direction from transcribe() above — text in, spoken audio out.
+     Not routed through request(): that helper always calls res.json(), and this
+     response is a stream of raw PCM samples, not JSON.
 
-     An ArrayBuffer rather than a Blob, because the caller feeds it straight to
-     decodeAudioData on the shared AudioContext (see VoiceProvider) instead of
-     handing a blob: URL to an <audio> element. A Blob would only mean an extra
-     .arrayBuffer() hop on the way there. */
+     Headerless 16-bit little-endian PCM at 24kHz mono. The contract is
+     documented at both ends — backend/llm.py's stream_speech has the
+     measurements behind the format choice, VoiceProvider's pcmToFloat32 does the
+     reading. */
+  openSpeechStream: async (text, { signal } = {}) => {
+    let res
+    try {
+      res = await fetch(`${API_BASE}/api/tts`, {
+        method: 'POST',
+        signal,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+    } catch (err) {
+      if (err.name === 'AbortError') throw err
+      throw new ApiError('Can’t reach the server.', { code: 'network_error' })
+    }
+    if (!res.ok) throw await toError(res)
+    if (!res.body) throw new ApiError('No audio came back.', { code: 'empty_audio' })
+    return res.body.getReader()
+  },
+  /* The whole clip in one piece, for the one case that genuinely wants it:
+     prefetch(), which warms a fetch speculatively before there's anywhere to
+     play it. Everything spoken in a live conversation goes through
+     openSpeechStream above and starts playing on the first chunk. */
   synthesizeSpeech: async (text, { signal } = {}) => {
     let res
     try {

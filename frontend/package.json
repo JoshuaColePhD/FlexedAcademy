@@ -16,6 +16,8 @@
     "@react-oauth/google": "^0.13.5",
     "@sentry/react": "^10.70.0",
     "@tanstack/react-query": "^5.101.4",
+    "cmdk": "^1.1.1",
+    "framer-motion": "^13.1.0",
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

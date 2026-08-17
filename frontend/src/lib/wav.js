@@ -27,12 +27,16 @@ export function encodeWav(samples, sampleRate) {
     for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i))
   }
 
+  /* Offsets are load-bearing and easy to get wrong by two — the canonical
+     44-byte header is: RIFF(0) size(4) WAVE(8) 'fmt '(12) fmtSize(16)
+     audioFormat(20) channels(22) rate(24) byteRate(28) blockAlign(32)
+     bitsPerSample(34) 'data'(36) dataSize(40), samples from 44. */
   ascii(0, 'RIFF')
   view.setUint32(4, 36 + bytes, true)
   ascii(8, 'WAVE')
   ascii(12, 'fmt ')
-  view.setUint32(16, 16, true) // fmt chunk size
-  view.setUint16(18, 1, true) // PCM, uncompressed
+  view.setUint32(16, 16, true) // fmt chunk size — occupies bytes 16..19
+  view.setUint16(20, 1, true) // audioFormat: 1 = PCM, uncompressed
   view.setUint16(22, 1, true) // mono
   view.setUint32(24, sampleRate, true)
   view.setUint32(28, sampleRate * 2, true) // byte rate: rate * channels * bytes
