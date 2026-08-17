@@ -392,29 +392,26 @@ function BillingSection() {
   const renews = entitlement.subscribed && entitlement.period_end ? formatRenewal(entitlement.period_end) : null
 
   return (
-    <div className="mt-5">
-      <h2 className="text-sm font-semibold text-ink">Billing</h2>
-      <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
-        <div>
-          <p className="text-sm font-medium text-ink">
-            {entitlement.subscribed ? 'Subscribed' : 'Free'}
-          </p>
-          {renews ? <p className="text-xs text-ink-muted">Renews {renews}</p> : null}
-        </div>
-        <button
-          type="button"
-          onClick={entitlement.subscribed ? manage : openPaywall}
-          disabled={busy}
-          className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {entitlement.subscribed ? (
-            <CreditCard size={14} aria-hidden="true" />
-          ) : (
-            <Sparkles size={14} aria-hidden="true" />
-          )}
-          {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
-        </button>
+    <div className="neo-panel flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
+      <div>
+        <p className="text-sm font-medium text-ink">
+          {entitlement.subscribed ? 'Subscribed' : 'Free'}
+        </p>
+        {renews ? <p className="text-xs text-ink-muted">Renews {renews}</p> : null}
       </div>
+      <button
+        type="button"
+        onClick={entitlement.subscribed ? manage : openPaywall}
+        disabled={busy}
+        className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {entitlement.subscribed ? (
+          <CreditCard size={14} aria-hidden="true" />
+        ) : (
+          <Sparkles size={14} aria-hidden="true" />
+        )}
+        {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
+      </button>
     </div>
   )
 }
@@ -719,21 +716,27 @@ function Toggle({ checked, onChange, label, description }) {
 
 function IntegrationPlaceholder({ name, description, icon }) {
   return (
-    <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
+    <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3 opacity-60 grayscale-[0.5]">
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-paper-inset text-ink-muted">
           {icon}
         </div>
         <div>
-          <p className="text-sm font-medium text-ink">{name}</p>
+          <p className="text-sm font-medium text-ink flex items-center gap-2">
+            {name}
+            <span className="inline-flex items-center rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent uppercase tracking-wider">
+              Upcoming
+            </span>
+          </p>
           <p className="text-xs text-ink-muted">{description}</p>
         </div>
       </div>
       <button
         type="button"
-        className="neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset"
+        disabled
+        className="neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-muted transition-colors bg-paper-inset cursor-not-allowed"
       >
-        Connect
+        Coming Soon
       </button>
     </div>
   )
