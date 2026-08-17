@@ -499,6 +499,7 @@ function SchoolsAdmin() {
       </form>
 
       <PendingCalendarSubmissions />
+      <PendingSchoolTemplates />
     </div>
   )
 }
@@ -571,6 +572,73 @@ function PendingCalendarSubmissions() {
                 className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Reject
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function PendingSchoolTemplates() {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const [activatingId, setActivatingId] = useState(null)
+  
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'schoolTemplates', 'pending'],
+    queryFn: () => api.listPendingTemplates(),
+  })
+  const templates = data?.templates || []
+
+  const activate = async (template) => {
+    setActivatingId(template.id)
+    try {
+      await api.adminActivateTemplate(template.school_id)
+      toast.success(`${template.school_name} marked as active`)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['admin', 'schoolTemplates', 'pending'] }),
+        qc.invalidateQueries({ queryKey: qk.schools }),
+      ])
+    } catch (err) {
+      toast.apiError('Could not activate that template', err)
+    } finally {
+      setActivatingId(null)
+    }
+  }
+
+  if (isLoading || isError || !templates.length) return null
+
+  return (
+    <div className="mt-5 border-t border-edge pt-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        Pending School Templates ({templates.length})
+      </h3>
+      <ul className="mt-2 divide-y divide-edge">
+        {templates.map((t) => (
+          <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+            <div>
+              <span className="font-medium text-ink">{t.school_name}</span>{' '}
+              <span className="text-2xs text-ink-muted">
+                uploaded by {t.uploader_name || t.uploader_email || t.uploaded_by} on {new Date(t.created_at).toLocaleDateString()}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <a
+                href={api.templateDownloadUrl(t.id)}
+                download
+                className="btn text-2xs"
+              >
+                Download Doc
+              </a>
+              <button
+                type="button"
+                disabled={activatingId === t.id}
+                onClick={() => activate(t)}
+                className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Mark Active
               </button>
             </div>
           </li>

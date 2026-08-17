@@ -16,8 +16,9 @@ import {
 import { api } from '../lib/api'
 
 import { useConfirm } from '../lib/confirmContext'
+import { useToast } from '../lib/toastContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
 import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
@@ -76,7 +77,8 @@ const shortLabel = (fw, fallback) =>
 /* ── add a class: two picks, inline ─────────────────────────────────────────
    The name is derived and shown so it can be corrected, not demanded up front. */
 function AddClass({ frameworks, onCreated, onCancel }) {
-    const [subject, setSubject] = useState('')
+  const toast = useToast()
+  const [subject, setSubject] = useState('')
   const [grade, setGrade] = useState('11')
   const [saving, setSaving] = useState(false)
 
@@ -157,7 +159,8 @@ function AddClass({ frameworks, onCreated, onCancel }) {
    A class holds several: the old table allowed exactly one per framework, so
    uploading a syllabus silently deactivated the pacing guide. */
 function ClassDocuments({ cls, onChanged }) {
-    const confirm = useConfirm()
+  const confirm = useConfirm()
+  const toast = useToast()
   const fileRef = useRef(null)
   const [kind, setKind] = useState('pacing_guide')
   const [uploading, setUploading] = useState(false)
@@ -380,8 +383,10 @@ function ClassWeeks({ cls }) {
 
 /* ── one class details (Right Pane) ────────────────────────────────────────── */
 function ClassDetail({ cls, frameworks, onChanged }) {
-    const confirm = useConfirm()
-    
+  const confirm = useConfirm()
+  const toast = useToast()
+  const navigate = useNavigate()
+
   const [name, setName] = useState(cls.name)
   const [editSubject, setEditSubject] = useState(cls.subject)
   const [editGrade, setEditGrade] = useState(cls.grade || '11')
@@ -602,7 +607,8 @@ function ClassDetail({ cls, frameworks, onChanged }) {
 
 
 function GlobalClassDashboard({ classes, onUpdated }) {
-    const [selectedIds, setSelectedIds] = useState(new Set())
+  const toast = useToast()
+  const [selectedIds, setSelectedIds] = useState(new Set())
   const [archiving, setArchiving] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
 
@@ -718,7 +724,8 @@ function GlobalClassDashboard({ classes, onUpdated }) {
 /* ── Your classes layout (Master-Detail) ──────────────────────────────────── */
 
 export function ClassPage() {
-      const qc = useQueryClient()
+  const qc = useQueryClient()
+  const navigate = useNavigate()
   const { classes, activeClass, isLoading: classesLoading } = useActiveClass()
 
   const frameworksState = useQuery({

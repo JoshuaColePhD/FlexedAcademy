@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Loader2, Mail, Upload } from 'lucide-react'
+import { ArrowRight, Loader2, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { qk } from '../../lib/queryKeys'
 import { useAuth } from '../../lib/authContext'
@@ -28,16 +28,6 @@ import { SchoolSelect } from '../../components/SchoolSelect'
  * the nudge below asks for their real calendar, so their actual school can
  * replace this placeholder the same way the one curated school was added. */
 const GENERIC_SCHOOL = 'generic'
-
-const SCHOOL_REQUEST_MAILTO = `mailto:joshuacolephd@gmail.com?subject=${encodeURIComponent(
-  'Adding my school to FlexEd Academy'
-)}&body=${encodeURIComponent(
-  "Hi Josh,\n\nI'm planning by week number for now, with no real calendar dates yet. Here's what I " +
-    "can send over so you can add my actual school:\n\n" +
-    "1. My school's teaching calendar for this year (which weeks are teaching weeks, which days are closed) — a PDF or a link to the district calendar works.\n" +
-    "2. The lesson plan template my district expects, if there's a required format.\n\n" +
-    'School name:\n'
-)}`
 
 /* First run.
  *
@@ -113,6 +103,10 @@ export function WelcomePage() {
   const [calSubmission, setCalSubmission] = useState(null)
   const calFileRef = useRef(null)
 
+  const [templateFile, setTemplateFile] = useState(null)
+  const templateFileRef = useRef(null)
+
+
   const uploadCalendar = async (e) => {
     e.preventDefault()
     if (!calSchoolName.trim()) {
@@ -125,10 +119,15 @@ export function WelcomePage() {
     }
     setCalUploading(true)
     try {
+
       const res = await api.uploadSchoolCalendar(calSchoolName.trim(), {
         file: calFile || undefined,
         sourceUrl: calUrl.trim() || undefined,
       })
+      if (templateFile) {
+        await api.uploadSchoolTemplate(res.school.id, templateFile)
+      }
+
       setCalSubmission(res)
       setSchool(res.school.id)
       qc.invalidateQueries({ queryKey: qk.schools })
@@ -291,15 +290,28 @@ export function WelcomePage() {
                     {calUploading ? 'Reading…' : 'Submit calendar'}
                   </button>
                 </div>
-                <p className="text-xs text-ink-muted">
-                  Would rather just send it to us?{' '}
-                  <a
-                    href={SCHOOL_REQUEST_MAILTO}
-                    className="inline-flex items-center gap-1 font-medium text-accent-text hover:underline"
-                  >
-                    <Mail size={12} aria-hidden="true" /> Email joshuacolephd@gmail.com
-                  </a>
-                </p>
+                <div className="mt-2 pt-4 border-t border-edge flex flex-col gap-3">
+                  <p>
+                    <strong>Lesson Plan Template:</strong> If your school has a specific format for lesson plans (e.g. a blank Word Doc), upload it here. We will train our AI to export to your exact format!
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => templateFileRef.current?.click()}
+                      className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:text-ink"
+                    >
+                      <Upload size={13} aria-hidden="true" />
+                      {templateFile ? templateFile.name : 'Choose blank template'}
+                    </button>
+                    <input
+                      ref={templateFileRef}
+                      type="file"
+                      accept=".docx,.pdf"
+                      hidden
+                      onChange={(e) => setTemplateFile(e.target.files?.[0] || null)}
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </div>

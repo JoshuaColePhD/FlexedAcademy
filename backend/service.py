@@ -167,7 +167,14 @@ from fastapi import BackgroundTasks
 def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
     from . import docx_build, db
     try:
-        docx_build.build_docx(plan, out_path)
+        plan_row = db.get_plan(user_id, plan_id)
+        school_id = None
+        if plan_row and plan_row.get("class_id"):
+            cls = db.get_class(user_id, plan_row["class_id"])
+            if cls:
+                school_id = cls.get("school")
+                
+        docx_build.build_docx(plan, out_path, school_id)
         db.update_plan(user_id, plan_id, docx_path=str(out_path))
         log.info("background docx built for plan_id=%s", plan_id)
     except Exception as e:

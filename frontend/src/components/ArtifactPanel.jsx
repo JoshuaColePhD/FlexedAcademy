@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ChevronsRight, Download, Loader2, RefreshCw, Share2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { qk } from '../lib/queryKeys'
+import { Tooltip } from './Tooltip'
+import { ChevronsRight, Download, Loader2, RefreshCw, Share2, TriangleAlert } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -71,7 +74,13 @@ export function ArtifactPanel({
   const [rebuilding, setRebuilding] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const toast = useToast()
-  const location = useLocation()
+    const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: api.listSchools })
+  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: api.listClasses })
+  
+  const cls = classes.find(c => c.id === classId)
+  const school = schools.find(s => s.id === cls?.school)
+  const isPendingTemplate = school?.template_status === 'pending'
+const location = useLocation()
   const panelRef = useRef(null)
   const titleRef = useRef(null)
   const color = classColor(classId)
@@ -178,7 +187,12 @@ export function ArtifactPanel({
             </button>
             {/* The reason a teacher opened this app. It is the only filled
                 control in the header. */}
-            <a className="doc-download fa-press" href={api.planDownloadUrl(planId)} download>
+            <a className="doc-download fa-press flex items-center gap-1.5" href={api.planDownloadUrl(planId)} download>
+              {isPendingTemplate ? (
+                <Tooltip content="We are currently training our AI on your district's specific format. In the meantime, this plan will download in a generic format." position="bottom-right">
+                  <TriangleAlert size={14} className="text-amber-500" aria-hidden="true" />
+                </Tooltip>
+              ) : null}
               <Download size={14} aria-hidden="true" /> Download
             </a>
           </>

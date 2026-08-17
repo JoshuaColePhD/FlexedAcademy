@@ -291,6 +291,11 @@ export const api = {
     request(`/api/admin/calendar-submissions/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
   adminRejectCalendarSubmission: (id) =>
     request(`/api/admin/calendar-submissions/${encodeURIComponent(id)}/reject`, { method: 'POST' }),
+  listPendingTemplates: ({ signal } = {}) =>
+    request('/api/admin/school-templates/pending', { signal }),
+  adminActivateTemplate: (schoolId) =>
+    request(`/api/admin/schools/${schoolId}/activate-template`, { method: 'POST' }),
+  templateDownloadUrl: (templateId) => `/api/admin/school-templates/${templateId}/download`,
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 
@@ -433,6 +438,11 @@ export const api = {
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/confirm`, { method: 'POST' }),
   rejectSchoolCalendar: (submissionId) =>
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/reject`, { method: 'POST' }),
+  uploadSchoolTemplate: (schoolId, file, { signal } = {}) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return upload(`/api/school-calendars/${encodeURIComponent(schoolId)}/template`, fd, { signal })
+  },
   listClasses: ({ include_archived, signal } = {}) => request(`/api/classes${include_archived ? '?include_archived=true' : ''}`, { signal }),
   createClass: ({ name, subject, grade }) =>
     request('/api/classes', { method: 'POST', body: { name, subject, grade } }),

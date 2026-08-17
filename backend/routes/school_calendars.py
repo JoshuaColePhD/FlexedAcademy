@@ -11,6 +11,9 @@ import logging
 import re
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from pathlib import Path
+import tempfile
+import shutil
 
 from .. import calendar_intake, db
 from ..deps import get_current_user
@@ -97,3 +100,34 @@ def reject_calendar(submission_id: str, _user_id: str = Depends(get_current_user
     if submission["status"] != "pending":
         raise AppError("not_pending", "That submission has already been decided.", status=409)
     return db.reject_calendar_submission(submission_id)
+
+
+@router.post("/{school_id}/template", status_code=201)
+async def upload_school_template(
+    school_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    """Upload a blank lesson plan template for a school that doesn't have a builder script yet."""
+    school = db.get_school(school_id)
+    if not school:
+        raise AppError("not_found", "School not found.", status=404)
+
+    # Spool it to disk
+    ext = Path(file.filename or "").suffix or ".docx"
+    
+    # Store it in a permanent uploads directory
+    uploads_dir = Path("uploads/templates")
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    
+    # generate a unique filename
+    template_id = db.new_id()
+    safe_filename = f"{school_id}_{template_id}{ext}"
+    dest = uploads_dir / safe_filename
+    
+    with dest.open("wb") as out:
+        while chunk := file.file.read(1 << 20):
+            out.write(chunk)
+            
+    row = db.create_school_template(school_id, user_id, file.filename or safe_filename, str(dest))
+    return {"template": row}

@@ -28,16 +28,30 @@ from .schema import ENGAGEMENT_OPTIONS
 log = logging.getLogger("aplang.docx")
 
 
-@lru_cache(maxsize=1)
-def builder() -> ModuleType:
+@lru_cache(maxsize=128)
+def builder(school_id: str | None = None) -> ModuleType:
+    from . import db
+    
     path = Path(settings.builder_path)
+    
+    if school_id and school_id != "generic":
+        school = db.get_school(school_id)
+        if school and school.get("template_status") == "active":
+            # Assume custom builder exists at same directory as default builder, named {school_id}_builder.py
+            # For florence-high-school, it might still just use fcs_builder.py but we can make it dynamic
+            # if they share the same directory structure. Actually, since florence is currently the default,
+            # we can just use the default path if the custom one is not found, or construct it safely.
+            custom_path = path.parent / f"{school_id}_builder.py"
+            if custom_path.is_file():
+                path = custom_path
+
     if not path.is_file():
         raise AppError(
             "builder_missing",
             "The canonical lesson-plan builder script was not found.",
             hint=f"Expected it at {path}. Set BUILDER_PATH if it moved.",
         )
-    spec = importlib.util.spec_from_file_location("fcs_builder", str(path))
+    spec = importlib.util.spec_from_file_location(path.stem, str(path))
     if spec is None or spec.loader is None:
         raise AppError("builder_unloadable", f"Could not load the builder at {path}.")
     mod = importlib.util.module_from_spec(spec)
@@ -103,10 +117,10 @@ def plan_output_path(plan: dict, plan_id: str) -> Path:
     return Path(settings.plans_dir) / course / f"{week}__{plan_id[:8]}.docx"
 
 
-def build_docx(plan: dict, out_path: Path) -> Path:
+def build_docx(plan: dict, out_path: Path, school_id: str | None = None) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        builder().build(plan, str(out_path))
+        builder(school_id).build(plan, str(out_path))
     except AppError:
         raise
     except Exception as e:  # the builder's own failure, with its real message

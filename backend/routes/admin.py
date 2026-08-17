@@ -170,3 +170,30 @@ def reject_calendar_submission_route(submission_id: str, _admin: str = Depends(g
     if submission["status"] != "pending":
         raise AppError("not_pending", "That submission has already been decided.", status=409)
     return db.reject_calendar_submission(submission_id)
+
+
+@router.get("/school-templates/pending")
+def list_pending_school_templates_route(_admin: str = Depends(get_current_admin)):
+    return {"templates": db.list_pending_school_templates()}
+
+
+@router.post("/schools/{school_id}/activate-template")
+def activate_school_template_route(school_id: str, _admin: str = Depends(get_current_admin)):
+    school = db.get_school(school_id)
+    if not school:
+        raise AppError("not_found", "School not found.", status=404)
+    db.update_school_template_status(school_id, "active")
+    return {"status": "ok"}
+
+
+@router.get("/school-templates/{template_id}/download")
+def download_school_template_route(template_id: str, _admin: str = Depends(get_current_admin)):
+    from fastapi.responses import FileResponse
+    from pathlib import Path
+    template = db.get_school_template(template_id)
+    if not template:
+        raise AppError("not_found", "Template not found.", status=404)
+    file_path = Path(template["file_path"])
+    if not file_path.is_file():
+        raise AppError("not_found", "File missing from disk.", status=404)
+    return FileResponse(file_path, filename=template["filename"])

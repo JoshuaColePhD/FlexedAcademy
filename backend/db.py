@@ -618,7 +618,24 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_quizzes_plan ON quizzes(plan_id);
     ALTER TABLE quizzes ENABLE ROW LEVEL SECURITY;
     """,
-    # ── 27: share a plan as a Google Doc ─────────────────────────────────────
+    # ── 28: school template onboarding ───────────────────────────────────────
+    #
+    # Tracks whether a school has an active docx_builder template or is still
+    # waiting for an admin to implement it.
+    """
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS template_status TEXT NOT NULL DEFAULT 'active';
+
+    CREATE TABLE IF NOT EXISTS school_templates (
+        id          TEXT PRIMARY KEY,
+        school_id   TEXT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+        uploaded_by TEXT NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+        filename    TEXT NOT NULL,
+        file_path   TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    );
+    ALTER TABLE school_templates ENABLE ROW LEVEL SECURITY;
+    """,
+    # ── 29: share a plan as a Google Doc ─────────────────────────────────────
     #
     # google_drive_tokens is its own table, not columns on users — a token has
     # a lifecycle (refreshed, revoked) that has nothing to do with the rest of
@@ -1464,10 +1481,40 @@ def get_school(school_id: str) -> dict | None:
 
 def create_school(school_id: str, name: str) -> dict:
     _write(
-        "INSERT INTO schools (id, name, created_at) VALUES (?,?,?) ON CONFLICT (id) DO NOTHING",
+        "INSERT INTO schools (id, name, template_status, created_at) VALUES (?,?,'pending',?) ON CONFLICT (id) DO NOTHING",
         (school_id, name.strip(), now()),
     )
     return get_school(school_id)  # type: ignore[return-value]
+
+def update_school_template_status(school_id: str, status: str) -> bool:
+    cur = _write("UPDATE schools SET template_status = ? WHERE id = ?", (status, school_id))
+    return cur.rowcount > 0
+
+def create_school_template(school_id: str, uploaded_by: str, filename: str, file_path: str) -> dict:
+    template_id = new_id()
+    _write(
+        """
+        INSERT INTO school_templates (id, school_id, uploaded_by, filename, file_path, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (template_id, school_id, uploaded_by, filename, file_path, now())
+    )
+    return _row("SELECT * FROM school_templates WHERE id = ?", (template_id,))  # type: ignore[return-value]
+
+def list_pending_school_templates() -> list[dict]:
+    return _rows(
+        """
+        SELECT st.*, s.name as school_name, u.name as uploader_name, u.email as uploader_email
+        FROM school_templates st
+        JOIN schools s ON st.school_id = s.id
+        LEFT JOIN users u ON st.uploaded_by = u.id
+        WHERE s.template_status = 'pending'
+        ORDER BY st.created_at DESC
+        """
+    )
+
+def get_school_template(template_id: str) -> dict | None:
+    return _row("SELECT * FROM school_templates WHERE id = ?", (template_id,))
 
 
 def count_users_with_school(school_id: str) -> int:
