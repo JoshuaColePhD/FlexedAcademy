@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertTriangle,
   ArrowLeft,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Plus,
@@ -269,6 +271,73 @@ function UsageTrendChart() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/* A deterministic check, not a feedback loop — every plan's cited standard
+ * codes, checked against its own class's subject and grade, plus against
+ * the corpus at all. Runs automatically (no button to remember to press):
+ * a handful of in-memory dict lookups per plan against an already-cached
+ * corpus (backend/qa.py), not a fresh model call. Clean plans (the
+ * expected common case) are simply not in the list — this only ever shows
+ * up as something worth looking at, never a wall of green checkmarks. */
+function StandardsCheckSection() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'qa', 'standards-check'],
+    queryFn: () => api.adminStandardsCheck(),
+  })
+  const flagged = data?.flagged ?? []
+
+  return (
+    <div className="neo-world neo-panel mt-8 rounded-xl p-4">
+      <div className="flex items-center gap-2">
+        <ShieldCheck size={16} aria-hidden="true" className="text-ink-muted" />
+        <h2 className="text-sm font-semibold text-ink">Standards check</h2>
+      </div>
+      <p className="mt-1 text-2xs text-ink-muted">
+        Every plan's cited standard codes, checked against its own class's subject and grade —
+        a code that's real but belongs to a different course or grade, or one that doesn't exist
+        in the corpus at all.
+      </p>
+
+      {isLoading ? (
+        <p className="mt-3 text-sm text-ink-muted">Checking…</p>
+      ) : isError ? (
+        <p className="mt-3 text-sm text-mark">Could not run the check.</p>
+      ) : flagged.length === 0 ? (
+        <p className="mt-3 flex items-center gap-1.5 text-sm text-ok">
+          <CheckCircle2 size={14} aria-hidden="true" /> No issues found.
+        </p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-2">
+          {flagged.map((f) => (
+            <li key={f.plan_id} className="rounded-lg border border-mark/30 bg-mark-tint p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-ink">
+                  {f.week_label} <span className="text-ink-muted">· {f.email}</span>
+                </p>
+                <span className="inline-flex items-center gap-1 text-2xs font-medium text-mark">
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  {f.subject} · grade {f.grade}
+                </span>
+              </div>
+              {f.hallucinated.length ? (
+                <p className="mt-1.5 text-xs text-ink-soft">
+                  <span className="font-medium text-mark">Not in the corpus:</span>{' '}
+                  {f.hallucinated.join(', ')}
+                </p>
+              ) : null}
+              {f.mismatched.length ? (
+                <p className="mt-1 text-xs text-ink-soft">
+                  <span className="font-medium text-mark">Wrong course/grade:</span>{' '}
+                  {f.mismatched.join(', ')}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -873,6 +942,7 @@ export function AdminBody() {
         default for that one account only, in either direction, until cleared.
       </p>
 
+      <StandardsCheckSection />
       <SchoolsAdmin />
     </>
   )

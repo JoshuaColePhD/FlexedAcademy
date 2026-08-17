@@ -12,7 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from .. import db
+from .. import db, qa
 from ..config import settings
 from ..deps import get_current_admin
 from ..entitlement import ENTITLED_STATUSES
@@ -32,6 +32,17 @@ def usage_trend(_admin: str = Depends(get_current_admin)):
     db.weekly_usage_series's own docstring for why this is a separate,
     bucketed query rather than something list_accounts already carries."""
     return {"weeks": db.weekly_usage_series()}
+
+
+@router.get("/qa/standards-check")
+def standards_check(_admin: str = Depends(get_current_admin)):
+    """Every plan, admin-wide, whose cited standards don't hold up against
+    its own class's subject/grade — see qa.py's own module docstring for
+    what "don't hold up" means and why. On-demand, not cached: this is a
+    handful of in-memory dict lookups per plan against an already-loaded,
+    already-cached corpus (retrieval.py's own lru_cache), not a fresh model
+    call or a fresh corpus load."""
+    return {"flagged": qa.run_standards_check()}
 
 
 class CompBody(BaseModel):

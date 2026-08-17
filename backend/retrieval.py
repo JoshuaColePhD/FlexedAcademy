@@ -479,6 +479,33 @@ def _codes_by_course() -> dict[str, frozenset[str]]:
     return {k: frozenset(v) for k, v in groups.items()}
 
 
+@functools.lru_cache(maxsize=1)
+def _codes_by_course_and_grade() -> dict[tuple[str, str], frozenset[str]]:
+    """(normalized course, grade as string) -> codes — codes_for_course()'s
+    own grouping, one level finer. Built for the standards QA spot-check
+    (backend/qa.py): codes_for_course() alone can tell a fabricated code
+    from a real one, but not a real-code-wrong-grade one, since it groups
+    every grade in a course together. Each grade re-uses standard numbers
+    1-30 (see CORPUS_GRADE's own comment above) — a grade-9 class citing a
+    real grade-11 code is exactly the silent-wrong-answer case that comment
+    warns about, just noticed after the fact instead of guarded against
+    during retrieval.
+    """
+    groups: dict[tuple[str, str], set[str]] = {}
+    for c in load_chunks():
+        if c.get("course") and c.get("code"):
+            key = (normalize_course(c["course"]), str(c.get("grade")))
+            groups.setdefault(key, set()).add(_norm_code(c["code"]))
+    return {k: frozenset(v) for k, v in groups.items()}
+
+
+def codes_for_course_and_grade(subject_code: str | None, grade) -> frozenset[str]:
+    """Every standard code that exists for this course AND this grade — see
+    _codes_by_course_and_grade's own docstring for why codes_for_course()
+    alone isn't enough for a grade check."""
+    return _codes_by_course_and_grade().get((normalize_course(subject_code), str(grade)), frozenset())
+
+
 def codes_for_course(subject_code: str | None) -> frozenset[str]:
     """Every standard code that exists FOR THIS COURSE.
 

@@ -2167,6 +2167,30 @@ def weekly_usage_series(weeks: int = 8) -> list[dict]:
     ]
 
 
+def list_plans_for_standards_qa() -> list[dict]:
+    """Every plan that has a class to check it against — admin-wide, across
+    every account, for the standards spot-check (backend/qa.py).
+
+    Only plans with a class_id are returned: a plan's own subject/grade
+    comes from its class (see backend/service.py's own warning that
+    plans.course is a free-text display string, never a join key), so a
+    plan with no class_id has nothing this check can verify it against.
+    Those are legacy/orphaned rows (class_id landed after `plans` did), not
+    a gap in the check.
+    """
+    return _rows(
+        """
+        SELECT p.id AS plan_id, p.user_id, p.week_label, p.retrieved_ids,
+               c.subject, c.grade, u.email
+        FROM plans p
+        JOIN classes c ON c.id = p.class_id
+        JOIN users u ON u.id = p.user_id
+        WHERE p.class_id IS NOT NULL
+        ORDER BY p.created_at DESC
+        """
+    )
+
+
 def set_custom_token_cap(user_id: str, cap: int | None) -> None:
     """An admin override on top of the two tier defaults (config.py) — see
     migration 28. `cap=None` clears it back to "use the tier's own cap"."""
