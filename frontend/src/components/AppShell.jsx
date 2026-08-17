@@ -18,7 +18,7 @@ import { SkeletonText } from './Skeleton'
  * 264px nav. The one PanelGroup left splits the chat from the plan.
  */
 
-function ChatRow({ chat, classId, onDelete }) {
+function ChatRow({ chat, classId, onDelete, onNavigate }) {
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(chat.title)
@@ -56,6 +56,11 @@ function ChatRow({ chat, classId, onDelete }) {
     <li className="group relative px-2">
       <NavLink
         to={`/c/${classId}/chat/${chat.id}`}
+        // Every other row in this rail (New plan, History, Plans) already
+        // closes the phone drawer on navigate — this one was the one
+        // link left out, so opening a chat from the drawer left the drawer
+        // sitting open over it instead of getting out of the way.
+        onClick={onNavigate}
         className={({ isActive }) =>
           /* neo-inset, not a background tint — "pressed in" is what already
              means "selected" in this world (see every neo-raised button's
@@ -184,7 +189,7 @@ function Rail({ onNavigate, onClose }) {
           <div className="flex flex-col pb-4">
             <ul className="flex flex-col gap-0.5">
               {chats.map((c) => (
-                <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} />
+                <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onNavigate={onNavigate} />
               ))}
             </ul>
           </div>
