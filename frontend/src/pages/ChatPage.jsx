@@ -192,12 +192,15 @@ export function ChatPage() {
   // now, everywhere it appears (Composer's icon, Greeting's pill) — see
   // VoiceModePanel for why this replaced a quiet on/off toggle.
   const [voiceOpen, setVoiceOpen] = useState(false)
-  // What VoiceModePanel is currently typing out in sync with its own TTS
-  // playback — the caption half of "greet me and type along with the
-  // speech." Owned here, not inside the panel, because the same text has to
-  // reach it from two different moments: the opening greeting (below) and
-  // every later assistant reply (the auto-speak effect, further down).
-  const [voiceCaption, setVoiceCaption] = useState('')
+  /* The voice caption used to be state HERE, set at the moment text was handed
+     to the TTS queue, and the panel then typed it out character by character
+     hoping to land near the audio. It never did — see VoiceProvider's `caption`
+     comment for the arithmetic. It's now owned by VoiceProvider, which is the
+     only place that knows when a sentence actually becomes audible, and read
+     straight off `voice.caption` where the panel is mounted below. Every
+     setVoiceCaption call that used to sit alongside a speak()/enqueue() call is
+     gone with it: the thing that speaks the text is now the thing that captions
+     it, so the two cannot disagree. */
   // The card stack: what's actually been decided in the conversation so
   // far, per api.getDecisions — re-read after every new message while
   // voice mode is open (see the effect further down). Empty is a normal
@@ -208,6 +211,12 @@ export function ChatPage() {
   // at once when the model finally stops writing. Reset at the top of each
   // submit — see onSentence, which appends to it.
   const liveSpeechRef = useRef('')
+  /* Set when a barge-in cuts a reply off: {id, rest} — the message that recorded
+     what was heard, and the text that never got spoken. Held only until the
+     interrupt is confirmed real (an utterance arrives) or disproved (nothing
+     does, and VoiceModePanel calls onFalseInterrupt). See both handlers where
+     the panel is mounted. */
+  const interruptedRef = useRef(null)
 
   /* Which cell is being tweaked, and which cells just changed. `flashCells` is
      the only animation in the app that carries information: it answers "what
@@ -632,11 +641,19 @@ export function ChatPage() {
        text chat, which never opens the panel. */
     onSentence: (sentence) => {
       if (!voiceOpen) return
-      voice.enqueue(sentence)
+      /* track: true marks this as part of the model's own streamed reply, so
+         VoiceProvider records it as spoken once its audio actually starts —
+         which is what onInterrupt below reads to recover an interrupted turn.
+         App-authored interjections ("Building your week") are spoken too but
+         deliberately aren't tracked; they're not part of the reply.
+
+         The caption is no longer set here. VoiceProvider owns it now, because
+         it's the only thing that knows when a sentence becomes audible rather
+         than merely queued — see its own `caption` comment. */
+      voice.enqueue(sentence, { track: true })
       liveSpeechRef.current = liveSpeechRef.current
         ? `${liveSpeechRef.current} ${sentence}`
         : sentence
-      setVoiceCaption(liveSpeechRef.current)
     },
     onDone: (result) => {
       // The guided alternative to typing — see LessonQuestions and
@@ -817,10 +834,7 @@ export function ChatPage() {
     if (!voice.enabled) voice.toggle()
     else voice.unlock()
     setVoiceOpen(true)
-    if (messages.length === 0) {
-      setVoiceCaption(VOICE_GREETING)
-      voice.speak(VOICE_GREETING)
-    }
+    if (messages.length === 0) voice.speak(VOICE_GREETING)
   }, [voice, messages])
 
   /* Factored out of the docked panel's own onClose so the ⌘⇧V hotkey below
@@ -828,9 +842,11 @@ export function ChatPage() {
      silencing the shared <audio> element too (see its own comment), not
      just the panel's own local state. */
   const closeVoice = useCallback(() => {
+    // voice.stop() clears the caption itself now, along with silencing the
+    // graph — there's no separate caption state left here to reset.
     voice.stop()
+    voice.resetSpoken()
     setVoiceOpen(false)
-    setVoiceCaption('')
     setDecisions([])
   }, [voice])
 
@@ -855,8 +871,13 @@ export function ChatPage() {
     async (text) => {
       const typed = (text ?? query).trim()
       // A new turn starts a new spoken reply — see onSentence, which
-      // appends each streamed sentence onto this.
+      // appends each streamed sentence onto this. resetSpoken() clears the
+      // other half of the same bookkeeping: what the PREVIOUS turn actually
+      // got out loud, which onInterrupt reads. Without the reset, an interrupt
+      // three turns later would recover the whole conversation's speech as one
+      // message.
       liveSpeechRef.current = ''
+      voice.resetSpoken()
 
       /* Attached files were extracted, confirmed with a toast reporting the
          character count, and then never sent: `attachments` was written by the
@@ -1029,7 +1050,6 @@ export function ChatPage() {
            spoken conversation it lands as the assistant simply going silent
            mid-exchange, which is indistinguishable from it having broken. */
         if (voiceOpen) {
-          setVoiceCaption(VOICE_BUILDING)
           voice.enqueue(VOICE_BUILDING)
         }
         // stream.start() flips stream.isStreaming synchronously before its
@@ -1172,7 +1192,6 @@ export function ChatPage() {
 
       // Same silence problem as a first build — see VOICE_BUILDING's use above.
       if (voiceOpen) {
-        setVoiceCaption(VOICE_REVISING)
         voice.enqueue(VOICE_REVISING)
       }
       // Same fallback as the quiz-build path below, and the same reason: the
@@ -1393,7 +1412,6 @@ export function ChatPage() {
       // an intro that may still be playing from the stream, and replacing
       // would cut its own preamble off mid-word.
       voice.enqueue(toSpeak)
-      setVoiceCaption(toSpeak)
     }
   }, [messages, voice, voiceOpen])
 
@@ -1953,21 +1971,23 @@ export function ChatPage() {
                       getWarmMic={claimWarmMic}
                       busy={busy}
                       isSpeaking={voice.speaking}
-                      caption={voiceCaption}
+                      /* Straight off VoiceProvider — the sentence whose audio is
+                         playing right now, timed off the AudioContext clock rather
+                         than guessed at from a character interval. */
+                      caption={voice.caption}
                       decisions={decisions}
                       messages={messages}
                       activeClass={activeClass}
                       calendar={calendar}
                       onBuild={() => submit('Looks good, build the lesson plan.')}
                       /* Replay button: speaks the last reply again through the same
-                         shared <audio> element, and re-primes the caption so the
-                         type-out plays a second time too. undefined (not a no-op
-                         function) when there's nothing to replay yet — VoiceModePanel
-                         hides the button outright rather than rendering it disabled. */
+                         Web Audio graph, captioning itself as it goes like any other
+                         spoken text. undefined (not a no-op function) when there's
+                         nothing to replay yet — VoiceModePanel hides the button
+                         outright rather than rendering it disabled. */
                       onReplayLast={
                         lastReplyText
                           ? () => {
-                              setVoiceCaption(lastReplyText)
                               voice.speak(lastReplyText)
                             }
                           : undefined
@@ -1990,12 +2010,92 @@ export function ChatPage() {
                          it. Stopping only the audio would leave the model still
                          writing sentences that VoiceProvider would dutifully queue
                          up and speak the moment the teacher stopped talking —
-                         interrupted in sound only, not in fact. */
+                         interrupted in sound only, not in fact.
+
+                         Then keep what was actually said. Aborting the stream means
+                         useChatStream's start() returns null on AbortError and
+                         onDone NEVER FIRES — so the reply the assistant had already
+                         spoken two sentences of was never written into `messages` at
+                         all. The next turn was then built from a transcript in which
+                         the assistant had answered nothing, which is why an
+                         interrupted conversation drifted: the model would re-answer
+                         a question it had already half-answered aloud, or reference
+                         nothing at all.
+
+                         voice.getSpoken() is the fix, and the reason it's read from
+                         VoiceProvider rather than from liveSpeechRef is precision:
+                         liveSpeechRef holds every sentence that was QUEUED, which
+                         at the moment of an interrupt is normally one or two ahead
+                         of what came out of the speaker. getSpoken() holds only the
+                         sentences whose audio actually started. That distinction is
+                         the whole point — truncating history to what the teacher
+                         HEARD is what stops the model saying "as I mentioned" about
+                         a sentence that got cut off before it played. */
                       onInterrupt={() => {
+                        const heard = voice.getSpoken()
+                        const queued = liveSpeechRef.current.trim()
                         voice.stop()
                         chatStream.stop()
                         liveSpeechRef.current = ''
-                        setVoiceCaption('')
+                        voice.resetSpoken()
+                        if (!heard) {
+                          interruptedRef.current = null
+                          return
+                        }
+                        // What was written but never made it out of the speaker.
+                        // Parked, not discarded — onFalseInterrupt below resumes
+                        // from it if the "interruption" turns out to have been a
+                        // cough.
+                        const rest = queued.startsWith(heard) ? queued.slice(heard.length).trim() : ''
+                        const id = nextId()
+                        // spokenLive so the auto-speak effect doesn't read it back
+                        // out; interrupted so Message.jsx can mark it if it ever
+                        // wants to. Persisted like any other assistant turn.
+                        setMessages((prev) => [
+                          ...prev,
+                          {
+                            id,
+                            role: 'assistant',
+                            content: heard,
+                            spokenLive: true,
+                            interrupted: true,
+                          },
+                        ])
+                        interruptedRef.current = rest ? { id, rest } : null
+                        const saveTo = localFor.current
+                        if (saveTo) {
+                          api.addMessage(saveTo, { role: 'assistant', content: heard }).catch(() => {})
+                        }
+                      }}
+                      /* The undo. A barge-in threshold tuned to catch a real
+                         interruption promptly will sometimes fire on a cough, a
+                         chair, or a colleague across the room — and losing a whole
+                         answer to that, with no way back except retyping the
+                         question, is the most annoying failure this panel has. So
+                         the interrupt is now provisional: if nothing follows it
+                         within a couple of seconds, the reply picks up exactly
+                         where it stopped. LiveKit ships this on by default for the
+                         same reason, and it's what lets the threshold be
+                         aggressive without a cost.
+
+                         The message's own text is repaired to match, so the model's
+                         context reflects the whole thing having been said rather
+                         than only the first half. (The persisted row keeps the
+                         truncated version — reloading a chat where a cough
+                         happened would show slightly less than was spoken, which
+                         is not worth an update-message route to fix.) */
+                      onFalseInterrupt={() => {
+                        const parked = interruptedRef.current
+                        interruptedRef.current = null
+                        if (!parked?.rest) return
+                        voice.enqueue(parked.rest, { track: true })
+                        setMessages((prev) =>
+                          prev.map((m) =>
+                            m.id === parked.id
+                              ? { ...m, content: `${m.content} ${parked.rest}`, interrupted: false }
+                              : m
+                          )
+                        )
                       }}
                       /* The clarification cards, tappable inside the panel — voice
                          mode asks ONE question at a time (see the backend's voice

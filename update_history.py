@@ -1,4 +1,10 @@
-import { useState } from 'react'
+import sys
+
+file_path = "frontend/src/pages/HistoryPage.jsx"
+with open(file_path, "r") as f:
+    lines = f.readlines()
+
+new_content = """import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { MessageSquare, Search, Trash2, CheckSquare, Square, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 import { useToast } from '../lib/toastContext'
@@ -195,7 +201,7 @@ function ChatDetailPanel({ chat, classId, onDelete }) {
     }
     try {
       await renameChat.mutateAsync({ id: chat.id, title: title.trim() })
-    } catch (_err) {
+    } catch (err) {
       // toast will be handled by mutation if needed, or silently fail gracefully
     } finally {
       setEditingTitle(false)
@@ -261,7 +267,7 @@ function ChatDetailPanel({ chat, classId, onDelete }) {
 export function HistoryPage() {
   const { classId } = useActiveClass()
   const navigate = useNavigate()
-  const { data: chats, isLoading, isError } = useChats()
+  const { data: chats, isLoading, isError, error } = useChats()
   const deleteChat = useDeleteChat()
   const confirm = useConfirm()
   const toast = useToast()
@@ -376,3 +382,9 @@ export function HistoryPage() {
     </div>
   )
 }
+"""
+
+with open(file_path, "w") as f:
+    f.write(new_content)
+
+print("HistoryPage.jsx updated successfully to use Master-Detail layout.")

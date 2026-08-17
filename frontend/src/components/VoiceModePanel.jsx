@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   Check,
   Download,
@@ -15,33 +15,55 @@ import {
 } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
+/* ?url, not a normal import: an AudioWorkletProcessor is constructed by the
+   browser in a scope with no module loader, so addModule needs a real URL and
+   the file must NOT be inlined into the app bundle. Vite emits it as an asset
+   and hands back the hashed path. */
+import micWorkletUrl from '../lib/micCaptureWorklet.js?url'
+import { encodeWav } from '../lib/wav'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { DecisionStack } from './DecisionStack'
 import { WeekStrip } from './WeekStrip'
 
+/* Animates this slot's height between whatever its contents happen to be —
+ * the checklist, a question card, build progress, the finished-plan card.
+ *
+ * The measurement runs in a layout effect, not in a requestAnimationFrame
+ * inside the ResizeObserver callback. That ordering was the bug: RO fires
+ * AFTER paint, so every swap of children rendered one frame at the new size
+ * before the height transition had started — a visible jump, then a settle
+ * back into the animation. Measuring synchronously before the browser paints
+ * means the container is already at the right height for frame one.
+ *
+ * The RO stays, for content that resizes without React re-rendering (a
+ * decision label wrapping to two lines as the window narrows).
+ */
 function SmoothHeight({ children }) {
   const contentRef = useRef(null)
-  const [height, setHeight] = useState('auto')
+  const [height, setHeight] = useState(null)
 
-  useEffect(() => {
-    if (!contentRef.current) return
-    const ro = new ResizeObserver((entries) => {
-      // Avoid ResizeObserver loop limit errors
-      window.requestAnimationFrame(() => {
-        if (entries[0]) {
-          setHeight(entries[0].contentRect.height)
-        }
-      })
-    })
-    ro.observe(contentRef.current)
+  // useLayoutEffect: runs after DOM mutation, before paint. Re-runs on every
+  // children change, which is exactly when a slot swap happens.
+  useLayoutEffect(() => {
+    const el = contentRef.current
+    if (!el) return undefined
+    const measure = () => {
+      const next = el.getBoundingClientRect().height
+      setHeight((prev) => (prev !== null && Math.abs(prev - next) < 0.5 ? prev : next))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [children])
 
   return (
     <div
       style={{
-        height: height === 'auto' ? 'auto' : `${height}px`,
-        transition: 'height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+        // null on the very first render only — 'auto' there so the panel opens
+        // at its natural size instead of animating up from zero.
+        height: height === null ? 'auto' : `${height}px`,
+        transition: 'height 260ms cubic-bezier(0.4, 0, 0.2, 1)',
         overflow: 'hidden',
       }}
     >
@@ -55,20 +77,35 @@ function SmoothHeight({ children }) {
  *
  * Always-on, not push-to-talk: this panel listens continuously and decides
  * for itself when a sentence is finished, the same shape as ChatGPT's own
- * voice mode. The mechanism is an energy-based VAD (voice activity
- * detector) driving a plain MediaRecorder — not the browser's
+ * voice mode. Whisper transcribes each finished utterance — not the browser's
  * SpeechRecognition API, which is Chrome/Google-cloud-only in practice and
- * unreliable on iOS Safari, exactly the platform this app's screenshots
- * keep coming from. Whisper (already wired for the dictate button, see
- * Composer.jsx) transcribes each finished utterance instead.
+ * unreliable on iOS Safari, exactly the platform this app's screenshots keep
+ * coming from.
+ *
+ * CAPTURE IS CONTINUOUS, and this is the important structural fact about the
+ * file. An AudioWorklet (lib/micCaptureWorklet.js) streams 32ms frames of
+ * 16kHz mono into a rolling buffer for as long as the panel is open, and an
+ * "utterance" is a WINDOW cut out of that history — starting PREROLL_MS before
+ * the detector noticed anything. The previous design started a MediaRecorder
+ * when the level crossed a threshold, which meant the front of every utterance
+ * was already gone by the time recording began (an energy gate always trips
+ * after voicing starts, and unvoiced onsets barely register at all), so Whisper
+ * received "ixty" and confidently returned a word that was never said.
  *
  * The loop, per utterance:
- *   silence → (volume crosses threshold) → recording → (silence again for
- *   SILENCE_MS) → stop → transcribe → onUtterance(text) → back to silence,
- *   UNLESS the assistant is now busy or speaking, in which case listening
- *   pauses entirely until both clear — otherwise the mic would pick up the
- *   assistant's own TTS output through the speaker and the panel would
- *   talk to itself.
+ *   frames arriving → (level clears an adaptive bar) → mark the window open →
+ *   (silence long enough, judged against two timers and a hard cap) → cut the
+ *   window WITH its pre-roll → encode WAV → transcribe → onUtterance(text).
+ *
+ * The detector runs on the worklet's frame cadence, not requestAnimationFrame:
+ * rAF stops on a backgrounded tab, which used to leave the mic live and nothing
+ * listening. rAF now only draws the level meter, which is work that should
+ * stop when nobody can see it.
+ *
+ * Recording during a reply is a genuinely different state from being paused —
+ * the mic stays live while the assistant talks so barge-in can work at all,
+ * with a stricter threshold and AEC-convergence guards to stop the reply
+ * interrupting itself through the speaker.
  *
  * Docked, not a takeover: this used to be a phone-first full-screen overlay
  * and a centered desktop dialog with a scrim — a different screen entirely
@@ -90,24 +127,94 @@ function SmoothHeight({ children }) {
  * here and would not be fine as a default anywhere else in the app.
  */
 
-const SPEECH_THRESHOLD = 0.06 // fraction of full scale; tune against real use
-/* How long a pause has to last before the utterance is considered finished.
-   This is pure turn-taking latency — every millisecond here is dead air the
-   teacher sits through after they've stopped talking, before anything is
-   even sent. 900ms was a noticeable beat; ~600 still comfortably rides out
-   the pause inside "Week seven… uh… on Poe" without cutting it in half. */
-const SILENCE_MS = 620
+/* ── the detector's thresholds, relative to the room rather than absolute ───
+ *
+ * These used to be flat numbers against full scale: speech at 0.06, barge-in at
+ * 0.13. That's 20·log₁₀(0.13/0.06) = 6.7 dB of total working range, which is
+ * less than the ~10 dB difference between talking at 30cm and talking at arm's
+ * length, never mind the 25-30 dB spread between a quiet room and a noisy one.
+ * A single absolute pair genuinely cannot both catch a soft speaker and reject
+ * a laptop fan.
+ *
+ * Worse, the floor moves underneath a fixed gate: getUserMedia is asked for
+ * autoGainControl (below, and rightly — it helps Whisper), and AGC only holds
+ * gain steady while its own detector hears speech. During pauses it ramps up,
+ * so the measured RMS of SILENCE climbs over the course of a turn and a fixed
+ * threshold starts tripping on nothing at all.
+ *
+ * So the thresholds are now multiples of a continuously-estimated noise floor
+ * (see noiseFloorRef in tick()), with absolute floors underneath so a
+ * pathologically silent input can't drive them to zero. This is the standard
+ * adaptive formulation and it costs nothing: one exponential average per frame.
+ *
+ * Note what this does NOT fix: RMS energy still knows only the LEVEL of the
+ * signal, never what kind of signal it is. A controlled comparison puts energy
+ * detection at 0.11 MCC against Silero's 0.72 — near chance — and adding a
+ * second threshold measurably fails to rescue it. Making it relative removes
+ * the device-and-room fragility, which is the part that was making this feel
+ * broken; replacing it with Silero (@ricky0123/vad-web is a drop-in for React)
+ * is the real ceiling and a bigger change than this one.
+ */
+const SPEECH_FLOOR_MULT = 2.8
+const SPEECH_FLOOR_MIN = 0.022
+const BARGE_FLOOR_MULT = 5.0
+const BARGE_FLOOR_MIN = 0.075
+// How fast the floor estimate tracks. Slow to rise, quick to fall: a rising
+// estimate that chases speech would climb into it and go deaf, whereas
+// following the room down as it quietens is always safe.
+const FLOOR_ATTACK = 0.002
+const FLOOR_DECAY = 0.05
+
+/* TWO endpointing timers, not one. Every production stack uses a pair, and the
+   reason is that a single value has two incompatible jobs: it has to be short
+   enough that "yes" doesn't sit in dead air, and long enough that "the theme
+   is… uh… isolation" isn't cut in half. One number cannot be both, and 620ms
+   was the compromise that was slightly wrong in both directions.
+
+   SILENCE_MS is now the floor — the pause after which an utterance that looks
+   COMPLETE is closed. SILENCE_MS_OPEN is the longer grace given to one that
+   looks unfinished, judged by the crudest useful proxy available on the client:
+   whether the speaker's pitch/energy trailed off into a pause or stopped flat.
+   We don't have a semantic model here, so the proxy is duration — a very short
+   burst is far more likely to be a fragment ("week seven—") than a finished
+   turn, and gets the longer grace. MAX_SILENCE_MS is the guillotine, so this is
+   never WORSE than the old single timeout no matter what the heuristic thinks.
+
+   440ms rather than 620: OpenAI's server VAD defaults to 500ms, LiveKit to
+   300-550ms, Pipecat to 200ms with a semantic model behind it. 620 was above
+   all of them, and every millisecond of it was silence the teacher sat in. */
+const SILENCE_MS = 440
+const SILENCE_MS_OPEN = 900
+const MAX_SILENCE_MS = 1500
+const SHORT_UTTERANCE_MS = 1200
 const MIN_UTTERANCE_MS = 300
 const MAX_UTTERANCE_MS = 30_000
 
-/* The gap SPEECH_THRESHOLD alone leaves: a level that never crosses it reads
-   identically whether the room is silent or someone's talking too quietly
-   to trip it — "the mic isn't working" and "you're just a bit too quiet"
-   look the same with nothing but silence either way. This band catches the
-   second case specifically: real signal (above room-noise) that still never
-   clears the bar, held long enough that it's a pattern and not one soft
-   word. */
-const QUIET_FLOOR = 0.02
+/* Pre-roll. The single most mechanical bug in the old detector: the recorder
+   was CREATED and started only once the level had already crossed the
+   threshold, so every millisecond before that instant was gone — and an energy
+   gate always trips one or two frames after voicing actually begins, because
+   word-initial stops and fricatives (/p/ /t/ /k/ /s/ /f/) carry almost no
+   energy compared to the vowel behind them. "Sixty" arrived as "ixty" and
+   Whisper confabulated something to fill the hole, which is a large part of why
+   utterances came back subtly wrong rather than obviously missing.
+
+   The recorder now runs continuously and utterances are cut out of a rolling
+   buffer, so the audio from before the trigger is already captured. 400ms sits
+   between OpenAI's 300ms default and LiveKit's 500ms. */
+const PREROLL_MS = 400
+// One frame from the capture worklet: 512 samples at 16kHz. Kept in sync with
+// micCaptureWorklet's own FRAME constant — the pruning arithmetic below needs to
+// retain the pre-roll window plus one frame of slack, so it has to know this.
+const FRAME_MS = 32
+
+/* The gap the speech threshold alone leaves: a level that never crosses it
+   reads identically whether the room is silent or someone's talking too quietly
+   to trip it — "the mic isn't working" and "you're just a bit too quiet" look
+   the same with nothing but silence either way. This band catches the second
+   case specifically: real signal (above room-noise) that still never clears the
+   bar, held long enough that it's a pattern and not one soft word. */
+const QUIET_FLOOR_MULT = 1.5
 const QUIET_HINT_MS = 2500
 // How many finished-but-unusable utterances (transcribe failed, or came back
 // empty) in a row before saying so — one miss is normal noise; a second one
@@ -119,12 +226,33 @@ const MISS_HINT_COUNT = 2
    starting a fresh utterance into silence, because the room is not silent —
    the assistant's own voice is coming out of a speaker inches from the mic.
    getUserMedia's echoCancellation removes most of it, but "most" leaves
-   enough transient leakage to trip a bare threshold, and a false interrupt
-   is worse than a missed one: it cuts the assistant off mid-word for
-   nothing. So: a higher bar, held for a sustained stretch rather than one
-   lucky frame. */
-const BARGE_THRESHOLD = 0.13
-const BARGE_SUSTAIN_MS = 180
+   enough transient leakage to trip a bare threshold.
+
+   320ms of sustained speech, not 180. LiveKit requires 500ms before it counts
+   anything as an interruption, and its reasoning applies here: a cough, a chair
+   scrape, or one leaked syllable of the assistant's own voice all clear a
+   180ms bar. The cost of raising it is bounded by the false-interruption
+   recovery below — cutting off slightly late is recoverable, cutting off for
+   nothing is not. */
+const BARGE_SUSTAIN_MS = 320
+
+/* False-interruption recovery. Barge-in is now deliberately quick to fire and
+   quick to forgive: if the assistant gets cut off and then NOTHING follows
+   within this window — no utterance, no speech at all — the interrupt is
+   reclassified as a false positive. LiveKit ships this pattern on by default at
+   exactly 2.0s, and it converts the worst failure mode (a cough kills a long
+   answer and the teacher has to say "sorry, go on") into a two-second hiccup.
+   What resumes is the remainder of the reply, which ChatPage still holds. */
+const FALSE_INTERRUPT_MS = 2000
+
+/* AEC needs a few seconds of the speaker-and-mic loop before it converges, and
+   until it has, the assistant's own voice leaks through at close to full level.
+   Evaluating barge-in during that window is how a reply interrupts itself. Two
+   guards: nothing counts as an interrupt until the stream has been live this
+   long, and each new utterance from the assistant gets a short grace while the
+   canceller re-adapts to new far-end content. */
+const AEC_WARMUP_MS = 1200
+const AEC_REARM_MS = 300
 
 /* The clarification cards. When the teacher says something too vague to
  * build from, the model asks one or more short questions (see the backend's
@@ -431,6 +559,11 @@ export function VoiceModePanel({
   // Called the instant the teacher starts talking OVER it (see the VAD
   // loop's own comment on barge-in), not after it finishes.
   onInterrupt,
+  /* The undo for onInterrupt. Fires when a barge-in turned out to be a cough,
+     a chair, or a colleague — nothing followed it within FALSE_INTERRUPT_MS —
+     so the reply that got cut off should carry on. Optional: without it, a
+     false interrupt just stays an interrupt, which is what it always did. */
+  onFalseInterrupt,
   // The clarification the conversation is waiting on, if any, and the way
   // to answer it — see QuestionCards.
   questions = null,
@@ -446,12 +579,13 @@ export function VoiceModePanel({
 }) {
   const [status, setStatus] = useState('requesting-mic') // requesting-mic | listening | transcribing | error
   const [errorMessage, setErrorMessage] = useState(null)
-  // Two distinct "something's off" nudges, both surfaced through the status
-  // pill (see `label` below) rather than the caption — they're about the
-  // PIPELINE, not something said, and the caption is reserved for that.
+  // Two distinct "something's off" nudges. Both surface through `notice` below
+  // — the actionable slot — not the status pill and not the caption: they're
+  // about the PIPELINE, they persist until resolved, and they're the kind of
+  // thing that got lost when it shared a slot with transient status text.
   // missHint: consecutive attempts that produced nothing usable.
-  // quietHint: real signal that never once cleared SPEECH_THRESHOLD.
-  // Only one shows at a time (missHint wins — see `label`), so there's no
+  // quietHint: real signal that never once cleared the speech threshold.
+  // Only one shows at a time (missHint wins — see `notice`), so there's no
   // need to track them as mutually exclusive here, just independently.
   const [missHint, setMissHint] = useState(false)
   const [quietHint, setQuietHint] = useState(false)
@@ -509,45 +643,50 @@ export function VoiceModePanel({
   // interrupt worked silently before, so talking over the assistant felt
   // like it might not have registered.
   const [justInterrupted, setJustInterrupted] = useState(false)
-  const [typedCaption, setTypedCaption] = useState('')
-  // How far the type-out has got, and what it was typing — kept across
-  // renders so a caption that GROWS mid-sentence (streamed speech) picks up
-  // where it left off instead of restarting. See the caption effect below.
-  const typedIdxRef = useRef(0)
-  const prevCaptionRef = useRef('')
   const panelRef = useRef(null)
   const closeRef = useRef(null)
-  // The status pill's own dot — the one bit of "is it actually hearing me"
-  // feedback left once the big level-driven orb was dropped (see the top
-  // comment). Updated imperatively from the VAD's tick loop below, not
-  // React state: the orb used to repaint a canvas every frame the same
-  // way, and a dot is cheap enough to drive the identical way without ever
-  // re-rendering the component at 60fps for it.
-  const dotRef = useRef(null)
 
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
   const canvasRef = useRef(null)
   const analyserRef = useRef(null)
   const rafRef = useRef(null)
-  const recorderRef = useRef(null)
-  const chunksRef = useRef([])
+  const workletRef = useRef(null)
   const vadStateRef = useRef('idle') // idle | recording
   const silenceStartRef = useRef(null)
   const speechStartRef = useRef(null)
-  // MediaRecorder's default mimeType varies by browser (webm/opus on
-  // Chrome/Firefox, mp4/aac on Safari/iOS — the exact platform this app's
-  // own screenshots keep coming from). handleUtteranceReady used to hardcode
-  // 'audio/webm' on the reconstructed Blob no matter what was actually
-  // recorded, which defeats api.transcribe()'s own blob.type-based extension
-  // detection — every Safari utterance was uploaded mislabeled as .webm,
-  // Whisper's decoder disagreed with the real container, and transcription
-  // failed silently (handleUtteranceReady's catch swallows it on purpose —
-  // see its own comment). Captured here, at start time, because by the time
-  // the recorder's `stop` event fires and hands off to handleUtteranceReady,
-  // recorderRef.current has already been nulled — there is no other way to
-  // read back what the recorder actually used.
-  const mimeTypeRef = useRef('audio/webm')
+
+  /* ── the rolling capture buffer ────────────────────────────────────────────
+     Replaces MediaRecorder entirely. The worklet posts 32ms frames of 16kHz
+     mono continuously; these hold them, and an utterance is a WINDOW cut out of
+     that history rather than a recording that had to be started in time.
+
+     bufRef       frames, in order, oldest first
+     bufStartRef  absolute sample index of bufRef[0]'s first sample
+     totalRef     absolute sample index one past the newest sample
+     utterStartRef absolute sample index where speech was detected
+
+     "Absolute" means counted from the start of the session, so the arithmetic
+     for "give me from 400ms before speech started" is subtraction and nothing
+     else. While idle the buffer is pruned down to just the pre-roll window, so
+     memory is bounded at ~13KB rather than growing for the life of the panel. */
+  const bufRef = useRef([])
+  const bufStartRef = useRef(0)
+  const totalRef = useRef(0)
+  const utterStartRef = useRef(0)
+  const CAPTURE_RATE = 16000
+  /* The running estimate of what this room and this microphone sound like with
+     nobody talking. Every threshold is a multiple of it — see the constants at
+     the top of this file for why absolute thresholds could not work. Seeded
+     optimistically low and allowed to rise slowly. */
+  const noiseFloorRef = useRef(0.006)
+  // When the mic stream went live, and when the assistant last started an
+  // utterance — both feed the AEC-convergence guards on barge-in.
+  const micLiveAtRef = useRef(0)
+  const speakStartedAtRef = useRef(0)
+  // Set when a barge-in fires; if no real utterance follows within
+  // FALSE_INTERRUPT_MS the interrupt is treated as a false positive.
+  const falseInterruptRef = useRef(null)
   // Mirrors `busy` into the animation loop without re-subscribing the loop
   // itself to React's render cycle — read every frame, written only when
   // the prop actually changes. isSpeaking used to be folded in here too,
@@ -570,10 +709,10 @@ export function VoiceModePanel({
   const onInterruptRef = useRef(onInterrupt)
   onInterruptRef.current = onInterrupt
   const processingRef = useRef(false)
-  // The mic/VAD pipeline below is set up in a mount-once effect (deps: []) —
+  // The mic/capture pipeline below is set up in a mount-once effect —
   // deliberately, since tearing down and re-requesting getUserMedia every
-  // render would be its own bug. But handleUtteranceReady, which that effect
-  // wires up exactly once via `rec.onstop`, used to call the `onUtterance`
+  // render would be its own bug. But the code that submits a finished utterance
+  // runs from inside that effect's world, and it used to call the `onUtterance`
   // PROP directly. That prop is ChatPage's `submit`, whose identity changes
   // every turn (its own deps include `messages`, `chatId`, `artifact`...) —
   // so every utterance after the first was calling the STALE submit()
@@ -607,60 +746,43 @@ export function VoiceModePanel({
 
   useEffect(() => {
     isSpeakingRef.current = Boolean(isSpeaking)
+    /* Stamp when the assistant STARTS a stretch of speech, for the barge-in
+       guard: browser AEC re-adapts whenever the far-end content changes, and
+       during that re-adaptation the assistant's own voice leaks through the mic
+       at close to full level. Requiring more evidence in the first few hundred
+       milliseconds of each utterance is what stops a reply interrupting itself
+       on laptop speakers. */
+    if (isSpeaking) speakStartedAtRef.current = performance.now()
   }, [isSpeaking])
 
-  // Reveals `caption` a character at a time rather than all at once — an
-  // approximation of speech pace (no real word-level timing exists without
-  // aligning against the TTS audio itself, which this app's turn-based
-  // record→transcribe→speak pipeline has no hook for). ~22 chars/sec is a
-  // touch brisker than average spoken English, on purpose: a caption that
-  // finishes slightly AHEAD of the audio reads as natural anticipation, one
-  // that lags behind it reads as broken.
-  useEffect(() => {
-    if (!caption) {
-      typedIdxRef.current = 0
-      prevCaptionRef.current = ''
-      setTypedCaption('')
-      return undefined
-    }
+  /* Same ref-mirror as onUtterance, and needed for the same reason: the
+     false-interrupt timer is armed from inside the detector, which lives outside
+     React's render cycle, and this prop's identity changes every turn. */
+  const onFalseInterruptRef = useRef(onFalseInterrupt)
+  onFalseInterruptRef.current = onFalseInterrupt
 
-    // If the assistant isn't speaking, this is the user's live speech (or we just finished
-    // the assistant's turn). Show it instantly, bypassing the typewriter.
-    if (!isSpeaking) {
-      typedIdxRef.current = caption.length
-      prevCaptionRef.current = caption
-      setTypedCaption(caption)
-      
-      // Clear the caption entirely after a few seconds of silence so the panel 
-      // can settle back to "Listening..." instead of showing stale text forever.
-      const t = setTimeout(() => setTypedCaption(''), 4000)
-      return () => clearTimeout(t)
-    }
-
-    /* A streamed reply GROWS — each finished sentence appends to the
-       caption while the last one is still being typed out. Restarting from
-       zero on every change would re-type the whole reply from the top several 
-       times per turn. Keeping the cursor where it is whenever the new caption 
-       merely extends the old one turns that into one continuous type-out; 
-       anything that isn't an extension is a genuinely new utterance and starts over. */
-    if (!caption.startsWith(prevCaptionRef.current)) typedIdxRef.current = 0
-    prevCaptionRef.current = caption
-    if (typedIdxRef.current >= caption.length) {
-      setTypedCaption(caption)
-      return undefined
-    }
-    const CHAR_MS = 42
-    const id = setInterval(() => {
-      typedIdxRef.current += 1
-      setTypedCaption(caption.slice(0, typedIdxRef.current))
-      if (typedIdxRef.current >= caption.length) clearInterval(id)
-    }, CHAR_MS)
-    return () => clearInterval(id)
-  }, [caption, isSpeaking])
+  /* `caption` is now the sentence that is being spoken RIGHT NOW, handed down
+     from VoiceProvider, which sets it on a timer scheduled against the
+     AudioContext clock at the exact moment that sentence's audio begins. So it
+     is rendered as-is.
+   *
+   * What used to be here: a setInterval revealing one character every 42ms.
+   * That's 23.8 chars/second, about 260wpm, against TTS speech of roughly 14
+   * chars/second — so the text raced about 1.7x ahead of the voice, finished
+   * early, and sat frozen while the assistant was still talking. The interval
+   * also re-rendered this entire component 24 times a second, concurrently with
+   * the VAD loop and audio playback, which is the worst possible moment to be
+   * adding render pressure. Both problems are gone rather than tuned: no
+   * character interval, no per-frame state, and the caption cannot drift out of
+   * step with the audio because the audio is what schedules it.
+   *
+   * The per-word entrance animation (.karaoke-word, applied in the render
+   * below) survives and now means something — it fires once per sentence, on a
+   * real event, instead of once per typewriter tick. */
 
   // Neither hint has any OTHER path back to false if the teacher just gives
   // up rather than resolving it (speaking up, or landing a real utterance —
-  // see tick()/handleUtteranceReady, which clear these the moment either
+  // see onFrame()/finishUtterance(), which clear these the moment either
   // actually happens). Without this they'd sit there claiming "still having
   // trouble" indefinitely once true, long after it stopped being current.
   useEffect(() => {
@@ -693,9 +815,16 @@ export function VoiceModePanel({
     if ((isSpeaking || caption) && !editingHeard) setHeardText('')
   }, [isSpeaking, caption, editingHeard])
 
+  /* 420ms, matching .barge-in-shatter's animation exactly (base.css). It was
+     1600ms against a 500ms animation — and because that class runs `forwards`
+     and its last keyframe is opacity: 0, the caption row stayed INVISIBLE and
+     blurred for the 1.1s after the animation ended. Whatever rendered into it
+     during that window was silently swallowed, which in practice was the "You
+     said …" echo of the very utterance that caused the barge-in: the
+     acknowledgement was hiding the thing being acknowledged. */
   useEffect(() => {
     if (!justInterrupted) return undefined
-    const t = setTimeout(() => setJustInterrupted(false), 1600)
+    const t = setTimeout(() => setJustInterrupted(false), 420)
     return () => clearTimeout(t)
   }, [justInterrupted])
 
@@ -718,18 +847,27 @@ export function VoiceModePanel({
   }
 
   /* Push-to-talk's own start/stop — the pointerdown/pointerup pair the
-     "Hold to talk" button (below) wires up. Mirrors what the VAD's own tick
-     loop does automatically in 'auto' mode (barge-in check, then
-     beginUtterance) rather than duplicating a second recording pipeline:
-     PTT only decides WHEN to record, the recording itself is the exact
-     same MediaRecorder/beginUtterance machinery either mode uses. */
+     "Hold to talk" button (below) wires up. Mirrors what the detector does
+     automatically in 'auto' mode rather than duplicating a second capture
+     pipeline: PTT only decides WHEN an utterance begins and ends; the audio
+     itself comes out of the same rolling buffer either way, pre-roll included.
+
+     No processingRef guard on the way in any more. It used to refuse to start
+     a new utterance while the previous one was still being transcribed, which
+     meant a deliberate button press was silently ignored — the one input in the
+     whole panel that is unambiguous about intent. */
   const startPttRecording = () => {
-    if (processingRef.current || mutedRef.current || vadStateRef.current === 'recording') return
+    if (mutedRef.current || vadStateRef.current === 'recording') return
     pttHeldRef.current = true
     // Holding the floor (assistant speaking or still generating) while the
     // button is pressed is an explicit, deliberate interrupt in PTT mode —
-    // there's no threshold to clear, the press itself IS the signal.
+    // there's no threshold to clear, the press itself IS the signal, so there's
+    // nothing to second-guess afterwards either: no false-interrupt timer.
     if (isSpeakingRef.current || pausedRef.current) {
+      if (falseInterruptRef.current) {
+        clearTimeout(falseInterruptRef.current)
+        falseInterruptRef.current = null
+      }
       onInterruptRef.current?.()
       setJustInterrupted(true)
     }
@@ -738,7 +876,7 @@ export function VoiceModePanel({
   const stopPttRecording = () => {
     if (!pttHeldRef.current) return
     pttHeldRef.current = false
-    stopRecorder()
+    finishUtterance()
   }
 
   // Keep fresh references for the global keyboard listener without re-binding it on every render
@@ -782,84 +920,85 @@ export function VoiceModePanel({
     }
   }, [])
 
-  // rec.stop() is ASYNCHRONOUS — the 'stop' event (and so handleUtteranceReady,
-  // wired up as rec.onstop) doesn't fire until the recorder finishes
-  // flushing. This used to null out speechStartRef/vadStateRef/
-  // silenceStartRef right here, synchronously, immediately after calling
-  // stop() — so by the time handleUtteranceReady actually ran and read
-  // speechStartRef.current to validate the utterance, it was ALWAYS already
-  // null. `if (!started ...) return` fired every time, and the utterance was
-  // discarded before transcription — confirmed live: dataavailable fired
-  // with real recorded audio, the native 'stop' event fired, and
-  // handleUtteranceReady still never called api.transcribe. Every utterance
-  // through the normal silence-triggered path was silently dropped.
-  //
-  // It also raced vadStateRef back to 'idle' before the old recorder had
-  // actually finished stopping, so the VAD loop's very next tick could see
-  // 'idle' and call beginUtterance() again — a second, bogus recording
-  // starting while the first was still flushing.
-  //
-  // handleUtteranceReady already does this same cleanup correctly (reads
-  // `started` BEFORE nulling it) once the recorder actually finishes — so
-  // stopRecorder's only job is to ask it to stop.
-  const stopRecorder = () => {
-    const rec = recorderRef.current
-    if (rec && rec.state !== 'inactive') rec.stop()
-    recorderRef.current = null
-  }
-
-  const abortUtterance = () => {
-    // The assistant started talking (or generating) while we were mid-
-    // recording — discard rather than transcribe, since it's likely a
-    // fragment cut off by the pause rather than a finished sentence.
-    chunksRef.current = []
-    const rec = recorderRef.current
-    if (rec && rec.state !== 'inactive') {
-      // No onstop handling wanted for an aborted clip.
-      rec.ondataavailable = null
-      rec.onstop = null
-      rec.stop()
-    }
-    recorderRef.current = null
-    vadStateRef.current = 'idle'
-    silenceStartRef.current = null
-    speechStartRef.current = null
-    setHearing(false)
-  }
-
+  /* Marks the start of an utterance. There is no recorder to start — capture
+     has been running since the panel opened — so this only notes WHERE in the
+     buffer speech began and stops the buffer being pruned. */
   const beginUtterance = () => {
-    const stream = streamRef.current
-    if (!stream) return
-    chunksRef.current = []
-    const rec = new MediaRecorder(stream)
-    mimeTypeRef.current = rec.mimeType || 'audio/webm'
-    rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data)
-    rec.onstop = handleUtteranceReady
-    recorderRef.current = rec
-    rec.start()
+    if (vadStateRef.current === 'recording') return
     vadStateRef.current = 'recording'
+    utterStartRef.current = totalRef.current
     speechStartRef.current = performance.now()
     silenceStartRef.current = null
     setHearing(true)
   }
 
-  const handleUtteranceReady = async () => {
-    const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current })
-    chunksRef.current = []
+  /* Throws the current utterance away — used when the teacher mutes mid-
+     sentence, or the panel is closing. Distinct from finishing one: nothing is
+     transcribed and nothing is submitted. */
+  const abortUtterance = () => {
+    vadStateRef.current = 'idle'
+    silenceStartRef.current = null
+    speechStartRef.current = null
+    setHearing(false)
+  }
+
+  /* Cuts the utterance out of the rolling buffer and sends it.
+   *
+   * The window starts PREROLL_MS BEFORE the detector tripped, which is the
+   * whole point of capturing continuously — see micCaptureWorklet's comment on
+   * why an energy gate always misses the front of a word.
+   */
+  const finishUtterance = async () => {
     const started = speechStartRef.current
+    const startSample = utterStartRef.current
+    const endSample = totalRef.current
     vadStateRef.current = 'idle'
     speechStartRef.current = null
     silenceStartRef.current = null
     setHearing(false)
+
     // Too short to be real speech — a cough, a tap, a bump of the table.
-    if (!started || performance.now() - started < MIN_UTTERANCE_MS || blob.size === 0) return
+    if (!started || performance.now() - started < MIN_UTTERANCE_MS) return
+
+    const preroll = Math.round((PREROLL_MS / 1000) * CAPTURE_RATE)
+    const from = Math.max(bufStartRef.current, startSample - preroll)
+    const available = endSample - bufStartRef.current
+    if (available <= 0) return
+
+    // Flatten what's retained, then take the window. bufRef holds the whole
+    // utterance plus its pre-roll at this point, because pruning is suspended
+    // for the duration of a capture.
+    const flat = new Float32Array(available)
+    let offset = 0
+    for (const frame of bufRef.current) {
+      if (offset + frame.length > flat.length) break
+      flat.set(frame, offset)
+      offset += frame.length
+    }
+    const window = flat.subarray(Math.max(0, from - bufStartRef.current), offset)
+    if (window.length < CAPTURE_RATE * (MIN_UTTERANCE_MS / 1000)) return
+
+    /* processingRef gates SUBMISSION, not listening. It used to gate the whole
+       detector — the entire VAD block was wrapped in `!processingRef.current` —
+       so for the full duration of the transcribe round trip (most of a second,
+       longer on a cold instance) the microphone was effectively deaf: no
+       barge-in, and no new utterance could begin. A teacher adding "…and make
+       it Tuesday" immediately after their sentence lost the front of it with
+       nothing to indicate why. The detector now keeps running throughout. */
     processingRef.current = true
     setStatus('transcribing')
     try {
-      const { text } = await api.transcribe(blob)
+      const { text } = await api.transcribe(encodeWav(window, CAPTURE_RATE))
       if (text && text.trim()) {
         missCountRef.current = 0
         setMissHint(false)
+        /* A real utterance landed, so the interrupt that preceded it was
+           genuine — cancel the false-interrupt timer rather than let it resume
+           a reply the teacher has now actually replaced. */
+        if (falseInterruptRef.current) {
+          clearTimeout(falseInterruptRef.current)
+          falseInterruptRef.current = null
+        }
         // Shown back in the caption box for a few seconds (see heardText's
         // own comment) so a mis-hear is catchable BEFORE the reply arrives.
         setHeardText(text.trim())
@@ -885,154 +1024,243 @@ export function VoiceModePanel({
     }
   }
 
+  /* ── the detector ─────────────────────────────────────────────────────────
+   *
+   * Runs once per 32ms frame posted by the capture worklet, NOT on
+   * requestAnimationFrame. That move fixes a real bug on its own: rAF is
+   * throttled to about 1fps on a hidden tab and suspended outright on iOS when
+   * the app is backgrounded, so the detector used to stop making decisions
+   * entirely while the microphone stayed live. The old visibilitychange handler
+   * resumed the AudioContext on return but nothing restarted the loop, so the
+   * panel came back looking active and hearing nothing. Worklet messages keep
+   * arriving as long as the context is running, and they arrive at a fixed
+   * audio-clock cadence rather than a display-refresh one.
+   *
+   * rAF is still used, but only to draw the level meter — which is exactly the
+   * kind of work that SHOULD stop when nobody can see it.
+   */
+  const onFrame = (frame) => {
+    // ── RMS of this frame, and the running noise-floor estimate ──
+    let sumSquares = 0
+    for (let i = 0; i < frame.length; i++) sumSquares += frame[i] * frame[i]
+    const level = Math.sqrt(sumSquares / frame.length)
+    levelRef.current = level
+
+    /* The floor follows the room, slowly up and quickly down, and is frozen
+       outright while we believe speech is happening — an estimator that keeps
+       averaging during an utterance climbs into the speech and then goes deaf to
+       it, which is the classic failure of adaptive gating. */
+    const floor = noiseFloorRef.current
+    if (vadStateRef.current !== 'recording' && !isSpeakingRef.current) {
+      const alpha = level > floor ? FLOOR_ATTACK : FLOOR_DECAY
+      noiseFloorRef.current = floor + (level - floor) * alpha
+    }
+    const speechBar = Math.max(SPEECH_FLOOR_MIN, noiseFloorRef.current * SPEECH_FLOOR_MULT)
+    const bargeBar = Math.max(BARGE_FLOOR_MIN, noiseFloorRef.current * BARGE_FLOOR_MULT)
+    const quietBar = Math.max(noiseFloorRef.current * QUIET_FLOOR_MULT, 0.008)
+
+    // ── keep the rolling buffer ──
+    bufRef.current.push(frame)
+    totalRef.current += frame.length
+    if (vadStateRef.current !== 'recording') {
+      // Idle: retain only the pre-roll window, so memory stays bounded.
+      const keep = Math.round(((PREROLL_MS + FRAME_MS) / 1000) * CAPTURE_RATE)
+      while (totalRef.current - bufStartRef.current > keep && bufRef.current.length > 1) {
+        bufStartRef.current += bufRef.current[0].length
+        bufRef.current.shift()
+      }
+    }
+
+    // Muted or push-to-talk: no automatic decisions at all. The track is
+    // already delivering silence when muted (see toggleMute); PTT makes every
+    // decision below explicit via the button instead, and silence-based
+    // endpointing firing mid-hold would cut a teacher off the moment they
+    // paused to think with the button still down.
+    if (modeRef.current !== 'auto' || mutedRef.current) return
+
+    const now = performance.now()
+    // Whether the assistant currently owns the turn — either actively
+    // speaking, or still writing the reply it's about to speak.
+    const holdingFloor = isSpeakingRef.current || pausedRef.current
+
+    if (vadStateRef.current === 'recording') {
+      /* Already capturing. Endpointing always uses the ORDINARY bar, even
+         mid-barge-in: the strict barge-in threshold exists to decide whether
+         someone started talking over the assistant, and reusing it here would
+         treat every ordinary dip between words as the end of the sentence and
+         cut the teacher off mid-thought. */
+      if (level > speechBar) {
+        silenceStartRef.current = null
+        if (now - speechStartRef.current > MAX_UTTERANCE_MS) finishUtterance()
+      } else if (silenceStartRef.current == null) {
+        silenceStartRef.current = now
+      } else {
+        /* Two timers, not one — see SILENCE_MS's own comment. A very short
+           burst is far more likely to be a fragment the teacher is still in
+           the middle of ("week seven—") than a finished turn, so it gets the
+           longer grace; anything of normal length closes on the short one.
+           MAX_SILENCE_MS is the guillotine either way, so this can never be
+           slower than a plain fixed timeout. */
+        const spokenMs = now - speechStartRef.current
+        const quiet = now - silenceStartRef.current
+        const grace = spokenMs < SHORT_UTTERANCE_MS ? SILENCE_MS_OPEN : SILENCE_MS
+        if (quiet > Math.min(grace, MAX_SILENCE_MS)) finishUtterance()
+      }
+      return
+    }
+
+    if (holdingFloor) {
+      /* Idle while the assistant holds the floor: the barge-in test.
+         Deliberately hard to pass, because the room is not quiet — a speaker
+         inches from the mic is playing the assistant's own voice. Echo
+         cancellation removes most of it, but AEC needs seconds to converge and
+         re-adapts every time the far-end content changes, so two warm-up
+         guards sit in front of the threshold: nothing counts until the stream
+         has been live a moment, and each new assistant utterance gets a brief
+         grace. Without those, a reply reliably interrupts itself on laptop
+         speakers. */
+      const warm =
+        now - micLiveAtRef.current > AEC_WARMUP_MS && now - speakStartedAtRef.current > AEC_REARM_MS
+      if (warm && level > bargeBar) {
+        if (bargeStartRef.current == null) bargeStartRef.current = now
+        else if (now - bargeStartRef.current > BARGE_SUSTAIN_MS) {
+          bargeStartRef.current = null
+          // Silences the reply AND aborts the generation behind it, then
+          // records exactly like any other utterance.
+          onInterruptRef.current?.()
+          // Cutting the assistant off used to happen in total silence — the
+          // reply just stopped, which is as consistent with "it finished" or
+          // "it broke" as with "you interrupted it." A brief acknowledgement is
+          // what makes it read as deliberate.
+          setJustInterrupted(true)
+          /* And arm the undo. If no real utterance follows, the interrupt was a
+             cough or a chair and onFalseInterrupt puts the reply back — see
+             FALSE_INTERRUPT_MS. This is what lets the barge-in threshold be
+             aggressive without punishing anyone for it. */
+          if (falseInterruptRef.current) clearTimeout(falseInterruptRef.current)
+          falseInterruptRef.current = setTimeout(() => {
+            falseInterruptRef.current = null
+            if (vadStateRef.current !== 'recording' && !processingRef.current) {
+              onFalseInterruptRef.current?.()
+            }
+          }, FALSE_INTERRUPT_MS)
+          beginUtterance()
+        }
+      } else {
+        bargeStartRef.current = null
+      }
+      return
+    }
+
+    if (level > speechBar) {
+      // Ordinary start-of-utterance into a quiet room.
+      quietStartRef.current = null
+      if (quietHintShownRef.current) {
+        quietHintShownRef.current = false
+        setQuietHint(false)
+      }
+      beginUtterance()
+    } else if (level > quietBar) {
+      // Real signal (someone talking, just not loud enough), sustained — one
+      // soft word doesn't warrant a nudge, a whole pattern of them does.
+      if (quietStartRef.current == null) quietStartRef.current = now
+      else if (!quietHintShownRef.current && now - quietStartRef.current > QUIET_HINT_MS) {
+        quietHintShownRef.current = true
+        setQuietHint(true)
+      }
+    } else {
+      // True silence — not the same signal as "trying and too quiet," so it
+      // doesn't accumulate toward the hint at all.
+      quietStartRef.current = null
+    }
+  }
+  const onFrameRef = useRef(onFrame)
+  onFrameRef.current = onFrame
+
   useEffect(() => {
     let cancelled = false
 
     const tick = () => {
       const analyser = analyserRef.current
       if (!analyser) return
-      const data = new Uint8Array(analyser.fftSize)
-      analyser.getByteTimeDomainData(data)
-      // RMS of the signed waveform (each byte is 0-255, 128 = silence).
-      let sumSquares = 0
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128
-        sumSquares += v * v
-      }
-      const level = Math.sqrt(sumSquares / data.length)
 
-      // level itself still drives the VAD logic below (endpointing,
-      // barge-in, the quiet/miss hints) — only the orb that used to paint
-      // it as a pulsing waveform is gone now that the checklist is the
-      // panel's whole point. Its replacement: the status pill's own dot,
-      // scaled directly off this same level, imperatively (a style write,
-      // not React state) so this stays as cheap as the orb's canvas redraw
-      // was — 60fps of "is it hearing me" with no re-render behind it.
-      // Damped to a flat scale under the same conditions the orb used to
-      // damp to (paused/muted/mid-transcribe): the mic is still capturing
-      // then (barge-in still has to work), but a level reading dominated by
-      // the assistant's own voice bleeding back in, or by nothing at all
-      // while muted, isn't real feedback about the teacher's own voice.
+      // The level meter is now the ONLY thing telling the teacher "I can hear
+      // you right now" — the status pill deliberately stopped saying it in
+      // words (see `phase`), on the Alexa principle that the conversational
+      // states differ by motion rather than by text. So this matters more than
+      // it did when it was decoration next to a label that said the same thing.
+      //
+      // Damped flat under the conditions where the level isn't really about the
+      // teacher's own voice: muted (nothing coming through), or while the
+      // assistant holds the floor and what's arriving is mostly its own output
+      // bleeding back in through the speaker.
       const damped = pausedRef.current || mutedRef.current || processingRef.current
-
-      if (dotRef.current) {
-        const scale = damped ? 1 : 1 + Math.min(1, level * 5) * 0.9
-        dotRef.current.style.transform = `scale(${scale.toFixed(3)})`
-      }
 
       if (canvasRef.current) {
         const canvas = canvasRef.current
         const ctx = canvas.getContext('2d')
-        const width = canvas.width
-        const height = canvas.height
-        
-        ctx.clearRect(0, 0, width, height)
-        
+
+        /* Size the BACKING STORE to device pixels and scale the drawing
+           context to match. The canvas used to carry width=48 height=14
+           attributes — CSS pixels — so on any display with devicePixelRatio 2
+           (every phone and every retina laptop this app runs on) the browser
+           upscaled a 48x14 bitmap into a 96x28 box and the bars came out soft.
+           Recomputed each frame but only WRITTEN when it changes; assigning
+           canvas.width unconditionally would clear the bitmap every tick. */
+        const dpr = window.devicePixelRatio || 1
+        const cssW = canvas.clientWidth || 48
+        const cssH = canvas.clientHeight || 14
+        const needW = Math.round(cssW * dpr)
+        const needH = Math.round(cssH * dpr)
+        if (canvas.width !== needW || canvas.height !== needH) {
+          canvas.width = needW
+          canvas.height = needH
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        ctx.clearRect(0, 0, cssW, cssH)
+
         // Use frequency data for the bar visualizer
         if (!analyserRef.current._freqData) {
           analyserRef.current._freqData = new Uint8Array(analyser.frequencyBinCount)
         }
         const freqData = analyserRef.current._freqData
         analyser.getByteFrequencyData(freqData)
-        
+
         const barCount = 12
         const gap = 2
-        const barWidth = (width - gap * (barCount - 1)) / barCount
-        
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
+        const barWidth = (cssW - gap * (barCount - 1)) / barCount
+
+        /* The accent colour from the live theme, not a hardcoded black. This
+           was 'rgba(0, 0, 0, 0.4)' — invisible against the dark theme's own
+           dark panel, in an app that ships a theme toggle. Read once per frame
+           off the canvas's own computed style so it follows the theme (and the
+           neo/skeuomorphic skin toggle) without this file knowing anything
+           about either. currentColor via the pill's text colour would also
+           work, but the accent token is what the rest of the panel's live
+           feedback already uses. */
+        ctx.fillStyle = getComputedStyle(canvas).color || 'currentColor'
         for (let i = 0; i < barCount; i++) {
           // sample from the lower frequency bands (human voice)
           const dataIndex = Math.floor((i / barCount) * (freqData.length / 4))
           const value = freqData[dataIndex] || 0
-          
+
           // Smoothed height mapping
-          const mappedValue = damped ? 3 : Math.max(3, (value / 255) * height)
-          
+          const mappedValue = damped ? 2 : Math.max(2, (value / 255) * cssH)
+
           // Draw rounded bar
           const x = i * (barWidth + gap)
-          const y = (height - mappedValue) / 2
-          
+          const y = (cssH - mappedValue) / 2
+
           ctx.beginPath()
-          ctx.roundRect(x, y, barWidth, mappedValue, barWidth / 2)
-          ctx.fill()
-        }
-      }
-
-      // Muted: nothing below this line runs — no endpointing, no
-      // barge-in, no quiet-hint accumulation. The track is already
-      // delivering silence (see toggleMute), this just stops the VAD from
-      // reasoning about it at all. Same for push-to-talk mode: every
-      // decision below (when to start, when a pause means "done," what
-      // counts as a deliberate interrupt) is exactly what pressing and
-      // releasing the talk button (startPttRecording/stopPttRecording)
-      // exists to make explicit instead — silence-based endpointing firing
-      // mid-hold would cut a teacher off the moment they paused to think,
-      // still holding the button down.
-      if (modeRef.current === 'auto' && !processingRef.current && !mutedRef.current) {
-        const now = performance.now()
-        // Whether the assistant currently owns the turn — either actively
-        // speaking, or still writing the reply it's about to speak.
-        const holdingFloor = isSpeakingRef.current || pausedRef.current
-
-        if (vadStateRef.current === 'recording') {
-          /* Already capturing. Endpointing always uses the ORDINARY bar,
-             even mid-barge-in: the strict barge-in threshold exists to
-             decide whether someone started talking over the assistant, and
-             reusing it here would treat every ordinary dip between words as
-             the end of the sentence and cut the teacher off mid-thought. */
-          if (level > SPEECH_THRESHOLD) {
-            silenceStartRef.current = null
-            if (now - speechStartRef.current > MAX_UTTERANCE_MS) stopRecorder()
-          } else if (silenceStartRef.current == null) {
-            silenceStartRef.current = now
-          } else if (now - silenceStartRef.current > SILENCE_MS) {
-            stopRecorder()
-          }
-        } else if (holdingFloor) {
-          /* Idle while the assistant holds the floor: this is the barge-in
-             test, and it is deliberately hard to pass. The mic is hearing a
-             speaker playing the assistant's own voice a few inches away —
-             echo cancellation removes most of that, and the stricter bar
-             held for a sustained stretch covers the rest. A cough, a chair,
-             or one leaked syllable does not get to cut the reply off. */
-          if (level > BARGE_THRESHOLD) {
-            if (bargeStartRef.current == null) bargeStartRef.current = now
-            else if (now - bargeStartRef.current > BARGE_SUSTAIN_MS) {
-              bargeStartRef.current = null
-              // Silences the reply AND aborts the generation behind it,
-              // then records exactly like any other utterance.
-              onInterruptRef.current?.()
-              // Cutting the assistant off used to happen in total silence —
-              // the reply just stopped, which is as consistent with "it
-              // finished" or "it broke" as with "you interrupted it." A
-              // brief acknowledgement is what makes it read as deliberate.
-              setJustInterrupted(true)
-              beginUtterance()
-            }
+          /* roundRect is Safari 16.4+. Fall back to a plain rect rather than
+             throwing — at this size the corner radius is a nicety, an exception
+             inside a 60fps loop is not. */
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(x, y, barWidth, mappedValue, barWidth / 2)
           } else {
-            bargeStartRef.current = null
+            ctx.rect(x, y, barWidth, mappedValue)
           }
-        } else if (level > SPEECH_THRESHOLD) {
-          // Ordinary start-of-utterance into a quiet room.
-          quietStartRef.current = null
-          if (quietHintShownRef.current) {
-            quietHintShownRef.current = false
-            setQuietHint(false)
-          }
-          beginUtterance()
-        } else if (level > QUIET_FLOOR) {
-          // Real signal (someone talking, just not loud enough), sustained —
-          // one soft word doesn't warrant a nudge, a whole pattern of them
-          // does.
-          if (quietStartRef.current == null) quietStartRef.current = now
-          else if (!quietHintShownRef.current && now - quietStartRef.current > QUIET_HINT_MS) {
-            quietHintShownRef.current = true
-            setQuietHint(true)
-          }
-        } else {
-          // True silence — not the same signal as "trying and too quiet,"
-          // so it doesn't accumulate toward the hint at all.
-          quietStartRef.current = null
+          ctx.fill()
         }
       }
 
@@ -1085,18 +1313,51 @@ export function VoiceModePanel({
         /* iOS Safari starts an AudioContext created outside the SYNCHRONOUS
            call stack of a user gesture in "suspended" state — and the await
            on getUserMedia just above means construction here never counts,
-           gesture or not. A suspended context still returns silence/zeros
-           from the analyser, not an error, so the VAD's level never crosses
-           SPEECH_THRESHOLD and the mic reads as "not picking anything up"
+           gesture or not. A suspended context is silent rather than broken: the
+           capture worklet is never pulled, so no frames arrive, the detector
+           makes no decisions, and the mic reads as "not picking anything up"
            with no error surfaced anywhere — exactly what iPhone reports and
            desktop Chrome doesn't (Chrome doesn't enforce this as strictly).
            resume() is safe to call even when already running. */
         if (ctx.state === 'suspended') ctx.resume().catch(() => {})
         const source = ctx.createMediaStreamSource(stream)
+
+        /* The analyser is now ONLY for the level meter's frequency bars. Every
+           actual decision comes off the capture worklet's own frames — see
+           onFrame — because a display-refresh clock is the wrong clock for
+           audio and stops entirely on a backgrounded tab. */
         const analyser = ctx.createAnalyser()
         analyser.fftSize = 1024
         source.connect(analyser)
         analyserRef.current = analyser
+
+        /* Continuous capture. addModule takes a URL and the processor runs in a
+           scope with no bundler runtime, which is why the worklet is imported
+           `?url` and emitted as its own asset rather than inlined. */
+        await ctx.audioWorklet.addModule(micWorkletUrl)
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop())
+          ctx.close().catch(() => {})
+          return
+        }
+        const node = new AudioWorkletNode(ctx, 'mic-capture')
+        node.port.onmessage = (e) => onFrameRef.current?.(e.data)
+        source.connect(node)
+        /* Not connected to ctx.destination — that would play the microphone
+           back through the speakers. A worklet node still gets pulled without a
+           downstream connection in every current browser because it has an
+           active input; the historical ScriptProcessorNode trick of connecting
+           through a zero gain isn't needed here. */
+        workletRef.current = node
+
+        // Reset the buffer's bookkeeping for this session, so "Try again"
+        // starts from a clean timeline rather than the failed attempt's.
+        bufRef.current = []
+        bufStartRef.current = 0
+        totalRef.current = 0
+        noiseFloorRef.current = 0.006
+        micLiveAtRef.current = performance.now()
+
         setStatus('listening')
         rafRef.current = requestAnimationFrame(tick)
       } catch (err) {
@@ -1115,14 +1376,18 @@ export function VoiceModePanel({
       cancelled = true
       document.removeEventListener('visibilitychange', onVisible)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      /* abortUtterance, NOT stopRecorder: stopRecorder asks the recorder to
-         finish, which fires its `stop` event, which runs
-         handleUtteranceReady — so ending the conversation while a sentence
-         was still being captured transcribed and SUBMITTED that half-
-         sentence after the panel had already closed, landing a stray turn
-         in the chat the teacher had just walked away from. Aborting drops
-         the audio and unhooks the handler instead. */
+      /* abortUtterance, NOT finishUtterance: finishing transcribes and SUBMITS,
+         so ending the conversation while a sentence was still being captured
+         used to land a stray half-sentence turn in a chat the teacher had
+         already walked away from. Aborting drops the window instead. */
       abortUtterance()
+      if (falseInterruptRef.current) clearTimeout(falseInterruptRef.current)
+      if (workletRef.current) {
+        workletRef.current.port.onmessage = null
+        workletRef.current.disconnect()
+        workletRef.current = null
+      }
+      bufRef.current = []
       streamRef.current?.getTracks().forEach((t) => t.stop())
       audioCtxRef.current?.close().catch(() => {})
     }
@@ -1154,32 +1419,67 @@ export function VoiceModePanel({
      "listening, nothing else going on" state: every branch above them means
      something is actively happening that already explains the pill, and a
      stale hint from three turns ago has no business outranking it. */
-  const label =
+  /* THE CONVERSATIONAL LOOP IS THREE STATES. It used to be thirteen labels in
+     one pill, six of which fired during a single ordinary turn — Listening… →
+     Hearing you… → Got it — one sec… → Thinking… → Speaking… (Talk to
+     interrupt) → Listening… — each an instant text swap that also resized the
+     pill (labels ran 8 to 30 characters), shoving the "N of 4 decided" badge
+     beside it sideways every time, and each announced separately through
+     aria-live. That churn is most of what read as "jarring", and it wasn't
+     buying anything: a controlled study of exactly this (spinner-and-label
+     "artificial" feedback vs the assistant saying "hmm, let's see" in its own
+     voice) found the artificial kind produced no measurable improvement over
+     showing nothing at all. Amazon's own Echo guidelines specify three
+     conversational states, on one element, in one colour, distinguished only by
+     motion — nothing to read and nothing to reflow.
+
+     So: listening / working / speaking, and the level meter below carries
+     "am I actually hearing you" through movement rather than through a fourth
+     label. `hearing` deliberately no longer gets its own text — the meter is
+     already reacting to the voice that set it. */
+  const phase =
     status === 'requesting-mic'
-      ? 'Asking for microphone access…'
+      ? 'connecting'
       : status === 'error'
-        ? errorMessage
+        ? 'error'
         : muted
+          ? 'off'
+          : isSpeaking
+            ? 'speaking'
+            : status === 'transcribing' || busy || building
+              ? 'working'
+              : 'listening'
+
+  const label =
+    phase === 'connecting'
+      ? 'Connecting'
+      : phase === 'error'
+        ? 'No mic'
+        : phase === 'off'
           ? 'Mic off'
-          : justInterrupted
-            ? 'Go ahead'
-            : hearing
-              ? 'Hearing you…'
-              : status === 'transcribing'
-                ? 'Got it — one sec…'
-                : building
-                  ? 'Building your week…'
-                  : busy
-                    ? 'Thinking…'
-                    : isSpeaking
-                      ? 'Speaking… (Talk to interrupt)'
-                      : missHint
-                        ? "Didn't catch that — try again"
-                        : quietHint
-                          ? 'Having trouble hearing you — try speaking up'
-                          : mode === 'ptt'
-                            ? 'Hold to talk'
-                            : 'Listening…'
+          : phase === 'speaking'
+            ? 'Speaking'
+            : phase === 'working'
+              ? 'Thinking'
+              : 'Listening'
+
+  /* The other half of the split: conditions the teacher has to ACT on, which
+     have no business sharing a slot with ephemeral status. A mic that's blocked
+     or muted, or two failed utterances in a row, are persistent and need an
+     affordance; "Thinking" is transient and needs nothing. Mixing the two meant
+     the actionable ones scrolled past inside a stream of status text and got
+     missed — the same mechanism as alert blindness. This renders as its own
+     line, below, and stays put until it's resolved. */
+  const notice =
+    status === 'error'
+      ? { tone: 'bad', text: errorMessage, action: 'retry' }
+      : muted
+        ? { tone: 'muted', text: 'Microphone is off — nothing is being heard.', action: 'unmute' }
+        : missHint
+          ? { tone: 'bad', text: "Didn't catch that. Try again, a little closer to the mic." }
+          : quietHint
+            ? { tone: 'muted', text: "You're coming through very quietly — try speaking up." }
+            : null
 
   /* The caption area holds CONTENT — words that were said, by either side —
      and the pill holds STATUS. They used to share: the caption fell back to
@@ -1188,7 +1488,7 @@ export function VoiceModePanel({
      and a screen reader announced the same string from two live regions.
      Now the caption goes quiet when there's nothing said to show, and the
      pill is the single place status lives. */
-  const spokenText = typedCaption || ''
+  const spokenText = caption || ''
   const showHeard = !spokenText && Boolean(heardText)
 
   /* The one place status lives, on BOTH layouts now — the phone used to
@@ -1203,38 +1503,69 @@ export function VoiceModePanel({
   const statusPill = (
     <span
       aria-live="polite"
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-2xs font-semibold uppercase tracking-caps transition-colors ${
-        status === 'error'
+      /* min-w + justify-center is the whole fix for the pill's own jitter: the
+         label changes but the BOX doesn't, so nothing beside it moves. Wide
+         enough for the longest of the four labels ("Connecting") at this size.
+         And the meter is ALWAYS mounted now rather than toggled with `hidden` —
+         it used to appear and disappear with the status, which snapped the
+         pill's width between a 48px canvas and a 1.5px dot on every transition,
+         a geometry change dressed up as a status change. It just goes flat when
+         there's no live level worth showing. */
+      className={`inline-flex min-w-[8.5rem] items-center justify-center gap-2 rounded-full px-3 py-1 text-2xs font-semibold uppercase tracking-caps transition-colors ${
+        phase === 'error'
           ? 'bg-mark-tint text-mark'
-          : muted
+          : phase === 'off'
             ? 'bg-paper-sunken text-ink-muted'
             : 'bg-accent-tint text-accent-text'
       }`}
     >
-      <span
-        ref={dotRef}
-        aria-hidden="true"
-        /* While actually listening, this dot's scale is driven straight
-           from the live mic level (see the VAD tick loop) instead of the
-           generic animate-pulse below — the one thing worth knowing
-           mid-sentence is "is it actually hearing volume right now," which
-           a fixed-rhythm pulse can't say. Other states (requesting mic,
-           transcribing) keep the generic pulse — there's no live level
-           worth reflecting yet. */
-        className={`h-1.5 w-1.5 rounded-full transition-transform duration-75 ${
-          status === 'error' ? 'bg-mark' : muted ? 'bg-ink-faint' : 'bg-accent'
-        } ${status === 'error' || muted ? '' : status === 'listening' ? 'hidden' : 'animate-pulse'}`}
-      />
       <canvas
         ref={canvasRef}
-        width={48}
-        height={14}
         aria-hidden="true"
-        className={`h-3.5 w-12 shrink-0 ${status === 'listening' && !muted && status !== 'error' ? 'block' : 'hidden'}`}
+        /* No width/height ATTRIBUTES here — the backing store is sized in the
+           draw loop against devicePixelRatio (see tick()). Setting them here
+           would fight that, and setting them to CSS pixels is what made this
+           render at half resolution on every retina display, which is every
+           device this app is actually used on. */
+        className="h-3.5 w-12 shrink-0"
       />
       {label}
     </span>
   )
+
+  /* The actionable slot — see `notice`. Its own row, persistent, with the
+     control that resolves it right there rather than somewhere else in the
+     header. */
+  const noticeRow = notice ? (
+    <div
+      role="status"
+      className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-snug ${
+        notice.tone === 'bad' ? 'text-mark' : 'text-ink-muted'
+      }`}
+    >
+      <span>{notice.text}</span>
+      {notice.action === 'retry' ? (
+        <button
+          type="button"
+          onClick={retryMic}
+          className="neo-raised tap-target inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-medium text-accent-text transition-shadow"
+        >
+          <RotateCcw size={11} aria-hidden="true" />
+          Try again
+        </button>
+      ) : null}
+      {notice.action === 'unmute' ? (
+        <button
+          type="button"
+          onClick={toggleMute}
+          className="neo-raised tap-target inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-medium text-accent-text transition-shadow"
+        >
+          <Mic size={11} aria-hidden="true" />
+          Turn it back on
+        </button>
+      ) : null}
+    </div>
+  ) : null
 
   /* Hold the mic without ending the conversation — a student walks up, a
      colleague asks something, and the only previous option was to close the
@@ -1325,26 +1656,12 @@ export function VoiceModePanel({
     .slice(-2)
 
   /* What was actually SAID, either side of the conversation — never status
-     (that's statusPill's job now; see spokenText's comment). Three states,
-     in order: the assistant's reply typing itself out, the echo of what was
-     just heard from the teacher, or the error state's own recovery path. */
+     (that's statusPill's job) and no longer errors either (that's noticeRow's,
+     which owns everything the teacher has to act on). Three states, in order:
+     the sentence the assistant is speaking right now, the echo of what was just
+     heard from the teacher, or the hint that they can cut in. */
   const captionBlock =
-    status === 'error' ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm leading-relaxed text-mark">{errorMessage}</p>
-        {/* The error used to be terminal — the message named the fix
-            (browser settings) but left no way to act on it, so the only
-            route back was closing and reopening the panel. */}
-        <button
-          type="button"
-          onClick={retryMic}
-          className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-accent-text transition-shadow"
-        >
-          <RotateCcw size={12} aria-hidden="true" />
-          Try again
-        </button>
-      </div>
-    ) : spokenText ? (
+    spokenText ? (
       <div className="flex flex-col gap-2">
         {recentAssistantMessages.length > 0 && (
           <div className="flex flex-col gap-1">
@@ -1355,14 +1672,20 @@ export function VoiceModePanel({
             ))}
           </div>
         )}
+        {/* Keyed on the caption text, so React remounts these spans when the
+            sentence changes and .karaoke-word's entrance actually replays.
+            Keyed on index alone (as it was) the nodes persisted across
+            sentences and only newly-added words animated — fine for a
+            typewriter growing one character at a time, wrong now that the whole
+            line is replaced per sentence. */}
         <p className="truncate text-sm leading-relaxed text-ink-soft">
           {spokenText.split(/(\s+)/).map((w, i) =>
             w.trim() ? (
-              <span key={i} className="karaoke-word">
+              <span key={`${spokenText.length}-${i}`} className="karaoke-word">
                 {w}
               </span>
             ) : (
-              <span key={i}>{w}</span>
+              <span key={`${spokenText.length}-${i}`}>{w}</span>
             )
           )}
         </p>
@@ -1472,10 +1795,19 @@ export function VoiceModePanel({
           instead of the checklist below getting shoved down in one abrupt
           jump every time a caption appears or clears. */}
       <div className={`caption-line shrink-0${captionBlock ? ' is-visible' : ''}`}>
-        <div aria-live="polite" className={`caption-line-inner ${justInterrupted ? 'barge-in-shatter' : ''}`}>
+        {/* No aria-live here. The statusPill above already carries one, and two
+            live regions a line apart meant a screen reader announced the state
+            and the caption as competing interruptions. This is content that's
+            also being spoken aloud — the audio IS the announcement. */}
+        <div className={`caption-line-inner ${justInterrupted ? 'barge-in-shatter' : ''}`}>
           {captionBlock}
         </div>
       </div>
+
+      {/* Anything the teacher has to act on — a blocked mic, a muted mic, two
+          misses in a row — with the control that fixes it. Its own row, held
+          until resolved, deliberately not sharing the pill's slot. */}
+      {noticeRow ? <div className="shrink-0">{noticeRow}</div> : null}
 
       {/* The checklist — or whichever of questions/build progress/built
           plan currently owns this slot, same rotation the old side column

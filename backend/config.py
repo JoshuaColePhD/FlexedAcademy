@@ -46,10 +46,13 @@ class Settings(BaseSettings):
     common_standards_api_key: str = ""
 
     # ── voice replies ────────────────────────────────────────────────────────
-    # tts-1, not tts-1-hd: these are short chat confirmations, not narration,
-    # and the standard model is noticeably cheaper and lower-latency for the
-    # same intelligibility at that length.
-    tts_model: str = "tts-1"
+    # gpt-4o-mini-tts, not tts-1: OpenAI's own guidance names this the model for
+    # realtime use, and it supports streaming the audio out over chunked
+    # transfer (see llm.stream_speech) where tts-1 was being read into memory
+    # whole before anything could play. Still the cheap tier — tts-1-hd remains
+    # the wrong trade for what these are: short spoken chat confirmations, not
+    # narration.
+    tts_model: str = "gpt-4o-mini-tts"
     tts_voice: str = "alloy"
     # A chat reply is a sentence or two by construction (see ChatPage's
     # "Built {week}. Tell me what to change…"). This is a cost/abuse floor,

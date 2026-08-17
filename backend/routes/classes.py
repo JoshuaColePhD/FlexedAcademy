@@ -124,8 +124,8 @@ def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> d
 
 
 @router.get("/classes")
-def list_classes_route(user_id: str = Depends(get_current_user)) -> list[dict]:
-    return db.list_classes(user_id)
+def list_classes_route(include_archived: bool = False, user_id: str = Depends(get_current_user)) -> list[dict]:
+    return db.list_classes(user_id, include_archived)
 
 
 @router.post("/classes", status_code=201)

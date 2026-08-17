@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Download, HardDrive, Sparkles } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { ArrowLeft, CreditCard, Download, HardDrive, Loader2, Sparkles, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -24,6 +24,15 @@ import { SchoolSelect } from '../components/SchoolSelect'
  */
 
 const CUSTOM_INSTRUCTIONS_MAX = 2000
+
+const TABS = [
+  { id: 'general', label: 'General' },
+  { id: 'preferences', label: 'Preferences' },
+  { id: 'account', label: 'Account & Security' },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'billing', label: 'Billing' },
+  { id: 'advanced', label: 'Advanced' },
+]
 
 /* The neomorphic/skeuomorphic toggle (useDesignSkin.js) — added after the
  * sign-in form's own contrast problems traced back to neomorphism's core
@@ -161,6 +170,25 @@ function SchoolPicker({ value, onSaved }) {
     }
   }
 
+  const fileRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+
+  const uploadCalendar = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !selected) return
+    setUploading(true)
+    try {
+      await api.uploadSchoolCalendar(selected.name, { file })
+      toast.success('Calendar submitted', 'It is now applied to this school.')
+      schoolsState.refetch()
+    } catch (err) {
+      toast.apiError('Could not upload the calendar', err)
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
   return (
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">School</h2>
@@ -202,10 +230,30 @@ function SchoolPicker({ value, onSaved }) {
            for this class builds worse until one is added), which is what
            --mark-tint/--mark already exist to carry as a status colour, not
            just a flag on prose. */
-        <p className="mt-2 max-w-xs rounded-lg bg-mark-tint px-2.5 py-2 text-xs text-mark">
-          No calendar is on file for {selected.name} yet, so weeks can’t be scheduled — plans
-          will build without a week or a closure to work from until one is added.
-        </p>
+        <div className="mt-2 max-w-sm rounded-lg border border-mark/20 bg-mark-tint p-3">
+          <p className="text-xs text-mark">
+            No calendar is on file for {selected.name} yet, so weeks can’t be scheduled — plans
+            will build without a week or a closure to work from until one is added.
+          </p>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset disabled:opacity-50"
+            >
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploading ? 'Reading…' : 'Upload Calendar'}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.docx"
+              className="hidden"
+              onChange={uploadCalendar}
+            />
+          </div>
+        </div>
       ) : null}
     </div>
   )
@@ -670,9 +718,9 @@ function IntegrationPlaceholder({ name, description, icon }) {
 }
 
 export function SettingsPage() {
-  const { classId } = useParams()
   const qc = useQueryClient()
   const toast = useToast()
+  const navigate = useNavigate()
   const meState = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
 
   const [teacher, setTeacher] = useState('')
@@ -688,6 +736,8 @@ export function SettingsPage() {
   const [fontSize, setFontSize] = useState('normal')
   const [highContrast, setHighContrast] = useState(false)
   const [betaFeatures, setBetaFeatures] = useState(false)
+
+  const scrollContainerRef = useRef(null)
 
   useEffect(() => {
     const n = meState.data?.name || ''
@@ -709,14 +759,45 @@ export function SettingsPage() {
     }
   }
 
-  const tabs = [
-    { id: 'general', label: 'General' },
-    { id: 'preferences', label: 'Preferences' },
-    { id: 'account', label: 'Account & Security' },
-    { id: 'integrations', label: 'Integrations' },
-    { id: 'billing', label: 'Billing' },
-    { id: 'advanced', label: 'Advanced' },
-  ]
+  // Intersection Observer for scroll spy
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the most visible section
+        let maxRatio = 0
+        let visibleId = null
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
+            maxRatio = entry.intersectionRatio
+            visibleId = entry.target.id
+          }
+        })
+        if (visibleId) {
+          setActiveTab(visibleId.replace('section-', ''))
+        }
+      },
+      {
+        root: scrollContainerRef.current,
+        threshold: [0.1, 0.5, 0.9],
+        rootMargin: '-10% 0px -40% 0px',
+      }
+    )
+
+    TABS.forEach((tab) => {
+      const el = document.getElementById(`section-${tab.id}`)
+      if (el) observer.observe(el)
+    })
+
+    return () => observer.disconnect()
+  }, [])
+
+  const scrollToSection = (id) => {
+    setActiveTab(id)
+    const el = document.getElementById(`section-${id}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
@@ -724,22 +805,22 @@ export function SettingsPage() {
       {/* Left Sidebar (Master) */}
       <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
-          <Link
-            to={`/c/${classId || ''}`}
-            aria-label="Back to Chat"
+          <button
+            onClick={() => navigate(-1)}
+            aria-label="Back"
             className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
           >
             <ArrowLeft size={16} aria-hidden="true" />
-          </Link>
+          </button>
           <h1 className="text-sm font-semibold text-ink">Settings</h1>
         </header>
 
         <div className="flex-1 overflow-y-auto py-2">
           <nav className="flex flex-col px-2 gap-0.5">
-            {tabs.map((tab) => (
+            {TABS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => scrollToSection(tab.id)}
                 className={`flex items-center justify-between min-h-touch rounded-lg px-2 text-sm transition-colors ${
                   activeTab === tab.id
                     ? 'bg-paper-inset font-medium text-ink'
@@ -755,183 +836,189 @@ export function SettingsPage() {
 
       {/* Right Content Area (Detail) */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm">
+        <header className="flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm z-10">
           <div className="text-sm font-medium text-ink-muted">
-            {tabs.find(t => t.id === activeTab)?.label}
+            {TABS.find(t => t.id === activeTab)?.label}
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-8 py-8">
-          <div className="mx-auto w-full max-w-3xl flex flex-col gap-10 pb-16">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 py-8 scroll-smooth">
+          <div className="mx-auto w-full max-w-3xl flex flex-col gap-16 pb-32">
             
-            {activeTab === 'general' && (
-              <>
-                <section>
-                  <div className="border-b border-edge pb-2 mb-4">
-                    <h3 className="text-sm font-semibold text-ink">Profile</h3>
-                    <p className="text-xs text-ink-muted">How you are addressed in the app and on your plans.</p>
-                  </div>
-                  <div className="max-w-md">
-                    <label htmlFor="teacher" className="mb-1 block text-xs text-ink-muted">
-                      Your Name
-                    </label>
-                    <input
-                      id="teacher"
-                      value={teacher}
-                      onChange={(e) => setTeacher(e.target.value)}
-                      onBlur={commitTeacher}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur()
-                        if (e.key === 'Escape') setTeacher(savedName)
-                      }}
-                      placeholder="Mr. Cole"
-                      className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
-                    />
-                  </div>
-                </section>
-                
-                <section>
-                  <SchoolPicker
-                    value={meState.data?.school}
-                    onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+            {/* General Section */}
+            <div id="section-general" className="scroll-mt-8">
+              <h2 className="text-xl font-bold text-ink mb-6">General</h2>
+              
+              <section className="mb-8">
+                <div className="border-b border-edge pb-2 mb-4">
+                  <h3 className="text-sm font-semibold text-ink">Profile</h3>
+                  <p className="text-xs text-ink-muted">How you are addressed in the app and on your plans.</p>
+                </div>
+                <div className="max-w-md">
+                  <label htmlFor="teacher" className="mb-1 block text-xs text-ink-muted">
+                    Your Name
+                  </label>
+                  <input
+                    id="teacher"
+                    value={teacher}
+                    onChange={(e) => setTeacher(e.target.value)}
+                    onBlur={commitTeacher}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                      if (e.key === 'Escape') setTeacher(savedName)
+                    }}
+                    placeholder="Mr. Cole"
+                    className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
                   />
-                </section>
+                </div>
+              </section>
+              
+              <section className="mb-8">
+                <SchoolPicker
+                  value={meState.data?.school}
+                  onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                />
+              </section>
 
-                <section>
-                  <div className="border-b border-edge pb-2 mb-4">
-                    <h3 className="text-sm font-semibold text-ink">AI Defaults</h3>
-                    <p className="text-xs text-ink-muted">Default behaviors for plan generation.</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl mb-6">
-                    <label className="block">
-                      <span className="mb-1 block text-xs text-ink-muted">Default Output Format</span>
-                      <select
-                        value={outputFormat}
-                        onChange={(e) => setOutputFormat(e.target.value)}
-                        className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
-                      >
-                        <option value="narrative">Narrative Text</option>
-                        <option value="bullets">Bulleted Lists</option>
-                        <option value="tables">Tables</option>
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs text-ink-muted">AI Tone / Voice</span>
-                      <select
-                        value={aiTone}
-                        onChange={(e) => setAiTone(e.target.value)}
-                        className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
-                      >
-                        <option value="formal">Formal</option>
-                        <option value="encouraging">Encouraging</option>
-                        <option value="direct">Direct</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="max-w-xl border border-edge rounded-xl p-4">
-                    <Toggle 
-                      label="Auto-Save Drafts" 
-                      description="Automatically save changes to your plans while editing."
-                      checked={autoSave}
-                      onChange={setAutoSave}
-                    />
-                    <div className="h-px w-full bg-edge my-2" />
-                    <Toggle 
-                      label="Classify Plan Status" 
-                      description="Allow the AI to automatically label plans as Draft, Review, or Final."
-                      checked={classifyPlan}
-                      onChange={setClassifyPlan}
-                    />
-                  </div>
-                </section>
-              </>
-            )}
-
-            {activeTab === 'preferences' && (
-              <>
-                <section>
-                  <DesignSkinSection />
-                </section>
+              <section>
+                <div className="border-b border-edge pb-2 mb-4">
+                  <h3 className="text-sm font-semibold text-ink">AI Defaults</h3>
+                  <p className="text-xs text-ink-muted">Default behaviors for plan generation.</p>
+                </div>
                 
-                <section className="mt-8">
-                  <div className="border-b border-edge pb-2 mb-4">
-                    <h3 className="text-sm font-semibold text-ink">Interface Settings</h3>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl mb-6">
-                    <label className="block">
-                      <span className="mb-1 block text-xs text-ink-muted">Theme</span>
-                      <select
-                        value={theme}
-                        onChange={(e) => setTheme(e.target.value)}
-                        className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
-                      >
-                        <option value="system">System Default</option>
-                        <option value="light">Light</option>
-                        <option value="dark">Dark</option>
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs text-ink-muted">Editor Font Size</span>
-                      <select
-                        value={fontSize}
-                        onChange={(e) => setFontSize(e.target.value)}
-                        className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
-                      >
-                        <option value="small">Small</option>
-                        <option value="normal">Normal</option>
-                        <option value="large">Large</option>
-                      </select>
-                    </label>
-                  </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl mb-6">
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-muted">Default Output Format</span>
+                    <select
+                      value={outputFormat}
+                      onChange={(e) => setOutputFormat(e.target.value)}
+                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                    >
+                      <option value="narrative">Narrative Text</option>
+                      <option value="bullets">Bulleted Lists</option>
+                      <option value="tables">Tables</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-muted">AI Tone / Voice</span>
+                    <select
+                      value={aiTone}
+                      onChange={(e) => setAiTone(e.target.value)}
+                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                    >
+                      <option value="formal">Formal</option>
+                      <option value="encouraging">Encouraging</option>
+                      <option value="direct">Direct</option>
+                    </select>
+                  </label>
+                </div>
 
-                  <div className="max-w-xl border border-edge rounded-xl p-4">
-                    <Toggle 
-                      label="High Contrast Mode" 
-                      description="Increases text contrast across the application for readability."
-                      checked={highContrast}
-                      onChange={setHighContrast}
-                    />
-                  </div>
-                </section>
-
-                <section>
-                  <CustomInstructions
-                    value={meState.data?.custom_instructions}
-                    onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                <div className="max-w-xl border border-edge rounded-xl p-4">
+                  <Toggle 
+                    label="Auto-Save Drafts" 
+                    description="Automatically save changes to your plans while editing."
+                    checked={autoSave}
+                    onChange={setAutoSave}
                   />
-                </section>
-              </>
-            )}
+                  <div className="h-px w-full bg-edge my-2" />
+                  <Toggle 
+                    label="Classify Plan Status" 
+                    description="Allow the AI to automatically label plans as Draft, Review, or Final."
+                    checked={classifyPlan}
+                    onChange={setClassifyPlan}
+                  />
+                </div>
+              </section>
+            </div>
 
-            {activeTab === 'account' && (
-              <>
-                {meState.data && meState.data.has_password ? (
-                  <section>
-                    <div className="border-b border-edge pb-2 mb-4">
-                      <h3 className="text-sm font-semibold text-ink">Password</h3>
-                    </div>
-                    <ChangePassword />
-                  </section>
-                ) : meState.data ? (
-                  <section>
-                    <div className="border-b border-edge pb-2 mb-4">
-                      <h3 className="text-sm font-semibold text-ink">Password</h3>
-                    </div>
-                    <p className="text-sm text-ink-muted">
-                      This account signs in with Google — there’s no password to change here.
-                    </p>
-                  </section>
-                ) : null}
-                <section>
-                  <AccountSafety />
-                </section>
-              </>
-            )}
+            {/* Preferences Section */}
+            <div id="section-preferences" className="scroll-mt-8">
+              <h2 className="text-xl font-bold text-ink mb-6">Preferences</h2>
+              
+              <section className="mb-8">
+                <DesignSkinSection />
+              </section>
+              
+              <section className="mb-8">
+                <div className="border-b border-edge pb-2 mb-4">
+                  <h3 className="text-sm font-semibold text-ink">Interface Settings</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl mb-6">
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-muted">Theme</span>
+                    <select
+                      value={theme}
+                      onChange={(e) => setTheme(e.target.value)}
+                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                    >
+                      <option value="system">System Default</option>
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-muted">Editor Font Size</span>
+                    <select
+                      value={fontSize}
+                      onChange={(e) => setFontSize(e.target.value)}
+                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                    >
+                      <option value="small">Small</option>
+                      <option value="normal">Normal</option>
+                      <option value="large">Large</option>
+                    </select>
+                  </label>
+                </div>
 
-            {activeTab === 'integrations' && (
+                <div className="max-w-xl border border-edge rounded-xl p-4">
+                  <Toggle 
+                    label="High Contrast Mode" 
+                    description="Increases text contrast across the application for readability."
+                    checked={highContrast}
+                    onChange={setHighContrast}
+                  />
+                </div>
+              </section>
+
+              <section>
+                <CustomInstructions
+                  value={meState.data?.custom_instructions}
+                  onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                />
+              </section>
+            </div>
+
+            {/* Account Section */}
+            <div id="section-account" className="scroll-mt-8">
+              <h2 className="text-xl font-bold text-ink mb-6">Account & Security</h2>
+              
+              {meState.data && meState.data.has_password ? (
+                <section className="mb-8">
+                  <div className="border-b border-edge pb-2 mb-4">
+                    <h3 className="text-sm font-semibold text-ink">Password</h3>
+                  </div>
+                  <ChangePassword />
+                </section>
+              ) : meState.data ? (
+                <section className="mb-8">
+                  <div className="border-b border-edge pb-2 mb-4">
+                    <h3 className="text-sm font-semibold text-ink">Password</h3>
+                  </div>
+                  <p className="text-sm text-ink-muted">
+                    This account signs in with Google — there’s no password to change here.
+                  </p>
+                </section>
+              ) : null}
+              <section>
+                <AccountSafety />
+              </section>
+            </div>
+
+            {/* Integrations Section */}
+            <div id="section-integrations" className="scroll-mt-8">
+              <h2 className="text-xl font-bold text-ink mb-6">Integrations</h2>
+              
               <section>
                 <GoogleDriveSection />
                 
@@ -954,15 +1041,19 @@ export function SettingsPage() {
                   />
                 </div>
               </section>
-            )}
+            </div>
 
-            {activeTab === 'billing' && (
+            {/* Billing Section */}
+            <div id="section-billing" className="scroll-mt-8">
+              <h2 className="text-xl font-bold text-ink mb-6">Billing</h2>
               <section>
                 <BillingSection />
               </section>
-            )}
+            </div>
 
-            {activeTab === 'advanced' && (
+            {/* Advanced Section */}
+            <div id="section-advanced" className="scroll-mt-8">
+              <h2 className="text-xl font-bold text-ink mb-6">Advanced</h2>
               <section>
                 <div className="border-b border-edge pb-2 mb-4">
                   <h3 className="text-sm font-semibold text-ink">Experimental</h3>
@@ -984,7 +1075,7 @@ export function SettingsPage() {
                   </div>
                 )}
               </section>
-            )}
+            </div>
 
           </div>
         </div>

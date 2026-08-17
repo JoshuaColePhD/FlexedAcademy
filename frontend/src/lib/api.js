@@ -336,9 +336,14 @@ export const api = {
     fd.append('audio', blob, `recording.${ext}`)
     return upload('/api/transcribe', fd, { signal })
   },
-  /* The other direction from transcribe() above — text in, an audio Blob
+  /* The other direction from transcribe() above — text in, raw audio bytes
      out. Not routed through request(): that helper always calls res.json(),
-     and this response is audio/mpeg bytes, not JSON. */
+     and this response is a WAV body, not JSON.
+
+     An ArrayBuffer rather than a Blob, because the caller feeds it straight to
+     decodeAudioData on the shared AudioContext (see VoiceProvider) instead of
+     handing a blob: URL to an <audio> element. A Blob would only mean an extra
+     .arrayBuffer() hop on the way there. */
   synthesizeSpeech: async (text, { signal } = {}) => {
     let res
     try {
@@ -354,7 +359,7 @@ export const api = {
       throw new ApiError('Can’t reach the server.', { code: 'network_error' })
     }
     if (!res.ok) throw await toError(res)
-    return res.blob()
+    return res.arrayBuffer()
   },
   extractText: (file, { signal } = {}) => {
     const fd = new FormData()
@@ -406,7 +411,7 @@ export const api = {
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/confirm`, { method: 'POST' }),
   rejectSchoolCalendar: (submissionId) =>
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/reject`, { method: 'POST' }),
-  listClasses: ({ signal } = {}) => request('/api/classes', { signal }),
+  listClasses: ({ include_archived, signal } = {}) => request(`/api/classes${include_archived ? '?include_archived=true' : ''}`, { signal }),
   createClass: ({ name, subject, grade }) =>
     request('/api/classes', { method: 'POST', body: { name, subject, grade } }),
   updateClass: (id, patch) => request(`/api/classes/${id}`, { method: 'PATCH', body: patch }),

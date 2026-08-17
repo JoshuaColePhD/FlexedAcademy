@@ -745,19 +745,40 @@ def transcribe(user_id: str, path: str) -> str:
     return result.text
 
 
-def synthesize_speech(user_id: str, text: str) -> bytes:
-    """The other half of transcribe() above — text in, spoken audio out."""
-    resp = client().audio.speech.create(
+def stream_speech(user_id: str, text: str) -> Iterator[bytes]:
+    """The other half of transcribe() above — text in, spoken audio out, as a
+    stream of chunks rather than one finished clip.
+
+    Was synthesize_speech(), which returned `resp.content`: the complete audio
+    file, meaning the caller couldn't send a byte until OpenAI had synthesized
+    the last syllable. For a per-sentence pipeline that wait sat in the critical
+    path of every sentence. with_streaming_response hands back the body as it
+    arrives instead, so /tts can forward it and the browser can start decoding
+    the front of the clip while the back is still being made.
+
+    WAV, not MP3 — see the /tts route's own docstring for why the container
+    choice is audible (MP3 padding at every clip boundary) and not merely a
+    latency question.
+
+    Usage is charged UP FRONT, before the first chunk, deliberately: metering
+    after the loop would skip the charge entirely for a client that disconnects
+    mid-stream (a barge-in, which is a completely ordinary event here), and the
+    tokens have been spent by then regardless.
+    """
+    # Same reasoning as transcribe(): TTS bills per character, converted to a
+    # gpt-4o-equivalent token count so it draws from the same cap rather than
+    # being a free channel.
+    db.record_usage(user_id, "synthesize_speech", len(text) * 3, 0)
+    with client().audio.speech.with_streaming_response.create(
         model=settings.tts_model,
         voice=settings.tts_voice,
         input=text,
-        response_format="mp3",
-    )
-    # Same reasoning as transcribe(): TTS bills per character ($0.015/1K),
-    # converted to a gpt-4o-equivalent token count so it draws from the same
-    # cap rather than being a free channel.
-    db.record_usage(user_id, "synthesize_speech", len(text) * 3, 0)
-    return resp.content
+        response_format="wav",
+    ) as resp:
+        # 4KB is ~45ms of 24kHz 16-bit mono — small enough that the first chunk
+        # reaches the browser almost immediately, large enough not to spend the
+        # trip in per-chunk overhead.
+        yield from resp.iter_bytes(4096)
 
 
 def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> Iterator[dict]:

@@ -9,7 +9,7 @@ from pathlib import Path
 from collections import Counter
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import db, docx_build, llm, retrieval, service
@@ -328,13 +328,32 @@ def _spool(upload: UploadFile, suffix: str, max_bytes: int) -> Path:
         fd.close()
 
 
+# 60/minute, not 30: voice mode sends one of these per spoken utterance, and a
+# real back-and-forth ("week seven" — "no, the Poe one" — "make Thursday a
+# seminar") is a dozen short turns a minute before anyone is being unreasonable.
+# The actual spend ceiling is entitlement.py's token cap, which llm.transcribe
+# already charges against; this limit is abuse protection, and at 30 it was
+# tight enough to fire on ordinary use.
 @router.post("/transcribe")
-@limiter.limit("30/minute")
-async def transcribe(request: Request, audio: UploadFile = File(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("60/minute")
+def transcribe(request: Request, audio: UploadFile = File(...), user_id: str = Depends(get_current_user)):
     """Was unauthenticated — every other OpenAI-backed route here requires
     login (see /tts's own comment), but this one didn't, which made it a free
     relay for anyone who found it: no account to attribute the cost to, and
-    nothing for entitlement.py's cap to apply against."""
+    nothing for entitlement.py's cap to apply against.
+
+    Deliberately a plain `def`, NOT `async def` — and this is the whole reason
+    voice mode used to stall mid-conversation. Both calls in the body block:
+    _spool() does synchronous file I/O, and llm.transcribe() makes a blocking
+    OpenAI HTTP request that takes most of a second. Inside an `async def`,
+    FastAPI runs the handler ON the event loop, so for the entire Whisper round
+    trip the whole server was frozen — the SSE chat stream couldn't push a
+    chunk, queued /tts fetches couldn't be served, nothing else could run. On a
+    single-worker uvicorn (see render.yaml's free plan) that is every request,
+    not just this one. A plain `def` is dispatched to the threadpool instead,
+    which is what every other route in this file already does; this one was the
+    outlier, and it happened to be the hottest route in the feature.
+    """
     suffix = Path(audio.filename or "recording.webm").suffix or ".webm"
     path = _spool(audio, suffix, settings.max_audio_bytes)
     try:
@@ -347,15 +366,45 @@ class TTSRequest(BaseModel):
     text: str = Field(min_length=1, max_length=settings.max_tts_chars)
 
 
+# 180/minute, not 30. This route is called once per SENTENCE, not once per
+# reply (see VoiceProvider's enqueue — speech starts on the first sentence
+# while the model is still writing the second), so a four-sentence answer is
+# four requests. Add the greeting prefetch, the "building your week" and
+# "revising" interjections, and Replay, and 30/minute ran out after roughly
+# seven conversational turns — at which point the teacher got "Couldn't speak
+# that reply" and voice mode went silent for the rest of the minute, during
+# exactly the fast back-and-forth the feature exists for. Cost is still bounded
+# the real way: max_tts_chars per request, and llm.stream_speech charging every
+# character against entitlement.py's cap.
 @router.post("/tts")
-@limiter.limit("30/minute")
+@limiter.limit("180/minute")
 def synthesize_speech(req: TTSRequest, request: Request, user_id: str = Depends(get_current_user)):
     """The assistant's chat replies, spoken aloud. Authenticated like every
     other OpenAI-backed route — this bills the same API key transcribe()
     already does, and a public speech-synthesis endpoint is a free relay for
-    anyone who finds it."""
-    audio = llm.synthesize_speech(user_id, req.text)
-    return Response(content=audio, media_type="audio/mpeg")
+    anyone who finds it.
+
+    Streamed, not buffered. This used to read the whole clip into memory
+    (resp.content) before returning a single byte, and the client then buffered
+    it AGAIN into a Blob — two full waits before any sound. Now the OpenAI
+    response body is forwarded through as it arrives, so the browser can start
+    decoding the head of the clip while the tail is still being synthesized.
+
+    WAV rather than MP3, which matters more than it looks: every separately
+    encoded MP3 carries LAME's 576 samples of padding on each end, so a reply
+    spoken as five sentence-clips had four guaranteed audible gaps in it no
+    matter how fast the fetches were. WAV has a fixed 44-byte header and then
+    raw samples — nothing to trim, nothing to hear at the joins. It also skips
+    MP3's decode step entirely, which is the other reason it starts faster.
+    """
+    return StreamingResponse(
+        llm.stream_speech(user_id, req.text),
+        media_type="audio/wav",
+        # Nothing here is cacheable per-URL (it's a POST) but proxies on the
+        # path shouldn't try to buffer the whole body before passing it on —
+        # that would undo the streaming above.
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 def read_text_from_path(path: Path, ext: str) -> str:
@@ -401,7 +450,12 @@ def read_text_from_path(path: Path, ext: str) -> str:
 
 
 @router.post("/extract_text")
-async def extract_text(file: UploadFile = File(...)):
+def extract_text(file: UploadFile = File(...)):
+    # Plain `def` for the same reason /transcribe is — see its docstring. This
+    # one was arguably worse while it lasted: read_text_from_path shells out to
+    # pdftotext with a 30-second timeout, so a slow PDF could hold the event
+    # loop (and therefore every other request on the instance) for half a
+    # minute. It just fires far less often than /transcribe does.
     original = Path(file.filename or "upload")
     ext = original.suffix.lower()
     if ext != ".pdf" and ext not in TEXT_EXTS:

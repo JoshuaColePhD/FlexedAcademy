@@ -18,10 +18,10 @@ import { qk } from '../lib/queryKeys'
 /** Best-effort by design: /api/classes 404s on an install that hasn't run
  *  migration 9, and the app still has to work — the calendar just shows the
  *  year with no class attached. An error here is not worth a toast. */
-export function useClasses() {
+export function useClasses(includeArchived = false) {
   return useQuery({
-    queryKey: qk.classes,
-    queryFn: () => api.listClasses(),
+    queryKey: [...qk.classes, { includeArchived }],
+    queryFn: () => api.listClasses({ include_archived: includeArchived }),
     select: (rows) => (Array.isArray(rows) ? rows : []),
     retry: false,
     // No placeholderData: [] here. A placeholder resolves the query
@@ -41,7 +41,7 @@ export function useClasses() {
  *  button works. */
 export function useActiveClass() {
   const { classId } = useParams()
-  const { data: classes = [], isLoading } = useClasses()
+  const { data: classes = [], isLoading } = useClasses(true) // Fetch all classes so direct links to archived classes still work
   return {
     classId,
     classes,
