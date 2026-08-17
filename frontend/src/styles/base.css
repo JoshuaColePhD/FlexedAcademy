@@ -1767,6 +1767,14 @@
       background-position: 0 50%;
     }
   }
+  /* The lesson-plan panel updates for as long as a plan is generating, which
+     can run a couple minutes — an infinite shimmer for that whole span reads
+     as the panel itself being busy/animating rather than a quiet place
+     output lands. Same placeholder box, no sweep. */
+  .skeleton-static {
+    background: var(--paper-sunken);
+    animation: none;
+  }
   .skeleton-text {
     display: flex;
     flex-direction: column;

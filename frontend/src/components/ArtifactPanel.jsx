@@ -36,17 +36,17 @@ function PlanSkeleton() {
   return (
     <div className="doc-sheet overflow-hidden">
       <div className="mb-8 border-b border-paper-sunken pb-6">
-        <Skeleton width="40%" height="2rem" className="mb-4" />
-        <SkeletonText lines={2} width="80%" />
+        <Skeleton width="40%" height="2rem" className="mb-4" static />
+        <SkeletonText lines={2} width="80%" static />
       </div>
-      
+
       {Array.from({ length: 3 }).map((_, i) => (
         <div key={i} className="mb-6 rounded-lg border border-paper-sunken p-5">
           <div className="mb-4 flex items-center justify-between">
-            <Skeleton width="15%" height="1.5rem" />
-            <Skeleton width="20%" height="1.25rem" />
+            <Skeleton width="15%" height="1.5rem" static />
+            <Skeleton width="20%" height="1.25rem" static />
           </div>
-          <SkeletonRows rows={2} />
+          <SkeletonRows rows={2} static />
         </div>
       ))}
     </div>

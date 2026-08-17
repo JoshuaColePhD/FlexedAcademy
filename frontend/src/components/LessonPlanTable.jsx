@@ -463,7 +463,7 @@ function PlanTable({
                     // shift when the real content replaces it.
                     return row.key === 'learning_targets' ? (
                       <td key={day.name} className="is-pending" rowSpan={ROWS.length}>
-                        <SkeletonText lines={3} />
+                        <SkeletonText lines={3} static />
                         <span className="visually-hidden">
                           {day.name} hasn’t been written yet
                         </span>
