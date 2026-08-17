@@ -74,7 +74,7 @@ export function Composer({
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
      meant a screen-reader user on the chat page was told the send button
      generates a document. */
-  placeholder = 'What are you teaching?',
+  placeholder = 'What are you teaching? (Press ⌘K for actions)',
   sendLabel = 'Send',
 }) {
   const toast = useToast()
@@ -86,6 +86,7 @@ export function Composer({
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isAttaching, setIsAttaching] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
 
   const autosize = useCallback(() => {
     const el = textareaRef.current
@@ -192,7 +193,39 @@ export function Composer({
     }
   }
 
+  
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    setIsAttaching(true)
+    try {
+      const data = await api.extractText(file)
+      setAttachments((prev) => [...prev, data])
+      toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
+    } catch (err) {
+      toast.error(`Could not read ${file.name}`, err.hint || err.message)
+    } finally {
+      setIsAttaching(false)
+    }
+  }
+
   const hasContent = value.trim().length > 0 || attachments.length > 0
+
   const canSend = hasContent && !isStreaming && !isRecording && !isTranscribing
 
   const submit = () => {
@@ -223,9 +256,19 @@ export function Composer({
       <div
         className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised transition-all ${
           voiceModeActive ? 'rounded-3xl' : 'rounded-xl'
-        }`}
+        } ${isDragging ? 'ring-2 ring-accent' : ''}`}
         ref={wrapperRef}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
+        {isDragging && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-paper-raised/90 backdrop-blur-sm rounded-inherit">
+            <p className="text-sm font-semibold text-accent-text flex items-center gap-2">
+              <Upload size={16} /> Drop file to attach
+            </p>
+          </div>
+        )}
         {voicePanel}
 
         {attachments.length > 0 ? (

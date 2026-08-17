@@ -42,6 +42,18 @@ function Toast({ toast: t, isNeo, onDismiss, onExited }) {
         {t.detail ? <small>{t.detail}</small> : null}
         {/* The backend's actionable half — "Start it with ./run.sh". */}
         {t.hint ? <small className="toast-hint">{t.hint}</small> : null}
+        {t.action ? (
+          <button
+            type="button"
+            className="mt-2 block text-xs font-semibold text-accent-text hover:text-accent-hover"
+            onClick={() => {
+              t.action.onClick()
+              onDismiss(t.id)
+            }}
+          >
+            {t.action.label}
+          </button>
+        ) : null}
       </div>
       <button
         type="button"
@@ -125,8 +137,8 @@ export function ToastProvider({ children }) {
       push,
       dismiss,
       error: (title, detail) => push({ tone: 'error', title, detail, ttl: 10000 }),
-      success: (title, detail) => push({ tone: 'success', title, detail, ttl: 4000 }),
-      info: (title, detail) => push({ tone: 'info', title, detail }),
+      success: (title, detail, action) => push({ tone: 'success', title, detail, action, ttl: action ? 8000 : 4000 }),
+      info: (title, detail, action) => push({ tone: 'info', title, detail, action, ttl: action ? 8000 : 4000 }),
       /* The one way to report a thrown API error.
          Every previous site did `toast.error(title, err.message)` by hand, and
          six of them silently lost the backend's `hint` — the part that tells the

@@ -24,6 +24,35 @@ import { SchoolSelect } from '../components/SchoolSelect'
  * long scroll.
  */
 
+import { motion, AnimatePresence } from 'framer-motion'
+
+function Tooltip({ text, children }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div 
+      className="relative flex items-center" 
+      onMouseEnter={() => setShow(true)} 
+      onMouseLeave={() => setShow(false)}
+      onFocus={() => setShow(true)}
+      onBlur={() => setShow(false)}
+    >
+      {children}
+      <AnimatePresence>
+        {show && (
+          <motion.div 
+            initial={{ opacity: 0, y: 5 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: 5 }}
+            className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-max max-w-xs bg-ink text-paper text-xs px-2 py-1.5 rounded shadow-lg z-50 pointer-events-none"
+          >
+            {text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 const CUSTOM_INSTRUCTIONS_MAX = 2000
 
 const TABS = [
@@ -64,12 +93,14 @@ function DesignSkinSection() {
             type="button"
             onClick={() => setSkin(opt.value)}
             aria-pressed={skin === opt.value}
-            className={`neo-raised flex flex-col items-start gap-0.5 rounded-xl px-3.5 py-3 text-left transition-colors ${
+            className={`neo-raised flex flex-col items-start gap-0.5 rounded-xl px-3.5 py-3 text-left transition-colors focus-visible:ring-2 focus-visible:ring-accent outline-none ${
               skin === opt.value ? 'neo-inset text-accent-text' : 'text-ink-soft'
             }`}
           >
             <span className="text-sm font-medium">{opt.label}</span>
-            <span className="text-2xs text-ink-muted">{opt.hint}</span>
+            <Tooltip text={opt.hint}>
+              <span className="text-2xs text-ink-muted flex items-center gap-1 cursor-help underline decoration-dotted">{opt.hint.split(',')[0]}</span>
+            </Tooltip>
           </button>
         ))}
       </div>
@@ -92,12 +123,14 @@ function CustomInstructions({ value, onSaved }) {
 
   const save = async () => {
     setSaving(true)
+    const previousSaved = saved
+    setSaved(text) // Optimistic update
     try {
       await api.updateMe({ customInstructions: text })
-      setSaved(text)
       toast.success('Saved')
       onSaved?.()
     } catch (err) {
+      setSaved(previousSaved) // Rollback
       toast.apiError('Could not save your instructions', err)
     } finally {
       setSaving(false)
@@ -128,7 +161,7 @@ function CustomInstructions({ value, onSaved }) {
           type="button"
           onClick={save}
           disabled={!dirty || saving}
-          className="fa-press neo-raised rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+          className="fa-press neo-raised rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-accent outline-none disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
@@ -160,6 +193,9 @@ function SchoolPicker({ value, onSaved }) {
   const commit = async (school) => {
     if (!school || school === value) return
     setSaving(true)
+    const previousSaved = value
+    // Optimistic update: onSaved isn't passed value, so we just optimistically fire it if it causes a refetch
+    // Wait, onSaved isn't enough, we must actually call updateMe, and if it fails, maybe refetch or show error.
     try {
       await api.updateMe({ school })
       toast.success('Saved')
