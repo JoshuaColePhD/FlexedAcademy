@@ -20,7 +20,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
  *   connected    — the actual share form: an email, a role, a Share button,
  *                  and whoever this plan has already been shared with.
  */
-export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentName, downloadUrl }) {
+export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentName, downloadUrl, returnTo }) {
   const toast = useToast()
   const { mounted, closing } = useExitTransition(open, 200)
   const dialogRef = useRef(null)
@@ -76,7 +76,19 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
   })
 
   const connect = () => {
-    window.location.assign(api.driveConnectUrl())
+    // returnTo was accepted by ArtifactPanel's own call site but never
+    // actually used here — driveConnectUrl() with no argument sent
+    // "undefined" as the return_to query param, which routes/drive.py's own
+    // `return_to.startswith("/")` guard rejects, silently falling back to
+    // "/" and stranding the teacher back at the app's front door instead of
+    // the plan/quiz they were trying to share. Falls back to the CURRENT
+    // page for callers that don't pass returnTo at all (the quiz share
+    // dialogs, ArtifactRail.jsx/ArtifactDetailPanel.jsx) — always right,
+    // since a share dialog only ever opens from the page it should return
+    // to.
+    window.location.assign(
+      api.driveConnectUrl(returnTo || `${window.location.pathname}${window.location.search}`)
+    )
   }
 
   const submit = async (e) => {

@@ -353,6 +353,7 @@ function BillingSection() {
  * Hidden entirely when the account itself has no Drive integration
  * configured, same reasoning as BillingSection above. */
 function GoogleDriveSection() {
+  const { classId } = useParams()
   const toast = useToast()
   const confirm = useConfirm()
   const driveState = useQuery({ queryKey: qk.driveStatus, queryFn: () => api.driveStatus() })
@@ -363,10 +364,13 @@ function GoogleDriveSection() {
   const connected = driveState.data.connected
 
   const connect = () => {
-    // return_to is where /settings itself lives, not a plan — this is the
-    // proactive entry point, so there's no plan to strand the teacher back
-    // at like ShareDialog's own connect() has.
-    window.location.assign(api.driveConnectUrl('/settings'))
+    // return_to has to be a real route — bare "/settings" isn't one
+    // (Settings only ever exists nested under a class, /c/:classId/settings)
+    // and Google redirecting back to it landed on this app's own 404
+    // instead of back in Settings. There's no plan to strand the teacher
+    // back at here (unlike ShareDialog's own connect()), just Settings
+    // itself, so the class-scoped Settings path is the whole answer.
+    window.location.assign(api.driveConnectUrl(`/c/${classId}/settings`))
   }
 
   const disconnect = async () => {
