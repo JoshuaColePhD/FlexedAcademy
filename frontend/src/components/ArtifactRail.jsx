@@ -1,6 +1,17 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Calendar, ChevronLeft, ChevronRight, Download, FileText, ListChecks, Loader2, Share2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  BookOpen,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileText,
+  ListChecks,
+  Loader2,
+  Share2,
+} from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
@@ -200,6 +211,14 @@ export function ArtifactRail({
   onOpenStandards,
   onOpenCalendar,
   onOpenDocument,
+  // True only when a plan is KNOWN to exist for this chat (a message or
+  // the plans table named its id) and fetching it failed — see ChatPage's
+  // own reload effect. Distinct from "nothing built yet" on purpose: that
+  // case is what decisions.length's own DecisionStack below is for, and
+  // conflating the two showed decisions (repopulated from the very
+  // transcript that proves a plan exists) standing in for a real plan
+  // that just failed to load.
+  artifactLoadError = false,
 }) {
   const [shareTarget, setShareTarget] = useState(null)
   const plan = artifact?.plan
@@ -324,6 +343,21 @@ export function ArtifactRail({
               <span className="rail-row-label">Writing the week</span>
               <span className="rail-sub">the .docx follows</span>
             </span>
+          </div>
+        ) : artifactLoadError ? (
+          /* A real plan exists for this chat (a message or the plans table
+             named its id) and fetching it just failed — NOT the same as
+             "nothing built yet," which is what decisions.length's own
+             DecisionStack below is for. Checked first, so a failed load
+             never falls through to decisions repopulated from the very
+             transcript that proves a plan exists — reading as "nothing was
+             built" when the opposite is true. */
+          <div className="rail-empty">
+            <AlertTriangle size={20} aria-hidden="true" className="text-mark" />
+            <p>Couldn’t load this week’s plan.</p>
+            <button type="button" className="btn text-xs" onClick={() => window.location.reload()}>
+              Reload
+            </button>
           </div>
         ) : !isBar && decisions.length ? (
           /* Before a plan exists, this is where "the plan so far" lives —

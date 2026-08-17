@@ -124,6 +124,16 @@ export function ChatPage() {
 
   const [messages, setMessages] = useState([])
   const [artifact, setArtifact] = useState(null)
+  /* True only when a message (or the plans table) NAMES a real plan_id for
+     this chat and fetching IT specifically failed — never for "no plan
+     exists yet." That distinction is the whole point: without it, a
+     transient getPlan() failure on reopen fell through to the exact same
+     branch as "nothing built yet," and the rail showed decisions.length's
+     own DecisionStack (repopulated from the very transcript that proves a
+     plan WAS built) standing in for a real plan that just failed to load —
+     reading as "the plan you built doesn't exist" while the chat above it
+     says otherwise. See the reload effect below. */
+  const [artifactLoadError, setArtifactLoadError] = useState(false)
   const [query, setQuery] = useState('')
   const [attachments, setAttachments] = useState([])
   /* Which week a NEW plan will be built for. Null means "auto" — the
@@ -348,6 +358,7 @@ export function ChatPage() {
       chatStream.stop()
       setMessages([])
       setArtifact(null)
+      setArtifactLoadError(false)
       setExpanded(false)
       setViewKind('plan')
       setViewingQuiz(null)
@@ -374,6 +385,7 @@ export function ChatPage() {
        takes — measured at ~100-200ms locally, and it reads as the app showing
        you the wrong plan. */
     setArtifact(null)
+    setArtifactLoadError(false)
     setOpenTweak(null)
     setExpanded(false)
     setViewKind('plan')
@@ -381,6 +393,22 @@ export function ChatPage() {
     setViewingDoc(null)
     setRailOpen(false)
     railAutoOpenedRef.current = false
+
+    // One retry, not a loop — a reopened chat's getPlan() is a single request
+    // right after mount, exactly where a cold connection/transient blip is
+    // most likely, and this used to fail permanently on the first stumble
+    // with nothing surfaced: the rail quietly fell back to decisions.length
+    // (repopulated from the SAME transcript that proves a plan exists),
+    // showing "the plan so far" cards standing in for a real plan that just
+    // failed to load — reading as "nothing built yet" while the chat above
+    // it says otherwise.
+    const getPlanWithRetry = async (id) => {
+      try {
+        return await api.getPlan(id)
+      } catch {
+        return await api.getPlan(id)
+      }
+    }
 
     api
       .getChat(chatId)
@@ -405,16 +433,24 @@ export function ChatPage() {
              no artifact, no rail and no way to the .docx, even though the row
              was sitting in the database the whole time. The plan knows which
              chat it came from, so ask it directly. */
+          let items
           try {
-            const { items = [] } = await api.listPlans({ chat_id: chatId, limit: 1 })
-            if (cancelled) return
-            if (!items[0]) {
-              setArtifact(null)
-              return
-            }
+            ;({ items = [] } = await api.listPlans({ chat_id: chatId, limit: 1 }))
+          } catch {
+            if (!cancelled) setArtifact(null)
+            return
+          }
+          if (cancelled) return
+          if (!items[0]) {
+            // Genuinely nothing built for this chat — the "before a plan
+            // exists" case decisions.length's own DecisionStack is for.
+            setArtifact(null)
+            return
+          }
+          try {
             // The list view drops plan_json (db.list_plans pops it), so the
             // week itself still has to be fetched by id.
-            const plan = await api.getPlan(items[0].id)
+            const plan = await getPlanWithRetry(items[0].id)
             if (cancelled) return
             setArtifact({
               planId: plan.id,
@@ -424,13 +460,15 @@ export function ChatPage() {
               unit: plan.unit,
             })
           } catch {
-            if (!cancelled) setArtifact(null)
+            // A real plan_id came back from listPlans — this is "exists but
+            // failed to load," not "doesn't exist yet."
+            if (!cancelled) setArtifactLoadError(true)
           }
           return
         }
 
         try {
-          const plan = await api.getPlan(last.planId)
+          const plan = await getPlanWithRetry(last.planId)
           if (cancelled) return
           setArtifact({
             planId: plan.id,
@@ -453,7 +491,10 @@ export function ChatPage() {
             )
           )
         } catch {
-          if (!cancelled) setArtifact(null)
+          // last.planId came from a persisted message — this plan is known
+          // to exist, so a failed fetch is "exists but failed to load," not
+          // "doesn't exist yet."
+          if (!cancelled) setArtifactLoadError(true)
         }
       })
       .catch(() => !cancelled && toast.error("Couldn't open that conversation"))
@@ -1862,6 +1903,7 @@ export function ChatPage() {
           busy={busy}
           quizBuilding={quizBuilding}
           variant="bar"
+          artifactLoadError={artifactLoadError}
         />
       ) : null}
 
@@ -2042,6 +2084,7 @@ export function ChatPage() {
           busy={busy}
           quizBuilding={quizBuilding}
           decisions={decisions}
+          artifactLoadError={artifactLoadError}
         />
       ) : null}
 
