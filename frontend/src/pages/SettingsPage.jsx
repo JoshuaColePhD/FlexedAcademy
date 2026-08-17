@@ -175,7 +175,7 @@ function SchoolPicker({ value, onSaved }) {
       </p>
       <select
         value={value || ''}
-        disabled={saving || !schools.length}
+        disabled={saving}
         onChange={(e) => commit(e.target.value)}
         className="neo-select neo-inset mt-2 w-full max-w-xs rounded-lg bg-paper-raised py-2 pl-3 pr-8 text-sm text-ink disabled:opacity-60"
       >
@@ -185,6 +185,11 @@ function SchoolPicker({ value, onSaved }) {
             {s.has_calendar === false ? ' — no calendar yet' : ''}
           </option>
         ))}
+        {/* Always available, not gated behind schools.length — see
+            WelcomePage.jsx's own comment on why this id works with no
+            schools table row at all (backend/context/calendars/generic.md
+            is read straight off disk by id). */}
+        <option value="generic">Generic — works anywhere, for now</option>
       </select>
       {/* A school's row and its calendar are added in different places on
           purpose (see GET /api/schools) — so one can exist with no year

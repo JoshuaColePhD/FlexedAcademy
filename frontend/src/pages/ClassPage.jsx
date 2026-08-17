@@ -696,6 +696,11 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
                     {s.has_calendar === false ? ' — no calendar yet' : ''}
                   </option>
                 ))}
+                {/* Same fallback WelcomePage.jsx's own onboarding picker
+                    offers — works with no schools table row at all
+                    (backend/context/calendars/generic.md is read straight
+                    off disk by id). */}
+                <option value="generic">Generic — works anywhere, for now</option>
               </select>
             </label>
           ) : null}
