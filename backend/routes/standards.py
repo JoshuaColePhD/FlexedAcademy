@@ -10,10 +10,11 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
+from pypdf import PdfReader
+from fastapi import APIRouter, Query, Depends, UploadFile, File, Form
 
-from .. import retrieval
+from .. import retrieval, db, llm
+from ..auth import require_auth
 from ..config import settings
 from ..errors import AppError
 from ..prompts import known_gaps
@@ -87,6 +88,63 @@ def list_standards(
     total = len(items)
     page = items[offset : offset + limit]
     return {"items": [_slim(c) for c in page], "total": total}
+
+
+@router.get("/global")
+def get_global_standards(
+    state: str,
+    subject: str,
+    grade: str,
+    user=Depends(require_auth)
+):
+    """Fetch global standards for a state, subject, and grade."""
+    standards = db.get_global_standards(state.strip(), subject.strip(), grade.strip())
+    return {"standards": standards}
+
+
+@router.post("/global/upload")
+async def upload_global_standards(
+    state: str = Form(...),
+    subject: str = Form(...),
+    grade: str = Form(...),
+    file: UploadFile = File(...),
+    user=Depends(require_auth)
+):
+    """
+    Upload a standards PDF, parse it using the LLM, and save it to the global database.
+    """
+    if not file.filename.endswith(".pdf"):
+        raise AppError("invalid_file", "Standards document must be a PDF.", status=400)
+
+    try:
+        pdf = PdfReader(file.file)
+        text_pages = []
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                text_pages.append(text)
+        full_text = "\n".join(text_pages)
+        if not full_text.strip():
+            raise ValueError("No text could be extracted from this PDF.")
+    except Exception as e:
+        raise AppError("pdf_parse_error", "Failed to extract text from the provided PDF.", status=400)
+
+    try:
+        extracted_standards = llm.extract_standards_from_text(full_text)
+    except AppError as e:
+        raise e
+    except Exception as e:
+        raise AppError("llm_extraction_error", "Failed to extract standards using AI.", status=500)
+
+    if not extracted_standards:
+        raise AppError("no_standards_found", "The AI could not find any standards in this document.", status=400)
+
+    try:
+        db.insert_global_standards(user["id"], state.strip(), subject.strip(), grade.strip(), extracted_standards)
+    except Exception as e:
+        raise AppError("db_save_error", "Failed to save standards to the database.", status=500)
+
+    return {"message": "Standards processed successfully", "count": len(extracted_standards), "standards": extracted_standards}
 
 
 @router.get("/stats")

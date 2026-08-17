@@ -1745,7 +1745,7 @@ export function ChatPage() {
     )
 
   const chatPane = (
-    <div className="relative flex h-full min-h-0 flex-col bg-paper/60 backdrop-blur-2xl saturate-[1.2]">
+    <div className="relative flex h-full min-h-0 flex-col bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
       {/* Always on, unlike chat-head below it — the theme toggle used to live
           in the account rail, but that put it a whole scroll away from the
           content it affects. Right-aligned so it sits at the seam with

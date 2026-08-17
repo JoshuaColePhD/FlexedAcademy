@@ -26,6 +26,7 @@ class ClassBody(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     subject: str = Field(min_length=1, max_length=120)
     grade: str = Field(default="11", max_length=8)
+    state: str | None = Field(default=None, max_length=120)
 
 
 class ClassPatch(BaseModel):
@@ -131,7 +132,7 @@ def list_classes_route(include_archived: bool = False, user_id: str = Depends(ge
 @router.post("/classes", status_code=201)
 def create_class_route(body: ClassBody, user_id: str = Depends(get_current_user)) -> dict:
     name = (body.name or "").strip() or _auto_name(body.subject, body.grade)
-    return db.create_class(user_id, name=name, subject=body.subject, grade=body.grade)
+    return db.create_class(user_id, name=name, subject=body.subject, grade=body.grade, state=body.state)
 
 
 @router.patch("/classes/{class_id}")

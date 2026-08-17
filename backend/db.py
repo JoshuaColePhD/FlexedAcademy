@@ -208,11 +208,13 @@ MIGRATIONS: list[str] = [
       name       TEXT NOT NULL,
       subject    TEXT NOT NULL,
       grade      TEXT NOT NULL,
+      state      TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
       archived   INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_classes_user ON classes(user_id, archived, sort_order);
+    ALTER TABLE classes ADD COLUMN IF NOT EXISTS state TEXT;
 
     ALTER TABLE plans           ADD COLUMN IF NOT EXISTS class_id TEXT REFERENCES classes(id) ON DELETE SET NULL;
     ALTER TABLE chats           ADD COLUMN IF NOT EXISTS class_id TEXT REFERENCES classes(id) ON DELETE SET NULL;
@@ -2817,3 +2819,21 @@ def update_password(user_id: str, password_hash: str) -> None:
     settings). Unconditional on the existing hash — the caller has already
     verified either the old password or a valid reset token before this runs."""
     _write("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+
+def get_global_standards(state: str, subject: str, grade: str) -> list[dict]:
+    return _rows(
+        "SELECT * FROM global_standards WHERE state = ? AND subject = ? AND grade = ? ORDER BY code",
+        (state, subject, grade)
+    )
+
+def insert_global_standards(user_id: str, state: str, subject: str, grade: str, standards: list[dict]) -> None:
+    for std in standards:
+        _write(
+            """
+            INSERT INTO global_standards (state, subject, grade, code, description, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (state, subject, grade, code) DO UPDATE SET
+                description = excluded.description
+            """,
+            (state, subject, grade, std["code"], std["description"], user_id, now())
+        )

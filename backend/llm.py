@@ -1058,3 +1058,49 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
             hint="Try sending that again.",
         )
 
+
+STANDARDS_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "standards": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string"},
+                    "description": {"type": "string"}
+                },
+                "required": ["code", "description"],
+                "additionalProperties": False
+            }
+        }
+    },
+    "required": ["standards"],
+    "additionalProperties": False
+}
+
+def extract_standards_from_text(text: str) -> list[dict]:
+    """Parse raw PDF text of state standards into a clean JSON array."""
+    try:
+        response = client().chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a specialized parser. Extract every educational standard from the provided document text. "
+                               "Return a strictly formatted JSON array containing the standard 'code' (e.g. OH.BIO.1) and "
+                               "the 'description'. Do not omit any standards, and do not include extra commentary."
+                },
+                {"role": "user", "content": text}
+            ],
+            response_format=_response_format("standards_extraction", STANDARDS_EXTRACTION_SCHEMA),
+            temperature=0,
+        )
+        _check_refusal(response.choices[0].message)
+        _record("system", "extract_standards", response.usage)
+        
+        parsed = json.loads(response.choices[0].message.content)
+        return parsed.get("standards", [])
+    except Exception as e:
+        log.error(f"Failed to extract standards: {e}")
+        raise AppError("standards_extraction_failed", f"Failed to extract standards: {str(e)}")

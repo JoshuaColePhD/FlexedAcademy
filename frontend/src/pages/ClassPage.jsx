@@ -296,6 +296,102 @@ function ClassDocuments({ cls, onChanged }) {
   )
 }
 
+function ClassStandards({ cls }) {
+  const toast = useToast()
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
+  
+  if (!cls.state) return null
+
+  const standards = useQuery({
+    queryKey: ['globalStandards', cls.state, cls.subject, cls.grade],
+    queryFn: () => api.getGlobalStandards(cls.state, cls.subject, cls.grade),
+    retry: false,
+  })
+
+  const upload = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    try {
+      const res = await api.uploadGlobalStandards(cls.state, cls.subject, cls.grade, file)
+      toast.success('Standards mapped!', `${res.count} standards extracted.`)
+      standards.refetch()
+    } catch (err) {
+      toast.apiError('Could not map standards from that PDF', err)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  if (standards.isLoading) {
+    return (
+      <div className="neo-panel mt-4 rounded-xl bg-paper/60 p-4">
+        <SkeletonText lines={1} className="w-1/3" />
+      </div>
+    )
+  }
+
+  const list = standards.data?.standards || []
+
+  return (
+    <div className="neo-panel mt-4 rounded-xl bg-paper/30 p-4 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
+      <div className="mb-4 flex items-center justify-between border-b border-edge pb-2">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">{cls.state} Standards</h2>
+          <p className="text-xs text-ink-muted">For {cls.subject} · Grade {gradeLabel(cls.grade)}</p>
+        </div>
+      </div>
+
+      {list.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-edge p-6 text-center">
+          <FileText className="mx-auto mb-2 text-ink-muted" size={24} />
+          <h3 className="text-sm font-medium text-ink">Be the first!</h3>
+          <p className="mt-1 text-sm text-ink-muted">
+            We don't have the {cls.state} {gradeLabel(cls.grade)} {cls.subject} standards yet. Upload your state's standards PDF, and our AI will map it for everyone.
+          </p>
+          <input
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            ref={fileRef}
+            onChange={upload}
+            disabled={uploading}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="fa-press mt-4 inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {uploading ? (
+              <><Loader2 size={16} className="animate-spin" /> Mapping PDF...</>
+            ) : (
+              <><Upload size={16} /> Upload Standards PDF</>
+            )}
+          </button>
+        </div>
+      ) : (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+              {list.length} standards mapped
+            </span>
+          </div>
+          <div className="max-h-48 overflow-y-auto rounded border border-edge bg-paper-raised p-2">
+            {list.map((s, i) => (
+              <div key={i} className="mb-2 last:mb-0 border-b border-edge/50 pb-2 last:border-0 last:pb-0">
+                <span className="font-medium text-xs text-ink block">{s.code}</span>
+                <span className="text-xs text-ink-muted">{s.description}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── the semester, one row per week ────────────────────────────────────────
    Each week is a project: built or not, in the past or still ahead. This is
    the one thing GET /api/weeks always knew (plan_id, chat_id, is_current,
@@ -573,6 +669,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
         ) : null}
         
         <ClassDocuments cls={cls} onChanged={onChanged} />
+        <ClassStandards cls={cls} />
       </section>
 
       {/* Weeks */}
@@ -668,7 +765,7 @@ function GlobalClassDashboard({ classes, onUpdated }) {
         </button>
       </div>
 
-      <div className="neo-panel rounded-xl bg-paper/60 backdrop-blur-2xl saturate-[1.2]">
+      <div className="neo-panel rounded-xl bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
         <div className="flex items-center justify-between rounded-t-xl border-b border-edge bg-paper-sunken px-4 py-3">
           <div className="flex items-center gap-3">
             <input
@@ -740,7 +837,7 @@ export function ClassPage() {
   const list = (classes || []).filter(c => !c.archived)
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/60 backdrop-blur-2xl saturate-[1.2]">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
       
       {/* Left Sidebar (Master) */}
       <div className={`flex w-full md:w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken ${activeClass ? 'hidden md:flex' : ''}`}>

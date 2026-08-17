@@ -289,7 +289,7 @@ export function PlansPage() {
           ) : null}
 
           {isLoading ? (
-            <div className="neo-panel rounded-xl bg-paper-raised/60 backdrop-blur-2xl saturate-[1.2] px-3 py-4">
+            <div className="neo-panel rounded-xl bg-paper-raised/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5 px-3 py-4">
               <SkeletonText lines={4} />
             </div>
           ) : isError ? (
@@ -297,7 +297,7 @@ export function PlansPage() {
               Couldn’t load your plans. {errorParts(error).message}
             </p>
           ) : filtered.length ? (
-            <ul className="neo-panel divide-y divide-edge overflow-hidden rounded-xl bg-paper-raised/60 backdrop-blur-2xl saturate-[1.2]">
+            <ul className="neo-panel divide-y divide-edge overflow-hidden rounded-xl bg-paper-raised/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
               {filtered.map((plan) => (
                 <PlanRow
                   key={plan.id}

@@ -444,12 +444,23 @@ export const api = {
     return upload(`/api/school-calendars/${encodeURIComponent(schoolId)}/template`, fd, { signal })
   },
   listClasses: ({ include_archived, signal } = {}) => request(`/api/classes${include_archived ? '?include_archived=true' : ''}`, { signal }),
-  createClass: ({ name, subject, grade }) =>
-    request('/api/classes', { method: 'POST', body: { name, subject, grade } }),
+  createClass: ({ name, subject, grade, state }) =>
+    request('/api/classes', { method: 'POST', body: { name, subject, grade, state } }),
   updateClass: (id, patch) => request(`/api/classes/${id}`, { method: 'PATCH', body: patch }),
   deleteClass: (id) => request(`/api/classes/${id}`, { method: 'DELETE' }),
   listClassDocuments: (id, { signal } = {}) =>
     request(`/api/classes/${id}/documents`, { signal }),
+
+  getGlobalStandards: (state, subject, grade, { signal } = {}) =>
+    request(`/api/standards/global?state=${encodeURIComponent(state)}&subject=${encodeURIComponent(subject)}&grade=${encodeURIComponent(grade)}`, { signal }),
+  uploadGlobalStandards: (state, subject, grade, file, { signal } = {}) => {
+    const fd = new FormData()
+    fd.append('state', state)
+    fd.append('subject', subject)
+    fd.append('grade', grade)
+    fd.append('file', file)
+    return upload('/api/standards/global/upload', fd, { signal })
+  },
 
   /** The school year for one class: every week, its real dates, whether it has
    *  a plan and whether school is even open. Sourced from the same calendar
