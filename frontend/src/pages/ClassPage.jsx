@@ -378,31 +378,18 @@ function ClassWeeks({ cls }) {
   )
 }
 
-/* ── one class ─────────────────────────────────────────────────────────────── */
-function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, canMoveDown }) {
+/* ── one class details (Right Pane) ────────────────────────────────────────── */
+function ClassDetail({ cls, frameworks, onChanged }) {
   const toast = useToast()
   const confirm = useConfirm()
   const navigate = useNavigate()
-  // Which panel is open below the row, if any — mutually exclusive, all
-  // toggled the same way "Documents" alone used to be.
-  const [panel, setPanel] = useState(null)
+  
   const [name, setName] = useState(cls.name)
-  // The framework and grade a class is created with used to be locked in
-  // forever — PATCH /api/classes/{id} already accepted subject/grade, the
-  // frontend just never sent them. Draft state so Cancel can discard a
-  // half-made pick without touching the class until Save commits it.
   const [editSubject, setEditSubject] = useState(cls.subject)
   const [editGrade, setEditGrade] = useState(cls.grade || '11')
-  // '' (not cls.school itself) for a class with none set — a class from
-  // before migration 25 has no school row value at all, and the account
-  // default it currently falls back to (db.class_school) isn't necessarily
-  // what the teacher would pick for THIS class specifically, so the select
-  // starts genuinely unset rather than silently pre-choosing for them. See
-  // its own "not set" option below.
   const [editSchool, setEditSchool] = useState(cls.school || '')
   const [savingDetails, setSavingDetails] = useState(false)
-  // Same list the account-level SchoolPicker reads (qk.schools) — one fetch
-  // either way, since React Query dedupes by key.
+  
   const schoolsState = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
   const schools = schoolsState.data || []
 
@@ -415,18 +402,13 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
 
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
-  // What POST /api/classes would have named this class. See the row below.
-  const grade = gradeLabel(cls.grade)
-  const derivedLabel = grade ? `${shortLabel(fw, cls.subject)} · ${grade}` : shortLabel(fw, cls.subject)
 
-  /* One save for the whole panel — name, framework and grade together. The
-     name used to commit on its own, on blur, from the row's input; now that
-     it's a field in this panel it belongs to this panel's Save, or Cancel
-     couldn't honestly discard it.
+  const hasChanges =
+    name.trim() !== cls.name ||
+    editSubject !== cls.subject ||
+    editGrade !== (cls.grade || '11') ||
+    editSchool !== (cls.school || '')
 
-     An emptied name falls back to the class's current one rather than
-     writing blank: the field is pre-filled, so clearing it reads as "start
-     over", not "call this class nothing". */
   const saveDetails = async () => {
     if (!editSubject) return
     const nextName = name.trim() || cls.name
@@ -436,17 +418,10 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
         name: nextName,
         subject: editSubject,
         grade: editGrade,
-        // Omitted entirely, not sent as '', while still "not set" — the
-        // backend's ClassPatch treats a present `school` as a real change to
-        // validate against the schools table, and '' matches no school id.
-        // This also means a school can't be CLEARED back to unset from here,
-        // same as name/subject/grade already can't be — consistent, not a
-        // new gap.
         ...(editSchool ? { school: editSchool } : {}),
       })
       setName(nextName)
       onChanged?.()
-      setPanel(null)
     } catch (err) {
       toast.apiError('Could not update that class', err)
     } finally {
@@ -466,162 +441,36 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
       await api.deleteClass(cls.id)
       toast.success(`${cls.name} removed`)
       onChanged?.()
-      /* Removing the class you are currently IN leaves the URL pointing at a
-         class that no longer exists — nothing guards an unknown :classId, so
-         the switcher read "Choose a class", the queries kept asking about a
-         dead id, and RememberClass had already written it to localStorage.
-         Send them back through RootRedirect, which picks a live class or
-         onboarding. */
-      if (isActive) navigate('/', { replace: true })
+      navigate('/', { replace: true })
     } catch (err) {
       toast.apiError('Could not remove that class', err)
     }
   }
 
   return (
-    <li className="border-b border-edge last:border-b-0">
-      {/* flex-wrap + the name's own basis-full below 480px: six fixed-width
-          controls (arrows, pencil, Weeks, Documents, trash) sharing one
-          non-wrapping row left the name almost no space at phone width —
-          "AP Language & Composition" truncated to "AP …" even though nothing
-          else on the row was fighting for room a second line couldn't give
-          it. Above sm the row is one line exactly as it always was. */}
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        {/* A check, not a radio. This shows which class you are IN — the URL
-            decides that, and the rail switcher is the one control that changes
-            it. The radio that used to be here was a second writer of the same
-            hidden global, which is how the sidebar and this page could end up
-            claiming different active classes. */}
-        <span
-          aria-hidden={!isActive}
-          aria-label={isActive ? 'Currently open' : undefined}
-          className={`grid h-5 w-5 shrink-0 place-items-center ${
-            isActive ? 'text-ok' : 'text-transparent'
-          }`}
-        >
-          <Check size={13} />
-        </span>
-
-        {/* The same per-class colour the rail dot and the artifact rail's own
-            tile already use (lib/classColor.js) — this list is the one place
-            every class a teacher has sits in a single column, which is
-            exactly the "tell two preps apart at a glance" job that palette
-            exists for. Decoration, not the only signal: the name is still
-            the text right beside it. */}
-        <span
-          className="class-dot"
-          aria-hidden="true"
-          style={{ '--class-dot-color': `rgb(${classColor(cls.id).rgb})` }}
-        />
-
-        {/* Clicking the name SWITCHES to that class; it no longer edits it.
-            It was a bare text input, so the row's most obvious click target
-            was a rename nobody was asking for, and the one thing a list of
-            classes should do — let you pick one — wasn't on the row at all.
-            Renaming moved into the pencil's panel below, alongside the
-            framework and grade, which is where "edit this class" already
-            lived.
-
-            Points at this same settings route rather than the class root, so
-            selecting a class STAYS here. The :classId in the URL is what
-            makes a class active (see the check above), so /c/<id>/class
-            switches and keeps the page — sending them to /c/<id> would have
-            made picking a class in a list also mean leaving the screen they
-            were working on. */}
-        <Link
-          to={`/c/${cls.id}/class`}
-          aria-current={isActive ? 'true' : undefined}
-          title={isActive ? `${cls.name} — already selected` : `Switch to ${cls.name}`}
-          className="min-w-0 basis-full truncate rounded-md px-1.5 py-1 text-sm font-medium text-ink no-underline transition-colors hover:bg-paper-sunken sm:basis-0 sm:flex-1"
-        >
-          {cls.name}
-        </Link>
-
-        {/* Only when it adds something. POST /api/classes auto-names a class
-            from exactly these two fields, so an unrenamed class printed
-            "AP English Language and Composition · 11th" in the input and then
-            again right beside it. The label earns its place the moment the
-            teacher renames the class to "3rd period" — and not before. */}
-        {cls.name.trim() === derivedLabel ? null : (
-          <span className="hidden shrink-0 text-xs text-ink-muted sm:block">{derivedLabel}</span>
-        )}
-
-        {/* Left flat on purpose while everything around them was embossed:
-            these two are 11px icons stacked with no gap, so a raised shadow
-            on each would bleed into the other and read as one smudge. */}
-        <div className="flex shrink-0 flex-col">
-          <button
-            type="button"
-            onClick={() => onMove?.(-1)}
-            disabled={!canMoveUp}
-            aria-label={`Move ${cls.name} up`}
-            className="rounded-sm p-0.5 text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <ArrowUp size={11} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onMove?.(1)}
-            disabled={!canMoveDown}
-            aria-label={`Move ${cls.name} down`}
-            className="rounded-sm p-0.5 text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <ArrowDown size={11} aria-hidden="true" />
-          </button>
+    <div className="mx-auto w-full max-w-3xl flex flex-col gap-10 pb-16">
+      
+      <header className="mb-2">
+        <div className="flex items-center gap-3">
+          <span
+            className="class-dot h-4 w-4 rounded-full"
+            aria-hidden="true"
+            style={{ '--class-dot-color': `rgb(${classColor(cls.id).rgb})`, backgroundColor: 'var(--class-dot-color)' }}
+          />
+          <h2 className="text-xl font-semibold text-ink">{cls.name}</h2>
         </div>
+      </header>
 
-        <button
-          type="button"
-          onClick={() => setPanel((p) => (p === 'edit' ? null : 'edit'))}
-          aria-expanded={panel === 'edit'}
-          aria-label={`Rename ${cls.name} or change its framework and grade`}
-          /* Pressed in while its panel is open — the same "selected is
-             inset" the rail's active row uses, and it saves these three
-             from needing a background tint to say which one is showing. */
-          className={`shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:text-ink ${
-            panel === 'edit' ? 'neo-inset' : 'neo-raised'
-          }`}
-        >
-          <Pencil size={13} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setPanel((p) => (p === 'weeks' ? null : 'weeks'))}
-          aria-expanded={panel === 'weeks'}
-          className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:text-ink ${
-            panel === 'weeks' ? 'neo-inset' : 'neo-raised'
-          }`}
-        >
-          {panel === 'weeks' ? 'Done' : 'Weeks'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setPanel((p) => (p === 'documents' ? null : 'documents'))}
-          aria-expanded={panel === 'documents'}
-          className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:text-ink ${
-            panel === 'documents' ? 'neo-inset' : 'neo-raised'
-          }`}
-        >
-          {panel === 'documents' ? 'Done' : 'Documents'}
-        </button>
-        <button
-          type="button"
-          onClick={remove}
-          aria-label={`Remove ${cls.name}`}
-          className="neo-raised shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:bg-mark-tint hover:text-mark"
-        >
-          <Trash2 size={14} aria-hidden="true" />
-        </button>
-      </div>
-
-      {panel === 'edit' ? (
-        <div className="fa-rise flex flex-col gap-2 px-3 pb-3 pl-10">
-          {/* Renaming lives here now, not on the row itself — the row's name
-              is how you switch class. Draft state like the two pickers
-              beside it, so Cancel discards a half-typed name the same way it
-              discards a half-made pick. */}
-          <label className="block">
-            <span className="mb-1 block text-xs text-ink-muted">Name</span>
+      {/* General Settings */}
+      <section className="flex flex-col gap-4">
+        <div className="border-b border-edge pb-2">
+          <h3 className="text-sm font-semibold text-ink">General</h3>
+          <p className="text-xs text-ink-muted">Basic details and standards framework for this class.</p>
+        </div>
+        
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 items-end">
+          <label className="block sm:col-span-2 lg:col-span-3">
+            <span className="mb-1 block text-xs text-ink-muted">Class Name</span>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -629,12 +478,12 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
                 if (e.key === 'Enter') saveDetails()
                 if (e.key === 'Escape') setName(cls.name)
               }}
-              placeholder={derivedLabel}
-              className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+              className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
             />
           </label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-          <div className="min-w-0 flex-1">
+
+          <div className="block sm:col-span-2">
+            <span className="mb-1 block text-xs text-ink-muted">Subject / Framework</span>
             <FrameworkPicker
               frameworks={frameworks}
               value={editSubject}
@@ -642,60 +491,32 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
               id={`edit-framework-${cls.id}`}
             />
           </div>
-          <select
-            aria-label={`Grade for ${cls.name}`}
-            value={editGrade}
-            onChange={(e) => setEditGrade(e.target.value)}
-            className="neo-select neo-inset rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink sm:w-24"
-          >
-            {GRADES.map((g) => (
-              <option key={g} value={g}>
-                {gradeLabel(g)}
-              </option>
-            ))}
-          </select>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={saveDetails}
-              disabled={!editSubject || savingDetails}
-              className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+
+          <label className="block">
+            <span className="mb-1 block text-xs text-ink-muted">Grade Level</span>
+            <select
+              aria-label={`Grade for ${cls.name}`}
+              value={editGrade}
+              onChange={(e) => setEditGrade(e.target.value)}
+              className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
             >
-              {savingDetails ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
-              Save
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setName(cls.name)
-                setEditSubject(cls.subject)
-                setEditGrade(cls.grade || '11')
-                setEditSchool(cls.school || '')
-                setPanel(null)
-              }}
-              className="neo-raised rounded-lg px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
-            >
-              Cancel
-            </button>
-          </div>
-          </div>
-          {/* Its own row, not squeezed into the framework/grade one — this
-              answers a different question ("which calendar does this class
-              follow", migration 25) from those two ("what does it teach").
-              Only shown once there's more than one school to actually pick
-              between: a solo-school account has nothing here worth asking. */}
+              {GRADES.map((g) => (
+                <option key={g} value={g}>
+                  {gradeLabel(g)}
+                </option>
+              ))}
+            </select>
+          </label>
+          
           {schools.length > 1 ? (
-            <label className="block max-w-xs">
+            <label className="block sm:col-span-2 lg:col-span-3">
               <span className="mb-1 block text-xs text-ink-muted">School</span>
               <SchoolSelect
                 ariaLabel={`School for ${cls.name}`}
                 schools={schools}
                 value={editSchool}
                 onChange={setEditSchool}
-                className="w-full"
-                /* Genuinely absent for a class predating migration 25, not
-                   pre-filled with the account default — see editSchool's
-                   own comment on why guessing here would be dishonest. */
+                className="w-full max-w-xs"
                 emptyOption={{ value: '', label: 'Not set — using account default' }}
               />
               {schools.find((s) => s.id === editSchool)?.has_pending_calendar ? (
@@ -704,50 +525,84 @@ function ClassRow({ cls, frameworks, isActive, onChanged, onMove, canMoveUp, can
             </label>
           ) : null}
         </div>
-      ) : panel === 'weeks' ? (
-        <div className="fa-rise px-3 pb-3 pl-10">
-          <ClassWeeks cls={cls} />
+
+        {hasChanges && (
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              type="button"
+              onClick={saveDetails}
+              disabled={!editSubject || savingDetails}
+              className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {savingDetails ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
+              Save Changes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setName(cls.name)
+                setEditSubject(cls.subject)
+                setEditGrade(cls.grade || '11')
+                setEditSchool(cls.school || '')
+              }}
+              className="neo-raised rounded-lg px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Documents */}
+      <section className="flex flex-col gap-4">
+        <div className="border-b border-edge pb-2">
+          <h3 className="text-sm font-semibold text-ink">Documents</h3>
+          <p className="text-xs text-ink-muted">Pacing guides and syllabi used to context-ground your plans.</p>
         </div>
-      ) : panel === 'documents' ? (
-        <div className="fa-rise px-3 pb-3 pl-10">
-          {/* Verification is not uniform — ELA is 100%, PE 61% — and it matters
-              before trusting a plan built on this framework. */}
-          {verified !== null && verified < 100 ? (
-            /* A tinted chip on the number, prose around it — the same
-               fill/text pair the rail and detail cards use for is-flag, so
-               the one number that actually matters here (61%, not 100) is
-               what catches the eye first instead of a uniform line of small
-               amber text. */
-            <p className="mb-2 text-xs text-ink-muted">
-              <span className="rounded-full bg-flag-tint px-1.5 py-0.5 font-medium text-flag">
-                {verified}% verified
-              </span>{' '}
-              of {shortLabel(fw)} word-for-word against the source PDF.
-            </p>
-          ) : null}
-          <ClassDocuments cls={cls} onChanged={onChanged} />
+        
+        {verified !== null && verified < 100 ? (
+          <p className="text-xs text-ink-muted">
+            <span className="rounded-full bg-flag-tint px-1.5 py-0.5 font-medium text-flag">
+              {verified}% verified
+            </span>{' '}
+            of {shortLabel(fw)} word-for-word against the source PDF.
+          </p>
+        ) : null}
+        
+        <ClassDocuments cls={cls} onChanged={onChanged} />
+      </section>
+
+      {/* Weeks */}
+      <section className="flex flex-col gap-4">
+        <div className="border-b border-edge pb-2">
+          <h3 className="text-sm font-semibold text-ink">Weeks</h3>
+          <p className="text-xs text-ink-muted">School calendar and lesson plan history for this class.</p>
         </div>
-      ) : null}
-    </li>
+        <ClassWeeks cls={cls} />
+      </section>
+
+      {/* Danger Zone */}
+      <section className="flex flex-col gap-4 mt-8">
+        <div className="border-b border-edge pb-2">
+          <h3 className="text-sm font-semibold text-mark">Danger Zone</h3>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={remove}
+            className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
+          >
+            <Trash2 size={14} aria-hidden="true" />
+            Delete Class
+          </button>
+        </div>
+      </section>
+
+    </div>
   )
 }
 
-/* Your classes.
- *
- * Reads from the query cache and the URL instead of a `shell` prop. Two things
- * are gone from this page and both were duplicate pathways:
- *
- *   - The active-class radio button. "Which class am I planning for" is the
- *     :classId in the URL now, set by the one switcher in the rail. Two controls
- *     writing one hidden global is what made it possible for the sidebar and
- *     this page to disagree.
- *
- *   - The collapsed "School calendar" list, which rendered src/data/fhs_events
- *     .json — a hardcoded THIRD index of the school year that could silently
- *     contradict the school's own calendar file (backend/context/calendars/),
- *     the one both the prompt and the week board read. Deleted along with the
- *     JSON.
- */
+/* ── Your classes layout (Master-Detail) ──────────────────────────────────── */
 export function ClassPage() {
   const toast = useToast()
   const navigate = useNavigate()
@@ -762,99 +617,76 @@ export function ClassPage() {
   const frameworks = frameworksState.data || []
 
   const reloadClasses = () => qc.invalidateQueries({ queryKey: qk.classes })
-
   const [adding, setAdding] = useState(false)
-
   const list = classes || []
 
-  // Writes canonical sort_order values from the list's CURRENT position
-  // (index), rather than trusting the two rows' stored values verbatim —
-  // classes created before sort_order existed all default to 0, and
-  // swapping two equal stored values would do nothing. list's order already
-  // came from db.list_classes' own `ORDER BY sort_order, created_at`, so
-  // index is a faithful stand-in and self-heals that legacy duplicate case
-  // the first time a teacher reorders anything.
-  const moveClass = async (index, dir) => {
-    const other = list[index + dir]
-    const cur = list[index]
-    if (!other) return
-    try {
-      await Promise.all([
-        api.updateClass(cur.id, { sort_order: index + dir }),
-        api.updateClass(other.id, { sort_order: index }),
-      ])
-      reloadClasses()
-    } catch (err) {
-      toast.apiError('Could not reorder your classes', err)
-    }
-  }
-
   return (
-    <div className="column">
-      <header className="flex h-14 shrink-0 items-center px-gutter">
-        <h1 className="text-sm font-semibold text-ink">My classes</h1>
-      </header>
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
+      
+      {/* Left Sidebar (Master) */}
+      <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
+        <header className="flex h-14 shrink-0 items-center px-4">
+          <h1 className="text-sm font-semibold text-ink">Settings</h1>
+        </header>
 
-      <div className="page scroll-y">
-        <div className="mx-auto w-full max-w-measure-form">
-          {/* ── the classes ─────────────────────────────────────────────── */}
-          <div className="mt-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <h2 className="text-sm font-semibold text-ink">Your classes</h2>
-            {list.length > 1 ? (
-              <span className="text-xs text-ink-muted">
-                The checked one is what new plans are built for
-              </span>
-            ) : null}
+        <div className="flex-1 overflow-y-auto py-2">
+          <div className="px-3 pb-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Your Classes</h2>
           </div>
-
-          <ul className="neo-panel mt-2 overflow-hidden rounded-xl bg-paper-raised">
+          
+          <nav className="flex flex-col px-2 gap-0.5">
             {list.length ? (
-              list.map((c, i) => (
-                <ClassRow
-                  key={c.id}
-                  cls={c}
-                  frameworks={frameworks}
-                  isActive={c.id === activeClass?.id}
-                  onChanged={reloadClasses}
-                  onMove={(dir) => moveClass(i, dir)}
-                  canMoveUp={i > 0}
-                  canMoveDown={i < list.length - 1}
-                />
-              ))
+              list.map((c) => {
+                const isActive = c.id === activeClass?.id
+                return (
+                  <Link
+                    key={c.id}
+                    to={`/c/${c.id}/class`}
+                    className={`group flex items-center justify-between min-h-touch rounded-lg px-2 text-sm transition-colors ${
+                      isActive 
+                        ? 'bg-paper-inset font-medium text-ink' 
+                        : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                      <span
+                        className="class-dot"
+                        aria-hidden="true"
+                        style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
+                      />
+                      <span className="truncate">{c.name}</span>
+                    </div>
+                  </Link>
+                )
+              })
             ) : classesLoading ? (
-              /* Was the empty state. useClasses deliberately has no
-                 placeholderData, so a hard refresh here told a teacher with
-                 five preps that they had none, for the whole round trip. */
-              <li className="px-3 py-4">
+              <div className="px-2 py-2">
                 <SkeletonText lines={2} />
-              </li>
-            ) : (
-              <li className="px-3 py-4 text-sm text-ink-muted">
-                No classes yet. Add one — its standards framework decides what your plans can cite.
-              </li>
-            )}
-          </ul>
+              </div>
+            ) : null}
+          </nav>
 
-          <div className="mt-2">
+          <div className="mt-4 px-3">
             {adding ? (
-              <AddClass
-                frameworks={frameworks}
-                onCancel={() => setAdding(false)}
-                onCreated={async (created) => {
-                  setAdding(false)
-                  await reloadClasses()
-                  // Selecting a class is a navigation now, not a setState.
-                  navigate(`/c/${created.id}/class`)
-                }}
-              />
+              <div className="neo-panel rounded-xl bg-paper p-2">
+                <AddClass
+                  frameworks={frameworks}
+                  onCancel={() => setAdding(false)}
+                  onCreated={async (created) => {
+                    setAdding(false)
+                    await reloadClasses()
+                    navigate(`/c/${created.id}/class`)
+                  }}
+                />
+              </div>
             ) : (
               <button
                 type="button"
                 onClick={() => setAdding(true)}
                 disabled={frameworksState.isLoading}
-                className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent-tint disabled:opacity-50"
+                className="flex min-h-touch w-full items-center gap-2 rounded-lg px-2 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink disabled:opacity-50"
               >
-                <Plus size={15} aria-hidden="true" /> Add a class
+                <Plus size={14} aria-hidden="true" /> Add a class
               </button>
             )}
             {frameworksState.isError ? (
@@ -864,21 +696,32 @@ export function ClassPage() {
               </p>
             ) : null}
           </div>
-
-          {/* The "School calendar" list that used to sit here rendered
-              src/data/fhs_events.json — a hardcoded third copy of the school
-              year, alongside the school's own calendar file under
-              backend/context/calendars/ (which the prompt quotes and the week
-              board reads). Three sources, two of which could drift. The
-              year now lives on the calendar page, where it is the point.
-
-              Account-level settings (name, school default, custom
-              instructions, password, billing, sign-out-everywhere, delete
-              account) moved to SettingsPage.jsx — this page is just the
-              class list now, matching the "My classes" link in the account
-              menu (AccountMenu.jsx) being a separate item from "Settings". */}
         </div>
       </div>
+
+      {/* Right Content Area (Detail) */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm">
+          <div className="text-sm font-medium text-ink-muted">
+            {activeClass ? 'Class Configuration' : ''}
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-8 py-8">
+          {activeClass ? (
+            <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
+          ) : classesLoading ? (
+            <div className="mx-auto w-full max-w-3xl">
+              <SkeletonText lines={5} />
+            </div>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center text-ink-muted">
+              <p className="text-sm">Select a class from the sidebar to manage its settings.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
     </div>
   )
 }

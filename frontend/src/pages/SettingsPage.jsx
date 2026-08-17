@@ -627,8 +627,8 @@ export function SettingsPage() {
 
   const [teacher, setTeacher] = useState('')
   const [savedName, setSavedName] = useState('')
+  const [activeTab, setActiveTab] = useState('general')
 
-  // users.name is where the teacher's name lives now.
   useEffect(() => {
     const n = meState.data?.name || ''
     setTeacher(n)
@@ -649,92 +649,149 @@ export function SettingsPage() {
     }
   }
 
-  return (
-    <div className="column">
-      <header className="flex h-14 shrink-0 items-center px-gutter">
-        <h1 className="text-sm font-semibold text-ink">Settings</h1>
-      </header>
+  const tabs = [
+    { id: 'general', label: 'General' },
+    { id: 'preferences', label: 'Preferences' },
+    { id: 'account', label: 'Account & Security' },
+    { id: 'integrations', label: 'Integrations' },
+    { id: 'billing', label: 'Billing' },
+    ...(import.meta.env.DEV ? [{ id: 'advanced', label: 'Advanced' }] : []),
+  ]
 
-      <div className="page scroll-y">
-        <div className="mx-auto w-full max-w-measure-form">
-          <SettingsBody
-            teacher={teacher}
-            setTeacher={setTeacher}
-            savedName={savedName}
-            commitTeacher={commitTeacher}
-            meState={meState}
-            qc={qc}
-          />
+  return (
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
+      
+      {/* Left Sidebar (Master) */}
+      <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
+        <header className="flex h-14 shrink-0 items-center px-4">
+          <h1 className="text-sm font-semibold text-ink">Settings</h1>
+        </header>
+
+        <div className="flex-1 overflow-y-auto py-2">
+          <nav className="flex flex-col px-2 gap-0.5">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center justify-between min-h-touch rounded-lg px-2 text-sm transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-paper-inset font-medium text-ink'
+                    : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
+                }`}
+              >
+                <span className="truncate">{tab.label}</span>
+              </button>
+            ))}
+          </nav>
         </div>
       </div>
+
+      {/* Right Content Area (Detail) */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm">
+          <div className="text-sm font-medium text-ink-muted">
+            {tabs.find(t => t.id === activeTab)?.label}
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-8 py-8">
+          <div className="mx-auto w-full max-w-3xl flex flex-col gap-10 pb-16">
+            
+            {activeTab === 'general' && (
+              <>
+                <section>
+                  <div className="border-b border-edge pb-2 mb-4">
+                    <h3 className="text-sm font-semibold text-ink">Profile</h3>
+                    <p className="text-xs text-ink-muted">How you are addressed in the app and on your plans.</p>
+                  </div>
+                  <div className="max-w-md">
+                    <label htmlFor="teacher" className="mb-1 block text-xs text-ink-muted">
+                      Your Name
+                    </label>
+                    <input
+                      id="teacher"
+                      value={teacher}
+                      onChange={(e) => setTeacher(e.target.value)}
+                      onBlur={commitTeacher}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur()
+                        if (e.key === 'Escape') setTeacher(savedName)
+                      }}
+                      placeholder="Mr. Cole"
+                      className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+                    />
+                  </div>
+                </section>
+                <section>
+                  <SchoolPicker
+                    value={meState.data?.school}
+                    onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                  />
+                </section>
+              </>
+            )}
+
+            {activeTab === 'preferences' && (
+              <>
+                <section>
+                  <DesignSkinSection />
+                </section>
+                <section>
+                  <CustomInstructions
+                    value={meState.data?.custom_instructions}
+                    onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                  />
+                </section>
+              </>
+            )}
+
+            {activeTab === 'account' && (
+              <>
+                {meState.data && meState.data.has_password ? (
+                  <section>
+                    <div className="border-b border-edge pb-2 mb-4">
+                      <h3 className="text-sm font-semibold text-ink">Password</h3>
+                    </div>
+                    <ChangePassword />
+                  </section>
+                ) : meState.data ? (
+                  <section>
+                    <div className="border-b border-edge pb-2 mb-4">
+                      <h3 className="text-sm font-semibold text-ink">Password</h3>
+                    </div>
+                    <p className="text-sm text-ink-muted">
+                      This account signs in with Google — there’s no password to change here.
+                    </p>
+                  </section>
+                ) : null}
+                <section>
+                  <AccountSafety />
+                </section>
+              </>
+            )}
+
+            {activeTab === 'integrations' && (
+              <section>
+                <GoogleDriveSection />
+              </section>
+            )}
+
+            {activeTab === 'billing' && (
+              <section>
+                <BillingSection />
+              </section>
+            )}
+
+            {activeTab === 'advanced' && import.meta.env.DEV && (
+              <section>
+                <Diagnostics />
+              </section>
+            )}
+
+          </div>
+        </div>
+      </div>
+
     </div>
-  )
-}
-
-/* Pulled out of SettingsPage's own render — a settings dialog briefly lived
- * here (SettingsModal, since removed on request in favor of the account
- * trigger navigating to a real page instead), and this split let both
- * shells render the exact same fields. Kept even with one consumer now:
- * the state/hooks stay in SettingsPage and only get passed down, so there's
- * exactly one copy of "what's the teacher's name doing right now." */
-export function SettingsBody({ teacher, setTeacher, savedName, commitTeacher, meState, qc }) {
-  return (
-    <>
-      {/* ── your name, once ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <label htmlFor="teacher" className="text-sm text-ink-muted">
-          Plans are signed
-        </label>
-        <input
-          id="teacher"
-          value={teacher}
-          onChange={(e) => setTeacher(e.target.value)}
-          onBlur={commitTeacher}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
-            if (e.key === 'Escape') setTeacher(savedName)
-          }}
-          placeholder="Mr. Cole"
-          className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-faint hover:bg-paper-sunken focus:bg-paper-sunken"
-        />
-      </div>
-
-      {/* ── appearance ───────────────────────────────────────────────── */}
-      <DesignSkinSection />
-
-      {/* ── school ───────────────────────────────────────────────────── */}
-      <SchoolPicker
-        value={meState.data?.school}
-        onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
-      />
-
-      {/* ── custom instructions ─────────────────────────────────────── */}
-      <CustomInstructions
-        value={meState.data?.custom_instructions}
-        onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
-      />
-
-      {/* ── password ─────────────────────────────────────────────────── */}
-      {meState.data && meState.data.has_password ? (
-        <div className="mt-5">
-          <h2 className="text-sm font-semibold text-ink">Password</h2>
-          <ChangePassword />
-        </div>
-      ) : meState.data ? (
-        <p className="mt-5 text-xs text-ink-muted">
-          This account signs in with Google — there’s no password to change here.
-        </p>
-      ) : null}
-
-      {/* ── google drive ────────────────────────────────────────────── */}
-      <GoogleDriveSection />
-
-      {/* ── billing ──────────────────────────────────────────────────── */}
-      <BillingSection />
-
-      <AccountSafety />
-
-      <Diagnostics />
-    </>
   )
 }
