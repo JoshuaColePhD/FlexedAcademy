@@ -12,9 +12,10 @@ from collections import Counter
 
 from pypdf import PdfReader
 from fastapi import APIRouter, Query, Depends, UploadFile, File, Form
+from pydantic import BaseModel, Field
 
 from .. import retrieval, db, llm
-from ..auth import require_auth
+from ..deps import get_current_user
 from ..config import settings
 from ..errors import AppError
 from ..prompts import known_gaps
@@ -95,7 +96,7 @@ def get_global_standards(
     state: str,
     subject: str,
     grade: str,
-    user=Depends(require_auth)
+    user_id: str = Depends(get_current_user)
 ):
     """Fetch global standards for a state, subject, and grade."""
     standards = db.get_global_standards(state.strip(), subject.strip(), grade.strip())
@@ -108,7 +109,7 @@ async def upload_global_standards(
     subject: str = Form(...),
     grade: str = Form(...),
     file: UploadFile = File(...),
-    user=Depends(require_auth)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Upload a standards PDF, parse it using the LLM, and save it to the global database.
@@ -140,7 +141,7 @@ async def upload_global_standards(
         raise AppError("no_standards_found", "The AI could not find any standards in this document.", status=400)
 
     try:
-        db.insert_global_standards(user["id"], state.strip(), subject.strip(), grade.strip(), extracted_standards)
+        db.insert_global_standards(user_id, state.strip(), subject.strip(), grade.strip(), extracted_standards)
     except Exception as e:
         raise AppError("db_save_error", "Failed to save standards to the database.", status=500)
 
