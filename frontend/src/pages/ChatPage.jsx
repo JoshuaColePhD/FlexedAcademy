@@ -1787,20 +1787,6 @@ export function ChatPage() {
           </div>
         ) : null}
         <div className="ml-auto flex min-w-0 items-center gap-3">
-          {/* Same school name as the left-hand badge, repeated here on
-              request. Hidden below md: this row has no wrap, and on a phone
-              width the left group (school badge, class switcher, week
-              picker) is ALREADY fighting for space — adding a second copy
-              of the school name here only starved that group further,
-              collapsing its own school badge down to a bare icon with no
-              text. Above md there's room for both, and this is the one
-              piece of "whose calendar/standards is this" context worth
-              keeping visible even if the left group still has to truncate. */}
-          {calendar?.school?.name ? (
-            <span className="hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
-              {calendar.school.name}
-            </span>
-          ) : null}
           <ThemeToggle />
         </div>
       </div>
