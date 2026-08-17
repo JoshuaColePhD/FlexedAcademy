@@ -121,7 +121,7 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl pb-16">
+    <div className="w-full max-w-3xl pb-16">
       <div className="mb-8 border-b border-edge pb-4 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-ink">Chat History</h2>
@@ -203,7 +203,7 @@ function ChatDetailPanel({ chat, classId, onDelete }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl py-8">
+    <div className="w-full max-w-2xl py-8">
       <div className="neo-world neo-panel rounded-xl p-6">
         <div className="mb-6 flex items-start justify-between">
           <div className="flex-1">

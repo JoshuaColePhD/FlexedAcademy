@@ -824,7 +824,7 @@ export function AdminPage() {
         </header>
 
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 py-8 scroll-smooth">
-          <div className="mx-auto w-full max-w-6xl flex flex-col gap-16 pb-32">
+          <div className="w-full max-w-6xl flex flex-col gap-16 pb-32">
             
             {/* Overview Section */}
             <div id="section-overview" className="scroll-mt-8">

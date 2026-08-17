@@ -843,7 +843,7 @@ export function SettingsPage() {
         </header>
 
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 py-8 scroll-smooth">
-          <div className="mx-auto w-full max-w-3xl flex flex-col gap-16 pb-32">
+          <div className="w-full max-w-3xl flex flex-col gap-16 pb-32">
             
             {/* General Section */}
             <div id="section-general" className="scroll-mt-8">

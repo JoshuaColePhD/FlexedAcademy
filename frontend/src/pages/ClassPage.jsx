@@ -449,7 +449,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex flex-col gap-10 pb-16">
+    <div className="w-full max-w-3xl flex flex-col gap-10 pb-16">
       
       <header className="mb-2">
         <div className="flex items-center gap-3">
@@ -648,7 +648,7 @@ function GlobalClassDashboard({ classes, onUpdated }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl pb-16">
+    <div className="w-full max-w-3xl pb-16">
       <div className="mb-8 flex items-center justify-between border-b border-edge pb-4">
         <div>
           <h2 className="text-lg font-semibold text-ink">Class Management</h2>
@@ -836,7 +836,7 @@ export function ClassPage() {
           {activeClass ? (
             <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
           ) : classesLoading ? (
-            <div className="mx-auto w-full max-w-3xl">
+            <div className="w-full max-w-3xl">
               <SkeletonText lines={5} />
             </div>
           ) : (
