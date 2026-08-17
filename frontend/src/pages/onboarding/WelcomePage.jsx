@@ -57,7 +57,20 @@ const SCHOOL_REQUEST_MAILTO = `mailto:joshuacolephd@gmail.com?subject=${encodeUR
    Add-a-class form sends a bare "11". Sending "11th" from here parsed to NaN, so
    the very FIRST class a teacher created was the only one in their list that
    rendered as "AP Language & Composition · NaNth". */
+// Widened from 9-12 once the K-8 Alabama Course of Study standards actually
+// had real chunks behind them (2026-08-17 ingest) — same grades ClassPage's
+// own Add-a-class GRADES covers. '0' is Kindergarten, matching the corpus's
+// own convention (grade_from_level() in scripts/01d_ingest_alcos_case.py).
 const GRADES = [
+  { value: '0', label: 'K' },
+  { value: '1', label: '1st' },
+  { value: '2', label: '2nd' },
+  { value: '3', label: '3rd' },
+  { value: '4', label: '4th' },
+  { value: '5', label: '5th' },
+  { value: '6', label: '6th' },
+  { value: '7', label: '7th' },
+  { value: '8', label: '8th' },
   { value: '9', label: '9th' },
   { value: '10', label: '10th' },
   { value: '11', label: '11th' },

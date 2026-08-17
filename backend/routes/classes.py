@@ -55,6 +55,10 @@ def _auto_name(subject: str, grade: str) -> str:
     label = label.split(" (")[0].strip()
     try:
         g = int(str(grade).strip())
+        # 0 is Kindergarten (grade_from_level() in
+        # scripts/01d_ingest_alcos_case.py) — "0th" isn't a grade anyone says.
+        if g == 0:
+            return f"{label} · K"
         suffix = "st" if g == 1 else "nd" if g == 2 else "rd" if g == 3 else "th"
         return f"{label} · {g}{suffix}"
     except ValueError:

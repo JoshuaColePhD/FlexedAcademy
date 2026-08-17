@@ -61,7 +61,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CASE_CACHE = PROJECT_ROOT / "data" / "raw" / "case"
-PDF_DIR = PROJECT_ROOT.parent / "_Shared" / "Alabama Standards"
+# Moved under the year-named teaching folder in the 2026-07-20 IrisOS reorg —
+# used to be a sibling of FlexedAcademy itself (PROJECT_ROOT.parent).
+PDF_DIR = PROJECT_ROOT.parent / "Florence High School 2026-2027" / "_Shared" / "Alabama Standards"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "alcos_chunks.json"
 
 CASE_API = "https://alabamastandards.org/ims/case/v1p0/CFPackages"

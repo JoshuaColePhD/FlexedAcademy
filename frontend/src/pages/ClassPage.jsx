@@ -42,7 +42,11 @@ import { unitSuffix } from '../lib/planShape'
  * ends.
  */
 
-const GRADES = [9, 10, 11, 12]
+// 0 is Kindergarten (backend/scripts/01d_ingest_alcos_case.py's own
+// grade_from_level() convention — "K" in the CASE feed, 0 in the corpus and
+// on the wire) — widened from 9-12 once the K-8 Alabama Course of Study
+// standards actually had real chunks behind them (2026-08-17 ingest).
+const GRADES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 // Grade is nullable — a class saved before grade was collected has none.
 // Number(null) coerces to NaN, so this used to print "NaNth" instead of
@@ -50,6 +54,7 @@ const GRADES = [9, 10, 11, 12]
 function gradeLabel(g) {
   const n = Number(g)
   if (!Number.isFinite(n)) return null
+  if (n === 0) return 'K'
   const suffix = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'
   return `${n}${suffix}`
 }
