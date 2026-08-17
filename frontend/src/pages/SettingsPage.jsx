@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, CreditCard, Download, HardDrive, Loader2, Sparkles, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
