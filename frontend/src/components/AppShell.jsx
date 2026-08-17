@@ -254,6 +254,9 @@ export function AppShell({ children }) {
      side of the screen, which has had a collapse handle from the start.
      Persisted the same way chatWidthPx is (ChatPage.jsx), so it survives a
      reload instead of springing back open every visit. */
+  const location = useLocation()
+  const isFocusMode = location.pathname.endsWith('/settings') || location.pathname.endsWith('/class')
+
   const [railCollapsed, setRailCollapsed] = useState(() => {
     try {
       return localStorage.getItem('aplang.railCollapsed') === '1'
@@ -292,7 +295,7 @@ export function AppShell({ children }) {
       </a>
 
       {/* docked */}
-      {!isNarrow ? (
+      {!isNarrow && !isFocusMode ? (
         <div
           className="app-rail flex shrink-0 flex-row overflow-hidden transition-[width]"
           style={{

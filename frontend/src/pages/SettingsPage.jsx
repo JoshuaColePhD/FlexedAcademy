@@ -620,7 +620,57 @@ function Diagnostics() {
   )
 }
 
+function Toggle({ checked, onChange, label, description }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-2">
+      <div>
+        <p className="text-sm font-medium text-ink">{label}</p>
+        {description && <p className="text-xs text-ink-muted">{description}</p>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 ${
+          checked ? 'bg-accent' : 'bg-edge'
+        }`}
+      >
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-paper shadow ring-0 transition duration-200 ease-in-out ${
+            checked ? 'translate-x-5' : 'translate-x-0'
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
+function IntegrationPlaceholder({ name, description, icon }) {
+  return (
+    <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-paper-inset text-ink-muted">
+          {icon}
+        </div>
+        <div>
+          <p className="text-sm font-medium text-ink">{name}</p>
+          <p className="text-xs text-ink-muted">{description}</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        className="neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset"
+      >
+        Connect
+      </button>
+    </div>
+  )
+}
+
 export function SettingsPage() {
+  const { classId } = useParams()
   const qc = useQueryClient()
   const toast = useToast()
   const meState = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
@@ -628,6 +678,16 @@ export function SettingsPage() {
   const [teacher, setTeacher] = useState('')
   const [savedName, setSavedName] = useState('')
   const [activeTab, setActiveTab] = useState('general')
+
+  // Placeholder states
+  const [outputFormat, setOutputFormat] = useState('narrative')
+  const [aiTone, setAiTone] = useState('encouraging')
+  const [autoSave, setAutoSave] = useState(true)
+  const [classifyPlan, setClassifyPlan] = useState(false)
+  const [theme, setTheme] = useState('system')
+  const [fontSize, setFontSize] = useState('normal')
+  const [highContrast, setHighContrast] = useState(false)
+  const [betaFeatures, setBetaFeatures] = useState(false)
 
   useEffect(() => {
     const n = meState.data?.name || ''
@@ -655,7 +715,7 @@ export function SettingsPage() {
     { id: 'account', label: 'Account & Security' },
     { id: 'integrations', label: 'Integrations' },
     { id: 'billing', label: 'Billing' },
-    ...(import.meta.env.DEV ? [{ id: 'advanced', label: 'Advanced' }] : []),
+    { id: 'advanced', label: 'Advanced' },
   ]
 
   return (
@@ -663,7 +723,14 @@ export function SettingsPage() {
       
       {/* Left Sidebar (Master) */}
       <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
-        <header className="flex h-14 shrink-0 items-center px-4">
+        <header className="flex h-14 shrink-0 items-center gap-2 px-4">
+          <Link
+            to={`/c/${classId || ''}`}
+            aria-label="Back to Chat"
+            className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+          </Link>
           <h1 className="text-sm font-semibold text-ink">Settings</h1>
         </header>
 
@@ -722,11 +789,62 @@ export function SettingsPage() {
                     />
                   </div>
                 </section>
+                
                 <section>
                   <SchoolPicker
                     value={meState.data?.school}
                     onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
                   />
+                </section>
+
+                <section>
+                  <div className="border-b border-edge pb-2 mb-4">
+                    <h3 className="text-sm font-semibold text-ink">AI Defaults</h3>
+                    <p className="text-xs text-ink-muted">Default behaviors for plan generation.</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl mb-6">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-ink-muted">Default Output Format</span>
+                      <select
+                        value={outputFormat}
+                        onChange={(e) => setOutputFormat(e.target.value)}
+                        className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                      >
+                        <option value="narrative">Narrative Text</option>
+                        <option value="bullets">Bulleted Lists</option>
+                        <option value="tables">Tables</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-ink-muted">AI Tone / Voice</span>
+                      <select
+                        value={aiTone}
+                        onChange={(e) => setAiTone(e.target.value)}
+                        className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                      >
+                        <option value="formal">Formal</option>
+                        <option value="encouraging">Encouraging</option>
+                        <option value="direct">Direct</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="max-w-xl border border-edge rounded-xl p-4">
+                    <Toggle 
+                      label="Auto-Save Drafts" 
+                      description="Automatically save changes to your plans while editing."
+                      checked={autoSave}
+                      onChange={setAutoSave}
+                    />
+                    <div className="h-px w-full bg-edge my-2" />
+                    <Toggle 
+                      label="Classify Plan Status" 
+                      description="Allow the AI to automatically label plans as Draft, Review, or Final."
+                      checked={classifyPlan}
+                      onChange={setClassifyPlan}
+                    />
+                  </div>
                 </section>
               </>
             )}
@@ -736,6 +854,49 @@ export function SettingsPage() {
                 <section>
                   <DesignSkinSection />
                 </section>
+                
+                <section className="mt-8">
+                  <div className="border-b border-edge pb-2 mb-4">
+                    <h3 className="text-sm font-semibold text-ink">Interface Settings</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl mb-6">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-ink-muted">Theme</span>
+                      <select
+                        value={theme}
+                        onChange={(e) => setTheme(e.target.value)}
+                        className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                      >
+                        <option value="system">System Default</option>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-ink-muted">Editor Font Size</span>
+                      <select
+                        value={fontSize}
+                        onChange={(e) => setFontSize(e.target.value)}
+                        className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                      >
+                        <option value="small">Small</option>
+                        <option value="normal">Normal</option>
+                        <option value="large">Large</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="max-w-xl border border-edge rounded-xl p-4">
+                    <Toggle 
+                      label="High Contrast Mode" 
+                      description="Increases text contrast across the application for readability."
+                      checked={highContrast}
+                      onChange={setHighContrast}
+                    />
+                  </div>
+                </section>
+
                 <section>
                   <CustomInstructions
                     value={meState.data?.custom_instructions}
@@ -773,6 +934,25 @@ export function SettingsPage() {
             {activeTab === 'integrations' && (
               <section>
                 <GoogleDriveSection />
+                
+                <div className="mt-8">
+                  <h2 className="text-sm font-semibold text-ink">Other Integrations</h2>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Connect your external accounts to push and pull assignments seamlessly.
+                  </p>
+                  
+                  <IntegrationPlaceholder 
+                    name="Canvas LMS" 
+                    description="Export your plans directly to Canvas Modules."
+                    icon={<span className="font-bold">C</span>}
+                  />
+                  
+                  <IntegrationPlaceholder 
+                    name="Microsoft OneDrive" 
+                    description="Save and sync documents with OneDrive."
+                    icon={<span className="font-bold">O</span>}
+                  />
+                </div>
               </section>
             )}
 
@@ -782,9 +962,27 @@ export function SettingsPage() {
               </section>
             )}
 
-            {activeTab === 'advanced' && import.meta.env.DEV && (
+            {activeTab === 'advanced' && (
               <section>
-                <Diagnostics />
+                <div className="border-b border-edge pb-2 mb-4">
+                  <h3 className="text-sm font-semibold text-ink">Experimental</h3>
+                  <p className="text-xs text-ink-muted">Try out features before they are widely released.</p>
+                </div>
+                
+                <div className="max-w-xl border border-edge rounded-xl p-4">
+                  <Toggle 
+                    label="Enable Beta Features" 
+                    description="Opt-in to use experimental AI models and cutting-edge features."
+                    checked={betaFeatures}
+                    onChange={setBetaFeatures}
+                  />
+                </div>
+
+                {import.meta.env.DEV && (
+                  <div className="mt-8">
+                    <Diagnostics />
+                  </div>
+                )}
               </section>
             )}
 

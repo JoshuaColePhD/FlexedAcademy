@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   Check,
   FileText,
@@ -625,8 +626,15 @@ export function ClassPage() {
       
       {/* Left Sidebar (Master) */}
       <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
-        <header className="flex h-14 shrink-0 items-center px-4">
-          <h1 className="text-sm font-semibold text-ink">Settings</h1>
+        <header className="flex h-14 shrink-0 items-center gap-2 px-4">
+          <Link
+            to={`/c/${activeClass?.id || ''}`}
+            aria-label="Back to Chat"
+            className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+          </Link>
+          <h1 className="text-sm font-semibold text-ink">My Classes</h1>
         </header>
 
         <div className="flex-1 overflow-y-auto py-2">
