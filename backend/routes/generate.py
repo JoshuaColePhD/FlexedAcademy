@@ -230,6 +230,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
                 chat_id=req.chat_id,
                 bg_tasks=bg_tasks,
                 class_id=cls["id"] if cls else None,
+                cls=cls,
                 week_number=req.week_number,
                 school_id=school_id,
                 subject=cls["subject"] if cls else None,

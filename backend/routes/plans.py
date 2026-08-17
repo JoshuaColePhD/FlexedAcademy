@@ -109,9 +109,13 @@ def patch_plan(plan_id: str, body: PatchPlan, bg_tasks: BackgroundTasks, user_id
 
     if body.plan_json is not None:
         plan, warnings = schema.validate_plan(body.plan_json)
-        s = db.get_settings_row(user_id)
+        # The plan's OWN class, not get_settings_row(user_id)'s account-wide
+        # "most recently touched" row — same cross-class leak service.finalize
+        # had (see service.identity_for).
+        cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+        identity = service.identity_for(user_id, cls)
         plan = schema.with_identity(
-            plan, teacher=s["teacher"], course=s["course"], period=s["period"]
+            plan, teacher=identity["teacher"], course=identity["course"], period=identity["period"]
         )
         out_path = docx_build.plan_output_path(plan, plan_id)
         bg_tasks.add_task(service._build_docx_bg, user_id, plan, out_path, plan_id)
@@ -208,8 +212,11 @@ def revise_whole_plan(
     
     # Validate and save
     plan, warnings = schema.validate_plan(new_plan_json)
-    s = db.get_settings_row(user_id)
-    plan = schema.with_identity(plan, teacher=s["teacher"], course=s["course"], period=s["period"])
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    identity = service.identity_for(user_id, cls)
+    plan = schema.with_identity(
+        plan, teacher=identity["teacher"], course=identity["course"], period=identity["period"]
+    )
     
     out_path = docx_build.plan_output_path(plan, plan_id)
     bg_tasks.add_task(service._build_docx_bg, user_id, plan, out_path, plan_id)

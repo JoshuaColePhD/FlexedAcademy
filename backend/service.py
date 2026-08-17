@@ -101,6 +101,32 @@ def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
     return _subject_code(subject), grade
 
 
+def identity_for(user_id: str, cls: dict | None) -> dict:
+    """teacher/course/period to stamp onto a plan.
+
+    `course` comes straight from the class's own `name` when a class is
+    known — that's the field ClassSwitcher lets the teacher pick, and the
+    one this identity stamp must track. Reading it from the settings row
+    instead (course=s["course"]) is the bug this function replaces: that
+    row resolves to whichever class was most recently EDITED or CREATED
+    (get_settings_row's `ORDER BY updated_at DESC`), not whichever class is
+    currently selected — so switching classes with no edit left the header
+    stamped with the old class's name while the plan body was already
+    generated against the new one.
+
+    teacher/period still come from `settings`, scoped to the class's own
+    subject when known — those are account/subject-level, not something
+    ClassSwitcher changes. Falls back to the account's most-recently-touched
+    settings row only for legacy plans/chats with no class_id at all (same
+    fallback `_resolve_subject_grade` documents).
+    """
+    if cls:
+        s = db.get_settings_row(user_id, subject=cls["subject"])
+        return {"teacher": s["teacher"], "course": cls["name"], "period": s["period"]}
+    s = db.get_settings_row(user_id)
+    return {"teacher": s["teacher"], "course": s["course"], "period": s["period"]}
+
+
 def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResult:
     """Retrieve, and refuse to spend a token if the request can't be grounded.
 
@@ -172,6 +198,7 @@ def finalize(
     chat_id: str | None = None,
     bg_tasks: BackgroundTasks | None = None,
     class_id: str | None = None,
+    cls: dict | None = None,
     week_number: int | None = None,
     school_id: str | None = None,
     subject: str | None = None,
@@ -205,12 +232,14 @@ def finalize(
     started = time.monotonic()
     plan, warnings = schema.validate_plan(plan_raw)
 
-    s = db.get_settings_row(user_id)
+    identity = identity_for(user_id, cls)
     plan = schema.with_identity(
-        plan, teacher=s["teacher"], course=s["course"], period=s["period"]
+        plan, teacher=identity["teacher"], course=identity["course"], period=identity["period"]
     )
 
-    subject_code = subject or _subject_code(s.get("subject", ""))
+    subject_code = subject or _subject_code(
+        cls["subject"] if cls else db.get_settings_row(user_id).get("subject", "")
+    )
     # cited_standards() is the same extraction audit_grounding runs internally
     # — computed again here (cheap: in-memory regex over a week's worth of
     # text, no I/O) rather than having audit_grounding hand its structured
@@ -311,6 +340,7 @@ def generate(
         chat_id=chat_id,
         bg_tasks=bg_tasks,
         class_id=class_id,
+        cls=cls,
         subject=cls["subject"] if cls else None,
         grade=cls["grade"] if cls else None,
     )
