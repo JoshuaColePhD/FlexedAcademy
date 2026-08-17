@@ -1,12 +1,31 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Mail } from 'lucide-react'
 import { api } from '../../lib/api'
 import { qk } from '../../lib/queryKeys'
 import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
+
+/* Not a real school id — a picker option that means "none of the above."
+ * Every real school here has a hand-curated calendar file behind it
+ * (backend/context/calendars/<id>.md, see db.py's own comment on the
+ * schools table); there's no self-serve way to add one, on purpose (this
+ * app deliberately doesn't parse an arbitrary calendar upload). Before
+ * this existed, a teacher at any OTHER school hit a dead end here with no
+ * path forward except picking a school that wasn't theirs and silently
+ * getting its calendar and holidays instead. */
+const REQUEST_SCHOOL = '__request'
+
+const REQUEST_MAILTO = `mailto:joshuacolephd@gmail.com?subject=${encodeURIComponent(
+  'Adding my school to FlexEd Academy'
+)}&body=${encodeURIComponent(
+  "Hi Josh,\n\nI'd like to use FlexEd Academy at my school. Here's what I can send over:\n\n" +
+    "1. My school's teaching calendar for this year (which weeks are teaching weeks, which days are closed) — a PDF or a link to the district calendar works.\n" +
+    "2. The lesson plan template my district expects, if there's a required format.\n\n" +
+    'School name:\n'
+)}`
 
 /* First run.
  *
@@ -56,9 +75,11 @@ export function WelcomePage() {
     staleTime: Infinity,
   })
 
+  const schoolNotListed = school === REQUEST_SCHOOL
+
   const submit = async (e) => {
     e.preventDefault()
-    if (!school) {
+    if (!school || schoolNotListed) {
       toast.error('Pick a school first', 'It decides which calendar your plans are built against.')
       return
     }
@@ -139,9 +160,32 @@ export function WelcomePage() {
             {schools.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
+            <option value={REQUEST_SCHOOL}>My school isn't listed</option>
           </select>
         </label>
 
+        {/* Every real school above already has a hand-curated calendar
+            behind it — there's no self-serve way to add one, so there's
+            nothing this form can set up yet for a school that isn't
+            listed. Replaces the rest of onboarding (nothing past this
+            point means anything without a calendar) rather than letting
+            it submit against the wrong school's weeks and holidays. */}
+        {schoolNotListed ? (
+          <div className="rounded-lg border border-edge bg-paper-sunken p-4 text-sm text-ink-soft">
+            <p>
+              We don't have a calendar for your school yet — every school here is set up by hand,
+              one at a time. Send us your school's teaching calendar (which weeks are teaching
+              weeks, which days are closed) and, if your district has one, the lesson plan
+              template it expects, and we'll get you set up.
+            </p>
+            <a
+              href={REQUEST_MAILTO}
+              className="mt-3 inline-flex items-center gap-1.5 font-medium text-accent-text hover:underline"
+            >
+              <Mail size={14} aria-hidden="true" /> Email joshuacolephd@gmail.com
+            </a>
+          </div>
+        ) : (
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-ink">Your first class</span>
           <span className="text-xs text-ink-muted">
@@ -168,15 +212,18 @@ export function WelcomePage() {
             </select>
           </div>
         </div>
+        )}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex min-h-touch-lg w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {saving ? 'Setting up…' : 'Open my year'}
-          {saving ? null : <ArrowRight size={15} aria-hidden="true" />}
-        </button>
+        {schoolNotListed ? null : (
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex min-h-touch-lg w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? 'Setting up…' : 'Open my year'}
+            {saving ? null : <ArrowRight size={15} aria-hidden="true" />}
+          </button>
+        )}
       </form>
     </div>
   )
