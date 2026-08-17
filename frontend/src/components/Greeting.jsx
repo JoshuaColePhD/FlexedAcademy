@@ -59,7 +59,13 @@ export function Greeting({ onOpenVoice, onWarmVoice, className: courseName, week
         
         <p className="max-w-xl text-base sm:text-lg text-ink-muted leading-relaxed">
           Say what you need and I’ll build{' '}
-          {weekLabel ? <span className="font-medium text-ink bg-paper-sunken px-2 py-0.5 rounded-md border border-ink/5 shadow-sm">{weekLabel}</span> : 'the week'}
+          {weekLabel ? (
+            <span className="whitespace-nowrap font-medium text-ink bg-paper-sunken px-2 py-0.5 rounded-md border border-ink/5 shadow-sm">
+              {weekLabel}
+            </span>
+          ) : (
+            'the week'
+          )}
           {courseName ? ` for ${courseName}` : ''}. Standards are quoted straight from the source,
           formatted directly into your district template.
         </p>

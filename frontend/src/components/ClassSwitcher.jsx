@@ -100,7 +100,18 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
         aria-expanded={open}
         className={
           inline
-            ? 'chat-week min-w-0 max-w-[9rem] shrink rounded-md px-1 py-0.5 normal-case tracking-normal transition-colors hover:bg-paper-inset'
+            ? // w-full, not just max-w-[9rem]: the wrapping div above is the
+              // actual flex-shrinking item (it carries `shrink`), and a plain
+              // <button> inside it sizes itself by its OWN content up to its
+              // own max-width regardless of how far its parent shrank —
+              // nothing ties the two together without this. Under real space
+              // pressure (a long class name sharing the row with WeekPicker)
+              // the button rendered at its full 144px cap anyway, spilling
+              // its text out over WeekPicker's own icon and label rather than
+              // truncating. w-full makes it fill whatever width the parent's
+              // shrink actually leaves it, so `truncate` on the name span
+              // below has a real, definite box to ellipsize against.
+              'chat-week min-w-0 w-full max-w-[9rem] shrink rounded-md px-1 py-0.5 normal-case tracking-normal transition-colors hover:bg-paper-inset'
             : 'flex min-h-touch w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-paper-inset'
         }
       >
@@ -111,7 +122,14 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
             style={{ '--class-dot-color': `rgb(${classColor(activeClass.id).rgb})` }}
           />
         ) : null}
-        <span className={inline ? 'min-w-0 truncate' : 'min-w-0 flex-1 truncate text-sm font-medium text-ink'}>
+        {/* flex-1 in both branches now — inline was missing it, which left
+            this span at its default flex-basis:auto/no-grow. Harmless while
+            the button above had no real width ceiling of its own (auto just
+            meant "take your content's width"), but now that the button is
+            w-full this span needs flex-1 to actually claim the space that
+            leaves it, rather than sizing off its own (untruncated) content
+            again. */}
+        <span className={inline ? 'min-w-0 flex-1 truncate' : 'min-w-0 flex-1 truncate text-sm font-medium text-ink'}>
           {activeClass?.name || 'Choose a class'}
         </span>
         <ChevronsUpDown size={inline ? 12 : 14} aria-hidden="true" className="shrink-0 text-ink-faint" />

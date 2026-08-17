@@ -2842,9 +2842,21 @@
     color: var(--ink-faint);
   }
   /* The course is named in the rail and in the class switcher; on a phone it is
-     the half of this line that can go. */
+     the half of this line that can go.
+     A DEDICATED CLASS, not a blanket `.chat-head span` selector — ClassSwitcher's
+     own popup (the class list, opened from a trigger that lives inside this same
+     .chat-head row for positioning) is DOM-nested here too, even though it
+     renders as an absolutely-positioned overlay below the header, not part of
+     the compact row itself. The blanket selector hid every span inside that
+     open popup on a phone — the class name, the colour dot, all of it — so a
+     teacher with more than one class saw a blank, unreadable list with nothing
+     to tap but a stray checkmark. It also hid ClassSwitcher's OWN trigger label
+     (the class name this comment says should stay), leaving only a bare icon —
+     a much smaller, harder-to-press target than the labelled pill it was meant
+     to be. This class is applied to exactly the one span meant to disappear:
+     the school-name badge in ChatPage.jsx. */
   @media (max-width: 767.98px) {
-    .chat-head span {
+    .chat-head-label {
       display: none;
     }
   }

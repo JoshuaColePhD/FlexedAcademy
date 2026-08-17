@@ -297,8 +297,16 @@ export function Composer({
           {/* gap-1.5, not gap-1 — at 44px buttons the tighter gap read as
               the icons overlapping their own tap targets. md:gap-1 restores
               the denser desktop spacing these were tuned for.
-              Stacked vertically on mobile so the Send button isn't crowded. */}
-          <div className="flex flex-col sm:flex-row shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
+              Always a row, never stacked — this used to be flex-col below
+              sm, on the theory that stacking left the Send button less
+              crowded. In practice it made the whole composer noticeably
+              taller on a phone (two 44px buttons stacked is a ~94px column)
+              for a bar that reads as a single-line input everywhere else in
+              the app, and stacking the dictate mic above the voice-mode
+              button read as two disconnected controls rather than one
+              cluster. A row keeps the bar's height constant regardless of
+              which button is showing. */}
+          <div className="flex flex-row shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
             {isTranscribing ? (
               <button
                 type="button"
