@@ -75,6 +75,20 @@ services:
       - key: BILLING_RETURN_URL
         value: "https://flexedacademy.com"
 
+      # ── Google Drive sharing ─────────────────────────────────────────────
+      # Same reasoning as BILLING_RETURN_URL just above, for the same proxy
+      # reason: Render terminates TLS, so request.base_url (routes/drive.py's
+      # own fallback) resolves to http:// internally, and Google rejects any
+      # redirect_uri that doesn't exactly match what's registered on the
+      # OAuth client — this was the missing half of that fix, added only for
+      # billing at the time. This exact URL must ALSO be added as an
+      # "Authorized redirect URI" on the OAuth client in Google Cloud
+      # Console (APIs & Services -> Credentials) — setting it here alone
+      # only fixes what THIS app sends Google, not what Google's willing to
+      # accept back.
+      - key: DRIVE_REDIRECT_URL
+        value: "https://flexedacademy.com/api/drive/callback"
+
       # ── generated once by Render, then held ──────────────────────────────
       # Login is on in production and session cookies are signed with this.
       # Unset, config.py falls back to a known dev string and every session
