@@ -1516,6 +1516,19 @@ def list_pending_school_templates() -> list[dict]:
 def get_school_template(template_id: str) -> dict | None:
     return _row("SELECT * FROM school_templates WHERE id = ?", (template_id,))
 
+def get_latest_school_template(school_id: str) -> dict | None:
+    return _row(
+        """
+        SELECT st.*, u.email as uploader_email, u.name as uploader_name
+        FROM school_templates st
+        LEFT JOIN users u ON st.uploaded_by = u.id
+        WHERE st.school_id = ?
+        ORDER BY st.created_at DESC
+        LIMIT 1
+        """,
+        (school_id,)
+    )
+
 
 def count_users_with_school(school_id: str) -> int:
     row = _row("SELECT COUNT(*) AS n FROM users WHERE school = ?", (school_id,))

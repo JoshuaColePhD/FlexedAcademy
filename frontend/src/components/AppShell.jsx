@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
 import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -10,6 +10,9 @@ import { NARROW, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../lib/api'
+import { qk } from '../lib/queryKeys'
 
 /* The frame. A chat client's shape, which is what this is now.
  *
@@ -237,6 +240,29 @@ function Rail({ onNavigate, onClose }) {
   )
 }
 
+function TemplateBanner() {
+  const { classId } = useParams()
+  const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
+  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
+  
+  if (!classId) return null
+  
+  const cls = classes.find(c => c.id === classId)
+  if (!cls) return null
+  
+  const school = schools.find(s => s.id === cls.school)
+  if (!school || school.template_status !== 'pending') return null
+  
+  return (
+    <div className="flex shrink-0 items-center justify-center gap-2 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-600 border-b border-amber-500/20 shadow-sm z-20">
+      <TriangleAlert size={14} className="shrink-0" aria-hidden="true" />
+      <p>
+        🛠️ We are currently configuring the AI for <strong>{school.name}</strong>'s specific lesson plan format. In the meantime, document downloads will use a generic fallback format.
+      </p>
+    </div>
+  )
+}
+
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -360,6 +386,7 @@ export function AppShell({ children }) {
             (the header bar and children below) without needing to touch
             either of those. */}
         <div className="app-blob" aria-hidden="true" />
+        <TemplateBanner />
         {isNarrow ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button

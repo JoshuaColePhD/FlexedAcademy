@@ -12,7 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from .. import db, qa
+from .. import db, mail, qa
 from ..config import settings
 from ..deps import get_current_admin
 from ..entitlement import ENTITLED_STATUSES
@@ -182,7 +182,23 @@ def activate_school_template_route(school_id: str, _admin: str = Depends(get_cur
     school = db.get_school(school_id)
     if not school:
         raise AppError("not_found", "School not found.", status=404)
+        
     db.update_school_template_status(school_id, "active")
+    
+    latest_template = db.get_latest_school_template(school_id)
+    if latest_template and latest_template.get("uploader_email"):
+        mail.send(
+            to=latest_template["uploader_email"],
+            subject="Your custom lesson plan format is ready!",
+            html=f"""
+                <p>Hi {latest_template.get('uploader_name') or 'there'},</p>
+                <p>Great news! FlexEd Academy is now fully trained on <strong>{school['name']}</strong>'s lesson plan format.</p>
+                <p>All your future downloads will perfectly match your district's requirements.</p>
+                <br/>
+                <p>Happy teaching,<br/>Josh Cole</p>
+            """
+        )
+        
     return {"status": "ok"}
 
 

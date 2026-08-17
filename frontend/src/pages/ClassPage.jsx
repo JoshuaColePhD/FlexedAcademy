@@ -745,8 +745,13 @@ export function ClassPage() {
       {/* Left Sidebar (Master) */}
       <div className={`flex w-full md:w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken ${activeClass ? 'hidden md:flex' : ''}`}>
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
+          {/* "/", not `/c/${activeClass?.id}` — this renders while activeClass may
+              still be null (nothing selected on mobile yet), and a bare `/c/`
+              404s: only `/c/:classId/*` is a registered route. RootRedirect
+              resolves "/" to the last-active class (or /welcome with none), so
+              it's the one destination that's never broken. */}
           <Link
-            to={`/c/${activeClass?.id || ''}`}
+            to="/"
             aria-label="Back to Chat"
             className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
           >
@@ -828,8 +833,15 @@ export function ClassPage() {
       {/* Right Content Area (Detail) */}
       <div className={`flex-1 min-w-0 flex flex-col ${!activeClass ? 'hidden md:flex' : ''}`}>
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-edge bg-paper/80 px-4 md:px-8 backdrop-blur-sm">
+          {/* "/", not "/c" — every route this page's sibling routes live under is
+              "/c/:classId/*" (see App.jsx's ClassRoutes), so a bare "/c" was never
+              a registered route and 404'd. There's no classless "list" URL to
+              return to (the master list on the left IS this same route, just
+              hidden on mobile once a class is selected), so "/" — the same
+              fallback CommandPalette's "My Classes" already uses — is the
+              nearest valid destination rather than inventing a new route. */}
           <Link
-            to="/c"
+            to="/"
             className="md:hidden rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
             aria-label="Back to class list"
           >

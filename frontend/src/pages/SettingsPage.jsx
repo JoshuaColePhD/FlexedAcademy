@@ -13,6 +13,7 @@ import { useTheme } from '../hooks/useTheme'
 import { useDesignSkin } from '../hooks/useDesignSkin'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { SchoolSelect } from '../components/SchoolSelect'
+import { Tooltip } from '../components/Tooltip'
 
 /* Account-level settings — split out of ClassPage (which used to be "Classes &
  * settings", one page for two different things). Everything here is about the
@@ -23,35 +24,6 @@ import { SchoolSelect } from '../components/SchoolSelect'
  * in the account menu (AccountMenu.jsx) instead of both landing on the same
  * long scroll.
  */
-
-import { motion, AnimatePresence } from 'framer-motion'
-
-function Tooltip({ text, children }) {
-  const [show, setShow] = useState(false)
-  return (
-    <div 
-      className="relative flex items-center" 
-      onMouseEnter={() => setShow(true)} 
-      onMouseLeave={() => setShow(false)}
-      onFocus={() => setShow(true)}
-      onBlur={() => setShow(false)}
-    >
-      {children}
-      <AnimatePresence>
-        {show && (
-          <motion.div 
-            initial={{ opacity: 0, y: 5 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: 5 }}
-            className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-max max-w-xs bg-ink text-paper text-xs px-2 py-1.5 rounded shadow-lg z-50 pointer-events-none"
-          >
-            {text}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
 
 const CUSTOM_INSTRUCTIONS_MAX = 2000
 
@@ -98,7 +70,7 @@ function DesignSkinSection() {
             }`}
           >
             <span className="text-sm font-medium">{opt.label}</span>
-            <Tooltip text={opt.hint}>
+            <Tooltip content={opt.hint}>
               <span className="text-2xs text-ink-muted flex items-center gap-1 cursor-help underline decoration-dotted">{opt.hint.split(',')[0]}</span>
             </Tooltip>
           </button>
@@ -253,6 +225,19 @@ function SchoolPicker({ value, onSaved }) {
            NO_CALENDAR_SCHOOL_ID special-cases it directly, synthesizing
            dateless weeks instead of reading a calendar file). */
       />
+      {selected ? (
+        <div className="mt-2 flex items-center gap-2">
+          {selected.template_status === 'pending' ? (
+            <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
+              Template Status: Training AI...
+            </span>
+          ) : selected.template_status === 'active' ? (
+            <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+              Template Status: Active
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {/* A school's row and its calendar are added in different places on
           purpose (see GET /api/schools) — so one can exist with no year
           behind it, and choosing it silently empties the week board, the
