@@ -439,6 +439,10 @@ export function LandingPage() {
           Start a week free
           <ArrowIcon />
         </Link>
+        <div className="land-foot-legal">
+          <Link to="/privacy">Privacy Policy</Link>
+          <Link to="/terms">Terms of Service</Link>
+        </div>
       </footer>
     </div>
   )

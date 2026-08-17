@@ -33,6 +33,8 @@ import { LandingPage } from './pages/LandingPage'
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
+import { PrivacyPolicyPage } from './pages/legal/PrivacyPolicyPage'
+import { TermsPage } from './pages/legal/TermsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import './styles/base.css'
 
@@ -262,6 +264,11 @@ function Gate() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* Public regardless of sign-in state — a signed-in teacher can
+            read these too, so they're declared identically in both trees
+            rather than gated like /login et al. */}
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         {/* A deep link still round-trips through sign-in and comes back. */}
         <Route
           path="*"
@@ -293,6 +300,8 @@ function Gate() {
       {/* Already signed in — the emailed link's job (log them in) is already
           done, and change-password now lives in settings. */}
       <Route path="/reset-password" element={<AfterAuthRedirect />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
       <Route path="/c/:classId/*" element={<ClassRoutes />} />
       {/* Gated again server-side by every request the page makes — reaching
           this route with a non-admin session gets the page shell and then a

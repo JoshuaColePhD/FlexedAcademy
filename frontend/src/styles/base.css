@@ -3873,7 +3873,9 @@
      justify rule sized for children that no longer exist. */
   .land-foot {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-3);
     padding-top: var(--sp-6);
     padding-bottom: clamp(var(--sp-8), 5vw, var(--sp-12));
     font-family: var(--font-mono);
@@ -3889,6 +3891,22 @@
   }
   .land-foot-cta:hover {
     color: var(--land-gold-bright);
+  }
+  /* Below the CTA, not beside it — a legal link fighting the primary CTA
+     for the same row read as equally important, which it isn't. */
+  .land-foot-legal {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    font-size: var(--fs-xs);
+  }
+  .land-foot-legal a {
+    color: rgb(var(--brand-ink-rgb) / 0.5);
+    text-decoration: none;
+  }
+  .land-foot-legal a:hover {
+    color: rgb(var(--brand-ink-rgb) / 0.8);
+    text-decoration: underline;
   }
 
   @media (max-width: 767.98px) {
