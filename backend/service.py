@@ -70,24 +70,50 @@ def subject_code(subject: str) -> str:
 _subject_code = subject_code  # internal callers
 
 
-def prepare(user_id: str, query: str) -> RetrievalResult:
+def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
+    """(subject_code, grade) to retrieve and audit against — from the class's
+    OWN subject/grade when given, else the account's most-recently-touched
+    settings row.
+
+    That fallback is the one _chat_class's own docstring (routes/generate.py)
+    describes catching live: a teacher with more than one prep got whichever
+    class's settings were touched most recently ANYWHERE in the account, not
+    the one their current chat or plan is actually under. Shared here so
+    prepare() and revise_day() — the two places that decide which standards
+    a request is scoped to — can't drift into resolving that fallback two
+    different ways. Omitting `cls` is only correct for the one case
+    _chat_class itself returns None for: a legacy chat/plan with no
+    class_id at all.
+    """
+    if cls:
+        subject = cls.get("subject", "AP Language & Composition")
+        grade_str = cls.get("grade", "11")
+    else:
+        s = db.get_settings_row(user_id)
+        subject = s.get("subject", "AP Language & Composition")
+        grade_str = s.get("grade", "11")
+
+    try:
+        grade = int(grade_str)
+    except (ValueError, TypeError):
+        grade = 11
+
+    return _subject_code(subject), grade
+
+
+def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResult:
     """Retrieve, and refuse to spend a token if the request can't be grounded.
 
     Two independent refusals, because they fail differently:
       * a named grade outside the corpus — semantically NEAR, so distance can't
         catch it, and answering would be confidently wrong (see retrieval.py)
       * nothing above the relevance floor — genuinely off-domain
-    """
-    s = db.get_settings_row(user_id)
-    subject = s.get("subject", "AP Language & Composition")
-    grade_str = s.get("grade", "11")
-    
-    try:
-        grade = int(grade_str)
-    except (ValueError, TypeError):
-        grade = 11
 
-    subject_code = _subject_code(subject)
+    `cls`, when the caller has it, is the chat's own class — see
+    _resolve_subject_grade's own docstring for why this matters and what
+    omitting it means.
+    """
+    subject_code, grade = _resolve_subject_grade(user_id, cls)
 
     off_scope = retrieval.out_of_scope_grades(query, corpus_grade=grade)
     if off_scope:
@@ -149,6 +175,7 @@ def finalize(
     week_number: int | None = None,
     school_id: str | None = None,
     subject: str | None = None,
+    grade: str | None = None,
 ) -> dict:
     """Validate, stamp identity, build the .docx, persist. Returns the plan row.
 
@@ -184,6 +211,12 @@ def finalize(
     )
 
     subject_code = subject or _subject_code(s.get("subject", ""))
+    # cited_standards() is the same extraction audit_grounding runs internally
+    # — computed again here (cheap: in-memory regex over a week's worth of
+    # text, no I/O) rather than having audit_grounding hand its structured
+    # rows back, so this stays a pure list-of-strings function for its other
+    # caller (revise_day) to keep using as before.
+    cited = retrieval.cited_standards(plan, result.codes, subject_code=subject_code)
     warnings += retrieval.audit_grounding(plan, result.codes, subject_code=subject_code)
 
     unit = units.unit_for_week(plan["week_of"], subject=plan["course"])
@@ -226,6 +259,13 @@ def finalize(
         class_id=class_id or (db.resolve_class(user_id) or {}).get("id"),
         week_number=week_number,
     )
+    # row["class_id"] rather than the class_id param above — this is the
+    # actually-stamped class after resolve_class's own fallback, so a plan
+    # created with no explicit class still gets a truthful class_id here
+    # instead of a NULL that would make it invisible to any per-class query.
+    db.replace_plan_standards(
+        plan_id, user_id, class_id=row.get("class_id"), subject=subject_code, grade=grade, entries=cited
+    )
     log.info(
         "plan built id=%s week=%r warnings=%d elapsed_ms=%d",
         plan_id,
@@ -243,6 +283,7 @@ def generate(
     bg_tasks: BackgroundTasks | None = None,
     class_id: str | None = None,
     school_id: str | None = None,
+    cls: dict | None = None,
 ) -> dict:
     """`class_id`/`school_id`, when the caller has them, are the chat's own
     class and its resolved school (routes/generate.py's _chat_class +
@@ -252,8 +293,16 @@ def generate(
     resolve_class(user_id)'s "whichever class was touched most recently").
     `school_id=None` means the caller had no chat context at all — the
     account default (get_user_school) is the only honest answer left, same
-    as db.class_school's own fallback for a class with none of its own."""
-    result = prepare(user_id, query)
+    as db.class_school's own fallback for a class with none of its own.
+
+    `cls` is that same class as a full row, not just its id — prepare()
+    needs subject/grade off it to retrieve the right course's standards
+    (see prepare's own docstring), and finalize()'s audit_grounding needs
+    the same subject to check citations against the right corpus. Passing
+    class_id AND cls looks redundant; it exists because finalize has only
+    ever taken the id, and giving it the row instead everywhere else this
+    function's called wasn't this fix's job."""
+    result = prepare(user_id, query, cls=cls)
     return finalize(
         user_id=user_id,
         plan_raw=llm.generate_plan(user_id, query, result, school_id=school_id or db.get_user_school(user_id)),
@@ -262,6 +311,8 @@ def generate(
         chat_id=chat_id,
         bg_tasks=bg_tasks,
         class_id=class_id,
+        subject=cls["subject"] if cls else None,
+        grade=cls["grade"] if cls else None,
     )
 
 
@@ -350,16 +401,14 @@ def revise_day(
         )
 
     original = days[day_index]
-    s = db.get_settings_row(user_id)
-    subject = s.get("subject", "AP Language & Composition")
-    grade_str = s.get("grade", "11")
-    
-    try:
-        grade = int(grade_str)
-    except (ValueError, TypeError):
-        grade = 11
-
-    subject_code = _subject_code(subject)
+    # The plan's OWN class, not get_settings_row(user_id)'s account-wide
+    # default — same cross-class leak _resolve_subject_grade's docstring
+    # describes, just reachable from a revision instead of a fresh
+    # generation. A plan predating classes (no class_id) still falls back
+    # to the account default, same as _resolve_subject_grade does for a
+    # class-less chat.
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    subject_code, grade = _resolve_subject_grade(user_id, cls)
 
     # A tweak scoped to a field that cannot carry a standard code — do_now,
     # during, learning_targets — has nothing to retrieve FOR. Re-retrieving
@@ -424,6 +473,12 @@ def revise_day(
     if needs_retrieval:
         warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
 
+    # The WHOLE plan's citations, not just this day's — plan_standards is a
+    # full snapshot (see db.replace_plan_standards), and computing it only
+    # for the touched day would wipe out every other day's history on every
+    # single-field tweak.
+    cited = retrieval.cited_standards(new_plan, allowed, subject_code=subject_code)
+
     out_path = docx_build.plan_output_path(new_plan, plan_id)
 
     if bg_tasks is not None:
@@ -433,10 +488,19 @@ def revise_day(
         docx_build.build_docx(new_plan, out_path)
         docx_path_val = str(out_path)
 
-    return db.update_plan(
+    updated_row = db.update_plan(
         user_id,
         plan_id,
         plan_json=new_plan,
         docx_path=docx_path_val,
         warnings=(row.get("warnings") or []) + warnings,
-    )  # type: ignore[return-value]
+    )
+    db.replace_plan_standards(
+        plan_id,
+        user_id,
+        class_id=row.get("class_id"),
+        subject=subject_code,
+        grade=str(grade),
+        entries=cited,
+    )
+    return updated_row  # type: ignore[return-value]

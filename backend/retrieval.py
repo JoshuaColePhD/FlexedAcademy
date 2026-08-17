@@ -1003,6 +1003,91 @@ def no_grounded_standards_error(query: str, result: RetrievalResult) -> AppError
 # ---------------------------------------------------------------------------
 
 
+def cited_standards(plan: dict, allowed: set[str], subject_code: str | None = None) -> list[dict]:
+    """Every standard code cited anywhere in `plan`, one entry per (day, field,
+    code) occurrence — the extraction audit_grounding below turns into warning
+    strings, exposed here as structured data so service.finalize can ALSO
+    persist it into plan_standards (migration 29) for post-hoc cross-
+    referencing: which standards a given class has actually been taught,
+    queryable by SQL instead of re-parsing every plan's plan_json by hand.
+    One extraction, not two copies of the same regex/classification logic
+    that could drift apart.
+
+    `status` is the same three-way split audit_grounding warns about, plus the
+    "grounded" case it never needed a name for — a warning list has nothing to
+    say about a citation that's fine, but a coverage table does:
+      grounded      — retrieved for this course and cited (the good case)
+      not_retrieved — a real code in the corpus, for this course, just not
+                      among what THIS request retrieved (a teacher can still
+                      legitimately cite something by hand)
+      wrong_course  — a real code, but for a different course/grade than this
+                      class's own subject_code — the cross-class leak
+                      service.prepare's own class-scoping fix exists to
+                      prevent; this is what would catch it if it ever
+                      regressed
+      hallucinated  — not in the corpus at all, or in a known-ungroundable
+                      family like ACT Reading, which this app's corpus never
+                      covers
+    """
+    if subject_code:
+        known_course: frozenset[str] = codes_for_course(subject_code)
+        # ACT standards are cross-course by design and are never filed under the
+        # course being planned, so they would all read as "not in this course".
+        known_course = known_course | {
+            _norm_code(c["code"])
+            for c in load_chunks()
+            if c.get("source_type") in ("act_standards", "act_recurring") and c.get("code")
+        }
+    else:
+        known_course = frozenset(chunks_by_code().keys())
+    # Corpus-wide, ignoring course — used only to tell "real code, wrong
+    # course" apart from "not a real code anywhere". See chunks_by_code()'s
+    # own warning about not using it to decide legitimacy FOR a course.
+    known_anywhere = chunks_by_code()
+
+    entries: list[dict] = []
+    for day_index, day in enumerate(plan.get("days", [])):
+        if day.get("no_school"):
+            continue
+        day_name = day.get("name", "?")
+        for fld in ("standards", "act_alignment"):
+            for raw_code in dict.fromkeys(_CODE_RE.findall(str(day.get(fld, "")))):  # de-dupe, keep order
+                code = _norm_code(raw_code)
+                family = code.split()[0] if " " in code else code
+                if family in UNGROUNDABLE_FAMILIES:
+                    status = "hallucinated"
+                    message = (
+                        f"{day_name} cites {raw_code}, which is not in any source document we hold. "
+                        f"The {family} family is ACT Reading; our ACT source covers "
+                        f"English/Writing only (see Known Gaps)."
+                    )
+                elif code not in allowed and code not in known_course:
+                    status = "wrong_course" if code in known_anywhere else "hallucinated"
+                    where = f" for {subject_code}" if subject_code else " at all"
+                    message = f"{day_name} cites {raw_code}, which does not appear in the standards corpus{where}."
+                elif code not in allowed:
+                    status = "not_retrieved"
+                    message = (
+                        f"{day_name} cites {raw_code}, which exists in the corpus but was not "
+                        f"among the standards retrieved for this request."
+                    )
+                else:
+                    status = "grounded"
+                    message = None
+                entries.append(
+                    {
+                        "day_index": day_index,
+                        "day_name": day_name,
+                        "field": fld,
+                        "raw_code": raw_code,
+                        "code": code,
+                        "status": status,
+                        "message": message,
+                    }
+                )
+    return entries
+
+
 def audit_grounding(plan: dict, allowed: set[str], subject_code: str | None = None) -> list[str]:
     """Flag every standard code the plan cites that retrieval didn't supply.
 
@@ -1015,56 +1100,25 @@ def audit_grounding(plan: dict, allowed: set[str], subject_code: str | None = No
     planned — see codes_for_course() for why a corpus-wide check is worse than
     no check. It is optional so an older caller keeps working, but a caller that
     omits it gets the weaker corpus-wide behaviour.
+
+    Delegates the actual extraction to cited_standards() above — this just
+    keeps its message strings, dropping the "grounded" entries that were
+    never worth mentioning.
     """
-    warnings: list[str] = []
-    if subject_code:
-        known: frozenset[str] | dict[str, dict] = codes_for_course(subject_code)
-        # ACT standards are cross-course by design and are never filed under the
-        # course being planned, so they would all read as "not in this course".
-        known = known | {
-            _norm_code(c["code"])
-            for c in load_chunks()
-            if c.get("source_type") in ("act_standards", "act_recurring") and c.get("code")
-        }
-    else:
-        known = chunks_by_code()
+    warnings: list[str] = [e["message"] for e in cited_standards(plan, allowed, subject_code) if e["message"]]
 
     # A course with a COMPANION ACT STANDARDS block (act_sections_for non-empty)
     # is expected to cite one on every teaching day — see the mandatory-fill
     # instruction in prompts.py. A course with no ACT companion at all is not
     # held to this; act_alignment is correctly empty there on every day.
     act_expected = bool(act_sections_for(subject_code)) if subject_code else False
-
-    for day in plan.get("days", []):
-        if day.get("no_school"):
-            continue
-        name = day.get("name", "?")
-        if act_expected and not str(day.get("act_alignment", "")).strip():
-            warnings.append(
-                f"{name} has no ACT alignment, even though this course has a companion "
-                f"ACT section. Ask for a revision, or add one by hand."
-            )
-        cited: list[str] = []
-        for fld in ("standards", "act_alignment"):
-            cited += _CODE_RE.findall(str(day.get(fld, "")))
-
-        for raw_code in dict.fromkeys(cited):  # de-dupe, keep order
-            code = _norm_code(raw_code)
-            family = code.split()[0] if " " in code else code
-            if family in UNGROUNDABLE_FAMILIES:
+    if act_expected:
+        for day in plan.get("days", []):
+            if day.get("no_school"):
+                continue
+            if not str(day.get("act_alignment", "")).strip():
                 warnings.append(
-                    f"{name} cites {raw_code}, which is not in any source document we hold. "
-                    f"The {family} family is ACT Reading; our ACT source covers "
-                    f"English/Writing only (see Known Gaps)."
-                )
-            elif code not in allowed and code not in known:
-                where = f" for {subject_code}" if subject_code else " at all"
-                warnings.append(
-                    f"{name} cites {raw_code}, which does not appear in the standards corpus{where}."
-                )
-            elif code not in allowed:
-                warnings.append(
-                    f"{name} cites {raw_code}, which exists in the corpus but was not "
-                    f"among the standards retrieved for this request."
+                    f"{day.get('name', '?')} has no ACT alignment, even though this course has a "
+                    f"companion ACT section. Ask for a revision, or add one by hand."
                 )
     return warnings

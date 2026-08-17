@@ -182,6 +182,7 @@ def generate(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, 
         # plan belongs to the chat's OWN class when one exists.
         class_id=cls["id"] if cls else None,
         school_id=school_id,
+        cls=cls,
     )
 
 
@@ -204,7 +205,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     def event_stream():
         chunks: list[str] = []
         try:
-            result = service.prepare(user_id, query)
+            result = service.prepare(user_id, query, cls=cls)
             yield _sse(
                 {
                     "grounding": {
@@ -232,6 +233,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
                 week_number=req.week_number,
                 school_id=school_id,
                 subject=cls["subject"] if cls else None,
+                grade=cls["grade"] if cls else None,
             )
             yield _sse(
                 {

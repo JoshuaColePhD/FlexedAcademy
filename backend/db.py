@@ -676,6 +676,48 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_weekly_token_cap INTEGER;
     """,
+    # ── 29: cited standards, queryable per plan/class ────────────────────────
+    #
+    # Until now, which standards a plan actually cites lived in two
+    # unstructured places: plans.retrieved_ids (what retrieval SUPPLIED, not
+    # necessarily what got cited) and free-text days[].standards/
+    # act_alignment strings inside plan_json, regex-parsed on demand
+    # (retrieval.cited_standards/audit_grounding). There was no way to ask
+    # "which standards has this class actually been taught" without
+    # re-parsing every plan's plan_json by hand.
+    #
+    # One row per (plan, day, field, code) citation. Replaced wholesale on
+    # every generation and revision (db.replace_plan_standards) rather than
+    # appended to, so a plan's rows are always a snapshot of its CURRENT
+    # plan_json — a rewritten day that drops a code doesn't leave a stale row
+    # behind still claiming the plan cites it.
+    """
+    CREATE TABLE IF NOT EXISTS plan_standards (
+      id         SERIAL PRIMARY KEY,
+      plan_id    TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+      user_id    TEXT NOT NULL,
+      class_id   TEXT REFERENCES classes(id) ON DELETE SET NULL,
+      subject    TEXT,
+      grade      TEXT,
+      day_index  INTEGER NOT NULL,
+      day_name   TEXT NOT NULL,
+      field      TEXT NOT NULL,
+      code       TEXT NOT NULL,
+      status     TEXT NOT NULL CHECK (status IN ('grounded', 'not_retrieved', 'wrong_course', 'hallucinated')),
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_plan_standards_plan ON plan_standards(plan_id);
+    CREATE INDEX IF NOT EXISTS idx_plan_standards_class_code ON plan_standards(class_id, code);
+    CREATE INDEX IF NOT EXISTS idx_plan_standards_code ON plan_standards(code);
+    -- Partial: the overwhelming majority of rows are 'grounded' and never
+    -- worth a full-table index scan for — this only ever needs to be fast
+    -- for "show me what needs attention".
+    CREATE INDEX IF NOT EXISTS idx_plan_standards_flagged ON plan_standards(status) WHERE status != 'grounded';
+    ALTER TABLE plan_standards ENABLE ROW LEVEL SECURITY;
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own cited standards" ON plan_standards USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+    """,
 ]
 
 
@@ -1243,6 +1285,55 @@ def list_plan_shares(plan_id: str) -> list[dict]:
     return _rows(
         "SELECT * FROM plan_shares WHERE plan_id = ? ORDER BY created_at DESC", (plan_id,)
     )
+
+
+def replace_plan_standards(
+    plan_id: str,
+    user_id: str,
+    *,
+    class_id: str | None,
+    subject: str | None,
+    grade: str | None,
+    entries: list[dict],
+) -> None:
+    """Swap in one plan's full cited-standards snapshot (migration 29).
+    `entries` is retrieval.cited_standards()'s own output. Deletes the
+    plan's existing rows first — same shape as replace_curriculum_chunks
+    below — so a revision that drops a code doesn't leave a stale row
+    behind still claiming the current plan cites it."""
+    from psycopg2.extras import execute_values
+
+    _write("DELETE FROM plan_standards WHERE plan_id = ?", (plan_id,))
+    if not entries:
+        return
+    ts = now()
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            execute_values(
+                cur,
+                """
+                INSERT INTO plan_standards
+                    (plan_id, user_id, class_id, subject, grade, day_index, day_name, field, code, status, created_at)
+                VALUES %s
+                """,
+                [
+                    (
+                        plan_id,
+                        user_id,
+                        class_id,
+                        subject,
+                        grade,
+                        e["day_index"],
+                        e["day_name"],
+                        e["field"],
+                        e["code"],
+                        e["status"],
+                        ts,
+                    )
+                    for e in entries
+                ],
+            )
+        conn.commit()
 
 
 def add_plan_feedback(user_id: str, plan_id: str, is_good: bool, notes: str | None = None) -> bool:
