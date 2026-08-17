@@ -668,7 +668,7 @@ function GlobalClassDashboard({ classes, onUpdated }) {
         </button>
       </div>
 
-      <div className="neo-panel rounded-xl bg-paper">
+      <div className="neo-panel rounded-xl bg-paper/60 backdrop-blur-2xl saturate-[1.2]">
         <div className="flex items-center justify-between rounded-t-xl border-b border-edge bg-paper-sunken px-4 py-3">
           <div className="flex items-center gap-3">
             <input
@@ -740,7 +740,7 @@ export function ClassPage() {
   const list = (classes || []).filter(c => !c.archived)
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/60 backdrop-blur-2xl saturate-[1.2]">
       
       {/* Left Sidebar (Master) */}
       <div className={`flex w-full md:w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken ${activeClass ? 'hidden md:flex' : ''}`}>

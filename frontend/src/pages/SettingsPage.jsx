@@ -123,7 +123,7 @@ function CustomInstructions({ value, onSaved }) {
         maxLength={CUSTOM_INSTRUCTIONS_MAX}
         rows={4}
         placeholder="e.g. Keep Do Now activities under 5 minutes. Avoid group work on Fridays."
-        className="neo-inset mt-2 w-full resize-y rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+        className="neo-inset mt-2 w-full resize-y rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
       />
       <div className="mt-1 flex items-center justify-between">
         <span className="text-2xs text-ink-muted">
@@ -329,7 +329,7 @@ function ChangePassword() {
           autoComplete="current-password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
-          className="neo-inset w-full rounded-lg bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+          className="neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
       <div className="min-w-0 flex-1 basis-40">
@@ -342,7 +342,7 @@ function ChangePassword() {
           autoComplete="new-password"
           value={next}
           onChange={(e) => setNext(e.target.value)}
-          className="neo-inset w-full rounded-lg bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+          className="neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
       <div className="min-w-0 flex-1 basis-40">
@@ -355,7 +355,7 @@ function ChangePassword() {
           autoComplete="new-password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
-          className="neo-inset w-full rounded-lg bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+          className="neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
       <button
@@ -392,7 +392,7 @@ function BillingSection() {
   const renews = entitlement.subscribed && entitlement.period_end ? formatRenewal(entitlement.period_end) : null
 
   return (
-    <div className="neo-panel flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
+    <div className="neo-panel flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised/60 backdrop-blur-2xl p-3">
       <div>
         <p className="text-sm font-medium text-ink">
           {entitlement.subscribed ? 'Subscribed' : 'Free'}
@@ -471,7 +471,7 @@ function GoogleDriveSection() {
         Connect once so exporting a plan or quiz can save a real, editable Google Doc straight to
         your Drive — and share it with a colleague's account, even one at a different school.
       </p>
-      <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3">
+      <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised/60 backdrop-blur-2xl p-3">
         <div className="flex items-center gap-2">
           <HardDrive size={16} className={connected ? 'text-ok' : 'text-ink-muted'} aria-hidden="true" />
           <p className="text-sm font-medium text-ink">{connected ? 'Connected' : 'Not connected'}</p>
@@ -539,7 +539,7 @@ function AccountSafety() {
   return (
     <div className="mt-5">
       <h2 className="text-sm font-semibold text-ink">Account safety</h2>
-      <div className="neo-panel mt-2 divide-y divide-edge rounded-xl bg-paper-raised">
+      <div className="neo-panel mt-2 divide-y divide-edge rounded-xl bg-paper-raised/60 backdrop-blur-2xl">
         <div className="flex flex-wrap items-center justify-between gap-3 p-3">
           <div>
             <p className="text-sm font-medium text-ink">Download my data</p>
@@ -602,7 +602,7 @@ function AccountSafety() {
                     autoComplete="current-password"
                     value={deletePassword}
                     onChange={(e) => setDeletePassword(e.target.value)}
-                    className="neo-inset w-full rounded-lg bg-paper-raised px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+                    className="neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-2.5 py-1.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               ) : (
@@ -656,7 +656,7 @@ function Diagnostics() {
   if (!import.meta.env.DEV) return null
 
   return (
-    <details className="neo-panel mt-2 overflow-hidden rounded-xl bg-paper-raised">
+    <details className="neo-panel mt-2 overflow-hidden rounded-xl bg-paper-raised/60 backdrop-blur-2xl">
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken">
         Diagnostics
       </summary>
@@ -716,7 +716,7 @@ function Toggle({ checked, onChange, label, description }) {
 
 function IntegrationPlaceholder({ name, description, icon }) {
   return (
-    <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised p-3 opacity-60 grayscale-[0.5]">
+    <div className="neo-panel mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised/60 backdrop-blur-2xl p-3 opacity-60 grayscale-[0.5]">
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-paper-inset text-ink-muted">
           {icon}
@@ -897,7 +897,7 @@ export function SettingsPage() {
                       if (e.key === 'Escape') setTeacher(savedName)
                     }}
                     placeholder="Mr. Cole"
-                    className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+                    className="neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </section>
@@ -921,7 +921,7 @@ export function SettingsPage() {
                     <select
                       value={outputFormat}
                       onChange={(e) => setOutputFormat(e.target.value)}
-                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl py-2.5 pl-2.5 pr-8 text-sm text-ink"
                     >
                       <option value="narrative">Narrative Text</option>
                       <option value="bullets">Bulleted Lists</option>
@@ -933,7 +933,7 @@ export function SettingsPage() {
                     <select
                       value={aiTone}
                       onChange={(e) => setAiTone(e.target.value)}
-                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl py-2.5 pl-2.5 pr-8 text-sm text-ink"
                     >
                       <option value="formal">Formal</option>
                       <option value="encouraging">Encouraging</option>
@@ -979,7 +979,7 @@ export function SettingsPage() {
                     <select
                       value={mode}
                       onChange={(e) => setMode(e.target.value)}
-                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl py-2.5 pl-2.5 pr-8 text-sm text-ink"
                     >
                       <option value="system">System Default</option>
                       <option value="light">Light</option>
@@ -991,7 +991,7 @@ export function SettingsPage() {
                     <select
                       value={fontSize}
                       onChange={(e) => setFontSize(e.target.value)}
-                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
+                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl py-2.5 pl-2.5 pr-8 text-sm text-ink"
                     >
                       <option value="small">Small</option>
                       <option value="normal">Normal</option>

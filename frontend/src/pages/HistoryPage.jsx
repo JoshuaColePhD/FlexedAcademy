@@ -130,7 +130,7 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
         </div>
       </div>
 
-      <div className="neo-panel rounded-xl bg-paper">
+      <div className="neo-panel rounded-xl bg-paper/60 backdrop-blur-2xl saturate-[1.2]">
         <div className="flex items-center justify-between border-b border-edge bg-paper-sunken px-4 py-3 rounded-t-xl">
           <div className="flex items-center gap-3">
             <input
@@ -299,7 +299,7 @@ export function HistoryPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper font-sans">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/60 backdrop-blur-2xl saturate-[1.2] font-sans">
       
       {/* Left Sidebar (Master) */}
       <div className={`flex w-full md:w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken ${currentActiveChat ? 'hidden md:flex' : ''}`}>

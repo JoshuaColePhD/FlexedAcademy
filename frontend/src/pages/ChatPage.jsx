@@ -1745,7 +1745,7 @@ export function ChatPage() {
     )
 
   const chatPane = (
-    <div className="relative flex h-full min-h-0 flex-col bg-paper">
+    <div className="relative flex h-full min-h-0 flex-col bg-paper/60 backdrop-blur-2xl saturate-[1.2]">
       {/* Always on, unlike chat-head below it — the theme toggle used to live
           in the account rail, but that put it a whole scroll away from the
           content it affects. Right-aligned so it sits at the seam with
@@ -1943,7 +1943,7 @@ export function ChatPage() {
           the empty/non-empty transition — it owns a MediaRecorder, a
           ResizeObserver and an autosized inline height, all of which die on
           remount. Only the wrapper's className may change. */}
-      <div className="shrink-0 bg-paper pb-5 pt-3">
+      <div className="shrink-0 bg-transparent pb-5 pt-3">
         <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
           voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
         }`}>
