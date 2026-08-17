@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
+import * as metrics from '../lib/voiceMetrics'
 
 const SSE_PREFIX = 'data:'
 
@@ -54,6 +55,43 @@ function sentenceCut(s) {
     if (/\s/.test(s[j])) idx = j
   }
   return idx
+}
+
+/* How far into a turn's FIRST utterance we'll accept a clause boundary — a
+   comma or a dash — as a place to cut, when no sentence has ended yet.
+   Deliberately small: this exists only to get the opening acknowledgement out
+   fast, and cutting mid-sentence anywhere else would hand the TTS a fragment
+   with no prosodic shape. */
+const OPENER_MAX_CHARS = 32
+
+/* The opening acknowledgement, cut as early as it is safe to.
+ *
+ * Voice mode's system prompt asks the model to begin every spoken turn with a
+ * two-or-three-word acknowledgement punctuated as its own sentence ("Got it."),
+ * because that fragment is what the teacher hears within a few hundred
+ * milliseconds instead of sitting in silence — and a silence past roughly 700ms
+ * is heard as reluctance rather than as thinking. When the model complies,
+ * sentenceCut above already finds it and nothing here is needed.
+ *
+ * This is the fallback for when it drifts and opens with a comma instead
+ * ("Okay, so for week seven…"). Without it, a drifted turn waits for the whole
+ * first sentence and the acknowledgement stops buying anything. Returns -1 when
+ * there's nothing short and safe to cut.
+ */
+function openerCut(s) {
+  const limit = Math.min(s.length, OPENER_MAX_CHARS)
+  for (let i = 0; i < limit; i++) {
+    if (s[i] !== ',' && s[i] !== '—' && s[i] !== '–') continue
+    // Same "must be followed by something" rule as sentenceCut: a trailing
+    // comma may still be mid-number, and we can't speak what hasn't arrived.
+    if (i + 1 >= s.length) continue
+    if (!/\s/.test(s[i + 1])) continue
+    // At least two words in front of it, so "Hi, " qualifies but a stray
+    // leading comma doesn't.
+    if (s.slice(0, i).trim().split(/\s+/).length < 1) continue
+    return i + 1
+  }
+  return -1
 }
 
 export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = {}) {
@@ -144,7 +182,14 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
         if (rest) onSentenceRef.current(rest)
         return
       }
-      const cut = sentenceCut(pending)
+      let cut = sentenceCut(pending)
+      /* Nothing has ended a sentence yet, and this is still the turn's very
+         first utterance — accept a clause boundary instead, so the opening
+         acknowledgement goes out now rather than waiting for the whole first
+         sentence. Only ever on the first emission (emittedTo === 0): every
+         later cut wants a real sentence, because a mid-sentence fragment is
+         synthesized with no prosodic shape and sounds like it. */
+      if (cut <= 0 && emittedTo === 0) cut = openerCut(pending)
       if (cut <= 0) return
       const chunk = pending.slice(0, cut).trim()
       emittedTo += cut
@@ -203,6 +248,10 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
           }
 
           if (event.chunk) {
+            // Time-to-first-token, the middle third of the latency budget.
+            // No-op outside voice mode (the metrics module only records while a
+            // turn is open, and only VoiceModePanel opens one).
+            if (!accumulated) metrics.firstToken()
             accumulated += event.chunk
             setText(accumulated)
             emitSentences(false)

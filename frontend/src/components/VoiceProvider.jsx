@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { VoiceContext } from '../lib/voiceContext'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
+import * as metrics from '../lib/voiceMetrics'
 
 const KEY = 'aplang.voice'
 
@@ -207,19 +208,25 @@ export function VoiceProvider({ children }) {
       }
     }
     document.addEventListener('visibilitychange', onVisible)
+    /* Both Sets captured into locals, not read off the refs in the cleanup.
+       These particular refs hold the SAME Set object for the provider's whole
+       life so reading them late would in fact be correct — but the rule exists
+       because that is not visible at the call site, and a future change that
+       reassigns either ref would silently start tearing down the wrong one. */
     const timers = captionTimersRef.current
+    const active = activeRef.current
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
       timers.forEach(clearTimeout)
       timers.clear()
-      activeRef.current.forEach((s) => {
+      active.forEach((s) => {
         try {
           s.stop()
         } catch {
           /* already ended */
         }
       })
-      activeRef.current.clear()
+      active.clear()
       ctxRef.current?.close().catch(() => {})
     }
   }, [])
@@ -303,6 +310,13 @@ export function VoiceProvider({ children }) {
     const at = Math.max(ctx.currentTime + JITTER_S, nextStartRef.current)
     src.start(at)
     nextStartRef.current = at + buffer.duration
+
+    /* The teacher's wait ends the moment the first audio of the reply is on the
+       timeline, so this is where a turn's end-to-end latency is recorded. `head`
+       and `track` together mean "the first chunk of the first sentence of the
+       model's actual reply" — the interjections and the greeting are speech but
+       not an answer to anything. */
+    if (head && item?.track) metrics.firstAudio()
 
     activeRef.current.add(src)
     pendingRef.current += 1
@@ -449,6 +463,9 @@ export function VoiceProvider({ children }) {
          here: the point of the streaming path is that playback begins on the
          first chunk, and pre-resolving the bytes would defeat it. */
       const cached = cacheRef.current.get(clean)
+      // Only tracked sentences count for latency: an app-authored interjection
+      // ("Building your week") isn't the reply the teacher is waiting for.
+      if (track) metrics.sentenceQueued()
       queueRef.current.push({ text: clean, track, cached })
       // Optimistic, ahead of the audio actually starting: the fetch takes a
       // few hundred ms, and VoiceModePanel reads `speaking` to decide

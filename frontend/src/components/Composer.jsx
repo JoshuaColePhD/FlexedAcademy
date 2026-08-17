@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Square, X } from 'lucide-react'
+// Upload is used by the drag-and-drop overlay below and was missing from this
+// list — the overlay only renders while a file is actually being dragged over
+// the composer, so the ReferenceError sat there unnoticed by anything but a
+// linter until someone dragged a file.
+import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Square, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useVoice } from '../lib/voiceContext'

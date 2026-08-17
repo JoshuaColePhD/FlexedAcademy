@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -83,6 +84,18 @@ app = FastAPI(title="AP Lang RAG", version="2.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Nothing was compressed before this — not the API's JSON, and not the built
+# frontend served further down (a ~900KB JS bundle went out raw on every cold
+# visit). minimum_size skips the small stuff, where the gzip header would cost
+# more than it saves.
+#
+# It matters most for the Silero VAD assets voice mode loads on demand: the
+# ONNX Runtime wasm binary is 12.9MB raw and 3.3MB gzipped, and without this it
+# was the former. Note the CPU tradeoff on Render's free plan — compressing that
+# file costs real time on a 0.1-CPU instance — but it's once per browser cache,
+# against a download that would otherwise be four times the size.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 app.add_middleware(
     CORSMiddleware,

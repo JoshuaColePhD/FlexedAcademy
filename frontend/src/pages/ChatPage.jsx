@@ -31,6 +31,7 @@ import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
 import { VoiceModePanel } from '../components/VoiceModePanel'
+import * as voiceMetrics from '../lib/voiceMetrics'
 
 /* One chat, one plan.
  *
@@ -2034,6 +2035,8 @@ export function ChatPage() {
                       onInterrupt={() => {
                         const heard = voice.getSpoken()
                         const queued = liveSpeechRef.current.trim()
+                        // A turn nobody waited out isn't a latency sample.
+                        voiceMetrics.turnAbandoned()
                         voice.stop()
                         chatStream.stop()
                         liveSpeechRef.current = ''

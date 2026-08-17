@@ -85,3 +85,8 @@ data/processed/
 
 # Timestamped .env backups (they contain the live DATABASE_URL password).
 .env.bak.*
+
+# Vendored VAD runtime, staged from node_modules by
+# frontend/scripts/stage-vad-assets.mjs on predev/prebuild. ~15MB of binaries
+# whose version should follow package.json rather than a checked-in copy.
+frontend/public/vad/

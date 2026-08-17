@@ -21,6 +21,8 @@ import { api } from '../lib/api'
    and hands back the hashed path. */
 import micWorkletUrl from '../lib/micCaptureWorklet.js?url'
 import { encodeWav } from '../lib/wav'
+import { createSileroDetector, SPEECH_ON, SPEECH_OFF } from '../lib/sileroVad'
+import * as metrics from '../lib/voiceMetrics'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { DecisionStack } from './DecisionStack'
 import { WeekStrip } from './WeekStrip'
@@ -687,6 +689,14 @@ export function VoiceModePanel({
   // Set when a barge-in fires; if no real utterance follows within
   // FALSE_INTERRUPT_MS the interrupt is treated as a false positive.
   const falseInterruptRef = useRef(null)
+  /* The Silero detector, once it has loaded — null until then and null forever
+     if loading failed, in which case the adaptive-energy path below carries on
+     doing the job. Never awaited from the frame handler; see sileroVad.js for
+     why push/probability are split. */
+  // A ref, not state: the only reader is onFrame, which runs outside React's
+  // render cycle, and nothing on screen changes when the better detector takes
+  // over. Swapping detectors mid-conversation is meant to be unnoticeable.
+  const sileroRef = useRef(null)
   // Mirrors `busy` into the animation loop without re-subscribing the loop
   // itself to React's render cycle — read every frame, written only when
   // the prop actually changes. isSpeaking used to be folded in here too,
@@ -987,8 +997,13 @@ export function VoiceModePanel({
        nothing to indicate why. The detector now keeps running throughout. */
     processingRef.current = true
     setStatus('transcribing')
+    /* The latency clock starts HERE — the moment the teacher stopped talking,
+       not the moment we got a transcript. Everything from this point is silence
+       they sit through. See lib/voiceMetrics. */
+    metrics.turnStarted()
     try {
       const { text } = await api.transcribe(encodeWav(window, CAPTURE_RATE))
+      metrics.transcriptReady()
       if (text && text.trim()) {
         missCountRef.current = 0
         setMissHint(false)
@@ -1010,6 +1025,10 @@ export function VoiceModePanel({
         // just without one.
         missCountRef.current += 1
         if (missCountRef.current >= MISS_HINT_COUNT) setMissHint(true)
+        // Nothing usable came back, so there's no reply to wait for and no
+        // latency sample to take — drop the open turn rather than let it be
+        // closed by whatever happens next.
+        metrics.turnAbandoned()
       }
     } catch {
       // A missed utterance used to just mean "say it again" with nothing
@@ -1018,9 +1037,15 @@ export function VoiceModePanel({
       // idea whether the mic even heard anything at all.
       missCountRef.current += 1
       if (missCountRef.current >= MISS_HINT_COUNT) setMissHint(true)
+      metrics.turnAbandoned()
     } finally {
       processingRef.current = false
       setStatus('listening')
+      /* Clear Silero's carried LSTM state between turns. It exists to give the
+         model context WITHIN an utterance; carrying it across a turn boundary
+         (and across however long the assistant then talks for) just lets it
+         drift. Pipecat resets on a timer for the same reason. */
+      sileroRef.current?.reset()
     }
   }
 
@@ -1071,6 +1096,34 @@ export function VoiceModePanel({
       }
     }
 
+    /* ── is this speech? ──────────────────────────────────────────────────────
+       Silero when it's loaded, the adaptive energy bars when it isn't. The two
+       answer genuinely different questions and the split matters:
+
+       isSpeech    — is this a human voice at all? Silero knows; a level does
+                     not. This is what decides when a turn starts and ends.
+       loudEnough  — is it loud enough, relative to this room's own floor, to be
+                     someone talking TO the app rather than the assistant's own
+                     output leaking back through the speaker? Silero cannot help
+                     here at all: leaked TTS is speech, and it will say so.
+
+       Barge-in needs both. Starting a turn into a quiet room needs only the
+       first, with a very low level gate to reject digital silence. That pairing
+       is what Pipecat settled on too (confidence >= threshold AND volume >=
+       min_volume) and it is strictly better than either signal alone. */
+    const silero = sileroRef.current
+    const prob = silero ? silero.probability() : 0
+    if (silero) silero.push(frame)
+
+    // Hysteresis, either way: a single bar that decides both entry and exit
+    // flaps at the boundary. Silero's canonical gap is 0.5/0.35; the energy
+    // fallback reuses its own bar with a 25% relaxation on the way out.
+    const speaking = vadStateRef.current === 'recording'
+    const isSpeech = silero
+      ? prob > (speaking ? SPEECH_OFF : SPEECH_ON)
+      : level > (speaking ? speechBar * 0.75 : speechBar)
+    const loudEnough = level > bargeBar
+
     // Muted or push-to-talk: no automatic decisions at all. The track is
     // already delivering silence when muted (see toggleMute); PTT makes every
     // decision below explicit via the button instead, and silence-based
@@ -1084,12 +1137,14 @@ export function VoiceModePanel({
     const holdingFloor = isSpeakingRef.current || pausedRef.current
 
     if (vadStateRef.current === 'recording') {
-      /* Already capturing. Endpointing always uses the ORDINARY bar, even
-         mid-barge-in: the strict barge-in threshold exists to decide whether
-         someone started talking over the assistant, and reusing it here would
-         treat every ordinary dip between words as the end of the sentence and
-         cut the teacher off mid-thought. */
-      if (level > speechBar) {
+      /* Already capturing. Endpointing uses the ORDINARY speech test, never the
+         barge-in one: the barge-in gate exists to decide whether someone started
+         talking over the assistant, and reusing it here would read every dip
+         between words as the end of the sentence and cut the teacher off
+         mid-thought. With Silero this is where the carried LSTM state earns its
+         keep — it holds "still speech" across the brief near-silences inside a
+         word that an energy gate reads as the end of the turn. */
+      if (isSpeech) {
         silenceStartRef.current = null
         if (now - speechStartRef.current > MAX_UTTERANCE_MS) finishUtterance()
       } else if (silenceStartRef.current == null) {
@@ -1121,7 +1176,13 @@ export function VoiceModePanel({
          speakers. */
       const warm =
         now - micLiveAtRef.current > AEC_WARMUP_MS && now - speakStartedAtRef.current > AEC_REARM_MS
-      if (warm && level > bargeBar) {
+      /* BOTH signals, and this is the one place the pairing is load-bearing.
+         Silero alone would interrupt the assistant with the assistant: leaked
+         TTS is speech and the model says so at high confidence. A level alone
+         would interrupt on a chair scrape. Requiring "a human voice" AND "louder
+         than this room's floor by a wide margin" is what makes an aggressive
+         barge-in threshold safe. */
+      if (warm && isSpeech && loudEnough) {
         if (bargeStartRef.current == null) bargeStartRef.current = now
         else if (now - bargeStartRef.current > BARGE_SUSTAIN_MS) {
           bargeStartRef.current = null
@@ -1152,8 +1213,12 @@ export function VoiceModePanel({
       return
     }
 
-    if (level > speechBar) {
-      // Ordinary start-of-utterance into a quiet room.
+    /* Ordinary start-of-utterance into a quiet room. Only the speech test — no
+       loudness requirement beyond the tiny floor below, because a teacher
+       speaking quietly at a laptop is the case this has to catch, and with
+       Silero deciding there's no longer any need to demand volume as a proxy
+       for "that was probably a voice". */
+    if (isSpeech) {
       quietStartRef.current = null
       if (quietHintShownRef.current) {
         quietHintShownRef.current = false
@@ -1163,6 +1228,8 @@ export function VoiceModePanel({
     } else if (level > quietBar) {
       // Real signal (someone talking, just not loud enough), sustained — one
       // soft word doesn't warrant a nudge, a whole pattern of them does.
+      // Still level-based on purpose: this hint is specifically about VOLUME,
+      // which is the one question Silero has no opinion on.
       if (quietStartRef.current == null) quietStartRef.current = now
       else if (!quietHintShownRef.current && now - quietStartRef.current > QUIET_HINT_MS) {
         quietHintShownRef.current = true
@@ -1360,6 +1427,35 @@ export function VoiceModePanel({
 
         setStatus('listening')
         rafRef.current = requestAnimationFrame(tick)
+
+        /* Load Silero AFTER the mic is already live and listening, not before.
+           The adaptive-energy detector is running from the first frame, so the
+           conversation is usable immediately and simply gets better a moment
+           later — rather than making the teacher wait on a multi-megabyte
+           runtime before they can say anything. Deliberately not awaited into
+           the setup path above for exactly that reason.
+
+           Failure is not an error state. Offline, assets not staged, no WASM
+           SIMD — any of those leave sileroRef null and the energy detector in
+           charge, which is how this behaved before Silero existed. Logged once
+           for diagnosis, never surfaced: the teacher has nothing to act on. */
+        createSileroDetector()
+          .then((det) => {
+            if (cancelled) {
+              det.close()
+              return
+            }
+            sileroRef.current = det
+          })
+          .catch((err) => {
+            if (!cancelled) {
+              // eslint-disable-next-line no-console
+              console.warn(
+                '[voice] Silero VAD unavailable, using the energy detector instead:',
+                err?.message || err
+              )
+            }
+          })
       } catch (err) {
         if (!cancelled) {
           setStatus('error')
@@ -1382,6 +1478,10 @@ export function VoiceModePanel({
          already walked away from. Aborting drops the window instead. */
       abortUtterance()
       if (falseInterruptRef.current) clearTimeout(falseInterruptRef.current)
+      if (sileroRef.current) {
+        sileroRef.current.close()
+        sileroRef.current = null
+      }
       if (workletRef.current) {
         workletRef.current.port.onmessage = null
         workletRef.current.disconnect()
