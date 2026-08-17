@@ -135,19 +135,19 @@
      hidden`, so no isolation/contain of its own is needed here. */
   .app-blob {
     position: absolute;
-    top: -10%;
+    top: 0;
     left: 0;
     z-index: -1;
     width: 100%;
-    height: min(40vw, 480px);
-    /* Higher opacities so they bleed through the frosted glass panels */
-    background: radial-gradient(circle min(11vw, 140px) at 18% 28%, rgb(167 139 250 / 0.45) 0%, transparent 100%),
-      radial-gradient(circle min(10vw, 130px) at 42% 14%, rgb(244 114 182 / 0.4) 0%, transparent 100%),
-      radial-gradient(circle min(10vw, 130px) at 64% 34%, rgb(251 146 60 / 0.35) 0%, transparent 100%),
-      radial-gradient(circle min(10.5vw, 135px) at 48% 56%, rgb(52 211 153 / 0.35) 0%, transparent 100%),
-      radial-gradient(circle min(10vw, 130px) at 24% 52%, rgb(96 165 250 / 0.35) 0%, transparent 100%);
+    height: 100%;
+    /* Larger opacities and much larger radiuses spread across the entire 100vh pane */
+    background: radial-gradient(circle min(25vw, 400px) at 10% 20%, rgb(167 139 250 / 0.45) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 350px) at 85% 15%, rgb(244 114 182 / 0.4) 0%, transparent 100%),
+      radial-gradient(circle min(24vw, 380px) at 90% 80%, rgb(251 146 60 / 0.35) 0%, transparent 100%),
+      radial-gradient(circle min(26vw, 420px) at 45% 90%, rgb(52 211 153 / 0.35) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 350px) at 15% 70%, rgb(96 165 250 / 0.35) 0%, transparent 100%);
     background-size: 200% 200%;
-    /* Keep it slow and subtle */
+    /* Keep it slow and subtle but the larger sizes make the drift highly noticeable */
     animation: land-blob-drift 26s ease-in-out infinite alternate;
     pointer-events: none;
   }
