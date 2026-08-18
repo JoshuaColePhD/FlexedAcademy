@@ -327,7 +327,7 @@ function WelcomeStep({ onNext }) {
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       <StepHeader
         eyebrow="Welcome to FlexEd"
-        title={<span>Let’s make some magic ✨</span>}
+        title="Let’s make some magic"
         body="Three quick things — your school's template, your class, and any documents that help ground your plans — then a couple pro tips. Skippable at every step."
       />
       <div className="dialog-actions mt-2">
@@ -361,7 +361,7 @@ function SchoolStep({
     <div>
       <StepHeader
         eyebrow="Step 1 of 3"
-        title={<span>Where are we teaching? 🏫</span>}
+        title="Where are we teaching?"
         body="Sets your school calendar — which weeks are teaching weeks and which days are closed."
       />
       <SchoolSelect
@@ -415,7 +415,7 @@ function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, savi
     <div>
       <StepHeader
         eyebrow="Step 2 of 3"
-        title={<span>Confirm {cls.name || 'your class'} 🎓</span>}
+        title={<span>Confirm {cls.name || 'your class'}</span>}
         body="The course decides which standards get retrieved. Change it any time from My Classes."
       />
       <div className="flex flex-col gap-2">
@@ -454,7 +454,7 @@ function DocumentsStep({ cls, onBack, onNext }) {
     <div>
       <StepHeader
         eyebrow="Step 3 of 3"
-        title={<span>Ground it in your materials 📚</span>}
+        title="Ground it in your materials"
         body="A pacing guide, syllabus, or curriculum map lets plans follow YOUR sequence and units, not a generic one. Optional — add these anytime from My Classes."
       />
       <ClassDocuments cls={cls} />
@@ -473,7 +473,7 @@ function DocumentsStep({ cls, onBack, onNext }) {
 function TipsStep({ onBack, onNext }) {
   return (
     <div>
-      <StepHeader eyebrow="A few things worth knowing 💡" title="Getting the most out of FlexEd" />
+      <StepHeader eyebrow="A few things worth knowing" title="Getting the most out of FlexEd" />
       <motion.ul 
         initial="hidden" 
         animate="visible" 
