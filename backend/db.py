@@ -1739,6 +1739,21 @@ def get_calendar_submission(submission_id: str) -> dict | None:
     return _row("SELECT * FROM school_calendar_submissions WHERE id = ?", (submission_id,))
 
 
+def confirmed_calendar_school_ids() -> set[str]:
+    """Every school_id with at least one confirmed submission, in ONE query —
+    see schoolcal.bulk_calendar_status's own comment for why GET /api/schools
+    needs this instead of calling get_confirmed_calendar_submission per school
+    (N+1 over ~300 seeded schools was slow enough to make that endpoint
+    effectively hang). Only presence matters here, not which submission or
+    when, so DISTINCT is enough — no ordering, no per-school LIMIT 1."""
+    return {r["school_id"] for r in _rows("SELECT DISTINCT school_id FROM school_calendar_submissions WHERE status = 'confirmed'")}
+
+
+def pending_calendar_school_ids() -> set[str]:
+    """Same reasoning as confirmed_calendar_school_ids, for 'pending'."""
+    return {r["school_id"] for r in _rows("SELECT DISTINCT school_id FROM school_calendar_submissions WHERE status = 'pending'")}
+
+
 def get_pending_calendar_submission(school_id: str) -> dict | None:
     return _row(
         "SELECT * FROM school_calendar_submissions WHERE school_id = ? AND status = 'pending' ORDER BY submitted_at DESC LIMIT 1",

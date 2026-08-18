@@ -93,10 +93,18 @@ def list_schools_route() -> list[dict]:
     `has_pending_calendar` is the other case: a teacher already uploaded a
     calendar for this school but no second teacher has confirmed it yet —
     see schoolcal.calendar_status's own comment on why this can't just be
-    bool(schoolcal.school_weeks(...))."""
+    bool(schoolcal.school_weeks(...)).
+
+    schoolcal.bulk_calendar_status, not calendar_status per school in a
+    loop — see its own comment: that was an N+1 query (two DB round-trips
+    times ~300 seeded schools) slow enough to make this endpoint hang
+    outright rather than merely feel slow.
+    """
     from .. import schoolcal
 
-    return [{**s, **schoolcal.calendar_status(s["id"])} for s in db.list_schools()]
+    schools = db.list_schools()
+    statuses = schoolcal.bulk_calendar_status([s["id"] for s in schools])
+    return [{**s, **statuses[s["id"]]} for s in schools]
 
 
 @router.patch("/me")

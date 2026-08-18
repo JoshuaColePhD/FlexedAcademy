@@ -244,6 +244,35 @@ def calendar_status(school_id: str) -> dict:
     }
 
 
+def bulk_calendar_status(school_ids: list[str]) -> dict[str, dict]:
+    """Same {has_calendar, has_pending_calendar} shape as calendar_status,
+    for every school at once — two queries total, not two PER school.
+
+    GET /api/schools used to call calendar_status in a Python loop over
+    every seeded school (~300, Alabama's public high schools) — each call
+    two sequential DB round-trips, so ~600 per request. On Render's free
+    tier that was slow enough for the endpoint to effectively hang rather
+    than merely feel slow, which is what actually broke the onboarding
+    wizard's school picker in production. _file_weeks stays a per-school
+    call (below) since it's file I/O, not a DB round-trip, and already
+    lru_cache'd indefinitely — the DB queries were the actual cost."""
+    from . import db
+
+    confirmed_ids = db.confirmed_calendar_school_ids()
+    pending_ids = db.pending_calendar_school_ids()
+    out: dict[str, dict] = {}
+    for school_id in school_ids:
+        if school_id == NO_CALENDAR_SCHOOL_ID:
+            out[school_id] = {"has_calendar": False, "has_pending_calendar": False}
+            continue
+        confirmed = school_id in confirmed_ids
+        out[school_id] = {
+            "has_calendar": confirmed or bool(_file_weeks(school_id)),
+            "has_pending_calendar": False if confirmed else school_id in pending_ids,
+        }
+    return out
+
+
 def week_for(school_id: str, day: date | None = None) -> dict | None:
     """The week containing `day` — or, if that falls in a gap, the next one to
     start. Returns None once the year is over, and also for
