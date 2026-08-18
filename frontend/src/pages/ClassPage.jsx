@@ -18,7 +18,7 @@ import { api } from '../lib/api'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
 import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
@@ -26,6 +26,7 @@ import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { SchoolSelect } from '../components/SchoolSelect'
+import { AccountMenu } from '../components/AccountMenu'
 import { classColor } from '../lib/classColor'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
@@ -924,6 +925,30 @@ export function ClassPage() {
               </p>
             ) : null}
           </div>
+        </div>
+        
+        <div className="shrink-0 border-t border-edge">
+          {/* Every plan this class has ever built, placed at the bottom near account settings. */}
+          <NavLink
+            to={activeClass ? `/c/${activeClass.id}/plans` : '/c/default/plans'}
+            className={({ isActive }) =>
+              `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
+                isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
+              }`
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <FileText
+                  size={15}
+                  aria-hidden="true"
+                  style={isActive ? { color: 'rgb(var(--rail-pop-rgb))' } : undefined}
+                />
+                Library
+              </>
+            )}
+          </NavLink>
+          <AccountMenu classPath={activeClass ? `/c/${activeClass.id}` : '/c/default'} />
         </div>
       </div>
 
