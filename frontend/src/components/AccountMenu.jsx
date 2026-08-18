@@ -129,25 +129,37 @@ export function AccountMenu({ classPath }) {
   const name = user?.name || user?.email || 'Signed in'
 
   return (
-    <div className="relative flex items-center gap-1 px-2 py-2" ref={ref}>
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-paper-inset"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        <span
-          aria-hidden="true"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted"
+    <div className="relative px-2 py-2" ref={ref}>
+      <div className="flex w-full items-stretch rounded-md transition-colors hover:bg-paper-inset focus-within:bg-paper-inset">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-l-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
         >
-          <User size={13} />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
-        {/* The user suggested replacing the chevron with a Settings icon. 
-            It makes it clearer that this opens a configuration menu rather 
-            than just being a generic dropdown. */}
-        <Settings size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
-      </button>
+          <span
+            aria-hidden="true"
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-paper-sunken text-ink-muted"
+          >
+            <User size={13} />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
+          <ChevronUp size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
+        </button>
+
+        <div className="flex items-center" aria-hidden="true">
+          <div className="h-3 w-px bg-edge shrink-0" />
+        </div>
+
+        <Link
+          to={`${classPath}/settings`}
+          className="flex items-center justify-center px-2.5 rounded-r-md text-ink-faint hover:text-ink transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+          aria-label="Settings"
+          title="Settings"
+        >
+          <Settings size={13} aria-hidden="true" />
+        </Link>
+      </div>
 
       {mounted ? (
         <div
@@ -193,32 +205,16 @@ export function AccountMenu({ classPath }) {
             >
               <BookOpen size={14} aria-hidden="true" /> My classes
             </Link>
-            <div className="flex items-center">
-              <Link
-                to={`${classPath}/settings`}
-                onClick={() => setOpen(false)}
-                className="flex min-h-touch min-w-0 flex-1 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-              >
-                <Settings size={14} aria-hidden="true" /> Settings
-              </Link>
-              {/* Icon-only, right beside Settings — no label needed once it
-                  sits next to the one thing it's most often reached for
-                  right after (or instead of). Its own hover tint (--mark)
-                  keeps it reading as the one destructive control up here,
-                  same as the full-width row this replaced. */}
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false)
-                  logout()
-                }}
-                aria-label="Log out"
-                title="Log out"
-                className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-soft transition-colors hover:bg-mark-tint hover:text-mark"
-              >
-                <LogOut size={14} aria-hidden="true" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                logout()
+              }}
+              className="flex w-full min-h-touch items-center gap-2 px-3 py-2 text-xs text-left text-ink-soft transition-colors hover:bg-mark-tint hover:text-mark"
+            >
+              <LogOut size={14} aria-hidden="true" /> Log out
+            </button>
           </div>
         </div>
       ) : null}
