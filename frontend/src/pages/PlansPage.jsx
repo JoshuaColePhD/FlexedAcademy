@@ -219,7 +219,7 @@ export function PlansPage() {
   }
 
   return (
-    <div className="column">
+    <div className="column bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
       <header className="flex h-14 shrink-0 items-center justify-between px-gutter">
         <h1 className="text-sm font-semibold text-ink">
           Library{activeClass?.name ? ` — ${activeClass.name}` : ''}
@@ -238,7 +238,7 @@ export function PlansPage() {
                     type="button"
                     disabled={isDeletingBulk}
                     onClick={toggleSelectAll}
-                    className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+                    className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-ink hover:bg-paper-sunken disabled:opacity-50"
                   >
                     {selectedIds.size === filtered.length && filtered.length > 0 ? 'Deselect all' : 'Select all'}
                   </button>
@@ -246,7 +246,7 @@ export function PlansPage() {
                     type="button"
                     disabled={selectedIds.size === 0 || isDeletingBulk}
                     onClick={handleBulkDelete}
-                    className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-mark hover:text-mark/80 disabled:opacity-50"
+                    className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-mark hover:bg-paper-sunken disabled:opacity-50"
                   >
                     Delete ({selectedIds.size})
                   </button>
@@ -266,7 +266,7 @@ export function PlansPage() {
                 <button
                   type="button"
                   onClick={() => setSelectionMode(true)}
-                  className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink"
+                  className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-ink hover:bg-paper-sunken"
                 >
                   Select multiple
                 </button>
