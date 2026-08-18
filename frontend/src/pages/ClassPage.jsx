@@ -104,7 +104,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
   // describing the same edge read as two outlines, and the tint alone still
   // says "this is the new thing".
   return (
-    <form onSubmit={submit} className="neo-panel rounded-xl bg-accent-tint/40 p-3">
+    <form onSubmit={submit} className="neo-panel rounded-xl bg-paper-sunken/40 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
           <FrameworkPicker
@@ -130,7 +130,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
           <button
             type="submit"
             disabled={!subject || saving}
-            className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-3 py-2.5 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
             Add
@@ -362,7 +362,7 @@ function ClassStandards({ cls }) {
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="fa-press mt-4 inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="fa-press mt-4 inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
           >
             {uploading ? (
               <><Loader2 size={16} className="animate-spin" /> Mapping PDF...</>
@@ -631,7 +631,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
               type="button"
               onClick={saveDetails}
               disabled={!editSubject || savingDetails}
-              className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
             >
               {savingDetails ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
               Save Changes

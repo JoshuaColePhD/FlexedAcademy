@@ -431,7 +431,7 @@ export function Composer({
                    in the composer that's allowed to hint at that with
                    colour — the accent tint on hover is the same "this opens
                    something" language RailRow's own icon tiles use. */
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-full text-accent-text transition-colors hover:bg-accent-tint md:h-9 md:w-9"
+                className="tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper-sunken md:h-9 md:w-9"
                 onClick={onOpenVoice}
                 onPointerDown={onWarmVoice}
                 aria-label="Start a voice conversation"
@@ -451,7 +451,7 @@ export function Composer({
                    actually landed here. */
                 className={`fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
                   canSend
-                    ? 'neo-raised bg-accent text-ink-inverse hover:bg-accent-hover'
+                    ? 'neo-raised bg-paper-raised text-ink hover:bg-paper-sunken'
                     : /* Inset, not a flat grey disc: unavailable reads as
                          pressed into the bar and out of reach, which is the
                          same language the rest of the app uses for "not

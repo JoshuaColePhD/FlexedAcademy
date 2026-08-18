@@ -90,7 +90,7 @@ export function LessonQuestions({ questions, onSubmit }) {
           <div className="flex gap-2">
             <button
               type="button"
-              className="fa-press neo-raised rounded-lg bg-accent px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="fa-press neo-raised rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!customText.trim()}
               onClick={submitCustom}
             >
@@ -109,7 +109,7 @@ export function LessonQuestions({ questions, onSubmit }) {
         <div className="flex items-center gap-4">
           <button
             type="button"
-            className="fa-press neo-raised self-start rounded-lg bg-accent px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="fa-press neo-raised self-start rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!allAnswered}
             onClick={submit}
           >

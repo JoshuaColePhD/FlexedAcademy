@@ -158,15 +158,10 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           className={
             isUser
               ? /* The teacher's own turn, lifted off the page as its own
-                   bubble rather than cut into it — the same neo-raised +
-                   accent-tint combo the app already uses for its one
-                   primary-action treatment (see "Send again" below, or the
-                   "New plan" button), so "said by you" reads as the
-                   prominent, colored voice in the exchange. A tail was tried
-                   three ways (squared corner, behind-the-corner CSS shape,
-                   an actual SVG path) and never earned its keep — plain and
-                   rounded reads fine on its own. */
-                'neo-raised rounded-2xl bg-accent-tint px-4 py-3 text-[0.9375rem] leading-relaxed text-accent-text'
+                   bubble rather than cut into it. Used to use bg-accent-tint
+                   but now uses the logo's purple (brand) for a distinct voice
+                   that does not shift with the selected class. */
+                'neo-raised rounded-2xl px-4 py-3 text-[0.9375rem] leading-relaxed'
               : message.isError
                 ? 'msg-error text-[0.9375rem] leading-relaxed'
                 : /* Same neo-raised box as the teacher's own bubble, but
@@ -176,6 +171,7 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                      still visually distinct while both read as boxed. */
                   'neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
           }
+          style={isUser ? { backgroundColor: 'rgba(167, 139, 250, 0.15)', color: 'var(--ink)' } : undefined}
         >
           {isUser ? (
             <p className="m-0 whitespace-pre-wrap">{message.content}</p>

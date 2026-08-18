@@ -44,25 +44,25 @@ export function CommandPalette() {
           <Command.Group heading="Navigation" className="text-xs font-medium text-ink-muted px-2 py-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1.5">
             <Command.Item
               onSelect={() => runCommand(() => navigate('/'))}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-accent aria-selected:text-white"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <BookOpen size={16} /> My Classes
             </Command.Item>
             <Command.Item
               onSelect={() => runCommand(() => navigate('/history'))}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-accent aria-selected:text-white"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <History size={16} /> Recent History
             </Command.Item>
             <Command.Item
               onSelect={() => runCommand(() => navigate('/settings'))}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-accent aria-selected:text-white"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <Settings size={16} /> Settings
             </Command.Item>
             <Command.Item
               onSelect={() => runCommand(() => navigate('/admin'))}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-accent aria-selected:text-white"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <ShieldCheck size={16} /> Admin Dashboard
             </Command.Item>
@@ -73,13 +73,13 @@ export function CommandPalette() {
           <Command.Group heading="Actions" className="text-xs font-medium text-ink-muted px-2 py-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1.5">
             <Command.Item
               onSelect={() => runCommand(() => navigate('/'))}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-accent aria-selected:text-white"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <Plus size={16} /> New Lesson Plan
             </Command.Item>
             <Command.Item
               onSelect={() => runCommand(() => navigate('/settings'))}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-accent aria-selected:text-white"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <Calendar size={16} /> Upload School Calendar
             </Command.Item>

@@ -6,7 +6,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
-      "port": 5173
+      "port": 5174
+    },
+    {
+      "name": "ap-lang-backend",
+      "runtimeExecutable": "venv/bin/uvicorn",
+      "runtimeArgs": ["backend.server:app", "--host", "127.0.0.1", "--port", "8010"],
+      "port": 8010
     }
   ]
 }

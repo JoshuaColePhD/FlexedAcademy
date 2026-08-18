@@ -509,7 +509,7 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
         )}
       </button>
       {mounted ? (
-        <div className={`artifact-drawer-body${closing ? ' is-closing' : ''}`}>
+        <div className={`artifact-drawer-body${closing ? ' is-closing' : ''} bg-paper-raised h-full`}>
           <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
         </div>
       ) : null}

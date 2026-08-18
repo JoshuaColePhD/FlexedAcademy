@@ -46,8 +46,8 @@ export function Greeting({ onOpenVoice, onWarmVoice, className: courseName, week
     <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-gutter py-8">
       <div className="w-full max-w-measure flex flex-col items-center justify-center text-center fa-rise">
         
-        <div className="mb-8 rounded-3xl bg-gradient-to-br from-primary/10 to-primary/5 p-6 ring-1 ring-inset ring-ink/5 shadow-sm">
-          <svg className="h-10 w-10 text-primary opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <div className="mb-8 rounded-3xl bg-paper-raised neo-raised p-6">
+          <svg className="h-10 w-10 text-ink-muted opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
           </svg>
         </div>
@@ -75,7 +75,7 @@ export function Greeting({ onOpenVoice, onWarmVoice, className: courseName, week
             type="button"
             onClick={onOpenVoice}
             onPointerDown={onWarmVoice}
-            className="neo-world neo-raised mx-auto mt-8 flex min-h-touch w-2/3 max-w-[240px] items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium text-accent-text md:hidden"
+            className="neo-world neo-raised bg-paper-raised mx-auto mt-8 flex min-h-touch w-2/3 max-w-[240px] items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium text-ink md:hidden"
           >
             <AudioLines size={18} aria-hidden="true" />
             Voice Mode

@@ -160,7 +160,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
                             aria-selected={isSelected}
                             data-active={isActive}
                             className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
-                              isActive ? 'neo-inset bg-accent-tint text-accent-text' : 'hover:bg-paper-sunken'
+                              isActive ? 'neo-inset bg-paper text-ink' : 'hover:bg-paper-sunken'
                             }`}
                             onMouseEnter={() => setActive(i)}
                             onClick={() => commit(fw)}

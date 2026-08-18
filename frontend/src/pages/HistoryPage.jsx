@@ -244,7 +244,7 @@ function ChatDetailPanel({ chat, classId, onDelete }) {
         <div className="flex flex-col gap-3 sm:flex-row pt-4 border-t border-edge">
           <Link
             to={`/c/${classId}/chat/${chat.id}`}
-            className="neo-raised flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+            className="neo-raised flex items-center justify-center gap-2 rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-ink hover:bg-paper-sunken"
           >
             Open Conversation <ArrowRight size={16} />
           </Link>

@@ -1022,7 +1022,7 @@ export function AdminPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
       
       {/* Left Sidebar */}
       <div className="hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
@@ -1107,7 +1107,7 @@ export function AdminPage() {
                           onClick={() => setStatusFilter(f.key)}
                           aria-pressed={statusFilter === f.key}
                           className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                            statusFilter === f.key ? 'bg-accent text-ink-inverse' : 'bg-paper-inset text-ink-muted hover:text-ink'
+                            statusFilter === f.key ? 'bg-paper-sunken text-ink' : 'bg-paper-inset text-ink-muted hover:text-ink'
                           }`}
                         >
                           {f.label}

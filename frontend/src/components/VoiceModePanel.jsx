@@ -350,7 +350,7 @@ function QuestionCards({ questions, onAnswer }) {
           type="button"
           disabled={!allAnswered}
           onClick={() => send(answers)}
-          className="fa-press neo-raised mt-2 min-h-touch shrink-0 self-start rounded-full bg-accent px-5 text-sm font-medium text-ink-inverse transition-shadow hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="fa-press neo-raised mt-2 min-h-touch shrink-0 self-start rounded-full bg-paper-raised px-5 text-sm font-medium text-ink transition-shadow hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
         >
           Continue
         </button>
@@ -377,7 +377,7 @@ function BuildProgress({ days, fill = true }) {
       }`}
     >
       <p className="flex shrink-0 items-center gap-2 text-sm font-semibold text-ink">
-        <Loader2 size={14} className="animate-spin text-accent-text" aria-hidden="true" />
+        <Loader2 size={14} className="animate-spin text-ink" aria-hidden="true" />
         Building your week
       </p>
       <WeekStrip days={days} writing loose className="w-full" />
@@ -403,7 +403,7 @@ function BuiltPlanCard({ builtPlan, fill = true, onClose }) {
     >
       <span
         aria-hidden="true"
-        className="neo-inset grid h-9 w-9 shrink-0 place-items-center rounded-full text-accent-text"
+        className="neo-inset grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink"
       >
         <Check size={16} strokeWidth={3} />
       </span>
@@ -417,7 +417,7 @@ function BuiltPlanCard({ builtPlan, fill = true, onClose }) {
         <a
           href={api.planDownloadUrl(builtPlan.planId)}
           download
-          className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-accent-text transition-shadow"
+          className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-ink transition-shadow"
         >
           <Download size={12} aria-hidden="true" />
           Download
@@ -494,7 +494,7 @@ function HeardEcho({ text, onCorrect, onEditingChange }) {
         <button
           type="button"
           onClick={save}
-          className="fa-press neo-raised rounded-full bg-accent px-3 py-1 text-xs font-medium text-ink-inverse transition-shadow hover:bg-accent-hover"
+          className="fa-press neo-raised rounded-full bg-paper-raised px-3 py-1 text-xs font-medium text-ink transition-shadow hover:bg-paper-sunken"
         >
           Fix it
         </button>
@@ -1613,10 +1613,10 @@ export function VoiceModePanel({
          there's no live level worth showing. */
       className={`inline-flex min-w-[8.5rem] items-center justify-center gap-2 rounded-full px-3 py-1 text-2xs font-semibold uppercase tracking-caps transition-colors ${
         phase === 'error'
-          ? 'bg-mark-tint text-mark'
+          ? 'bg-paper text-ink'
           : phase === 'off'
             ? 'bg-paper-sunken text-ink-muted'
-            : 'bg-accent-tint text-accent-text'
+            : 'bg-paper text-ink'
       }`}
     >
       <canvas
@@ -1648,7 +1648,7 @@ export function VoiceModePanel({
         <button
           type="button"
           onClick={retryMic}
-          className="neo-raised tap-target inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-medium text-accent-text transition-shadow"
+          className="neo-raised tap-target inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-medium text-ink transition-shadow"
         >
           <RotateCcw size={11} aria-hidden="true" />
           Try again
@@ -1658,7 +1658,7 @@ export function VoiceModePanel({
         <button
           type="button"
           onClick={toggleMute}
-          className="neo-raised tap-target inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-medium text-accent-text transition-shadow"
+          className="neo-raised tap-target inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-medium text-ink transition-shadow"
         >
           <Mic size={11} aria-hidden="true" />
           Turn it back on
@@ -1679,7 +1679,7 @@ export function VoiceModePanel({
       aria-pressed={muted}
       aria-label={muted ? 'Turn the microphone back on' : 'Turn the microphone off'}
       className={`tap-target flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-shadow disabled:cursor-not-allowed disabled:opacity-40 ${
-        muted ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
+        muted ? 'neo-inset text-ink' : 'neo-raised text-ink-soft'
       }`}
     >
       {muted ? <MicOff size={15} aria-hidden="true" /> : <Mic size={15} aria-hidden="true" />}
@@ -1708,7 +1708,7 @@ export function VoiceModePanel({
       aria-pressed={hearing}
       aria-label="Hold to talk"
       className={`tap-target select-none flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-shadow disabled:cursor-not-allowed disabled:opacity-40 ${
-        hearing ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
+        hearing ? 'neo-inset text-ink' : 'neo-raised text-ink-soft'
       }`}
     >
       <Mic size={15} aria-hidden="true" />
@@ -1941,18 +1941,8 @@ export function VoiceModePanel({
                 <button
                   type="button"
                   onClick={onBuild}
-                  /* text-ink-inverse, not text-accent-text — that paired the
-                     same hue as this button's own bg-accent fill, which read
-                     as barely-there text on a solid blue button.
-                     fa-press/fa-rise, not active:scale-[0.98]/animate-in —
-                     this was the one button in the app reaching for raw
-                     Tailwind press/entrance animation instead of the shared
-                     vocabulary every other tap target and entrance in this
-                     file already uses (QuestionCards, DecisionStack, the
-                     checklist rows below). Same visual result, one fewer
-                     animation dialect to keep in sync if the timing/easing
                      tokens they're built from ever change. */
-                  className="fa-press fa-rise mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-ink-inverse shadow-sm transition-all hover:bg-accent-hover"
+                  className="fa-press fa-rise mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-paper-raised text-ink px-4 py-3 text-sm font-semibold  shadow-sm transition-all hover:bg-paper-sunken"
                 >
                   ✨ Build Lesson Plan
                 </button>
@@ -2084,9 +2074,9 @@ function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
           <button
             key={i}
             onClick={() => onSelect(opt.value)}
-            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-all hover:bg-accent-tint hover:text-accent-text hover:border-transparent active:scale-[0.98] ${
+            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-all hover:bg-paper hover:text-ink hover:border-transparent active:scale-[0.98] ${
               i === smartIdx
-                ? 'border-transparent bg-accent-tint text-accent-text'
+                ? 'border-transparent bg-paper text-ink'
                 : 'border-edge-strong bg-paper text-ink'
             }`}
           >

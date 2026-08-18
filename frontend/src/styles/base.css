@@ -148,8 +148,8 @@
       radial-gradient(circle min(22vw, 350px) at 25% 60%, rgb(96 165 250 / 0.45) 0%, transparent 100%);
     /* Tighter background size so they don't drift completely off-screen */
     background-size: 140% 140%;
-    /* Keep it slow and subtle */
-    animation: land-blob-drift 26s ease-in-out infinite alternate;
+    /* Slightly faster than before but still slow and subtle */
+    animation: land-blob-drift 18s ease-in-out infinite alternate;
     pointer-events: none;
   }
 

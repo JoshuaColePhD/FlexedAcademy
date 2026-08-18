@@ -133,7 +133,7 @@ function CustomInstructions({ value, onSaved }) {
           type="button"
           onClick={save}
           disabled={!dirty || saving}
-          className="fa-press neo-raised rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-accent outline-none disabled:cursor-not-allowed disabled:opacity-40"
+          className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-edge outline-none disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
@@ -361,7 +361,7 @@ function ChangePassword() {
       <button
         type="submit"
         disabled={saving || !current || !next}
-        className="fa-press neo-raised rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+        className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
       >
         {saving ? 'Saving…' : 'Change password'}
       </button>
@@ -403,7 +403,7 @@ function BillingSection() {
         type="button"
         onClick={entitlement.subscribed ? manage : openPaywall}
         disabled={busy}
-        className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
       >
         {entitlement.subscribed ? (
           <CreditCard size={14} aria-hidden="true" />
@@ -483,7 +483,7 @@ function GoogleDriveSection() {
           className={
             connected
               ? 'neo-raised shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50'
-              : 'fa-press neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-ink-inverse hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50'
+              : 'fa-press neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50'
           }
         >
           {connected ? (disconnecting ? 'Disconnecting…' : 'Disconnect') : 'Connect Google Drive'}
@@ -550,7 +550,7 @@ function AccountSafety() {
           <a
             href={api.accountExportUrl()}
             download
-            className="neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent-tint"
+            className="neo-raised inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken"
           >
             <Download size={14} aria-hidden="true" /> Download
           </a>
@@ -700,7 +700,7 @@ function Toggle({ checked, onChange, label, description }) {
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 ${
-          checked ? 'bg-accent' : 'bg-edge'
+          checked ? 'bg-paper-sunken' : 'bg-edge'
         }`}
       >
         <span
@@ -724,7 +724,7 @@ function IntegrationPlaceholder({ name, description, icon }) {
         <div>
           <p className="text-sm font-medium text-ink flex items-center gap-2">
             {name}
-            <span className="inline-flex items-center rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent uppercase tracking-wider">
+            <span className="inline-flex items-center rounded-md bg-paper-sunken px-1.5 py-0.5 text-[10px] font-medium text-ink uppercase tracking-wider">
               Upcoming
             </span>
           </p>
@@ -825,7 +825,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
       
       {/* Left Sidebar (Master) */}
       <div className="hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">

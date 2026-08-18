@@ -1756,7 +1756,7 @@ export function ChatPage() {
           it's a plain leading flex item now, flush against the same left
           edge as the message list and composer below it, not floating apart
           from the rest of the pane's own left margin. */}
-      <div className="flex h-11 shrink-0 items-center border-b border-edge px-2">
+      <div className="flex h-11 shrink-0 items-center border-b border-edge bg-paper px-2 z-10">
         {!docOpen ? (
           <div className="chat-head pointer-events-auto flex min-w-0 max-w-[70%] flex-nowrap items-center">
             {/* Which prep, then which week — the two questions that together
