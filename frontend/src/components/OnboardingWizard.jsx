@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
@@ -145,6 +146,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
   const [subject, setSubject] = useState(cls?.subject || '')
   const [grade, setGrade] = useState(cls?.grade || '11')
   const [savingClass, setSavingClass] = useState(false)
+  const [classError, setClassError] = useState(false)
 
   const [finishing, setFinishing] = useState(false)
 
@@ -201,9 +203,10 @@ export function OnboardingWizard({ open, onClose, cls }) {
 
   const saveClass = async () => {
     if (!subject) {
-      toast.error('Pick a course first', 'It decides which standards your plans are grounded in.')
+      setClassError(true)
       return
     }
+    setClassError(false)
     setSavingClass(true)
     try {
       if (subject !== cls?.subject || grade !== cls?.grade) {
@@ -305,6 +308,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
                   setGrade={setGrade}
                   frameworks={frameworks}
                   saving={savingClass}
+                  error={classError}
                   onBack={() => goTo(1)}
                   onNext={saveClass}
                 />
@@ -329,7 +333,7 @@ function StepHeader({ eyebrow, title, body }) {
       {eyebrow ? (
         <p className="text-2xs font-medium uppercase tracking-wide text-accent-text">{eyebrow}</p>
       ) : null}
-      <h2 id="onboarding-title" className="mt-1 text-xl font-semibold tracking-display text-ink">
+      <h2 id="onboarding-title" className="mt-1 flex items-center gap-2 text-xl font-semibold tracking-display text-ink">
         {title}
       </h2>
       {body ? <p className="mt-1.5 text-sm text-ink-muted">{body}</p> : null}
@@ -339,18 +343,24 @@ function StepHeader({ eyebrow, title, body }) {
 
 function WelcomeStep({ onNext }) {
   return (
-    <div>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       <StepHeader
-        eyebrow="Welcome"
-        title="Let’s get your class set up"
-        body="Three quick things — your school's template, your class, and any documents that help ground your plans — then a couple tips. Skippable at every step."
+        eyebrow="Welcome to FlexEd"
+        title={<span>Let’s make some magic ✨</span>}
+        body="Three quick things — your school's template, your class, and any documents that help ground your plans — then a couple pro tips. Skippable at every step."
       />
       <div className="dialog-actions mt-2">
-        <button type="button" className="btn btn-primary fa-press ml-auto" onClick={onNext}>
+        <motion.button 
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          type="button" 
+          className="btn btn-primary fa-press ml-auto" 
+          onClick={onNext}
+        >
           Get started <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-        </button>
+        </motion.button>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -370,7 +380,7 @@ function SchoolStep({
     <div>
       <StepHeader
         eyebrow="Step 1 of 3"
-        title="Your school"
+        title={<span>Where are we teaching? 🏫</span>}
         body="Sets your school calendar — which weeks are teaching weeks and which days are closed."
       />
       <SchoolSelect
@@ -407,28 +417,31 @@ function SchoolStep({
         </div>
       ) : null}
       <div className="dialog-actions mt-6">
-        <button type="button" className="btn" onClick={onBack}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </button>
-        <button type="button" className="btn btn-primary fa-press" onClick={onNext} disabled={saving}>
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary fa-press" onClick={onNext} disabled={saving}>
           {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
           {saving ? 'Saving…' : 'Continue'}
-        </button>
+        </motion.button>
       </div>
     </div>
   )
 }
 
-function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, saving, onBack, onNext }) {
+function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
   return (
     <div>
       <StepHeader
         eyebrow="Step 2 of 3"
-        title={`Confirm ${cls.name || 'your class'}`}
+        title={<span>Confirm {cls.name || 'your class'} 🎓</span>}
         body="The course decides which standards get retrieved. Change it any time from My Classes."
       />
       <div className="flex flex-col gap-2">
-        <FrameworkPicker frameworks={frameworks} value={subject} onChange={setSubject} id="onboarding-framework" />
+        <motion.div animate={error ? { x: [-5, 5, -5, 5, 0] } : {}} transition={{ duration: 0.4 }}>
+          <FrameworkPicker frameworks={frameworks} value={subject} onChange={(v) => { setSubject(v); if (error) onNext(); }} id="onboarding-framework" />
+          {error && <p className="mt-1.5 text-xs text-mark font-medium px-1">Please select a course to continue</p>}
+        </motion.div>
         <select
           aria-label="Grade"
           value={grade}
@@ -443,13 +456,13 @@ function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, savi
         </select>
       </div>
       <div className="dialog-actions mt-6">
-        <button type="button" className="btn" onClick={onBack}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </button>
-        <button type="button" className="btn btn-primary fa-press" onClick={onNext} disabled={saving}>
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary fa-press" onClick={onNext} disabled={saving}>
           {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
           {saving ? 'Saving…' : 'Continue'}
-        </button>
+        </motion.button>
       </div>
     </div>
   )
@@ -460,44 +473,53 @@ function DocumentsStep({ cls, onBack, onNext }) {
     <div>
       <StepHeader
         eyebrow="Step 3 of 3"
-        title="Ground it in your own materials"
+        title={<span>Ground it in your materials 📚</span>}
         body="A pacing guide, syllabus, or curriculum map lets plans follow YOUR sequence and units, not a generic one. Optional — add these anytime from My Classes."
       />
       <ClassDocuments cls={cls} />
       <div className="dialog-actions mt-6">
-        <button type="button" className="btn" onClick={onBack}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </button>
-        <button type="button" className="btn btn-primary fa-press ml-auto" onClick={onNext}>
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary fa-press ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-        </button>
+        </motion.button>
       </div>
     </div>
   )
 }
 
-function TipsStep({ onBack, onNext }) {
-  return (
     <div>
-      <StepHeader eyebrow="A few things worth knowing" title="Getting the most out of FlexEd" />
-      <ul className="flex flex-col gap-3">
+      <StepHeader eyebrow="A few things worth knowing 💡" title="Getting the most out of FlexEd" />
+      <motion.ul 
+        initial="hidden" 
+        animate="visible" 
+        variants={{ visible: { transition: { staggerChildren: 0.1 } } }} 
+        className="flex flex-col gap-3"
+      >
         {TIPS.map((tip) => (
-          <li key={tip.title} className="flex gap-3 rounded-lg border border-edge bg-paper-sunken p-3">
-            <tip.icon size={18} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
+          <motion.li 
+            key={tip.title} 
+            variants={{ hidden: { opacity: 0, x: -10 }, visible: { opacity: 1, x: 0 } }}
+            className="flex gap-3 rounded-lg border border-edge bg-paper-sunken p-3"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10">
+              <tip.icon size={16} className="text-accent-text" aria-hidden="true" />
+            </div>
             <div>
               <p className="text-sm font-medium text-ink">{tip.title}</p>
               <p className="mt-0.5 text-xs text-ink-muted">{tip.body}</p>
             </div>
-          </li>
+          </motion.li>
         ))}
-      </ul>
+      </motion.ul>
       <div className="dialog-actions mt-6">
-        <button type="button" className="btn" onClick={onBack}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </button>
-        <button type="button" className="btn btn-primary fa-press ml-auto" onClick={onNext}>
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary fa-press ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-        </button>
+        </motion.button>
       </div>
     </div>
   )
@@ -505,24 +527,36 @@ function TipsStep({ onBack, onNext }) {
 
 function DoneStep({ finishing, onFinish }) {
   return (
-    <div className="flex flex-col items-center py-4 text-center">
-      <PartyPopper size={28} className="text-accent-text" aria-hidden="true" />
-      <h2 id="onboarding-title" className="mt-3 text-xl font-semibold tracking-display text-ink">
-        You’re all set
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.4, type: "spring", bounce: 0.4 }}
+      className="flex flex-col items-center py-4 text-center"
+    >
+      <motion.div 
+        animate={{ rotate: [0, -10, 10, -10, 10, 0] }} 
+        transition={{ duration: 0.6, delay: 0.2 }}
+        className="text-accent-text"
+      >
+        <PartyPopper size={36} aria-hidden="true" />
+      </motion.div>
+      <h2 id="onboarding-title" className="mt-4 text-2xl font-bold tracking-display text-ink">
+        You’re all set! 🎉
       </h2>
-      <p className="mt-1.5 max-w-sm text-sm text-ink-muted">
-        Everything here can be changed later from My Classes or Settings. Say what you need for the
-        week, and let’s build it.
+      <p className="mt-2 max-w-sm text-sm text-ink-muted">
+        Everything here can be changed later from My Classes or Settings. Say what you need for the week, and let’s build it.
       </p>
-      <button
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
         type="button"
-        className="btn btn-primary fa-press mt-6 w-full justify-center"
+        className="btn btn-primary fa-press mt-8 w-full justify-center py-2.5 text-base"
         onClick={onFinish}
         disabled={finishing}
       >
-        {finishing ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
-        Start planning
-      </button>
-    </div>
+        {finishing ? <Loader2 size={16} className="mr-2 animate-spin" aria-hidden="true" /> : null}
+        {finishing ? 'Taking you there...' : 'Start planning 🚀'}
+      </motion.button>
+    </motion.div>
   )
 }
