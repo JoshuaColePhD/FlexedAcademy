@@ -143,11 +143,10 @@ export function AccountMenu({ classPath }) {
           <User size={13} />
         </span>
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
-        {/* Points up, not the two-way ChevronsUpDown ClassSwitcher uses — this
-            popover only ever opens upward (bottom-full, right above the
-            trigger), so a single up-chevron says exactly what will happen
-            instead of a symbol that also implies "or down." */}
-        <ChevronUp size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
+        {/* The user suggested replacing the chevron with a Settings icon. 
+            It makes it clearer that this opens a configuration menu rather 
+            than just being a generic dropdown. */}
+        <Settings size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
       </button>
 
       {mounted ? (
