@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Download, HardDrive, Loader2, Sparkles, Upload } from 'lucide-react'
+import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
+import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Loader2, Sparkles, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -861,7 +861,27 @@ export function SettingsPage() {
             ))}
           </nav>
         </div>
-        <div className="shrink-0 pb-2">
+        <div className="shrink-0 border-t border-edge">
+          {/* Every plan this class has ever built, placed at the bottom near account settings. */}
+          <NavLink
+            to={`${classPath}/plans`}
+            className={({ isActive }) =>
+              `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
+                isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
+              }`
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <FileText
+                  size={15}
+                  aria-hidden="true"
+                  style={isActive ? { color: 'rgb(var(--rail-pop-rgb))' } : undefined}
+                />
+                Library
+              </>
+            )}
+          </NavLink>
           <AccountMenu classPath={classPath} />
         </div>
       </div>

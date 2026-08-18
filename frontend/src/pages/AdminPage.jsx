@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  FileText,
   Plus,
   Search,
   ShieldCheck,
@@ -18,6 +19,8 @@ import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
+import { useActiveClass } from '../hooks/useAppData'
+import { AccountMenu } from '../components/AccountMenu'
 
 /* Account management, as a page instead of a Supabase SQL editor tab.
  *
@@ -829,6 +832,7 @@ export function AdminPage() {
   const toast = useToast()
   const confirm = useConfirm()
   const qc = useQueryClient()
+  const { activeClass } = useActiveClass()
 
   const [activeTab, setActiveTab] = useState('overview')
   const scrollContainerRef = React.useRef(null)
@@ -1056,6 +1060,30 @@ export function AdminPage() {
               </button>
             ))}
           </nav>
+        </div>
+
+        <div className="shrink-0 border-t border-edge">
+          {/* Every plan this class has ever built, placed at the bottom near account settings. */}
+          <NavLink
+            to={activeClass ? `/c/${activeClass.id}/plans` : '/c/default/plans'}
+            className={({ isActive }) =>
+              `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
+                isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
+              }`
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <FileText
+                  size={15}
+                  aria-hidden="true"
+                  style={isActive ? { color: 'rgb(var(--rail-pop-rgb))' } : undefined}
+                />
+                Library
+              </>
+            )}
+          </NavLink>
+          <AccountMenu classPath={activeClass ? `/c/${activeClass.id}` : '/c/default'} />
         </div>
       </div>
 
