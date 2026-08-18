@@ -243,6 +243,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
   return (
     <div
       className={`dialog-scrim${closing ? ' is-closing' : ''}`}
+      style={{ position: 'absolute' }}
       onMouseDown={(e) => e.target === e.currentTarget && finish()}
     >
       {/* Same floating multi-hue wash as .app-blob (AppShell's own background),
