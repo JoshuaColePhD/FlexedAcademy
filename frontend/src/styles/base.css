@@ -192,6 +192,27 @@
     pointer-events: none;
   }
 
+  /* One step's content sliding in past the last — --onboarding-dir is +1
+     going forward, -1 going back (OnboardingWizard.jsx's own `direction`
+     state), so "next" and "back" read as opposite motions rather than the
+     same swap regardless of which button was pressed. Paired with
+     SmoothHeight around it, which animates the step slot's height at the
+     same time — a one-line welcome and the documents step's whole list
+     shouldn't jump the dialog to a new size instantly. */
+  .onboarding-step {
+    animation: onboarding-step-enter 280ms var(--ease-out) both;
+  }
+  @keyframes onboarding-step-enter {
+    from {
+      opacity: 0;
+      transform: translateX(calc(var(--onboarding-dir, 1) * 20px));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
   /* Liquid Glass: translucent, not flat-with-a-border — .app-glow above is
      what the blur actually diffuses. `saturate` is doing real work here, not
      just blur: backdrop-filter blur alone on a mostly-white panel muddies

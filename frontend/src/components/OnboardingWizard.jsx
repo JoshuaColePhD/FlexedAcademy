@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
@@ -59,6 +59,44 @@ const TIPS = [
   },
 ]
 
+/* Animates the step slot's height between whatever each step's content
+ * happens to be (a one-line welcome vs. the documents step's whole list) —
+ * same technique and same bug-fix reasoning as VoiceModePanel's own
+ * SmoothHeight: measuring in a layout effect, before paint, is what keeps a
+ * step swap from rendering one frame at the new height before the animation
+ * has even started. Copied rather than imported/shared — VoiceModePanel's
+ * copy isn't exported, and this one is small enough that a shared-component
+ * refactor isn't worth it for a single second caller. */
+function SmoothHeight({ children }) {
+  const contentRef = useRef(null)
+  const [height, setHeight] = useState(null)
+
+  useLayoutEffect(() => {
+    const el = contentRef.current
+    if (!el) return undefined
+    const measure = () => {
+      const next = el.getBoundingClientRect().height
+      setHeight((prev) => (prev !== null && Math.abs(prev - next) < 0.5 ? prev : next))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [children])
+
+  return (
+    <div
+      style={{
+        height: height === null ? 'auto' : `${height}px`,
+        transition: 'height 260ms cubic-bezier(0.4, 0, 0.2, 1)',
+        overflow: 'hidden',
+      }}
+    >
+      <div ref={contentRef}>{children}</div>
+    </div>
+  )
+}
+
 /* Post-login guided setup — welcome, confirm the school & template, confirm
  * the class, upload supporting documents, a few tips, done. Every step below
  * reuses an existing piece rather than re-implementing it: SchoolSelect and
@@ -79,6 +117,16 @@ export function OnboardingWizard({ open, onClose, cls }) {
   const dialogRef = useRef(null)
 
   const [step, setStep] = useState(0)
+  // +1/-1, read by the step's own enter animation (onboarding-step-enter,
+  // base.css) to decide which side it slides in from — forward feels like
+  // moving on, back feels like undoing, and a single direction for both
+  // would read as the same motion regardless of which key the teacher
+  // just pressed.
+  const [direction, setDirection] = useState(1)
+  const goTo = (next) => {
+    setDirection(next > step ? 1 : -1)
+    setStep(next)
+  }
 
   // School & template step
   const [school, setSchool] = useState(cls?.school || '')
@@ -111,6 +159,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
   useEffect(() => {
     if (!open) return
     setStep(0)
+    setDirection(1)
     setSchool(cls?.school || '')
     setTemplateFile(null)
     setSubject(cls?.subject || '')
@@ -135,7 +184,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
         qc.invalidateQueries({ queryKey: qk.schools })
         toast.success('Template submitted', 'We’ll train the AI on your school’s format.')
       }
-      setStep((s) => s + 1)
+      goTo(step + 1)
     } catch (err) {
       toast.apiError('Could not save that', err)
     } finally {
@@ -154,7 +203,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
         await api.updateClass(cls.id, { subject, grade })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
-      setStep((s) => s + 1)
+      goTo(step + 1)
     } catch (err) {
       toast.apiError('Could not save that', err)
     } finally {
@@ -223,40 +272,44 @@ export function OnboardingWizard({ open, onClose, cls }) {
             <X size={16} aria-hidden="true" />
           </button>
 
-          {step === 0 ? (
-            <WelcomeStep onNext={() => setStep(1)} />
-          ) : step === 1 ? (
-            <SchoolStep
-              school={school}
-              setSchool={setSchool}
-              schools={schools}
-              schoolNeedsTemplate={schoolNeedsTemplate}
-              templateFile={templateFile}
-              setTemplateFile={setTemplateFile}
-              templateFileRef={templateFileRef}
-              saving={savingSchool}
-              onBack={() => setStep(0)}
-              onNext={saveSchool}
-            />
-          ) : step === 2 ? (
-            <ClassStep
-              cls={cls}
-              subject={subject}
-              setSubject={setSubject}
-              grade={grade}
-              setGrade={setGrade}
-              frameworks={frameworks}
-              saving={savingClass}
-              onBack={() => setStep(1)}
-              onNext={saveClass}
-            />
-          ) : step === 3 ? (
-            <DocumentsStep cls={cls} onBack={() => setStep(2)} onNext={() => setStep(4)} />
-          ) : step === 4 ? (
-            <TipsStep onBack={() => setStep(3)} onNext={() => setStep(5)} />
-          ) : (
-            <DoneStep finishing={finishing} onFinish={finish} />
-          )}
+          <SmoothHeight>
+            <div key={step} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
+              {step === 0 ? (
+                <WelcomeStep onNext={() => goTo(1)} />
+              ) : step === 1 ? (
+                <SchoolStep
+                  school={school}
+                  setSchool={setSchool}
+                  schools={schools}
+                  schoolNeedsTemplate={schoolNeedsTemplate}
+                  templateFile={templateFile}
+                  setTemplateFile={setTemplateFile}
+                  templateFileRef={templateFileRef}
+                  saving={savingSchool}
+                  onBack={() => goTo(0)}
+                  onNext={saveSchool}
+                />
+              ) : step === 2 ? (
+                <ClassStep
+                  cls={cls}
+                  subject={subject}
+                  setSubject={setSubject}
+                  grade={grade}
+                  setGrade={setGrade}
+                  frameworks={frameworks}
+                  saving={savingClass}
+                  onBack={() => goTo(1)}
+                  onNext={saveClass}
+                />
+              ) : step === 3 ? (
+                <DocumentsStep cls={cls} onBack={() => goTo(2)} onNext={() => goTo(4)} />
+              ) : step === 4 ? (
+                <TipsStep onBack={() => goTo(3)} onNext={() => goTo(5)} />
+              ) : (
+                <DoneStep finishing={finishing} onFinish={finish} />
+              )}
+            </div>
+          </SmoothHeight>
         </div>
       </div>
     </div>
