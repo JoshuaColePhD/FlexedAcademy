@@ -179,11 +179,18 @@ export function WelcomePage() {
     }
   }
 
+  /* h-app, not min-h-app: index.html's <body> is overflow-hidden — every
+     page has to make its OWN content scrollable rather than relying on
+     document scroll, same reasoning as AuthLayout.jsx. Without max-h-full
+     + overflow-y-auto on the form itself, this card had no ceiling on its
+     own height, so a tall form (the "school isn't listed" panel expanded)
+     just clipped silently against the body's hard edge with no scrollbar
+     and no way to reach the rest of it. */
   return (
-    <div className="flex min-h-app w-full items-center justify-center bg-paper p-gutter">
+    <div className="flex h-app w-full items-center justify-center bg-paper p-gutter">
       <form
         onSubmit={submit}
-        className="flex w-full max-w-measure-form flex-col gap-7 rounded-2xl border border-edge bg-paper-raised p-8 md:p-10"
+        className="flex max-h-full w-full max-w-measure-form flex-col gap-7 overflow-y-auto rounded-2xl border border-edge bg-paper-raised p-8 md:p-10"
       >
         <div>
           <h1 className="text-2xl font-semibold tracking-display text-ink">Let’s set up your year</h1>
@@ -322,8 +329,16 @@ export function WelcomePage() {
           <span className="text-xs text-ink-muted">
             The course decides which standards get retrieved. It names itself from these two.
           </span>
-          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-start">
-            <div className="min-w-0 flex-1">
+          {/* Stacked, not sm:flex-row beside the grade select: FrameworkPicker's
+              own dropdown panel is only ever as wide as ITS column (a shared
+              component used on ClassPage too, so it isn't scoped to a wider
+              ancestor here) — side-by-side with the grade select left it
+              narrower than the "Open my year" button below, so the open panel
+              didn't fully cover that button and a sliver of it stayed visible
+              and legible through the gap. Full width top-to-bottom, the panel
+              exactly matches the button beneath it. */}
+          <div className="mt-1 flex flex-col gap-2">
+            <div className="min-w-0">
               <FrameworkPicker
                 frameworks={frameworks}
                 value={subject}
@@ -335,7 +350,7 @@ export function WelcomePage() {
               aria-label="Grade"
               value={grade}
               onChange={(e) => setGrade(e.target.value)}
-              className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-2.5 pr-8 text-sm text-ink outline-none focus:border-accent sm:w-24"
+              className="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-2.5 pr-8 text-sm text-ink outline-none focus:border-accent"
             >
               {GRADES.map((g) => (
                 <option key={g.value} value={g.value}>{g.label}</option>

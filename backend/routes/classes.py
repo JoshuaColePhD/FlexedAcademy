@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..deps import get_current_user
 from ..errors import AppError
+from ..schoolcal import NO_CALENDAR_SCHOOL_ID
 
 log = logging.getLogger("aplang.classes")
 
@@ -108,8 +109,16 @@ def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> d
     database table now (db.py migration 23), not a module constant a
     validator can close over. Same reasoning as curriculum.py's upload route
     checking class_id inline rather than via a validator.
+
+    NO_CALENDAR_SCHOOL_ID ('generic') is exempt: it's deliberately NOT a row
+    in `schools` (see WelcomePage.jsx's own comment on it, and schoolcal.py's
+    special-casing throughout) — it's the dateless fallback a teacher at an
+    unlisted school lands on. Without this exemption, finishing onboarding
+    with "My school isn't listed yet" selected failed every time with
+    "Unknown school," which was the actual dead end this sentinel was built
+    to avoid.
     """
-    if body.school is not None and not db.get_school(body.school):
+    if body.school is not None and body.school != NO_CALENDAR_SCHOOL_ID and not db.get_school(body.school):
         raise AppError("unknown_school", "Unknown school.", status=400)
     fields = body.model_dump(exclude_none=True)
     user = db.update_user(user_id, **fields) if fields else db.get_user_by_id(user_id)
@@ -143,8 +152,9 @@ def update_class_route(
         raise AppError("not_found", "That class doesn't exist.", status=404)
     # Checked here, in the handler body, not a validator — same reasoning as
     # MeBody's identical check just above: the valid set is the live `schools`
-    # table, not something a validator can close over.
-    if body.school is not None and not db.get_school(body.school):
+    # table, not something a validator can close over. Same NO_CALENDAR_SCHOOL_ID
+    # exemption as that check too — see its comment.
+    if body.school is not None and body.school != NO_CALENDAR_SCHOOL_ID and not db.get_school(body.school):
         raise AppError("unknown_school", "Unknown school.", status=400)
     updated = db.update_class(user_id, class_id, **body.model_dump(exclude_none=True))
     return updated  # type: ignore[return-value]

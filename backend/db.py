@@ -1139,6 +1139,26 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS auto_activated BOOLEAN NOT NULL DEFAULT false;
     """,
+
+    # ── 35: stop defaulting brand-new signups to Florence High School ────────
+    #
+    # Migration 22's DEFAULT 'florence-high-school' made sense when Florence
+    # was the only school in the app; it stopped making sense the moment other
+    # real schools existed (migration 23) and every signup — regardless of
+    # which school the teacher actually works at — silently started out
+    # assigned to Florence's real calendar and template, invisible in the UI
+    # (WelcomePage's picker starts blank) until onboarding overwrote it. A
+    # teacher who abandoned onboarding partway, or whose account got used
+    # before finishing it, was quietly impersonating a real school that
+    # wasn't theirs. 'generic' (schoolcal.NO_CALENDAR_SCHOOL_ID) is the
+    # correct neutral default: dateless "Week N" planning with no calendar
+    # attached, exactly what a not-yet-onboarded account should be.
+    #
+    # Existing rows are untouched — this only changes what a FUTURE insert
+    # gets when it omits `school` (db.create_user does exactly that).
+    """
+    ALTER TABLE users ALTER COLUMN school SET DEFAULT 'generic';
+    """,
 ]
 
 
@@ -1416,7 +1436,7 @@ def get_class(user_id: str, class_id: str) -> dict | None:
     return _row("SELECT * FROM classes WHERE id = ? AND user_id = ?", (class_id, user_id))
 
 
-def create_class(user_id: str, *, name: str, subject: str, grade: str) -> dict:
+def create_class(user_id: str, *, name: str, subject: str, grade: str, state: str | None = None) -> dict:
     class_id = new_id()
     row = _row("SELECT COALESCE(MAX(sort_order), -1) AS m FROM classes WHERE user_id = ?", (user_id,))
     # Stamped with the account's CURRENT default school, not left NULL — a
@@ -1425,8 +1445,8 @@ def create_class(user_id: str, *, name: str, subject: str, grade: str) -> dict:
     # later without that touching the account default other classes read.
     _write(
         """
-        INSERT INTO classes (id, user_id, name, subject, grade, school, sort_order, archived, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+        INSERT INTO classes (id, user_id, name, subject, grade, state, school, sort_order, archived, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
         """,
         (
             class_id,
@@ -1434,6 +1454,7 @@ def create_class(user_id: str, *, name: str, subject: str, grade: str) -> dict:
             name.strip()[:120],
             subject,
             str(grade),
+            state,
             get_user_school(user_id),
             int(row["m"]) + 1,
             now(),
