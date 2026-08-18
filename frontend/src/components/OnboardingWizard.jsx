@@ -90,6 +90,13 @@ function SmoothHeight({ children }) {
         height: height === null ? 'auto' : `${height}px`,
         transition: 'height 260ms cubic-bezier(0.4, 0, 0.2, 1)',
         overflow: 'hidden',
+        // The panel above this is a flex column with its own overflow-y-auto
+        // and a shrinking max-height (calc(100vh-4rem)). Without this, a flex
+        // child's explicit height is only a *basis* — the browser was free to
+        // squeeze it below its set height to fit the panel on a short
+        // viewport, clipping the bottom of whichever step (and its Continue
+        // button) rather than letting the panel scroll to it.
+        flexShrink: 0,
       }}
     >
       <div ref={contentRef}>{children}</div>
