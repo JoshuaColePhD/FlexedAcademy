@@ -201,7 +201,13 @@ export function OnboardingWizard({ open, onClose, cls }) {
       >
         <div className="onboarding-blob" aria-hidden="true" />
         <div
-          className={`dialog neo-panel relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto rounded-2xl border border-white/5 bg-paper-raised/30 p-8 shadow-inner shadow-white/5 backdrop-blur-3xl saturate-[1.2]${closing ? ' is-closing' : ''}`}
+          // bg-paper-raised/30 (PlansPage's own glass recipe) read fine over a
+          // quiet page; stacked with .dialog-scrim's own translucency behind a
+          // moving multi-hue blob AND the real page content, it left welcome
+          // text nearly unreadable, worst in bright light on a phone. /90 keeps
+          // the blur/saturate glass character at the rounded edges and corners
+          // without sacrificing the one thing a dialog can't compromise on.
+          className={`dialog neo-panel relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto rounded-2xl border border-white/10 bg-paper-raised/90 p-8 shadow-lg backdrop-blur-3xl saturate-[1.2]${closing ? ' is-closing' : ''}`}
         >
           <button
             type="button"
