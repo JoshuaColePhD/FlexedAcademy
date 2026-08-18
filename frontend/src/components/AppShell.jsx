@@ -11,7 +11,6 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
 import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 
@@ -313,12 +312,7 @@ export function AppShell({ children }) {
         (landing, login/signup) keep their own separate fixed world
         (.auth-ground) — a different deliberate brand system, not this
         one, and AppShell never wraps them anyway. */}
-    <motion.div 
-      initial={{ x: '100%', opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200, mass: 0.8 }}
-      className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper font-sans text-ink"
-    >
+    <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper font-sans text-ink">
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
         href="#main"
@@ -417,7 +411,7 @@ export function AppShell({ children }) {
         ) : null}
         <div className="min-h-0 flex-1">{children}</div>
       </div>
-    </motion.div>
+    </div>
     </ShellContext.Provider>
   )
 }
