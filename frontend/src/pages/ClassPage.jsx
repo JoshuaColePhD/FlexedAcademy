@@ -139,7 +139,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
             type="button"
             onClick={onCancel}
             aria-label="Cancel"
-            className="neo-raised rounded-lg p-2.5 text-ink-muted transition-colors hover:text-ink"
+            className="neo-raised rounded-lg bg-paper-raised p-2.5 text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
           >
             <X size={15} aria-hidden="true" />
           </button>
@@ -281,7 +281,7 @@ export function ClassDocuments({ cls, onChanged }) {
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
+          className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
         >
           {uploading ? (
             <Loader2 size={13} className="animate-spin" aria-hidden="true" />
@@ -644,7 +644,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
                 setEditGrade(cls.grade || '11')
                 setEditSchool(cls.school || '')
               }}
-              className="neo-raised rounded-lg px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
+              className="neo-raised rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
             >
               Cancel
             </button>
@@ -690,7 +690,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
           <button
             type="button"
             onClick={remove}
-            className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
+            className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
           >
             <Trash2 size={14} aria-hidden="true" />
             Delete Class
