@@ -888,11 +888,11 @@ export function SettingsPage() {
 
       {/* Right Content Area (Detail) */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex md:hidden h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-4 backdrop-blur-sm z-10 gap-3">
+        <header className="flex md:hidden h-14 shrink-0 items-center border-b border-edge bg-paper px-4 z-10 gap-3">
           <Link to="/" className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"><ArrowLeft size={16}/></Link>
           <div className="text-sm font-semibold text-ink truncate">{TABS.find(t => t.id === activeTab)?.label}</div>
         </header>
-        <header className="hidden md:flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm z-10">
+        <header className="hidden md:flex h-14 shrink-0 items-center border-b border-edge bg-paper px-8 z-10">
           <div className="text-sm font-medium text-ink-muted">
             {TABS.find(t => t.id === activeTab)?.label}
           </div>

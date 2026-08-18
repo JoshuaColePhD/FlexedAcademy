@@ -954,7 +954,7 @@ export function ClassPage() {
 
       {/* Right Content Area (Detail) */}
       <div className={`flex-1 min-w-0 flex flex-col ${!activeClass ? 'hidden md:flex' : ''}`}>
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-edge bg-paper/80 px-4 md:px-8 backdrop-blur-sm">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-edge bg-paper px-4 md:px-8 z-10">
           {/* "/", not "/c" — every route this page's sibling routes live under is
               "/c/:classId/*" (see App.jsx's ClassRoutes), so a bare "/c" was never
               a registered route and 404'd. There's no classless "list" URL to

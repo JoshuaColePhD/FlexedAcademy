@@ -220,7 +220,7 @@ export function PlansPage() {
 
   return (
     <div className="column bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-      <header className="flex h-14 shrink-0 items-center justify-between px-gutter">
+      <header className="flex h-14 shrink-0 items-center justify-between px-gutter bg-paper border-b border-edge z-10">
         <h1 className="text-sm font-semibold text-ink">
           Library{activeClass?.name ? ` — ${activeClass.name}` : ''}
         </h1>
