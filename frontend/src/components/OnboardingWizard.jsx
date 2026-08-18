@@ -247,7 +247,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
       onMouseDown={(e) => e.target === e.currentTarget && finish()}
     >
       <div
-        className={`relative flex max-h-[calc(100vh-4rem)] w-[min(560px,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border border-edge bg-paper p-8 shadow-2xl${closing ? ' is-closing' : ''}`}
+        className={`relative flex max-h-[calc(100vh-4rem)] w-full max-w-2xl flex-col overflow-y-auto rounded-3xl border border-edge bg-paper p-10 shadow-2xl${closing ? ' is-closing' : ''}`}
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
@@ -310,14 +310,14 @@ export function OnboardingWizard({ open, onClose, cls }) {
 
 function StepHeader({ eyebrow, title, body }) {
   return (
-    <div className="mb-6">
+    <div className="mb-8">
       {eyebrow ? (
-        <p className="text-2xs font-medium uppercase tracking-wide text-accent-text">{eyebrow}</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-accent-text">{eyebrow}</p>
       ) : null}
-      <h2 id="onboarding-title" className="mt-1 flex items-center gap-2 text-xl font-semibold tracking-display text-ink">
+      <h2 id="onboarding-title" className="mt-2 flex items-center gap-2 text-3xl font-bold tracking-display text-ink">
         {title}
       </h2>
-      {body ? <p className="mt-1.5 text-sm text-ink-muted">{body}</p> : null}
+      {body ? <p className="mt-3 text-base text-ink-muted leading-relaxed">{body}</p> : null}
     </div>
   )
 }
