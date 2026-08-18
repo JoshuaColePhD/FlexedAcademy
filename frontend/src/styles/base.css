@@ -1815,6 +1815,7 @@
        panel width itself was fine, it was this collapsed sliver that was
        too thin to reliably see or click. */
     width: 22px;
+    height: 100%;
     transition: width var(--t-base) var(--ease-out);
   }
   .artifact-drawer.is-open {

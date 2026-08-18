@@ -60,7 +60,7 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
         value={value ?? ''}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="week-picker-select min-w-0 flex-1 truncate"
+        className="week-picker-select bg-paper-raised min-w-0 flex-1 truncate"
       >
         {/* Chats created before the week was pinned (db.py migration 24) have
             no week to show. Without an option matching value="" the browser

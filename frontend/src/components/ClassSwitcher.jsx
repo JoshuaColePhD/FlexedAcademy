@@ -111,8 +111,8 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
               // truncating. w-full makes it fill whatever width the parent's
               // shrink actually leaves it, so `truncate` on the name span
               // below has a real, definite box to ellipsize against.
-              'chat-week min-w-0 w-full max-w-[9rem] shrink rounded-md px-1 py-0.5 normal-case tracking-normal transition-colors hover:bg-paper-inset'
-            : 'flex min-h-touch w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-paper-inset'
+              'chat-week min-w-0 w-full max-w-[9rem] shrink rounded-md bg-paper-raised px-1 py-0.5 normal-case tracking-normal transition-colors hover:bg-paper-sunken'
+            : 'flex min-h-touch w-full items-center gap-2 rounded-lg bg-paper-raised px-2 py-1.5 text-left transition-colors hover:bg-paper-sunken'
         }
       >
         {activeClass ? (
