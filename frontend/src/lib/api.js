@@ -293,6 +293,8 @@ export const api = {
     request(`/api/admin/calendar-submissions/${encodeURIComponent(id)}/reject`, { method: 'POST' }),
   listPendingTemplates: ({ signal } = {}) =>
     request('/api/admin/school-templates/pending', { signal }),
+  listAutoActivatedTemplates: ({ signal } = {}) =>
+    request('/api/admin/school-templates/auto-activated', { signal }),
   adminActivateTemplate: (schoolId) =>
     request(`/api/admin/schools/${schoolId}/activate-template`, { method: 'POST' }),
   templateDownloadUrl: (templateId) => `/api/admin/school-templates/${templateId}/download`,

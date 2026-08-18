@@ -199,6 +199,14 @@ def activate_school_template_route(school_id: str, _admin: str = Depends(get_cur
     return {"status": "ok"}
 
 
+@router.get("/school-templates/auto-activated")
+def list_auto_activated_templates_route(_admin: str = Depends(get_current_admin)):
+    """The audit trail for template_intake._maybe_auto_activate — every
+    template that went active with no admin ever clicking anything, most
+    recent first."""
+    return {"templates": db.list_auto_activated_templates()}
+
+
 @router.get("/school-templates/{template_id}/analysis")
 def get_school_template_analysis_route(template_id: str, _admin: str = Depends(get_current_admin)):
     """Full detail behind one row of the pending-templates queue: the

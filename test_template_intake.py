@@ -322,6 +322,40 @@ else:
     scanned_path.unlink()
 
 
+# ---------------------------------------------------------------------------
+# 10. Auto-activation bar: only a genuinely unanimous result should pass.
+# ---------------------------------------------------------------------------
+
+clean_result = {
+    "status": "analyzed",
+    "findings": [],
+    "analysis": {
+        "sections": [{"name": "Objectives", "description": "d", "source_evidence": "e", "repeats_per_entry": False}],
+        "overall_confidence": 0.95,
+        "recommended_for_auto_use": True,
+    },
+}
+check("auto-activation bar: clean result passes", ti._meets_auto_activation_bar(clean_result))
+
+warned_result = dict(clean_result, status="analyzed_with_warnings")
+check("auto-activation bar: any non-'analyzed' status fails", not ti._meets_auto_activation_bar(warned_result))
+
+with_info_finding = dict(clean_result, findings=[{"stage": "x", "check_name": "y", "severity": "info", "message": "m"}])
+check(
+    "auto-activation bar: even an info-severity finding fails it (not just errors/warnings)",
+    not ti._meets_auto_activation_bar(with_info_finding),
+)
+
+low_confidence = dict(clean_result, analysis=dict(clean_result["analysis"], overall_confidence=0.5))
+check("auto-activation bar: low confidence fails", not ti._meets_auto_activation_bar(low_confidence))
+
+not_recommended = dict(clean_result, analysis=dict(clean_result["analysis"], recommended_for_auto_use=False))
+check("auto-activation bar: model not recommending auto-use fails", not ti._meets_auto_activation_bar(not_recommended))
+
+no_sections = dict(clean_result, analysis=dict(clean_result["analysis"], sections=[]))
+check("auto-activation bar: empty section list fails", not ti._meets_auto_activation_bar(no_sections))
+
+
 print()
 if failures:
     print(f"{len(failures)} check(s) failed: {failures}")

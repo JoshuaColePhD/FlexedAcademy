@@ -500,6 +500,7 @@ function SchoolsAdmin() {
 
       <PendingCalendarSubmissions />
       <PendingSchoolTemplates />
+      <AutoActivatedTemplates />
     </div>
   )
 }
@@ -775,6 +776,49 @@ function PendingSchoolTemplates() {
             </li>
           )
         })}
+      </ul>
+    </div>
+  )
+}
+
+function AutoActivatedTemplates() {
+  // The only place an auto-activated school is still visible as such — it
+  // no longer shows up in PendingSchoolTemplates once its status flips to
+  // 'active', so this is what lets an admin see what the pipeline decided
+  // on its own, after the fact, without needing to go looking for it.
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'schoolTemplates', 'autoActivated'],
+    queryFn: () => api.listAutoActivatedTemplates(),
+  })
+  const templates = data?.templates || []
+
+  if (isLoading || isError || !templates.length) return null
+
+  return (
+    <div className="mt-5 border-t border-edge pt-4">
+      <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        <ShieldCheck size={14} className="text-emerald-600" />
+        Auto-Activated Templates ({templates.length})
+      </h3>
+      <p className="mt-1 text-2xs text-ink-muted">
+        These went live automatically — every quality check passed with zero findings, so no admin review was
+        needed. Download and spot-check any of these if you want a second opinion.
+      </p>
+      <ul className="mt-2 divide-y divide-edge">
+        {templates.map((t) => (
+          <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+            <div>
+              <span className="font-medium text-ink">{t.school_name}</span>{' '}
+              <span className="text-2xs text-ink-muted">
+                uploaded by {t.uploader_name || t.uploader_email || t.uploaded_by} · activated{' '}
+                {new Date(t.analyzed_at || t.created_at).toLocaleDateString()}
+              </span>
+            </div>
+            <a href={api.templateDownloadUrl(t.id)} download className="btn text-2xs">
+              Download Doc
+            </a>
+          </li>
+        ))}
       </ul>
     </div>
   )

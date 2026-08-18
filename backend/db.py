@@ -1644,6 +1644,26 @@ def mark_template_auto_activated(template_id: str) -> None:
     _write("UPDATE school_templates SET auto_activated = true WHERE id = ?", (template_id,))
 
 
+def list_auto_activated_templates(limit: int = 20) -> list[dict]:
+    """The only place an auto-activated school is still visible as such —
+    it no longer appears in list_pending_school_templates once its
+    template_status flips to 'active', so this is what lets an admin see
+    what the pipeline decided on its own, after the fact, without needing
+    to go looking for it."""
+    return _rows(
+        """
+        SELECT st.*, s.name as school_name, u.name as uploader_name, u.email as uploader_email
+        FROM school_templates st
+        JOIN schools s ON st.school_id = s.id
+        LEFT JOIN users u ON st.uploaded_by = u.id
+        WHERE st.auto_activated = true
+        ORDER BY st.analyzed_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+
+
 def get_template_findings(template_id: str) -> list[dict]:
     return _rows(
         """

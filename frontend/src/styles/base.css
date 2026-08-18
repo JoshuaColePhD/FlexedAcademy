@@ -140,14 +140,15 @@
     z-index: -1;
     width: 100%;
     height: 100%;
-    /* Larger opacities and much larger radiuses spread across the entire 100vh pane */
-    background: radial-gradient(circle min(25vw, 400px) at 10% 20%, rgb(167 139 250 / 0.45) 0%, transparent 100%),
-      radial-gradient(circle min(22vw, 350px) at 85% 15%, rgb(244 114 182 / 0.4) 0%, transparent 100%),
-      radial-gradient(circle min(24vw, 380px) at 90% 80%, rgb(251 146 60 / 0.35) 0%, transparent 100%),
-      radial-gradient(circle min(26vw, 420px) at 45% 90%, rgb(52 211 153 / 0.35) 0%, transparent 100%),
-      radial-gradient(circle min(22vw, 350px) at 15% 70%, rgb(96 165 250 / 0.35) 0%, transparent 100%);
-    background-size: 200% 200%;
-    /* Keep it slow and subtle but the larger sizes make the drift highly noticeable */
+    /* Anchored closer to the center and slightly more opaque so they are visible through the glass panels more often */
+    background: radial-gradient(circle min(25vw, 400px) at 30% 30%, rgb(167 139 250 / 0.55) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 350px) at 70% 25%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
+      radial-gradient(circle min(24vw, 380px) at 75% 70%, rgb(251 146 60 / 0.45) 0%, transparent 100%),
+      radial-gradient(circle min(26vw, 420px) at 45% 75%, rgb(52 211 153 / 0.45) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 350px) at 25% 60%, rgb(96 165 250 / 0.45) 0%, transparent 100%);
+    /* Tighter background size so they don't drift completely off-screen */
+    background-size: 140% 140%;
+    /* Keep it slow and subtle */
     animation: land-blob-drift 26s ease-in-out infinite alternate;
     pointer-events: none;
   }
