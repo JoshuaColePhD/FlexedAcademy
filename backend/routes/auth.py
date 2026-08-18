@@ -77,6 +77,10 @@ def _public_user(user: dict) -> dict:
         # frontend refetches the account from after any settings change.
         "custom_instructions": user.get("custom_instructions"),
         "school": user.get("school"),
+        # NULL means the post-login onboarding wizard (OnboardingWizard.jsx)
+        # hasn't run for this account yet — AppShell reads this, not a
+        # separate GET, to decide whether to mount it.
+        "onboarding_seen_at": user.get("onboarding_seen_at"),
         "entitlement": entitlement(user["id"]).as_dict(),
     }
 
@@ -218,6 +222,18 @@ def me(user_id: str = Depends(get_current_user)):
     user = db.get_user_by_id(user_id)
     if not user:
         raise AppError("not_authenticated", "Not logged in.", status=401)
+    return _public_user(user)
+
+
+@router.post("/onboarding-seen")
+def mark_onboarding_seen_route(user_id: str = Depends(get_current_user)):
+    """Called once, when OnboardingWizard.jsx closes (finished OR skipped —
+    see db.mark_onboarding_seen's own comment on why those are the same
+    state). Idempotent, so a double-fire from a fast double-click costs
+    nothing."""
+    user = db.mark_onboarding_seen(user_id)
+    if not user:
+        raise AppError("not_found", "No such user.", status=404)
     return _public_user(user)
 
 

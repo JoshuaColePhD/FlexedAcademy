@@ -62,7 +62,7 @@ function gradeLabel(g) {
   return `${n}${suffix}`
 }
 
-const KIND_LABEL = {
+export const KIND_LABEL = {
   pacing_guide: 'Pacing guide',
   syllabus: 'Syllabus',
   curriculum_map: 'Curriculum map',
@@ -158,7 +158,7 @@ function AddClass({ frameworks, onCreated, onCancel }) {
 /* ── documents for one class ───────────────────────────────────────────────
    A class holds several: the old table allowed exactly one per framework, so
    uploading a syllabus silently deactivated the pacing guide. */
-function ClassDocuments({ cls, onChanged }) {
+export function ClassDocuments({ cls, onChanged }) {
   const confirm = useConfirm()
   const toast = useToast()
   const fileRef = useRef(null)

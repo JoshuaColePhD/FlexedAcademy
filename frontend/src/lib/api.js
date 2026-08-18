@@ -125,6 +125,9 @@ export const api = {
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
   loginWithGoogle: (credential) => request('/api/auth/google', { method: 'POST', body: { credential } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
+  /** Closes OnboardingWizard.jsx for good (finished OR skipped — see
+   *  backend's mark_onboarding_seen for why those are the same state). */
+  markOnboardingSeen: () => request('/api/auth/onboarding-seen', { method: 'POST' }),
   signOutEverywhere: () => request('/api/auth/sign_out_everywhere', { method: 'POST' }),
   deleteAccount: (password) =>
     request('/api/auth/delete_account', { method: 'POST', body: { password: password || null } }),

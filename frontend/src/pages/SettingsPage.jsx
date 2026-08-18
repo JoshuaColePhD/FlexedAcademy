@@ -14,6 +14,7 @@ import { useDesignSkin } from '../hooks/useDesignSkin'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { Tooltip } from '../components/Tooltip'
+import { openOnboardingWizard } from '../lib/onboardingWizardBus'
 
 /* Account-level settings — split out of ClassPage (which used to be "Classes &
  * settings", one page for two different things). Everything here is about the
@@ -1008,6 +1009,19 @@ export function SettingsPage() {
                     onChange={setHighContrast}
                   />
                 </div>
+              </section>
+
+              <section className="mb-8">
+                <div className="border-b border-edge pb-2 mb-4">
+                  <h3 className="text-sm font-semibold text-ink">Help</h3>
+                </div>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => openOnboardingWizard()}
+                >
+                  <Sparkles size={14} className="mr-1.5" aria-hidden="true" /> Take the tour again
+                </button>
               </section>
 
               <section>

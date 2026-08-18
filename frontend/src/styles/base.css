@@ -153,6 +153,30 @@
     pointer-events: none;
   }
 
+  /* Same wash as .app-blob, scoped to OnboardingWizard's own dialog instead
+     of the whole pane — on request, so the wizard reads as the same "place"
+     as the hero/center panel it's floating over (.dialog's neo-panel glass
+     already sits on top of it, same as PlansPage's glass column sits on top
+     of .app-blob). Positioned against the wizard's own `relative overflow-
+     hidden` wrapper, not the scrim, so it never bleeds past the dialog's
+     rounded corners. */
+  .onboarding-blob {
+    position: absolute;
+    inset: 0;
+    /* -1, not 0: the dialog panel beside it in markup is only position:
+       relative (no z-index of its own), which is enough to paint above a
+       NEGATIVE z-index sibling but not above a 0/auto one — same reasoning
+       as .app-blob under AppShell's #main. */
+    z-index: -1;
+    background: radial-gradient(circle min(40vw, 320px) at 20% 20%, rgb(167 139 250 / 0.55) 0%, transparent 100%),
+      radial-gradient(circle min(35vw, 280px) at 80% 15%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
+      radial-gradient(circle min(38vw, 300px) at 85% 80%, rgb(251 146 60 / 0.45) 0%, transparent 100%),
+      radial-gradient(circle min(40vw, 320px) at 15% 85%, rgb(52 211 153 / 0.45) 0%, transparent 100%);
+    background-size: 160% 160%;
+    animation: land-blob-drift 18s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+
   /* Liquid Glass: translucent, not flat-with-a-border — .app-glow above is
      what the blur actually diffuses. `saturate` is doing real work here, not
      just blur: backdrop-filter blur alone on a mostly-white panel muddies

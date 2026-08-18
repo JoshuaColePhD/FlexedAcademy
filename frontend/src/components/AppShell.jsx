@@ -1,15 +1,18 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
 import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
+import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { NARROW, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
+import { OnboardingWizard } from './OnboardingWizard'
+import { onOpenOnboardingWizard } from '../lib/onboardingWizardBus'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
@@ -263,6 +266,33 @@ function TemplateBanner() {
   )
 }
 
+/* Post-login guided setup (OnboardingWizard.jsx) — mounted here rather than
+ * on a specific page since it's meant to greet the account, not one route.
+ * Opens automatically once per account (gated on user.onboarding_seen_at,
+ * NULL meaning "never"), and again on demand via the event
+ * SettingsPage's "Take the tour again" link fires (onboardingWizardBus.js).
+ *
+ * `cls` picks the same class TemplateBanner does when there's a classId in
+ * the URL, falling back to the account's first class otherwise (e.g. a
+ * forced reopen from /settings, which has no classId) — there is nothing
+ * to confirm or upload against without one, so this renders nothing until a
+ * class exists.
+ */
+function OnboardingWizardHost() {
+  const { user } = useAuth()
+  const { classId } = useParams()
+  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
+  const [forcedOpen, setForcedOpen] = useState(false)
+
+  useEffect(() => onOpenOnboardingWizard(() => setForcedOpen(true)), [])
+
+  const cls = classes.find((c) => c.id === classId) || classes[0]
+  const autoOpen = !!user && !user.onboarding_seen_at && !!cls
+  const open = forcedOpen || autoOpen
+
+  return <OnboardingWizard open={open} cls={cls} onClose={() => setForcedOpen(false)} />
+}
+
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -387,6 +417,7 @@ export function AppShell({ children }) {
             either of those. */}
         <div className="app-blob" aria-hidden="true" />
         <TemplateBanner />
+        <OnboardingWizardHost />
         {isNarrow ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button

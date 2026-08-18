@@ -1159,6 +1159,18 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ALTER COLUMN school SET DEFAULT 'generic';
     """,
+
+    # ── 36: the post-login onboarding wizard ──────────────────────────────────
+    #
+    # NULL means "never seen it" — the only state that matters for gating
+    # whether AppShell mounts the wizard. There's no separate "dismissed"
+    # vs "completed" distinction: skipping every step and finishing every
+    # step both mean the same thing here, "don't show this again
+    # automatically" — SettingsPage's "Take the tour again" link is the
+    # deliberate re-entry point for anyone who wants it back.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_seen_at TEXT;
+    """,
 ]
 
 
@@ -2964,6 +2976,16 @@ def update_user(user_id: str, **fields: Any) -> dict | None:
         # Push the new name onto every class's settings row so plan headers follow.
         for cls in list_classes(user_id):
             sync_settings_from_class(user_id, cls["id"])
+    return get_user_by_id(user_id)
+
+
+def mark_onboarding_seen(user_id: str) -> dict | None:
+    """Stamps NOW rather than a bare boolean — 'when' is worth having if this
+    ever needs a one-time re-prompt for a redesigned wizard later (compare
+    against a new "wizard version" cutoff), which a plain flag can't answer.
+    Idempotent: re-marking an already-seen account just moves the timestamp
+    forward, which is harmless since nothing reads it as a first-seen date."""
+    _write("UPDATE users SET onboarding_seen_at = ? WHERE id = ?", (now(), user_id))
     return get_user_by_id(user_id)
 
 
