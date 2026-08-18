@@ -255,6 +255,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
         aria-labelledby="onboarding-title"
         style={{ width: 'min(560px, calc(100vw - 2rem))', maxHeight: 'calc(100vh - 4rem)' }}
       >
+        <div className="onboarding-blob" aria-hidden="true" />
         <div
           // bg-paper-raised/30 (PlansPage's own glass recipe) read fine over a
           // quiet page; stacked with .dialog-scrim's own translucency, the
@@ -279,7 +280,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
           </button>
 
           <SmoothHeight>
-            <div key={step} className="onboarding-step pb-2" style={{ '--onboarding-dir': direction }}>
+            <div key={step} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
               {step === 0 ? (
                 <WelcomeStep onNext={() => goTo(1)} />
               ) : step === 1 ? (
@@ -316,8 +317,6 @@ export function OnboardingWizard({ open, onClose, cls }) {
               )}
             </div>
           </SmoothHeight>
-          {/* Explicit spacer to prevent flexbox overflow-y-auto padding clipping */}
-          <div className="h-4 shrink-0" />
         </div>
       </div>
     </div>

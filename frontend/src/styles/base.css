@@ -121,6 +121,76 @@
      .app-glow existed only to light that glass; removed along with it
      rather than left as a blurred blob with nothing left to diffuse. */
 
+  /* Was a single static blurred circle (.chat-glow) — replaced on request
+     with the landing hero's own aurora wash (see .land-blob) scoped down to
+     the app pane instead of the viewport, so the app's main column carries
+     the same drifting, multi-hue atmosphere the marketing hero does rather
+     than a different, quieter effect. Same technique for the same WebKit
+     reason: layered radial gradients that already fade to transparent, no
+     filter: blur() forcing a backing layer that tiles on scroll. Lower
+     opacities than .land-blob's — this sits directly behind real UI a
+     teacher reads and clicks through, not an otherwise-empty hero, so it
+     has to stay atmosphere rather than compete with content. Positioned
+     against #main (AppShell.jsx), which is already `relative` + `overflow-
+     hidden`, so no isolation/contain of its own is needed here. */
+  .app-blob {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    /* Anchored closer to the center and slightly more opaque so they are visible through the glass panels more often */
+    background: radial-gradient(circle min(25vw, 400px) at 30% 30%, rgb(167 139 250 / 0.55) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 350px) at 70% 25%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
+      radial-gradient(circle min(24vw, 380px) at 75% 70%, rgb(251 146 60 / 0.45) 0%, transparent 100%),
+      radial-gradient(circle min(26vw, 420px) at 45% 75%, rgb(52 211 153 / 0.45) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 350px) at 25% 60%, rgb(96 165 250 / 0.45) 0%, transparent 100%);
+    /* Tighter background size so they don't drift completely off-screen */
+    background-size: 140% 140%;
+    /* Slightly faster than before but still slow and subtle */
+    animation: land-blob-drift 18s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+
+  /* Same wash as .app-blob, scoped to OnboardingWizard's own dialog instead
+     of the whole pane — on request, so the wizard reads as the same "place"
+     as the hero/center panel it's floating over (.dialog's neo-panel glass
+     already sits on top of it, same as PlansPage's glass column sits on top
+     of .app-blob). Positioned against the wizard's own `relative overflow-
+     hidden` wrapper, not the scrim, so it never bleeds past the dialog's
+     rounded corners. */
+  .onboarding-blob {
+    position: absolute;
+    inset: 0;
+    /* -1, not 0: the dialog panel beside it in markup is only position:
+       relative (no z-index of its own), which is enough to paint above a
+       NEGATIVE z-index sibling but not above a 0/auto one — same reasoning
+       as .app-blob under AppShell's #main. */
+    z-index: -1;
+    /* The four circles below all fade to transparent at their own edges —
+       between them (and there's real gap, four circles never tile edge to
+       edge) there was nothing but the dialog-scrim's own translucency and,
+       past that, the real page underneath. backdrop-filter on the panel in
+       front is supposed to blur that away regardless, but on a device with
+       Reduce Transparency on, in Low Power Mode, or just a weaker GPU, that
+       blur can render weaker than expected or not at all — and the panel
+       was still translucent enough (before this) that a stray "Good
+       evening" showed straight through the gaps, blur or no blur. A solid
+       base color under the gradients means there is never a truly empty
+       pixel here for the real page to occupy, independent of whether the
+       blur actually renders on a given device. */
+    background: radial-gradient(circle min(40vw, 320px) at 20% 20%, rgb(167 139 250 / 0.55) 0%, transparent 100%),
+      radial-gradient(circle min(35vw, 280px) at 80% 15%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
+      radial-gradient(circle min(38vw, 300px) at 85% 80%, rgb(251 146 60 / 0.45) 0%, transparent 100%),
+      radial-gradient(circle min(40vw, 320px) at 15% 85%, rgb(52 211 153 / 0.45) 0%, transparent 100%),
+      rgb(var(--paper-raised-rgb) / 0.92);
+    /* One size per gradient image layer — the trailing plain color above is
+       background-color, not a fifth sizeable image layer. */
+    background-size: 160% 160%;
+    animation: land-blob-drift 18s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
 
   /* One step's content sliding in past the last — --onboarding-dir is +1
      going forward, -1 going back (OnboardingWizard.jsx's own `direction`
@@ -4193,91 +4263,7 @@
       inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.65),
       inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.85);
   }
-  :root:not([data-skin='skeu']) .neo-panel {
-    position: relative;
-    isolation: isolate;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    border: none !important;
-    box-shadow:
-      12px 12px 28px rgb(var(--neo-dark-rgb) / 0.55),
-      -12px -12px 28px rgb(var(--neo-light-rgb) / 0.85);
-  }
-
-  :root:not([data-skin='skeu']) .neo-panel::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -2;
-    background: radial-gradient(circle min(40vw, 320px) at 20% 20%, rgb(167 139 250 / 0.55) 0%, transparent 100%),
-      radial-gradient(circle min(35vw, 280px) at 80% 15%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
-      radial-gradient(circle min(38vw, 300px) at 85% 80%, rgb(251 146 60 / 0.45) 0%, transparent 100%),
-      radial-gradient(circle min(40vw, 320px) at 15% 85%, rgb(52 211 153 / 0.45) 0%, transparent 100%),
-      rgb(var(--paper-raised-rgb) / 0.92);
-    background-size: 160% 160%;
-    animation: land-blob-drift 18s ease-in-out infinite alternate;
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  :root:not([data-skin='skeu']) .neo-panel::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: rgb(var(--paper-raised-rgb) / 0.65);
-    backdrop-filter: blur(24px) saturate(1.2);
-    -webkit-backdrop-filter: blur(24px) saturate(1.2);
-    border-radius: inherit;
-    pointer-events: none;
-    border: 1px solid rgb(255 255 255 / 0.1);
-  }
-
-  :root:not([data-skin='skeu']) .btn-blob {
-    position: relative;
-    isolation: isolate;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    border: none !important;
-  }
-
-  :root:not([data-skin='skeu']) .btn-blob::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -2;
-    background: radial-gradient(circle min(25vw, 60px) at 20% 20%, rgb(167 139 250 / 0.65) 0%, transparent 100%),
-      radial-gradient(circle min(20vw, 50px) at 80% 15%, rgb(244 114 182 / 0.6) 0%, transparent 100%),
-      radial-gradient(circle min(22vw, 55px) at 85% 80%, rgb(251 146 60 / 0.55) 0%, transparent 100%),
-      radial-gradient(circle min(25vw, 60px) at 15% 85%, rgb(52 211 153 / 0.55) 0%, transparent 100%),
-      rgb(var(--paper-raised-rgb) / 0.85);
-    background-size: 200% 200%;
-    animation: land-blob-drift 8s ease-in-out infinite alternate;
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  :root:not([data-skin='skeu']) .btn-blob::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: rgb(var(--paper-raised-rgb) / 0.5);
-    backdrop-filter: blur(12px) saturate(1.2);
-    -webkit-backdrop-filter: blur(12px) saturate(1.2);
-    border-radius: inherit;
-    pointer-events: none;
-    border: 1px solid rgb(255 255 255 / 0.2);
-    transition: background var(--t-fast) var(--ease);
-  }
-  
-  :root:not([data-skin='skeu']) .btn-blob:hover::after {
-    background: rgb(var(--paper-sunken-rgb) / 0.6);
-  }
-
-  :root[data-skin='skeu'] .neo-panel {
+  .neo-panel {
     box-shadow:
       12px 12px 28px rgb(var(--neo-dark-rgb) / 0.55),
       -12px -12px 28px rgb(var(--neo-light-rgb) / 0.85);

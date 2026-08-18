@@ -201,7 +201,7 @@ function CustomCapEditor({ account }) {
    Plain divs, not a chart: this is a glance, not an analysis. */
 function StatCard({ label, value }) {
   return (
-    <div className="rounded-xl border border-edge bg-paper-inset p-3">
+    <div className="neo-world neo-panel rounded-xl p-3">
       <p className="text-2xs font-medium uppercase tracking-wide text-ink-muted">{label}</p>
       <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
     </div>
@@ -250,7 +250,7 @@ function UsageTrendChart() {
   const max = Math.max(...weeks.map((w) => w.tokens), 1)
 
   return (
-    <div className="mb-6 rounded-xl border border-edge bg-paper-inset p-4">
+    <div className="neo-world neo-panel mb-6 rounded-xl p-4">
       <p className="text-sm font-semibold text-ink">Weekly usage</p>
       <p className="mt-0.5 text-2xs text-ink-muted">
         Tokens across every account, by week — {weeks.length} week{weeks.length === 1 ? '' : 's'}.
@@ -290,7 +290,7 @@ function StandardsCheckSection() {
   const flagged = data?.flagged ?? []
 
   return (
-    <div className="mt-8 rounded-xl border border-edge bg-paper-inset p-4">
+    <div className="neo-world neo-panel mt-8 rounded-xl p-4">
       <div className="flex items-center gap-2">
         <ShieldCheck size={16} aria-hidden="true" className="text-ink-muted" />
         <h2 className="text-sm font-semibold text-ink">Standards check</h2>
@@ -440,7 +440,7 @@ function SchoolsAdmin() {
   }
 
   return (
-    <div className="mt-8 rounded-xl border border-edge bg-paper-inset p-4">
+    <div className="neo-world neo-panel mt-8 rounded-xl p-4">
       <h2 className="text-sm font-semibold text-ink">Schools</h2>
       <p className="mt-1 text-2xs text-ink-muted">
         Add <code>backend/context/calendars/&lt;id&gt;.md</code> and commit it before registering
@@ -1022,7 +1022,7 @@ export function AdminPage() {
   }
 
   return (
-    <div className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-app sm:flex-row">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
       
       {/* Left Sidebar */}
       <div className="hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
@@ -1060,17 +1060,16 @@ export function AdminPage() {
       </div>
 
       {/* Right Content Area */}
-      <div className="flex min-w-0 flex-1 p-2 pl-0 sm:py-2 sm:pr-2">
-        <div className="neo-world neo-panel relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl shadow-neo">
-          <header className="flex md:hidden h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-4 backdrop-blur-sm z-10 gap-3">
-            <Link to="/" className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"><ArrowLeft size={16}/></Link>
-            <div className="text-sm font-semibold text-ink truncate">{tabs.find(t => t.id === activeTab)?.label}</div>
-          </header>
-          <header className="hidden md:flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm z-10">
-            <div className="text-sm font-medium text-ink-muted">
-              {tabs.find(t => t.id === activeTab)?.label}
-            </div>
-          </header>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="flex md:hidden h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-4 backdrop-blur-sm z-10 gap-3">
+          <Link to="/" className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"><ArrowLeft size={16}/></Link>
+          <div className="text-sm font-semibold text-ink truncate">{tabs.find(t => t.id === activeTab)?.label}</div>
+        </header>
+        <header className="hidden md:flex h-14 shrink-0 items-center border-b border-edge bg-paper/80 px-8 backdrop-blur-sm z-10">
+          <div className="text-sm font-medium text-ink-muted">
+            {tabs.find(t => t.id === activeTab)?.label}
+          </div>
+        </header>
 
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 py-8 scroll-smooth">
           <div className="w-full max-w-6xl flex flex-col gap-16 pb-32">
@@ -1184,7 +1183,7 @@ export function AdminPage() {
                   ) : (
                     <>
                       <div className="hidden lg:block">
-                        <div className="overflow-x-auto rounded-xl border border-edge bg-paper-inset">
+                        <div className="neo-world neo-panel overflow-x-auto rounded-xl">
                           <table className="w-full text-sm whitespace-nowrap">
                             <thead>
                               <tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted">
@@ -1261,7 +1260,7 @@ export function AdminPage() {
 
                       <ul className="flex flex-col gap-3 lg:hidden">
                         {sorted.map((a) => (
-                          <li key={a.id} className="rounded-xl border border-edge bg-paper-inset p-3">
+                          <li key={a.id} className="neo-world neo-panel rounded-xl p-3">
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex min-w-0 items-start gap-2">
                                 <input
@@ -1341,7 +1340,6 @@ export function AdminPage() {
             </div>
 
           </div>
-        </div>
         </div>
       </div>
     </div>
