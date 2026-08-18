@@ -246,36 +246,17 @@ export function OnboardingWizard({ open, onClose, cls }) {
       style={{ position: 'absolute' }}
       onMouseDown={(e) => e.target === e.currentTarget && finish()}
     >
-      {/* Same floating multi-hue wash as .app-blob (AppShell's own background),
-          scoped to this dialog instead of the whole pane — the wizard is meant
-          to feel like the same "place" as the hero/center panel, not a flatter
-          system dialog dropped on top of it. */}
       <div
-        className="relative overflow-hidden rounded-2xl"
+        className={`relative flex max-h-[calc(100vh-4rem)] w-[min(560px,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border border-edge bg-paper p-8 shadow-2xl${closing ? ' is-closing' : ''}`}
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="onboarding-title"
-        style={{ width: 'min(560px, calc(100vw - 2rem))', maxHeight: 'calc(100vh - 4rem)' }}
       >
-        <div className="onboarding-blob" aria-hidden="true" />
-        <div
-          // bg-paper-raised/30 (PlansPage's own glass recipe) read fine over a
-          // quiet page; stacked with .dialog-scrim's own translucency, the
-          // real page underneath showed straight through the gaps between
-          // .onboarding-blob's own circles (see that rule's own comment) —
-          // not something raising this element's own opacity alone could
-          // ever fully fix, since the leak was behind it, not in it. Now
-          // that .onboarding-blob has a solid base fill of its own, /65 here
-          // is a real middle ground: still translucent enough to show the
-          // blob's colour through the glass, opaque enough that nothing
-          // behind ever has a legibility fight with the text in front of it.
-          className={`dialog neo-panel relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto rounded-2xl border border-white/10 bg-paper-raised/65 p-8 shadow-lg backdrop-blur-3xl saturate-[1.2]${closing ? ' is-closing' : ''}`}
-        >
-          <button
-            type="button"
-            className="btn-icon absolute right-4 top-4"
+        <button
+          type="button"
+          className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
             onClick={finish}
             aria-label="Close"
             title="Skip for now"
@@ -322,7 +303,6 @@ export function OnboardingWizard({ open, onClose, cls }) {
               )}
             </div>
           </SmoothHeight>
-        </div>
       </div>
     </div>
   )
@@ -355,7 +335,7 @@ function WelcomeStep({ onNext }) {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="button" 
-          className="btn btn-primary fa-press ml-auto" 
+          className="neo-raised btn-blob fa-press ml-auto inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink" 
           onClick={onNext}
         >
           Get started <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
@@ -421,7 +401,7 @@ function SchoolStep({
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary fa-press" onClick={onNext} disabled={saving}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink fa-press ml-auto" onClick={onNext} disabled={saving}>
           {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
           {saving ? 'Saving…' : 'Continue'}
         </motion.button>
@@ -482,7 +462,7 @@ function DocumentsStep({ cls, onBack, onNext }) {
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary fa-press ml-auto" onClick={onNext}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink fa-press ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
       </div>
@@ -520,7 +500,7 @@ function TipsStep({ onBack, onNext }) {
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary fa-press ml-auto" onClick={onNext}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink fa-press ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
       </div>
@@ -553,7 +533,7 @@ function DoneStep({ finishing, onFinish }) {
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         type="button"
-        className="btn btn-primary fa-press mt-8 w-full justify-center py-2.5 text-base"
+        className="neo-raised btn-blob fa-press mt-8 inline-flex w-full justify-center items-center gap-2 rounded-xl py-3 text-base font-semibold text-ink"
         onClick={onFinish}
         disabled={finishing}
       >
