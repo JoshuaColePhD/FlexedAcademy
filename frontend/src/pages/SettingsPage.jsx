@@ -14,6 +14,7 @@ import { useDesignSkin } from '../hooks/useDesignSkin'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { Tooltip } from '../components/Tooltip'
+import { AccountMenu } from '../components/AccountMenu'
 import { openOnboardingWizard } from '../lib/onboardingWizardBus'
 
 /* Account-level settings — split out of ClassPage (which used to be "Classes &
@@ -747,6 +748,8 @@ export function SettingsPage() {
   const qc = useQueryClient()
   const toast = useToast()
   const navigate = useNavigate()
+  const { classId } = useParams()
+  const classPath = classId ? `/c/${classId}` : ''
   const meState = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
 
   const [teacher, setTeacher] = useState('')
@@ -857,6 +860,9 @@ export function SettingsPage() {
               </button>
             ))}
           </nav>
+        </div>
+        <div className="shrink-0 pb-2">
+          <AccountMenu classPath={classPath} />
         </div>
       </div>
 
