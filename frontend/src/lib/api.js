@@ -296,6 +296,10 @@ export const api = {
   adminActivateTemplate: (schoolId) =>
     request(`/api/admin/schools/${schoolId}/activate-template`, { method: 'POST' }),
   templateDownloadUrl: (templateId) => `/api/admin/school-templates/${templateId}/download`,
+  getTemplateAnalysis: (templateId, { signal } = {}) =>
+    request(`/api/admin/school-templates/${encodeURIComponent(templateId)}/analysis`, { signal }),
+  reanalyzeTemplate: (templateId) =>
+    request(`/api/admin/school-templates/${encodeURIComponent(templateId)}/reanalyze`, { method: 'POST' }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
 

@@ -1086,6 +1086,45 @@ MIGRATIONS: list[str] = [
       ('zion-chapel-high-school', 'Zion Chapel High School', '2026-08-17T00:00:00+00:00')
     ON CONFLICT (id) DO NOTHING;
     """,
+
+    # ── 33: automated structural analysis of uploaded lesson-plan templates ──
+    #
+    # A school_templates row used to mean "a file is sitting on disk, waiting
+    # for an admin to eyeball it and hand-write a builder script." These
+    # columns let an automated pipeline (template_intake.py) record what it
+    # found before a human ever opens the file: analysis_status tracks where
+    # a given upload is in that pipeline (independent of schools.template_status,
+    # which is the human's final "yes, use this" switch); structure_json is the
+    # deterministic, format-specific extraction (headings, tables, fonts —
+    # never the LLM's word); analysis_summary is the LLM's structured read of
+    # that extraction; analysis_error holds the message when either stage
+    # raised, so a failed analysis is visible instead of just... missing.
+    #
+    # school_template_findings is the per-check ledger — one row per quality
+    # check the pipeline ran, pass or fail, rather than collapsing everything
+    # into one status flag. An admin reviewing a template can see exactly
+    # which checks passed, which merely warned, and which failed outright,
+    # instead of trusting a single boolean that something somewhere was wrong.
+    """
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT 'pending';
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS structure_json TEXT;
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS analysis_summary TEXT;
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS analysis_error TEXT;
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS analyzed_at TEXT;
+
+    CREATE TABLE IF NOT EXISTS school_template_findings (
+        id          TEXT PRIMARY KEY,
+        template_id TEXT NOT NULL REFERENCES school_templates(id) ON DELETE CASCADE,
+        stage       TEXT NOT NULL,
+        check_name  TEXT NOT NULL,
+        severity    TEXT NOT NULL,
+        message     TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    );
+    ALTER TABLE school_template_findings ENABLE ROW LEVEL SECURITY;
+    CREATE INDEX IF NOT EXISTS idx_school_template_findings_template
+        ON school_template_findings(template_id);
+    """,
 ]
 
 
@@ -1529,6 +1568,74 @@ def get_latest_school_template(school_id: str) -> dict | None:
         LIMIT 1
         """,
         (school_id,)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Template structural analysis — see migration 33's comment for the shape.
+# ---------------------------------------------------------------------------
+
+
+def set_template_analysis_status(template_id: str, status: str) -> None:
+    """Marks a template 'analyzing' before the pipeline starts, so a template
+    stuck mid-run (worker crash, deploy) reads as 'analyzing' rather than
+    silently 'pending' forever — visibly different from "never started"."""
+    _write(
+        "UPDATE school_templates SET analysis_status = ? WHERE id = ?",
+        (status, template_id),
+    )
+
+
+def save_template_analysis(
+    template_id: str,
+    *,
+    status: str,
+    structure_json: str | None,
+    analysis_summary: str | None,
+    analysis_error: str | None = None,
+) -> dict:
+    """Terminal write for one analysis run — always sets analyzed_at, even
+    for a 'failed' outcome, since 'when did we last try' matters as much as
+    the result for an admin deciding whether to re-run it."""
+    _write(
+        """
+        UPDATE school_templates
+        SET analysis_status = ?, structure_json = ?, analysis_summary = ?,
+            analysis_error = ?, analyzed_at = ?
+        WHERE id = ?
+        """,
+        (status, structure_json, analysis_summary, analysis_error, now(), template_id),
+    )
+    return get_school_template(template_id)  # type: ignore[return-value]
+
+
+def replace_template_findings(template_id: str, findings: list[dict]) -> None:
+    """Wipes and rewrites the finding ledger for one template per analysis
+    run — findings describe the CURRENT file's current analysis, not a
+    history, so a re-analysis (a corrected template re-uploaded, or a manual
+    re-run) should not leave stale findings from a previous run behind."""
+    _write("DELETE FROM school_template_findings WHERE template_id = ?", (template_id,))
+    for f in findings:
+        _write(
+            """
+            INSERT INTO school_template_findings
+                (id, template_id, stage, check_name, severity, message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (new_id(), template_id, f["stage"], f["check_name"], f["severity"], f["message"], now()),
+        )
+
+
+def get_template_findings(template_id: str) -> list[dict]:
+    return _rows(
+        """
+        SELECT * FROM school_template_findings
+        WHERE template_id = ?
+        ORDER BY
+            CASE severity WHEN 'error' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+            stage, created_at
+        """,
+        (template_id,),
     )
 
 

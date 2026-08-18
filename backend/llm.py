@@ -25,7 +25,16 @@ from .config import settings
 from .errors import AppError
 from .prompts import day_field_system_prompt, day_system_prompt, week_system_prompt
 from .retrieval import RetrievalResult
-from .schema import CALENDAR_JSON_SCHEMA, DAY_JSON_SCHEMA, PLAN_JSON_SCHEMA, QUIZ_JSON_SCHEMA, field_json_schema, loads_lenient
+from .schema import (
+    CALENDAR_JSON_SCHEMA,
+    DAY_JSON_SCHEMA,
+    PLAN_JSON_SCHEMA,
+    QUIZ_JSON_SCHEMA,
+    TEMPLATE_ANALYSIS_JSON_SCHEMA,
+    TEMPLATE_VERIFICATION_JSON_SCHEMA,
+    field_json_schema,
+    loads_lenient,
+)
 from . import db
 
 log = logging.getLogger("aplang.llm")
@@ -623,6 +632,87 @@ def parse_calendar_weeks(user_id: str, text: str) -> list[dict]:
     )
     parsed = loads_lenient(content or "")
     return parsed.get("weeks") or []
+
+
+_TEMPLATE_ANALYSIS_PROMPT = """You are reading a deterministic structural extraction of a school's blank \
+lesson-plan template — its headings, table layouts, and font/style usage — never the original file. Your job \
+is to map that structure onto the sections a lesson-plan generator would need to fill in.
+
+For each distinct section or field you can identify:
+- name: a short label for it.
+- description: what content belongs there, in plain language.
+- source_evidence: the EXACT heading text, table header, or label from the extraction below that grounds this \
+section. Copy it verbatim, character for character. Never paraphrase, summarize, or invent one — if you cannot \
+point to real text in the extraction, do not report the section at all.
+- repeats_per_entry: true if this appears once per day/lesson/week (e.g. a table row repeated per day) rather \
+than once for the whole document.
+
+List anything whose purpose or expected format you are not confident about in unclear_or_ambiguous instead of \
+guessing. Set overall_confidence honestly — a template with sparse or ambiguous structure should score low, \
+not be forced into an optimistic-sounding number. Set recommended_for_auto_use to true only if a builder script \
+could be written from your `sections` alone, with no human needing to re-open the original file."""
+
+
+def analyze_template_structure(user_id: str, structure_summary: str) -> dict:
+    """One structured-output call turning template_intake.py's deterministic
+    extraction (never the raw file) into a proposed section/field mapping.
+
+    Raises AppError/SchemaError upward on a bad response — template_intake.py
+    is what cross-checks source_evidence against the extraction and decides
+    whether the result is trustworthy enough to show an admin as-is."""
+    content = _cached_completion(
+        user_id,
+        "analyze_template_structure",
+        model=settings.openai_model,
+        max_completion_tokens=4000,
+        temperature=0,
+        response_format=_response_format("template_structure", TEMPLATE_ANALYSIS_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": _TEMPLATE_ANALYSIS_PROMPT},
+            {"role": "user", "content": structure_summary[:20000]},
+        ],
+    )
+    return loads_lenient(content or "")
+
+
+_TEMPLATE_VERIFY_PROMPT = """You are auditing another model's proposed section mapping for a lesson-plan \
+template, checking it against the same structural extraction it was given. Be skeptical: your job is to catch \
+mistakes, not rubber-stamp the proposal — assume the other model may have misread something.
+
+For EACH proposed section, decide whether its description genuinely matches what its cited evidence shows — \
+not just whether the evidence text exists (that was already checked separately), but whether the description \
+is an accurate read of it. Mark accurate=false for anything that misreads, overstates, or invents meaning \
+beyond what the evidence actually supports. When you are unsure, default to accurate=false rather than true — \
+a missed valid section costs a human reviewer a few seconds re-adding it; a wrongly-approved one costs them \
+trust in every other section you approved."""
+
+
+def verify_template_sections(user_id: str, structure_summary: str, sections: list[dict]) -> dict:
+    """A second, independently-framed pass auditing analyze_template_structure's
+    own output against the same extraction it was given — not a re-run of the
+    same prompt (which would likely just repeat the same mistake), but a
+    skeptical review of specific claims already made. template_intake.py
+    drops any section this call marks inaccurate."""
+    sections_text = "\n".join(
+        f"- name: {s['name']!r}\n  description: {s['description']!r}\n  evidence: {s['source_evidence']!r}"
+        for s in sections
+    )
+    content = _cached_completion(
+        user_id,
+        "verify_template_sections",
+        model=settings.openai_model,
+        max_completion_tokens=2000,
+        temperature=0,
+        response_format=_response_format("template_verification", TEMPLATE_VERIFICATION_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": _TEMPLATE_VERIFY_PROMPT},
+            {
+                "role": "user",
+                "content": f"Structural extraction:\n{structure_summary[:20000]}\n\nProposed sections:\n{sections_text[:8000]}",
+            },
+        ],
+    )
+    return loads_lenient(content or "")
 
 
 DECISIONS_SCHEMA = {

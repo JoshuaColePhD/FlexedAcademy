@@ -9,10 +9,13 @@ a data change, not a redeploy.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from .. import db, mail, qa
+from .. import db, mail, qa, template_intake
 from ..config import settings
 from ..deps import get_current_admin
 from ..entitlement import ENTITLED_STATUSES
@@ -200,6 +203,39 @@ def activate_school_template_route(school_id: str, _admin: str = Depends(get_cur
         )
         
     return {"status": "ok"}
+
+
+@router.get("/school-templates/{template_id}/analysis")
+def get_school_template_analysis_route(template_id: str, _admin: str = Depends(get_current_admin)):
+    """Full detail behind one row of the pending-templates queue: the
+    deterministic structure, the LLM's (already cross-checked) section
+    mapping, and every quality-check finding the pipeline recorded — not
+    just the collapsed status badge the list view shows."""
+    template = db.get_school_template(template_id)
+    if not template:
+        raise AppError("not_found", "Template not found.", status=404)
+    return {
+        "template": template,
+        "structure": json.loads(template["structure_json"]) if template.get("structure_json") else None,
+        "analysis": json.loads(template["analysis_summary"]) if template.get("analysis_summary") else None,
+        "findings": db.get_template_findings(template_id),
+    }
+
+
+@router.post("/school-templates/{template_id}/reanalyze")
+def reanalyze_school_template_route(template_id: str, admin_id: str = Depends(get_current_admin)):
+    """Re-runs the same pipeline the upload endpoint ran, against the file
+    already on disk — for a transient failure (an LLM hiccup) or after a
+    pipeline fix, without asking the school to re-upload anything."""
+    template = db.get_school_template(template_id)
+    if not template:
+        raise AppError("not_found", "Template not found.", status=404)
+    dest_path = Path(template["file_path"])
+    if not dest_path.is_file():
+        raise AppError("not_found", "The original file is missing from disk — a re-upload is needed.", status=404)
+    return template_intake.run_and_persist(
+        user_id=admin_id, template_id=template_id, dest_path=dest_path, claimed_ext=dest_path.suffix.lower()
+    )
 
 
 @router.get("/school-templates/{template_id}/download")

@@ -28,6 +28,22 @@ dependencies = [
   "slowapi==0.1.9",
   "sentry-sdk[fastapi]==2.68.0",
   "pypdf==5.0.0",
+  # Structural PDF analysis for school lesson-plan templates (fonts, glyph
+  # positions, ruled tables) — pypdf's extract_text() and the pdftotext CLI
+  # (routes/misc.py) both discard that; pdfplumber is the one already-vetted
+  # dependency in this ecosystem that surfaces it without shelling out.
+  "pdfplumber==0.11.7",
+  # OCR fallback for scanned-image template PDFs (template_intake.py). Both
+  # are pure-Python wrappers with no compiled extensions of their own, but
+  # each shells out to a system binary this doesn't install: pdf2image needs
+  # poppler's pdftoppm (already assumed present — routes/misc.py already
+  # shells out to poppler's pdftotext), pytesseract needs the tesseract-ocr
+  # binary (new — see Dockerfile). template_intake.py checks for it with
+  # shutil.which() before ever importing this, so an environment without
+  # tesseract installed degrades to today's plain "can't read a scanned PDF"
+  # error rather than crashing.
+  "pdf2image==1.17.0",
+  "pytesseract==0.3.13",
 ]
 
 [project.optional-dependencies]

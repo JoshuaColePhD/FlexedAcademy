@@ -581,11 +581,125 @@ function PendingCalendarSubmissions() {
   )
 }
 
+// analysis_status -> badge look. 'pending'/'analyzing' shouldn't linger in
+// practice (the upload endpoint runs the pipeline inline before it ever
+// returns), but both are handled rather than falling through to 'unknown'
+// styling, since a crashed worker or an old row is exactly when an admin
+// most needs the badge to still make sense.
+const TEMPLATE_STATUS_STYLE = {
+  analyzed: { label: 'Analyzed', className: 'bg-emerald-500/10 text-emerald-600' },
+  analyzed_with_warnings: { label: 'Analyzed — warnings', className: 'bg-amber-500/10 text-amber-600' },
+  failed: { label: 'Analysis failed', className: 'bg-red-500/10 text-red-600' },
+  analyzing: { label: 'Analyzing…', className: 'bg-sky-500/10 text-sky-600' },
+  pending: { label: 'Not yet analyzed', className: 'bg-ink-muted/10 text-ink-muted' },
+}
+
+const FINDING_SEVERITY_STYLE = {
+  error: { label: 'Error', className: 'text-red-600' },
+  warning: { label: 'Warning', className: 'text-amber-600' },
+  info: { label: 'Info', className: 'text-ink-muted' },
+}
+
+function TemplateStatusBadge({ status }) {
+  const style = TEMPLATE_STATUS_STYLE[status] || TEMPLATE_STATUS_STYLE.pending
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-2xs font-medium ${style.className}`}>{style.label}</span>
+  )
+}
+
+function TemplateAnalysisDetail({ templateId, onChanged }) {
+  const toast = useToast()
+  const [reanalyzing, setReanalyzing] = useState(false)
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['admin', 'schoolTemplates', 'analysis', templateId],
+    queryFn: () => api.getTemplateAnalysis(templateId),
+  })
+
+  const reanalyze = async () => {
+    setReanalyzing(true)
+    try {
+      await api.reanalyzeTemplate(templateId)
+      await refetch()
+      onChanged?.()
+      toast.success('Re-analysis complete')
+    } catch (err) {
+      toast.apiError('Re-analysis failed', err)
+    } finally {
+      setReanalyzing(false)
+    }
+  }
+
+  if (isLoading) return <p className="py-2 text-2xs text-ink-muted">Loading analysis…</p>
+  if (isError || !data) return <p className="py-2 text-2xs text-red-600">Could not load the analysis detail.</p>
+
+  const findings = data.findings || []
+  const sections = data.analysis?.sections || []
+
+  return (
+    <div className="space-y-3 rounded border border-edge bg-surface-muted/40 p-3 text-2xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold uppercase tracking-wide text-ink-muted">Quality checks</span>
+        <button
+          type="button"
+          disabled={reanalyzing}
+          onClick={reanalyze}
+          className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {reanalyzing ? 'Re-analyzing…' : 'Re-analyze'}
+        </button>
+      </div>
+
+      {findings.length === 0 ? (
+        <p className="text-ink-muted">No findings recorded — nothing has flagged this template yet.</p>
+      ) : (
+        <ul className="space-y-1">
+          {findings.map((f, i) => {
+            const sev = FINDING_SEVERITY_STYLE[f.severity] || FINDING_SEVERITY_STYLE.info
+            return (
+              <li key={i} className="flex gap-2">
+                <span className={`shrink-0 font-semibold ${sev.className}`}>{sev.label}</span>
+                <span className="text-ink-muted">
+                  <span className="text-ink">{f.check_name}</span> — {f.message}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {sections.length > 0 && (
+        <div>
+          <span className="font-semibold uppercase tracking-wide text-ink-muted">
+            Proposed sections ({sections.length})
+          </span>
+          <ul className="mt-1 space-y-1.5">
+            {sections.map((s, i) => (
+              <li key={i}>
+                <span className="font-medium text-ink">{s.name}</span>
+                <span className="text-ink-muted"> — {s.description}</span>
+                <div className="text-ink-muted italic">from: "{s.source_evidence}"</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {typeof data.analysis?.overall_confidence === 'number' && (
+        <p className="text-ink-muted">
+          Model confidence: {Math.round(data.analysis.overall_confidence * 100)}%
+          {data.analysis.recommended_for_auto_use ? ' — recommended for auto-use' : ' — recommends human review'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function PendingSchoolTemplates() {
   const toast = useToast()
   const qc = useQueryClient()
   const [activatingId, setActivatingId] = useState(null)
-  
+  const [expandedId, setExpandedId] = useState(null)
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin', 'schoolTemplates', 'pending'],
     queryFn: () => api.listPendingTemplates(),
@@ -616,33 +730,51 @@ function PendingSchoolTemplates() {
         Pending School Templates ({templates.length})
       </h3>
       <ul className="mt-2 divide-y divide-edge">
-        {templates.map((t) => (
-          <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-            <div>
-              <span className="font-medium text-ink">{t.school_name}</span>{' '}
-              <span className="text-2xs text-ink-muted">
-                uploaded by {t.uploader_name || t.uploader_email || t.uploaded_by} on {new Date(t.created_at).toLocaleDateString()}
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <a
-                href={api.templateDownloadUrl(t.id)}
-                download
-                className="btn text-2xs"
-              >
-                Download Doc
-              </a>
-              <button
-                type="button"
-                disabled={activatingId === t.id}
-                onClick={() => activate(t)}
-                className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Mark Active
-              </button>
-            </div>
-          </li>
-        ))}
+        {templates.map((t) => {
+          const isExpanded = expandedId === t.id
+          return (
+            <li key={t.id} className="py-2 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="font-medium text-ink">{t.school_name}</span>{' '}
+                  <TemplateStatusBadge status={t.analysis_status} />{' '}
+                  <span className="text-2xs text-ink-muted">
+                    uploaded by {t.uploader_name || t.uploader_email || t.uploaded_by} on{' '}
+                    {new Date(t.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <a href={api.templateDownloadUrl(t.id)} download className="btn text-2xs">
+                    Download Doc
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : t.id)}
+                    className="btn flex items-center gap-1 text-2xs"
+                  >
+                    Analysis {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={activatingId === t.id}
+                    onClick={() => activate(t)}
+                    className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Mark Active
+                  </button>
+                </div>
+              </div>
+              {isExpanded && (
+                <div className="mt-2">
+                  <TemplateAnalysisDetail
+                    templateId={t.id}
+                    onChanged={() => qc.invalidateQueries({ queryKey: ['admin', 'schoolTemplates', 'pending'] })}
+                  />
+                </div>
+              )}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

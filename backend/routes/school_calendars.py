@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pathlib import Path
-import tempfile
-import shutil
 
-from .. import calendar_intake, db
+from .. import calendar_intake, db, template_intake
+from ..config import settings
 from ..deps import get_current_user
 from ..errors import AppError
+from .misc import _spool
 
 log = logging.getLogger("aplang.school_calendars")
 
@@ -108,26 +109,38 @@ async def upload_school_template(
     file: UploadFile = File(...),
     user_id: str = Depends(get_current_user),
 ):
-    """Upload a blank lesson plan template for a school that doesn't have a builder script yet."""
+    """Upload a blank lesson plan template for a school that doesn't have a
+    builder script yet. Hardened the same way calendar_intake.py's upload
+    path is: spooled to a size-capped temp file, then its magic bytes must
+    match the extension it claims, before anything reaches permanent disk.
+
+    Once the file is safely stored, template_intake.py runs a structural
+    analysis synchronously and its result (a status plus a full set of
+    findings — see that module's docstring) is persisted alongside the
+    template row. Analysis failing never blocks the upload itself — the
+    file is saved and visible to the admin queue either way; a failed
+    analysis just means an admin sees why, instead of a builder script that
+    silently doesn't exist yet.
+    """
     school = db.get_school(school_id)
     if not school:
         raise AppError("not_found", "School not found.", status=404)
 
-    # Spool it to disk
-    ext = Path(file.filename or "").suffix or ".docx"
-    
-    # Store it in a permanent uploads directory
-    uploads_dir = Path("uploads/templates")
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-    
-    # generate a unique filename
-    template_id = db.new_id()
-    safe_filename = f"{school_id}_{template_id}{ext}"
-    dest = uploads_dir / safe_filename
-    
-    with dest.open("wb") as out:
-        while chunk := file.file.read(1 << 20):
-            out.write(chunk)
-            
-    row = db.create_school_template(school_id, user_id, file.filename or safe_filename, str(dest))
-    return {"template": row}
+    filename = file.filename or "template"
+    ext_hint = Path(filename).suffix.lower() or ".docx"
+    spooled = _spool(file, ext_hint, settings.max_doc_bytes)
+    try:
+        ext = template_intake.validate_upload(filename, spooled)
+
+        uploads_dir = Path("uploads/templates")
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        template_id = db.new_id()
+        dest = uploads_dir / f"{school_id}_{template_id}{ext}"
+        shutil.move(str(spooled), str(dest))  # not Path.rename: the temp dir and uploads/ may be different filesystems
+    finally:
+        spooled.unlink(missing_ok=True)  # no-op once moved away; cleans up on any raise before that
+
+    row = db.create_school_template(school_id, user_id, filename, str(dest))
+    return template_intake.run_and_persist(
+        user_id=user_id, template_id=row["id"], dest_path=dest, claimed_ext=ext
+    )

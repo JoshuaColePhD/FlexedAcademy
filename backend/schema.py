@@ -239,6 +239,101 @@ CALENDAR_JSON_SCHEMA = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Template intake — the LLM's read of a school's uploaded lesson-plan
+# template, given template_intake.py's deterministic structural extraction
+# (headings/tables/fonts) as input, never the raw file. `source_evidence` is
+# required on every section specifically so template_intake.py can check it
+# against the extraction it was given — a name the model invents rather than
+# quotes is the one thing Structured Outputs' schema can't catch on its own,
+# since "this string must appear verbatim in some other text" isn't
+# expressible as JSON Schema.
+# ---------------------------------------------------------------------------
+
+TEMPLATE_SECTION_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "Short name for this section/field, e.g. 'Header table', 'Learning objectives', 'Standards alignment'.",
+        },
+        "description": {
+            "type": "string",
+            "description": "What content this section is meant to hold, in plain language, for someone building a document generator from it.",
+        },
+        "source_evidence": {
+            "type": "string",
+            "description": (
+                "The exact heading text, table header cell, or label — copied verbatim, character-for-character, "
+                "from the structural extraction you were given — that this section is grounded in. Never a "
+                "paraphrase and never invented; if nothing in the extraction supports this section, do not include it."
+            ),
+        },
+        "repeats_per_entry": {
+            "type": "boolean",
+            "description": "True if this section appears once per day/lesson/week entry (e.g. one table row per day) rather than once for the whole document.",
+        },
+    },
+    "required": ["name", "description", "source_evidence", "repeats_per_entry"],
+}
+
+TEMPLATE_ANALYSIS_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "sections": {"type": "array", "items": TEMPLATE_SECTION_JSON_SCHEMA},
+        "unclear_or_ambiguous": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Anything in the template whose purpose or expected format wasn't clear enough to map confidently — flag it for a human rather than guessing.",
+        },
+        "overall_confidence": {
+            "type": "number",
+            "description": "0.0-1.0 self-rated confidence that `sections` correctly and completely describes this template's structure.",
+        },
+        "recommended_for_auto_use": {
+            "type": "boolean",
+            "description": "True only if confident enough that a builder script could be written from `sections` alone, without a human re-reading the original file.",
+        },
+    },
+    "required": ["sections", "unclear_or_ambiguous", "overall_confidence", "recommended_for_auto_use"],
+}
+
+
+# A second, independently-framed pass auditing analyze_template_structure's
+# own proposed sections against the same extraction — see
+# llm.verify_template_sections and template_intake.py's own comment on why
+# this is a skeptical review of specific claims, not a re-run of the same
+# prompt (which would likely just repeat the same mistake).
+TEMPLATE_VERIFICATION_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "verdicts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Must exactly match the name of one of the proposed sections given below.",
+                    },
+                    "accurate": {
+                        "type": "boolean",
+                        "description": "True only if this section's description genuinely matches what its cited evidence shows — not merely that the evidence exists.",
+                    },
+                    "reason": {"type": "string", "description": "One sentence justifying the verdict."},
+                },
+                "required": ["name", "accurate", "reason"],
+            },
+        },
+    },
+    "required": ["verdicts"],
+}
+
+
 class QuizSchemaError(Exception):
     """A question the model wrote doesn't match what its own `type` needs —
     e.g. multiple_choice with an empty `choices`, or a correct_index outside

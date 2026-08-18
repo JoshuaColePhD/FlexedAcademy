@@ -35,8 +35,21 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
+# Two system binaries the Python deps shell out to rather than reimplement:
+# poppler-utils gives routes/misc.py's pdftotext (plain-text PDF extraction,
+# used well before this image existed) and pdf2image's pdftoppm (rasterizing
+# a page for OCR); tesseract-ocr is template_intake.py's OCR fallback for a
+# scanned-image lesson-plan template. Neither was ever actually installed
+# here or on the Render deploy this image is meant to replace — pdftotext
+# would have failed at runtime the first time a teacher uploaded a PDF.
+# --no-install-recommends keeps this from dragging in a full TeX/X11 stack.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        poppler-utils \
+        tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+
 # psycopg2-binary ships its own libpq, and every other dependency is a wheel —
-# so there is no build toolchain here and the image stays small.
+# so there is no other build toolchain needed here and the image stays small.
 COPY pyproject.toml ./
 COPY backend/ ./backend/
 RUN pip install --no-cache-dir -e .

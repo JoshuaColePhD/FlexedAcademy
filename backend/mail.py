@@ -39,3 +39,21 @@ def send(*, to: str, subject: str, html: str) -> bool:
     except requests.RequestException:
         log.exception("failed to send %r to %s", subject, to)
         return False
+
+
+def send_template_active_email(*, to: str, uploader_name: str | None, school_name: str) -> bool:
+    """Shared by the admin's manual 'Mark Active' action (routes/admin.py)
+    and template_intake.py's auto-activation path — same email either way,
+    since the teacher shouldn't be able to tell which one flipped the
+    switch."""
+    return send(
+        to=to,
+        subject="Your custom lesson plan format is ready!",
+        html=f"""
+            <p>Hi {uploader_name or 'there'},</p>
+            <p>Great news! FlexEd Academy is now fully trained on <strong>{school_name}</strong>'s lesson plan format.</p>
+            <p>All your future downloads will perfectly match your district's requirements.</p>
+            <br/>
+            <p>Happy teaching,<br/>Josh Cole</p>
+        """,
+    )

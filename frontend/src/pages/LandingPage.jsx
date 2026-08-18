@@ -321,7 +321,6 @@ export function LandingPage() {
 
       <section className="land-hero">
         <div className="land-blob" aria-hidden="true" />
-        <span className="land-eyebrow">No hallucinated standards</span>
         <h1 className="land-title">A week of lesson plans, cited to the standard</h1>
         <p className="land-sub">
           Generated from the verbatim text of the Alabama Course of Study — not a model's
