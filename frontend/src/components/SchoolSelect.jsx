@@ -122,6 +122,22 @@ export function SchoolSelect({
           aria-label={ariaLabel}
           disabled={disabled}
           placeholder="Search for your school…"
+          // iOS Safari's QuickType bar can commit a predictive completion
+          // (typing "Floren" then tapping the suggested "Florence") via a
+          // native text-replacement path that doesn't fire a normal input
+          // event in sync with React's controlled `value` — the DOM shows
+          // the completed word a beat before `query` catches up, so the
+          // filtered results below briefly (or, on some iOS versions,
+          // permanently until another keystroke) match the OLD partial
+          // text instead of what's visibly typed. This isn't a real word
+          // being composed, just a school name search, so autocomplete/
+          // autocorrect/predictive text have nothing correct to suggest
+          // here — turning them off removes the whole class of bug rather
+          // than chasing the event-timing mismatch it comes from.
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           value={open ? query : selectedLabel}
           onFocus={() => {
             setOpen(true)

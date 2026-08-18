@@ -33,7 +33,10 @@ dependencies = [
   # positions, ruled tables) — pypdf's extract_text() and the pdftotext CLI
   # (routes/misc.py) both discard that; pdfplumber is the one already-vetted
   # dependency in this ecosystem that surfaces it without shelling out.
-  "pdfplumber==0.11.7",
+  # 0.11.7 -> 0.11.10: pulls in a fixed pdfminer.six (was ==20250506, two
+  # known CVEs -- PYSEC-2026-1762/1761 -- fixed upstream in 20251107/20251230;
+  # 0.11.10 pins pdfminer.six==20260107, past both).
+  "pdfplumber==0.11.10",
   # OCR fallback for scanned-image template PDFs (template_intake.py). Both
   # are pure-Python wrappers with no compiled extensions of their own, but
   # each shells out to a system binary this doesn't install: pdf2image needs

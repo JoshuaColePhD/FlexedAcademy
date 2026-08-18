@@ -168,10 +168,25 @@
        NEGATIVE z-index sibling but not above a 0/auto one — same reasoning
        as .app-blob under AppShell's #main. */
     z-index: -1;
+    /* The four circles below all fade to transparent at their own edges —
+       between them (and there's real gap, four circles never tile edge to
+       edge) there was nothing but the dialog-scrim's own translucency and,
+       past that, the real page underneath. backdrop-filter on the panel in
+       front is supposed to blur that away regardless, but on a device with
+       Reduce Transparency on, in Low Power Mode, or just a weaker GPU, that
+       blur can render weaker than expected or not at all — and the panel
+       was still translucent enough (before this) that a stray "Good
+       evening" showed straight through the gaps, blur or no blur. A solid
+       base color under the gradients means there is never a truly empty
+       pixel here for the real page to occupy, independent of whether the
+       blur actually renders on a given device. */
     background: radial-gradient(circle min(40vw, 320px) at 20% 20%, rgb(167 139 250 / 0.55) 0%, transparent 100%),
       radial-gradient(circle min(35vw, 280px) at 80% 15%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
       radial-gradient(circle min(38vw, 300px) at 85% 80%, rgb(251 146 60 / 0.45) 0%, transparent 100%),
-      radial-gradient(circle min(40vw, 320px) at 15% 85%, rgb(52 211 153 / 0.45) 0%, transparent 100%);
+      radial-gradient(circle min(40vw, 320px) at 15% 85%, rgb(52 211 153 / 0.45) 0%, transparent 100%),
+      rgb(var(--paper-raised-rgb) / 0.92);
+    /* One size per gradient image layer — the trailing plain color above is
+       background-color, not a fifth sizeable image layer. */
     background-size: 160% 160%;
     animation: land-blob-drift 18s ease-in-out infinite alternate;
     pointer-events: none;

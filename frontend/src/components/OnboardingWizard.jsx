@@ -202,12 +202,16 @@ export function OnboardingWizard({ open, onClose, cls }) {
         <div className="onboarding-blob" aria-hidden="true" />
         <div
           // bg-paper-raised/30 (PlansPage's own glass recipe) read fine over a
-          // quiet page; stacked with .dialog-scrim's own translucency behind a
-          // moving multi-hue blob AND the real page content, it left welcome
-          // text nearly unreadable, worst in bright light on a phone. /90 keeps
-          // the blur/saturate glass character at the rounded edges and corners
-          // without sacrificing the one thing a dialog can't compromise on.
-          className={`dialog neo-panel relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto rounded-2xl border border-white/10 bg-paper-raised/90 p-8 shadow-lg backdrop-blur-3xl saturate-[1.2]${closing ? ' is-closing' : ''}`}
+          // quiet page; stacked with .dialog-scrim's own translucency, the
+          // real page underneath showed straight through the gaps between
+          // .onboarding-blob's own circles (see that rule's own comment) —
+          // not something raising this element's own opacity alone could
+          // ever fully fix, since the leak was behind it, not in it. Now
+          // that .onboarding-blob has a solid base fill of its own, /65 here
+          // is a real middle ground: still translucent enough to show the
+          // blob's colour through the glass, opaque enough that nothing
+          // behind ever has a legibility fight with the text in front of it.
+          className={`dialog neo-panel relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto rounded-2xl border border-white/10 bg-paper-raised/65 p-8 shadow-lg backdrop-blur-3xl saturate-[1.2]${closing ? ' is-closing' : ''}`}
         >
           <button
             type="button"
