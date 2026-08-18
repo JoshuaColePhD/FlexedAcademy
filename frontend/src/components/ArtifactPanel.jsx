@@ -165,15 +165,6 @@ const location = useLocation()
             <button
               type="button"
               className={`btn-icon${isPhone ? ' hidden' : ''}`}
-              onClick={() => setShareOpen(true)}
-              aria-label="Share this plan via Google"
-              title="Share via Google"
-            >
-              <Share2 size={16} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={`btn-icon${isPhone ? ' hidden' : ''}`}
               onClick={rebuild}
               disabled={rebuilding}
               aria-label="Rebuild the document from the saved plan"
@@ -185,16 +176,20 @@ const location = useLocation()
                 <RefreshCw size={16} aria-hidden="true" />
               )}
             </button>
-            {/* The reason a teacher opened this app. It is the only filled
-                control in the header. */}
-            <a className="doc-download fa-press flex items-center gap-1.5" href={api.planDownloadUrl(planId)} download>
+            <button
+              type="button"
+              className="doc-download fa-press flex items-center gap-1.5"
+              onClick={() => setShareOpen(true)}
+              aria-label="Export or Share this plan"
+              title="Export or Share"
+            >
               {isPendingTemplate ? (
                 <Tooltip content="We are currently training our AI on your district's specific format. In the meantime, this plan will download in a generic format." position="bottom-right">
                   <TriangleAlert size={14} className="text-amber-500" aria-hidden="true" />
                 </Tooltip>
               ) : null}
-              <Download size={14} aria-hidden="true" /> Download
-            </a>
+              <Share2 size={14} aria-hidden="true" /> Export
+            </button>
           </>
         ) : (
           <span className="doc-download" aria-disabled="true" style={{ opacity: 0.45 }}>
@@ -248,6 +243,7 @@ const location = useLocation()
         onClose={() => setShareOpen(false)}
         planId={planId}
         weekLabel={plan?.week_of}
+        downloadUrl={planId ? api.planDownloadUrl(planId) : undefined}
         returnTo={`${location.pathname}${location.search}`}
       />
     </section>

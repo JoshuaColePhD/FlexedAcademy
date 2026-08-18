@@ -504,18 +504,13 @@ export function ArtifactDetailPanel({
         {kind === 'quiz' && quiz?.has_qti && planId ? (
           <button
             type="button"
-            className="btn-icon"
+            className="doc-download fa-press flex items-center gap-1.5"
             onClick={() => setShareOpen(true)}
-            aria-label="Share this quiz via Google"
-            title="Share via Google"
+            aria-label="Export or Share this quiz"
+            title="Export or Share"
           >
-            <Share2 size={16} aria-hidden="true" />
+            <Share2 size={14} aria-hidden="true" /> Export
           </button>
-        ) : null}
-        {kind === 'quiz' && quiz?.has_qti && planId ? (
-          <a className="doc-download fa-press" href={api.quizDownloadUrl(planId, quiz.id)} download>
-            <Download size={14} aria-hidden="true" /> Download
-          </a>
         ) : null}
       </div>
 
