@@ -1941,7 +1941,6 @@ export function VoiceModePanel({
                 <button
                   type="button"
                   onClick={onBuild}
-                     tokens they're built from ever change. */
                   className="fa-press fa-rise mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-paper-raised text-ink px-4 py-3 text-sm font-semibold  shadow-sm transition-all hover:bg-paper-sunken"
                 >
                   ✨ Build Lesson Plan
