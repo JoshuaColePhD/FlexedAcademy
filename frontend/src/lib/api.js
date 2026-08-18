@@ -79,11 +79,21 @@ async function toError(res) {
 }
 
 async function request(path, { method = 'GET', body, signal } = {}) {
+  // A bare fetch has no default timeout, so a backend that stalls without
+  // ever sending a response (a stuck DB connection, a dead proxy) leaves the
+  // promise pending forever and callers like OnboardingWizard.finish() never
+  // resolve their try/finally. Bound every request so a stall surfaces as an
+  // ordinary network error instead.
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), 20000)
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
   let res
   try {
     res = await fetch(`${API_BASE}${path}`, {
       method,
-      signal,
+      signal: combinedSignal,
       // 'include' rather than the default 'same-origin': harmless in dev
       // (proxied, so already same-origin) but required once the frontend and
       // API are served from different origins — the login session is a
@@ -93,11 +103,16 @@ async function request(path, { method = 'GET', body, signal } = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   } catch (err) {
-    if (err.name === 'AbortError') throw err
+    if (err.name === 'AbortError') {
+      if (signal?.aborted) throw err
+      throw new ApiError('The server took too long to respond.', { code: 'timeout' })
+    }
     throw new ApiError('Can’t reach the server.', {
       code: 'network_error',
       hint: 'Is the backend running? Start it with ./run.sh',
     })
+  } finally {
+    clearTimeout(timeoutId)
   }
   if (!res.ok) throw await toError(res)
   if (res.status === 204) return null

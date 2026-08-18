@@ -283,14 +283,30 @@ function OnboardingWizardHost() {
   const { classId } = useParams()
   const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
   const [forcedOpen, setForcedOpen] = useState(false)
+  // Closing only ever flipped forcedOpen to false, which was already false
+  // for the auto-open path — autoOpen stayed true (server write hadn't been
+  // reflected in `user` yet, or failed outright) and the wizard reappeared
+  // immediately, looking like the close button did nothing. This tracks an
+  // explicit "the user is done with this" for the session, independent of
+  // whether the server-side mark-seen call ever lands.
+  const [dismissed, setDismissed] = useState(false)
 
-  useEffect(() => onOpenOnboardingWizard(() => setForcedOpen(true)), [])
+  useEffect(() => onOpenOnboardingWizard(() => { setForcedOpen(true); setDismissed(false) }), [])
 
   const cls = classes.find((c) => c.id === classId) || classes[0]
   const autoOpen = !!user && !user.onboarding_seen_at && !!cls
-  const open = forcedOpen || autoOpen
+  const open = !dismissed && (forcedOpen || autoOpen)
 
-  return <OnboardingWizard open={open} cls={cls} onClose={() => setForcedOpen(false)} />
+  return (
+    <OnboardingWizard
+      open={open}
+      cls={cls}
+      onClose={() => {
+        setForcedOpen(false)
+        setDismissed(true)
+      }}
+    />
+  )
 }
 
 export function AppShell({ children }) {

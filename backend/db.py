@@ -1262,6 +1262,11 @@ def _ensure_pool() -> ThreadedConnectionPool:
                 maxconn=settings.db_pool_size,
                 dsn=settings.database_url,
                 cursor_factory=RealDictCursor,
+                # Without this, a Supabase pooler that silently drops packets
+                # (rather than refusing the connection) leaves libpq retrying
+                # at the TCP level with no exception ever raised — the request
+                # thread blocks forever and FastAPI never sends a response.
+                connect_timeout=10,
             )
             log.info("db pool opened (max %d connections)", settings.db_pool_size)
     return _pool
@@ -1273,7 +1278,11 @@ def borrow():
     back — including on the error paths, which is the failure mode that turns a
     pool into an outage."""
     pool = _ensure_pool()
-    _slots.acquire()
+    # A bounded wait: if every slot is leaked (e.g. a worker thread killed
+    # mid-request never released one), callers should get a 500 instead of
+    # blocking forever with no exception and no response ever sent.
+    if not _slots.acquire(timeout=15):
+        raise TimeoutError("Timed out waiting for a database connection slot.")
     try:
         conn = pool.getconn()
         user_id = current_user_id.get()
