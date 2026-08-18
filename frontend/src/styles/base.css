@@ -4268,6 +4268,49 @@
       12px 12px 28px rgb(var(--neo-dark-rgb) / 0.55),
       -12px -12px 28px rgb(var(--neo-light-rgb) / 0.85);
   }
+
+  :root:not([data-skin='skeu']) .btn-blob {
+    position: relative;
+    isolation: isolate;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: none !important;
+  }
+
+  :root:not([data-skin='skeu']) .btn-blob::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background: radial-gradient(circle min(25vw, 60px) at 20% 20%, rgb(167 139 250 / 0.65) 0%, transparent 100%),
+      radial-gradient(circle min(20vw, 50px) at 80% 15%, rgb(244 114 182 / 0.6) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 55px) at 85% 80%, rgb(251 146 60 / 0.55) 0%, transparent 100%),
+      radial-gradient(circle min(25vw, 60px) at 15% 85%, rgb(52 211 153 / 0.55) 0%, transparent 100%),
+      rgb(var(--paper-raised-rgb) / 0.85);
+    background-size: 200% 200%;
+    animation: land-blob-drift 8s ease-in-out infinite alternate;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  :root:not([data-skin='skeu']) .btn-blob::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: rgb(var(--paper-raised-rgb) / 0.5);
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    border-radius: inherit;
+    pointer-events: none;
+    border: 1px solid rgb(255 255 255 / 0.2);
+    transition: background var(--t-fast) var(--ease);
+  }
+  
+  :root:not([data-skin='skeu']) .btn-blob:hover::after {
+    background: rgb(var(--paper-sunken-rgb) / 0.6);
+  }
   .neo-ring {
     border: 3px solid rgb(var(--accent-rgb) / 0.35);
   }
