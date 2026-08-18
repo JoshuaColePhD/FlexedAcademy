@@ -489,6 +489,8 @@ function DocumentsStep({ cls, onBack, onNext }) {
   )
 }
 
+function TipsStep({ onBack, onNext }) {
+  return (
     <div>
       <StepHeader eyebrow="A few things worth knowing 💡" title="Getting the most out of FlexEd" />
       <motion.ul 
