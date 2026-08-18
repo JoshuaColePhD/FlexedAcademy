@@ -187,21 +187,15 @@ def activate_school_template_route(school_id: str, _admin: str = Depends(get_cur
         raise AppError("not_found", "School not found.", status=404)
         
     db.update_school_template_status(school_id, "active")
-    
+
     latest_template = db.get_latest_school_template(school_id)
     if latest_template and latest_template.get("uploader_email"):
-        mail.send(
+        mail.send_template_active_email(
             to=latest_template["uploader_email"],
-            subject="Your custom lesson plan format is ready!",
-            html=f"""
-                <p>Hi {latest_template.get('uploader_name') or 'there'},</p>
-                <p>Great news! FlexEd Academy is now fully trained on <strong>{school['name']}</strong>'s lesson plan format.</p>
-                <p>All your future downloads will perfectly match your district's requirements.</p>
-                <br/>
-                <p>Happy teaching,<br/>Josh Cole</p>
-            """
+            uploader_name=latest_template.get("uploader_name"),
+            school_name=school["name"],
         )
-        
+
     return {"status": "ok"}
 
 
@@ -234,7 +228,11 @@ def reanalyze_school_template_route(template_id: str, admin_id: str = Depends(ge
     if not dest_path.is_file():
         raise AppError("not_found", "The original file is missing from disk — a re-upload is needed.", status=404)
     return template_intake.run_and_persist(
-        user_id=admin_id, template_id=template_id, dest_path=dest_path, claimed_ext=dest_path.suffix.lower()
+        user_id=admin_id,
+        template_id=template_id,
+        school_id=template["school_id"],
+        dest_path=dest_path,
+        claimed_ext=dest_path.suffix.lower(),
     )
 
 

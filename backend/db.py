@@ -1125,6 +1125,20 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_school_template_findings_template
         ON school_template_findings(template_id);
     """,
+
+    # ── 34: template auto-activation audit trail ─────────────────────────────
+    #
+    # template_intake.py can now flip a school straight to 'active' itself,
+    # with no admin ever clicking "Mark Active" — see
+    # template_intake._maybe_auto_activate's own comment for the (deliberately
+    # strict) bar it has to clear. This column is the only record that
+    # happened: an auto-activated school no longer appears in the pending
+    # queue (list_pending_school_templates filters on template_status), so
+    # without it there would be no way to tell "a human reviewed this" from
+    # "nobody ever has."
+    """
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS auto_activated BOOLEAN NOT NULL DEFAULT false;
+    """,
 ]
 
 
@@ -1624,6 +1638,10 @@ def replace_template_findings(template_id: str, findings: list[dict]) -> None:
             """,
             (new_id(), template_id, f["stage"], f["check_name"], f["severity"], f["message"], now()),
         )
+
+
+def mark_template_auto_activated(template_id: str) -> None:
+    _write("UPDATE school_templates SET auto_activated = true WHERE id = ?", (template_id,))
 
 
 def get_template_findings(template_id: str) -> list[dict]:

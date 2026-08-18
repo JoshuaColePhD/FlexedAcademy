@@ -45,9 +45,20 @@ screen:
      claims the model DID make; this is the complementary check for what it
      silently didn't.
 
-`analyze_uploaded_template` is the only function other modules should call.
-It never raises — a bad upload becomes a `status: "failed"` result with
-findings explaining why, not a 500 in the middle of onboarding.
+`analyze_uploaded_template` is the only function other modules should call
+for the analysis itself, and never raises — a bad upload becomes a
+`status: "failed"` result with findings explaining why, not a 500 in the
+middle of onboarding.
+
+`run_and_persist` wraps that with the DB writes every caller needs, INCLUDING
+auto-activation: a template that clears every one of the six stages above
+with literally zero findings of any severity flips its school straight to
+'active', skipping the admin queue entirely (see `_meets_auto_activation_bar`
+for exactly how strict that bar is, and why). This exists because the
+alternative — every template, however clean, sitting in "Training AI…" until
+a human happens to notice the pending queue — was the actual bottleneck in
+onboarding a new school, not anything the analysis itself couldn't already
+tell you.
 """
 from __future__ import annotations
 
@@ -57,7 +68,7 @@ from pathlib import Path
 
 import json
 
-from . import db, llm
+from . import db, llm, mail
 from .config import settings
 from .errors import AppError
 
@@ -826,11 +837,75 @@ def analyze_uploaded_template(*, user_id: str, dest_path: Path, claimed_ext: str
         return {"status": "failed", "structure": None, "analysis": None, "findings": [f.to_dict() for f in findings]}
 
 
-def run_and_persist(*, user_id: str, template_id: str, dest_path: Path, claimed_ext: str) -> dict:
+# Deliberately conservative — this is the one place in the whole pipeline
+# that skips a human ever looking at the template before it goes live for
+# real teachers. See _meets_auto_activation_bar's own docstring for why
+# every one of these thresholds is stricter than what merely counts as
+# "analyzed" elsewhere in this module.
+_AUTO_ACTIVATE_MIN_CONFIDENCE = 0.9
+
+
+def _meets_auto_activation_bar(result: dict) -> bool:
+    """True only when EVERY signal agrees the template is unambiguous: not
+    just zero errors (that's `status == "analyzed"`), but literally zero
+    findings of any severity — including the merely informational ones
+    stages 4-6 emit (an unverified second-pass opinion, a model-flagged
+    ambiguity) — plus a non-empty section list, and the model's own
+    confidence and auto-use recommendation both clearing a high bar.
+    Anything short of unanimous leaves the template in the ordinary admin
+    queue, exactly as before auto-activation existed."""
+    if result["status"] != "analyzed":
+        return False
+    if result["findings"]:
+        return False
+    analysis = result["analysis"] or {}
+    sections = analysis.get("sections") or []
+    if not sections:
+        return False
+    confidence = analysis.get("overall_confidence")
+    if not isinstance(confidence, (int, float)) or confidence < _AUTO_ACTIVATE_MIN_CONFIDENCE:
+        return False
+    if not analysis.get("recommended_for_auto_use"):
+        return False
+    return True
+
+
+def _maybe_auto_activate(school_id: str, template_id: str, result: dict) -> bool:
+    """Only ever acts on a school that's still 'pending' — a school that's
+    already active (e.g. a re-upload meant to refine an existing format)
+    is left alone; that transition stays an admin's call. Returns whether
+    it fired, purely so the caller can report it back."""
+    school = db.get_school(school_id)
+    if not school or school.get("template_status") != "pending":
+        return False
+    if not _meets_auto_activation_bar(result):
+        return False
+
+    db.update_school_template_status(school_id, "active")
+    db.mark_template_auto_activated(template_id)
+    log.info(
+        "auto-activated template %s for school %s (zero findings, confidence>=%.2f)",
+        template_id,
+        school_id,
+        _AUTO_ACTIVATE_MIN_CONFIDENCE,
+    )
+
+    latest = db.get_latest_school_template(school_id)
+    if latest and latest.get("uploader_email"):
+        mail.send_template_active_email(
+            to=latest["uploader_email"],
+            uploader_name=latest.get("uploader_name"),
+            school_name=school["name"],
+        )
+    return True
+
+
+def run_and_persist(*, user_id: str, template_id: str, school_id: str, dest_path: Path, claimed_ext: str) -> dict:
     """analyze_uploaded_template plus the DB writes every caller needs around
     it (both the upload endpoint and the admin re-analyze endpoint run this
     exact sequence) — one place so 'mark analyzing, run, save findings, save
-    the terminal result' can't drift apart between the two call sites."""
+    the terminal result, maybe auto-activate' can't drift apart between the
+    two call sites."""
     db.set_template_analysis_status(template_id, "analyzing")
     result = analyze_uploaded_template(user_id=user_id, dest_path=dest_path, claimed_ext=claimed_ext)
     db.replace_template_findings(template_id, result["findings"])
@@ -845,4 +920,7 @@ def run_and_persist(*, user_id: str, template_id: str, dest_path: Path, claimed_
             else None
         ),
     )
-    return {"template": row, "findings": result["findings"]}
+    auto_activated = _maybe_auto_activate(school_id, template_id, result)
+    if auto_activated:
+        row = db.get_school_template(template_id)  # re-fetch: auto_activated flag just changed
+    return {"template": row, "findings": result["findings"], "auto_activated": auto_activated}

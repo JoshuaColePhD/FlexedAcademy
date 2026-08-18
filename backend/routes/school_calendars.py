@@ -142,5 +142,5 @@ async def upload_school_template(
 
     row = db.create_school_template(school_id, user_id, filename, str(dest))
     return template_intake.run_and_persist(
-        user_id=user_id, template_id=row["id"], dest_path=dest, claimed_ext=ext
+        user_id=user_id, template_id=row["id"], school_id=school_id, dest_path=dest, claimed_ext=ext
     )
