@@ -1698,7 +1698,13 @@ export function ChatPage() {
   const nextUndecided = coreChecklist.find((c) => c.value == null)
 
   let contextualSuggestion = ''
-  if (nextUndecided && !hasArtifact) {
+  
+  const lastMsg = messages[messages.length - 1]
+  const lastMsgIsQuestion = lastMsg?.role === 'assistant' && lastMsg.content.trim().endsWith('?')
+
+  if (lastMsgIsQuestion) {
+    contextualSuggestion = 'Yes, that sounds great.'
+  } else if (nextUndecided && !hasArtifact) {
     if (nextUndecided.key === 'week' && calendar?.weeks) {
       if (conversationWeek) {
         contextualSuggestion = `Let's plan Week ${conversationWeek}`
@@ -1719,6 +1725,18 @@ export function ChatPage() {
     } else if (nextUndecided.key === 'assessment') {
       contextualSuggestion = 'Let us do a multiple choice quiz'
     }
+  } else if (hasArtifact) {
+    if (viewKind === 'plan') {
+      if (!artifact?.quiz) {
+        contextualSuggestion = 'Generate a multiple choice quiz for this week.'
+      } else {
+        contextualSuggestion = "Make Friday's activity more interactive."
+      }
+    } else if (viewKind === 'quiz') {
+      contextualSuggestion = 'Make the questions slightly harder.'
+    }
+  } else if (!nextUndecided && !hasArtifact) {
+    contextualSuggestion = 'Build the lesson plan.'
   }
 
   const artifactEl =
