@@ -502,15 +502,26 @@ export function ArtifactDetailPanel({
             Share (ArtifactRail.jsx's QuizRow) — nothing to export or share
             until the file actually built. */}
         {kind === 'quiz' && quiz?.has_qti && planId ? (
-          <button
-            type="button"
-            className="doc-download fa-press flex items-center gap-1.5"
-            onClick={() => setShareOpen(true)}
-            aria-label="Export or Share this quiz"
-            title="Export or Share"
-          >
-            <Share2 size={14} aria-hidden="true" /> Export
-          </button>
+          <>
+            <a
+              className="btn-icon"
+              href={api.quizDownloadUrl(planId, quiz.id)}
+              download
+              title="Download Quiz"
+              aria-label="Download the .zip file"
+            >
+              <Download size={16} aria-hidden="true" />
+            </a>
+            <button
+              type="button"
+              className="doc-download fa-press flex items-center gap-1.5"
+              onClick={() => setShareOpen(true)}
+              aria-label="Export or Share this quiz"
+              title="Export or Share"
+            >
+              <Share2 size={14} aria-hidden="true" /> Export
+            </button>
+          </>
         ) : null}
       </div>
 

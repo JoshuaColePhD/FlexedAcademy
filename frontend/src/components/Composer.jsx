@@ -6,7 +6,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Square, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
-import { useVoice } from '../lib/voiceContext'
 import { useExitTransition } from '../hooks/useExitTransition'
 
 const MAX_H = 220
@@ -82,7 +81,6 @@ export function Composer({
   sendLabel = 'Send',
 }) {
   const toast = useToast()
-  const voice = useVoice()
   const textareaRef = useRef(null)
   const wrapperRef = useRef(null)
   const mediaRecorder = useRef(null)
@@ -233,10 +231,21 @@ export function Composer({
   const canSend = hasContent && !isStreaming && !isRecording && !isTranscribing
 
   const submit = () => {
-    // A keydown is as much a real user gesture as a click — see the Send
-    // button's own onClick for why this has to run somewhere other than
-    // just voice's toggle.
-    if (voice.enabled) voice.unlock()
+    /* No voice.unlock() here any more.
+     *
+     * This line existed to satisfy the browser's "audio playback needs a user
+     * gesture" rule: under the old architecture unlock() resumed an
+     * AudioContext, and a keydown counts as a gesture where a timer does not.
+     * Under WebRTC, unlock() means something entirely different — mint an
+     * ephemeral key, open the microphone, and negotiate a realtime session.
+     * Since `voice.enabled` is restored from localStorage, that turned every
+     * typed message from anyone who had ever tried voice mode into a mic
+     * permission prompt and a billed session. (Before the missing
+     * api.createVoiceSession was added it was instead a red error toast on
+     * every message, forever, which is the form the bug was first reported in.)
+     *
+     * The gesture requirement is satisfied where it belongs now: by the press
+     * on the voice button itself, which is the only thing that opens a session. */
     onSubmit()
   }
 

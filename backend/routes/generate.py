@@ -276,8 +276,16 @@ def _build_chat_system_prompt(user_id: str, chat_id: str | None, week_number: in
         "You have decades of classroom experience. When giving advice, draw upon pedagogical best practices, "
         "cognitive science, and proven classroom management strategies. Speak with the empathy, wisdom, and practicality "
         "of a veteran teacher coaching a peer. Focus on active learning, student engagement, and realistic, actionable solutions.\n\n"
-        "The teacher is preparing to generate or revise a weekly lesson plan. "
     )
+
+    if mode == "sub_plan":
+        system_prompt += (
+            "The teacher is sick today and needs an EMERGENCY 5-MINUTE SUB PLAN. "
+            "Do NOT ask questions. Do NOT brainstorm. Immediately output a highly scripted, idiot-proof, hour-by-hour (or minute-by-minute) "
+            "substitute teacher packet based strictly on the current week's pacing guide. The plan must be ready to print and hand to a sub.\n\n"
+        )
+    else:
+        system_prompt += "The teacher is preparing to generate or revise a weekly lesson plan.\n\n"
 
     week_row = None
     if week_number is not None:
@@ -328,6 +336,43 @@ def _build_chat_system_prompt(user_id: str, chat_id: str | None, week_number: in
 
     return system_prompt
 
+# The realtime model and voice, named once. Both the ephemeral-key request and
+# the browser's own SDP POST have to agree on the model, so the client reads
+# this value back off the session response rather than repeating the literal.
+REALTIME_MODEL = "gpt-realtime-2.1"
+REALTIME_VOICE = "alloy"
+
+
+class VoiceSessionRequest(BaseModel):
+    """The body of POST /api/voice/session.
+
+    This class did not exist. The handler below has always annotated its
+    parameter with this name (the WebRTC migration, commit eb498c8, added the
+    route and never added the model), and the failure mode is worth recording
+    because it is not the one you would expect: an undefined annotation does
+    NOT raise at import. `from __future__ import annotations` makes it the
+    string "VoiceSessionRequest", FastAPI's lenient type resolution swallows
+    the NameError and leaves it unresolved, and an unresolved parameter is not
+    treated as a request body — it is treated as a required QUERY parameter.
+
+    So the route registered fine, the app booted fine, and every possible
+    request to it returned:
+
+        422 {"detail":[{"type":"missing","loc":["query","req"], ...}]}
+
+    Verified with TestClient before writing this. Field names and defaults
+    match what the handler reads (req.chat_id / req.week_number / req.mode)
+    and what VoiceProvider.unlock() sends.
+    """
+
+    # Same three fields, same defaults, same meaning as ChatStreamRequest's —
+    # this endpoint hands them to the very same _build_chat_system_prompt, so
+    # they must not drift from it.
+    chat_id: str | None = None
+    week_number: int | None = None
+    mode: str = "brainstorm"
+
+
 @router.post("/voice/session")
 def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_user)):
     """Provisions an ephemeral WebRTC token for OpenAI's Realtime API."""
@@ -366,26 +411,83 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
         }
     ]
 
+    # POST /v1/realtime/sessions was the pre-GA (2024 beta) endpoint and no
+    # longer exists — it answered every call with
+    #   {"error":{"message":"Invalid URL (POST /v1/realtime/sessions)"}}
+    # which this handler then wrapped in a 500. Ephemeral keys now come from
+    # /v1/realtime/client_secrets, and the session config moved inside a
+    # "session" object with the voice under audio.output.
     resp = requests.post(
-        "https://api.openai.com/v1/realtime/sessions",
+        "https://api.openai.com/v1/realtime/client_secrets",
         headers={
             "Authorization": f"Bearer {settings.openai_api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         },
         json={
-            "model": "gpt-4o-realtime-preview",
-            "modalities": ["audio", "text"],
-            "instructions": system_prompt,
-            "tools": tools,
-            "voice": "alloy",
+            "session": {
+                "type": "realtime",
+                "model": REALTIME_MODEL,
+                "instructions": system_prompt,
+                "tools": tools,
+                "audio": {
+                    "input": {
+                        # Without this the session streams the teacher's audio
+                        # and never tells us a single word of it. The panel used
+                        # to get the transcript from its own Whisper round trip
+                        # (encodeWav -> /api/transcribe), and the WebRTC
+                        # migration deleted that pipeline without turning on the
+                        # replacement, so nothing downstream ever learned what
+                        # was said.
+                        "transcription": {"model": "whisper-1"},
+                        # Server-side VAD is the whole reason to hold a realtime
+                        # socket open for input: it decides where a turn ends,
+                        # which is what the deleted Silero detector used to do
+                        # locally.
+                        #
+                        # create_response: false is the load-bearing setting.
+                        # Left at its default the realtime model ANSWERS the
+                        # teacher directly out of its own weights — fluent, and
+                        # wrong about standards, since it has no retrieval. This
+                        # product's whole claim is that a cited standard was
+                        # quoted from a real document, so the answer has to come
+                        # from /api/chat_stream with its RAG context. The
+                        # realtime session's job is to hear the turn and to
+                        # speak the reply, not to compose it.
+                        "turn_detection": {"type": "server_vad", "create_response": False},
+                    },
+                    "output": {"voice": REALTIME_VOICE},
+                },
+            }
         },
-        timeout=10
+        timeout=10,
     )
-    
+
     if resp.status_code != 200:
         raise AppError("realtime_failure", f"Failed to provision realtime session: {resp.text}", status=500)
-        
-    return resp.json()
+
+    data = resp.json()
+    # A stable shape of OUR OWN, not OpenAI's envelope passed through.
+    #
+    # Two reasons. The envelope already moved once underneath this code — the
+    # old endpoint nested the key at client_secret.value and this one returns
+    # it at the top level as `value` — and the client was reading the old path,
+    # so a straight pass-through would have handed VoiceProvider `undefined`
+    # even once the URL was right. And `model` has to be IDENTICAL in the
+    # token request above and in the browser's SDP POST; it was hardcoded
+    # separately in both files, which is a silent-failure waiting to happen on
+    # the next model bump. Sending it back means there is one source of truth.
+    token = data.get("value") or (data.get("client_secret") or {}).get("value")
+    if not token:
+        raise AppError(
+            "realtime_failure",
+            "Realtime session was provisioned without a client secret.",
+            status=500,
+        )
+    return {
+        "token": token,
+        "model": REALTIME_MODEL,
+        "expires_at": data.get("expires_at"),
+    }
 
 
 @router.post("/chat_stream")

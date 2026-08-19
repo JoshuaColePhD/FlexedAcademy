@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, FileText, Search, Trash2, CheckSquare, Square } from 'lucide-react'
 import { api } from '../lib/api'
+import { copyPlanShareLink } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useActiveClass, usePlans, useDeletePlan } from '../hooks/useAppData'
@@ -35,6 +36,7 @@ function formatDate(iso) {
 }
 
 function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, selected, onToggleSelect }) {
+  const toast = useToast()
   // Plans built before chat_id was tracked (or ever) have nowhere for a
   // click to go — same fallback ClassWeeks uses for an orphaned week.
   const openable = Boolean(plan.chat_id)
@@ -96,6 +98,15 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
         <span className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 px-2 opacity-60">{content}</span>
       )}
       <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <button
+          type="button"
+          className="btn-icon"
+          onClick={() => copyPlanShareLink(plan.id, toast)}
+          aria-label={`Copy share link for ${label}`}
+          title="Copy Link"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+        </button>
         <a
           className="btn-icon"
           href={api.planDownloadUrl(plan.id)}

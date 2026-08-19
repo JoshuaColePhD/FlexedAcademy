@@ -227,7 +227,7 @@ export function DecisionStack({ decisions, fill = true, onRevise }) {
         </ul>
       </div>
       {settledCount > 0 && onRevise && (
-        <p className="mt-3 text-center text-xs text-ink-faint animate-in fade-in">
+        <p className="mt-3 text-center text-xs text-ink-faint fa-rise">
           💡 You can always say &ldquo;Change the plan to...&rdquo; to edit this.
         </p>
       )}

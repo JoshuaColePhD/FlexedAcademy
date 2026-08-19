@@ -82,6 +82,7 @@ def _public_user(user: dict) -> dict:
         # separate GET, to decide whether to mount it.
         "onboarding_seen_at": user.get("onboarding_seen_at"),
         "entitlement": entitlement(user["id"]).as_dict(),
+        "generated_plan_count": db.get_plan_count(user["id"]),
     }
 
 

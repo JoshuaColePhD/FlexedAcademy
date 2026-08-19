@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Download, ExternalLink, Loader2, Upload } from 'lucide-react'
 import { api } from '../lib/api'
+import { copyPlanShareLink } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -152,6 +153,39 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
             </a>
           </div>
         </div>
+
+        {!isQuiz && (
+          <div className="mb-6 rounded-lg bg-paper-sunken p-4 border border-edge">
+            <h3 className="text-sm font-medium">Share a read-only link</h3>
+            {/* The old copy presented the link as already live, and the input
+                below showed it as though it were. It wasn't a link yet — nothing
+                had told the server this plan was shared. Now Copy is what
+                creates it, and the wording says so, because "who can see this"
+                is the one thing a teacher must not have to guess about a
+                document with their name on it. */}
+            <p className="mt-1 text-sm text-ink-soft mb-3">
+              Copy the link to share this plan. Anyone who has it can read the week and
+              copy it into their own classes — no account needed. You can turn the link
+              off again whenever you like.
+            </p>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                readOnly 
+                value={`${window.location.origin}/shared/${planId}`} 
+                className="input flex-1 bg-paper-inset text-ink-muted select-all font-mono text-xs"
+                onClick={e => e.target.select()}
+              />
+              <button 
+                type="button" 
+                className="btn shrink-0"
+                onClick={() => copyPlanShareLink(planId, toast)}
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        )}
 
         <h3 className="text-sm font-medium mb-3">Save to Google Drive</h3>
         

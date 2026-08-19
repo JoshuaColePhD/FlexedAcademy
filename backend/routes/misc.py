@@ -115,6 +115,7 @@ SUBJECT_LABELS = {
     "PE": "Physical Education (2019)",
     "World_Languages": "World Languages (2017)",
     "Counseling": "Comprehensive School Counseling (2024-2026)",
+    "Special_Education": "Special Education / Collaborative",
 }
 
 # AP Lang first: it is the course this app exists for and the default settings row.
@@ -160,6 +161,16 @@ def get_frameworks():
         }
         for course in counts
     ]
+    
+    if "Special_Education" not in counts:
+        result.append({
+            "id": "Special_Education",
+            "label": SUBJECT_LABELS["Special_Education"],
+            "grades": [9, 10, 11, 12],
+            "chunks": 0,
+            "verbatim_ok": 0,
+        })
+
     result.sort(key=lambda f: (
         _FRAMEWORK_PRIORITY.index(f["id"]) if f["id"] in _FRAMEWORK_PRIORITY
         else len(_FRAMEWORK_PRIORITY),
@@ -216,6 +227,7 @@ class ChatBody(BaseModel):
     # doesn't get the "currently working on …" block in its system prompt.
     # Ignored by the rename route below, which shares this model.
     week_number: int | None = Field(default=None, ge=1, le=52)
+    mode: str | None = Field(default=None, max_length=20)
 
 
 class TitleRequest(BaseModel):
@@ -246,7 +258,7 @@ def list_chats(class_id: str | None = None, user_id: str = Depends(get_current_u
 @router.post("/chats")
 def create_chat(body: ChatBody, user_id: str = Depends(get_current_user)):
     return db.create_chat(
-        user_id, body.title, class_id=body.class_id, week_number=body.week_number
+        user_id, body.title, class_id=body.class_id, week_number=body.week_number, mode=body.mode
     )
 
 

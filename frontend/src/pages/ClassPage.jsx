@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { GRADES, DEFAULT_GRADE, gradeLabel, gradeSelectValue } from '../lib/grades'
 
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
@@ -47,22 +48,6 @@ import { unitSuffix } from '../lib/planShape'
  * ends.
  */
 
-// 0 is Kindergarten (backend/scripts/01d_ingest_alcos_case.py's own
-// grade_from_level() convention — "K" in the CASE feed, 0 in the corpus and
-// on the wire) — widened from 9-12 once the K-8 Alabama Course of Study
-// standards actually had real chunks behind them (2026-08-17 ingest).
-const GRADES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-
-// Grade is nullable — a class saved before grade was collected has none.
-// Number(null) coerces to NaN, so this used to print "NaNth" instead of
-// leaving the grade off the label.
-function gradeLabel(g) {
-  const n = Number(g)
-  if (!Number.isFinite(n)) return null
-  if (n === 0) return 'K'
-  const suffix = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'
-  return `${n}${suffix}`
-}
 
 export const KIND_LABEL = {
   pacing_guide: 'Pacing guide',
@@ -81,7 +66,7 @@ const shortLabel = (fw, fallback) =>
 function AddClass({ frameworks, onCreated, onCancel }) {
   const toast = useToast()
   const [subject, setSubject] = useState('')
-  const [grade, setGrade] = useState('11')
+  const [grade, setGrade] = useState(DEFAULT_GRADE)
   const [saving, setSaving] = useState(false)
 
   const fw = findFramework(frameworks, subject)
@@ -123,8 +108,8 @@ function AddClass({ frameworks, onCreated, onCancel }) {
           className="neo-select neo-inset rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink sm:w-24"
         >
           {GRADES.map((g) => (
-            <option key={g} value={g}>
-              {gradeLabel(g)}
+            <option key={g.value} value={g.value}>
+              {g.label}
             </option>
           ))}
         </select>
@@ -262,7 +247,7 @@ export function ClassDocuments({ cls, onChanged }) {
         </p>
       ) : (
         <p className="text-xs text-ink-muted">
-          No documents yet. A pacing guide lets the week board name your units.
+          No documents yet. A pacing guide lets plans follow your own sequence and unit names.
         </p>
       )}
 
@@ -303,13 +288,14 @@ function ClassStandards({ cls }) {
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
   
-  if (!cls.state) return null
-
   const standards = useQuery({
     queryKey: ['globalStandards', cls.state, cls.subject, cls.grade],
     queryFn: () => api.getGlobalStandards(cls.state, cls.subject, cls.grade),
     retry: false,
+    enabled: !!cls.state,
   })
+
+  if (!cls.state) return null
 
   const upload = async (e) => {
     const file = e.target.files?.[0]
@@ -487,7 +473,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
 
   const [name, setName] = useState(cls.name)
   const [editSubject, setEditSubject] = useState(cls.subject)
-  const [editGrade, setEditGrade] = useState(cls.grade || '11')
+  const [editGrade, setEditGrade] = useState(gradeSelectValue(cls.grade))
   const [editSchool, setEditSchool] = useState(cls.school || '')
   const [savingDetails, setSavingDetails] = useState(false)
   
@@ -497,7 +483,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
   useEffect(() => setName(cls.name), [cls.name])
   useEffect(() => {
     setEditSubject(cls.subject)
-    setEditGrade(cls.grade || '11')
+    setEditGrade(gradeSelectValue(cls.grade))
     setEditSchool(cls.school || '')
   }, [cls.subject, cls.grade, cls.school])
 
@@ -507,7 +493,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
   const hasChanges =
     name.trim() !== cls.name ||
     editSubject !== cls.subject ||
-    editGrade !== (cls.grade || '11') ||
+    editGrade !== gradeSelectValue(cls.grade) ||
     editSchool !== (cls.school || '')
 
   const saveDetails = async () => {
@@ -597,13 +583,13 @@ function ClassDetail({ cls, frameworks, onChanged }) {
             <span className="mb-1 block text-xs text-ink-muted">Grade Level</span>
             <select
               aria-label={`Grade for ${cls.name}`}
-              value={editGrade}
+              value={gradeSelectValue(editGrade)}
               onChange={(e) => setEditGrade(e.target.value)}
               className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
             >
               {GRADES.map((g) => (
-                <option key={g} value={g}>
-                  {gradeLabel(g)}
+                <option key={g.value} value={g.value}>
+                  {g.label}
                 </option>
               ))}
             </select>
@@ -643,7 +629,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
               onClick={() => {
                 setName(cls.name)
                 setEditSubject(cls.subject)
-                setEditGrade(cls.grade || '11')
+                setEditGrade(gradeSelectValue(cls.grade))
                 setEditSchool(cls.school || '')
               }}
               className="neo-raised rounded-lg px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
@@ -686,6 +672,19 @@ function ClassDetail({ cls, frameworks, onChanged }) {
       {/* Danger Zone */}
       <section className="flex flex-col gap-4 mt-8">
         <div className="border-b border-edge pb-2">
+          <h3 className="text-sm font-semibold text-ink">Emergency Tools</h3>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
+            className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken"
+          >
+            Generate 5-Minute Sub Plan
+          </button>
+        </div>
+
+        <div className="border-b border-edge pb-2 mt-4">
           <h3 className="text-sm font-semibold text-mark">Danger Zone</h3>
         </div>
         <div>
@@ -830,7 +829,7 @@ function GlobalClassDashboard({ classes, onUpdated }) {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-ink select-none">{c.name}</p>
-                    <p className="text-xs text-ink-muted select-none">{c.subject} · Grade {c.grade}</p>
+                    <p className="text-xs text-ink-muted select-none">{c.subject}{gradeLabel(c.grade) ? ` · Grade ${gradeLabel(c.grade)}` : ''}</p>
                   </div>
                 </label>
               </li>
@@ -997,27 +996,45 @@ export function ClassPage() {
           </div>
         </header>
 
+        {/* The loading skeleton is NOT a keyed child of this AnimatePresence,
+            and the first render does not animate in. Both of those were what
+            made this whole screen render at 9% opacity and stay there.
+            The sequence: classes are loading, so the keyed child is
+            'dashboard' and starts its 150ms entrance; the query resolves
+            mid-flight; the key flips to the class id; mode="wait" holds the
+            incoming child until the outgoing one has EXITED, and the exit
+            interrupts an entrance that never finished. The state machine
+            settled with opacity frozen at 0.09 — no error, no console
+            warning, just a Class Configuration page that was there in the DOM
+            (every field, every value) and invisible on screen.
+            The skeleton -> content swap was never a transition worth
+            animating; only moving BETWEEN classes is. initial={false} is the
+            belt to that braces: an entrance animation is the only reason a
+            stall here could hide content rather than merely fail to flourish
+            it, so the first paint no longer depends on one completing. */}
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 overflow-x-hidden relative">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeClass ? activeClass.id : 'dashboard'}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.15 }}
-              className="w-full"
-            >
-              {activeClass ? (
-                <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
-              ) : classesLoading ? (
-                <div className="w-full max-w-3xl">
-                  <SkeletonText lines={5} />
-                </div>
-              ) : (
-                <GlobalClassDashboard classes={classes} onUpdated={reloadClasses} />
-              )}
-            </motion.div>
-          </AnimatePresence>
+          {classesLoading && !activeClass ? (
+            <div className="w-full max-w-3xl">
+              <SkeletonText lines={5} />
+            </div>
+          ) : (
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activeClass ? activeClass.id : 'dashboard'}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.15 }}
+                className="w-full"
+              >
+                {activeClass ? (
+                  <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
+                ) : (
+                  <GlobalClassDashboard classes={classes} onUpdated={reloadClasses} />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          )}
         </div>
       </div>
 

@@ -122,6 +122,109 @@ def get_plan(plan_id: str, user_id: str = Depends(get_current_user)):
     return _require_plan(user_id, plan_id)
 
 
+@router.get("/public/{plan_id}")
+def get_public_plan(plan_id: str):
+    _require_id(plan_id)
+    plan = db.get_public_plan(plan_id)
+    if not plan:
+        # Same 404 for "no such plan" and "that plan is not shared", on purpose:
+        # distinguishing them would turn this endpoint into an oracle for which
+        # plan ids exist.
+        raise AppError(
+            "plan_not_found",
+            "This plan isn’t shared, or the link has been turned off.",
+            status=404,
+        )
+    # Don't return the docx path or other sensitive info, just the plan structure
+    return {
+        "id": plan["id"],
+        "plan_json": plan["plan_json"],
+        "course": plan["course"],
+        "week_label": plan["week_label"],
+        "unit": plan["unit"],
+    }
+
+
+class PublicLinkBody(BaseModel):
+    public: bool = True
+
+
+@router.post("/{plan_id}/public_link")
+def set_plan_public_link(plan_id: str, body: PublicLinkBody, user_id: str = Depends(get_current_user)) -> dict:
+    """Turn the read-only /shared/{plan_id} link on or off for one of my plans.
+
+    The link itself already existed — several places copy
+    `${origin}/shared/${planId}` to the clipboard — but nothing ever recorded
+    that a teacher had chosen to share, so GET /public/{plan_id} served every
+    plan in the database whether or not anyone had asked it to. This is the
+    missing consent step, and the off switch: flipping `public` back to false
+    kills every copy of the link that is already out there.
+    """
+    _require_id(plan_id)
+    # Ownership first — _require_plan is scoped to user_id and 404s otherwise,
+    # so this cannot be used to publish somebody else's plan by guessing an id.
+    _require_plan(user_id, plan_id)
+    row = db.set_plan_public(user_id, plan_id, body.public)
+    if not row:
+        raise AppError("plan_not_found", "No such plan.", status=404)
+    return {"id": row["id"], "is_public": bool(row["is_public"]), "shared_at": row["shared_at"]}
+
+
+class ForkPlanBody(BaseModel):
+    class_id: str | None = None
+
+
+@router.post("/{plan_id}/fork")
+def fork_plan(plan_id: str, body: ForkPlanBody, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
+    """Duplicates a plan to the user's account."""
+    import uuid
+    _require_id(plan_id)
+    
+    # Only a plan whose owner published it (migration 39). get_public_plan now
+    # filters on is_public, so this stopped being "any signed-in account can
+    # copy any plan whose id it knows" the moment that filter landed.
+    plan = db.get_public_plan(plan_id)
+    if not plan:
+        raise AppError(
+            "plan_not_found",
+            "This plan isn’t shared, or the link has been turned off.",
+            status=404,
+        )
+
+    new_id = uuid.uuid4().hex
+    # Create the plan for the new user.
+    # Note: It won't have a chat_id initially, so they can't chat to edit it, 
+    # but they can click cells to tweak it, or we could create a new chat for it.
+    # Let's just copy the plan row.
+    new_plan = db.create_plan(
+        plan_id=new_id,
+        user_id=user_id,
+        course=plan["course"],
+        week_label=plan["week_label"],
+        unit=plan["unit"],
+        query="Forked plan",
+        plan_json=plan["plan_json"],
+        docx_path=None,
+        retrieved_ids=[],
+        warnings=[],
+        chat_id=None,
+        template=plan.get("template", "default"),
+        class_id=body.class_id,
+        week_number=None,
+    )
+    
+    # Trigger docx build for the new plan
+    cls = db.get_class(user_id, body.class_id) if body.class_id else None
+    identity = service.identity_for(user_id, cls)
+    plan_data = schema.with_identity(
+        plan["plan_json"], teacher=identity["teacher"], course=identity["course"], period=identity["period"]
+    )
+    out_path = docx_build.plan_output_path(plan_data, new_id)
+    bg_tasks.add_task(service._build_docx_bg, user_id, plan_data, out_path, new_id)
+
+    return new_plan
+
+
 @router.patch("/{plan_id}")
 def patch_plan(plan_id: str, body: PatchPlan, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     """Edit a plan. Re-validates and rebuilds the .docx so the file never drifts."""

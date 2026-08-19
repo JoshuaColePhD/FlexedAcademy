@@ -5,7 +5,6 @@ import {
   Route,
   Routes,
   useLocation,
-  useNavigate,
   useParams,
 } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
@@ -36,6 +35,7 @@ import SignupPage from './pages/auth/SignupPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import { PrivacyPolicyPage } from './pages/legal/PrivacyPolicyPage'
 import { TermsPage } from './pages/legal/TermsPage'
+import { SharedPlanPage } from './pages/SharedPlanPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import './styles/base.css'
 
@@ -232,8 +232,19 @@ function Gate() {
     }
     if (knownAuthed) return <BootScreen />
     if (location.pathname === '/') {
-      // Landing page is dark, auth routes are light. Prevent white flash or skeleton flash.
-      return <div className="flex h-app w-full" style={{ backgroundColor: 'var(--neo-dark)' }} />
+      /* The landing page's own ground, held for the frame before it mounts.
+         Two things had gone wrong here. --neo-dark is not a token — base.css
+         defines --neo-dark-RGB (a channel triplet for the neumorphic shadow
+         pair) and nothing defines the bare name, so this rule was invalid and
+         painted nothing at all; the div fell through to body's var(--paper),
+         which on a system-dark visitor is #1f1d1b. And the comment's premise
+         expired when .land was recoloured from deep violet to white
+         (--brand-rgb: 255 255 255) — so the flash it was written to prevent
+         had inverted into a near-black one on exactly the page a first-time
+         visitor arrives at. Literal, like index.html's own pre-paint
+         theme-color for the same reason: this has to match .land's ground
+         regardless of what data-theme the rest of the app is in. */
+      return <div className="flex h-app w-full" style={{ backgroundColor: '#ffffff' }} />
     }
     return <div className="flex h-app w-full bg-paper" />
   }
@@ -270,6 +281,7 @@ function Gate() {
             rather than gated like /login et al. */}
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/shared/:id" element={<SharedPlanPage />} />
         {/* A deep link still round-trips through sign-in and comes back. */}
         <Route
           path="*"
@@ -303,6 +315,7 @@ function Gate() {
       <Route path="/reset-password" element={<AfterAuthRedirect />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/terms" element={<TermsPage />} />
+      <Route path="/shared/:id" element={<SharedPlanPage />} />
       <Route path="/c/:classId/*" element={<ClassRoutes />} />
       {/* Gated again server-side by every request the page makes — reaching
           this route with a non-admin session gets the page shell and then a

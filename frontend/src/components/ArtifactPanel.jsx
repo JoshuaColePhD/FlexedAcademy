@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { Tooltip } from './Tooltip'
 import { ChevronsRight, Download, Loader2, RefreshCw, Share2, TriangleAlert } from 'lucide-react'
 import { api } from '../lib/api'
+import { copyPlanShareLink } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
@@ -14,6 +15,7 @@ import { LessonPlanTable } from './LessonPlanTable'
 import { Marginalia } from './Marginalia'
 import { ShareDialog } from './ShareDialog'
 import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
+import confetti from 'canvas-confetti'
 
 /* The artifact, expanded into a working document.
  *
@@ -84,6 +86,20 @@ const location = useLocation()
   const panelRef = useRef(null)
   const titleRef = useRef(null)
   const color = classColor(classId)
+
+  // Trigger confetti when a generation finishes (busy transitions true -> false while we have a plan)
+  const previousBusy = useRef(busy)
+  
+  useEffect(() => {
+    if (previousBusy.current && !busy && artifact?.planId) {
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 }
+      })
+    }
+    previousBusy.current = busy
+  }, [busy, artifact?.planId])
 
   /* Two questions, two answers. `isOverlay` decides whether the document
      COVERS the chat or docks beside it. `isPhone` decides what SHAPE the
@@ -176,6 +192,27 @@ const location = useLocation()
                 <RefreshCw size={16} aria-hidden="true" />
               )}
             </button>
+            <button
+              type="button"
+              className={`btn-icon${isPhone ? ' hidden' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                copyPlanShareLink(planId, toast)
+              }}
+              title="Copy Link"
+              aria-label="Copy public link to this plan"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            </button>
+            <a
+              className="btn-icon"
+              href={api.planDownloadUrl(planId)}
+              download
+              title="Download Document"
+              aria-label="Download the .docx file"
+            >
+              <Download size={16} aria-hidden="true" />
+            </a>
             <button
               type="button"
               className="doc-download fa-press flex items-center gap-1.5"

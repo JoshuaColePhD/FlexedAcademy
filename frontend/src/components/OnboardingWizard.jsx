@@ -22,26 +22,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
 import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { ClassDocuments } from '../pages/ClassPage'
-
-// Same value/label shape as WelcomePage's own GRADES — each page that needs
-// this list keeps its own copy already (ClassPage's AddClass has a third,
-// numeric-only version), so this follows the existing convention rather than
-// introducing a new shared-constants file for one small static array.
-const GRADES = [
-  { value: '0', label: 'K' },
-  { value: '1', label: '1st' },
-  { value: '2', label: '2nd' },
-  { value: '3', label: '3rd' },
-  { value: '4', label: '4th' },
-  { value: '5', label: '5th' },
-  { value: '6', label: '6th' },
-  { value: '7', label: '7th' },
-  { value: '8', label: '8th' },
-  { value: '9', label: '9th' },
-  { value: '10', label: '10th' },
-  { value: '11', label: '11th' },
-  { value: '12', label: '12th' },
-]
+import { GRADES, gradeSelectValue, normalizeGrade } from '../lib/grades'
 
 const TIPS = [
   {
@@ -69,7 +50,7 @@ const TIPS = [
  * has even started. Copied rather than imported/shared — VoiceModePanel's
  * copy isn't exported, and this one is small enough that a shared-component
  * refactor isn't worth it for a single second caller. */
-function SmoothHeight({ children }) {
+export function SmoothHeight({ children }) {
   const contentRef = useRef(null)
   const [height, setHeight] = useState(null)
 
@@ -125,17 +106,17 @@ export function OnboardingWizard({ open, onClose, cls }) {
   const { mounted, closing } = useExitTransition(open, 220)
   const dialogRef = useRef(null)
 
-  const [step, setStep] = useState(0)
+  /* Tracked by KEY, not by index. The step list is built from what this
+   * account still has to answer (see `plan` below), so it isn't a fixed
+   * length — and an index into a list that can grow or shrink underneath you
+   * is how a wizard lands someone on the wrong screen. A key stays put. */
+  const [stepKey, setStepKey] = useState('welcome')
   // +1/-1, read by the step's own enter animation (onboarding-step-enter,
   // base.css) to decide which side it slides in from — forward feels like
   // moving on, back feels like undoing, and a single direction for both
   // would read as the same motion regardless of which key the teacher
   // just pressed.
   const [direction, setDirection] = useState(1)
-  const goTo = (next) => {
-    setDirection(next > step ? 1 : -1)
-    setStep(next)
-  }
 
   // School & template step
   const [school, setSchool] = useState(cls?.school || '')
@@ -146,7 +127,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
 
   // Confirm-class step
   const [subject, setSubject] = useState(cls?.subject || '')
-  const [grade, setGrade] = useState(cls?.grade || '11')
+  const [grade, setGrade] = useState(gradeSelectValue(cls?.grade))
   const [savingClass, setSavingClass] = useState(false)
   const [classError, setClassError] = useState(false)
 
@@ -169,12 +150,12 @@ export function OnboardingWizard({ open, onClose, cls }) {
   // different) class, rather than resuming wherever a previous open left off.
   useEffect(() => {
     if (!open) return
-    setStep(0)
+    setStepKey('welcome')
     setDirection(1)
     setSchool(cls?.school || '')
     setTemplateFile(null)
     setSubject(cls?.subject || '')
-    setGrade(cls?.grade || '11')
+    setGrade(gradeSelectValue(cls?.grade))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cls?.id])
 
@@ -182,6 +163,54 @@ export function OnboardingWizard({ open, onClose, cls }) {
 
   const selectedSchool = schools.find((s) => s.id === school)
   const schoolNeedsTemplate = school && selectedSchool && selectedSchool.template_status !== 'active'
+
+  /* Which steps this account actually has to sit through.
+   *
+   * /welcome (pages/onboarding/WelcomePage.jsx) is what CREATES the first
+   * class, and it collects the teacher's name, school, course and grade to do
+   * it — then this wizard opened straight afterwards and asked for the school,
+   * the course and the grade again. Two forms, thirty seconds apart, asking
+   * the same three questions: the second one reads as "the first one didn't
+   * save", which is the opposite of the reassurance a first run is for.
+   *
+   * So each step earns its place by having something left to ask. A teacher
+   * who came through /welcome drops straight to the parts it did NOT cover —
+   * their own materials, and the tips — and someone re-running this from
+   * Settings sees only what is genuinely still blank.
+   */
+  const [plan, setPlan] = useState(['welcome', 'documents', 'tips', 'done'])
+  useEffect(() => {
+    /* Recomputed only while still on the welcome screen. `schools` is an async
+     * query, so schoolNeedsTemplate can flip from false to true a beat after
+     * this opens, and the plan has to be allowed to pick that up — but once
+     * the teacher has started moving, the shape of the flow is settled and
+     * must not shift under them. */
+    if (!open || stepKey !== 'welcome') return
+    const next = ['welcome']
+    if (!school || schoolNeedsTemplate) next.push('school')
+    if (!subject || !normalizeGrade(cls?.grade)) next.push('class')
+    next.push('documents', 'tips', 'done')
+    setPlan((prev) => (prev.length === next.length && prev.every((s, i) => s === next[i]) ? prev : next))
+  }, [open, stepKey, school, schoolNeedsTemplate, subject, cls?.grade])
+
+  const goTo = (next) => {
+    setDirection(plan.indexOf(next) > plan.indexOf(stepKey) ? 1 : -1)
+    setStepKey(next)
+  }
+  const step = (offset) => {
+    const i = plan.indexOf(stepKey)
+    return plan[Math.min(Math.max(i + offset, 0), plan.length - 1)]
+  }
+  const goNext = () => goTo(step(1))
+  const goBack = () => goTo(step(-1))
+
+  /* "Step 1 of 3" was hardcoded on three steps of a SIX-step flow, so a
+   * teacher told there were three things left got two more screens after the
+   * one labelled last. Counted from the plan instead — welcome and the
+   * closing celebration aren't work, so they don't count. */
+  const formSteps = plan.filter((s) => s !== 'welcome' && s !== 'done')
+  const formIndex = formSteps.indexOf(stepKey)
+  const eyebrow = formIndex >= 0 ? `Step ${formIndex + 1} of ${formSteps.length}` : null
 
   const saveSchool = async () => {
     setSavingSchool(true)
@@ -195,7 +224,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
         qc.invalidateQueries({ queryKey: qk.schools })
         toast.success('Template submitted', 'We’ll train the AI on your school’s format.')
       }
-      goTo(step + 1)
+      goNext()
     } catch (err) {
       toast.apiError('Could not save that', err)
     } finally {
@@ -211,11 +240,11 @@ export function OnboardingWizard({ open, onClose, cls }) {
     setClassError(false)
     setSavingClass(true)
     try {
-      if (subject !== cls?.subject || grade !== cls?.grade) {
+      if (subject !== cls?.subject || grade !== normalizeGrade(cls?.grade)) {
         await api.updateClass(cls.id, { subject, grade })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
-      goTo(step + 1)
+      goNext()
     } catch (err) {
       toast.apiError('Could not save that', err)
     } finally {
@@ -243,9 +272,14 @@ export function OnboardingWizard({ open, onClose, cls }) {
   if (!mounted || !cls) return null
 
   return (
+    /* No `position: absolute` override. .dialog-scrim is fixed/inset-0 for a
+       reason and every other dialog in the app uses it as written — this one
+       copy was mounted inside AppShell's #main pane, so absolute positioning
+       scoped the scrim to that pane alone: the sidebar and the top bar stayed
+       lit and, more to the point, still took clicks. A dialog marked
+       aria-modal that you can click straight past isn't modal. */
     <div
       className={`dialog-scrim${closing ? ' is-closing' : ''}`}
-      style={{ position: 'absolute' }}
       onMouseDown={(e) => e.target === e.currentTarget && finish()}
     >
       <div
@@ -271,47 +305,67 @@ export function OnboardingWizard({ open, onClose, cls }) {
             <X size={20} aria-hidden="true" />
           </button>
           
-          <AnimatePresence mode="wait" custom={direction}>
-            <motion.div key={step} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
-              {step === 0 ? (
-                <WelcomeStep onNext={() => goTo(1)} />
-              ) : step === 1 ? (
-                <SchoolStep
-                  school={school}
-                  setSchool={setSchool}
-                  schools={schools}
-                  schoolNeedsTemplate={schoolNeedsTemplate}
-                  templateFile={templateFile}
-                  setTemplateFile={setTemplateFile}
-                  templateUrl={templateUrl}
-                  setTemplateUrl={setTemplateUrl}
-                  templateFileRef={templateFileRef}
-                  saving={savingSchool}
-                  onBack={() => goTo(0)}
-                  onNext={saveSchool}
-                />
-              ) : step === 2 ? (
-                <ClassStep
-                  cls={cls}
-                  subject={subject}
-                  setSubject={setSubject}
-                  grade={grade}
-                  setGrade={setGrade}
-                  frameworks={frameworks}
-                  saving={savingClass}
-                  error={classError}
-                  onBack={() => goTo(1)}
-                  onNext={saveClass}
-                />
-              ) : step === 3 ? (
-                <DocumentsStep cls={cls} onBack={() => goTo(2)} onNext={() => goTo(4)} />
-              ) : step === 4 ? (
-                <TipsStep onBack={() => goTo(3)} onNext={() => goTo(5)} />
-              ) : (
-                <DoneStep finishing={finishing} onFinish={finish} />
-              )}
-            </motion.div>
-          </AnimatePresence>
+          {/* SmoothHeight was written in this file, exported from this file,
+              and then only ever used by VoiceModePanel — so the one panel it
+              was named for snapped between step heights while the panel that
+              borrowed it animated. The steps differ by a lot (a two-line
+              welcome vs. the documents list), and that snap is the single
+              most visible rough edge in the flow. */}
+          <SmoothHeight>
+            <AnimatePresence mode="wait" custom={direction}>
+              <motion.div key={stepKey} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
+                {stepKey === 'welcome' ? (
+                  <WelcomeStep steps={formSteps.length} onNext={goNext} />
+                ) : stepKey === 'school' ? (
+                  <SchoolStep
+                    eyebrow={eyebrow}
+                    school={school}
+                    setSchool={setSchool}
+                    schools={schools}
+                    schoolNeedsTemplate={schoolNeedsTemplate}
+                    templateFile={templateFile}
+                    setTemplateFile={setTemplateFile}
+                    templateUrl={templateUrl}
+                    setTemplateUrl={setTemplateUrl}
+                    templateFileRef={templateFileRef}
+                    saving={savingSchool}
+                    onBack={goBack}
+                    onNext={saveSchool}
+                  />
+                ) : stepKey === 'class' ? (
+                  <ClassStep
+                    eyebrow={eyebrow}
+                    cls={cls}
+                    subject={subject}
+                    setSubject={setSubject}
+                    grade={grade}
+                    setGrade={setGrade}
+                    frameworks={frameworks}
+                    saving={savingClass}
+                    error={classError}
+                    onBack={goBack}
+                    onNext={saveClass}
+                  />
+                ) : stepKey === 'documents' ? (
+                  <DocumentsStep eyebrow={eyebrow} cls={cls} onBack={goBack} onNext={goNext} />
+                ) : stepKey === 'tips' ? (
+                  <TipsStep eyebrow={eyebrow} onBack={goBack} onNext={goNext} />
+                ) : (
+                  <DoneStep finishing={finishing} onFinish={finish} />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </SmoothHeight>
+
+          {/* Where am I, and how much is left — the flow had no answer to
+              either beyond a line of text that was counting wrong. */}
+          {formSteps.length > 1 && formIndex >= 0 ? (
+            <div className="onboarding-progress" aria-hidden="true">
+              {formSteps.map((s, i) => (
+                <span key={s} className={i <= formIndex ? 'is-done' : undefined} />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -332,20 +386,26 @@ function StepHeader({ eyebrow, title, body }) {
   )
 }
 
-function WelcomeStep({ onNext }) {
+function WelcomeStep({ steps, onNext }) {
+  /* Counted, not asserted. This promised "three quick things" and then showed
+     however many the flow actually had — and now that already-answered steps
+     drop out (see `plan`), the number genuinely varies by account. A first
+     screen that miscounts the work ahead is a small lie the teacher catches
+     within about ten seconds. */
+  const count = ['no', 'One', 'Two', 'Three', 'Four', 'Five'][steps] || String(steps)
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       <StepHeader
         eyebrow="Welcome to FlexEd"
         title="Let’s make some magic"
-        body="Three quick things — your school's template, your class, and any documents that help ground your plans — then a couple pro tips. Skippable at every step."
+        body={`${count} quick thing${steps === 1 ? '' : 's'} — so every plan comes out grounded in your standards, your materials, and your district’s format. Skippable at every step.`}
       />
       <div className="dialog-actions mt-2">
         <motion.button 
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="button" 
-          className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 ml-auto inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors" 
+          className="btn btn-primary ml-auto" 
           onClick={onNext}
         >
           Get started <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
@@ -356,6 +416,7 @@ function WelcomeStep({ onNext }) {
 }
 
 function SchoolStep({
+  eyebrow,
   school,
   setSchool,
   schools,
@@ -372,7 +433,7 @@ function SchoolStep({
   return (
     <div>
       <StepHeader
-        eyebrow="Step 1 of 3"
+        eyebrow={eyebrow}
         title="Where are we teaching?"
         body="Sets your school calendar — which weeks are teaching weeks and which days are closed."
       />
@@ -434,7 +495,7 @@ function SchoolStep({
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ml-auto" onClick={onNext} disabled={saving}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext} disabled={saving}>
           {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
           {saving ? 'Saving…' : 'Continue'}
         </motion.button>
@@ -443,11 +504,11 @@ function SchoolStep({
   )
 }
 
-function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
+function ClassStep({ eyebrow, cls, subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
   return (
     <div>
       <StepHeader
-        eyebrow="Step 2 of 3"
+        eyebrow={eyebrow}
         title={<span>Confirm {cls.name || 'your class'}</span>}
         body="The course decides which standards get retrieved. Change it any time from My Classes."
       />
@@ -458,7 +519,12 @@ function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, savi
         </motion.div>
         <select
           aria-label="Grade"
-          value={grade}
+          /* Coerced through the shared normaliser rather than trusted raw.
+             A <select> whose value matches no <option> silently shows its
+             FIRST one, so a class stored as "11th" (migration 38's bug)
+             presented an AP English 11 class here as Kindergarten — with no
+             error, and no sign anything was wrong. */
+          value={gradeSelectValue(grade)}
           onChange={(e) => setGrade(e.target.value)}
           className="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-2.5 pr-8 text-sm text-ink outline-none focus:border-accent"
         >
@@ -473,7 +539,7 @@ function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, savi
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ml-auto" onClick={onNext} disabled={saving}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext} disabled={saving}>
           {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
           {saving ? 'Saving…' : 'Continue'}
         </motion.button>
@@ -482,11 +548,11 @@ function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, savi
   )
 }
 
-function DocumentsStep({ cls, onBack, onNext }) {
+function DocumentsStep({ eyebrow, cls, onBack, onNext }) {
   return (
     <div>
       <StepHeader
-        eyebrow="Step 3 of 3"
+        eyebrow={eyebrow}
         title="Ground it in your materials"
         body="A pacing guide, syllabus, or curriculum map lets plans follow YOUR sequence and units, not a generic one. Optional — add these anytime from My Classes."
       />
@@ -495,7 +561,7 @@ function DocumentsStep({ cls, onBack, onNext }) {
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ml-auto" onClick={onNext}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
       </div>
@@ -503,20 +569,27 @@ function DocumentsStep({ cls, onBack, onNext }) {
   )
 }
 
-function TipsStep({ onBack, onNext }) {
+function TipsStep({ eyebrow, onBack, onNext }) {
   return (
     <div>
-      <StepHeader eyebrow="A few things worth knowing" title="Getting the most out of FlexEd" />
-      <motion.ul 
-        initial="hidden" 
-        animate="visible" 
-        variants={{ visible: { transition: { staggerChildren: 0.1 } } }} 
+      <StepHeader eyebrow={eyebrow} title="Getting the most out of FlexEd" />
+      {/* 0.1s per item over three items ran ~400ms with the last item still
+          invisible — and SmoothHeight (which now wraps the steps) sizes the
+          panel to the FINAL height immediately, so that delay showed as a
+          panel opened to full size around a mostly empty box. Tightened to a
+          ripple that finishes inside the step's own 280ms entrance instead of
+          trailing well past it. */}
+      <motion.ul
+        initial="hidden"
+        animate="visible"
+        variants={{ visible: { transition: { staggerChildren: 0.045 } } }}
         className="flex flex-col gap-3"
       >
         {TIPS.map((tip) => (
-          <motion.li 
-            key={tip.title} 
-            variants={{ hidden: { opacity: 0, x: -10 }, visible: { opacity: 1, x: 0 } }}
+          <motion.li
+            key={tip.title}
+            variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
+            transition={{ duration: 0.22 }}
             className="flex gap-3 rounded-lg border border-edge bg-paper-sunken p-3"
           >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10">
@@ -533,7 +606,7 @@ function TipsStep({ onBack, onNext }) {
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ml-auto" onClick={onNext}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
       </div>
@@ -567,7 +640,7 @@ function DoneStep({ finishing, onFinish }) {
         whileTap={{ scale: 0.98 }}
         type="button"
         disabled={finishing}
-        className="mt-8 bg-white text-slate-900 shadow-xl hover:bg-slate-50 inline-flex items-center gap-2 rounded-xl px-8 py-3 text-base font-semibold transition-colors disabled:opacity-50"
+        className="btn btn-primary mt-8 px-8 py-3 text-base"
         onClick={onFinish}
       >
         {finishing ? <Loader2 size={16} className="mr-2 animate-spin" aria-hidden="true" /> : null}

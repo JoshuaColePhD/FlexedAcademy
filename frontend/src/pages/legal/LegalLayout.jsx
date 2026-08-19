@@ -22,7 +22,7 @@ export function LegalLayout({ title, updated, children }) {
       <main className="mx-auto w-full max-w-2xl px-gutter py-12">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
         <p className="mt-1 text-sm text-ink-muted">Last updated {updated}</p>
-        <div className="legal-doc mt-8 flex flex-col gap-5 text-sm leading-relaxed text-ink-soft">
+        <div className="mt-8 flex flex-col gap-5 text-sm leading-relaxed text-ink-soft">
           {children}
         </div>
         <p className="mt-10 border-t border-edge pt-6 text-sm text-ink-muted">

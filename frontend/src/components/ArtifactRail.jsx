@@ -13,6 +13,7 @@ import {
   Share2,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { copyPlanShareLink } from '../lib/shareLink'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { orderedDays, unitSuffix } from '../lib/planShape'
@@ -20,6 +21,7 @@ import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { ShareDialog } from './ShareDialog'
+import { useToast } from '../lib/toastContext'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
    an open notebook, not a stock "empty box" glyph. Authored, not a Unicode
@@ -119,7 +121,7 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
  * that second control was a destructive action sitting next to the one a
  * teacher actually came for, answering a question ("why would you want to
  * delete it?") nobody was asking. Download is the row's only action now. */
-function QuizRow({ quiz, planId, index = 0, onOpen, color, onShare }) {
+function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
   const style = { animationDelay: `${index * 60}ms` }
 
   return (
@@ -160,20 +162,32 @@ function QuizRow({ quiz, planId, index = 0, onOpen, color, onShare }) {
           </span>
         )}
       </span>
-      <span className="rail-actions">
+      <span className="rail-actions flex items-center">
         {quiz.has_qti ? (
-          <button
-            type="button"
-            className="rail-open fa-press"
-            onClick={(e) => {
-              e.stopPropagation()
-              onShare(quiz)
-            }}
-            aria-label={`Export ${quiz.title}`}
-            title="Download or share this quiz"
-          >
-            <Share2 size={13} aria-hidden="true" />
-          </button>
+          <>
+            <a
+              className="btn-icon"
+              href={api.quizDownloadUrl(quiz.id)}
+              download
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Download ${quiz.title}`}
+              title="Download"
+            >
+              <Download size={13} aria-hidden="true" />
+            </a>
+            <button
+              type="button"
+              className="rail-open fa-press ml-1"
+              onClick={(e) => {
+                e.stopPropagation()
+                onShare(quiz)
+              }}
+              aria-label={`Export ${quiz.title}`}
+              title="Export or share this quiz"
+            >
+              <Share2 size={13} aria-hidden="true" />
+            </button>
+          </>
         ) : (
           <span
             className="rail-open is-disabled"
@@ -216,6 +230,7 @@ export function ArtifactRail({
   // standing in for a real plan that just failed to load.
   artifactLoadError = false,
 }) {
+  const toast = useToast()
   const [shareTarget, setShareTarget] = useState(null)
   const plan = artifact?.plan
   const planId = artifact?.planId
@@ -309,22 +324,38 @@ export function ArtifactRail({
                 </span>
               </button>
             </span>
-            <span className="rail-actions">
-              {/* Icon-only, matching the quiz card's own Download button.
-                  Nothing else belongs beside it: the whole card (and the
-                  title specifically) already calls onExpand above, so a
-                  separate "open" icon here was a third way to do the exact
-                  same thing Download's own stopPropagation exists to keep
-                  distinct from. */}
+            <span className="rail-actions flex items-center">
               <button
                 type="button"
-                className="rail-open fa-press"
+                className="btn-icon"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  copyPlanShareLink(planId, toast)
+                }}
+                aria-label="Copy share link"
+                title="Copy Link"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+              </button>
+              <a
+                className="btn-icon"
+                href={api.planDownloadUrl(planId)}
+                download
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Download .docx"
+                title="Download"
+              >
+                <Download size={13} aria-hidden="true" />
+              </a>
+              <button
+                type="button"
+                className="rail-open fa-press ml-1"
                 onClick={(e) => {
                   e.stopPropagation()
                   setShareTarget({ type: 'plan' })
                 }}
-                aria-label="Save to Google Drive or Download"
-                title="Save to Google Drive or Download"
+                aria-label="Export or Share"
+                title="Export or Share"
               >
                 <Share2 size={13} aria-hidden="true" />
               </button>
@@ -389,7 +420,7 @@ export function ArtifactRail({
             </div>
           ) : null}
           {quizzes.map((quiz, i) => (
-            <QuizRow key={quiz.id} quiz={quiz} planId={planId} index={i} onOpen={onOpenQuiz} color={color} onShare={(q) => setShareTarget({ type: 'quiz', quiz: q })} />
+            <QuizRow key={quiz.id} quiz={quiz} index={i} onOpen={onOpenQuiz} color={color} onShare={(q) => setShareTarget({ type: 'quiz', quiz: q })} />
           ))}
         </div>
       ) : null}
@@ -452,7 +483,7 @@ export function ArtifactRail({
         isQuiz={shareTarget?.type === 'quiz'}
         quizId={shareTarget?.type === 'quiz' ? shareTarget.quiz.id : undefined}
         documentName={shareTarget?.type === 'quiz' ? shareTarget.quiz.title : plan?.week_of}
-        downloadUrl={shareTarget?.type === 'quiz' ? api.quizDownloadUrl(planId, shareTarget.quiz.id) : api.planDownloadUrl(planId)}
+        downloadUrl={shareTarget?.type === 'quiz' ? api.quizDownloadUrl(_planId, shareTarget.quiz.id) : api.planDownloadUrl(planId)}
       />
     </aside>
   )

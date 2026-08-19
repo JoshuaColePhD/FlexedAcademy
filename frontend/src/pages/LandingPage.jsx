@@ -56,27 +56,119 @@ function priceLine(data) {
     : `Free to start, ${money} a ${every}. Cancel any time.`
 }
 
+/* Reveal-on-scroll, with a backstop that does not depend on
+ * IntersectionObserver having fired.
+ *
+ * What this guards is worth stating plainly, because the failure is silent and
+ * total rather than partial: the three sections using this hook start at
+ * `opacity: 0` / `transform: scale(0)` in CSS (.land-mech-step,
+ * .land-node-dot, .land-connector-*) and are revealed ONLY by the .is-inview
+ * class this hook decides to add. So anything that stops the observer from
+ * delivering a callback doesn't degrade the animation — it leaves the section
+ * that explains how the product works as blank space with the connecting
+ * arrows still drawn around it, on the public landing page, for a visitor who
+ * has never seen the product. Same shape as the AnimatePresence stall fixed in
+ * ClassPage: content whose visibility is contingent on an animation callback.
+ *
+ * Two changes:
+ *  - A plain geometric check on mount, on scroll, and on resize. It is a few
+ *    lines, it is deterministic, and it covers the cases an observer alone can
+ *    miss: an element already on screen at mount, a scroll container that is
+ *    not the document (.land is `overflow-y: auto`, and index.html's body is
+ *    overflow-hidden, so the document itself never scrolls here), and a first
+ *    callback that never arrives. Whichever mechanism notices first wins —
+ *    they both just set the same flag once.
+ *  - threshold 0.3 -> 0.2, and the manual check uses a simple "any part of it
+ *    is past 85% of the viewport" test. 30% of a section had to be on screen
+ *    before anything appeared, which on a phone meant scrolling well into a
+ *    blank region before it filled in.
+ *
+ * The reveal still only happens on approach, so the effect is unchanged for
+ * anyone whose observer works normally.
+ */
 function useInView() {
   const ref = useRef(null)
   const [inView, setInView] = useState(false)
   useEffect(() => {
     const el = ref.current
-    if (!el) return
-    if (typeof IntersectionObserver === 'undefined') {
+    if (!el) return undefined
+    let done = false
+    const reveal = () => {
+      if (done) return
+      done = true
       setInView(true)
-      return
     }
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setInView(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0.3 }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
+
+    // Geometric backstop. Cheap enough to run on scroll: one
+    // getBoundingClientRect against the viewport, and it stops listening the
+    // moment it fires.
+    const check = () => {
+      if (done) return
+      const r = el.getBoundingClientRect()
+      const vh = window.innerHeight || 0
+      if (r.top < vh * 0.85 && r.bottom > 0) {
+        reveal()
+        detach()
+      }
+    }
+
+    /* Listen on whatever actually scrolls, found by walking up.
+     *
+     * The first version of this used a single capture-phase listener on
+     * `window`, on the theory that capture sees non-bubbling element scroll
+     * events on the way down. Measured in a real browser: a window capture
+     * listener received ZERO of .land's scroll events. Scroll on an element is
+     * dispatched to that element, and relying on capture to catch it is a
+     * coin-flip across engines — so this subscribes to the real scrollers
+     * instead, which needs no assumptions about propagation at all.
+     *
+     * window is included as well, for the ordinary document-scroll case: this
+     * hook shouldn't silently stop working if .land ever loses its own
+     * overflow. */
+    const scrollers = [window]
+    for (let n = el.parentElement; n; n = n.parentElement) {
+      const oy = getComputedStyle(n).overflowY
+      if (oy === 'auto' || oy === 'scroll') scrollers.push(n)
+    }
+    const detach = () => {
+      for (const s of scrollers) s.removeEventListener('scroll', check)
+      window.removeEventListener('resize', check)
+      document.removeEventListener('visibilitychange', check)
+    }
+    for (const s of scrollers) s.addEventListener('scroll', check, { passive: true })
+    window.addEventListener('resize', check, { passive: true })
+    /* A tab opened in the background (cmd-click, "open in new tab") loads with
+     * document.visibilityState === 'hidden', and a hidden page is not required
+     * to deliver intersection callbacks or scroll events. Re-checking when it
+     * becomes visible is what makes that a normal first paint rather than a
+     * blank section. */
+    document.addEventListener('visibilitychange', check)
+
+    let observer
+    if (typeof IntersectionObserver !== 'undefined') {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            reveal()
+            observer.disconnect()
+            detach()
+          }
+        },
+        { threshold: 0.2 }
+      )
+      observer.observe(el)
+    }
+
+    // After layout has settled, not during this commit — a rect measured
+    // before the fonts and the hero have sized themselves is not the rect the
+    // visitor is looking at.
+    const raf = requestAnimationFrame(check)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      if (observer) observer.disconnect()
+      detach()
+    }
   }, [])
   return [ref, inView]
 }

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
@@ -1171,6 +1172,74 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_seen_at TEXT;
     """,
+
+    # ── 37: sub plans ─────────────────────────────────────────────────────────
+    """
+    ALTER TABLE chats ADD COLUMN IF NOT EXISTS mode TEXT;
+    """,
+
+    # ── 38: grades stored as LABELS, not values ───────────────────────────────
+    #
+    # WelcomePage used to POST the grade's label ("11th") where every reader
+    # expects its value ("11") — its own comment documents the visible half of
+    # that bug ("AP Language & Composition · NaNth", from _auto_name's int()).
+    # The frontend was fixed; the rows it had already written were not, and
+    # nothing heals them on read, so two of five live classes still hold a
+    # label today.
+    #
+    # The invisible half is the dangerous one. service._resolve_subject_grade
+    # does int(grade_str) inside a try and falls back to 11 — so a class stored
+    # as "12th" doesn't error, it silently retrieves GRADE 11 standards and
+    # cites them with real-looking codes. That is exactly the failure
+    # retrieval.py's own comment calls out: "each grade re-uses standard
+    # numbers 1-30, so grade must always be part of the filter" — a wrong-grade
+    # answer looks right and is wrong, which is the one thing this product
+    # exists to prevent.
+    #
+    # The visible half: '11th' matches no <option value>, so every grade <select>
+    # in the app (the onboarding wizard, ClassPage's edit panel) silently fell
+    # back to displaying its FIRST option — showing an AP English 11 class as
+    # Kindergarten.
+    #
+    # Ordinal suffix only. Anything else a grade column might hold ('K', '',
+    # NULL, a number already) is left exactly as it is: this migration's job is
+    # to undo one known bad write, not to guess at values it didn't create.
+    """
+    UPDATE classes
+       SET grade = regexp_replace(grade, '^\\s*(\\d{1,2})\\s*(st|nd|rd|th)\\s*$', '\\1')
+     WHERE grade ~ '^\\s*\\d{1,2}\\s*(st|nd|rd|th)\\s*$';
+    UPDATE settings
+       SET grade = regexp_replace(grade, '^\\s*(\\d{1,2})\\s*(st|nd|rd|th)\\s*$', '\\1')
+     WHERE grade ~ '^\\s*\\d{1,2}\\s*(st|nd|rd|th)\\s*$';
+    """,
+
+    # ── 39: sharing a plan has to be a decision ───────────────────────────────
+    #
+    # GET /api/plans/public/{plan_id} takes no auth and called
+    # db.get_public_plan, which was "SELECT * FROM plans WHERE id = ?" — no
+    # owner check and no notion of a plan having been shared. Verified against
+    # the live database with no cookie at all: HTTP 200 and 4KB of a real
+    # teacher's plan that had never been shared with anyone. POST
+    # /{plan_id}/fork resolved the same way, so any signed-in account could
+    # also COPY any plan it knew the id of.
+    #
+    # Row-level security does not save this. The policies exist and
+    # `plans` has relrowsecurity = true, but relforcerowsecurity = false and
+    # the app connects as `postgres`, which owns the table — and RLS is
+    # bypassed for a table's owner. Measured, not assumed. So the
+    # `WHERE user_id = ?` predicates in this module are the ONLY tenancy
+    # boundary this app actually has, which is exactly why an endpoint that
+    # forgot one mattered so much.
+    #
+    # The fix keeps the capability-URL shape the feature was built around
+    # (/shared/{plan_id}, which several buttons already copy to the clipboard)
+    # and adds the one thing it was missing: the teacher has to opt in, and can
+    # change their mind. Default FALSE, so every plan that exists today stops
+    # being readable the moment this runs.
+    """
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS shared_at TEXT;
+    """,
 ]
 
 
@@ -1457,6 +1526,30 @@ def get_class(user_id: str, class_id: str) -> dict | None:
     return _row("SELECT * FROM classes WHERE id = ? AND user_id = ?", (class_id, user_id))
 
 
+_GRADE_ORDINAL = re.compile(r"^\s*(\d{1,2})\s*(?:st|nd|rd|th)\s*$", re.IGNORECASE)
+
+
+def normalize_grade(grade: Any) -> Any:
+    """"11th" -> "11". The write-side guard behind migration 38.
+
+    That migration cleans the rows one already-fixed client wrote; this keeps
+    the column honest going forward, for the same reason the fix has to exist
+    in two places at all: a label in this column does not fail loudly. It
+    fails as service._resolve_subject_grade's int() falling back to grade 11
+    and retrieving another grade's standards under real-looking codes —
+    exactly the silent-wrong-answer case retrieval.py warns about, since every
+    grade re-uses standard numbers 1-30.
+
+    Anything that isn't an ordinal is passed through untouched (None, 'K', a
+    bare number, whatever a future framework needs) — narrow on purpose, so
+    this can only ever undo the one bad shape it was written for.
+    """
+    if not isinstance(grade, str):
+        return grade
+    m = _GRADE_ORDINAL.match(grade)
+    return m.group(1) if m else grade
+
+
 def create_class(user_id: str, *, name: str, subject: str, grade: str, state: str | None = None) -> dict:
     class_id = new_id()
     row = _row("SELECT COALESCE(MAX(sort_order), -1) AS m FROM classes WHERE user_id = ?", (user_id,))
@@ -1474,7 +1567,7 @@ def create_class(user_id: str, *, name: str, subject: str, grade: str, state: st
             user_id,
             name.strip()[:120],
             subject,
-            str(grade),
+            str(normalize_grade(grade)),
             state,
             get_user_school(user_id),
             int(row["m"]) + 1,
@@ -1506,6 +1599,8 @@ def class_school(cls: dict | None, user_id: str) -> str:
 
 def update_class(user_id: str, class_id: str, **fields: Any) -> dict | None:
     sets = {k: v for k, v in fields.items() if k in _CLASS_FIELDS and v is not None}
+    if "grade" in sets:
+        sets["grade"] = normalize_grade(sets["grade"])
     if not sets:
         return get_class(user_id, class_id)
     clause = ", ".join(f"{k} = ?" for k in sets)
@@ -1880,6 +1975,42 @@ def _hydrate_plan(row: dict) -> dict:
 def get_plan(user_id: str, plan_id: str) -> dict | None:
     row = _row("SELECT * FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id))
     return _hydrate_plan(row) if row else None
+
+
+def get_public_plan(plan_id: str) -> dict | None:
+    """A plan the owner has deliberately published, or None.
+
+    `AND is_public` is the whole point (migration 39). Without it this was
+    "SELECT * FROM plans WHERE id = ?" behind an endpoint that takes no auth,
+    which made every plan in the database readable by anyone holding its id —
+    confirmed live with no cookie: HTTP 200, full plan body, never shared.
+
+    Not scoped to a user_id, deliberately: the caller here is by definition not
+    the owner. The share model is a capability URL (the same one Google Docs's
+    "anyone with the link" uses) and `is_public` is the capability being
+    granted. Revoking it (set_plan_public with False) makes every copy of the
+    link dead immediately.
+    """
+    row = _row("SELECT * FROM plans WHERE id = ? AND is_public", (plan_id,))
+    return _hydrate_plan(row) if row else None
+
+
+def set_plan_public(user_id: str, plan_id: str, public: bool) -> dict | None:
+    """Publish or unpublish one of the caller's OWN plans.
+
+    Scoped to user_id, unlike the read above — publishing someone else's plan
+    has to be impossible even if the id is known.
+    """
+    _write(
+        "UPDATE plans SET is_public = ?, shared_at = ? WHERE id = ? AND user_id = ?",
+        (bool(public), now() if public else None, plan_id, user_id),
+    )
+    return _row("SELECT id, is_public, shared_at FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id))
+
+
+def get_plan_count(user_id: str) -> int:
+    row = _row("SELECT COUNT(*) AS count FROM plans WHERE user_id = ?", (user_id,))
+    return row["count"] if row else 0
 
 
 def list_plans(
@@ -2480,6 +2611,7 @@ def create_chat(
     chat_id: str | None = None,
     class_id: str | None = None,
     week_number: int | None = None,
+    mode: str | None = None,
 ) -> dict:
     """`class_id` is what keeps one prep's conversations out of another's
     sidebar. It was never passed, so every chat was written NULL — see the
@@ -2491,9 +2623,9 @@ def create_chat(
     cid = chat_id or new_id()
     ts = now()
     _write(
-        "INSERT INTO chats (id, user_id, title, class_id, week_number, created_at, updated_at)"
-        " VALUES (?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
-        (cid, user_id, title[:200], class_id, week_number, ts, ts),
+        "INSERT INTO chats (id, user_id, title, class_id, week_number, mode, created_at, updated_at)"
+        " VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
+        (cid, user_id, title[:200], class_id, week_number, mode, ts, ts),
     )
     return get_chat(user_id, cid)  # type: ignore[return-value]
 

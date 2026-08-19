@@ -23,10 +23,28 @@ const files = walk('src').filter((f) => ['.css', '.jsx', '.js'].includes(extname
 const declared = new Map()
 const used = new Map()
 
+/* Comments are not code.
+ *
+ * base.css carries a comment that names --color-mark in order to say it is
+ * defined nowhere and that --mark is the right token — and this checker read
+ * that sentence as a USE and reported the property it was warning about. A
+ * checker that fails on its own documentation trains people to ignore it,
+ * which is worse than not having one. */
+const stripComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, ' ')
+
 for (const file of files) {
-  const text = readFileSync(file, 'utf8')
+  const text = stripComments(readFileSync(file, 'utf8'))
   if (extname(file) === '.css') {
     for (const m of text.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gim)) {
+      if (!declared.has(m[1])) declared.set(m[1], file)
+    }
+  } else {
+    /* A custom property set from a React style prop is a real declaration —
+       style={{ '--onboarding-dir': direction }} is what defines the value
+       base.css's own onboarding-step-enter keyframe reads. Only CSS files
+       were scanned for declarations, so every inline-defined property looked
+       undefined and the gate failed on working code. */
+    for (const m of text.matchAll(/['"](--[a-z0-9-]+)['"]\s*:/gi)) {
       if (!declared.has(m[1])) declared.set(m[1], file)
     }
   }

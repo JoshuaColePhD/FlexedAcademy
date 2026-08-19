@@ -169,13 +169,14 @@ export const api = {
     request(classId ? `/api/chats?class_id=${encodeURIComponent(classId)}` : '/api/chats', { signal }),
   /** `weekNumber` pins which week the conversation is about, once, at
    *  creation — see backend db.py migration 24 for why it isn’t derived. */
-  createChat: (title, classId, weekNumber) =>
+  createChat: (title, classId, weekNumber, mode) =>
     request('/api/chats', {
       method: 'POST',
       body: {
         title,
         ...(classId ? { class_id: classId } : {}),
         ...(weekNumber ? { week_number: weekNumber } : {}),
+        ...(mode ? { mode } : {}),
       },
     }),
   getChat: (id) => request(`/api/chats/${id}`),
@@ -348,6 +349,56 @@ export const api = {
   standardsGaps: ({ signal } = {}) => request('/api/standards/gaps', { signal }),
   searchStandards: (query, topK = 10, { signal } = {}) =>
     request('/api/standards/search', { method: 'POST', body: { query, top_k: topK }, signal }),
+
+  /* ── sharing a plan by link ───────────────────────────────────────────────
+   *
+   * SharedPlanPage.jsx called `api.client.get(...)` and `api.client.post(...)`.
+   * There is no `client` on this object — it is a plain literal — so the public
+   * share page threw `Cannot read properties of undefined (reading 'get')` on
+   * mount. Every /shared/:id link anyone was sent landed on a crash. Same shape
+   * of bug as the missing createVoiceSession below: a page written against an
+   * API surface that was never built.
+   *
+   * setPlanPublic is the consent step that had no client either — see
+   * backend migration 39. Until a plan is published, getSharedPlan 404s. */
+  setPlanPublic: (planId, isPublic = true) =>
+    request(`/api/plans/${encodeURIComponent(planId)}/public_link`, {
+      method: 'POST',
+      body: { public: isPublic },
+    }),
+
+  /** The one endpoint in the app that needs no session — a colleague opening a
+   *  shared link has no account yet. */
+  getSharedPlan: (planId, { signal } = {}) =>
+    request(`/api/plans/public/${encodeURIComponent(planId)}`, { signal }),
+
+  forkSharedPlan: (planId, classId = null) =>
+    request(`/api/plans/${encodeURIComponent(planId)}/fork`, {
+      method: 'POST',
+      body: { class_id: classId },
+    }),
+
+  /** Mints the short-lived key the browser uses to open its own WebRTC session
+   *  with OpenAI's Realtime API (VoiceProvider.unlock).
+   *
+   *  This method did not exist. VoiceProvider has called `api.createVoiceSession`
+   *  since the WebRTC migration (commit eb498c8) and `api` is a plain object
+   *  literal, so the call was `undefined(...)` — a TypeError thrown before any
+   *  request left the browser. That is the whole reason voice mode could never
+   *  connect, and because Composer runs `if (voice.enabled) voice.unlock()` on
+   *  every submit while `enabled` is restored from localStorage, it also meant a
+   *  red error toast on every typed message for anyone who had opened voice mode
+   *  once.
+   *
+   *  Returns { token, model, expires_at }. `model` comes from the server on
+   *  purpose — the SDP exchange has to name the same model the token was minted
+   *  for, so it is defined once, in backend/routes/generate.py. */
+  createVoiceSession: ({ chat_id = null, week_number = null, mode = 'brainstorm' } = {}, { signal } = {}) =>
+    request('/api/voice/session', {
+      method: 'POST',
+      body: { chat_id, week_number, mode },
+      signal,
+    }),
 
   transcribe: (blob, { signal } = {}) => {
     // The filename's extension is the ONLY thing the backend uses to decide

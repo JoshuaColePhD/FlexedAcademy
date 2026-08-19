@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
@@ -109,6 +109,7 @@ function speakableQuestions(intro, questions) {
 export function ChatPage() {
   const { classId, chatId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const toast = useToast()
   const qc = useQueryClient()
@@ -791,6 +792,25 @@ export function ChatPage() {
   }, [])
 
   const warmMic = useCallback(() => {
+    /* Obsolete under WebRTC, and deliberately inert rather than deleted.
+     *
+     * This pre-opened a microphone on the pointerdown of whatever button was
+     * about to open voice mode, so the permission/hardware negotiation had a
+     * head start on VoiceModePanel's own getUserMedia. The panel does not
+     * capture audio any anymore — VoiceProvider's realtime session owns the
+     * microphone — so warming a SECOND stream here does nothing but open the
+     * mic twice and light the browser's recording indicator early.
+     *
+     * It also produced an unhandled rejection. The promise was stored with a
+     * .catch that re-threw, and once the panel stopped claiming it nothing was
+     * left to attach a handler, so a denied mic surfaced as
+     * "Uncaught (in promise) NotAllowedError" in the console on top of the
+     * toast the provider already shows.
+     *
+     * Kept as a no-op because several pointerdown handlers still call it; those
+     * call sites go when the panel's dead engine does. */
+    return
+    // eslint-disable-next-line no-unreachable
     if (warmMicRef.current) return
     warmMicRef.current = navigator.mediaDevices
       .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
@@ -820,11 +840,23 @@ export function ChatPage() {
   useEffect(() => releaseWarmMic, [releaseWarmMic])
 
   const openVoice = useCallback(() => {
-    if (!voice.enabled) voice.toggle()
-    else voice.unlock()
+    /* The chat and week are passed through now. toggle() takes
+       (chatId, weekNumber, mode) and forwards them to POST /api/voice/session,
+       which builds the realtime session's system prompt from them — called bare
+       like this used to be, every spoken conversation was provisioned with
+       chat_id: null, so the assistant opened the call knowing neither the class
+       nor the week it was supposed to be planning.
+
+       The greeting no longer needs a delay or a retry either: unlock() is async
+       and the data channel does not exist for several awaits, so this send used
+       to be dropped in silence EVERY time — voice mode always opened saying
+       nothing. VoiceProvider.speak() queues anything sent before the channel
+       opens and flushes it on dc.onopen. */
+    if (!voice.enabled) voice.toggle(chatId ?? null, conversationWeek ?? null, 'brainstorm')
+    else voice.unlock(chatId ?? null, conversationWeek ?? null, 'brainstorm')
     setVoiceOpen(true)
-    if (messages.length === 0) voice.sendContextEvent(VOICE_GREETING)
-  }, [voice, messages])
+    if (messages.length === 0) voice.speak(VOICE_GREETING)
+  }, [voice, messages, chatId, conversationWeek])
 
   /* Factored out of the docked panel's own onClose so the ⌘⇧V hotkey below
      can end the conversation exactly the same way a click on Close does —
@@ -913,7 +945,8 @@ export function ChatPage() {
           const created = await api.createChat(
             (typed || attachments[0]?.filename || 'New plan').slice(0, 80),
             classId,
-            effectiveWeek
+            effectiveWeek,
+            location.state?.mode
           )
           activeChatId = created.id
           localFor.current = created.id
@@ -1632,6 +1665,15 @@ export function ChatPage() {
     }
   }, [busy, hasArtifact])
 
+  // Process autoPrompt from navigation (e.g. 5-Minute Sub Plan)
+  useEffect(() => {
+    if (location.state?.autoPrompt && !chatId) {
+      // Clear the state so it doesn't re-fire on hot reload or back navigation
+      navigate(location.pathname, { replace: true, state: {} })
+      submit(location.state.autoPrompt)
+    }
+  }, [location.state, chatId, navigate, submit, location.pathname])
+
   /** Opening the document from anywhere, optionally straight into a cell. */
   const openDocument = useCallback((tweak = null) => {
     setViewKind('plan')
@@ -2019,7 +2061,7 @@ export function ChatPage() {
                       onReplayLast={
                         lastReplyText
                           ? () => {
-                              voice.sendContextEvent(lastReplyText)
+                              voice.speak(lastReplyText)
                             }
                           : undefined
                       }
@@ -2063,11 +2105,32 @@ export function ChatPage() {
                          HEARD is what stops the model saying "as I mentioned" about
                          a sentence that got cut off before it played. */
                       onInterrupt={() => {
-                        const heard = ""
+                        /* What the teacher actually HEARD, read off the caption
+                           before it is cleared. This was hardcoded `""`, which
+                           made every branch below dead code: the interrupted
+                           reply was never appended to the transcript and never
+                           persisted, so talking over the assistant erased what
+                           it had already said out loud and the model's next turn
+                           re-asked a question it had half-answered aloud. It also
+                           killed the false-interrupt recovery, since
+                           interruptedRef was nulled on every interrupt.
+
+                           voice.caption is the right source: it is built from the
+                           realtime session's own output-audio transcript deltas,
+                           so it tracks what actually reached the speaker rather
+                           than what the text stream had written. */
+                        const heard = (voice.caption || '').trim()
                         const queued = liveSpeechRef.current.trim()
                         // A turn nobody waited out isn't a latency sample.
                         voiceMetrics.turnAbandoned()
-                        voice.stop()
+                        /* cancelResponse(), NOT stop(). stop() closes the data
+                           channel, the peer connection and the microphone — so
+                           the first barge-in of a conversation left voice mode
+                           permanently mute while the panel still read
+                           "Listening", and nothing re-established the transport
+                           for a spoken turn. This silences the current reply and
+                           keeps the session. */
+                        voice.cancelResponse()
                         chatStream.stop()
                         liveSpeechRef.current = ''
                         
@@ -2136,7 +2199,10 @@ export function ChatPage() {
                          aloud. */
                       questions={pendingQuestions?.questions || null}
                       onAnswer={(text) => {
-                        voice.stop()
+                        // Silence whatever is being read out, keep the session —
+                        // stop() here ended voice mode outright the first time a
+                        // teacher tapped an option on a clarification card.
+                        voice.cancelResponse()
                         onAnswerQuestions(pendingQuestions.message, text)
                       }}
                     />

@@ -213,6 +213,38 @@
     }
   }
 
+  /* How far in, and how much is left. The flow's only answer to that was the
+     eyebrow's "Step 1 of 3" — which was hardcoded on three steps of a six-step
+     wizard, so it was both the only progress signal and a wrong one. Dots
+     rather than a bar: the count is small enough to read at a glance, and a
+     bar at four segments reads as a loading indicator for something else. */
+  .onboarding-progress {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-6);
+  }
+  .onboarding-progress span {
+    width: 22px;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--edge-strong);
+    transition:
+      background var(--t-base) var(--ease),
+      width var(--t-base) var(--ease);
+  }
+  .onboarding-progress span.is-done {
+    background: var(--accent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .onboarding-step {
+      animation: none;
+    }
+    .onboarding-progress span {
+      transition: none;
+    }
+  }
+
   /* Liquid Glass: translucent, not flat-with-a-border — .app-glow above is
      what the blur actually diffuses. `saturate` is doing real work here, not
      just blur: backdrop-filter blur alone on a mostly-white panel muddies

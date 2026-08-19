@@ -167,7 +167,6 @@ function SchoolPicker({ value, onSaved }) {
   const commit = async (school) => {
     if (!school || school === value) return
     setSaving(true)
-    const previousSaved = value
     // Optimistic update: onSaved isn't passed value, so we just optimistically fire it if it causes a refetch
     // Wait, onSaved isn't enough, we must actually call updateMe, and if it fails, maybe refetch or show error.
     try {
@@ -905,6 +904,27 @@ export function SettingsPage() {
             <div id="section-general" className="scroll-mt-8">
               <h2 className="text-xl font-bold text-ink mb-6">General</h2>
               
+              <section className="mb-8">
+                <div className="neo-panel rounded-xl bg-paper-sunken/40 p-4 border border-accent/20">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+                        <Sparkles size={16} className="text-accent" aria-hidden="true" /> Time Saved
+                      </h3>
+                      <p className="text-xs text-ink-muted mt-1">Based on an average of 45 minutes saved per lesson plan.</p>
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <div className="text-2xl font-bold text-ink">
+                        {Math.floor(((meState.data?.generated_plan_count || 0) * 45) / 60)} <span className="text-sm font-medium text-ink-muted">hours</span>
+                      </div>
+                      <div className="text-xs text-accent font-medium mt-1">
+                        {meState.data?.generated_plan_count || 0} plans generated
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
               <section className="mb-8">
                 <div className="border-b border-edge pb-2 mb-4">
                   <h3 className="text-sm font-semibold text-ink">Profile</h3>

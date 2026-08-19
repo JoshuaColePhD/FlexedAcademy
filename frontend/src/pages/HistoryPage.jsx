@@ -5,10 +5,8 @@ import { MessageSquare, Search, Trash2, CheckSquare, Square, ArrowLeft, ArrowRig
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
-import { errorParts } from '../lib/apiError'
 import { SkeletonText } from '../components/Skeleton'
 
-const SEARCH_THRESHOLD = 8
 
 function matchesSearch(chat, query) {
   const q = query.trim().toLowerCase()
@@ -21,7 +19,7 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function ChatHistoryRow({ chat, isActive, onClick, deleting, closing, selectionMode, selected, onToggleSelect }) {
+function ChatHistoryRow({ chat, isActive, onClick, _deleting, _closing, selectionMode, selected, onToggleSelect }) {
   const label = chat.title || 'Untitled chat'
 
   const content = (
@@ -186,7 +184,6 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
 }
 
 function ChatDetailPanel({ chat, classId, onDelete }) {
-  const navigate = useNavigate()
   const renameChat = useRenameChat()
   const [editingTitle, setEditingTitle] = useState(false)
   const [title, setTitle] = useState(chat.title || '')
@@ -371,7 +368,13 @@ export function HistoryPage() {
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 overflow-x-hidden relative">
-          <AnimatePresence mode="wait">
+          {/* initial={false} — same reasoning as ClassPage's copy of this
+              block, which is where the failure was actually caught: the key
+              here flips the moment the chats query resolves, and an exit that
+              interrupts an unfinished entrance under mode="wait" can settle
+              with opacity stuck near zero. Not animating the FIRST paint means
+              a stall costs a flourish rather than the whole screen. */}
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={currentActiveChat ? currentActiveChat.id : 'dashboard'}
               initial={{ opacity: 0, y: 10 }}

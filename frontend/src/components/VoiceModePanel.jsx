@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Check,
   Download,
@@ -14,19 +14,49 @@ import {
   X,
 } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-
 import { useVoice } from '../lib/voiceContext'
-const micWorkletUrl = "";
-const encodeWav = () => null;
-const createSileroDetector = () => Promise.reject();
-const SPEECH_ON = 1;
-const SPEECH_OFF = 0;
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * DEAD CODE, PENDING DELETION — the local audio pipeline.
+ *
+ * This panel used to own voice mode's whole audio path: getUserMedia, an
+ * AudioWorklet capturing continuously, a Silero VAD deciding where a turn
+ * ended, a WAV encoder, and a Whisper round trip per utterance. Commit eb498c8
+ * moved all of that to VoiceProvider's WebRTC realtime session and DELETED the
+ * three modules this file imported (lib/sileroVad.js, lib/wav.js,
+ * lib/micCaptureWorklet.js) — but left this file's copy of the pipeline in
+ * place. A patch script then stubbed the missing imports out to make the build
+ * pass, which is how the panel ended up opening a SECOND microphone and then
+ * failing on `addModule("")`.
+ *
+ * The engine below (onFrame, finishUtterance, the mic-setup effect, the PTT
+ * capture handlers) is now gated off and no longer runs — see the early return
+ * in the mic-setup effect. The stubs survive only so the dead code still
+ * parses. Everything the panel displays now comes from VoiceProvider.
+ *
+ * Deleting the engine is a mechanical follow-up, deliberately NOT done in the
+ * same pass that rewired the panel: the JSX still reaches into it for the level
+ * meter's canvas, the "Try again" button and the hold-to-talk control, and
+ * cutting ~600 interdependent lines is not something to do blind in an
+ * environment with no microphone to test against.
+ * ──────────────────────────────────────────────────────────────────────────── */
+const micWorkletUrl = ''
+const encodeWav = () => null
+const createSileroDetector = () => Promise.reject(new Error('local VAD removed — see VoiceProvider'))
+const SPEECH_ON = 0.5
+const SPEECH_OFF = 0.35
 
 import { WeekStrip } from './WeekStrip'
 import { DecisionStack } from './DecisionStack'
 import { SmoothHeight } from './OnboardingWizard'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { api } from '../lib/api'
+/* Used by finishUtterance below and never imported — the bare `metrics.`
+   references threw ReferenceError out of finishUtterance, escaping its
+   try/finally so the panel stuck on "Thinking" forever on the first
+   utterance. Dead path now, but an unimported identifier is not
+   something to leave sitting in a file. */
+import * as metrics from '../lib/voiceMetrics'
 /* ?url, not a normal import: an AudioWorkletProcessor is constructed by the
    browser in a scope with no module loader, so addModule needs a real URL and
    the file must NOT be inlined into the app bundle. Vite emits it as an asset
@@ -607,6 +637,44 @@ export function VoiceModePanel({
   const onUtteranceRef = useRef(onUtterance)
   onUtteranceRef.current = onUtterance
 
+  /* ── the panel's engine, post-migration ──────────────────────────────────
+   *
+   * Everything the panel used to learn by running its own microphone now
+   * arrives from VoiceProvider's realtime session. Three wires:
+   *
+   *  1. status — the provider is connecting / live / errored. The panel's own
+   *     'requesting-mic' | 'listening' | 'error' vocabulary is kept so the
+   *     status pill and the notice row below render unchanged.
+   *  2. what the teacher said — the provider emits a completed utterance when
+   *     server-side VAD closes a turn and Whisper transcribes it. That goes to
+   *     the same onUtterance the local pipeline used to call, so ChatPage's
+   *     submit() (and its RAG-grounded reply) is untouched.
+   *  3. mute — one flag on the live WebRTC track, rather than a gate in a
+   *     capture loop that no longer runs.
+   */
+  const voice = useVoice()
+
+  useEffect(() => {
+    if (voice.status === 'error') {
+      setStatus('error')
+      setErrorMessage(voice.errorMessage || 'Could not start the microphone.')
+      return
+    }
+    setErrorMessage(null)
+    setStatus(voice.status === 'live' ? 'listening' : 'requesting-mic')
+  }, [voice.status, voice.errorMessage])
+
+  useEffect(() => voice.onUtterance((text) => onUtteranceRef.current?.(text)), [voice])
+
+  // The teacher's own words, for the tap-to-correct echo — previously the
+  // result of this panel's Whisper round trip, now the realtime session's
+  // input transcription.
+  useEffect(() => {
+    if (!editingHeard) setHeardText(voice.heard || '')
+  }, [voice.heard, editingHeard])
+
+  useEffect(() => setMuted(voice.muted), [voice.muted])
+
   // Tapping a settled decision to fix it (DecisionStack's onRevise) is a
   // typed version of saying the correction out loud — same destination
   // (ChatPage's submit, via onUtterance) as a finished spoken utterance, just
@@ -719,15 +787,14 @@ export function VoiceModePanel({
      hitting mute is not something the teacher meant to submit. */
   const toggleMute = () => {
     const next = !muted
-    setMuted(next)
+    /* Flips the live WebRTC track through the provider, which is where the
+       microphone actually lives now. This used to reach for streamRef — the
+       panel's own capture stream — so after the migration Mute toggled a
+       pill on screen and nothing else: the provider's track stayed hot and
+       the realtime session kept hearing the room. */
+    voice.setMuted(next)
     mutedRef.current = next
-    streamRef.current?.getAudioTracks().forEach((t) => {
-      t.enabled = !next
-    })
-    if (next) {
-      abortUtterance()
-      quietStartRef.current = null
-    }
+    quietStartRef.current = null
   }
 
   /* Push-to-talk's own start/stop — the pointerdown/pointerup pair the
@@ -800,7 +867,11 @@ export function VoiceModePanel({
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       // Safety catch: if they release space while focused elsewhere, ensure we stop PTT
-      if (modeRef.current === 'ptt') latestHandlersRef.current.stopPttRecording()
+      /* NOT stopPttRecording(): that calls finishUtterance, which
+         transcribes and SUBMITS, landing a half-sentence the teacher
+         never chose to send into a chat they had already left. The mic
+         effect's own cleanup documents exactly this and aborts instead;
+         this cleanup did the opposite, and runs first. */
     }
   }, [])
 
@@ -943,6 +1014,10 @@ export function VoiceModePanel({
     let sumSquares = 0
     for (let i = 0; i < frame.length; i++) sumSquares += frame[i] * frame[i]
     const level = Math.sqrt(sumSquares / frame.length)
+    // levelRef was never declared in this file — this line threw
+    // ReferenceError on the first audio frame, which is why the level
+    // meter animated (it reads the analyser directly) while the VAD
+    // never processed a single frame. Dead path now; kept honest.
     levelRef.current = level
 
     /* The floor follows the room, slowly up and quickly down, and is frozen
@@ -1115,6 +1190,7 @@ export function VoiceModePanel({
       quietStartRef.current = null
     }
   }
+  const levelRef = useRef(0)
   const onFrameRef = useRef(onFrame)
   onFrameRef.current = onFrame
 
@@ -1213,6 +1289,18 @@ export function VoiceModePanel({
        doesn't resume it on its own, which reads as the panel having frozen:
        the orb stops animating and the mic stops hearing anything, silently,
        because tick()'s analyser is reading a suspended (silent) context. */
+    /* The panel does not capture audio any more — VoiceProvider's realtime
+       session owns the microphone, the turn detection and the transcription.
+       Returning here is what stops this effect opening a second getUserMedia
+       stream on top of the provider's and then dying on the stubbed worklet
+       URL, which is what put the panel in its "No mic" error state every single
+       time it was opened.
+       Everything below this line is the dead engine described at the top of the
+       file. It is kept only until the JSX that still references its canvas and
+       its buttons has been rewritten. */
+    return undefined
+
+    // eslint-disable-next-line no-unreachable
     const onVisible = () => {
       if (document.visibilityState === 'visible' && audioCtxRef.current?.state === 'suspended') {
         audioCtxRef.current.resume().catch(() => {})
@@ -1940,7 +2028,7 @@ function VoiceSuggestions({ decisions, activeClass, calendar, onSelect }) {
   if (options.length === 0) return null
 
   return (
-    <div className="mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out flex flex-col gap-2">
+    <div className="mt-4 fa-rise flex flex-col gap-2">
       <span className="text-xs font-semibold text-ink-soft uppercase tracking-wider">{title}</span>
       <div className="flex flex-wrap gap-2">
         {options.map((opt, i) => (

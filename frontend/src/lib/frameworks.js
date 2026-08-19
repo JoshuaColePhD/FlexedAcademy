@@ -23,6 +23,7 @@ export const GROUP_WORLD_LANG = 'World Languages'
 export const GROUP_ARTS = 'Arts'
 export const GROUP_PE_HEALTH = 'PE & Health'
 export const GROUP_CS = 'Computer Science'
+export const GROUP_SPECIAL_ED = 'Special Education'
 export const GROUP_OTHER = 'Other'
 
 const GROUP_ORDER = [
@@ -34,6 +35,7 @@ const GROUP_ORDER = [
   GROUP_ARTS,
   GROUP_PE_HEALTH,
   GROUP_CS,
+  GROUP_SPECIAL_ED,
   GROUP_OTHER
 ]
 
@@ -48,6 +50,7 @@ function group(fw) {
   if (/(art\b|arts\b|music|theater|drama|drawing|2-d|3-d)/.test(text) && !/(language arts|liberal arts)/.test(text)) return GROUP_ARTS
   if (/(physical education|health|pe\b)/.test(text)) return GROUP_PE_HEALTH
   if (/(computer|digital|programming)/.test(text)) return GROUP_CS
+  if (/(special education|collaborative)/.test(text)) return GROUP_SPECIAL_ED
   
   return GROUP_OTHER
 }

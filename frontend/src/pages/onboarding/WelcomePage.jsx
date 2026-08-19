@@ -9,6 +9,13 @@ import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
 import { CalendarPreview } from '../../components/CalendarPreview'
 import { SchoolSelect } from '../../components/SchoolSelect'
+/* The one grade vocabulary. This file used to declare its own copy, with a
+   comment explaining that the VALUE and the LABEL must stay apart because
+   sending '11th' where '11' belongs made the first class a teacher ever
+   created render as 'AP Language & Composition · NaNth'. The comment was
+   right and the duplication is what let the same mistake survive in two
+   other copies — see lib/grades.js and migration 38. */
+import { GRADES, DEFAULT_GRADE } from '../../lib/grades'
 
 /* A REAL, working school id with NO real calendar behind it on purpose —
  * backend/schoolcal.py's own NO_CALENDAR_SCHOOL_ID returns week NUMBERS
@@ -42,30 +49,6 @@ const GENERIC_SCHOOL = 'generic'
  * and nothing needs typing except the teacher's own name.
  */
 
-/* Value and label kept apart on purpose. The backend's _auto_name does
-   int(grade) to build "AP Language & Composition · 11th", and ClassPage's own
-   Add-a-class form sends a bare "11". Sending "11th" from here parsed to NaN, so
-   the very FIRST class a teacher created was the only one in their list that
-   rendered as "AP Language & Composition · NaNth". */
-// Widened from 9-12 once the K-8 Alabama Course of Study standards actually
-// had real chunks behind them (2026-08-17 ingest) — same grades ClassPage's
-// own Add-a-class GRADES covers. '0' is Kindergarten, matching the corpus's
-// own convention (grade_from_level() in scripts/01d_ingest_alcos_case.py).
-const GRADES = [
-  { value: '0', label: 'K' },
-  { value: '1', label: '1st' },
-  { value: '2', label: '2nd' },
-  { value: '3', label: '3rd' },
-  { value: '4', label: '4th' },
-  { value: '5', label: '5th' },
-  { value: '6', label: '6th' },
-  { value: '7', label: '7th' },
-  { value: '8', label: '8th' },
-  { value: '9', label: '9th' },
-  { value: '10', label: '10th' },
-  { value: '11', label: '11th' },
-  { value: '12', label: '12th' },
-]
 
 export function WelcomePage() {
   const { user, refresh } = useAuth()
@@ -76,7 +59,7 @@ export function WelcomePage() {
   const [name, setName] = useState(user?.name || '')
   const [school, setSchool] = useState(user?.school || '')
   const [subject, setSubject] = useState('')
-  const [grade, setGrade] = useState('11')
+  const [grade, setGrade] = useState(DEFAULT_GRADE)
   const [saving, setSaving] = useState(false)
 
   const { data: frameworks = [] } = useQuery({
