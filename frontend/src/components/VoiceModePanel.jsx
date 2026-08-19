@@ -22,6 +22,10 @@ const createSileroDetector = () => Promise.reject();
 const SPEECH_ON = 1;
 const SPEECH_OFF = 0;
 
+import { WeekStrip } from './WeekStrip'
+import { DecisionStack } from './DecisionStack'
+import { SmoothHeight } from './OnboardingWizard'
+import { splitDecisions } from '../lib/decisionChecklist'
 import { api } from '../lib/api'
 /* ?url, not a normal import: an AudioWorkletProcessor is constructed by the
    browser in a scope with no module loader, so addModule needs a real URL and
