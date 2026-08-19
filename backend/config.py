@@ -139,7 +139,7 @@ class Settings(BaseSettings):
     # this covers a dozen-plus builds and revisions before it bites, not "one
     # week, ever." Rough ceiling at gpt-4o's own pricing: well under $5/week
     # even maxed out.
-    free_weekly_token_cap: int = 150_000
+    free_weekly_token_cap: int = 20_000
     # Sized to a dollar budget, not a round token count — the previous
     # 2,000,000 was "a safety net, not a real limit anything should hit," but
     # nothing else actually bounded how fast an account could reach it:
@@ -159,7 +159,7 @@ class Settings(BaseSettings):
     # ~$50, whoever or whatever is behind it. Revisit the $5/1M assumption
     # and this number together if the configured model's real per-token
     # price changes — the ratio is what matters, not the literal count.
-    subscriber_weekly_token_cap: int = 110_000
+    subscriber_weekly_token_cap: int = 200_000
 
     database_url: str = ""
     curriculum_maps_dir: Path = PROJECT_ROOT / "data" / "curriculum_maps"

@@ -23,6 +23,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { WeekPicker } from '../components/WeekPicker'
+import { VoiceModePanel } from '../components/VoiceModePanel'
 import { ClassSwitcher } from '../components/ClassSwitcher'
 import { Message } from '../components/Message'
 import { ArtifactPanel } from '../components/ArtifactPanel'
@@ -759,18 +760,6 @@ export function ChatPage() {
      reopening voice mode on a chat mid-conversation should pick back up
      where it left off, not re-introduce itself over the top of it. */
 
-  // The greeting's TTS fetch used to start only once openVoice actually ran
-  // — the one moment a teacher is guaranteed to be staring at silence,
-  // waiting on a network round trip that hadn't even begun yet. Warming it
-  // here, the moment an empty chat is on screen, means that round trip
-  // mostly happens while they're still reading the page/reaching for the
-  // button, so by the time they actually click, voice.sendContextEvent() below is
-  // usually just handing back an already-fetched clip. VoiceProvider's own
-  // cache is what makes calling this speculatively harmless even if voice
-  // mode never opens.
-  useEffect(() => {
-    if (messages.length === 0) voice.prefetch(VOICE_GREETING)
-  }, [messages.length, voice])
 
   /* Same warm-start idea as VOICE_GREETING above, aimed at the OTHER slow
      round trip voice mode has to clear before it's actually usable:
@@ -1241,7 +1230,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded]
   )
 
   /* Per-cell revise, from clicking a cell in the document.
