@@ -247,25 +247,32 @@ export function OnboardingWizard({ open, onClose, cls }) {
       onMouseDown={(e) => e.target === e.currentTarget && finish()}
     >
       <div
-        className={`relative flex max-h-[calc(100vh-4rem)] w-full max-w-2xl flex-col overflow-y-auto rounded-3xl border border-edge bg-paper p-10 shadow-2xl${closing ? ' is-closing' : ''}`}
+        className={`relative overflow-hidden rounded-3xl shadow-2xl ${closing ? ' is-closing' : ''}`}
+        style={{ width: '100%', maxWidth: '42rem' }} // max-w-2xl equivalent
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="onboarding-title"
       >
+        <div className="onboarding-blob" aria-hidden="true" />
+        <div
+          className="relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto border border-white/10 bg-paper/60 p-10 backdrop-blur-3xl"
+        >
         <button
           type="button"
-          className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
+          <button
+            type="button"
+            className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
             onClick={finish}
             aria-label="Close"
             title="Skip for now"
           >
-            <X size={16} aria-hidden="true" />
+            <X size={20} aria-hidden="true" />
           </button>
-
-          <SmoothHeight>
-            <div key={step} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
+          
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div key={step} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
               {step === 0 ? (
                 <WelcomeStep onNext={() => goTo(1)} />
               ) : step === 1 ? (
@@ -301,8 +308,9 @@ export function OnboardingWizard({ open, onClose, cls }) {
               ) : (
                 <DoneStep finishing={finishing} onFinish={finish} />
               )}
-            </div>
-          </SmoothHeight>
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   )
@@ -335,7 +343,7 @@ function WelcomeStep({ onNext }) {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="button" 
-          className="neo-raised btn-blob fa-press ml-auto inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink" 
+          className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 ml-auto inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors" 
           onClick={onNext}
         >
           Get started <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
@@ -401,7 +409,7 @@ function SchoolStep({
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink fa-press ml-auto" onClick={onNext} disabled={saving}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ml-auto" onClick={onNext} disabled={saving}>
           {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
           {saving ? 'Saving…' : 'Continue'}
         </motion.button>
@@ -440,7 +448,7 @@ function ClassStep({ cls, subject, setSubject, grade, setGrade, frameworks, savi
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary fa-press" onClick={onNext} disabled={saving}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ml-auto" onClick={onNext} disabled={saving}>
           {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
           {saving ? 'Saving…' : 'Continue'}
         </motion.button>
@@ -462,7 +470,7 @@ function DocumentsStep({ cls, onBack, onNext }) {
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink fa-press ml-auto" onClick={onNext}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
       </div>
@@ -500,7 +508,7 @@ function TipsStep({ onBack, onNext }) {
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink fa-press ml-auto" onClick={onNext}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="bg-white text-slate-900 shadow-lg hover:bg-slate-50 inline-flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
       </div>
@@ -524,7 +532,7 @@ function DoneStep({ finishing, onFinish }) {
         <PartyPopper size={36} aria-hidden="true" />
       </motion.div>
       <h2 id="onboarding-title" className="mt-4 text-2xl font-bold tracking-display text-ink">
-        You’re all set! 🎉
+        You’re all set!
       </h2>
       <p className="mt-2 max-w-sm text-sm text-ink-muted">
         Everything here can be changed later from My Classes or Settings. Say what you need for the week, and let’s build it.
@@ -533,9 +541,9 @@ function DoneStep({ finishing, onFinish }) {
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         type="button"
-        className="neo-raised btn-blob fa-press mt-8 inline-flex w-full justify-center items-center gap-2 rounded-xl py-3 text-base font-semibold text-ink"
-        onClick={onFinish}
         disabled={finishing}
+        className="mt-8 bg-white text-slate-900 shadow-xl hover:bg-slate-50 inline-flex items-center gap-2 rounded-xl px-8 py-3 text-base font-semibold transition-colors disabled:opacity-50"
+        onClick={onFinish}
       >
         {finishing ? <Loader2 size={16} className="mr-2 animate-spin" aria-hidden="true" /> : null}
         {finishing ? 'Taking you there...' : 'Start planning 🚀'}
