@@ -462,9 +462,10 @@ export const api = {
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/confirm`, { method: 'POST' }),
   rejectSchoolCalendar: (submissionId) =>
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/reject`, { method: 'POST' }),
-  uploadSchoolTemplate: (schoolId, file, { signal } = {}) => {
+  uploadSchoolTemplate: (schoolId, { file, sourceUrl, signal } = {}) => {
     const fd = new FormData()
-    fd.append('file', file)
+    if (file) fd.append('file', file)
+    if (sourceUrl) fd.append('source_url', sourceUrl)
     return upload(`/api/school-calendars/${encodeURIComponent(schoolId)}/template`, fd, { signal })
   },
   listClasses: ({ include_archived, signal } = {}) => request(`/api/classes${include_archived ? '?include_archived=true' : ''}`, { signal }),
@@ -494,4 +495,6 @@ export const api = {
 
   getCurriculumProgress: (subject, { signal } = {}) =>
     request(`/api/curriculum_progress?subject=${encodeURIComponent(subject)}`, { signal }),
+    
+  updateDay: (planId, dayIndex, body) => request(`/api/plans/${planId}/days/${dayIndex}`, { method: 'PUT', body: JSON.stringify(body) }),
 }

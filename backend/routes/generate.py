@@ -260,127 +260,147 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     )
 
 
+def _build_chat_system_prompt(user_id: str, chat_id: str | None, week_number: int | None, mode: str, last_user: str = "") -> str:
+    cls = _chat_class(user_id, chat_id)
+    if cls:
+        subject = cls["subject"]
+        grade = cls["grade"]
+    else:
+        s = db.get_settings_row(user_id)
+        subject = s.get("subject", "AP Language & Composition")
+        grade = s.get("grade", "11")
+
+    school_id = db.class_school(cls, user_id)
+    system_prompt = (
+        f"You are an expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
+        "The teacher is preparing to generate or revise a weekly lesson plan. "
+    )
+
+    week_row = None
+    if week_number is not None:
+        week_row = next(
+            (w for w in schoolcal.school_weeks(school_id) if w["week"] == week_number), None
+        )
+
+    if week_row:
+        system_prompt += f"\n\nTHE TEACHER IS CURRENTLY WORKING ON {schoolcal.label_for(week_row)}"
+        unit_row = curriculum.unit_for_calendar_week(user_id, subject, week_row)
+        if unit_row:
+            system_prompt += f", which their own pacing guide names as {unit_row['unit']}"
+        system_prompt += (
+            ". Treat the week"
+            + (" and unit" if unit_row else "")
+            + " as already settled — don't ask which one this is unless the "
+            "teacher's own message clearly means a different week."
+        )
+
+    map_context = llm.map_context_for(user_id, subject, last_user) if last_user else ""
+    if map_context:
+        system_prompt += (
+            "\n\nTHE TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — relevant excerpts below. "
+            "Use it to ground this conversation in their actual sequencing, unit, and any texts "
+            "or milestones it names. It carries no standard codes of its own; when the plan is "
+            "built, standards still come only from retrieval, not from this document.\n\n"
+            + map_context
+        )
+
+    custom_instructions = llm.custom_instructions_for(user_id)
+    if custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only:\n\n"
+            + custom_instructions
+        )
+
+    if mode == "interview":
+        system_prompt += (
+        "Your job is to INTERVIEW the teacher to figure out what they want to teach. "
+        "Ask inquisitive, guiding questions one at a time. Be conversational, exactly like Claude does when asked to interview a user. "
+        "When you have enough information to build the 5-day week, call the `generate_lesson_plan` tool."
+        )
+    elif mode == "standards":
+        system_prompt += (
+            "Your job is to help the teacher find the perfect academic standards for their upcoming week. "
+            "Suggest broad topics and narrow down what standards they should focus on. "
+        )
+
+    return system_prompt
+
+@router.post("/voice/session")
+def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_user)):
+    """Provisions an ephemeral WebRTC token for OpenAI's Realtime API."""
+    require_entitlement(user_id)
+    import requests
+    
+    system_prompt = _build_chat_system_prompt(user_id, req.chat_id, req.week_number, req.mode)
+    
+    # Tools to allow proactive UI mutation
+    tools = [
+        {
+            "type": "function",
+            "name": "update_lesson_plan",
+            "description": "Mutate the UI to update a specific day's lesson plan block based on user request. The UI will animate this change.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "day_index": {"type": "integer", "description": "0 for Monday, 4 for Friday"},
+                    "field": {"type": "string", "enum": ["objective", "assessment", "method"], "description": "The block being updated"},
+                    "content": {"type": "string", "description": "The new content"}
+                },
+                "required": ["day_index", "field", "content"]
+            }
+        },
+        {
+            "type": "function",
+            "name": "highlight_ui",
+            "description": "Draw the user's attention to a specific day in the lesson plan table.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "day_index": {"type": "integer", "description": "0 for Monday, 4 for Friday"}
+                },
+                "required": ["day_index"]
+            }
+        }
+    ]
+
+    resp = requests.post(
+        "https://api.openai.com/v1/realtime/sessions",
+        headers={
+            "Authorization": f"Bearer {settings.openai_api_key}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "gpt-4o-realtime-preview",
+            "modalities": ["audio", "text"],
+            "instructions": system_prompt,
+            "tools": tools,
+            "voice": "alloy",
+        },
+        timeout=10
+    )
+    
+    if resp.status_code != 200:
+        raise AppError("realtime_failure", f"Failed to provision realtime session: {resp.text}", status=500)
+        
+    return resp.json()
+
+
 @router.post("/chat_stream")
 @limiter.limit("30/minute")
 def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Stream a standard conversational response, not a JSON schema."""
-    require_entitlement(user_id)
-
     def event_stream():
         try:
-            # We construct a system prompt based on the user's settings and chosen mode.
-            #
-            # Prefer the class this chat actually belongs to over
-            # get_settings_row(user_id) — see _chat_class's own docstring.
-            cls = _chat_class(user_id, req.chat_id)
-
-            # Whether generate_quiz is even callable right now — it needs a
-            # plan to build over, and "ask the model to check the
-            # conversation for one" is exactly the kind of inference this
-            # app avoids everywhere else an id already answers the question
-            # directly (see _chat_class itself, or db.class_school).
             plans_for_chat = db.list_plans(user_id, chat_id=req.chat_id, limit=1)["items"] if req.chat_id else []
             has_plan = bool(plans_for_chat)
-            # Whether the model should be steered toward revising the quiz it
-            # already built (generate_quiz's own `revises_current` argument)
-            # instead of always building an additional one — see llm.py's
-            # revise_quiz for why iterating used to just pile up new rows.
             has_quiz = has_plan and bool(db.list_quizzes_for_plan(user_id, plans_for_chat[0]["id"]))
 
-            if cls:
-                subject = cls["subject"]
-                grade = cls["grade"]
-            else:
-                s = db.get_settings_row(user_id)
-                subject = s.get("subject", "AP Language & Composition")
-                grade = s.get("grade", "11")
-
-            # class_school, not get_user_school directly — a class pinned to
-            # a different school than the account default (migration 25)
-            # gets its OWN calendar named here, not the account's. Was
-            # "independent of cls" until school stopped being account-only.
-            school_id = db.class_school(cls, user_id)
-
-            system_prompt = (
-                f"You are an expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
-                "The teacher is preparing to generate or revise a weekly lesson plan. "
-            )
-
-            # ChatPage already resolves effectiveWeek client-side and even says it
-            # aloud in the empty chat's own greeting ("I'll build Week 03…") — but
-            # never sent it here, so this conversational model had no idea, and
-            # could ask the teacher which week it was for right after the UI had
-            # just told them. Resolved the same way generate_stream's _with_week
-            # does: looked up in schoolcal.school_weeks(), never guessed, and
-            # silently skipped if the number doesn't match a real week.
-            week_row = None
-            if req.week_number is not None:
-                week_row = next(
-                    (w for w in schoolcal.school_weeks(school_id) if w["week"] == req.week_number), None
-                )
-
-            if week_row:
-                system_prompt += f"\n\nTHE TEACHER IS CURRENTLY WORKING ON {schoolcal.label_for(week_row)}"
-                # Cross-referenced against the teacher's OWN uploaded pacing guide —
-                # not units.unit_for_week()'s hardcoded AP-Lang-only 9-unit map,
-                # which falls back to a bare "Week N" for every other subject and
-                # is meant for labeling an already-built plan, not for telling this
-                # model what's coming up in a subject it has no map for.
-                unit_row = curriculum.unit_for_calendar_week(user_id, subject, week_row)
-                if unit_row:
-                    system_prompt += f", which their own pacing guide names as {unit_row['unit']}"
-                system_prompt += (
-                    ". Treat the week"
-                    + (" and unit" if unit_row else "")
-                    + " as already settled — don't ask which one this is unless the "
-                    "teacher's own message clearly means a different week."
-                )
-
-            # The pacing guide a teacher uploads in settings was only ever read
-            # by the plan-WRITING calls (llm.generate_plan / stream_plan) — this
-            # conversational model had no path to it at all, so a teacher who
-            # said "I attached my pacing guide" got "I don't have access to your
-            # settings or any attachments", true of the code but wrong about the
-            # product: the document exists and the plan writer already uses it.
-            # Queried on the latest user turn, same as plan generation queries on
-            # a single string rather than the whole transcript.
             last_user = next(
                 (m.content for m in reversed(req.messages) if m.role == "user"), ""
             )
-            map_context = llm.map_context_for(user_id, subject, last_user) if last_user else ""
-            if map_context:
-                system_prompt += (
-                    "\n\nTHE TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — relevant excerpts below. "
-                    "Use it to ground this conversation in their actual sequencing, unit, and any texts "
-                    "or milestones it names. It carries no standard codes of its own; when the plan is "
-                    "built, standards still come only from retrieval, not from this document.\n\n"
-                    + map_context
-                )
+            system_prompt = _build_chat_system_prompt(user_id, req.chat_id, req.week_number, req.mode, last_user)
 
-            # Same field llm.py's plan-writing prompts read (settings page,
-            # like Claude's own custom instructions) — appended once here,
-            # mode-agnostically, since none of the three modes below have any
-            # retrieval-grounding language for it to need to sit after.
-            custom_instructions = llm.custom_instructions_for(user_id)
-            if custom_instructions:
-                system_prompt += (
-                    "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only:\n\n"
-                    + custom_instructions
-                )
-
-            if req.mode == "interview":
-                system_prompt += (
-                "Your job is to INTERVIEW the teacher to figure out what they want to teach. "
-                "Ask inquisitive, guiding questions one at a time. Be conversational, exactly like Claude does when asked to interview a user. "
-                "When you have enough information to build the 5-day week, call the `generate_lesson_plan` tool."
-                )
-            elif req.mode == "standards":
-                system_prompt += (
-                    "Your job is to help the teacher find the perfect academic standards for their upcoming week. "
-                    "Suggest broad topics and narrow down what standards they should focus on. "
-                    "When they are ready to build the plan, call the `generate_lesson_plan` tool."
-                )
-            else:
+            if req.mode == "brainstorm":
                 system_prompt += (
                     "Act as an expert in education having a natural back-and-forth conversation with a colleague. Brainstorm ideas for their upcoming week, or discuss revisions to an existing week. "
                     "Give advice, feedback, and clear choices directly in your conversational replies. When a teacher names a text, a skill, or an angle, "

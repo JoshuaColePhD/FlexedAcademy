@@ -106,7 +106,8 @@ def reject_calendar(submission_id: str, _user_id: str = Depends(get_current_user
 @router.post("/{school_id}/template", status_code=201)
 async def upload_school_template(
     school_id: str,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    source_url: str | None = Form(default=None),
     user_id: str = Depends(get_current_user),
 ):
     """Upload a blank lesson plan template for a school that doesn't have a
@@ -126,9 +127,22 @@ async def upload_school_template(
     if not school:
         raise AppError("not_found", "School not found.", status=404)
 
-    filename = file.filename or "template"
-    ext_hint = Path(filename).suffix.lower() or ".docx"
-    spooled = _spool(file, ext_hint, settings.max_doc_bytes)
+    if not file and not source_url:
+        raise AppError("bad_request", "Please provide either a file or a Google Doc link.", status=400)
+
+    if source_url:
+        if "docs.google.com/document/d/" not in source_url:
+            raise AppError("bad_request", "Only Google Doc links are supported for templates. For other formats, please download and upload the file.", status=400)
+        from .misc import _download_google_doc_as_docx
+        spooled = _download_google_doc_as_docx(source_url, settings.max_doc_bytes)
+        if not spooled:
+            raise AppError("bad_request", "Invalid Google Doc URL.", status=400)
+        filename = "google_doc.docx"
+        ext_hint = ".docx"
+    else:
+        filename = file.filename or "template"
+        ext_hint = Path(filename).suffix.lower() or ".docx"
+        spooled = _spool(file, ext_hint, settings.max_doc_bytes)
     try:
         ext = template_intake.validate_upload(filename, spooled)
 

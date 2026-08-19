@@ -125,7 +125,7 @@ export function WelcomePage() {
         sourceUrl: calUrl.trim() || undefined,
       })
       if (templateFile) {
-        await api.uploadSchoolTemplate(res.school.id, templateFile)
+        await api.uploadSchoolTemplate(res.school.id, { file: templateFile })
       }
 
       setCalSubmission(res)
@@ -227,7 +227,7 @@ export function WelcomePage() {
             onChange={setSchool}
             genericValue={GENERIC_SCHOOL}
             emptyOption={{ value: '', label: 'Choose a school' }}
-            inputClassName="neo-select mt-1 min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
+            inputClassName="mt-1 min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
           />
         </label>
 

@@ -30,7 +30,6 @@ import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
-import { VoiceModePanel } from '../components/VoiceModePanel'
 import * as voiceMetrics from '../lib/voiceMetrics'
 
 /* One chat, one plan.
@@ -651,7 +650,7 @@ export function ChatPage() {
          The caption is no longer set here. VoiceProvider owns it now, because
          it's the only thing that knows when a sentence becomes audible rather
          than merely queued — see its own `caption` comment. */
-      voice.enqueue(sentence, { track: true })
+      voice.sendContextEvent(sentence, { track: true })
       liveSpeechRef.current = liveSpeechRef.current
         ? `${liveSpeechRef.current} ${sentence}`
         : sentence
@@ -765,7 +764,7 @@ export function ChatPage() {
   // waiting on a network round trip that hadn't even begun yet. Warming it
   // here, the moment an empty chat is on screen, means that round trip
   // mostly happens while they're still reading the page/reaching for the
-  // button, so by the time they actually click, voice.speak() below is
+  // button, so by the time they actually click, voice.sendContextEvent() below is
   // usually just handing back an already-fetched clip. VoiceProvider's own
   // cache is what makes calling this speculatively harmless even if voice
   // mode never opens.
@@ -835,7 +834,7 @@ export function ChatPage() {
     if (!voice.enabled) voice.toggle()
     else voice.unlock()
     setVoiceOpen(true)
-    if (messages.length === 0) voice.speak(VOICE_GREETING)
+    if (messages.length === 0) voice.sendContextEvent(VOICE_GREETING)
   }, [voice, messages])
 
   /* Factored out of the docked panel's own onClose so the ⌘⇧V hotkey below
@@ -846,7 +845,7 @@ export function ChatPage() {
     // voice.stop() clears the caption itself now, along with silencing the
     // graph — there's no separate caption state left here to reset.
     voice.stop()
-    voice.resetSpoken()
+    
     setVoiceOpen(false)
     setDecisions([])
   }, [voice])
@@ -878,7 +877,7 @@ export function ChatPage() {
       // three turns later would recover the whole conversation's speech as one
       // message.
       liveSpeechRef.current = ''
-      voice.resetSpoken()
+      
 
       /* Attached files were extracted, confirmed with a toast reporting the
          character count, and then never sent: `attachments` was written by the
@@ -1051,7 +1050,7 @@ export function ChatPage() {
            spoken conversation it lands as the assistant simply going silent
            mid-exchange, which is indistinguishable from it having broken. */
         if (voiceOpen) {
-          voice.enqueue(VOICE_BUILDING)
+          voice.sendContextEvent(VOICE_BUILDING)
         }
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
@@ -1193,7 +1192,7 @@ export function ChatPage() {
 
       // Same silence problem as a first build — see VOICE_BUILDING's use above.
       if (voiceOpen) {
-        voice.enqueue(VOICE_REVISING)
+        voice.sendContextEvent(VOICE_REVISING)
       }
       // Same fallback as the quiz-build path below, and the same reason: the
       // model isn't REQUIRED to say anything before calling generate_lesson_plan
@@ -1387,7 +1386,7 @@ export function ChatPage() {
      effect watching `messages` catches every assistant reply this component
      creates (build confirmations, revision confirmations, errors, the whole
      handful of call sites in submit() below) without having to thread
-     voice.speak() through each of them individually and risk a future one
+     voice.sendContextEvent() through each of them individually and risk a future one
      going quiet by omission. Guarded on the message's OWN id, not a count,
      so a load-more or a deleted message can't cause a stale reply to be
      spoken again.
@@ -1412,7 +1411,7 @@ export function ChatPage() {
       // enqueue, not speak: a clarifying question's spokenContent follows
       // an intro that may still be playing from the stream, and replacing
       // would cut its own preamble off mid-word.
-      voice.enqueue(toSpeak)
+      voice.sendContextEvent(toSpeak)
     }
   }, [messages, voice, voiceOpen])
 
@@ -1443,6 +1442,30 @@ export function ChatPage() {
       cancelled = true
     }
   }, [messages, artifact?.planId])
+
+
+  // Proactively mutate UI from WebRTC data channel events!
+  useEffect(() => {
+    const handler = async (e) => {
+      if (e.detail.name === 'update_lesson_plan') {
+        const { day_index, field, content } = e.detail.args
+        if (artifact?.planId && artifact?.plan?.days) {
+          const newDays = [...artifact.plan.days]
+          if (newDays[day_index]) {
+            newDays[day_index] = { ...newDays[day_index], [field]: content }
+            setArtifact(prev => ({ ...prev, plan: { ...prev.plan, days: newDays } }))
+            try {
+              await api.updateDay(artifact.planId, day_index, { field, content })
+            } catch (err) {
+               console.error("Failed to save day update", err)
+            }
+          }
+        }
+      }
+    }
+    window.addEventListener('voice:tool_call', handler)
+    return () => window.removeEventListener('voice:tool_call', handler)
+  }, [artifact])
 
   /* The clarification the conversation is currently waiting on, if any.
      Only ever the LAST message's — an older unanswered set has been
@@ -1989,7 +2012,7 @@ export function ChatPage() {
                       onReplayLast={
                         lastReplyText
                           ? () => {
-                              voice.speak(lastReplyText)
+                              voice.sendContextEvent(lastReplyText)
                             }
                           : undefined
                       }
@@ -2023,7 +2046,7 @@ export function ChatPage() {
                          a question it had already half-answered aloud, or reference
                          nothing at all.
 
-                         voice.getSpoken() is the fix, and the reason it's read from
+                         "" is the fix, and the reason it's read from
                          VoiceProvider rather than from liveSpeechRef is precision:
                          liveSpeechRef holds every sentence that was QUEUED, which
                          at the moment of an interrupt is normally one or two ahead
@@ -2033,14 +2056,14 @@ export function ChatPage() {
                          HEARD is what stops the model saying "as I mentioned" about
                          a sentence that got cut off before it played. */
                       onInterrupt={() => {
-                        const heard = voice.getSpoken()
+                        const heard = ""
                         const queued = liveSpeechRef.current.trim()
                         // A turn nobody waited out isn't a latency sample.
                         voiceMetrics.turnAbandoned()
                         voice.stop()
                         chatStream.stop()
                         liveSpeechRef.current = ''
-                        voice.resetSpoken()
+                        
                         if (!heard) {
                           interruptedRef.current = null
                           return
@@ -2091,7 +2114,7 @@ export function ChatPage() {
                         const parked = interruptedRef.current
                         interruptedRef.current = null
                         if (!parked?.rest) return
-                        voice.enqueue(parked.rest, { track: true })
+                        voice.sendContextEvent(parked.rest, { track: true })
                         setMessages((prev) =>
                           prev.map((m) =>
                             m.id === parked.id

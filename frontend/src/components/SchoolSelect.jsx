@@ -152,7 +152,7 @@ export function SchoolSelect({
           onKeyDown={onKeyDown}
           className={
             inputClassName ||
-            'neo-select neo-inset w-full rounded-lg bg-paper-raised py-2 pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint disabled:opacity-60'
+            'neo-inset w-full rounded-lg bg-paper-raised py-2 pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint disabled:opacity-60'
           }
         />
         <ChevronsUpDown

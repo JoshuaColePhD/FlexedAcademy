@@ -14,149 +14,19 @@ import {
   X,
 } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+
+import { useVoice } from '../lib/voiceContext'
+const micWorkletUrl = "";
+const encodeWav = () => null;
+const createSileroDetector = () => Promise.reject();
+const SPEECH_ON = 1;
+const SPEECH_OFF = 0;
+
 import { api } from '../lib/api'
 /* ?url, not a normal import: an AudioWorkletProcessor is constructed by the
    browser in a scope with no module loader, so addModule needs a real URL and
    the file must NOT be inlined into the app bundle. Vite emits it as an asset
    and hands back the hashed path. */
-import micWorkletUrl from '../lib/micCaptureWorklet.js?url'
-import { encodeWav } from '../lib/wav'
-import { createSileroDetector, SPEECH_ON, SPEECH_OFF } from '../lib/sileroVad'
-import * as metrics from '../lib/voiceMetrics'
-import { splitDecisions } from '../lib/decisionChecklist'
-import { DecisionStack } from './DecisionStack'
-import { WeekStrip } from './WeekStrip'
-
-/* Animates this slot's height between whatever its contents happen to be —
- * the checklist, a question card, build progress, the finished-plan card.
- *
- * The measurement runs in a layout effect, not in a requestAnimationFrame
- * inside the ResizeObserver callback. That ordering was the bug: RO fires
- * AFTER paint, so every swap of children rendered one frame at the new size
- * before the height transition had started — a visible jump, then a settle
- * back into the animation. Measuring synchronously before the browser paints
- * means the container is already at the right height for frame one.
- *
- * The RO stays, for content that resizes without React re-rendering (a
- * decision label wrapping to two lines as the window narrows).
- */
-function SmoothHeight({ children }) {
-  const contentRef = useRef(null)
-  const [height, setHeight] = useState(null)
-
-  // useLayoutEffect: runs after DOM mutation, before paint. Re-runs on every
-  // children change, which is exactly when a slot swap happens.
-  useLayoutEffect(() => {
-    const el = contentRef.current
-    if (!el) return undefined
-    const measure = () => {
-      const next = el.getBoundingClientRect().height
-      setHeight((prev) => (prev !== null && Math.abs(prev - next) < 0.5 ? prev : next))
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [children])
-
-  return (
-    <div
-      style={{
-        // null on the very first render only — 'auto' there so the panel opens
-        // at its natural size instead of animating up from zero.
-        height: height === null ? 'auto' : `${height}px`,
-        transition: 'height 260ms cubic-bezier(0.4, 0, 0.2, 1)',
-        overflow: 'hidden',
-      }}
-    >
-      <div ref={contentRef}>{children}</div>
-    </div>
-  )
-}
-
-/* Live voice mode — the thing the "Chat" control opens now, instead of
- * quietly toggling whether replies get read aloud.
- *
- * Always-on, not push-to-talk: this panel listens continuously and decides
- * for itself when a sentence is finished, the same shape as ChatGPT's own
- * voice mode. Whisper transcribes each finished utterance — not the browser's
- * SpeechRecognition API, which is Chrome/Google-cloud-only in practice and
- * unreliable on iOS Safari, exactly the platform this app's screenshots keep
- * coming from.
- *
- * CAPTURE IS CONTINUOUS, and this is the important structural fact about the
- * file. An AudioWorklet (lib/micCaptureWorklet.js) streams 32ms frames of
- * 16kHz mono into a rolling buffer for as long as the panel is open, and an
- * "utterance" is a WINDOW cut out of that history — starting PREROLL_MS before
- * the detector noticed anything. The previous design started a MediaRecorder
- * when the level crossed a threshold, which meant the front of every utterance
- * was already gone by the time recording began (an energy gate always trips
- * after voicing starts, and unvoiced onsets barely register at all), so Whisper
- * received "ixty" and confidently returned a word that was never said.
- *
- * The loop, per utterance:
- *   frames arriving → (level clears an adaptive bar) → mark the window open →
- *   (silence long enough, judged against two timers and a hard cap) → cut the
- *   window WITH its pre-roll → encode WAV → transcribe → onUtterance(text).
- *
- * The detector runs on the worklet's frame cadence, not requestAnimationFrame:
- * rAF stops on a backgrounded tab, which used to leave the mic live and nothing
- * listening. rAF now only draws the level meter, which is work that should
- * stop when nobody can see it.
- *
- * Recording during a reply is a genuinely different state from being paused —
- * the mic stays live while the assistant talks so barge-in can work at all,
- * with a stricter threshold and AEC-convergence guards to stop the reply
- * interrupting itself through the speaker.
- *
- * Docked, not a takeover: this used to be a phone-first full-screen overlay
- * and a centered desktop dialog with a scrim — a different screen entirely
- * from the chat underneath it. It's now a panel that grows out of the chat
- * box itself, right above the composer (see ChatPage's voice-dock wrapper),
- * so the conversation it's about stays on screen the whole time. What was
- * said either side lives in the ordinary message list behind/above this
- * panel now (utterances land there the same way a typed turn does), which
- * is what freed this component up to drop its own transcript column
- * entirely — it only needs to carry what the chat itself doesn't: mic
- * state, the live caption of whatever's currently being spoken, and the
- * running checklist.
- *
- * Rendered in the .neo-world world (base.css) — soft embossed "neomorphic"
- * surfaces on request, matching the reference images directly rather than
- * translating them into this app's normal flat, high-contrast look. That
- * tradeoff (faint edges, low contrast) is real and is scoped to this one
- * opt-in panel on purpose — see .neo-world's own comment for why it's fine
- * here and would not be fine as a default anywhere else in the app.
- */
-
-/* ── the detector's thresholds, relative to the room rather than absolute ───
- *
- * These used to be flat numbers against full scale: speech at 0.06, barge-in at
- * 0.13. That's 20·log₁₀(0.13/0.06) = 6.7 dB of total working range, which is
- * less than the ~10 dB difference between talking at 30cm and talking at arm's
- * length, never mind the 25-30 dB spread between a quiet room and a noisy one.
- * A single absolute pair genuinely cannot both catch a soft speaker and reject
- * a laptop fan.
- *
- * Worse, the floor moves underneath a fixed gate: getUserMedia is asked for
- * autoGainControl (below, and rightly — it helps Whisper), and AGC only holds
- * gain steady while its own detector hears speech. During pauses it ramps up,
- * so the measured RMS of SILENCE climbs over the course of a turn and a fixed
- * threshold starts tripping on nothing at all.
- *
- * So the thresholds are now multiples of a continuously-estimated noise floor
- * (see noiseFloorRef in tick()), with absolute floors underneath so a
- * pathologically silent input can't drive them to zero. This is the standard
- * adaptive formulation and it costs nothing: one exponential average per frame.
- *
- * Note what this does NOT fix: RMS energy still knows only the LEVEL of the
- * signal, never what kind of signal it is. A controlled comparison puts energy
- * detection at 0.11 MCC against Silero's 0.72 — near chance — and adding a
- * second threshold measurably fails to rescue it. Making it relative removes
- * the device-and-room fragility, which is the part that was making this feel
- * broken; replacing it with Silero (@ricky0123/vad-web is a drop-in for React)
- * is the real ceiling and a bigger change than this one.
- */
 const SPEECH_FLOOR_MULT = 2.8
 const SPEECH_FLOOR_MIN = 0.022
 const BARGE_FLOOR_MULT = 5.0

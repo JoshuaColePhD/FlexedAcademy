@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import tempfile
 from pathlib import Path
+import requests
 
 from collections import Counter
 
@@ -322,6 +324,58 @@ def _spool(upload: UploadFile, suffix: str, max_bytes: int) -> Path:
         fd.flush()
         return Path(fd.name)
     except Exception:
+        fd.close()
+        Path(fd.name).unlink(missing_ok=True)
+        raise
+
+
+def _download_google_doc_as_docx(url: str, max_bytes: int) -> Path | None:
+    """Download a public Google Doc directly as a .docx file. Returns the Path
+    to a temporary file containing the bytes, or raises AppError if it's
+    private or fails."""
+    # Pattern to extract the document ID from a Google Docs URL
+    match = re.search(r"/document/d/([a-zA-Z0-9-_]+)", url)
+    if not match:
+        return None
+
+    doc_id = match.group(1)
+    export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=docx"
+
+    try:
+        # A timeout prevents hanging on Google's servers; stream=True prevents
+        # buffering a giant file in memory all at once.
+        resp = requests.get(export_url, timeout=10, stream=True)
+    except requests.RequestException as e:
+        log.warning("failed to fetch google doc %s: %s", doc_id, e)
+        raise AppError("bad_request", "Failed to connect to Google Docs. Please check the link and try again.", status=400)
+
+    # A private document redirects to a Google login page, which returns 200 OK
+    # but with a text/html content type instead of the requested format.
+    content_type = resp.headers.get("content-type", "")
+    if resp.status_code != 200 or "text/html" in content_type:
+        raise AppError(
+            "bad_request",
+            "This Google Doc is private. Please click 'Share' in Google Docs, set General Access to 'Anyone with the link', and try again.",
+            status=400,
+        )
+
+    total = 0
+    fd = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+    try:
+        for chunk in resp.iter_content(chunk_size=1 << 20):
+            if chunk:
+                total += len(chunk)
+                if total > max_bytes:
+                    raise AppError(
+                        "file_too_large",
+                        f"That Google Doc is larger than the {max_bytes // (1024 * 1024)}MB limit.",
+                        status=413,
+                    )
+                fd.write(chunk)
+        fd.flush()
+        return Path(fd.name)
+    except Exception:
+        fd.close()
         Path(fd.name).unlink(missing_ok=True)
         raise
     finally:

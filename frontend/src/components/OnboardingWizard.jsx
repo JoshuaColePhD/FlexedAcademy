@@ -10,6 +10,7 @@ import {
   School as SchoolIcon,
   Sparkles,
   Upload,
+  Link,
   X,
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -139,6 +140,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
   // School & template step
   const [school, setSchool] = useState(cls?.school || '')
   const [templateFile, setTemplateFile] = useState(null)
+  const [templateUrl, setTemplateUrl] = useState('')
   const templateFileRef = useRef(null)
   const [savingSchool, setSavingSchool] = useState(false)
 
@@ -188,8 +190,8 @@ export function OnboardingWizard({ open, onClose, cls }) {
         await api.updateClass(cls.id, { school })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
-      if (templateFile && school) {
-        await api.uploadSchoolTemplate(school, templateFile)
+      if ((templateFile || templateUrl.trim()) && school) {
+        await api.uploadSchoolTemplate(school, { file: templateFile, sourceUrl: templateUrl.trim() || undefined })
         qc.invalidateQueries({ queryKey: qk.schools })
         toast.success('Template submitted', 'We’ll train the AI on your school’s format.')
       }
@@ -261,8 +263,6 @@ export function OnboardingWizard({ open, onClose, cls }) {
         >
         <button
           type="button"
-          <button
-            type="button"
             className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
             onClick={finish}
             aria-label="Close"
@@ -283,6 +283,8 @@ export function OnboardingWizard({ open, onClose, cls }) {
                   schoolNeedsTemplate={schoolNeedsTemplate}
                   templateFile={templateFile}
                   setTemplateFile={setTemplateFile}
+                  templateUrl={templateUrl}
+                  setTemplateUrl={setTemplateUrl}
                   templateFileRef={templateFileRef}
                   saving={savingSchool}
                   onBack={() => goTo(0)}
@@ -360,6 +362,8 @@ function SchoolStep({
   schoolNeedsTemplate,
   templateFile,
   setTemplateFile,
+  templateUrl,
+  setTemplateUrl,
   templateFileRef,
   saving,
   onBack,
@@ -393,16 +397,37 @@ function SchoolStep({
             type="file"
             accept=".docx,.pdf"
             hidden
-            onChange={(e) => setTemplateFile(e.target.files?.[0] || null)}
+            onChange={(e) => {
+              setTemplateFile(e.target.files?.[0] || null)
+              if (e.target.files?.[0]) setTemplateUrl('')
+            }}
           />
-          <button
-            type="button"
-            onClick={() => templateFileRef.current?.click()}
-            className="neo-raised mt-3 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:text-ink"
-          >
-            <Upload size={13} aria-hidden="true" />
-            {templateFile ? templateFile.name : 'Choose a template'}
-          </button>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={() => templateFileRef.current?.click()}
+              className="neo-raised inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:text-ink"
+            >
+              <Upload size={14} aria-hidden="true" />
+              {templateFile ? templateFile.name : 'Upload file'}
+            </button>
+            <span className="text-xs text-ink-soft font-medium text-center sm:text-left">OR</span>
+            <div className="relative flex-1">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
+                <Link size={13} className="text-ink-subtle" aria-hidden="true" />
+              </div>
+              <input
+                type="url"
+                placeholder="Paste Google Doc link"
+                value={templateUrl}
+                onChange={(e) => {
+                  setTemplateUrl(e.target.value)
+                  if (e.target.value) setTemplateFile(null)
+                }}
+                className="w-full rounded-lg border border-edge bg-paper py-2 pl-7 pr-3 text-sm text-ink outline-none transition-colors focus:border-accent placeholder:text-ink-subtle"
+              />
+            </div>
+          </div>
         </div>
       ) : null}
       <div className="dialog-actions mt-6">

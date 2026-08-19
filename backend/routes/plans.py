@@ -41,6 +41,27 @@ class QuizRequest(BaseModel):
     question_types: list[str] = Field(min_length=1, max_length=len(schema.QUESTION_TYPES))
     num_questions: int = Field(default=10, ge=1, le=40)
 
+
+class DayUpdateRequest(BaseModel):
+    field: str
+    content: str
+
+@router.put("/{plan_id}/days/{day_index}")
+def update_day(
+    plan_id: str, day_index: int, body: DayUpdateRequest, user_id: str = Depends(get_current_user)
+):
+    plan = db.get_plan(user_id, plan_id)
+    if not plan:
+        raise AppError("plan_not_found", "Plan not found", status=404)
+    if day_index < 0 or day_index >= len(plan["days"]):
+        raise AppError("bad_index", "Invalid day index", status=400)
+        
+    plan["days"][day_index][body.field] = body.content
+    
+    # Needs to write back to db
+    db.update_plan(user_id, plan_id, days=plan["days"])
+    return plan
+
 class QuizUpdateRequest(BaseModel):
     quiz_json: dict
 

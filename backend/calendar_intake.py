@@ -160,7 +160,18 @@ def extract_calendar_text(*, upload=None, url: str | None = None) -> str:
         raise AppError("bad_request", "Provide either a file or a link, not both or neither.", status=400)
 
     if url:
-        text = fetch_url_text(url)
+        if "docs.google.com/document/d/" in url:
+            from .routes.misc import _download_google_doc_as_docx
+            path = _download_google_doc_as_docx(url, settings.max_doc_bytes)
+            if not path:
+                text = fetch_url_text(url)
+            else:
+                try:
+                    text = read_text_from_path(path, ".docx")
+                finally:
+                    path.unlink(missing_ok=True)
+        else:
+            text = fetch_url_text(url)
     else:
         filename = upload.filename or "calendar"
         ext_hint = Path(filename).suffix.lower() or ".pdf"
