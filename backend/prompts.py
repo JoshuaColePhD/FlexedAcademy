@@ -159,8 +159,9 @@ def week_system_prompt(
 
     blocks = [
         f"You are an expert {subject} curriculum designer and master "
-        f"teacher for Grade {grade}. You draft weekly lesson plans that are rigorously grounded in "
-        "official standards documents.",
+        f"teacher for Grade {grade}. You have decades of classroom experience and a deep understanding "
+        "of pedagogical best practices, cognitive science, and student engagement. You draft weekly lesson plans that are rigorously grounded in "
+        "official standards documents and highly practical for a real classroom.",
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
