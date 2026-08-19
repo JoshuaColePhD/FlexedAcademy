@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import {
+  Check,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -768,17 +769,28 @@ function GlobalClassDashboard({ classes, onUpdated }) {
 
       <div className="neo-panel rounded-xl bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
         <div className="flex items-center justify-between rounded-t-xl border-b border-edge bg-paper-sunken px-4 py-3">
-          <div className="flex items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-3">
             <input
               type="checkbox"
+              className="sr-only"
               checked={displayedClasses.length > 0 && selectedIds.size === displayedClasses.length}
               onChange={toggleSelectAll}
-              className="h-4 w-4 rounded border-edge text-accent focus:ring-accent"
             />
-            <span className="text-sm font-medium text-ink-muted">
+            <div
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                displayedClasses.length > 0 && selectedIds.size === displayedClasses.length
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-edge bg-paper'
+              }`}
+            >
+              {displayedClasses.length > 0 && selectedIds.size === displayedClasses.length && (
+                <Check size={14} strokeWidth={3} />
+              )}
+            </div>
+            <span className="text-sm font-medium text-ink-muted select-none">
               {selectedIds.size} selected
             </span>
-          </div>
+          </label>
           {selectedIds.size > 0 && (
             <button
               type="button"
@@ -799,17 +811,28 @@ function GlobalClassDashboard({ classes, onUpdated }) {
             </li>
           ) : (
             displayedClasses.map((c) => (
-              <li key={c.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-paper-inset">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(c.id)}
-                  onChange={() => toggleSelect(c.id)}
-                  className="h-4 w-4 rounded border-edge text-accent focus:ring-accent"
-                />
-                <div>
-                  <p className="text-sm font-medium text-ink">{c.name}</p>
-                  <p className="text-xs text-ink-muted">{c.subject} · Grade {c.grade}</p>
-                </div>
+              <li key={c.id}>
+                <label className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-paper-inset">
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={selectedIds.has(c.id)}
+                    onChange={() => toggleSelect(c.id)}
+                  />
+                  <div
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                      selectedIds.has(c.id)
+                        ? 'border-accent bg-accent text-white'
+                        : 'border-edge bg-paper'
+                    }`}
+                  >
+                    {selectedIds.has(c.id) && <Check size={14} strokeWidth={3} />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-ink select-none">{c.name}</p>
+                    <p className="text-xs text-ink-muted select-none">{c.subject} · Grade {c.grade}</p>
+                  </div>
+                </label>
               </li>
             ))
           )}

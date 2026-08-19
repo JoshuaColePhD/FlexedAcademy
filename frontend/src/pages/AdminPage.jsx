@@ -1052,7 +1052,7 @@ export function AdminPage() {
                 onClick={() => scrollToSection(tab.id)}
                 className={`flex items-center justify-between min-h-touch rounded-lg px-2 text-sm transition-colors ${
                   activeTab === tab.id
-                    ? 'bg-paper-inset font-medium text-ink'
+                    ? 'bg-paper shadow-sm ring-1 ring-black/5 font-medium text-ink'
                     : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
                 }`}
               >
