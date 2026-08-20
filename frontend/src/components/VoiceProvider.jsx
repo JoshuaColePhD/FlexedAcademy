@@ -205,6 +205,9 @@ export function VoiceProvider({ children }) {
         case 'response.audio_transcript.done':
         case 'response.output_audio_transcript.done':
           setSpeaking(false)
+          if (event.transcript) {
+            window.dispatchEvent(new CustomEvent('voice:transcript', { detail: { role: 'assistant', text: event.transcript } }))
+          }
           // Handle-tracked and cleared on the next delta, so a fast follow-up
           // can't have its live caption blanked by the previous reply's timer,
           // and the timer can't fire into an unmounted provider.
@@ -224,6 +227,7 @@ export function VoiceProvider({ children }) {
           const said = (event.transcript || '').trim()
           setHeard(said)
           if (said) {
+            window.dispatchEvent(new CustomEvent('voice:transcript', { detail: { role: 'user', text: said } }))
             for (const h of utteranceHandlersRef.current) {
               try {
                 h(said)
@@ -339,6 +343,15 @@ export function VoiceProvider({ children }) {
           const queued = pendingSpeechRef.current
           pendingSpeechRef.current = []
           for (const ev of queued) send(ev)
+          
+          if (queued.length === 0) {
+            send({
+              type: 'response.create',
+              response: {
+                instructions: 'Say a warm, brief greeting to the user.',
+              },
+            })
+          }
         }
 
         const offer = await pc.createOffer()

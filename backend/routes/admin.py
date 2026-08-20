@@ -10,18 +10,43 @@ a data change, not a redeploy.
 from __future__ import annotations
 
 import json
+import secrets
+import string
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
-from .. import db, mail, qa, template_intake
+from .. import auth, db, mail, qa, template_intake
 from ..config import settings
 from ..deps import get_current_admin
 from ..entitlement import ENTITLED_STATUSES
 from ..errors import AppError
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+# Two capitalized words and four digits — easy to read off a screen or a
+# sticky note and type on a phone keyboard, unlike a random mixed-case+symbol
+# string. secrets.choice, not random.choice: this is a real credential, not a
+# UI affordance, so it needs a cryptographically secure source. This word list
+# squared, times the digit range, is ~2.3 x 10^7 combinations — comfortably
+# out of reach of the login route's own 5/minute rate limit for the 7-day
+# window these accounts exist, without asking anyone to type symbols.
+_PASSWORD_WORDS = [
+    "amber", "arbor", "birch", "briar", "cedar", "cliff", "clover", "coral",
+    "crane", "creek", "delta", "ember", "falcon", "fern", "flint", "grove",
+    "harbor", "hazel", "heron", "ivory", "juniper", "lark", "linen", "lotus",
+    "maple", "meadow", "moss", "onyx", "opal", "otter", "pebble", "quartz",
+    "raven", "reed", "ridge", "river", "robin", "sage", "shale", "slate",
+    "sparrow", "spruce", "swift", "thistle", "tidal", "willow", "wren", "zephyr",
+]
+
+
+def _generate_password() -> str:
+    words = "".join(secrets.choice(_PASSWORD_WORDS).capitalize() for _ in range(2))
+    digits = "".join(secrets.choice(string.digits) for _ in range(4))
+    return f"{words}{digits}"
 
 
 @router.get("/accounts")
@@ -89,6 +114,79 @@ def set_custom_cap(account_id: str, body: CapBody, _admin: str = Depends(get_cur
     return {"account": next(
         (a for a in db.list_accounts_with_stats() if a["id"] == account_id), None
     )}
+
+
+class BetaAccountBody(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=120)
+    # A week by default, per how these are actually being used — a fixed
+    # trial window, not an open-ended comped account.
+    days: int = Field(default=7, ge=1, le=90)
+    # Omitted (the normal case): a real, unique, generated password per
+    # account. Set: every account created in this call shares exactly this
+    # password — for handing a small batch of easy-to-type test accounts
+    # (test1@, test2@...) to people who don't need distinct credentials from
+    # each other. Same min_length as SignupBody's own password field, for
+    # the same reason a real login is going to be checked against it.
+    password: str | None = Field(default=None, min_length=8, max_length=200)
+
+
+@router.post("/beta-accounts", status_code=201)
+def create_beta_account_route(body: BetaAccountBody, _admin: str = Depends(get_current_admin)):
+    """One real account, ready to hand off: a generated password (returned
+    ONCE, here, and never again — like everything else in this codebase that
+    stores a hash and nothing else), the subscriber usage tier so a beta
+    tester experiences the product's real limits rather than either extreme,
+    and an expiry that ends the trial on its own with no follow-up step.
+
+    Deliberately NOT pre-seeded with a class or anything else — the whole
+    point of a beta account is that it starts exactly where a real new
+    signup does: no classes, onboarding_seen_at NULL, straight through
+    /welcome and the onboarding wizard like any brand-new teacher.
+    """
+    if db.get_user_by_email(body.email):
+        raise AppError(
+            "email_taken",
+            "An account with that email already exists.",
+            status=409,
+        )
+    password = body.password or _generate_password()
+    user = db.create_beta_account(
+        body.email, body.name, auth.hash_password(password), days=body.days
+    )
+    return {
+        "account": next((a for a in db.list_accounts_with_stats() if a["id"] == user["id"]), None),
+        # The only place this value ever exists outside the teacher's own
+        # head — nothing re-derives or re-displays it after this response.
+        "password": password,
+    }
+
+
+class ExtendBetaBody(BaseModel):
+    days: int = Field(default=7, ge=1, le=90)
+
+
+@router.post("/accounts/{account_id}/extend-beta")
+def extend_beta_account_route(account_id: str, body: ExtendBetaBody, _admin: str = Depends(get_current_admin)):
+    """Push the expiry `days` out from right now. Only meaningful on an
+    account that already has one — extending a normal account's (nonexistent)
+    trial would silently turn it into a time-boxed one."""
+    existing = next((a for a in db.list_accounts_with_stats() if a["id"] == account_id), None)
+    if not existing or not existing.get("beta_expires_at"):
+        raise AppError("not_a_beta_account", "That account has no trial period to extend.", status=400)
+    db.extend_beta_account(account_id, days=body.days)
+    return {"account": next((a for a in db.list_accounts_with_stats() if a["id"] == account_id), None)}
+
+
+@router.post("/accounts/{account_id}/end-beta")
+def end_beta_account_route(account_id: str, _admin: str = Depends(get_current_admin)):
+    """Ends the trial immediately — the account stops authenticating on its
+    very next request, same as if its 7 days had already run out."""
+    existing = next((a for a in db.list_accounts_with_stats() if a["id"] == account_id), None)
+    if not existing or not existing.get("beta_expires_at"):
+        raise AppError("not_a_beta_account", "That account has no trial period to end.", status=400)
+    db.end_beta_account(account_id)
+    return {"account": next((a for a in db.list_accounts_with_stats() if a["id"] == account_id), None)}
 
 
 @router.get("/entitled-statuses")

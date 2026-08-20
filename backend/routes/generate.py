@@ -334,6 +334,16 @@ def _build_chat_system_prompt(user_id: str, chat_id: str | None, week_number: in
             "Suggest broad topics and narrow down what standards they should focus on. "
         )
 
+    if chat_id:
+        recent_messages = db.list_messages(chat_id)
+        if recent_messages:
+            system_prompt += "\n\nCONVERSATION HISTORY:\n"
+            for msg in recent_messages[-10:]:
+                role = msg.get("role", "").upper()
+                content = msg.get("content", "")
+                if content:
+                    system_prompt += f"{role}: {content}\n\n"
+
     return system_prompt
 
 # The realtime model and voice, named once. Both the ephemeral-key request and
@@ -408,6 +418,56 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
                 },
                 "required": ["day_index"]
             }
+        },
+        {
+            "type": "function",
+            "name": "generate_lesson_plan",
+            "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
+            "parameters": {"type": "object", "properties": {}}
+        },
+        {
+            "type": "function",
+            "name": "generate_quiz",
+            "description": (
+                "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
+                "downloadable file, AND their request already says which question type(s) they want and "
+                "roughly how many."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question_types": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "num_questions": {"type": "integer"},
+                    "revises_current": {"type": "boolean"}
+                },
+                "required": ["question_types"]
+            }
+        },
+        {
+            "type": "function",
+            "name": "ask_clarifying_questions",
+            "description": "Call this when the teacher's most recent message is too vague to act on directly. Ask 2-4 short, concrete questions, each with a few clickable options.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "questions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string"},
+                                "text": {"type": "string"},
+                                "options": {"type": "array", "items": {"type": "string"}}
+                            },
+                            "required": ["id", "text", "options"]
+                        }
+                    }
+                },
+                "required": ["questions"]
+            }
         }
     ]
 
@@ -440,20 +500,10 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
                         # was said.
                         "transcription": {"model": "whisper-1"},
                         # Server-side VAD is the whole reason to hold a realtime
-                        # socket open for input: it decides where a turn ends,
-                        # which is what the deleted Silero detector used to do
-                        # locally.
-                        #
-                        # create_response: false is the load-bearing setting.
-                        # Left at its default the realtime model ANSWERS the
-                        # teacher directly out of its own weights — fluent, and
-                        # wrong about standards, since it has no retrieval. This
-                        # product's whole claim is that a cited standard was
-                        # quoted from a real document, so the answer has to come
-                        # from /api/chat_stream with its RAG context. The
-                        # realtime session's job is to hear the turn and to
-                        # speak the reply, not to compose it.
-                        "turn_detection": {"type": "server_vad", "create_response": False},
+                        # socket open for input: it decides where a turn ends.
+                        # We now enable create_response: True so the realtime model
+                        # answers directly, cutting out the chat_stream latency.
+                        "turn_detection": {"type": "server_vad", "create_response": True},
                     },
                     "output": {"voice": REALTIME_VOICE},
                 },

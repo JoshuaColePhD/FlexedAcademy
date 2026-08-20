@@ -7,6 +7,7 @@ import {
   ArrowRight,
   ArrowUp,
   
+  BookOpen,
   FileText,
   Loader2,
   
@@ -21,7 +22,7 @@ import { GRADES, DEFAULT_GRADE, gradeLabel, gradeSelectValue } from '../lib/grad
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
 import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
@@ -64,7 +65,7 @@ const shortLabel = (fw, fallback) =>
 
 /* ── add a class: two picks, inline ─────────────────────────────────────────
    The name is derived and shown so it can be corrected, not demanded up front. */
-function AddClass({ frameworks, onCreated, onCancel }) {
+function ClassSetup({ frameworks, onCreated, onCancel }) {
   const toast = useToast()
   const [subject, setSubject] = useState('')
   const [grade, setGrade] = useState(DEFAULT_GRADE)
@@ -88,58 +89,66 @@ function AddClass({ frameworks, onCreated, onCancel }) {
     }
   }
 
-  // The accent hairline went with the emboss: a border and a soft shadow
-  // describing the same edge read as two outlines, and the tint alone still
-  // says "this is the new thing".
   return (
-    <form onSubmit={submit} className="neo-panel rounded-xl bg-paper-sunken/40 p-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-        <div className="min-w-0 flex-1">
-          <FrameworkPicker
-            frameworks={frameworks}
-            value={subject}
-            onChange={setSubject}
-            id="new-class-framework"
-          />
-        </div>
-        <select
-          aria-label="Grade"
-          value={grade}
-          onChange={(e) => setGrade(e.target.value)}
-          className="neo-select neo-inset rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink sm:w-24"
-        >
-          {GRADES.map((g) => (
-            <option key={g.value} value={g.value}>
-              {g.label}
-            </option>
-          ))}
-        </select>
-        <div className="flex items-center gap-1">
-          <button
-            type="submit"
-            disabled={!subject || saving}
-            className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-3 py-2.5 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
-            Add
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            aria-label="Cancel"
-            className="neo-raised rounded-lg p-2.5 text-ink-muted transition-colors hover:text-ink"
-          >
-            <X size={15} aria-hidden="true" />
-          </button>
-        </div>
+    <div className="flex h-full w-full items-center justify-center p-4 sm:p-8">
+      <div className="w-full max-w-md">
+        <h2 className="mb-6 text-2xl font-semibold tracking-tight text-ink">Set up a new class</h2>
+        <form onSubmit={submit} className="flex flex-col gap-6 rounded-2xl bg-paper-sunken p-6 sm:p-8 shadow-sm">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="new-class-framework" className="text-sm font-medium text-ink">
+              Subject
+            </label>
+            <FrameworkPicker
+              frameworks={frameworks}
+              value={subject}
+              onChange={setSubject}
+              id="new-class-framework"
+            />
+          </div>
+          
+          <div className="flex flex-col gap-2">
+            <label htmlFor="new-class-grade" className="text-sm font-medium text-ink">
+              Grade Level
+            </label>
+            <select
+              id="new-class-grade"
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+              className="neo-select neo-inset rounded-xl bg-paper-raised py-3 pl-3 pr-8 text-sm text-ink w-full"
+            >
+              {GRADES.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-2 flex items-center justify-end gap-3 pt-4 border-t border-edge">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg px-4 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!subject || saving}
+              className="fa-press neo-raised flex items-center justify-center gap-2 rounded-lg bg-paper-raised px-6 py-2.5 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : null}
+              Create Class
+            </button>
+          </div>
+        </form>
+        {preview ? (
+          <p className="mt-4 text-center text-sm text-ink-muted">
+            Will be called <span className="font-medium text-ink">{preview}</span>
+          </p>
+        ) : null}
       </div>
-      {preview ? (
-        <p className="mt-2 text-xs text-ink-muted">
-          Will be called <span className="font-medium text-ink">{preview}</span> — rename it any
-          time.
-        </p>
-      ) : null}
-    </form>
+    </div>
   )
 }
 
@@ -594,6 +603,75 @@ function ClassWeeks({ cls }) {
   )
 }
 
+function EditClassSettings({ cls, frameworks, onChanged }) {
+  const toast = useToast()
+  const [subject, setSubject] = useState(cls.subject)
+  const [grade, setGrade] = useState(cls.grade)
+  const [saving, setSaving] = useState(false)
+
+  const isChanged = subject !== cls.subject || grade !== cls.grade
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!isChanged) return
+    setSaving(true)
+    try {
+      const updated = await api.updateClass(cls.id, { subject, grade })
+      toast.success('Class updated')
+      onChanged?.(updated)
+    } catch (err) {
+      toast.apiError('Could not update class', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <label htmlFor="edit-class-framework" className="text-sm font-medium text-ink">
+          Subject
+        </label>
+        <FrameworkPicker
+          frameworks={frameworks}
+          value={subject}
+          onChange={setSubject}
+          id="edit-class-framework"
+        />
+      </div>
+      
+      <div className="flex flex-col gap-2">
+        <label htmlFor="edit-class-grade" className="text-sm font-medium text-ink">
+          Grade Level
+        </label>
+        <select
+          id="edit-class-grade"
+          value={grade}
+          onChange={(e) => setGrade(e.target.value)}
+          className="neo-select neo-inset rounded-xl bg-paper-raised py-3 pl-3 pr-8 text-sm text-ink w-full max-w-sm"
+        >
+          {GRADES.map((g) => (
+            <option key={g.value} value={g.value}>
+              {g.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-2">
+        <button
+          type="submit"
+          disabled={!isChanged || saving}
+          className="fa-press neo-raised flex items-center justify-center gap-2 rounded-lg bg-paper-raised px-6 py-2.5 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : null}
+          Save Changes
+        </button>
+      </div>
+    </form>
+  )
+}
+
 /* ── one class details (Right Pane) ────────────────────────────────────────── */
 function ClassDetail({ cls, frameworks, onChanged }) {
   const confirm = useConfirm()
@@ -696,6 +774,14 @@ function ClassDetail({ cls, frameworks, onChanged }) {
       {activeTab === 'settings' && (
         <div className="flex flex-col gap-8 animate-in fade-in duration-200">
           <section className="flex flex-col gap-4">
+            <div className="border-b border-edge pb-2">
+              <h3 className="text-sm font-semibold text-ink">Edit Class Details</h3>
+              <p className="text-xs text-ink-muted">Change the subject or grade level for this class.</p>
+            </div>
+            <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
+          </section>
+
+          <section className="flex flex-col gap-4 pt-4">
             <div className="border-b border-edge pb-2">
               <h3 className="text-sm font-semibold text-ink">Emergency Tools</h3>
             </div>
@@ -990,8 +1076,9 @@ export function ClassPage() {
   })
   const frameworks = frameworksState.data || []
 
+  const { classId } = useParams()
+  const isNew = classId === 'new'
   const reloadClasses = () => qc.invalidateQueries({ queryKey: qk.classes })
-  const [adding, setAdding] = useState(false)
   const list = (classes || []).filter(c => !c.archived)
 
   return (
@@ -1012,7 +1099,10 @@ export function ClassPage() {
           >
             <ArrowLeft size={16} aria-hidden="true" />
           </Link>
-          <h1 className="text-sm font-semibold text-ink">My Classes</h1>
+          <div className="flex items-center gap-1.5">
+            <BookOpen size={16} aria-hidden="true" className="text-ink-muted" />
+            <h1 className="text-sm font-semibold text-ink">My Classes</h1>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto py-2">
@@ -1051,30 +1141,22 @@ export function ClassPage() {
               </div>
             ) : null}
           </nav>
-
           <div className="mt-4 px-3">
-            {adding ? (
-              <div className="neo-panel rounded-xl bg-paper p-2">
-                <AddClass
-                  frameworks={frameworks}
-                  onCancel={() => setAdding(false)}
-                  onCreated={async (created) => {
-                    setAdding(false)
-                    await reloadClasses()
-                    navigate(`/c/${created.id}/class`)
-                  }}
-                />
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                disabled={frameworksState.isLoading}
-                className="flex min-h-touch w-full items-center gap-2 rounded-lg px-2 text-sm font-medium text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink disabled:opacity-50"
-              >
-                <Plus size={14} aria-hidden="true" /> Add a class
-              </button>
-            )}
+            <NavLink
+              to="/c/new/class"
+              onClick={(e) => {
+                if (frameworksState.isLoading) e.preventDefault()
+              }}
+              className={({ isActive }) =>
+                `flex min-h-touch w-full items-center gap-2 rounded-lg px-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-paper-inset text-ink'
+                    : 'text-ink-muted hover:bg-paper-inset hover:text-ink'
+                } ${frameworksState.isLoading ? 'opacity-50 cursor-not-allowed' : ''}`
+              }
+            >
+              <Plus size={14} aria-hidden="true" /> Add a class
+            </NavLink>
             {frameworksState.isError ? (
               <p className="mt-2 text-xs text-mark">
                 {errorParts(frameworksState.error).hint ||
@@ -1127,7 +1209,7 @@ export function ClassPage() {
             <ArrowLeft size={16} aria-hidden="true" />
           </Link>
           <div className="text-sm font-medium text-ink-muted">
-            {activeClass ? 'Class Configuration' : ''}
+            {activeClass ? 'Class Configuration' : isNew ? 'Add a class' : ''}
           </div>
         </header>
 
@@ -1155,7 +1237,7 @@ export function ClassPage() {
           ) : (
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
-                key={activeClass ? activeClass.id : 'dashboard'}
+                key={activeClass ? activeClass.id : isNew ? 'new' : 'dashboard'}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -1164,6 +1246,15 @@ export function ClassPage() {
               >
                 {activeClass ? (
                   <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
+                ) : isNew ? (
+                  <ClassSetup
+                    frameworks={frameworks}
+                    onCancel={() => navigate('/')}
+                    onCreated={async (created) => {
+                      await reloadClasses()
+                      navigate(`/c/${created.id}/class`)
+                    }}
+                  />
                 ) : (
                   <GlobalClassDashboard classes={classes} frameworks={frameworks} onUpdated={reloadClasses} />
                 )}

@@ -1259,6 +1259,17 @@ MIGRATIONS: list[str] = [
     ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_key ON users (google_sub) WHERE google_sub IS NOT NULL;
     """,
+
+    # ── 41: time-boxed beta accounts ──────────────────────────────────────────
+    #
+    # For handing the app to a few outside teachers for a fixed trial window —
+    # created from the admin panel (POST /api/admin/beta-accounts), not a
+    # bespoke row Josh writes by hand. NULL means "not a beta account, or no
+    # expiry" so every normal signup is completely unaffected; deps._verify_current
+    # is where a past expiry actually ends the session (see its own comment).
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS beta_expires_at TEXT;
+    """,
 ]
 
 
@@ -3035,7 +3046,7 @@ def list_accounts_with_stats() -> list[dict]:
     rows = _rows(
         """
         SELECT u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
-               u.custom_weekly_token_cap,
+               u.custom_weekly_token_cap, u.beta_expires_at,
                COUNT(p.id) AS plans_built,
                MAX(p.created_at) AS last_plan_at,
                COALESCE(ue7.tokens, 0) AS tokens_7d,
@@ -3062,7 +3073,7 @@ def list_accounts_with_stats() -> list[dict]:
             GROUP BY user_id
         ) ueburst ON ueburst.user_id = u.id
         GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
-                 u.custom_weekly_token_cap, ue7.tokens, ue30.tokens, ueburst.tokens
+                 u.custom_weekly_token_cap, u.beta_expires_at, ue7.tokens, ue30.tokens, ueburst.tokens
         ORDER BY u.created_at DESC
         """,
         (since_7d, since_30d, since_burst),
@@ -3141,6 +3152,58 @@ def create_user(email: str, name: str, password_hash: str) -> dict:
         (uid, email.strip().lower(), name.strip(), password_hash, now()),
     )
     return get_user_by_id(uid)  # type: ignore[return-value]
+
+
+def create_beta_account(email: str, name: str, password_hash: str, *, days: int) -> dict:
+    """A real account — same table, same login, same everything a normal
+    signup gets (no classes yet, onboarding_seen_at NULL, so it goes through
+    /welcome and the onboarding wizard exactly like a brand-new teacher) —
+    with two things a normal signup doesn't get:
+
+      subscription_status = 'active' — the SUBSCRIBER tier cap
+      (settings.subscriber_weekly_token_cap), not 'comped' (unlimited) and
+      not the free tier. entitlement.py's `unlimited` flag is keyed
+      specifically on 'comped', so this account experiences real usage
+      limits — the same ones a paying teacher would — rather than either
+      extreme.
+
+      beta_expires_at = now + `days` — checked in deps._verify_current on
+      every request; past that timestamp the account's session simply stops
+      verifying, the same as if the cookie had expired on its own. No
+      separate revocation step is needed once this is set.
+    """
+    uid = new_id()
+    expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds")
+    _write(
+        """
+        INSERT INTO users (id, email, name, password_hash, subscription_status, beta_expires_at, created_at)
+        VALUES (?, ?, ?, ?, 'active', ?, ?)
+        ON CONFLICT (id) DO NOTHING
+        """,
+        (uid, email.strip().lower(), name.strip(), password_hash, expires, now()),
+    )
+    return get_user_by_id(uid)  # type: ignore[return-value]
+
+
+def extend_beta_account(user_id: str, *, days: int) -> dict | None:
+    """Add `days` more from right now — not from the original expiry — so
+    "give them another week" always means a week from today, regardless of
+    whether the old window had already lapsed."""
+    expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds")
+    _write("UPDATE users SET beta_expires_at = ? WHERE id = ?", (expires, user_id))
+    return get_user_by_id(user_id)
+
+
+def end_beta_account(user_id: str) -> None:
+    """Ends the trial immediately (next request, not next login) rather than
+    waiting out the original window. Does not touch subscription_status —
+    revoking the trial and revoking the usage tier are two different
+    decisions; an admin who wants both clears the status separately via the
+    existing comp/cap endpoints."""
+    _write(
+        "UPDATE users SET beta_expires_at = ? WHERE id = ?",
+        (now(), user_id),
+    )
 
 
 _USER_FIELDS = {"name", "custom_instructions", "school"}

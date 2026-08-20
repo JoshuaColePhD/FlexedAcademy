@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Loader2, Sparkles, Upload } from 'lucide-react'
+import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Loader2, Settings, Sparkles, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -840,7 +840,10 @@ export function SettingsPage() {
           >
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
-          <h1 className="text-sm font-semibold text-ink">Settings</h1>
+          <div className="flex items-center gap-1.5">
+            <Settings size={16} aria-hidden="true" className="text-ink-muted" />
+            <h1 className="text-sm font-semibold text-ink">Settings</h1>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto py-2">

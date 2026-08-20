@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useNavigate } from 'react-router-dom'
-import { MessageSquare, Search, Trash2, CheckSquare, Square, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
+import { History, MessageSquare, Search, Trash2, CheckSquare, Square, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
@@ -308,7 +308,10 @@ export function HistoryPage() {
           >
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
-          <h1 className="text-sm font-semibold text-ink">Recent History</h1>
+          <div className="flex items-center gap-1.5">
+            <History size={16} aria-hidden="true" className="text-ink-muted" />
+            <h1 className="text-sm font-semibold text-ink">Recent History</h1>
+          </div>
         </header>
 
         <div className="px-3 pb-3">

@@ -7,6 +7,8 @@ Replaced with the real signed session cookie set by routes/auth.py.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import Cookie, Depends
 
 from . import db
@@ -32,6 +34,18 @@ def _verify_current(aplang_session: str | None) -> str | None:
         return None
     user = db.get_user_by_id(payload["uid"])
     if not user or int(user.get("session_version", 0)) != payload["sv"]:
+        return None
+    # A time-boxed beta account (backend/routes/admin.py's
+    # POST /beta-accounts, db.create_beta_account) stops authenticating the
+    # moment its window passes — checked here, on every request, the same
+    # choke point session_version above already uses, rather than as a
+    # separate gate some route could forget to call. Past this timestamp the
+    # cookie is treated exactly like an expired one: this returns None, the
+    # caller 401s, and the frontend's existing "your session ended" handling
+    # (AuthProvider's aplang:unauthorized listener) takes it from there — no
+    # separate UI needed for "the trial is over" versus "please log back in".
+    expires = user.get("beta_expires_at")
+    if expires and expires <= datetime.now(timezone.utc).isoformat(timespec="seconds"):
         return None
     return payload["uid"]
 

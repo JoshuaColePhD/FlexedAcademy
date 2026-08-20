@@ -712,8 +712,10 @@ export function VoiceModePanel({
     setStatus(voice.status === 'live' ? 'listening' : 'requesting-mic')
   }, [voice.status, voice.errorMessage])
 
-  useEffect(() => voice.onUtterance((text) => onUtteranceRef.current?.(text)), [voice])
-
+  /* 
+   * (Removed voice.onUtterance forwarding - transcripts are now handled via voice:transcript events
+   * so they don't trigger the slow chat_stream round-trip)
+   */
   // The teacher's own words, for the tap-to-correct echo — previously the
   // result of this panel's Whisper round trip, now the realtime session's
   // input transcription.

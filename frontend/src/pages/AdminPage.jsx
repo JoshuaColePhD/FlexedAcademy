@@ -138,6 +138,259 @@ function StatusPill({ status }) {
   )
 }
 
+// Whole days remaining until `iso`, rounded up — "expires in 6 hours" and
+// "expires in 23 hours" both read as "1 day left," which is closer to what
+// someone glancing at this table wants than a fraction.
+function daysUntil(iso) {
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000)
+}
+
+/* Nothing for a normal account — beta_expires_at is null for every signup
+ * that didn't come through "New beta account" below, which is most of them.
+ * For one that does have it: a countdown that gets more alarmed as it gets
+ * closer, and reads "Expired" past zero rather than "-1d left" — the trial
+ * itself is what deps._verify_current actually enforces (backend), this is
+ * only ever telling the truth about that, never deciding it.
+ */
+function TrialBadge({ account }) {
+  if (!account.beta_expires_at) return null
+  const days = daysUntil(account.beta_expires_at)
+  const label = days <= 0 ? 'Trial expired' : days === 1 ? 'Trial: 1 day left' : `Trial: ${days} days left`
+  const cls = days <= 0 ? 'bg-mark-tint text-mark' : days <= 2 ? 'bg-flag-tint text-flag' : 'bg-paper-inset text-ink-muted'
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium ${cls}`}>{label}</span>
+}
+
+/* Extend/End — only meaningful on an account that already has a trial
+ * window, which is exactly what the backend's own guard on both routes
+ * checks (400 not_a_beta_account otherwise), so this never renders for a
+ * normal account in the first place. */
+function BetaAccountActions({ account, pending, setPending }) {
+  const toast = useToast()
+  const confirm = useConfirm()
+  const qc = useQueryClient()
+  if (!account.beta_expires_at) return null
+
+  const extend = async () => {
+    setPending(account.id)
+    try {
+      await api.adminExtendBeta(account.id, 7)
+      await qc.invalidateQueries({ queryKey: ['admin', 'accounts'] })
+      toast.success(`${account.email}'s trial extended 7 days`)
+    } catch (err) {
+      toast.apiError('Could not extend that trial', err)
+    } finally {
+      setPending(null)
+    }
+  }
+
+  const end = async () => {
+    const ok = await confirm({
+      title: `End ${account.email}'s trial now?`,
+      body: 'Their session stops working on their very next request — same as if the 7 days had already run out.',
+      confirmLabel: 'End trial',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setPending(account.id)
+    try {
+      await api.adminEndBeta(account.id)
+      await qc.invalidateQueries({ queryKey: ['admin', 'accounts'] })
+      toast.success(`${account.email}'s trial ended`)
+    } catch (err) {
+      toast.apiError('Could not end that trial', err)
+    } finally {
+      setPending(null)
+    }
+  }
+
+  return (
+    <div className="flex gap-1.5">
+      <button type="button" className="btn text-xs" disabled={pending === account.id} onClick={extend}>
+        Extend 7d
+      </button>
+      <button type="button" className="btn text-xs" disabled={pending === account.id} onClick={end}>
+        End now
+      </button>
+    </div>
+  )
+}
+
+/* Hand a beta tester a working login in one step: real account, subscriber-
+ * tier usage (entitlement.py's `unlimited` flag is keyed specifically on
+ * 'comped' — this is 'active', so a tester experiences the product's real
+ * limits, not either extreme), a 7-day window enforced server-side
+ * (deps._verify_current), and nothing pre-seeded — no class, no
+ * onboarding_seen_at — so it walks through /welcome and the onboarding
+ * wizard exactly like a brand-new signup.
+ *
+ * The password is shown exactly once, right here, the moment the account is
+ * created — same as this codebase treats every other credential it ever
+ * generates. There is no "view password" anywhere else in the app because
+ * there is nothing left to view; only the hash is stored. */
+function NewBetaAccountForm() {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
+  const [days, setDays] = useState(7)
+  // Blank means "generate a real, unique one" (the normal case). Filled in,
+  // every account created while it's set shares that exact password — for a
+  // small batch of easy-to-type test logins (test1@, test2@…) that don't
+  // need to be distinct from each other.
+  const [password, setPassword] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [created, setCreated] = useState(null) // { email, password }
+  const [copied, setCopied] = useState(false)
+
+  const create = async (e) => {
+    e.preventDefault()
+    if (!email.trim() || !name.trim()) return
+    setSaving(true)
+    try {
+      const res = await api.adminCreateBetaAccount(email.trim(), name.trim(), days, password.trim() || undefined)
+      await qc.invalidateQueries({ queryKey: ['admin', 'accounts'] })
+      setCreated({ email: email.trim(), password: res.password })
+      setEmail('')
+      setName('')
+      // Password is left as-is (not cleared) — creating a batch of
+      // test1@/test2@/test3@ with the SAME password means typing it once and
+      // reusing it across several submits, not retyping it every time.
+    } catch (err) {
+      toast.apiError('Could not create that account', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const copyCreds = async () => {
+    if (!created) return
+    try {
+      await navigator.clipboard.writeText(`Email: ${created.email}\nPassword: ${created.password}`)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch {
+      /* Clipboard blocked — the text is still selectable right below. */
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn text-xs" onClick={() => setOpen(true)}>
+        <Plus size={13} className="mr-1" aria-hidden="true" /> New beta account
+      </button>
+    )
+  }
+
+  return (
+    <div className="neo-world neo-panel w-full max-w-md rounded-xl p-4">
+      {created ? (
+        <>
+          <h3 className="text-sm font-semibold text-ink">Account ready</h3>
+          <p className="mt-1 text-2xs text-ink-muted">
+            This is the only time the password is ever shown. Copy it now and send it to them
+            directly — there's nowhere in the app to look it up again.
+          </p>
+          <div className="mt-3 rounded-lg border border-edge bg-paper-sunken p-3 font-mono text-xs text-ink">
+            <div>Email: {created.email}</div>
+            <div>Password: {created.password}</div>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button type="button" className="btn flex-1 text-xs" onClick={copyCreds}>
+              {copied ? 'Copied' : 'Copy email + password'}
+            </button>
+            <button
+              type="button"
+              className="btn text-xs"
+              onClick={() => {
+                setCreated(null)
+                setOpen(false)
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </>
+      ) : (
+        <form onSubmit={create} className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-ink">New beta account</h3>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Cancel"
+              className="rounded p-0.5 text-ink-faint hover:text-ink"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
+          <label className="flex flex-col gap-1">
+            <span className="text-2xs font-medium text-ink-muted">Their name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Jane Smith"
+              required
+              className="rounded-md border border-edge bg-paper px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-2xs font-medium text-ink-muted">Their email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="jane@herschool.org"
+              required
+              className="rounded-md border border-edge bg-paper px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-2xs font-medium text-ink-muted">Trial length (days)</span>
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={days}
+              onChange={(e) => setDays(Math.max(1, parseInt(e.target.value, 10) || 7))}
+              className="w-24 rounded-md border border-edge bg-paper px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-2xs font-medium text-ink-muted">Password (optional)</span>
+            <input
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Leave blank to generate a unique one"
+              className="rounded-md border border-edge bg-paper px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+            />
+            {password && password.trim().length < 8 ? (
+              <span className="text-2xs text-mark">At least 8 characters.</span>
+            ) : password ? (
+              <span className="text-2xs text-ink-muted">
+                Every account you create while this is filled in shares this exact password.
+              </span>
+            ) : null}
+          </label>
+          <p className="text-2xs text-ink-muted">
+            Gets subscriber-level usage (not the free tier's limit, not unlimited) and starts
+            fresh — no class yet, so they go straight through the same onboarding a brand-new
+            signup does.
+          </p>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={saving || !email.trim() || !name.trim() || (password.trim().length > 0 && password.trim().length < 8)}
+          >
+            {saving ? 'Creating…' : 'Create account'}
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}
+
 /* The missing middle ground between "the ordinary tier cap" and "comped"
    (unlimited) — give one account more headroom without unlocking it
    entirely, or throttle one down without suspending it outright. Blank
@@ -1119,7 +1372,10 @@ export function AdminPage() {
 
             {/* Users Section */}
             <div id="section-users" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">User Management</h2>
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xl font-bold text-ink">User Management</h2>
+                <NewBetaAccountForm />
+              </div>
               {isLoading ? (
                 <p className="text-sm text-ink-muted">Loading…</p>
               ) : isError ? (
@@ -1255,7 +1511,10 @@ export function AdminPage() {
                                     </div>
                                   </td>
                                   <td className="px-3 py-2">
-                                    <StatusPill status={a.subscription_status} />
+                                    <div className="flex flex-col items-start gap-1">
+                                      <StatusPill status={a.subscription_status} />
+                                      <TrialBadge account={a} />
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2">
                                     <CapStatusBadge account={a} />
@@ -1270,14 +1529,17 @@ export function AdminPage() {
                                     <CustomCapEditor account={a} />
                                   </td>
                                   <td className="px-3 py-2 text-right">
-                                    <button
-                                      type="button"
-                                      className="btn text-xs"
-                                      disabled={pending === a.id}
-                                      onClick={() => toggleComp(a)}
-                                    >
-                                      {a.subscription_status === 'comped' ? 'Revoke unlimited' : 'Grant unlimited'}
-                                    </button>
+                                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                      <BetaAccountActions account={a} pending={pending} setPending={setPending} />
+                                      <button
+                                        type="button"
+                                        className="btn text-xs"
+                                        disabled={pending === a.id}
+                                        onClick={() => toggleComp(a)}
+                                      >
+                                        {a.subscription_status === 'comped' ? 'Revoke unlimited' : 'Grant unlimited'}
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               ))}
@@ -1309,6 +1571,7 @@ export function AdminPage() {
                               <div className="flex shrink-0 flex-col items-end gap-1">
                                 <StatusPill status={a.subscription_status} />
                                 <CapStatusBadge account={a} />
+                                <TrialBadge account={a} />
                               </div>
                             </div>
                             <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
@@ -1330,6 +1593,7 @@ export function AdminPage() {
                                 Custom weekly cap
                               </label>
                               <CustomCapEditor account={a} />
+                              <BetaAccountActions account={a} pending={pending} setPending={setPending} />
                               <button
                                 type="button"
                                 className="btn w-full text-xs"

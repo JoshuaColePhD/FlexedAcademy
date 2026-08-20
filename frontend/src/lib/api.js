@@ -300,6 +300,16 @@ export const api = {
   // cap: null clears the override back to the account's ordinary tier cap.
   adminSetCustomCap: (accountId, cap) =>
     request(`/api/admin/accounts/${accountId}/cap`, { method: 'POST', body: { cap } }),
+  /** Response carries `password` in plaintext — the ONE time it ever will.
+   *  Nothing re-derives or re-displays it after this call returns. */
+  // password omitted (undefined) -> the server generates a unique one;
+  // provided -> every account created with it shares that exact password.
+  adminCreateBetaAccount: (email, name, days = 7, password) =>
+    request('/api/admin/beta-accounts', { method: 'POST', body: { email, name, days, password } }),
+  adminExtendBeta: (accountId, days = 7) =>
+    request(`/api/admin/accounts/${accountId}/extend-beta`, { method: 'POST', body: { days } }),
+  adminEndBeta: (accountId) =>
+    request(`/api/admin/accounts/${accountId}/end-beta`, { method: 'POST' }),
   adminCreateSchool: (id, name) =>
     request('/api/admin/schools', { method: 'POST', body: { id, name } }),
   adminDeleteSchool: (id) =>

@@ -1492,31 +1492,73 @@ export function ChatPage() {
     planIdRef.current = artifact?.planId
   }, [artifact?.planId])
 
+  const activeChatIdRef = useRef(activeChat?.id)
+  useEffect(() => {
+    activeChatIdRef.current = activeChat?.id
+  }, [activeChat?.id])
+
   useEffect(() => {
     const handler = async (e) => {
-      if (e.detail.name !== 'update_lesson_plan') return
-      const { day_index, field, content } = e.detail.args
-      const planId = planIdRef.current
-      if (!planId) return
+      const { name, args } = e.detail
+      if (name === 'update_lesson_plan') {
+        const { day_index, field, content } = args
+        const planId = planIdRef.current
+        if (!planId) return
 
-      let changed = false
-      setArtifact((prev) => {
-        if (!prev?.plan?.days?.[day_index]) return prev
-        changed = true
-        const newDays = [...prev.plan.days]
-        newDays[day_index] = { ...newDays[day_index], [field]: content }
-        return { ...prev, plan: { ...prev.plan, days: newDays } }
-      })
-      if (!changed) return
+        let changed = false
+        setArtifact((prev) => {
+          if (!prev?.plan?.days?.[day_index]) return prev
+          changed = true
+          const newDays = [...prev.plan.days]
+          newDays[day_index] = { ...newDays[day_index], [field]: content }
+          return { ...prev, plan: { ...prev.plan, days: newDays } }
+        })
+        if (!changed) return
 
-      try {
-        await api.updateDay(planId, day_index, { field, content })
-      } catch (err) {
-        console.error('Failed to save day update', err)
+        try {
+          await api.updateDay(planId, day_index, { field, content })
+        } catch (err) {
+          console.error('Failed to save day update', err)
+        }
+      } else if (name === 'generate_lesson_plan') {
+        // Just trigger submit with a dummy string, but wait - submit needs the UI state
+        // The easiest way is to let the user know they are building a plan
+        submit("Please generate the lesson plan.", { bypassVoice: true })
+      } else if (name === 'generate_quiz') {
+        submit(JSON.stringify(args), { bypassVoice: true })
+      } else if (name === 'ask_clarifying_questions') {
+        // The realtime model emitted ask_clarifying_questions and already asked aloud.
+        // Attach the questions to its most recent transcript in the chat log so the UI renders them.
+        setMessages((prev) => {
+          const lastIdx = prev.findLastIndex(m => m.role === 'assistant')
+          if (lastIdx === -1) return prev
+          const newMessages = [...prev]
+          newMessages[lastIdx] = { ...newMessages[lastIdx], questions: args.questions }
+          return newMessages
+        })
       }
     }
     window.addEventListener('voice:tool_call', handler)
     return () => window.removeEventListener('voice:tool_call', handler)
+  }, [submit])
+
+  /* Intercept voice transcripts to add them to history locally without hitting /api/chat_stream */
+  useEffect(() => {
+    const handler = (e) => {
+      const { role, text } = e.detail
+      if (!text) return
+      
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role, content: text }
+      ])
+      
+      if (activeChatIdRef.current) {
+        api.addMessage(activeChatIdRef.current, { role, content: text }).catch(() => {})
+      }
+    }
+    window.addEventListener('voice:transcript', handler)
+    return () => window.removeEventListener('voice:transcript', handler)
   }, [])
 
   /* The clarification the conversation is currently waiting on, if any.

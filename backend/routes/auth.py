@@ -161,6 +161,19 @@ def login(body: LoginBody, request: Request, response: Response):
     user = db.get_user_by_email(body.email)
     if not user or not user["password_hash"] or not auth.verify_password(body.password, user["password_hash"]):
         raise AppError("invalid_credentials", "Incorrect email or password.", status=401)
+    # Caught here too, not just in deps._verify_current — that check is what
+    # actually enforces this on every later request, but without this the
+    # correct password for an expired beta account would appear to log in
+    # successfully and then get silently bounced on the very next request.
+    # A clear message at the point of login beats a confusing instant logout.
+    expires = user.get("beta_expires_at")
+    if expires and expires <= db.now():
+        raise AppError(
+            "beta_expired",
+            "This beta account's trial period has ended.",
+            status=401,
+            hint="Contact Josh Cole if you'd like it extended.",
+        )
     return _log_in(request, response, user)
 
 
