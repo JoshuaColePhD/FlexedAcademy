@@ -29,6 +29,7 @@ backend/schoolcal.py
 backend/server.py
 backend/service.py
 backend/stripe_api.py
+backend/template_intake.py
 backend/units.py
 backend/routes/__init__.py
 backend/routes/account.py

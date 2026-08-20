@@ -500,19 +500,29 @@ export function ArtifactDetailPanel({
 
         <span className="flex-1" />
 
-        {/* has_qti-gated, same as Download beside it and the rail card's own
-            Share (ArtifactRail.jsx's QuizRow) — nothing to export or share
-            until the file actually built. */}
-        {kind === 'quiz' && quiz?.has_qti && planId ? (
-          <button
-            type="button"
-            className="doc-download fa-press flex items-center gap-1.5"
-            onClick={() => setShareOpen(true)}
-            title="Download or Share"
-            aria-label="Download or Share this quiz"
-          >
-            <Download size={14} aria-hidden="true" /> Download
-          </button>
+        {/* Quiz download button: always present for UI consistency, but disabled if 
+            the file failed to build. */}
+        {kind === 'quiz' && planId ? (
+          quiz?.has_qti ? (
+            <button
+              type="button"
+              className="doc-download fa-press flex items-center gap-1.5"
+              onClick={() => setShareOpen(true)}
+              title="Download or Share"
+              aria-label="Download or Share this quiz"
+            >
+              <Download size={14} aria-hidden="true" /> Download
+            </button>
+          ) : (
+            <span
+              className="doc-download"
+              aria-disabled="true"
+              style={{ opacity: 0.45 }}
+              title="The file failed to build — ask again in chat to rebuild it"
+            >
+              <Download size={14} aria-hidden="true" /> Download
+            </span>
+          )
         ) : null}
       </div>
 
