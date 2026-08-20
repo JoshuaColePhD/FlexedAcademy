@@ -523,8 +523,7 @@ function ClassStandards({ cls }) {
    the one thing GET /api/weeks always knew (plan_id, chat_id, is_current,
    is_past — db.week_board) with nowhere on screen it was shown as a whole —
    only two rows of it, on the Greeting screen's "Continue…" suggestions. */
-function ClassWeeks({ cls }) {
-  const { data: calendar, isLoading, isError } = useCalendar(cls.id)
+function ClassWeeks({ cls, calendar, isLoading, isError }) {
   const currentRef = useRef(null)
   const weeks = calendar?.weeks || []
 
@@ -699,6 +698,12 @@ function ClassDetail({ cls, frameworks, onChanged }) {
     }
   }
 
+  const { data: calendar, isLoading, isError } = useCalendar(cls.id)
+  const weeks = calendar?.weeks || []
+  
+  // Find current week or next un-planned week
+  const currentWeek = weeks.find(w => w.is_current) || weeks.find(w => w.status !== 'built' && w.status !== 'closed') || weeks[weeks.length - 1]
+
   return (
     <div className="w-full max-w-3xl flex flex-col gap-12 pb-16">
       
@@ -713,77 +718,124 @@ function ClassDetail({ cls, frameworks, onChanged }) {
         </div>
       </header>
 
+      {/* 1. Active Teaching */}
       <div className="flex flex-col gap-8 animate-in fade-in duration-200">
         <section className="flex flex-col gap-4">
           <div className="border-b border-edge pb-2">
-              <h3 className="text-sm font-semibold text-ink">Documents</h3>
-              <p className="text-xs text-ink-muted">Pacing guides and syllabi used to context-ground your plans.</p>
+            <h3 className="text-sm font-semibold text-ink">Active Teaching</h3>
+            <p className="text-xs text-ink-muted">What's on the agenda for this week.</p>
+          </div>
+          
+          {currentWeek ? (
+            <div className="rounded-xl border border-edge bg-paper-sunken p-6 shadow-sm">
+              <div className="flex flex-col gap-2">
+                <span className="text-xl font-semibold text-ink">
+                  Week {String(currentWeek.week).padStart(2, '0')}
+                  {unitSuffix(currentWeek.unit)}
+                </span>
+                {shortRange(currentWeek.start, currentWeek.end) ? (
+                  <span className="text-sm font-medium text-ink-muted">{shortRange(currentWeek.start, currentWeek.end)}</span>
+                ) : null}
+              </div>
+              
+              <div className="mt-6 flex gap-3">
+                {currentWeek.status === 'built' && currentWeek.chat_id ? (
+                  <button 
+                    onClick={() => navigate(`/c/${cls.id}/chat/${currentWeek.chat_id}`)}
+                    className="fa-press neo-raised flex-1 rounded-lg bg-paper-raised px-4 py-3 text-sm font-medium text-ink hover:bg-paper-sunken text-center"
+                  >
+                    View Plan
+                  </button>
+                ) : currentWeek.status === 'closed' ? (
+                  <div className="flex-1 rounded-lg bg-paper-inset px-4 py-3 text-sm font-medium text-ink-muted text-center border border-dashed border-edge">
+                    Week Closed
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => navigate(`/c/${cls.id}?week=${currentWeek.week}`)}
+                    className="fa-press neo-raised flex-1 rounded-lg bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-tint text-center"
+                  >
+                    Plan This Week
+                  </button>
+                )}
+              </div>
             </div>
-            
-            {verified !== null && verified < 100 ? (
-              <p className="text-xs text-ink-muted">
-                <span className="rounded-full bg-flag-tint px-1.5 py-0.5 font-medium text-flag">
-                  {verified}% verified
-                </span>{' '}
-                of {shortLabel(fw)} word-for-word against the source PDF.
-              </p>
-            ) : null}
-            
-            <ClassDocuments cls={cls} onChanged={onChanged} />
+          ) : isLoading ? (
+            <div className="px-4 py-6 text-center text-xs text-ink-muted bg-paper-sunken rounded-xl border border-edge">Loading calendar...</div>
+          ) : (
+             <div className="px-4 py-6 text-center text-xs text-ink-muted bg-paper-sunken rounded-xl border border-edge">No active week available.</div>
+          )}
+        </section>
+
+        <section className="flex flex-col gap-4">
+           <div>
+             <button
+               type="button"
+               onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
+               className="neo-raised inline-flex items-center justify-center gap-1.5 w-full rounded-lg px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken border border-edge"
+             >
+               Generate 5-Minute Sub Plan
+             </button>
+           </div>
+        </section>
+      </div>
+
+      {/* 2. History */}
+      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+        <section className="flex flex-col gap-4">
+          <div className="border-b border-edge pb-2">
+            <h3 className="text-sm font-semibold text-ink">Weeks</h3>
+            <p className="text-xs text-ink-muted">School calendar and lesson plan history for this class.</p>
+          </div>
+          <ClassWeeks cls={cls} calendar={calendar} isLoading={isLoading} isError={isError} />
+        </section>
+      </div>
+
+      {/* 3. Configuration */}
+      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+        <section className="flex flex-col gap-4">
+          <div className="border-b border-edge pb-2">
+            <h3 className="text-sm font-semibold text-ink">Class Configuration</h3>
+            <p className="text-xs text-ink-muted">Reference documents and settings for this class.</p>
+          </div>
+          
+          {verified !== null && verified < 100 ? (
+            <p className="text-xs text-ink-muted mt-2">
+              <span className="rounded-full bg-flag-tint px-1.5 py-0.5 font-medium text-flag">
+                {verified}% verified
+              </span>{' '}
+              of {shortLabel(fw)} word-for-word against the source PDF.
+            </p>
+          ) : null}
+          
+          <ClassDocuments cls={cls} onChanged={onChanged} />
           <ClassStandards cls={cls} />
         </section>
-      </div>
 
-      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
-        <section className="flex flex-col gap-4">
-            <div className="border-b border-edge pb-2">
-              <h3 className="text-sm font-semibold text-ink">Weeks</h3>
-              <p className="text-xs text-ink-muted">School calendar and lesson plan history for this class.</p>
-            </div>
-          <ClassWeeks cls={cls} />
+        <section className="flex flex-col gap-4 pt-4 border-t border-edge">
+          <div className="border-b border-edge pb-2">
+            <h3 className="text-sm font-semibold text-ink">Edit Class Details</h3>
+            <p className="text-xs text-ink-muted">Change the subject or grade level for this class.</p>
+          </div>
+          <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
+        </section>
+
+        <section className="flex flex-col gap-4 pt-4 border-t border-edge">
+          <div className="border-b border-edge pb-2">
+            <h3 className="text-sm font-semibold text-mark">Danger Zone</h3>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={remove}
+              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              Delete Class
+            </button>
+          </div>
         </section>
       </div>
-
-      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
-        <section className="flex flex-col gap-4">
-            <div className="border-b border-edge pb-2">
-              <h3 className="text-sm font-semibold text-ink">Edit Class Details</h3>
-              <p className="text-xs text-ink-muted">Change the subject or grade level for this class.</p>
-            </div>
-            <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
-          </section>
-
-          <section className="flex flex-col gap-4 pt-4">
-            <div className="border-b border-edge pb-2">
-              <h3 className="text-sm font-semibold text-ink">Emergency Tools</h3>
-            </div>
-            <div>
-              <button
-                type="button"
-                onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
-                className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken"
-              >
-                Generate 5-Minute Sub Plan
-              </button>
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-4">
-            <div className="border-b border-edge pb-2">
-              <h3 className="text-sm font-semibold text-mark">Danger Zone</h3>
-            </div>
-            <div>
-              <button
-                type="button"
-                onClick={remove}
-                className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
-              >
-                <Trash2 size={14} aria-hidden="true" />
-                Delete Class
-              </button>
-            </div>
-          </section>
-        </div>
 
     </div>
   )
