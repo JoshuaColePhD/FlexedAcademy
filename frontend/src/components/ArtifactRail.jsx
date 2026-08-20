@@ -166,7 +166,7 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
         {quiz.has_qti ? (
           <button
             type="button"
-            className="btn-icon"
+            className="rail-open fa-press"
             onClick={(e) => {
               e.stopPropagation()
               onShare(quiz)
@@ -315,7 +315,7 @@ export function ArtifactRail({
             <span className="rail-actions flex items-center">
               <button
                 type="button"
-                className="btn-icon"
+                className="rail-open fa-press"
                 onClick={(e) => {
                   e.stopPropagation()
                   setShareTarget({ type: 'plan' })
