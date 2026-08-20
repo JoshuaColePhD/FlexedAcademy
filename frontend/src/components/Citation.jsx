@@ -130,7 +130,11 @@ function Popover({ code, subject, anchorRef, onClose, popoverId }) {
           </p>
         )
       ) : !record ? (
-        <p style={{ color: 'var(--ink-muted)' }}>Looking it up…</p>
+        <div className="flex animate-pulse flex-col gap-2 mt-1">
+          <div className="h-3.5 w-full rounded bg-paper-inset" />
+          <div className="h-3.5 w-5/6 rounded bg-paper-inset" />
+          <div className="mt-1 h-3 w-1/3 rounded bg-paper-inset" />
+        </div>
       ) : (
         <>
           <p>{record.description}</p>
