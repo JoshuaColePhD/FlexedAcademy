@@ -1270,6 +1270,15 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS beta_expires_at TEXT;
     """,
+
+    # ── 42: add state column to classes ───────────────────────────────────────
+    # The `state` column was added to the `classes` table creation block in an
+    # earlier migration, but if that migration was already applied, the column
+    # never gets added to existing deployments. This explicit migration ensures
+    # it exists everywhere so `db.create_class` can safely insert into it.
+    """
+    ALTER TABLE classes ADD COLUMN IF NOT EXISTS state TEXT;
+    """,
 ]
 
 
