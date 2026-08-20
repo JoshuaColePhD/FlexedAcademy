@@ -493,8 +493,10 @@ function ClassDetail({ cls, frameworks, onChanged }) {
     }
   }
 
+  const [activeTab, setActiveTab] = useState('curriculum')
+
   return (
-    <div className="w-full max-w-3xl flex flex-col gap-10 pb-16">
+    <div className="w-full max-w-3xl flex flex-col gap-6 pb-16">
       
       <header className="mb-2">
         <div className="flex items-center gap-3">
@@ -507,64 +509,96 @@ function ClassDetail({ cls, frameworks, onChanged }) {
         </div>
       </header>
 
-      {/* Documents */}
-      <section className="flex flex-col gap-4">
-        <div className="border-b border-edge pb-2">
-          <h3 className="text-sm font-semibold text-ink">Documents</h3>
-          <p className="text-xs text-ink-muted">Pacing guides and syllabi used to context-ground your plans.</p>
-        </div>
-        
-        {verified !== null && verified < 100 ? (
-          <p className="text-xs text-ink-muted">
-            <span className="rounded-full bg-flag-tint px-1.5 py-0.5 font-medium text-flag">
-              {verified}% verified
-            </span>{' '}
-            of {shortLabel(fw)} word-for-word against the source PDF.
-          </p>
-        ) : null}
-        
-        <ClassDocuments cls={cls} onChanged={onChanged} />
-        <ClassStandards cls={cls} />
-      </section>
+      <div className="flex gap-6 border-b border-edge">
+        <button 
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'curriculum' ? 'border-ink text-ink' : 'border-transparent text-ink-muted hover:text-ink'}`}
+          onClick={() => setActiveTab('curriculum')}
+        >
+          Curriculum & Standards
+        </button>
+        <button 
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-ink text-ink' : 'border-transparent text-ink-muted hover:text-ink'}`}
+          onClick={() => setActiveTab('history')}
+        >
+          Lesson Plan History
+        </button>
+        <button 
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'settings' ? 'border-mark text-mark' : 'border-transparent text-ink-muted hover:text-ink'}`}
+          onClick={() => setActiveTab('settings')}
+        >
+          Settings
+        </button>
+      </div>
 
-      {/* Weeks */}
-      <section className="flex flex-col gap-4">
-        <div className="border-b border-edge pb-2">
-          <h3 className="text-sm font-semibold text-ink">Weeks</h3>
-          <p className="text-xs text-ink-muted">School calendar and lesson plan history for this class.</p>
+      {activeTab === 'curriculum' && (
+        <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+          <section className="flex flex-col gap-4">
+            <div className="border-b border-edge pb-2">
+              <h3 className="text-sm font-semibold text-ink">Documents</h3>
+              <p className="text-xs text-ink-muted">Pacing guides and syllabi used to context-ground your plans.</p>
+            </div>
+            
+            {verified !== null && verified < 100 ? (
+              <p className="text-xs text-ink-muted">
+                <span className="rounded-full bg-flag-tint px-1.5 py-0.5 font-medium text-flag">
+                  {verified}% verified
+                </span>{' '}
+                of {shortLabel(fw)} word-for-word against the source PDF.
+              </p>
+            ) : null}
+            
+            <ClassDocuments cls={cls} onChanged={onChanged} />
+            <ClassStandards cls={cls} />
+          </section>
         </div>
-        <ClassWeeks cls={cls} />
-      </section>
+      )}
 
-      {/* Danger Zone */}
-      <section className="flex flex-col gap-4 mt-8">
-        <div className="border-b border-edge pb-2">
-          <h3 className="text-sm font-semibold text-ink">Emergency Tools</h3>
+      {activeTab === 'history' && (
+        <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+          <section className="flex flex-col gap-4">
+            <div className="border-b border-edge pb-2">
+              <h3 className="text-sm font-semibold text-ink">Weeks</h3>
+              <p className="text-xs text-ink-muted">School calendar and lesson plan history for this class.</p>
+            </div>
+            <ClassWeeks cls={cls} />
+          </section>
         </div>
-        <div>
-          <button
-            type="button"
-            onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
-            className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken"
-          >
-            Generate 5-Minute Sub Plan
-          </button>
-        </div>
+      )}
 
-        <div className="border-b border-edge pb-2 mt-4">
-          <h3 className="text-sm font-semibold text-mark">Danger Zone</h3>
+      {activeTab === 'settings' && (
+        <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+          <section className="flex flex-col gap-4">
+            <div className="border-b border-edge pb-2">
+              <h3 className="text-sm font-semibold text-ink">Emergency Tools</h3>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
+                className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken"
+              >
+                Generate 5-Minute Sub Plan
+              </button>
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-4">
+            <div className="border-b border-edge pb-2">
+              <h3 className="text-sm font-semibold text-mark">Danger Zone</h3>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={remove}
+                className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Delete Class
+              </button>
+            </div>
+          </section>
         </div>
-        <div>
-          <button
-            type="button"
-            onClick={remove}
-            className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
-          >
-            <Trash2 size={14} aria-hidden="true" />
-            Delete Class
-          </button>
-        </div>
-      </section>
+      )}
 
     </div>
   )

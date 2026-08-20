@@ -173,6 +173,7 @@ const location = useLocation()
 
         <span className="flex-1" />
 
+        {planId ? (
             <button
               type="button"
               className="doc-download fa-press flex items-center gap-1.5"
