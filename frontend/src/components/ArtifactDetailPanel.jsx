@@ -393,7 +393,7 @@ function DocumentBody({ doc }) {
     <div className="detail-card-stack">
       <div className="detail-card neo-raised">
         <div className="detail-card-head">
-          <span className="detail-card-type">{doc.kind?.replace(/_/g, ' ') || 'Course document'}</span>
+          <span className="detail-card-type">{doc.subject === 'GLOBAL' ? 'Global document' : (doc.kind?.replace(/_/g, ' ') || 'Course document')}</span>
         </div>
         <p className="detail-card-prompt">{doc.original_name}</p>
         <p className="detail-card-answer">

@@ -2445,19 +2445,38 @@ def create_class_document(
     *, map_id: str, user_id: str, class_id: str, subject: str, kind: str,
     original_name: str, stored_path: str, chars: int,
 ) -> dict:
-    """Only one ACTIVE document per (class, kind) — re-uploading a pacing guide
-    replaces it — but the kinds coexist, which is the point."""
     if kind not in DOCUMENT_KINDS:
         kind = "other"
-    _write(
-        "UPDATE curriculum_maps SET active = 0 WHERE user_id = ? AND class_id = ? AND kind = ?",
-        (user_id, class_id, kind),
-    )
     _write(
         """INSERT INTO curriculum_maps
              (id, user_id, class_id, subject, kind, original_name, stored_path, chars, active, uploaded_at)
            VALUES (?,?,?,?,?,?,?,?,1,?)""",
         (map_id, user_id, class_id, subject, kind, original_name, stored_path, chars, now()),
+    )
+    return _row("SELECT * FROM curriculum_maps WHERE id = ?", (map_id,))  # type: ignore[return-value]
+
+
+def list_global_documents(user_id: str) -> list[dict]:
+    return _rows(
+        """SELECT id, class_id, subject, kind, original_name, chars, active, uploaded_at
+             FROM curriculum_maps
+            WHERE user_id = ? AND class_id IS NULL AND subject = 'GLOBAL' AND active = 1
+            ORDER BY uploaded_at DESC""",
+        (user_id,),
+    )
+
+
+def create_global_document(
+    *, map_id: str, user_id: str, kind: str,
+    original_name: str, stored_path: str, chars: int,
+) -> dict:
+    if kind not in DOCUMENT_KINDS:
+        kind = "other"
+    _write(
+        """INSERT INTO curriculum_maps
+             (id, user_id, class_id, subject, kind, original_name, stored_path, chars, active, uploaded_at)
+           VALUES (?,?,NULL,'GLOBAL',?,?,?,?,1,?)""",
+        (map_id, user_id, kind, original_name, stored_path, chars, now()),
     )
     return _row("SELECT * FROM curriculum_maps WHERE id = ?", (map_id,))  # type: ignore[return-value]
 

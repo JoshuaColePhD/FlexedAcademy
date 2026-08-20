@@ -216,7 +216,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
                     }
                 }
             )
-            for delta in llm.stream_plan(user_id, query, result, school_id=school_id):
+            for delta in llm.stream_plan(user_id, query, result, school_id=school_id, class_id=cls["id"] if cls else None):
                 chunks.append(delta)
                 yield _sse({"chunk": delta})
 
@@ -305,7 +305,7 @@ def _build_chat_system_prompt(user_id: str, chat_id: str | None, week_number: in
             "teacher's own message clearly means a different week."
         )
 
-    map_context = llm.map_context_for(user_id, subject, last_user) if last_user else ""
+    map_context = llm.map_context_for(user_id, subject, last_user, class_id=cls["id"] if cls else None) if last_user else ""
     if map_context:
         system_prompt += (
             "\n\nTHE TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — relevant excerpts below. "

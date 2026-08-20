@@ -471,16 +471,18 @@ export const api = {
 
   getCurriculumMap: (subject, { signal } = {}) =>
     request(`/api/curriculum_map?subject=${encodeURIComponent(subject)}`, { signal }),
+  listGlobalDocuments: ({ signal } = {}) => request('/api/documents/global', { signal }),
   /** `classId` is what makes an upload visible to listClassDocuments — without
    *  it the row is written with class_id NULL and the My Classes list, which
    *  filters on class_id, can never match it. `kind` scopes the replace, so a
    *  syllabus no longer retires the pacing guide. */
-  uploadCurriculumMap: (subject, file, { classId, kind, signal } = {}) => {
+  uploadCurriculumMap: (subject, file, { classId, kind, isGlobal, signal } = {}) => {
     const fd = new FormData()
-    fd.append('subject', subject)
+    fd.append('subject', subject || 'GLOBAL')
     fd.append('file', file)
     if (classId) fd.append('class_id', classId)
     if (kind) fd.append('kind', kind)
+    if (isGlobal) fd.append('is_global', 'true')
     return upload('/api/curriculum_map', fd, { signal })
   },
   deleteCurriculumMap: (id) => request(`/api/curriculum_map/${id}`, { method: 'DELETE' }),

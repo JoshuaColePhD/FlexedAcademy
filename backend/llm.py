@@ -90,27 +90,42 @@ def _record(user_id: str, kind: str, usage) -> None:
     )
 
 
-def map_context_for(user_id: str, subject: str, query: str) -> str:
-    """Snippets from the teacher's own active pacing guide, relevant to `query`.
+def map_context_for(user_id: str, subject: str, query: str, class_id: str | None = None) -> str:
+    """Snippets from the teacher's own active pacing guides and global documents, relevant to `query`.
 
     Public (not `_`-prefixed) because the conversational chat model needs this
-    exact same lookup — the brainstorming assistant was answering "I don't
-    have access to your settings or any attachments" to a teacher who HAD
-    uploaded a pacing guide, because chat_stream never called this at all.
-    Only the plan-writing calls below did.
+    exact same lookup.
     """
-    active = db.get_active_curriculum_map(user_id, subject)
-    if not active:
+    docs = []
+    if class_id:
+        docs.extend(db.list_class_documents(user_id, class_id))
+    else:
+        active = db.get_active_curriculum_map(user_id, subject)
+        if active:
+            docs.append(active)
+            
+    docs.extend(db.list_global_documents(user_id))
+    
+    if not docs:
         return ""
-    future = _context_pool.submit(curriculum.retrieve_map_context, active["id"], query)
-    try:
-        return future.result(timeout=_MAP_CONTEXT_TIMEOUT_S)
-    except FutureTimeoutError:
-        log.warning("map context lookup exceeded %.1fs, continuing without it", _MAP_CONTEXT_TIMEOUT_S)
-        return ""
-    except Exception as e:  # noqa: BLE001 — same guarantee as retrieve_map_context itself: never raise
-        log.warning("map context lookup failed: %s", e)
-        return ""
+
+    futures = [
+        _context_pool.submit(curriculum.retrieve_map_context, doc["id"], query)
+        for doc in docs
+    ]
+    
+    results = []
+    for future in futures:
+        try:
+            res = future.result(timeout=_MAP_CONTEXT_TIMEOUT_S)
+            if res:
+                results.append(res)
+        except FutureTimeoutError:
+            log.warning("map context lookup exceeded %.1fs, continuing without it", _MAP_CONTEXT_TIMEOUT_S)
+        except Exception as e:  # noqa: BLE001
+            log.warning("map context lookup failed: %s", e)
+            
+    return "\n\n".join(results)
 
 
 def custom_instructions_for(user_id: str) -> str | None:
@@ -153,7 +168,7 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     return msg.content
 
 
-def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str) -> dict:
+def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str, class_id: str | None = None) -> dict:
     """Non-streaming week generation. Returns parsed (not yet validated) JSON.
 
     `school_id` is taken as a parameter rather than resolved here (it used to
@@ -162,7 +177,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     account default — a class at a different school than the account default
     would otherwise get the wrong one named in its own prompt."""
     s = db.get_settings_row(user_id)
-    map_context = map_context_for(user_id, s["subject"], query)
+    map_context = map_context_for(user_id, s["subject"], query, class_id=class_id)
     content = _cached_completion(
         user_id,
         "generate_plan",
@@ -187,13 +202,13 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     return loads_lenient(content or "")
 
 
-def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str) -> Iterator[str]:
+def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str, class_id: str | None = None) -> Iterator[str]:
     """Yield raw content deltas. The caller accumulates and validates.
 
     See generate_plan's own docstring for why `school_id` is a parameter
     rather than resolved internally."""
     s = db.get_settings_row(user_id)
-    map_context = map_context_for(user_id, s["subject"], query)
+    map_context = map_context_for(user_id, s["subject"], query, class_id=class_id)
     stream = client().chat.completions.create(
         model=settings.openai_model,
         max_completion_tokens=4000,

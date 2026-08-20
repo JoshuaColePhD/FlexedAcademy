@@ -40,9 +40,15 @@ def get_curriculum_map(subject: str, user_id: str = Depends(get_current_user)):
     return _map_out(row) if row else None
 
 
+@router.get("/documents/global")
+def list_global_documents(user_id: str = Depends(get_current_user)):
+    rows = db.list_global_documents(user_id)
+    return [_map_out(r) | {"kind": r.get("kind")} for r in rows]
+
+
 @router.post("/curriculum_map")
 async def upload_curriculum_map(
-    subject: str = Form(...),
+    subject: str = Form(default="GLOBAL"),
     file: UploadFile = File(...),
     # Both optional and both additive, so the pre-existing subject-scoped call
     # keeps working. With a class_id the row is written against the CLASS, which
@@ -51,6 +57,7 @@ async def upload_curriculum_map(
     # the teacher got a success toast for a document that had vanished.
     class_id: str | None = Form(default=None),
     kind: str = Form(default="pacing_guide"),
+    is_global: bool = Form(default=False),
     user_id: str = Depends(get_current_user),
 ):
     if class_id and not db.get_class(user_id, class_id):
@@ -98,7 +105,16 @@ async def upload_curriculum_map(
     # create_curriculum_map deactivates every map for the subject — so under the
     # old path uploading a syllabus silently retired the pacing guide, and two
     # sections of one course clobbered each other.
-    if class_id:
+    if is_global:
+        row = db.create_global_document(
+            map_id=map_id,
+            user_id=user_id,
+            kind=kind,
+            original_name=original.name,
+            stored_path=str(stored_path),
+            chars=len(text),
+        )
+    elif class_id:
         row = db.create_class_document(
             map_id=map_id,
             user_id=user_id,
@@ -133,6 +149,7 @@ async def upload_curriculum_map(
         weeks = []
 
     out = _map_out(row)
+    out["kind"] = row.get("kind")
     out["chunks_embedded"] = chunk_count
     out["weeks_parsed"] = len(weeks)
     return out
