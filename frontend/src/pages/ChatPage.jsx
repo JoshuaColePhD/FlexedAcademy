@@ -26,6 +26,7 @@ import { WeekPicker } from '../components/WeekPicker'
 import { VoiceModePanel } from '../components/VoiceModePanel'
 import { ClassSwitcher } from '../components/ClassSwitcher'
 import { Message } from '../components/Message'
+import { LessonQuestions } from '../components/LessonQuestions'
 import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
@@ -668,7 +669,15 @@ export function ChatPage() {
       // reopening the chat still shows what was asked, even though it's no
       // longer clickable.
       if (result?.questions?.length) {
-        const intro = result.text?.trim() || 'A couple of quick questions to get this right:'
+        // Just the first line, even though the prompt (generate.py) now
+        // asks the model for one short line here and nothing more — a
+        // model that still narrates every question in prose duplicates
+        // the interactive card immediately below it, one-shot back to a
+        // tall wall of text instead of the one-question-at-a-time flow
+        // that card exists for. Belt-and-suspenders, not a substitute for
+        // the prompt fix: this can only shorten what shows, not improve it.
+        const intro =
+          result.text?.trim().split('\n')[0]?.trim() || 'A couple of quick questions to get this right:'
         const reply = {
           id: nextId(),
           role: 'assistant',
@@ -1554,6 +1563,22 @@ export function ChatPage() {
      out of the chat box itself, right above the composer — same
      mount-a-beat-longer-to-play-the-exit shape as overlayExit above. */
   const voiceExit = useExitTransition(voiceOpen, 180)
+  /* The clarification round used to render inline in the transcript (see
+     Message.jsx's history-only fallback for what that used to look like
+     live) — now it docks above the composer instead, the same
+     grows-out-of-the-chat-box shape as voiceExit right above. Only in text
+     mode: voice mode already surfaces the same `pendingQuestions` through
+     VoiceModePanel's own QuestionCards. */
+  const questionsExit = useExitTransition(Boolean(pendingQuestions) && !voiceOpen, 180)
+  /* pendingQuestions clears the instant it's answered (onAnswerQuestions
+     nulls `questions` off the message in the same tick submit() fires), so
+     the dock would have nothing left to render during its own closing
+     animation without this — the last real round, held until the next one
+     replaces it or the dock finishes unmounting. */
+  const [lastQuestions, setLastQuestions] = useState(null)
+  useEffect(() => {
+    if (pendingQuestions) setLastQuestions(pendingQuestions)
+  }, [pendingQuestions])
   /* The "Latest" jump-to-bottom pill used to unmount the instant atBottom
      flipped true — the one piece of chat chrome still doing a hard cut
      while every other transient here (toasts, attachment chips) plays a
@@ -1912,7 +1937,6 @@ export function ChatPage() {
                    clicking it opened a working editor whose "Send again" threw
                    and silently reverted the text. */
                 onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
-                onAnswerQuestions={onAnswerQuestions}
               />
             ))}
 
@@ -2055,6 +2079,18 @@ export function ChatPage() {
             onWarmVoice={warmMic}
             voiceModeActive={voiceOpen}
             suggestion={contextualSuggestion}
+            questionsPanel={
+              questionsExit.mounted && lastQuestions ? (
+                <div className={`questions-dock${pendingQuestions ? ' is-open' : ''}`}>
+                  <div className={`questions-dock-body${questionsExit.closing ? ' is-closing' : ''}`}>
+                    <LessonQuestions
+                      questions={lastQuestions.questions}
+                      onSubmit={(text) => onAnswerQuestions(lastQuestions.message, text)}
+                    />
+                  </div>
+                </div>
+              ) : null
+            }
             voicePanel={
               voiceExit.mounted ? (
                 <div className={`voice-dock${voiceOpen ? ' is-open' : ''}`}>

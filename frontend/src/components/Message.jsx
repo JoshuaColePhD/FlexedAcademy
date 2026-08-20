@@ -5,7 +5,6 @@ import { scanGrounding } from '../lib/grounding'
 import { dayTitle, orderedDays } from '../lib/planShape'
 import { Cite } from './Citation'
 import { WeekStrip } from './WeekStrip'
-import { LessonQuestions } from './LessonQuestions'
 
 /** What Copy puts on the clipboard: the reply, plus the week and the codes the
  *  message is actually showing. */
@@ -50,7 +49,7 @@ function useCopy() {
  * distinct from "said by the app" without giving the assistant an avatar or
  * a second speaker's identity — it's still the page talking back, just
  * boxed like everything else here. */
-export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, isLast }) {
+export function Message({ message, subject, onRetry, onEdit, isLast }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -207,17 +206,21 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
           ) : null}
         </div>
 
-        {/* The guided alternative to typing — see LessonQuestions. Only ever
-            on the most recent assistant turn in practice (answering submits
-            the next message immediately), but not restricted to isLast: a
-            reload's history should show what was asked even once it's moot. */}
-        {!isUser && message.questions?.length && onAnswerQuestions ? (
-          <div className="mt-3 w-full">
-            <LessonQuestions
-              questions={message.questions}
-              onSubmit={(text) => onAnswerQuestions(message, text)}
-            />
-          </div>
+        {/* The guided alternative to typing — see LessonQuestions, which now
+            renders in a dock above the composer (ChatPage's pendingQuestions)
+            instead of inline, so it reads as "answer below" rather than a
+            card stuck mid-transcript that scrolls out of reach. isLast means
+            this IS the pending round — the dock owns it, so there's nothing
+            to show here. An older message that still carries unanswered
+            questions (superseded by whatever was said since) gets a plain,
+            non-interactive summary instead of silently dropping what was
+            asked. */}
+        {!isUser && message.questions?.length && !isLast ? (
+          <ul className="mt-3 flex list-none flex-col gap-1 text-sm text-ink-muted">
+            {message.questions.map((q) => (
+              <li key={q.id}>• {q.text}</li>
+            ))}
+          </ul>
         ) : null}
 
         {message.unsaved ? (

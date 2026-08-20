@@ -1787,6 +1787,32 @@
     }
   }
 
+  /* The text-mode twin of .voice-dock, same 0fr/1fr grid trick, for
+     LessonQuestions' clarification round — see ChatPage's questionsPanel.
+     A separate class rather than reusing .voice-dock directly: the two are
+     never open at once, but voiceOpen/voiceModeActive elsewhere key off the
+     class name, and conflating them would make "is voice mode open" and "is
+     a question pending" the same flag by accident. */
+  .questions-dock {
+    display: grid;
+    flex-shrink: 0;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--t-base) var(--ease-out);
+  }
+  .questions-dock.is-open {
+    grid-template-rows: 1fr;
+  }
+  .questions-dock-body {
+    min-height: 0;
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    animation: voice-dock-body-in var(--t-base) var(--ease-out) both;
+  }
+  .questions-dock-body.is-closing {
+    animation: voice-dock-body-out var(--t-fast) var(--ease) both;
+  }
+
   /* VoiceModePanel's own caption line — what's currently being said, above
      the checklist. Always mounted now (it used to mount/unmount outright),
      so this 0fr/1fr grid row (the same technique .voice-dock uses for its
@@ -2252,7 +2278,8 @@
   }
   .rail-open {
     display: grid;
-    width: 28px;
+    width: 30px;
+    height: 30px;
     flex-shrink: 0;
     place-items: center;
     color: var(--ink-soft);
@@ -2260,7 +2287,7 @@
     border: none;
     border-radius: var(--r-md);
     cursor: pointer;
-    box-shadow: 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
+    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
     transition: color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
   }
   .rail-open:hover {

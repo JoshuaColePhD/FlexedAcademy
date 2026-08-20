@@ -72,6 +72,12 @@ export function Composer({
      conversation it starts is already the one on screen. */
   voiceModeActive = false,
   voicePanel = null,
+  // The text-mode twin of voicePanel — a clarification round docked above
+  // the input instead of stuck mid-transcript (see ChatPage's
+  // questionsExit/lastQuestions and LessonQuestions). Same slot shape, same
+  // "the composer grows to make room for it" read; the two never show at
+  // once, since voice mode surfaces its own questions through voicePanel.
+  questionsPanel = null,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
@@ -283,6 +289,7 @@ export function Composer({
           </div>
         )}
         {voicePanel}
+        {questionsPanel}
 
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-3 pt-2.5">

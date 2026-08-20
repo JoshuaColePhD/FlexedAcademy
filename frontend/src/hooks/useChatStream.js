@@ -272,6 +272,34 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
       })
     }
 
+    /* Defensive recovery, not a fix for the real problem: every so often the
+       model writes ask_clarifying_questions' own arguments out as literal
+       streamed text instead of actually invoking the tool — the SSE stream
+       never carries a `tool_call: 'ask_clarifying_questions'` event at all,
+       so `questions` stays null and `accumulated` ends up holding a raw
+       JSON blob like the very thing this tool's arguments schema describes.
+       Left alone, that JSON renders verbatim in the chat — worse than any
+       styling this hook's caller could apply, since there's no UI for "raw
+       tool-call JSON." Recognizing and parsing it here at least gets the
+       real, tappable question card on screen instead; the actual fix is
+       getting the model to call the tool reliably (generate.py's system
+       prompt), which no amount of client-side recovery can guarantee. */
+    if (!questions && !toolCalled && !quizRequested) {
+      const trimmed = accumulated.trim()
+      if (trimmed.startsWith('{') && trimmed.includes('"questions"')) {
+        try {
+          const parsed = JSON.parse(trimmed)
+          if (Array.isArray(parsed.questions) && parsed.questions.length) {
+            questions = parsed.questions
+            accumulated = ''
+          }
+        } catch {
+          // Not actually parseable JSON — leave it as plain text, same as
+          // every other reply; nothing here makes that case any worse.
+        }
+      }
+    }
+
     // Whatever tail never earned a sentence boundary of its own — a reply
     // that ends without punctuation, or one short enough to have none at all.
     emitSentences(true)

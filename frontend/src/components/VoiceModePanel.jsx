@@ -167,7 +167,7 @@ const AEC_REARM_MS = 300
  * stops listening while these are on screen (busy only pauses it during an
  * actual generation, see VoiceModePanel's pausedRef), so saying the answer
  * out loud works exactly the same as tapping one of these; the hint below
- * the cards says so, because nothing else about a row of buttons implies
+ * the card says so, because nothing else about a row of buttons implies
  * that on its own.
  *
  * Styled like DecisionStack (the "plan so far" column this replaces while
@@ -175,90 +175,129 @@ const AEC_REARM_MS = 300
  * question mid-answer and a decision already locked in read as two states
  * of the same list, not two different components.
  *
- * Voice mode's own system prompt (backend/routes/generate.py) always asks
- * exactly ONE question at a time — the multi-question, answer-them-all-then-
- * Continue shape only exists here for whatever isn't that. So the single-
- * question case (the actual common case) skips Continue entirely: tapping
- * an option IS the answer, sent immediately. Requiring a second tap to
- * confirm a choice already made was pure friction with nothing to weigh. */
-function QuestionCards({ questions, onAnswer }) {
+ * One question on screen at a time, even in a multi-question round — a
+ * whole stack of question-and-option blocks landing at once read as a form
+ * dropped into the middle of a conversation, not a reply to what was just
+ * said. Voice mode's own system prompt (backend/routes/generate.py) mostly
+ * asks one at a time anyway; this just makes the rare multi-question round
+ * feel the same as the common single one instead of standing out as a
+ * different, busier shape.
+ *
+ * Tapping an option both answers AND advances — no Continue button, on the
+ * same reasoning the single-question case already used: a second tap to
+ * confirm a choice already made is pure friction with nothing left to
+ * weigh. Skip leaves a question unanswered and moves on, exactly like
+ * LessonQuestions' own Skip (the text-chat equivalent of this card). */
+// See LessonQuestions' identical filter for why: the model sometimes throws
+// a bare "Other" into its own options, and tapping it here would submit
+// the literal word as the answer with no free-text row to catch it — voice
+// mode's escape hatch is just saying the real answer out loud instead (see
+// the hint below), so the option is dropped rather than left to mislead.
+const isBareOther = (opt) => opt.trim().toLowerCase() === 'other'
+/* The proof that the mic is still live WHILE this card is on screen — not
+ * just up in the header pill, which is easy to stop noticing the moment
+ * attention drops down to the options. Tailwind's stock animate-ping ring
+ * around a solid dot, the same "something is actively live" idiom as any
+ * recording indicator — not fa-listening (Composer's own dictation pulse):
+ * that one's color is hardcoded to --mark-rgb (the red "recording" tint),
+ * which would clash with this staying a calm ambient/accent pairing rather
+ * than reading as "recording" the way Composer's does. Brightens from a
+ * faint, ambient ping to the accent color the instant real speech is
+ * detected (`hearing`, from the VAD/Silero loop above) — the same
+ * "ambient vs. actually hearing you" distinction the header's own level
+ * meter draws, just close enough to read while looking at the question
+ * instead of up at the header. */
+function ListeningHint({ hearing, muted }) {
+  if (muted) {
+    return (
+      <p className="flex items-center gap-1.5 text-2xs text-ink-faint">
+        <MicOff size={11} aria-hidden="true" />
+        Mic is off — tap an option above
+      </p>
+    )
+  }
+  return (
+    <p
+      className={`flex items-center gap-1.5 text-2xs transition-colors ${hearing ? 'text-accent-text' : 'text-ink-faint'}`}
+    >
+      <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+        <span
+          className={`absolute inline-flex h-full w-full animate-ping rounded-full ${hearing ? 'bg-accent' : 'bg-ink-faint'}`}
+        />
+        <span className={`relative inline-flex h-2 w-2 rounded-full ${hearing ? 'bg-accent' : 'bg-ink-faint'}`} />
+      </span>
+      {hearing ? 'Hearing you — keep going' : 'Or just say your answer'}
+    </p>
+  )
+}
+function QuestionCards({ questions, onAnswer, hearing = false, muted = false }) {
+  const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState({})
-  const single = questions.length === 1
-  const allAnswered = questions.every((q) => answers[q.id])
+  const total = questions.length
+  const q = questions[index]
+  const isLast = index === total - 1
 
-  const send = (finalAnswers) => {
-    const text = questions.map((q) => `${q.text} ${finalAnswers[q.id]}`).join('\n')
-    onAnswer(text)
+  const finish = (finalAnswers) => {
+    const text = questions
+      .map((qq) => (finalAnswers[qq.id] ? `${qq.text} ${finalAnswers[qq.id]}` : null))
+      .filter(Boolean)
+      .join('\n')
+    onAnswer(text || questions.map((qq) => qq.text).join('\n'))
   }
 
-  const choose = (q, opt) => {
+  const advance = (finalAnswers) => {
+    if (isLast) finish(finalAnswers)
+    else setIndex((i) => i + 1)
+  }
+
+  const choose = (opt) => {
     const next = { ...answers, [q.id]: opt }
     setAnswers(next)
-    if (single) send(next)
+    advance(next)
   }
+
+  const skip = () => advance(answers)
 
   return (
     <div className="neo-panel flex min-h-0 w-full flex-col overflow-hidden rounded-[28px] bg-paper-raised p-4">
-      <p className="eyebrow shrink-0 pb-2">{single ? 'One quick question' : 'A couple of quick questions'}</p>
-      <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
-        {questions.map((q, i) => {
-          const answered = Boolean(answers[q.id])
-          return (
-            <li
-              key={q.id}
-              style={{ animationDelay: `${i * 60}ms` }}
-              className="fa-card-drop neo-raised flex shrink-0 flex-col gap-2.5 rounded-2xl bg-paper-raised px-3.5 py-3 text-left"
+      <p className="eyebrow shrink-0 pb-2">
+        {total > 1 ? `Question ${index + 1} of ${total}` : 'One quick question'}
+      </p>
+      <div key={q.id} className="fa-card-drop flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-0.5">
+        <div className="flex items-start gap-2.5">
+          <span
+            aria-hidden="true"
+            className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full neo-raised text-ink-faint"
+          />
+          <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-ink">{q.text}</p>
+        </div>
+        <div className="flex flex-wrap gap-2 pl-[30px]">
+          {(q.options || []).filter((opt) => !isBareOther(opt)).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => choose(opt)}
+              className="tap-target neo-raised rounded-full px-3 py-1.5 text-xs font-medium text-ink-soft transition-shadow"
             >
-              <div className="flex items-start gap-2.5">
-                {/* Inset once answered — the same "pressed into the card"
-                    mark DecisionStack uses for a settled item — raised and
-                    empty while still open. */}
-                <span
-                  aria-hidden="true"
-                  className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full transition-shadow ${
-                    answered ? 'neo-inset text-accent-text' : 'neo-raised text-ink-faint'
-                  }`}
-                >
-                  {answered ? <Check size={11} strokeWidth={3} className="fa-check-pop" /> : null}
-                </span>
-                <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-ink">{q.text}</p>
-              </div>
-              <div className="flex flex-wrap gap-2 pl-[30px]">
-                {(q.options || []).map((opt) => {
-                  const selected = answers[q.id] === opt
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => choose(q, opt)}
-                      /* Pressed-in when chosen, standing proud when not — the
-                         same physical language every other selected/unselected
-                         pair in this app already speaks. */
-                      className={`tap-target rounded-full px-3 py-1.5 text-xs font-medium transition-shadow ${
-                        selected ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  )
-                })}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-      <p className="mt-2 shrink-0 text-center text-2xs text-ink-faint">Or just say your answer</p>
-      {!single ? (
-        <button
-          type="button"
-          disabled={!allAnswered}
-          onClick={() => send(answers)}
-          className="fa-press neo-raised mt-2 min-h-touch shrink-0 self-start rounded-full bg-paper-raised px-5 text-sm font-medium text-ink transition-shadow hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Continue
-        </button>
-      ) : null}
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-2 flex shrink-0 items-center justify-between">
+        {total > 1 ? (
+          <button
+            type="button"
+            className="text-2xs font-medium text-ink-muted hover:underline"
+            onClick={skip}
+          >
+            Skip
+          </button>
+        ) : (
+          <span />
+        )}
+        <ListeningHint hearing={hearing} muted={muted} />
+      </div>
     </div>
   )
 }
@@ -1907,7 +1946,7 @@ export function VoiceModePanel({
       <div className="min-w-0">
         <SmoothHeight>
           {questions?.length ? (
-            <QuestionCards questions={questions} onAnswer={onAnswer} />
+            <QuestionCards questions={questions} onAnswer={onAnswer} hearing={hearing} muted={muted} />
           ) : building ? (
             <BuildProgress days={buildDays} fill={false} />
           ) : builtPlan ? (
