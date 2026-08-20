@@ -8,7 +8,7 @@
  * Deliberately NOT a 24/7 ping. Render's free tier grants ~750 instance-hours a
  * month and holding one service up around the clock spends ~730 of them to
  * serve a handful of requests a week, with no headroom left if Render counts
- * an hour slightly differently than expected. The cron below covers 7am-11pm
+ * an hour slightly differently than expected. The cron below covers 6am-10pm
  * US Central, every day — evenings and weekends included, since that's when
  * take-home lesson planning happens, not just the school day — which is
  * ~480 hours a month and leaves real slack in the allowance.
