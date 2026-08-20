@@ -4331,6 +4331,10 @@
   :root:not([data-skin='skeu']) .btn-blob {
     position: relative;
     isolation: isolate;
+    /* Contains the sweep band below to the pill's own rounded shape — without
+       this, the band's ends (parked off past 0%/100%) would spill past the
+       button's own bounds instead of appearing to enter/exit through it. */
+    overflow: hidden;
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -4342,42 +4346,42 @@
     position: absolute;
     inset: 0;
     z-index: -2;
-    /* Sized against the button itself (min-h-touch, ~44px), not viewport width
-       like .app-blob/.onboarding-blob's own circles — those are built for a
-       full-page or dialog-size surface, and at that same 50-60px radius here
-       each blob was wider than the whole button, so the four just merged into
-       one static wash no matter where background-position moved it. */
-    background: radial-gradient(circle 22px at 20% 20%, rgb(167 139 250 / 0.65) 0%, transparent 100%),
-      radial-gradient(circle 19px at 80% 15%, rgb(244 114 182 / 0.6) 0%, transparent 100%),
-      radial-gradient(circle 20px at 85% 80%, rgb(251 146 60 / 0.55) 0%, transparent 100%),
-      radial-gradient(circle 22px at 15% 85%, rgb(52 211 153 / 0.55) 0%, transparent 100%),
+    /* A single diagonal band, not four separate blobs — a wandering-dot
+       background can only ever partially cross the box no matter how it's
+       panned (the dots still have to stay far enough inside the canvas to
+       exist at all). A band NARROWER than the box (60% width) can instead be
+       parked fully outside either edge and panned all the way through, so it
+       visibly enters from nothing and exits back to nothing every cycle. */
+    background: linear-gradient(
+        100deg,
+        transparent 0%,
+        rgb(167 139 250 / 0.65) 20%,
+        rgb(244 114 182 / 0.6) 40%,
+        rgb(251 146 60 / 0.55) 60%,
+        rgb(52 211 153 / 0.55) 80%,
+        transparent 100%
+      ),
       rgb(var(--paper-raised-rgb) / 0.85);
-    background-size: 190% 190%;
-    animation: btn-blob-drift 8s ease-in-out infinite alternate;
+    background-size: 60% 100%;
+    background-repeat: no-repeat;
+    animation: btn-blob-sweep 6s ease-in-out infinite alternate;
     border-radius: inherit;
     pointer-events: none;
   }
 
-  /* land-blob-drift's own 10%-60% range only ever slides the viewing window
-     across a small slice of the (doubled) background — fine at page scale,
-     but on this button it meant the same corner or two stayed in view the
-     whole time. This sweeps the full 0%-100% range on both axes so all four
-     dots actually take turns crossing the button instead of idling in place. */
-  @keyframes btn-blob-drift {
+  /* -150%/250%, not 0%/100%: background-position's percentage is relative to
+     the (box - image) size difference, so at -150% the band's trailing edge
+     sits exactly at the box's left edge (fully hidden) and at 250% its
+     leading edge sits exactly at the box's right edge (fully hidden again) —
+     the actual travel is well past the box on both ends, guaranteeing a full
+     edge-to-edge crossing rather than the partial pan the old blob-drift
+     range gave. */
+  @keyframes btn-blob-sweep {
     0% {
-      background-position: 0% 20%;
-    }
-    30% {
-      background-position: 100% 0%;
-    }
-    55% {
-      background-position: 90% 100%;
-    }
-    80% {
-      background-position: 10% 90%;
+      background-position: -150% 0;
     }
     100% {
-      background-position: 50% 50%;
+      background-position: 250% 0;
     }
   }
 
