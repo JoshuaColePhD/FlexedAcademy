@@ -42,8 +42,9 @@ export const qk = {
   /** Every quiz built for one plan — its own key, not folded into plan(id),
    *  so a quiz finishing building doesn't have to re-fetch the whole plan. */
   quizzes: (planId) => ['quizzes', planId ?? null],
-  /* The plans library, per class — same reasoning as chats above. */
-  plans: (classId) => ['plans', classId ?? null],
+  /* The Library's grouped-by-week view, per class — same reasoning as chats
+   *  above. */
+  planWeeks: (classId) => ['plan-weeks', classId ?? null],
   curriculumProgress: (classId) => ['curriculum-progress', classId ?? null],
   classDocuments: (classId) => ['class-documents', classId],
 }

@@ -24,6 +24,14 @@ router = APIRouter(prefix="/api", tags=["generate"])
 class GenerateRequest(BaseModel):
     query: str = Field(min_length=1, max_length=settings.max_query_chars)
     chat_id: str | None = None
+    # The page's OWN class (ChatPage always has this from its route params),
+    # sent explicitly rather than relied on solely from the chat's stored
+    # class_id. Older chats (pre-migration-14) can have class_id NULL, and
+    # _chat_class then returns None — without this field there was no other
+    # way to know which class the request was actually about, and finalize
+    # used to guess (see its own history). Validated against the caller's own
+    # classes below before use, same as any other class_id from a client.
+    class_id: str | None = None
     # Set only when the teacher picked a week explicitly (the new-plan week
     # picker). Left unset, week_system_prompt's own fallback ("If it names a
     # topic instead, pick the week the unit map assigns to it") is a MODEL
@@ -42,6 +50,22 @@ def _with_week(query: str, week_number: int | None, school_id: str) -> str:
     if not week:
         return query
     return f"Build this for {schoolcal.label_for(week)}. {query}"
+
+
+def _request_class(user_id: str, req_class_id: str | None, chat_id: str | None) -> dict | None:
+    """The class this generation is actually about.
+
+    Prefers the request's own explicit class_id (the page the teacher is
+    standing on) over the chat's stored one — get_class both looks it up AND
+    checks it belongs to this user, so a class_id from another account is
+    silently ignored rather than trusted. Falls back to _chat_class only when
+    the caller didn't send one (older frontend builds, or a stream reopened
+    without it)."""
+    if req_class_id:
+        cls = db.get_class(user_id, req_class_id)
+        if cls:
+            return cls
+    return _chat_class(user_id, chat_id)
 
 
 def _chat_class(user_id: str, chat_id: str | None) -> dict | None:
@@ -169,7 +193,7 @@ def generate(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, 
     # _chat_class) — used for the week label below AND threaded through to
     # service.generate so llm.generate_plan names the same school, not
     # whatever get_user_school(user_id) would answer on its own.
-    cls = _chat_class(user_id, req.chat_id)
+    cls = _request_class(user_id, req.class_id, req.chat_id)
     school_id = db.class_school(cls, user_id)
     query = _with_week(req.query, req.week_number, school_id)
     return service.generate(
@@ -198,7 +222,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     # normal error envelope rather than an SSE frame the reader has to special-
     # case. useLessonStream already reads a non-200 body through apiErrorFromBody.
     require_entitlement(user_id)
-    cls = _chat_class(user_id, req.chat_id)
+    cls = _request_class(user_id, req.class_id, req.chat_id)
     school_id = db.class_school(cls, user_id)
     query = _with_week(req.query, req.week_number, school_id)
 

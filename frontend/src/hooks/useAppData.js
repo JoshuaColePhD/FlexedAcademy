@@ -103,14 +103,13 @@ export function useDeleteChat() {
 
 /* ── plans ───────────────────────────────────────────────────────────────── */
 
-/** Every plan ever built for this class — the durable record behind the
- *  sidebar's chat list, which only ever shows the conversations, not the
- *  documents they produced. */
-export function usePlans() {
+/** The Library's own view: one card per calendar week (latest plan, older
+ *  revisions folded in) instead of a flat, ungrouped generation history. */
+export function usePlanWeeks() {
   const { classId } = useParams()
   return useQuery({
-    queryKey: qk.plans(classId),
-    queryFn: () => api.listPlans({ class_id: classId, limit: 200 }),
+    queryKey: qk.planWeeks(classId),
+    queryFn: () => api.listPlanWeeks(classId),
     enabled: Boolean(classId),
   })
 }
@@ -119,7 +118,10 @@ export function useDeletePlan() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.deletePlan(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans'] }),
+    // Deleting a plan can turn a week's `latest` into its next-newest
+    // revision, or just drop a revision — either way the grouped view is
+    // stale.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['plan-weeks'] }),
   })
 }
 

@@ -1,16 +1,17 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, FileText, Search, Trash2, CheckSquare, Square } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyPlanShareLink } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
-import { useActiveClass, usePlans, useDeletePlan } from '../hooks/useAppData'
+import { useActiveClass, usePlanWeeks, useDeletePlan } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { SkeletonText } from '../components/Skeleton'
 import { unitSuffix } from '../lib/planShape'
 
-/* Every plan this class has ever produced, in one place.
+/* Every plan this class has ever produced, in one place — one card per
+ * calendar week, not one row per raw generation.
  *
  * The sidebar's "Recent" list is chats, not plans — a conversation that
  * revised a week three times is one row there, and a plan built without ever
@@ -18,6 +19,13 @@ import { unitSuffix } from '../lib/planShape'
  * This reads straight from the same durable record the calendar and the
  * paywall's free-week counter already trust (backend/db.py's `plans` table),
  * so it is never out of sync with what actually got built.
+ *
+ * Grouped by week (db.list_plan_weeks) rather than the flat, ungrouped
+ * history GET /api/plans still serves elsewhere (e.g. ChatPage's own
+ * plan-for-this-chat lookup): regenerating a week used to just add another
+ * row with the same week_label, so the same week showed up twice, three
+ * times, however many times it had been rebuilt — with no way to tell which
+ * was current without opening each one.
  */
 
 const SEARCH_THRESHOLD = 8
@@ -133,14 +141,14 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
 
 export function PlansPage() {
   const { classId, activeClass } = useActiveClass()
-  const { data, isLoading, isError, error } = usePlans()
+  const { data, isLoading, isError, error } = usePlanWeeks()
   const deletePlan = useDeletePlan()
   const confirm = useConfirm()
   const toast = useToast()
   const [search, setSearch] = useState('')
   const [deletingId, setDeletingId] = useState(null)
   /* Deletion goes through react-query invalidation, not a local splice —
-     the row actually disappears from `plans` whenever the refetch lands,
+     the row actually disappears from `weeks` whenever the refetch lands,
      on its own schedule. Rather than choreograph an exit animation against
      that, just flag the row as closing (fa-row-exit, animation-fill-mode:
      both) the moment deletion is confirmed; it's already collapsed and
@@ -153,11 +161,17 @@ export function PlansPage() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [isDeletingBulk, setIsDeletingBulk] = useState(false)
 
-  const plans = data?.items || []
-  const filtered = search.trim() ? plans.filter((p) => matchesSearch(p, search)) : plans
+  const weeks = data?.weeks || []
+  // Search matches on the week's own (latest) fields — a week with an old
+  // revision that happened to mention something the latest doesn't isn't
+  // what "search plans" means here.
+  const filtered = search.trim() ? weeks.filter((w) => matchesSearch(w.latest, search)) : weeks
 
+  // Selection/bulk-delete is scoped to the top-level (latest-per-week) rows
+  // only — a revision is a single, deliberate delete from inside its own
+  // "earlier versions" disclosure, not part of a big multi-select.
   const toggleSelect = (id) => {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -169,7 +183,7 @@ export function PlansPage() {
     if (selectedIds.size === filtered.length && filtered.length > 0) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(filtered.map(p => p.id)))
+      setSelectedIds(new Set(filtered.map((w) => w.latest.id)))
     }
   }
 
@@ -192,7 +206,7 @@ export function PlansPage() {
       setSelectionMode(false)
     } catch (err) {
       // Partial failure, and no per-id success tracking here: any that DID
-      // succeed are already gone from `plans`, so un-flagging them is a
+      // succeed are already gone from `weeks`, so un-flagging them is a
       // no-op; any that failed correctly revert to visible.
       setDeletingIds((prev) => {
         const next = new Set(prev)
@@ -241,7 +255,7 @@ export function PlansPage() {
 
       <div className="page scroll-y">
         <div className="mx-auto w-full max-w-measure-form">
-          {plans.length > 0 && (
+          {weeks.length > 0 && (
             <div className="mb-2 flex items-center justify-end gap-3">
               {selectionMode ? (
                 <>
@@ -285,7 +299,7 @@ export function PlansPage() {
             </div>
           )}
 
-          {plans.length > SEARCH_THRESHOLD ? (
+          {weeks.length > SEARCH_THRESHOLD ? (
             <div className="neo-inset mb-3 flex items-center gap-2 rounded-lg bg-paper-sunken px-2.5 py-1.5">
               <Search size={13} aria-hidden="true" className="shrink-0 text-ink-muted" />
               <input
@@ -309,21 +323,46 @@ export function PlansPage() {
             </p>
           ) : filtered.length ? (
             <ul className="neo-panel divide-y divide-edge overflow-hidden rounded-xl bg-paper-raised/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-              {filtered.map((plan) => (
-                <PlanRow
-                  key={plan.id}
-                  plan={plan}
-                  classId={classId}
-                  onDelete={handleDelete}
-                  deleting={deletingId === plan.id}
-                  closing={deletingIds.has(plan.id)}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.has(plan.id)}
-                  onToggleSelect={toggleSelect}
-                />
+              {filtered.map((week) => (
+                <Fragment key={week.week_number ?? week.latest.id}>
+                  <PlanRow
+                    plan={week.latest}
+                    classId={classId}
+                    onDelete={handleDelete}
+                    deleting={deletingId === week.latest.id}
+                    closing={deletingIds.has(week.latest.id)}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.has(week.latest.id)}
+                    onToggleSelect={toggleSelect}
+                  />
+                  {week.revisions.length > 0 && (
+                    <li className="px-2 pb-1.5 pl-9">
+                      <details>
+                        <summary className="cursor-pointer text-xs text-ink-muted hover:text-ink">
+                          {week.revisions.length} earlier version{week.revisions.length === 1 ? '' : 's'}
+                        </summary>
+                        <ul className="mt-1 divide-y divide-edge/60 overflow-hidden rounded-lg bg-paper-sunken/40">
+                          {week.revisions.map((rev) => (
+                            <PlanRow
+                              key={rev.id}
+                              plan={rev}
+                              classId={classId}
+                              onDelete={handleDelete}
+                              deleting={deletingId === rev.id}
+                              closing={deletingIds.has(rev.id)}
+                              selectionMode={false}
+                              selected={false}
+                              onToggleSelect={() => {}}
+                            />
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
+                  )}
+                </Fragment>
               ))}
             </ul>
-          ) : plans.length ? (
+          ) : weeks.length ? (
             <p className="text-sm text-ink-muted">No plans match “{search}”.</p>
           ) : (
             <p className="text-sm text-ink-muted">

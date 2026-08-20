@@ -199,6 +199,11 @@ export const api = {
     )
     return request(`/api/plans${qs.toString() ? `?${qs}` : ''}`, { signal })
   },
+  // Same list, grouped by calendar week — the Library's own view. A
+  // separate endpoint rather than a flag on listPlans: the grouping needs to
+  // pull every revision for the class server-side to fold them together,
+  // which isn't the same query shape as listPlans' paginated flat list.
+  listPlanWeeks: (classId) => request(`/api/plans/weeks?class_id=${encodeURIComponent(classId)}`),
   getPlan: (id) => request(`/api/plans/${id}`),
   rebuildPlan: (id) => request(`/api/plans/${id}/rebuild`, { method: 'POST' }),
   deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),

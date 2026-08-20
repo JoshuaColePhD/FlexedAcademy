@@ -275,6 +275,22 @@ def finalize(
         docx_build.build_docx(plan, out_path)
         docx_path_val = str(out_path)
 
+    if class_id is None:
+        # Used to fall back to resolve_class(user_id)'s "whichever class
+        # happens to sort first" — a guess, applied silently, that pinned
+        # every plan from a class-less request to the SAME fixed class
+        # regardless of what the teacher was actually working on. That
+        # produced exactly the mixed-class Library a teacher would see: plans
+        # from three different preps all filed under whichever class the
+        # fallback picked. A save with no real class context is a caller bug
+        # (routes/generate.py should always resolve one — see its own
+        # class_id handling), not something to paper over with a guess here.
+        raise AppError(
+            "class_required",
+            "This plan isn't linked to a class.",
+            hint="Open it from within a specific class and try again.",
+        )
+
     row = db.create_plan(
         plan_id=plan_id,
         user_id=user_id,
@@ -288,17 +304,9 @@ def finalize(
         warnings=warnings,
         chat_id=chat_id,
         template=docx_build.builder_template(),
-        # Was never passed, so every plan since migration 9 has been written with
-        # class_id NULL — the week board only found them at all through its
-        # `class_id IS NULL AND course = name` fallback, which breaks the moment
-        # two classes share a display name.
-        class_id=class_id or (db.resolve_class(user_id) or {}).get("id"),
+        class_id=class_id,
         week_number=week_number,
     )
-    # row["class_id"] rather than the class_id param above — this is the
-    # actually-stamped class after resolve_class's own fallback, so a plan
-    # created with no explicit class still gets a truthful class_id here
-    # instead of a NULL that would make it invisible to any per-class query.
     db.replace_plan_standards(
         plan_id, user_id, class_id=row.get("class_id"), subject=subject_code, grade=grade, entries=cited
     )
@@ -325,8 +333,9 @@ def generate(
     class and its resolved school (routes/generate.py's _chat_class +
     db.class_school) — not re-derived here, so this stays a plain pass-
     through rather than a second place that could resolve them differently.
-    `class_id=None` is a real case `finalize` already handles (falls back to
-    resolve_class(user_id)'s "whichever class was touched most recently").
+    `class_id=None` reaches `finalize`, which now rejects it outright rather
+    than guessing a class — callers here are expected to always resolve a
+    real one first.
     `school_id=None` means the caller had no chat context at all — the
     account default (get_user_school) is the only honest answer left, same
     as db.class_school's own fallback for a class with none of its own.

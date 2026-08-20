@@ -96,7 +96,7 @@ export function useLessonStream({ onDone, onError } = {}) {
   // One attempt: opens the SSE connection and either returns the finished
   // result or throws. Retrying lives in `start`, not here — see useChatStream
   // for why that split matters (onDone must fire at most once per call).
-  const attempt = useCallback(async (query, { chatId, weekNumber, controller }) => {
+  const attempt = useCallback(async (query, { chatId, weekNumber, classId, controller }) => {
     setText('')
     setPreview(null)
     setGrounding(null)
@@ -107,7 +107,16 @@ export function useLessonStream({ onDone, onError } = {}) {
     const res = await fetch(api.streamUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, chat_id: chatId ?? null, week_number: weekNumber ?? null }),
+      body: JSON.stringify({
+        query,
+        chat_id: chatId ?? null,
+        week_number: weekNumber ?? null,
+        // The page's own class (ChatPage's classId route param), not just
+        // the chat's stored one — an older chat can have no class_id of its
+        // own, and the backend now refuses to guess one. See generate.py's
+        // GenerateRequest.class_id for the write-side half of this fix.
+        class_id: classId ?? null,
+      }),
       signal: controller.signal,
       credentials: 'include',
     })
@@ -187,7 +196,7 @@ export function useLessonStream({ onDone, onError } = {}) {
   }, [])
 
   const start = useCallback(
-    async (query, { chatId, weekNumber } = {}) => {
+    async (query, { chatId, weekNumber, classId } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -199,7 +208,7 @@ export function useLessonStream({ onDone, onError } = {}) {
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
-            const result = await attempt(query, { chatId, weekNumber, controller })
+            const result = await attempt(query, { chatId, weekNumber, classId, controller })
             onDoneRef.current?.(result)
             return result
           } catch (err) {

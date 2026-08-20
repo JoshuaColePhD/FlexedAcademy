@@ -2086,6 +2086,59 @@ def list_plans(
     return {"items": items, "total": total}
 
 
+def list_plan_weeks(user_id: str, class_id: str) -> dict:
+    """The Library, grouped by calendar week instead of raw generation history.
+
+    `list_plans` returns one row per `plans` row with no dedup, so
+    regenerating a week (rather than revising the existing one) just adds
+    another row — the same week then appears twice in a flat, newest-first
+    list. This groups those rows by week_number, keeping the newest as
+    `latest` and collapsing the rest into `revisions`.
+
+    Ordered `created_at DESC` before grouping (unlike week_board's own
+    by-week dict, which has no ORDER BY and so keeps whichever row SQLite
+    happens to return first) — so the first row seen for a given week here is
+    reliably the most recent one.
+
+    A plan whose week can't be resolved at all (no week_number column, and
+    week_label doesn't parse) still gets shown, as its own single-plan
+    "week" — silently dropping it from the Library would be worse than an
+    ungrouped card."""
+    from .units import week_number
+
+    rows = _rows(
+        "SELECT * FROM plans WHERE user_id = ? AND class_id = ? ORDER BY created_at DESC",
+        (user_id, class_id),
+    )
+
+    by_week: dict[int, dict] = {}
+    loose: list[dict] = []
+    for r in rows:
+        p = _hydrate_plan(r)
+        p.pop("plan_json", None)  # list view doesn't need the whole week
+        n = p.get("week_number") or week_number(p.get("week_label") or "")
+        if n is None:
+            loose.append(p)
+            continue
+        if n not in by_week:
+            by_week[n] = {
+                "week_number": n,
+                "week_label": p.get("week_label"),
+                "unit": p.get("unit"),
+                "latest": p,
+                "revisions": [],
+            }
+        else:
+            by_week[n]["revisions"].append(p)
+
+    weeks = [by_week[n] for n in sorted(by_week)]
+    weeks += [
+        {"week_number": None, "week_label": p.get("week_label"), "unit": p.get("unit"), "latest": p, "revisions": []}
+        for p in loose
+    ]
+    return {"weeks": weeks}
+
+
 def update_plan(user_id: str, plan_id: str, **fields: Any) -> dict | None:
     allowed = {"plan_json", "week_label", "unit", "docx_path", "warnings", "course", "class_id"}
     sets, params = [], []

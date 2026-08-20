@@ -117,6 +117,17 @@ def list_plans(
     return db.list_plans(user_id, limit=limit, offset=offset, q=q, chat_id=chat_id, class_id=class_id)
 
 
+# Registered ahead of GET /{plan_id} below — that path param would otherwise
+# swallow "weeks" as a (invalid) plan id, since FastAPI matches in
+# registration order and "weeks" matches {plan_id} just fine syntactically.
+@router.get("/weeks")
+def list_plan_weeks(class_id: str = Query(..., max_length=64), user_id: str = Depends(get_current_user)):
+    """The Library, grouped: one card per calendar week instead of one row per
+    raw generation. See db.list_plan_weeks for why (regenerating a week used
+    to just add another row, so the same week appeared over and over)."""
+    return db.list_plan_weeks(user_id, class_id)
+
+
 @router.get("/{plan_id}")
 def get_plan(plan_id: str, user_id: str = Depends(get_current_user)):
     return _require_plan(user_id, plan_id)

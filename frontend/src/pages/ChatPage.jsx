@@ -1085,7 +1085,7 @@ export function ChatPage() {
         }
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
-        stream.start(firstHistory, { chatId: activeChatId, weekNumber: effectiveWeek }).catch(() => {})
+        stream.start(firstHistory, { chatId: activeChatId, weekNumber: effectiveWeek, classId }).catch(() => {})
         return
       }
 
