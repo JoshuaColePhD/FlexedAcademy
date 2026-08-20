@@ -3,23 +3,26 @@
   "main": "src/index.js",
   "compatibility_date": "2026-06-08",
 
-  // Every 10 minutes, 12:00-20:59 UTC, Monday through Friday.
-  // That is 7am-4pm US Central — the school day, not evening planning time.
-  // A single expression is enough here (unlike the old evening window): this
-  // one doesn't cross midnight UTC, so there's no wraparound to split across
-  // two cron lines.
+  // Every 10 minutes, 7am-11pm US Central, every day of the week — widened
+  // from the old school-hours-only (Mon-Fri 7am-4pm) window to also cover
+  // evening lesson planning at home and weekend work. 11pm Central is
+  // 04:00 UTC the next calendar day, so this window crosses midnight UTC and
+  // needs two cron lines rather than one contiguous hour range.
   //
   // UTC offset assumes US Central is on daylight time (UTC-5); it drifts an
   // hour during standard time (UTC-6, roughly Nov-Mar), same simplification
-  // the old evening window made — not worth a DST-aware cron for a keepwarm
-  // ping a few minutes early or late.
+  // the old window made — not worth a DST-aware cron for a keepwarm ping a
+  // few minutes early or late.
+  //
+  // ~480 instance-hours/month (16hrs x 30 days) — comfortably under Render
+  // free tier's ~750/month cap, unlike a true 24/7 ping (~730, no headroom).
   "triggers": {
-    "crons": ["*/10 12-20 * * 1-5"]
+    "crons": ["*/10 12-23 * * *", "*/10 0-3 * * *"]
   },
 
   "vars": {
     // Replace with the Render URL once the service exists.
-    "APP_URL": "https://flexed-academy-backend.onrender.com"
+    "APP_URL": "https://flexedacademy.com"
   },
 
   "observability": { "enabled": true }

@@ -4342,15 +4342,43 @@
     position: absolute;
     inset: 0;
     z-index: -2;
-    background: radial-gradient(circle min(25vw, 60px) at 20% 20%, rgb(167 139 250 / 0.65) 0%, transparent 100%),
-      radial-gradient(circle min(20vw, 50px) at 80% 15%, rgb(244 114 182 / 0.6) 0%, transparent 100%),
-      radial-gradient(circle min(22vw, 55px) at 85% 80%, rgb(251 146 60 / 0.55) 0%, transparent 100%),
-      radial-gradient(circle min(25vw, 60px) at 15% 85%, rgb(52 211 153 / 0.55) 0%, transparent 100%),
+    /* Sized against the button itself (min-h-touch, ~44px), not viewport width
+       like .app-blob/.onboarding-blob's own circles — those are built for a
+       full-page or dialog-size surface, and at that same 50-60px radius here
+       each blob was wider than the whole button, so the four just merged into
+       one static wash no matter where background-position moved it. */
+    background: radial-gradient(circle 22px at 20% 20%, rgb(167 139 250 / 0.65) 0%, transparent 100%),
+      radial-gradient(circle 19px at 80% 15%, rgb(244 114 182 / 0.6) 0%, transparent 100%),
+      radial-gradient(circle 20px at 85% 80%, rgb(251 146 60 / 0.55) 0%, transparent 100%),
+      radial-gradient(circle 22px at 15% 85%, rgb(52 211 153 / 0.55) 0%, transparent 100%),
       rgb(var(--paper-raised-rgb) / 0.85);
-    background-size: 200% 200%;
-    animation: land-blob-drift 8s ease-in-out infinite alternate;
+    background-size: 190% 190%;
+    animation: btn-blob-drift 8s ease-in-out infinite alternate;
     border-radius: inherit;
     pointer-events: none;
+  }
+
+  /* land-blob-drift's own 10%-60% range only ever slides the viewing window
+     across a small slice of the (doubled) background — fine at page scale,
+     but on this button it meant the same corner or two stayed in view the
+     whole time. This sweeps the full 0%-100% range on both axes so all four
+     dots actually take turns crossing the button instead of idling in place. */
+  @keyframes btn-blob-drift {
+    0% {
+      background-position: 0% 20%;
+    }
+    30% {
+      background-position: 100% 0%;
+    }
+    55% {
+      background-position: 90% 100%;
+    }
+    80% {
+      background-position: 10% 90%;
+    }
+    100% {
+      background-position: 50% 50%;
+    }
   }
 
   :root:not([data-skin='skeu']) .btn-blob::after {
