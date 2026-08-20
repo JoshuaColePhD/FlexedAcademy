@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, Download, ExternalLink, Loader2, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyPlanShareLink, stopSharingPlan } from '../lib/shareLink'
@@ -155,7 +156,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
 
   if (!mounted) return null
 
-  return (
+  return createPortal(
     <div
       className={`dialog-scrim${closing ? ' is-closing' : ''}`}
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
@@ -348,6 +349,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
