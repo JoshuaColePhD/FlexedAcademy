@@ -131,15 +131,23 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
       <div className="neo-panel rounded-xl bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
         <div className="flex items-center justify-between border-b border-edge bg-paper-sunken px-4 py-3 rounded-t-xl">
           <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              checked={chats.length > 0 && selectedIds.size === chats.length}
-              onChange={toggleSelectAll}
-              className="h-4 w-4 rounded border-edge text-accent focus:ring-accent"
-            />
-            <span className="text-sm font-medium text-ink-muted">
-              {selectedIds.size} selected
-            </span>
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="flex items-center gap-2 text-sm font-medium transition-colors hover:text-ink text-ink-muted"
+            >
+              {chats.length > 0 && selectedIds.size === chats.length ? (
+                <CheckSquare size={16} className="text-accent" />
+              ) : (
+                <Square size={16} />
+              )}
+              {chats.length > 0 && selectedIds.size === chats.length ? "Deselect All" : "Select All"}
+            </button>
+            {selectedIds.size > 0 && (
+              <span className="text-sm font-medium text-accent bg-accent-tint/30 px-2 rounded-full">
+                {selectedIds.size} selected
+              </span>
+            )}
           </div>
           {selectedIds.size > 0 && (
             <button
@@ -164,13 +172,21 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
           ) : (
             chats.map(c => (
               <li key={c.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-paper-inset">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(c.id)}
-                  onChange={() => toggleSelect(c.id)}
-                  className="h-4 w-4 rounded border-edge text-accent focus:ring-accent"
-                />
-                <div>
+                <button
+                  type="button"
+                  onClick={() => toggleSelect(c.id)}
+                  className="shrink-0 text-ink-muted hover:text-ink transition-colors"
+                >
+                  {selectedIds.has(c.id) ? (
+                    <CheckSquare size={16} className="text-accent" />
+                  ) : (
+                    <Square size={16} />
+                  )}
+                </button>
+                <div 
+                  className="flex-1 min-w-0 cursor-pointer"
+                  onClick={() => toggleSelect(c.id)}
+                >
                   <p className="text-sm font-medium text-ink">{c.title || 'Untitled chat'}</p>
                   <p className="text-xs text-ink-muted">{formatDate(c.created_at)}</p>
                 </div>
