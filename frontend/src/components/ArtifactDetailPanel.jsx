@@ -514,14 +514,16 @@ export function ArtifactDetailPanel({
               <Download size={14} aria-hidden="true" /> Download
             </button>
           ) : (
-            <span
+            <button
+              type="button"
               className="doc-download"
               aria-disabled="true"
               style={{ opacity: 0.45 }}
+              onClick={() => toast.apiError('Quiz file failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Canvas QTI file.'))}
               title="The file failed to build — ask again in chat to rebuild it"
             >
               <Download size={14} aria-hidden="true" /> Download
-            </span>
+            </button>
           )
         ) : null}
       </div>

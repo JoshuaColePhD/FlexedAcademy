@@ -177,13 +177,18 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
             <Download size={13} aria-hidden="true" />
           </button>
         ) : (
-          <span
+          <button
+            type="button"
             className="rail-open is-disabled"
             aria-disabled="true"
+            onClick={(e) => {
+              e.stopPropagation()
+              toast.apiError('Quiz file failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Canvas QTI file.'))
+            }}
             title="The file failed to build — ask again in chat to rebuild it"
           >
             <Download size={13} aria-hidden="true" />
-          </span>
+          </button>
         )}
       </span>
     </div>
