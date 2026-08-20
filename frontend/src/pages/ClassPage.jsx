@@ -699,10 +699,8 @@ function ClassDetail({ cls, frameworks, onChanged }) {
     }
   }
 
-  const [activeTab, setActiveTab] = useState('curriculum')
-
   return (
-    <div className="w-full max-w-3xl flex flex-col gap-6 pb-16">
+    <div className="w-full max-w-3xl flex flex-col gap-12 pb-16">
       
       <header className="mb-2">
         <div className="flex items-center gap-3">
@@ -715,31 +713,9 @@ function ClassDetail({ cls, frameworks, onChanged }) {
         </div>
       </header>
 
-      <div className="flex gap-6 border-b border-edge">
-        <button 
-          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'curriculum' ? 'border-ink text-ink' : 'border-transparent text-ink-muted hover:text-ink'}`}
-          onClick={() => setActiveTab('curriculum')}
-        >
-          Curriculum & Standards
-        </button>
-        <button 
-          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-ink text-ink' : 'border-transparent text-ink-muted hover:text-ink'}`}
-          onClick={() => setActiveTab('history')}
-        >
-          Lesson Plan History
-        </button>
-        <button 
-          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'settings' ? 'border-mark text-mark' : 'border-transparent text-ink-muted hover:text-ink'}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          Settings
-        </button>
-      </div>
-
-      {activeTab === 'curriculum' && (
-        <div className="flex flex-col gap-8 animate-in fade-in duration-200">
-          <section className="flex flex-col gap-4">
-            <div className="border-b border-edge pb-2">
+      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+        <section className="flex flex-col gap-4">
+          <div className="border-b border-edge pb-2">
               <h3 className="text-sm font-semibold text-ink">Documents</h3>
               <p className="text-xs text-ink-muted">Pacing guides and syllabi used to context-ground your plans.</p>
             </div>
@@ -754,26 +730,22 @@ function ClassDetail({ cls, frameworks, onChanged }) {
             ) : null}
             
             <ClassDocuments cls={cls} onChanged={onChanged} />
-            <ClassStandards cls={cls} />
-          </section>
-        </div>
-      )}
+          <ClassStandards cls={cls} />
+        </section>
+      </div>
 
-      {activeTab === 'history' && (
-        <div className="flex flex-col gap-8 animate-in fade-in duration-200">
-          <section className="flex flex-col gap-4">
+      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+        <section className="flex flex-col gap-4">
             <div className="border-b border-edge pb-2">
               <h3 className="text-sm font-semibold text-ink">Weeks</h3>
               <p className="text-xs text-ink-muted">School calendar and lesson plan history for this class.</p>
             </div>
-            <ClassWeeks cls={cls} />
-          </section>
-        </div>
-      )}
+          <ClassWeeks cls={cls} />
+        </section>
+      </div>
 
-      {activeTab === 'settings' && (
-        <div className="flex flex-col gap-8 animate-in fade-in duration-200">
-          <section className="flex flex-col gap-4">
+      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+        <section className="flex flex-col gap-4">
             <div className="border-b border-edge pb-2">
               <h3 className="text-sm font-semibold text-ink">Edit Class Details</h3>
               <p className="text-xs text-ink-muted">Change the subject or grade level for this class.</p>
@@ -812,7 +784,6 @@ function ClassDetail({ cls, frameworks, onChanged }) {
             </div>
           </section>
         </div>
-      )}
 
     </div>
   )
