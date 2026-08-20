@@ -163,12 +163,15 @@ def get_frameworks():
     ]
     
     if "Special_Education" not in counts:
+        core_subjects = ["AP_Lang", "ELA", "Math", "Math_AWF", "Science", "Social_Studies"]
+        sp_chunks = sum(counts.get(s, 0) for s in core_subjects)
+        sp_verb = sum(verbatim.get(s, 0) for s in core_subjects)
         result.append({
             "id": "Special_Education",
             "label": SUBJECT_LABELS["Special_Education"],
             "grades": [9, 10, 11, 12],
-            "chunks": 0,
-            "verbatim_ok": 0,
+            "chunks": sp_chunks,
+            "verbatim_ok": sp_verb,
         })
 
     result.sort(key=lambda f: (

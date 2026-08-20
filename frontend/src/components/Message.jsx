@@ -171,7 +171,11 @@ export function Message({ message, subject, onRetry, onEdit, onAnswerQuestions, 
                      still visually distinct while both read as boxed. */
                   'neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
           }
-          style={isUser ? { backgroundColor: 'rgba(167, 139, 250, 0.15)', color: 'var(--ink)' } : undefined}
+          /* Token, not a raw rgba() literal — the literal never adapted in
+             dark mode, so the teacher's own bubble stayed the same light
+             lavender tint regardless of theme while every other surface
+             (--accent-tint, --paper-raised) properly switched. */
+          style={isUser ? { backgroundColor: 'rgb(var(--msg-user-bg-rgb) / 0.15)', color: 'var(--ink)' } : undefined}
         >
           {isUser ? (
             <p className="m-0 whitespace-pre-wrap">{message.content}</p>

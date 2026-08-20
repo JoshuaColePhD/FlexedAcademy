@@ -166,14 +166,19 @@ def week_system_prompt(
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
         "date or a school year.\n\n" + calendar_context(school_id),
+        "TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — align this week's unit, "
+        "sequencing, and any texts or milestones it names. Still cite standards "
+        "ONLY from the Retrieved standards block below; this document has no "
+        "standard codes of its own to cite.\n\n" + map_context
+        if map_context
+        else "",
         (
-            "TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — align this week's unit, "
-            "sequencing, and any texts or milestones it names. Still cite standards "
-            "ONLY from the Retrieved standards block below; this document has no "
-            "standard codes of its own to cite.\n\n" + map_context
-            if map_context
-            else ""
-        ),
+            "SPECIAL EDUCATION / COLLABORATIVE INSTRUCTIONS: The teacher is in a "
+            "co-teaching or resource setting. You MUST integrate any IEP goals, accommodations, "
+            "or specialized instructions they provided in their request into the 'during' and "
+            "'assessment' blocks of the lesson plan to show how the general education standards "
+            "are being made accessible."
+        ) if subject == "Special_Education" else "",
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         _coverage_notice(result),
@@ -235,6 +240,13 @@ def day_system_prompt(
         + (format_context(result) or "(none)"),
         "THE FULL WEEK, for context only — do NOT rewrite the other days:\n\n"
         + full_plan_context,
+        (
+            "SPECIAL EDUCATION / COLLABORATIVE INSTRUCTIONS: The teacher is in a "
+            "co-teaching or resource setting. You MUST integrate any IEP goals, accommodations, "
+            "or specialized instructions they provided in their request into the 'during' and "
+            "'assessment' blocks of the lesson plan to show how the general education standards "
+            "are being made accessible."
+        ) if subject == "Special_Education" else "",
         f"""TASK:
 
 Apply the teacher's feedback to the single day given. Keep the day's `name`
@@ -315,6 +327,13 @@ def day_field_system_prompt(
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         "THE FULL WEEK, for context only — do NOT rewrite any of it:\n\n" + full_plan_context,
+        (
+            "SPECIAL EDUCATION / COLLABORATIVE INSTRUCTIONS: The teacher is in a "
+            "co-teaching or resource setting. You MUST integrate any IEP goals, accommodations, "
+            "or specialized instructions they provided in their request into the 'during' and "
+            "'assessment' blocks of the lesson plan to show how the general education standards "
+            "are being made accessible."
+        ) if subject == "Special_Education" else "",
         f"""TASK:
 
 Rewrite ONLY the `{field}` value of the day given, applying the teacher's

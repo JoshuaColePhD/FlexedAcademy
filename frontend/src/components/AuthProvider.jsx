@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AuthContext, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from '../lib/authContext'
 import { api } from '../lib/api'
 
@@ -26,13 +26,50 @@ export function AuthProvider({ children }) {
         // return-from-checkout poll) can read it without racing React state.
         return u
       })
-      .catch(() => {
-        setUser(null)
-        setStatus('anon')
-        setAuthedState(false)
+      .catch((err) => {
+        /* "The request failed" is not "you are signed out".
+         *
+         * This collapsed every failure into anon, and a 401 and a timeout are
+         * indistinguishable once you throw the error away. api.js aborts every
+         * request at 20 seconds; this app's own keepwarm/README.md records that
+         * the free Render instance sleeps after 15 minutes idle and takes ~50s
+         * to wake, and the pinger that hides that only runs Mon–Fri 7am–4pm.
+         * So the first /api/auth/me of an evening or weekend load — exactly
+         * when a teacher plans — reliably timed out, flipped to anon, and
+         * dropped her at the sign-in form with a perfectly valid session. It
+         * also cleared KNOWN_AUTHED_KEY, so the next cold load skipped
+         * BootScreen too and went straight to the login redirect.
+         *
+         * Only a real 401 means signed out. Anything else keeps the previous
+         * state and lets the retry below settle it — the same distinction
+         * RootRedirect and AfterAuthRedirect in App.jsx already make, both
+         * citing this bug class in their own comments. */
+        if (err?.status === 401) {
+          setUser(null)
+          setStatus('anon')
+          setAuthedState(false)
+          return null
+        }
+        // Transport failure. If we already know who this is, say nothing and
+        // keep them signed in; otherwise stay in 'loading' so the shell holds
+        // rather than accusing them of being logged out, and try once more.
+        if (!retriedRef.current) {
+          retriedRef.current = true
+          // A cold instance answers well inside a second attempt once it is up.
+          setTimeout(() => refreshRef.current?.(), 1500)
+        }
         return null
       })
   }, [])
+
+  /* Bounds the retry above to one attempt per mount, and gives the catch a
+     stable way to call the current refresh without making refresh depend on
+     itself. */
+  const retriedRef = useRef(false)
+  const refreshRef = useRef(refresh)
+  useEffect(() => {
+    refreshRef.current = refresh
+  }, [refresh])
 
   useEffect(() => {
     refresh()

@@ -310,9 +310,18 @@ function Gate() {
           sign-in form to someone who is signed in. */}
       <Route path="/login" element={<AfterAuthRedirect />} />
       <Route path="/signup" element={<AfterAuthRedirect />} />
-      {/* Already signed in — the emailed link's job (log them in) is already
-          done, and change-password now lives in settings. */}
-      <Route path="/reset-password" element={<AfterAuthRedirect />} />
+      {/* Renders even when signed in, unlike /login and /signup above.
+          The old comment here read "the emailed link's job (log them in) is
+          already done, and change-password now lives in settings" — the first
+          half is true and the second half is the trap. Settings' change-password
+          requires the CURRENT password, which is the thing a teacher following a
+          reset link has forgotten. The session cookie lasts 30 days, so clicking
+          that link on the laptop she is already signed in on is the likely case,
+          and it silently redirected her into the app (or to /welcome, which
+          reads as an unrelated malfunction) while the still-valid token expired
+          unused. ResetPasswordPage works signed in or out by design — the token
+          in the URL is the credential, not the cookie. */}
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/shared/:id" element={<SharedPlanPage />} />

@@ -1467,27 +1467,48 @@ export function ChatPage() {
 
 
   // Proactively mutate UI from WebRTC data channel events!
+  //
+  // planIdRef tracks the artifact currently on screen without this effect
+  // depending on `artifact` — that dependency was the bug. Two
+  // voice:tool_call events landing before this effect had re-run with a
+  // fresh `artifact` closure both built `newDays` from the SAME stale
+  // `artifact.plan.days`, so the second setArtifact call clobbered the
+  // first edit on screen (the server-side api.updateDay for the first edit
+  // still succeeded — only the visible document lost it, until a reload
+  // re-fetched the plan). Building newDays entirely inside the functional
+  // updater means it always starts from the latest state, no matter how
+  // many of these fire back-to-back.
+  const planIdRef = useRef(artifact?.planId)
+  useEffect(() => {
+    planIdRef.current = artifact?.planId
+  }, [artifact?.planId])
+
   useEffect(() => {
     const handler = async (e) => {
-      if (e.detail.name === 'update_lesson_plan') {
-        const { day_index, field, content } = e.detail.args
-        if (artifact?.planId && artifact?.plan?.days) {
-          const newDays = [...artifact.plan.days]
-          if (newDays[day_index]) {
-            newDays[day_index] = { ...newDays[day_index], [field]: content }
-            setArtifact(prev => ({ ...prev, plan: { ...prev.plan, days: newDays } }))
-            try {
-              await api.updateDay(artifact.planId, day_index, { field, content })
-            } catch (err) {
-               console.error("Failed to save day update", err)
-            }
-          }
-        }
+      if (e.detail.name !== 'update_lesson_plan') return
+      const { day_index, field, content } = e.detail.args
+      const planId = planIdRef.current
+      if (!planId) return
+
+      let changed = false
+      setArtifact((prev) => {
+        if (!prev?.plan?.days?.[day_index]) return prev
+        changed = true
+        const newDays = [...prev.plan.days]
+        newDays[day_index] = { ...newDays[day_index], [field]: content }
+        return { ...prev, plan: { ...prev.plan, days: newDays } }
+      })
+      if (!changed) return
+
+      try {
+        await api.updateDay(planId, day_index, { field, content })
+      } catch (err) {
+        console.error('Failed to save day update', err)
       }
     }
     window.addEventListener('voice:tool_call', handler)
     return () => window.removeEventListener('voice:tool_call', handler)
-  }, [artifact])
+  }, [])
 
   /* The clarification the conversation is currently waiting on, if any.
      Only ever the LAST message's — an older unanswered set has been
@@ -2041,6 +2062,12 @@ export function ChatPage() {
                     <VoiceModePanel
                       onClose={closeVoice}
                       onUtterance={submit}
+                      /* So the panel's "Try again" can call voice.unlock() with
+                         the same context this conversation opened with — see
+                         retryMic's own comment for why this was missing. */
+                      chatId={chatId ?? null}
+                      weekNumber={conversationWeek ?? null}
+                      voiceMode="brainstorm"
                       getWarmMic={claimWarmMic}
                       busy={busy}
                       isSpeaking={voice.speaking}

@@ -173,46 +173,6 @@ const location = useLocation()
 
         <span className="flex-1" />
 
-        {planId ? (
-          <>
-            {/* Not on a phone: collapse + Download already fill 375px, and
-                both Rebuild and Share are power actions where Download is
-                the reason the app exists. */}
-            <button
-              type="button"
-              className={`btn-icon${isPhone ? ' hidden' : ''}`}
-              onClick={rebuild}
-              disabled={rebuilding}
-              aria-label="Rebuild the document from the saved plan"
-              title="Rebuild the document"
-            >
-              {rebuilding ? (
-                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-              ) : (
-                <RefreshCw size={16} aria-hidden="true" />
-              )}
-            </button>
-            <button
-              type="button"
-              className={`btn-icon${isPhone ? ' hidden' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                copyPlanShareLink(planId, toast)
-              }}
-              title="Copy Link"
-              aria-label="Copy public link to this plan"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-            </button>
-            <a
-              className="btn-icon"
-              href={api.planDownloadUrl(planId)}
-              download
-              title="Download Document"
-              aria-label="Download the .docx file"
-            >
-              <Download size={16} aria-hidden="true" />
-            </a>
             <button
               type="button"
               className="doc-download fa-press flex items-center gap-1.5"
@@ -225,9 +185,8 @@ const location = useLocation()
                   <TriangleAlert size={14} className="text-amber-500" aria-hidden="true" />
                 </Tooltip>
               ) : null}
-              <Share2 size={14} aria-hidden="true" /> Export
+              <Download size={14} aria-hidden="true" /> Download
             </button>
-          </>
         ) : (
           <span className="doc-download" aria-disabled="true" style={{ opacity: 0.45 }}>
             <Download size={14} aria-hidden="true" /> Download
@@ -279,7 +238,13 @@ const location = useLocation()
         open={shareOpen}
         onClose={() => setShareOpen(false)}
         planId={planId}
-        weekLabel={plan?.week_of}
+        // ShareDialog reads this prop as `documentName` — it was named
+        // `weekLabel` here, a prop the dialog never declared, so it read as
+        // undefined and every share opened from this viewer fell back to a
+        // generic "Export this file" / "The plan is now in your Google Drive"
+        // instead of naming the week, unlike the same dialog opened from
+        // ArtifactRail.
+        documentName={plan?.week_of}
         downloadUrl={planId ? api.planDownloadUrl(planId) : undefined}
         returnTo={`${location.pathname}${location.search}`}
       />

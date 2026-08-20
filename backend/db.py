@@ -1240,6 +1240,25 @@ MIGRATIONS: list[str] = [
     ALTER TABLE plans ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE plans ADD COLUMN IF NOT EXISTS shared_at TEXT;
     """,
+
+    # ── 40: which accounts are Google accounts ────────────────────────────────
+    #
+    # An email address was the only thing tying a Google sign-in to a row in
+    # `users`, and password_hash IS NULL was the only marker that a row had no
+    # local password. signup() read that second fact as "an unclaimed
+    # placeholder seat, free to take" — which every Google account in the
+    # product matched. Verified live before the fix: POST /api/auth/signup with
+    # a Google account's email returned 200 and a valid session for its owner.
+    #
+    # Google's `sub` is the stable, immutable identifier for the account (email
+    # is mutable and reassignable), so it is what google_login matches on now.
+    # Nullable and backfilled on next sign-in rather than migrated: nothing can
+    # derive a sub for an existing row, and google_login falls back to the email
+    # lookup so no one is locked out while the column fills in.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_key ON users (google_sub) WHERE google_sub IS NOT NULL;
+    """,
 ]
 
 
@@ -3145,16 +3164,44 @@ def mark_onboarding_seen(user_id: str) -> dict | None:
     return get_user_by_id(user_id)
 
 
-def claim_user(user_id: str, name: str, password_hash: str) -> dict:
-    """Sets a password on a placeholder account (password_hash IS NULL) —
-    the 'default_user' row seeded by the v6 migration, or any future account
-    created without a login (an admin-provisioned seat, say). Not a generic
-    password reset: only works while password_hash is still NULL."""
+# claim_user() was here, and is deliberately gone.
+#
+# It set a password on any account whose password_hash was NULL and returned
+# that account, and routes/auth.py's signup() then issued a session for it. The
+# docstring justified it as "a placeholder seat (the 'default_user' row seeded
+# by the v6 migration, or any future account created without a login)" — but
+# Google sign-in creates real accounts in exactly that state, so the function
+# amounted to "hand this account to whoever asks for it by email". Verified as a
+# working account takeover before removal. signup() was its only caller and
+# there is no seat-provisioning flow in this app, so nothing replaced it.
+#
+# Note the second flaw, in case this shape is ever reintroduced: the UPDATE was
+# guarded with `AND password_hash IS NULL`, but the return was an unconditional
+# get_user_by_id(). So even when the write correctly did nothing, the caller
+# still received the user and logged in as them. A guard that protects the write
+# but not the value handed back is not a guard.
+
+
+def get_user_by_google_sub(google_sub: str) -> dict | None:
+    """Look up an account by Google's immutable subject id (migration 40)."""
+    if not google_sub:
+        return None
+    return _row("SELECT * FROM users WHERE google_sub = ?", (google_sub,))
+
+
+def link_google_sub(user_id: str, google_sub: str) -> None:
+    """Attach a Google account id to a user row, once.
+
+    `AND google_sub IS NULL` so a re-link can never move an existing linkage,
+    and so two concurrent sign-ins cannot fight over it. Existing accounts
+    (which predate the column) pick theirs up on the next Google sign-in.
+    """
+    if not google_sub:
+        return
     _write(
-        "UPDATE users SET name = ?, password_hash = ? WHERE id = ? AND password_hash IS NULL",
-        (name.strip(), password_hash, user_id),
+        "UPDATE users SET google_sub = ? WHERE id = ? AND google_sub IS NULL",
+        (google_sub, user_id),
     )
-    return get_user_by_id(user_id)  # type: ignore[return-value]
 
 
 def update_password(user_id: str, password_hash: str) -> None:

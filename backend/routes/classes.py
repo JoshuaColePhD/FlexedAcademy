@@ -164,7 +164,15 @@ def update_class_route(
     # exemption as that check too — see its comment.
     if body.school is not None and body.school != NO_CALENDAR_SCHOOL_ID and not db.get_school(body.school):
         raise AppError("unknown_school", "Unknown school.", status=400)
-    updated = db.update_class(user_id, class_id, **body.model_dump(exclude_none=True))
+    fields = body.model_dump(exclude_none=True)
+    if "subject" in fields or "grade" in fields:
+        cls = db.get_class(user_id, class_id)
+        if cls:
+            subj = fields.get("subject", cls["subject"])
+            grd = fields.get("grade", cls["grade"])
+            fields["name"] = _auto_name(subj, grd)
+
+    updated = db.update_class(user_id, class_id, **fields)
     return updated  # type: ignore[return-value]
 
 

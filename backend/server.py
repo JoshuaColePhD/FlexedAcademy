@@ -69,11 +69,36 @@ async def lifespan(app: FastAPI):
         log.error("BUILDER CHECK FAILED: %s — %s", e.message, e.hint or "")
     if not settings.has_api_key:
         log.warning("OPENAI_API_KEY is not set; generation and transcription will fail.")
-    if settings.session_secret == "dev-only-insecure-secret-set-a-real-one-in-env":
-        log.warning(
-            "SESSION_SECRET is not set — using the insecure dev default. Every "
-            "login session cookie is forgeable until a real one is set in .env."
+    # Compared against config.py's ACTUAL default, and against empty.
+    #
+    # This tested for "dev-only-insecure-secret-set-a-real-one-in-env", a string
+    # that appears nowhere else in the codebase — the real default is
+    # "dev-secret-do-not-use-in-production" (config.py). So the comparison was
+    # always False and this warning could never print. .env.example also ships
+    # SESSION_SECRET="", which keys every HMAC with the empty string and was
+    # equally unwarned.
+    #
+    # And a warning is not enough when REQUIRE_LOGIN is on: a forgeable session
+    # cookie means anyone can mint a valid login for any account, so a
+    # production boot with a default secret should not be a line in a log file
+    # nobody is reading. It refuses to start.
+    _INSECURE_SECRETS = {
+        "",
+        "dev-secret-do-not-use-in-production",
+        "dev-only-insecure-secret-set-a-real-one-in-env",
+    }
+    if settings.session_secret.strip() in _INSECURE_SECRETS:
+        message = (
+            "SESSION_SECRET is unset or still the dev default. The session cookie is a "
+            "signed user id, so every teacher's login is forgeable by anyone who knows "
+            "this value — and it is in version control."
         )
+        if settings.require_login:
+            raise RuntimeError(
+                message + " Refusing to start with REQUIRE_LOGIN=true. Set a real "
+                "SESSION_SECRET (Render: generateValue, or `openssl rand -hex 32`)."
+            )
+        log.warning("%s Allowed only because REQUIRE_LOGIN is false (local dev).", message)
     misc.purge_legacy_temp()
     yield
     db.close()
@@ -142,14 +167,43 @@ dist_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 if os.path.isdir(dist_dir):
     app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
 
+    # Resolved once, and every candidate path has to stay underneath it.
+    dist_root = os.path.realpath(dist_dir)
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        # Serve exact file if it exists (e.g. favicon.ico, images)
-        file_path = os.path.join(dist_dir, full_path)
-        if full_path and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        # Otherwise serve index.html for React Router
-        return FileResponse(os.path.join(dist_dir, "index.html"))
+        """Serve a built asset, else index.html so React Router can route it.
+
+        The containment check below is not defensive programming, it is a fix.
+        This handler used to be `os.path.join(dist_dir, full_path)` with no
+        validation, and `:path` matches `.*`. uvicorn percent-decodes the request
+        target before Starlette routes it and Starlette does not normalise `..`,
+        so `GET /%2e%2e/%2e%2e/.env` arrived here as full_path="../../.env" and
+        os.path.join resolved it to the project root's .env — which is exactly
+        where config.py reads SESSION_SECRET and OPENAI_API_KEY from.
+
+        Measured against the running server before this change: three separate
+        encodings each returned HTTP 200 and 1081 bytes of .env. A leaked
+        SESSION_SECRET is not one account, it is every account — the session
+        cookie is a signed uid, so anyone holding the secret can mint a valid
+        cookie for any teacher.
+
+        The /assets mount above is StaticFiles, which has this protection built
+        in. Only this hand-rolled sibling was missing it.
+        """
+        index = os.path.join(dist_root, "index.html")
+        if not full_path:
+            return FileResponse(index)
+        candidate = os.path.realpath(os.path.join(dist_root, full_path))
+        # os.path.commonpath, not startswith: "/a/dist-secrets" startswith
+        # "/a/dist" is True, and realpath resolves symlinks out of the way first.
+        inside = candidate == dist_root or os.path.commonpath([candidate, dist_root]) == dist_root
+        if inside and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        # Anything outside the build directory is not "forbidden", it is simply
+        # not a file this app serves — so it falls through to the SPA exactly
+        # like any other unknown client-side route.
+        return FileResponse(index)
 else:
     @app.get("/")
     def root():

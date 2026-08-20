@@ -24,6 +24,8 @@ SUITES: list[tuple[str, bool]] = [
     ("test_grounding_audit.py", False),
     ("test_field_scoped_revise.py", False),
     ("test_entitlement.py", False),
+    # Needs the live DB (no test double exists for it), so --fast skips it.
+    ("test_security_contracts.py", True),
     ("test_chat_pacing_guide.py", False),
     ("test_chat_week_context.py", False),
     ("test_schoolcal_per_school.py", False),

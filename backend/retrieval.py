@@ -252,6 +252,8 @@ def course_variants(subject_code: str | None) -> tuple[str, ...]:
     """
     if not subject_code:
         return ()
+    if subject_code == "Special_Education":
+        return ("Special_Education", "AP_Lang", "ELA", "Math", "Math_AWF", "Science", "Social_Studies")
     found = _courses_by_identity().get(normalize_course(subject_code), ())
     return tuple(dict.fromkeys((subject_code, *found)))
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Download, ExternalLink, Loader2, Upload } from 'lucide-react'
 import { api } from '../lib/api'
-import { copyPlanShareLink } from '../lib/shareLink'
+import { copyPlanShareLink, stopSharingPlan } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -33,6 +33,13 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('reader')
   const [submitting, setSubmitting] = useState(false)
+  /* Whether THIS plan's /shared/{id} link currently works — null while
+   * unknown. This dialog used to show the link and the "Copy" button
+   * unconditionally, with no way to tell whether the plan was actually public
+   * or to turn it back off: `stopSharingPlan` existed in lib/shareLink.js and
+   * was never called from anywhere in the app. A teacher had no way to check
+   * "is this still shared?" short of asking someone to try the link. */
+  const [isPublic, setIsPublic] = useState(null)
 
   // Reset to a clean loading state every time the dialog opens on a
   // (possibly different) plan, rather than flashing the previous plan's
@@ -44,7 +51,30 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
     setWebLink(null)
     setEmail('')
     setRole('reader')
+    setIsPublic(null)
   }, [open, planId])
+
+  // Independent of the Drive status effect below — the public link works
+  // whether or not Drive is ever connected, so its state can't be gated
+  // behind that fetch. GET /api/plans/{id} already returns `is_public`
+  // (backend/db.py's _hydrate_plan does a plain SELECT * with no column
+  // stripping), so no new endpoint was needed — this dialog just never read
+  // the field that was already there.
+  useEffect(() => {
+    if (!open || isQuiz) return undefined
+    let cancelled = false
+    api
+      .getPlan(planId)
+      .then((p) => {
+        if (!cancelled) setIsPublic(!!p.is_public)
+      })
+      .catch(() => {
+        if (!cancelled) setIsPublic(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, planId, isQuiz])
 
   useEffect(() => {
     if (!open || isQuiz) return undefined
@@ -156,33 +186,57 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
 
         {!isQuiz && (
           <div className="mb-6 rounded-lg bg-paper-sunken p-4 border border-edge">
-            <h3 className="text-sm font-medium">Share a read-only link</h3>
-            {/* The old copy presented the link as already live, and the input
-                below showed it as though it were. It wasn't a link yet — nothing
-                had told the server this plan was shared. Now Copy is what
-                creates it, and the wording says so, because "who can see this"
-                is the one thing a teacher must not have to guess about a
-                document with their name on it. */}
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium">Share a read-only link</h3>
+              {/* The dialog used to look identical whether the plan was public
+                  or not — no way to tell, short of asking someone to try the
+                  link. isPublic === null is "still checking", not "off",
+                  so nothing renders here until the fetch above resolves. */}
+              {isPublic ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-ok-tint px-2 py-0.5 text-2xs font-medium text-ok">
+                  <Check size={11} aria-hidden="true" /> Shared
+                </span>
+              ) : null}
+            </div>
             <p className="mt-1 text-sm text-ink-soft mb-3">
-              Copy the link to share this plan. Anyone who has it can read the week and
-              copy it into their own classes — no account needed. You can turn the link
-              off again whenever you like.
+              {isPublic
+                ? 'Anyone with this link can read the week and copy it into their own classes — no account needed.'
+                : "Copy the link to share this plan. Anyone who has it can read the week and copy it into their own classes — no account needed."}
             </p>
             <div className="flex gap-2">
-              <input 
-                type="text" 
-                readOnly 
-                value={`${window.location.origin}/shared/${planId}`} 
+              <input
+                type="text"
+                readOnly
+                value={`${window.location.origin}/shared/${planId}`}
                 className="input flex-1 bg-paper-inset text-ink-muted select-all font-mono text-xs"
                 onClick={e => e.target.select()}
               />
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="btn shrink-0"
-                onClick={() => copyPlanShareLink(planId, toast)}
+                onClick={async () => {
+                  const ok = await copyPlanShareLink(planId, toast)
+                  if (ok) setIsPublic(true)
+                }}
               >
                 Copy
               </button>
+              {/* stopSharingPlan (lib/shareLink.js) has existed since the
+                  sharing fix landed and was never called from anywhere in the
+                  app — this is the missing "turn it off" the dialog's own copy
+                  above has always promised. */}
+              {isPublic ? (
+                <button
+                  type="button"
+                  className="btn shrink-0"
+                  onClick={async () => {
+                    const ok = await stopSharingPlan(planId, toast)
+                    if (ok) setIsPublic(false)
+                  }}
+                >
+                  Stop sharing
+                </button>
+              ) : null}
             </div>
           </div>
         )}

@@ -34,7 +34,12 @@ export default function ResetPasswordPage() {
       await resetPassword(token, password)
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err.message || 'That link didn’t work.')
+      /* err.hint too, not just the message. The backend already computes the
+         one instruction that matters for the common case — an expired link
+         carries hint: "Request a new one from the sign-in page." — and this
+         page was throwing it away, leaving a teacher staring at "That reset
+         link is invalid or has expired." inside a form with no next step. */
+      setError([err?.message || 'That link didn’t work.', err?.hint].filter(Boolean).join(' '))
       setLoading(false)
     }
   }

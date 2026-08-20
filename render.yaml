@@ -47,6 +47,31 @@ services:
       # undefined and the Google button on the login page renders but fails.
       - key: VITE_GOOGLE_CLIENT_ID
         sync: false
+      # The BACKEND half of the same credential, and a separate variable in this
+      # codebase. It was missing from this file entirely, which made "Continue
+      # with Google" — the sign-in path the login page offers first — fail 100%
+      # of the time in production: verify_google_token returns None the moment
+      # settings.google_client_id is falsy (auth.py), and google_login turns
+      # that into "Invalid Google token", which the form shows to the teacher as
+      # though she had done something wrong. Same value as VITE_GOOGLE_CLIENT_ID.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+      # ── transactional email (Resend) ──────────────────────────────────────
+      # Without these, "Forgot your password?" is a permanent silent no-op:
+      # mail.send() logs a warning and returns False, forgot_password discards
+      # that boolean and answers {"ok": true}, and the UI tells the teacher a
+      # link is on its way. For an email+password account there is no other
+      # recovery path, so the account is simply lost.
+      #
+      # EMAIL_FROM matters as much as the key: it defaults to Resend's sandbox
+      # sender, which by design only delivers to the inbox that owns the API
+      # key — so with the key set and this unset, reset mail reaches nobody but
+      # you. Use an address on a domain verified with Resend.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
 
       # ── billing (Stripe) ─────────────────────────────────────────────────
       # The subscription gate is INERT until all three of these are set, so

@@ -10,8 +10,8 @@ import { unitSuffix } from '../lib/planShape'
 import { shortRange } from '../lib/dates'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
-import { ShareDialog } from './ShareDialog'
 import { Skeleton, SkeletonText } from './Skeleton'
+import { ShareDialog } from './ShareDialog'
 
 /* The same embossed shell ArtifactPanel uses for the lesson plan itself
  * (.doc-shell/.doc-head/.doc-body — see that component's own header
@@ -448,6 +448,8 @@ export function ArtifactDetailPanel({
   // which has always had Share right in its own header. Same ShareDialog
   // ArtifactRail's collapsed card already opens for a quiz, just triggered
   // from here too now.
+  const [isEditing, setIsEditing] = useState(false)
+  const [docContent, setDocContent] = useState(doc?.content || '')
   const [shareOpen, setShareOpen] = useState(false)
 
   useFocusTrap(panelRef, {
@@ -502,26 +504,15 @@ export function ArtifactDetailPanel({
             Share (ArtifactRail.jsx's QuizRow) — nothing to export or share
             until the file actually built. */}
         {kind === 'quiz' && quiz?.has_qti && planId ? (
-          <>
-            <a
-              className="btn-icon"
-              href={api.quizDownloadUrl(planId, quiz.id)}
-              download
-              title="Download Quiz"
-              aria-label="Download the .zip file"
-            >
-              <Download size={16} aria-hidden="true" />
-            </a>
-            <button
-              type="button"
-              className="doc-download fa-press flex items-center gap-1.5"
-              onClick={() => setShareOpen(true)}
-              aria-label="Export or Share this quiz"
-              title="Export or Share"
-            >
-              <Share2 size={14} aria-hidden="true" /> Export
-            </button>
-          </>
+          <button
+            type="button"
+            className="doc-download fa-press flex items-center gap-1.5"
+            onClick={() => setShareOpen(true)}
+            title="Download or Share"
+            aria-label="Download or Share this quiz"
+          >
+            <Download size={14} aria-hidden="true" /> Download
+          </button>
         ) : null}
       </div>
 
@@ -540,17 +531,15 @@ export function ArtifactDetailPanel({
         </div>
       </div>
 
-      {kind === 'quiz' ? (
-        <ShareDialog
-          open={shareOpen}
-          onClose={() => setShareOpen(false)}
-          planId={planId}
-          isQuiz
-          quizId={quiz?.id}
-          documentName={quiz?.title}
-          downloadUrl={quiz?.id && planId ? api.quizDownloadUrl(planId, quiz.id) : undefined}
-        />
-      ) : null}
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        planId={planId}
+        isQuiz={kind === 'quiz'}
+        quizId={quiz?.id}
+        documentName={title}
+        downloadUrl={kind === 'quiz' ? api.quizDownloadUrl(planId, quiz?.id) : undefined}
+      />
     </section>
   )
 }

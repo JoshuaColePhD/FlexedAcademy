@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 
+import psycopg2.errors
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
@@ -112,19 +113,46 @@ def signup(body: SignupBody, request: Request, response: Response):
     existing = db.get_user_by_email(body.email)
     if existing is None:
         user = db.create_user(body.email, body.name, auth.hash_password(body.password))
-    elif existing["password_hash"] is None:
-        # A placeholder seat (the migrated 'default_user' account, or a future
-        # admin-provisioned one) — first person to sign up with that email
-        # claims it, and every chat/plan/setting already attached to it.
-        user = db.claim_user(existing["id"], body.name, auth.hash_password(body.password))
-    else:
+        return _log_in(request, response, user)
+
+    # An existing email is ALWAYS a refusal now.
+    #
+    # This used to have a middle branch: if the existing row had no password, it
+    # was treated as an unclaimed placeholder seat, so signup set a password on
+    # it and logged the caller straight in as its owner. That was a full account
+    # takeover, and it was live.
+    #
+    # The branch was written for "the 'default_user' row seeded by the v6
+    # migration, or any future account created without a login (an
+    # admin-provisioned seat, say)" — db.claim_user's own docstring. That premise
+    # expired the day Google sign-in was added: google_login below creates real,
+    # fully-populated accounts with password_hash = None and nothing ever fills
+    # it in (forgot_password deliberately refuses a NULL-hash account and tells
+    # them to use Google). So EVERY Google account in the product sat in the
+    # exact state this branch read as "free to claim".
+    #
+    # Verified before removing it: POST /api/auth/signup with a Google-created
+    # account's email and any password returned 200, issued a valid 30-day
+    # session for that account, and overwrote the owner's name. School email
+    # addresses are guessable by construction, which is the whole attack.
+    #
+    # There is no seat-provisioning route in this app — claim_user had exactly
+    # one caller, this one — so nothing legitimate is lost by refusing. A teacher
+    # whose account has no password is a Google user, and the hint says so
+    # instead of silently handing their account to whoever asked.
+    if existing["password_hash"] is None:
         raise AppError(
             "email_taken",
             "An account with that email already exists.",
-            hint="Log in instead.",
+            hint="Use “Continue with Google” to sign in.",
             status=409,
         )
-    return _log_in(request, response, user)
+    raise AppError(
+        "email_taken",
+        "An account with that email already exists.",
+        hint="Log in instead.",
+        status=409,
+    )
 
 
 @router.post("/login")
@@ -144,17 +172,69 @@ def google_login(body: GoogleLoginBody, request: Request, response: Response):
         raise AppError("invalid_credentials", "Invalid Google token.", status=401)
         
     email = idinfo.get("email")
-    name = idinfo.get("name") or email.split("@")[0]
-    
+    # Guard BEFORE deriving the name. It used to sit two lines lower, after
+    # `email.split("@")[0]`, so a credential with no email claim raised
+    # AttributeError on None and surfaced as an opaque 500 instead of the 401
+    # this line was written to return.
     if not email:
         raise AppError("invalid_credentials", "Google token missing email.", status=401)
-        
-    user = db.get_user_by_email(email)
+
+    # An email address in a Google token only identifies a person if Google says
+    # they proved they own it. verify_google_token checks the signature, the
+    # expiry and the audience — nothing was checking this claim, so a Google
+    # account bearing a teacher's address without having verified it would be
+    # matched to her existing account by the lookup below.
+    #
+    # Explicitly-false is refused; absent is allowed with a warning rather than
+    # a refusal, because locking a real teacher out of her own account over a
+    # claim Google normally always sends is the worse failure of the two.
+    if idinfo.get("email_verified") is False:
+        raise AppError(
+            "invalid_credentials",
+            "That Google account hasn’t verified its email address.",
+            hint="Verify the address with Google, then try again.",
+            status=401,
+        )
+    if "email_verified" not in idinfo:
+        log.warning("google token for %s carried no email_verified claim", email)
+
+    name = idinfo.get("name") or email.split("@")[0]
+
+    # Matched on Google's `sub` first — the stable, immutable id for the Google
+    # account — and only then on the email string. Email is mutable and
+    # reassignable; treating it as the identity is what let signup() confuse a
+    # Google account for an unclaimed seat. Falling back to email keeps every
+    # existing account working (none of them carry a sub yet) and attaches the
+    # sub the first time they sign in, so the linkage backfills itself.
+    sub = idinfo.get("sub")
+    user = db.get_user_by_google_sub(sub) if sub else None
     if not user:
-        # Create a new user for Google sign-in.
-        # No password_hash because they authenticate via Google.
-        user = db.create_user(email, name, password_hash=None)
-        
+        user = db.get_user_by_email(email)
+    if user:
+        if sub and not user.get("google_sub"):
+            db.link_google_sub(user["id"], sub)
+    else:
+        # No password_hash because they authenticate via Google. That state is
+        # no longer claimable by signup() — see the comment there.
+        try:
+            user = db.create_user(email, name, password_hash=None)
+        except psycopg2.errors.UniqueViolation:
+            # Two first-time Google sign-ins for the same brand-new email,
+            # close enough together that both passed the get_user_by_email
+            # check above and both tried to INSERT — users.email is UNIQUE, so
+            # the loser's INSERT raised instead of returning a row, and with
+            # nothing catching it that surfaced as an opaque 500 on the losing
+            # request rather than a normal login. db.borrow()'s own context
+            # manager already rolls back the connection on any exception, so
+            # nothing more is needed there — just re-fetch the row the winner
+            # created and proceed exactly as the "user found" branch above
+            # would have.
+            user = db.get_user_by_email(email)
+            if not user:
+                raise
+        if sub:
+            db.link_google_sub(user["id"], sub)
+
     return _log_in(request, response, user)
 
 
@@ -311,6 +391,20 @@ def reset_password(body: ResetPasswordBody, request: Request, response: Response
             hint="Request a new one from the sign-in page.",
         )
     db.update_password(user["id"], auth.hash_password(body.password))
+    # Revoke every OTHER session before issuing this one.
+    #
+    # A password reset is the thing a teacher does when she thinks somebody got
+    # into her account. Without this, the intruder's cookie kept working for up
+    # to 30 more days: sessions are stateless and validity is decided purely by
+    # `session_version` matching the `sv` claim (deps._verify_current), and
+    # neither reset nor change-password touched it — the only caller of
+    # bump_session_version was sign-out-everywhere. So the one action that is
+    # supposed to lock everyone out locked nobody out.
+    #
+    # Bumped BEFORE _log_in on purpose: _log_in mints the new cookie from the
+    # user row, so it picks up the new version and this device stays signed in
+    # while every other one is dropped.
+    db.bump_session_version(user["id"])
     return _log_in(request, response, db.get_user_by_id(user["id"]))
 
 
@@ -329,4 +423,9 @@ def change_password(body: ChangePasswordBody, request: Request, user_id: str = D
     if not auth.verify_password(body.current_password, user["password_hash"]):
         raise AppError("invalid_credentials", "That current password is incorrect.", status=401)
     db.update_password(user_id, auth.hash_password(body.new_password))
-    return {"ok": True}
+    # Same reasoning as reset_password above. This route has no Response to set
+    # a fresh cookie on, so the bump signs this device out too — which is the
+    # correct, conventional behaviour for "I changed my password": everyone
+    # re-authenticates, including me.
+    db.bump_session_version(user_id)
+    return {"ok": True, "signed_out_everywhere": True}

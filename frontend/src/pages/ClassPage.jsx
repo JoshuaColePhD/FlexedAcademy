@@ -4,6 +4,7 @@ import {
   Check,
   ArrowDown,
   ArrowLeft,
+  ArrowRight,
   ArrowUp,
   
   FileText,
@@ -470,51 +471,9 @@ function ClassDetail({ cls, frameworks, onChanged }) {
   const confirm = useConfirm()
   const toast = useToast()
   const navigate = useNavigate()
-
-  const [name, setName] = useState(cls.name)
-  const [editSubject, setEditSubject] = useState(cls.subject)
-  const [editGrade, setEditGrade] = useState(gradeSelectValue(cls.grade))
-  const [editSchool, setEditSchool] = useState(cls.school || '')
-  const [savingDetails, setSavingDetails] = useState(false)
   
-  const schoolsState = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
-  const schools = schoolsState.data || []
-
-  useEffect(() => setName(cls.name), [cls.name])
-  useEffect(() => {
-    setEditSubject(cls.subject)
-    setEditGrade(gradeSelectValue(cls.grade))
-    setEditSchool(cls.school || '')
-  }, [cls.subject, cls.grade, cls.school])
-
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
-
-  const hasChanges =
-    name.trim() !== cls.name ||
-    editSubject !== cls.subject ||
-    editGrade !== gradeSelectValue(cls.grade) ||
-    editSchool !== (cls.school || '')
-
-  const saveDetails = async () => {
-    if (!editSubject) return
-    const nextName = name.trim() || cls.name
-    setSavingDetails(true)
-    try {
-      await api.updateClass(cls.id, {
-        name: nextName,
-        subject: editSubject,
-        grade: editGrade,
-        ...(editSchool ? { school: editSchool } : {}),
-      })
-      setName(nextName)
-      onChanged?.()
-    } catch (err) {
-      toast.apiError('Could not update that class', err)
-    } finally {
-      setSavingDetails(false)
-    }
-  }
 
   const remove = async () => {
     const ok = await confirm({
@@ -547,98 +506,6 @@ function ClassDetail({ cls, frameworks, onChanged }) {
           <h2 className="text-xl font-semibold text-ink">{cls.name}</h2>
         </div>
       </header>
-
-      {/* General Settings */}
-      <section className="flex flex-col gap-4">
-        <div className="border-b border-edge pb-2">
-          <h3 className="text-sm font-semibold text-ink">General</h3>
-          <p className="text-xs text-ink-muted">Basic details and standards framework for this class.</p>
-        </div>
-        
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 items-end">
-          <label className="block sm:col-span-2 lg:col-span-3">
-            <span className="mb-1 block text-xs text-ink-muted">Class Name</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') saveDetails()
-                if (e.key === 'Escape') setName(cls.name)
-              }}
-              className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
-            />
-          </label>
-
-          <div className="block sm:col-span-2">
-            <span className="mb-1 block text-xs text-ink-muted">Subject / Framework</span>
-            <FrameworkPicker
-              frameworks={frameworks}
-              value={editSubject}
-              onChange={setEditSubject}
-              id={`edit-framework-${cls.id}`}
-            />
-          </div>
-
-          <label className="block">
-            <span className="mb-1 block text-xs text-ink-muted">Grade Level</span>
-            <select
-              aria-label={`Grade for ${cls.name}`}
-              value={gradeSelectValue(editGrade)}
-              onChange={(e) => setEditGrade(e.target.value)}
-              className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-2.5 pr-8 text-sm text-ink"
-            >
-              {GRADES.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          
-          {schools.length > 1 ? (
-            <label className="block sm:col-span-2 lg:col-span-3">
-              <span className="mb-1 block text-xs text-ink-muted">School</span>
-              <SchoolSelect
-                ariaLabel={`School for ${cls.name}`}
-                schools={schools}
-                value={editSchool}
-                onChange={setEditSchool}
-                className="w-full max-w-xs"
-                emptyOption={{ value: '', label: 'Not set — using account default' }}
-              />
-              {schools.find((s) => s.id === editSchool)?.has_pending_calendar ? (
-                <PendingCalendarReview schoolId={editSchool} onDecided={() => schoolsState.refetch()} />
-              ) : null}
-            </label>
-          ) : null}
-        </div>
-
-        {hasChanges && (
-          <div className="flex items-center gap-2 mt-2">
-            <button
-              type="button"
-              onClick={saveDetails}
-              disabled={!editSubject || savingDetails}
-              className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {savingDetails ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
-              Save Changes
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setName(cls.name)
-                setEditSubject(cls.subject)
-                setEditGrade(gradeSelectValue(cls.grade))
-                setEditSchool(cls.school || '')
-              }}
-              className="neo-raised rounded-lg px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-      </section>
 
       {/* Documents */}
       <section className="flex flex-col gap-4">
@@ -704,8 +571,110 @@ function ClassDetail({ cls, frameworks, onChanged }) {
 }
 
 
-function GlobalClassDashboard({ classes, onUpdated }) {
+function DashboardClassRow({ cls, frameworks, selected, onToggle, onUpdate, onNavigate }) {
+  const [subject, setSubject] = useState(cls.subject || '')
+  const [grade, setGrade] = useState(cls.grade || '')
+  const [school, setSchool] = useState(cls.school || '')
+  const [saving, setSaving] = useState(false)
   const toast = useToast()
+
+  useEffect(() => {
+    setSubject(cls.subject || '')
+    setGrade(cls.grade || '')
+    setSchool(cls.school || '')
+  }, [cls.subject, cls.grade, cls.school])
+
+  const handleUpdate = async (field, value) => {
+    if (cls[field] === value) return
+    const updateFn = field === 'subject' ? setSubject : field === 'grade' ? setGrade : setSchool
+    updateFn(value)
+    
+    setSaving(true)
+    try {
+      await api.updateClass(cls.id, { [field]: value })
+      onUpdate()
+    } catch (err) {
+      toast.apiError(`Could not update ${field}`, err)
+      updateFn(cls[field])
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <tr className="transition-colors hover:bg-paper-inset group">
+      <td className="px-4 py-3 whitespace-nowrap w-12">
+        <label className="flex cursor-pointer items-center">
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={selected}
+            onChange={onToggle}
+          />
+          <div
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+              selected ? 'border-accent bg-accent text-white' : 'border-edge bg-paper'
+            }`}
+          >
+            {selected && <Check size={14} strokeWidth={3} />}
+          </div>
+        </label>
+      </td>
+      
+      <td className="px-4 py-3 min-w-[150px]">
+        <div className="flex items-center gap-2">
+          <span
+            className="class-dot h-3 w-3 shrink-0 rounded-full"
+            aria-hidden="true"
+            style={{ '--class-dot-color': `rgb(${classColor(cls.id).rgb})`, backgroundColor: 'var(--class-dot-color)' }}
+          />
+          <span className="font-semibold text-ink truncate block max-w-[180px]" title={cls.name}>{cls.name}</span>
+          {saving && <Loader2 size={12} className="animate-spin text-ink-muted shrink-0" />}
+        </div>
+      </td>
+      
+      <td className="px-4 py-3 min-w-[200px] w-1/3">
+        <FrameworkPicker
+          frameworks={frameworks}
+          value={subject}
+          onChange={(val) => handleUpdate('subject', val)}
+          id={`fw-${cls.id}`}
+        />
+      </td>
+      
+      <td className="px-4 py-3 min-w-[120px]">
+        <select
+          value={grade}
+          onChange={(e) => handleUpdate('grade', e.target.value)}
+          className="neo-select neo-inset w-full rounded-lg bg-paper-sunken py-2 pl-2.5 pr-8 text-sm text-ink transition-shadow"
+        >
+          <option value="">Grade</option>
+          {GRADES.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+        </select>
+      </td>
+      
+      <td className="px-4 py-3 min-w-[160px]">
+        <SchoolSelect
+          value={school}
+          onChange={(val) => handleUpdate('school', val)}
+        />
+      </td>
+      
+      <td className="px-4 py-3 text-right whitespace-nowrap">
+        <button
+           onClick={() => onNavigate(cls.id)}
+           className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-paper-sunken"
+         >
+           Manage <ArrowRight size={14} />
+        </button>
+      </td>
+    </tr>
+  )
+}
+
+function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
+  const toast = useToast()
+  const navigate = useNavigate()
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [archiving, setArchiving] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
@@ -748,48 +717,13 @@ function GlobalClassDashboard({ classes, onUpdated }) {
   }
 
   return (
-    <div className="w-full max-w-3xl pb-16">
+    <div className="w-full max-w-6xl pb-16">
       <div className="mb-8 flex items-center justify-between border-b border-edge pb-4">
         <div>
-          <h2 className="text-lg font-semibold text-ink">Class Management</h2>
-          <p className="text-sm text-ink-muted">Batch archive older classes to keep your sidebar clean.</p>
+          <h2 className="text-xl font-semibold text-ink">Class Dashboard</h2>
+          <p className="text-sm text-ink-muted mt-1">Manage all your classes and assignments from one place.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-             setShowArchived(!showArchived)
-             setSelectedIds(new Set())
-          }}
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          {showArchived ? 'View Active Classes' : `View Archived (${archivedClasses.length})`}
-        </button>
-      </div>
-
-      <div className="neo-panel rounded-xl bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-        <div className="flex items-center justify-between rounded-t-xl border-b border-edge bg-paper-sunken px-4 py-3">
-          <label className="flex cursor-pointer items-center gap-3">
-            <input
-              type="checkbox"
-              className="sr-only"
-              checked={displayedClasses.length > 0 && selectedIds.size === displayedClasses.length}
-              onChange={toggleSelectAll}
-            />
-            <div
-              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
-                displayedClasses.length > 0 && selectedIds.size === displayedClasses.length
-                  ? 'border-accent bg-accent text-white'
-                  : 'border-edge bg-paper'
-              }`}
-            >
-              {displayedClasses.length > 0 && selectedIds.size === displayedClasses.length && (
-                <Check size={14} strokeWidth={3} />
-              )}
-            </div>
-            <span className="text-sm font-medium text-ink-muted select-none">
-              {selectedIds.size} selected
-            </span>
-          </label>
+        <div className="flex items-center gap-3">
           {selectedIds.size > 0 && (
             <button
               type="button"
@@ -801,41 +735,75 @@ function GlobalClassDashboard({ classes, onUpdated }) {
               {showArchived ? 'Restore Selected' : 'Archive Selected'}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => {
+               setShowArchived(!showArchived)
+               setSelectedIds(new Set())
+            }}
+            className="text-sm font-medium text-accent hover:underline bg-accent/10 px-3 py-1.5 rounded-lg"
+          >
+            {showArchived ? 'View Active Classes' : `View Archived (${archivedClasses.length})`}
+          </button>
         </div>
+      </div>
 
-        <ul className="divide-y divide-edge">
-          {displayedClasses.length === 0 ? (
-            <li className="px-4 py-8 text-center text-sm text-ink-muted">
-              {showArchived ? 'No archived classes.' : 'No active classes.'}
-            </li>
-          ) : (
-            displayedClasses.map((c) => (
-              <li key={c.id}>
-                <label className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-paper-inset">
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={selectedIds.has(c.id)}
-                    onChange={() => toggleSelect(c.id)}
+      <div className="neo-panel rounded-xl bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-paper-sunken text-xs font-medium uppercase tracking-wider text-ink-muted border-b border-edge">
+              <tr>
+                <th scope="col" className="px-4 py-3 w-12">
+                  <label className="flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={displayedClasses.length > 0 && selectedIds.size === displayedClasses.length}
+                      onChange={toggleSelectAll}
+                    />
+                    <div
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                        displayedClasses.length > 0 && selectedIds.size === displayedClasses.length
+                          ? 'border-accent bg-accent text-white'
+                          : 'border-edge bg-paper'
+                      }`}
+                    >
+                      {displayedClasses.length > 0 && selectedIds.size === displayedClasses.length && (
+                        <Check size={14} strokeWidth={3} />
+                      )}
+                    </div>
+                  </label>
+                </th>
+                <th scope="col" className="px-4 py-3">Class</th>
+                <th scope="col" className="px-4 py-3">Subject / Framework</th>
+                <th scope="col" className="px-4 py-3">Grade</th>
+                <th scope="col" className="px-4 py-3">School</th>
+                <th scope="col" className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge">
+              {displayedClasses.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-ink-muted">
+                    {showArchived ? 'No archived classes.' : 'No active classes.'}
+                  </td>
+                </tr>
+              ) : (
+                displayedClasses.map((c) => (
+                  <DashboardClassRow
+                    key={c.id}
+                    cls={c}
+                    frameworks={frameworks}
+                    selected={selectedIds.has(c.id)}
+                    onToggle={() => toggleSelect(c.id)}
+                    onUpdate={onUpdated}
+                    onNavigate={(id) => navigate(`/c/${id}`)}
                   />
-                  <div
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
-                      selectedIds.has(c.id)
-                        ? 'border-accent bg-accent text-white'
-                        : 'border-edge bg-paper'
-                    }`}
-                  >
-                    {selectedIds.has(c.id) && <Check size={14} strokeWidth={3} />}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-ink select-none">{c.name}</p>
-                    <p className="text-xs text-ink-muted select-none">{c.subject}{gradeLabel(c.grade) ? ` · Grade ${gradeLabel(c.grade)}` : ''}</p>
-                  </div>
-                </label>
-              </li>
-            ))
-          )}
-        </ul>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
@@ -1030,7 +998,7 @@ export function ClassPage() {
                 {activeClass ? (
                   <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
                 ) : (
-                  <GlobalClassDashboard classes={classes} onUpdated={reloadClasses} />
+                  <GlobalClassDashboard classes={classes} frameworks={frameworks} onUpdated={reloadClasses} />
                 )}
               </motion.div>
             </AnimatePresence>

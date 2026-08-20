@@ -434,6 +434,15 @@ function HeardEcho({ text, onCorrect, onEditingChange }) {
 export function VoiceModePanel({
   onClose,
   onUtterance,
+  // What the "Try again" button re-opens with. The provider owns the actual
+  // connection now (see the `voice` block below), and retryMic() has to call
+  // voice.unlock(chatId, weekNumber, mode) with the SAME context the panel was
+  // opened with — without these, retryMic reset only local, now-inert state
+  // and the button did nothing: the provider stayed in whatever error state it
+  // was in, forever.
+  chatId = null,
+  weekNumber = null,
+  voiceMode = 'brainstorm',
   // ChatPage's claimWarmMic — a getUserMedia() request already started on
   // pointerdown of whatever button opened this panel, so the permission/
   // hardware negotiation has a head start on the mount that's about to
@@ -1464,11 +1473,19 @@ export function VoiceModePanel({
      left behind first, so a second failure re-renders as a fresh error
      rather than looking like the old one never cleared. */
   const retryMic = () => {
+    /* This used to only reset local state and bump retryToken to re-run the
+       (now-gated-off) mic-setup effect below — which no longer does anything,
+       since this panel doesn't capture audio any more. The actual connection
+       lives in VoiceProvider, so retrying it means calling unlock() again,
+       with the same context this panel was opened with. Without this, "Try
+       again" reset a few local flags and left the provider sitting in
+       whatever error state it was already in — a button that looked like it
+       did something and didn't. */
     setErrorMessage(null)
-    setStatus('requesting-mic')
     setMuted(false)
     mutedRef.current = false
     setRetryToken((n) => n + 1)
+    voice.unlock(chatId, weekNumber, voiceMode)
   }
 
   /* Ordered by immediacy, not by pipeline stage: whatever is truest about
@@ -1685,6 +1702,18 @@ export function VoiceModePanel({
      a mode switch is a rare, deliberate choice, not something to give equal
      visual weight to Mute/Hold-to-talk, the control actually used every
      turn. */
+  /* KNOWN GAP, not silently dropped: this toggle and the hold-to-talk button
+     below it are UI-only now. The provider's realtime session uses
+     server-side VAD (backend/routes/generate.py's turn_detection config) and
+     listens continuously regardless of which mode is selected here — Auto vs
+     PTT no longer changes when the microphone is actually heard, only what
+     this panel's own (now-inert) capture engine would have done with it.
+     Worth surfacing to a teacher who picks PTT expecting "nothing is heard
+     until I hold this button": that expectation is not met by the current
+     wiring. Real PTT semantics under WebRTC would mean toggling the live
+     audio track's `enabled` on hold — a small, deliberate follow-up, not
+     bundled into this pass since it's a UX decision (should PTT even survive
+     the migration?) rather than a bug fix. */
   const modeToggleButton = (
     <button
       type="button"

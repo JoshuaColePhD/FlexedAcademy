@@ -51,6 +51,7 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
   const [loading, setLoading] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
+  const [resetError, setResetError] = useState(null)
   const [resetLoading, setResetLoading] = useState(false)
 
   // Preserved across the round trip so a bookmarked /c/x/week/12 with an expired
@@ -79,16 +80,22 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
     e.preventDefault()
     if (!resetEmail) return
     setResetLoading(true)
+    setResetError(null)
     try {
       await api.forgotPassword(resetEmail)
-    } catch {
-      // The backend already answers the same {ok:true} whether or not the
-      // email has an account — a request-level failure (network, 500) is the
-      // only thing that reaches here, and it isn't worth a different message
-      // than the success one: either way there's nothing more to click.
+      setResetSent(true)
+    } catch (err) {
+      /* setResetSent(true) used to live in `finally`, so the form was replaced
+         by "we've sent a link to reset its password" even when the request had
+         failed — and resetSent was never set back, so the input was gone and
+         there was no way to retry a typo or a failed send without reloading.
+         The old comment argued nothing more was worth clicking. What actually
+         reaches this catch is a 20s timeout against a ~50s cold start, a
+         network error, or a 429 from the route's 5/minute limit — and in every
+         one of those "click again" is exactly the right next move. */
+      setResetError(err?.hint || err?.message || 'Could not send that link. Try again.')
     } finally {
       setResetLoading(false)
-      setResetSent(true)
     }
   }
 
@@ -270,6 +277,13 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
                   {resetLoading ? 'Sending…' : 'Send link'}
                 </button>
               </div>
+              {/* The form stays on screen with the address still in it, so a
+                  failed send is one more click rather than a page reload. */}
+              {resetError ? (
+                <p role="alert" className="text-sm text-red-600">
+                  {resetError}
+                </p>
+              ) : null}
             </form>
           )}
         </div>

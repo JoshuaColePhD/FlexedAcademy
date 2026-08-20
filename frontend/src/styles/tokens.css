@@ -204,6 +204,10 @@
   --accent-tint-rgb: 233 239 250;
   --accent-text-rgb: 47 95 191;
   --doc-blue-rgb: 109 158 235; /* the exact value printed in the .docx */
+  /* The teacher's own chat bubble (Message.jsx) — a distinct brand hue on
+     purpose, not one of the semantic tokens above, but still a TOKEN rather
+     than the raw rgba() literal it replaces, so it can adapt in dark mode. */
+  --msg-user-bg-rgb: 167 139 250;
 
   /* ── the marketing brand ─────────────────────────────────────────────────
      Cyan, and DELIBERATELY not --accent.
@@ -430,6 +434,11 @@
   --accent-tint-rgb: 26 39 63;
   --accent-text-rgb: 122 162 240;
   --doc-blue-rgb: 109 158 235;
+  /* Same hue, darkened toward the dark paper rather than kept at the light
+     tint — the light value read as a pastel patch that never adapted, since
+     Message.jsx set it as a raw rgba() literal with no token behind it at
+     all. */
+  --msg-user-bg-rgb: 76 60 122;
 
   /* No dark-mode override: the landing page and the /login, /signup pages are
      both a fixed brand world (see the light-mode comment above --brand-rgb),
