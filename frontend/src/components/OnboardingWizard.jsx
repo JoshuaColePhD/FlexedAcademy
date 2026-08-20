@@ -22,7 +22,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
 import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { ClassDocuments } from '../pages/ClassPage'
-import { GRADES, gradeSelectValue, normalizeGrade } from '../lib/grades'
+
 
 const TIPS = [
   {
@@ -127,7 +127,6 @@ export function OnboardingWizard({ open, onClose, cls }) {
 
   // Confirm-class step
   const [subject, setSubject] = useState(cls?.subject || '')
-  const [grade, setGrade] = useState(gradeSelectValue(cls?.grade))
   const [savingClass, setSavingClass] = useState(false)
   const [classError, setClassError] = useState(false)
 
@@ -155,7 +154,6 @@ export function OnboardingWizard({ open, onClose, cls }) {
     setSchool(cls?.school || '')
     setTemplateFile(null)
     setSubject(cls?.subject || '')
-    setGrade(gradeSelectValue(cls?.grade))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cls?.id])
 
@@ -188,10 +186,10 @@ export function OnboardingWizard({ open, onClose, cls }) {
     if (!open || stepKey !== 'welcome') return
     const next = ['welcome']
     if (!school || schoolNeedsTemplate) next.push('school')
-    if (!subject || !normalizeGrade(cls?.grade)) next.push('class')
+    if (!subject) next.push('class')
     next.push('documents', 'tips', 'done')
     setPlan((prev) => (prev.length === next.length && prev.every((s, i) => s === next[i]) ? prev : next))
-  }, [open, stepKey, school, schoolNeedsTemplate, subject, cls?.grade])
+  }, [open, stepKey, school, schoolNeedsTemplate, subject])
 
   const goTo = (next) => {
     setDirection(plan.indexOf(next) > plan.indexOf(stepKey) ? 1 : -1)
@@ -240,8 +238,8 @@ export function OnboardingWizard({ open, onClose, cls }) {
     setClassError(false)
     setSavingClass(true)
     try {
-      if (subject !== cls?.subject || grade !== normalizeGrade(cls?.grade)) {
-        await api.updateClass(cls.id, { subject, grade })
+      if (subject !== cls?.subject) {
+        await api.updateClass(cls.id, { subject })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
       goNext()
@@ -336,11 +334,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
                   <ClassStep
                     eyebrow={eyebrow}
                     cls={cls}
-                    subject={subject}
                     setSubject={setSubject}
-                    grade={grade}
-                    setGrade={setGrade}
-                    frameworks={frameworks}
                     saving={savingClass}
                     error={classError}
                     onBack={goBack}
@@ -503,8 +497,7 @@ function SchoolStep({
     </div>
   )
 }
-
-function ClassStep({ eyebrow, cls, subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
+function ClassStep({ eyebrow, cls, subject, setSubject, frameworks, saving, error, onBack, onNext }) {
   return (
     <div>
       <StepHeader
@@ -517,23 +510,6 @@ function ClassStep({ eyebrow, cls, subject, setSubject, grade, setGrade, framewo
           <FrameworkPicker frameworks={frameworks} value={subject} onChange={(v) => { setSubject(v); if (error) onNext(); }} id="onboarding-framework" />
           {error && <p className="mt-1.5 text-xs text-mark font-medium px-1">Please select a course to continue</p>}
         </motion.div>
-        <select
-          aria-label="Grade"
-          /* Coerced through the shared normaliser rather than trusted raw.
-             A <select> whose value matches no <option> silently shows its
-             FIRST one, so a class stored as "11th" (migration 38's bug)
-             presented an AP English 11 class here as Kindergarten — with no
-             error, and no sign anything was wrong. */
-          value={gradeSelectValue(grade)}
-          onChange={(e) => setGrade(e.target.value)}
-          className="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-2.5 pr-8 text-sm text-ink outline-none focus:border-accent"
-        >
-          {GRADES.map((g) => (
-            <option key={g.value} value={g.value}>
-              {g.label}
-            </option>
-          ))}
-        </select>
       </div>
       <div className="dialog-actions mt-6">
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
@@ -547,7 +523,6 @@ function ClassStep({ eyebrow, cls, subject, setSubject, grade, setGrade, framewo
     </div>
   )
 }
-
 function DocumentsStep({ eyebrow, cls, onBack, onNext }) {
   return (
     <div>

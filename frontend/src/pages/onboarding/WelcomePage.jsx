@@ -15,7 +15,6 @@ import { SchoolSelect } from '../../components/SchoolSelect'
    created render as 'AP Language & Composition · NaNth'. The comment was
    right and the duplication is what let the same mistake survive in two
    other copies — see lib/grades.js and migration 38. */
-import { GRADES, DEFAULT_GRADE } from '../../lib/grades'
 
 /* A REAL, working school id with NO real calendar behind it on purpose —
  * backend/schoolcal.py's own NO_CALENDAR_SCHOOL_ID returns week NUMBERS
@@ -59,7 +58,6 @@ export function WelcomePage() {
   const [name, setName] = useState(user?.name || '')
   const [school, setSchool] = useState(user?.school || '')
   const [subject, setSubject] = useState('')
-  const [grade, setGrade] = useState(DEFAULT_GRADE)
   const [saving, setSaving] = useState(false)
 
   const { data: frameworks = [] } = useQuery({
@@ -145,7 +143,7 @@ export function WelcomePage() {
       if (name.trim() && name.trim() !== user?.name) patch.name = name.trim()
       if (school !== user?.school) patch.school = school
       if (Object.keys(patch).length) await api.updateMe(patch)
-      const created = await api.createClass({ subject, grade })
+      const created = await api.createClass({ subject })
       await Promise.all([
         qc.invalidateQueries({ queryKey: qk.classes }),
         refresh(),
@@ -329,16 +327,6 @@ export function WelcomePage() {
                 id="welcome-framework"
               />
             </div>
-            <select
-              aria-label="Grade"
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-              className="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-2.5 pr-8 text-sm text-ink outline-none focus:border-accent"
-            >
-              {GRADES.map((g) => (
-                <option key={g.value} value={g.value}>{g.label}</option>
-              ))}
-            </select>
           </div>
         </div>
 
