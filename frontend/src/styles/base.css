@@ -4346,42 +4346,36 @@
     position: absolute;
     inset: 0;
     z-index: -2;
-    /* A single diagonal band, not four separate blobs — a wandering-dot
-       background can only ever partially cross the box no matter how it's
-       panned (the dots still have to stay far enough inside the canvas to
-       exist at all). A band NARROWER than the box (60% width) can instead be
-       parked fully outside either edge and panned all the way through, so it
-       visibly enters from nothing and exits back to nothing every cycle. */
-    background: linear-gradient(
-        100deg,
-        transparent 0%,
-        rgb(167 139 250 / 0.65) 20%,
-        rgb(244 114 182 / 0.6) 40%,
-        rgb(251 146 60 / 0.55) 60%,
-        rgb(52 211 153 / 0.55) 80%,
-        transparent 100%
-      ),
+    /* Four soft round blobs laid out across ONE wide virtual canvas (500% of
+       the button's own width), not a flat band — same off-screen-to-off-
+       screen travel principle as the sweep this replaced, just with actual
+       circular shapes so it reads as "blobs passing through" rather than a
+       streak. Because the canvas is WIDER than the box here (unlike the
+       narrower-than-box band), a plain 0%-100% position range already scans
+       the whole thing — no need for the band's beyond-100% trick. blur()
+       softens their edges into the mesh-like wash used elsewhere in the app
+       (.app-blob) instead of hard-edged circles. */
+    background: radial-gradient(circle 30px at 8% 25%, rgb(167 139 250 / 0.7) 0%, transparent 100%),
+      radial-gradient(circle 28px at 32% 75%, rgb(244 114 182 / 0.65) 0%, transparent 100%),
+      radial-gradient(circle 32px at 58% 30%, rgb(251 146 60 / 0.6) 0%, transparent 100%),
+      radial-gradient(circle 28px at 84% 70%, rgb(52 211 153 / 0.6) 0%, transparent 100%),
       rgb(var(--paper-raised-rgb) / 0.85);
-    background-size: 60% 100%;
-    background-repeat: no-repeat;
-    animation: btn-blob-sweep 6s ease-in-out infinite alternate;
+    background-size: 500% 100%;
+    filter: blur(6px) saturate(1.2);
+    animation: btn-blob-through 11s ease-in-out infinite alternate;
     border-radius: inherit;
     pointer-events: none;
   }
 
-  /* -150%/250%, not 0%/100%: background-position's percentage is relative to
-     the (box - image) size difference, so at -150% the band's trailing edge
-     sits exactly at the box's left edge (fully hidden) and at 250% its
-     leading edge sits exactly at the box's right edge (fully hidden again) —
-     the actual travel is well past the box on both ends, guaranteeing a full
-     edge-to-edge crossing rather than the partial pan the old blob-drift
-     range gave. */
-  @keyframes btn-blob-sweep {
+  /* -10%/110%, not 0%/100%: a brief pause with nothing visible at each end
+     (rather than the last blob still mid-exit exactly at the loop boundary)
+     before the sequence of four blobs starts crossing again. */
+  @keyframes btn-blob-through {
     0% {
-      background-position: -150% 0;
+      background-position: -10% 50%;
     }
     100% {
-      background-position: 250% 0;
+      background-position: 110% 50%;
     }
   }
 
