@@ -63,6 +63,25 @@ const noGuide = getContextualSuggestions({ ...base, hasPacingGuide: false })
 assert.equal(noGuide.length, 1)
 assert.equal(noGuide[0].id, 'add-pacing-guide')
 
+// Once a conversation has messages, add-pacing-guide has no home (the
+// composer filters out every 'open-settings' suggestion; only the Greeting's
+// empty-state hint can show one, and Greeting doesn't render once there are
+// messages). MAX_SUGGESTIONS=1 used to mean this suggestion still won the
+// slot and got silently dropped by the composer, leaving no suggestion at
+// all even with a freshly built plan sitting right there.
+const noGuideWithMessages = getContextualSuggestions({
+  ...base,
+  calendar: {
+    ...base.calendar,
+    weeks: base.calendar.weeks.map((week, index) => (index === 0 ? { ...week, has_plan: true, status: 'built' } : week)),
+  },
+  hasPacingGuide: false,
+  messages: [{ role: 'user', content: 'build it' }],
+  artifact: { planId: 'plan-1' },
+})
+assert.equal(noGuideWithMessages.length, 1)
+assert.equal(noGuideWithMessages[0].id, 'review-current-plan')
+
 // An explicitly picked week that already has a plan gets its own suggestion
 // instead of silently being answered with an unrelated future week. Needs a
 // pacing guide in this fixture so add-pacing-guide doesn't shadow it.

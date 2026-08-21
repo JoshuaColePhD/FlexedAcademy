@@ -79,7 +79,15 @@ export function getContextualSuggestions(context = {}) {
   const className = activeClass?.name ? ` for ${activeClass.name}` : ''
   const suggestions = []
 
-  if (calendar && calendar.has_calendar === false && weeks.length === 0) {
+  // These two only ever reach the screen via the Greeting's own empty-state
+  // hint (ChatPage's emptyStateHint) — the composer has no sentence to type
+  // or send for "go upload a file," so once there are messages it filters
+  // any 'open-settings' suggestion straight out. Emitting one anyway used to
+  // burn the single MAX_SUGGESTIONS=1 slot on a suggestion nothing could
+  // display, leaving the composer with nothing at all — not even the next,
+  // real suggestion (review-current-plan, continue-draft, ...) waiting
+  // behind it at a lower priority.
+  if (!messages.length && calendar && calendar.has_calendar === false && weeks.length === 0) {
     suggestions.push(makeSuggestion({
       id: 'add-school-calendar',
       label: 'Add school calendar',
@@ -91,7 +99,7 @@ export function getContextualSuggestions(context = {}) {
     }))
   }
 
-  if (hasPacingGuide === false) {
+  if (!messages.length && hasPacingGuide === false) {
     suggestions.push(makeSuggestion({
       id: 'add-pacing-guide',
       label: 'Add a pacing guide',
