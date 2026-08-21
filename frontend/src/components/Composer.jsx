@@ -20,8 +20,9 @@ const MAX_H = 220
  * reference, not index — several chips can be mid-removal at once, and an
  * index captured at render time would go stale the moment an earlier one
  * actually leaves the array. */
-function Chip({ file, onRemove }) {
+function Chip({ file, onRemove, onSaveAsDocument }) {
   const [removing, setRemoving] = useState(false)
+  const [saving, setSaving] = useState(false)
   const { mounted, closing } = useExitTransition(!removing, 150)
 
   useEffect(() => {
@@ -30,12 +31,39 @@ function Chip({ file, onRemove }) {
 
   if (!mounted) return null
 
+  const save = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await onSaveAsDocument()
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <span
       className={`fa-rise neo-inset flex items-center gap-1.5 rounded-full bg-paper-sunken px-2.5 py-1 text-xs font-medium text-ink${closing ? ' fa-chip-exit' : ''}`}
     >
       <FileText size={14} className="text-ink-muted" aria-hidden="true" />
       <span className="max-w-[120px] truncate">{file.filename}</span>
+      {/* Only offered when the class has no pacing guide yet (see Composer's
+          own onSaveAttachmentAsDocument prop) — a file dropped into chat
+          used to ride into that one conversation only, truncated, and never
+          become the durable document AddDocumentDialog's upload flow
+          produces. This is the bridge between the two. */}
+      {onSaveAsDocument ? (
+        <button
+          type="button"
+          className="fa-press ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink disabled:opacity-50"
+          aria-label={`Save ${file.filename} as this class's pacing guide`}
+          title="Save as this class's pacing guide"
+          onClick={save}
+          disabled={saving}
+        >
+          {saving ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Upload size={12} aria-hidden="true" />}
+        </button>
+      ) : null}
       <button
         type="button"
         className="fa-press ml-1 rounded-sm p-0.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
@@ -56,6 +84,11 @@ export function Composer({
   isStreaming,
   attachments,
   setAttachments,
+  // Offers each attachment chip a way to become a real, durable class
+  // document instead of only ever riding into this one conversation. Kept
+  // null (no offer shown) whenever there's no class in scope, or it already
+  // has a pacing guide — see ChatPage's own gating.
+  onSaveAttachmentAsDocument = null,
   onOpenVoice,
   suggestions = [],
   contextLabel = '',
@@ -101,7 +134,6 @@ export function Composer({
   const [isAttaching, setIsAttaching] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [isFocused, setIsFocused] = useState(false)
-  const [selectedSuggestion, setSelectedSuggestion] = useState(0)
   const [trayDismissed, setTrayDismissed] = useState(false)
   const [motionState, setMotionState] = useState('')
   const motionTimerRef = useRef(null)
@@ -114,6 +146,11 @@ export function Composer({
 
   useEffect(() => () => window.clearTimeout(motionTimerRef.current), [])
 
+  // Always 0 or 1 items — the composer has exactly one caller (ChatPage),
+  // and contextualSuggestions.js's MAX_SUGGESTIONS caps `suggestions` at 1;
+  // the legacy `suggestion` string fallback is a single item by construction
+  // too. The `.slice(0, 1)` below enforces that invariant rather than just
+  // happening to hold, now that nothing upstream produces more than one.
   const candidateSuggestions = useMemo(() => {
     const normalized = suggestions.length
       ? suggestions
@@ -121,10 +158,10 @@ export function Composer({
         ? [{ id: 'legacy-suggestion', label: suggestion, prompt: suggestion, reason: '', priority: 99 }]
         : []
     const query = value.trim().toLocaleLowerCase()
-    if (!query) return normalized.slice(0, 3)
+    if (!query) return normalized.slice(0, 1)
     return normalized
       .filter((item) => item.prompt?.toLocaleLowerCase().startsWith(query))
-      .slice(0, 3)
+      .slice(0, 1)
   }, [suggestion, suggestions, value])
 
   const contextSignature = useMemo(
@@ -139,13 +176,16 @@ export function Composer({
     previousContextSignature.current = contextSignature
   }, [contextSignature, pulseMotion])
 
-  useEffect(() => {
-    setSelectedSuggestion((index) => Math.min(index, Math.max(candidateSuggestions.length - 1, 0)))
-  }, [candidateSuggestions.length])
-
-  const activeSuggestion = candidateSuggestions[selectedSuggestion] || candidateSuggestions[0]
+  const activeSuggestion = candidateSuggestions[0]
+  // An open-settings suggestion (add-pacing-guide, add-school-calendar)
+  // doesn't have a sentence worth typing into the chat box — accepting it
+  // opens a dialog instead (see the row's own onClick below), so there's
+  // nothing here for Tab to complete. This is Tab's ONE job in this
+  // composer — finish whatever's previewed as ghost text — so rather than
+  // teach it a second job for this suggestion, there's simply no ghost text
+  // to complete: Tab already does nothing when `completion` is empty.
   const completion = useMemo(
-    () => suggestionCompletion(value, activeSuggestion),
+    () => (activeSuggestion?.action === 'open-settings' ? '' : suggestionCompletion(value, activeSuggestion)),
     [activeSuggestion, value]
   )
 
@@ -254,7 +294,10 @@ export function Composer({
     setIsAttaching(true)
     try {
       const data = await api.extractText(file)
-      setAttachments((prev) => [...prev, data])
+      // The raw File alongside the extracted text — not read again, just
+      // kept in case onSaveAttachmentAsDocument wants to upload the exact
+      // same bytes as a real class document later.
+      setAttachments((prev) => [...prev, { ...data, file }])
       toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
     } catch (err) {
       toast.error(`Could not read ${file.name}`, err.hint || err.message)
@@ -263,7 +306,7 @@ export function Composer({
     }
   }
 
-  
+
   const handleDragOver = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -285,7 +328,7 @@ export function Composer({
     setIsAttaching(true)
     try {
       const data = await api.extractText(file)
-      setAttachments((prev) => [...prev, data])
+      setAttachments((prev) => [...prev, { ...data, file }])
       toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
     } catch (err) {
       toast.error(`Could not read ${file.name}`, err.hint || err.message)
@@ -340,15 +383,6 @@ export function Composer({
       acceptSuggestion()
       return
     }
-    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && trayOpen && candidateSuggestions.length > 1) {
-      e.preventDefault()
-      setSelectedSuggestion((index) =>
-        e.key === 'ArrowDown'
-          ? (index + 1) % candidateSuggestions.length
-          : (index - 1 + candidateSuggestions.length) % candidateSuggestions.length
-      )
-      return
-    }
     if (e.key === 'Escape' && trayOpen) {
       e.preventDefault()
       setTrayDismissed(true)
@@ -393,17 +427,14 @@ export function Composer({
               </div>
             ) : null}
             <div className="flex flex-col gap-1 p-2">
-              {candidateSuggestions.map((item, index) => (
+              {candidateSuggestions.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   tabIndex={trayOpen ? 0 : -1}
-                  className={`composer-recommendation flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                    index === selectedSuggestion ? 'neo-inset bg-paper-sunken' : 'hover:bg-paper-sunken'
-                  }`}
+                  className="composer-recommendation neo-inset flex items-start gap-3 rounded-lg bg-paper-sunken px-3 py-2 text-left transition-colors"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    setSelectedSuggestion(index)
                     // A click is a deliberate pick of THIS suggestion, so an
                     // open-settings one (add-pacing-guide, add-school-calendar)
                     // opens its dialog directly here. Tab is different — see
@@ -422,7 +453,9 @@ export function Composer({
                     <span className="block text-sm font-medium text-ink">{item.label || item.prompt}</span>
                     {item.reason ? <span className="composer-recommendation-reason mt-0.5 block text-xs text-ink-muted">{item.reason}</span> : null}
                   </span>
-                  {index === 0 ? <kbd className="mt-0.5 shrink-0 text-[0.625rem] text-ink-faint">Tab</kbd> : null}
+                  {item.action !== 'open-settings' ? (
+                    <kbd className="mt-0.5 shrink-0 text-[0.625rem] text-ink-faint">Tab</kbd>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -436,6 +469,9 @@ export function Composer({
                 key={`${f.filename}-${i}`}
                 file={f}
                 onRemove={() => setAttachments((prev) => prev.filter((x) => x !== f))}
+                onSaveAsDocument={
+                  onSaveAttachmentAsDocument && f.file ? () => onSaveAttachmentAsDocument(f) : undefined
+                }
               />
             ))}
           </div>

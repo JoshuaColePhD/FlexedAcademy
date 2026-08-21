@@ -660,18 +660,20 @@ def suggestion(req: SuggestionRequest, request: Request, user_id: str = Depends(
     cls = db.resolve_class(user_id, req.class_id)
     subject = (cls or {}).get("subject")
     if not subject:
-        return {"prompt": None}
+        return {"prompt": None, "reason": None}
     school_id = db.class_school(cls, user_id)
     weeks = schoolcal.school_weeks(school_id)
     week = next((w for w in weeks if w["week"] == req.week_number), {"week": req.week_number, "start": None, "end": None})
     hit = curriculum.unit_for_calendar_week(user_id, subject, week)
-    prompt = llm.generate_week_suggestion(
+    result = llm.generate_week_suggestion(
         user_id,
         week_label=req.week_label,
         unit=(hit or {}).get("unit"),
         class_name=(cls or {}).get("name"),
+        custom_instructions=llm.custom_instructions_for(user_id),
+        class_custom_instructions=(cls or {}).get("custom_instructions"),
     )
-    return {"prompt": prompt}
+    return {"prompt": (result or {}).get("prompt"), "reason": (result or {}).get("reason")}
 
 
 @router.post("/revise_day")

@@ -863,21 +863,46 @@ SUGGESTION_SCHEMA = {
                 "planning, under 30 words, in first person ('Help me plan...')."
             ),
         },
+        "reason": {
+            "type": "string",
+            "description": (
+                "A short caption (under 10 words) explaining why this is being suggested, "
+                "naming the SAME unit/topic as `prompt` — e.g. 'Next up: The Great Gatsby.' "
+                "Not a restatement of `prompt`, the thing that justifies it."
+            ),
+        },
     },
-    "required": ["prompt"],
+    "required": ["prompt", "reason"],
 }
 
-_SUGGESTION_PROMPT = """Write ONE short message a teacher could send to a lesson-planning \
-assistant to start building the given week, first person, under 30 words. Ground it in the \
-SPECIFIC unit/topic given below rather than generic phrasing like "using my pacing guide" — \
-name the actual topic, text, or skill so it reads like the teacher already knows what they \
-want to teach, not a placeholder. No greeting, no explanation, just the message itself."""
+_SUGGESTION_PROMPT = """Write two things for a lesson-planning composer's suggestion row:
+
+1. `prompt` — ONE short message a teacher could send to a lesson-planning assistant to start \
+building the given week, first person, under 30 words. Ground it in the SPECIFIC unit/topic \
+given below rather than generic phrasing like "using my pacing guide" — name the actual topic, \
+text, or skill so it reads like the teacher already knows what they want to teach, not a \
+placeholder.
+2. `reason` — a short caption (under 10 words) naming that same unit/topic, e.g. "Next up in \
+your pacing guide." This is the CAPTION under the message, not another copy of it.
+
+No greeting, no explanation — just the two fields."""
 
 
-def generate_week_suggestion(user_id: str, *, week_label: str, unit: str | None, class_name: str | None) -> str | None:
+def generate_week_suggestion(
+    user_id: str,
+    *,
+    week_label: str,
+    unit: str | None,
+    class_name: str | None,
+    custom_instructions: str | None = None,
+    class_custom_instructions: str | None = None,
+) -> dict | None:
     """The composer's empty-state Tab suggestion, grounded in what the teacher's
     own pacing guide actually says this week covers — instead of
     contextualSuggestions.js's generic "using my pacing guide" template.
+    Returns {"prompt": ..., "reason": ...} so the tray's caption can be
+    grounded right alongside the message, not left generic while the
+    headline above it gets specific.
 
     Best-effort like extract_decisions: cheap model, cached, swallows its own
     failures. Never worth blocking the composer over — callers keep the
@@ -885,25 +910,31 @@ def generate_week_suggestion(user_id: str, *, week_label: str, unit: str | None,
     if not unit:
         return None
     try:
+        content_lines = [f"Week: {week_label}", f"Class: {class_name or 'this class'}", f"Unit/topic: {unit}"]
+        # Style only, same as every other prompt these two feed — the model
+        # can no more invent content here than it can in a real generation;
+        # this just keeps the composer's own voice from sounding like a
+        # different person than the plan it's about to build.
+        style_notes = "\n".join(filter(None, [custom_instructions, class_custom_instructions]))
+        if style_notes:
+            content_lines.append(
+                f"Teacher's own style preferences (let these shape tone/wording, don't quote them verbatim): {style_notes}"
+            )
         content = _cached_completion(
             user_id,
             "week_suggestion",
             model="gpt-5.6-luna",
-            max_completion_tokens=120,
+            max_completion_tokens=160,
             response_format=_response_format("suggestion", SUGGESTION_SCHEMA),
             messages=[
                 {"role": "system", "content": _SUGGESTION_PROMPT},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Week: {week_label}\nClass: {class_name or 'this class'}\nUnit/topic: {unit}"
-                    ),
-                },
+                {"role": "user", "content": "\n".join(content_lines)},
             ],
         )
         data = json.loads(content or "{}")
-        prompt = str(data.get("prompt", "")).strip()
-        return prompt[:400] or None
+        prompt = str(data.get("prompt", "")).strip()[:400]
+        reason = str(data.get("reason", "")).strip()[:120]
+        return {"prompt": prompt, "reason": reason} if prompt else None
     except Exception as e:  # noqa: BLE001 — a visual aid, never a hard failure
         log.warning("week suggestion generation failed: %s", e)
         return None

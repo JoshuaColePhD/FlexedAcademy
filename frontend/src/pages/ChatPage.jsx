@@ -174,6 +174,25 @@ export function ChatPage() {
     },
     [classId, navigate]
   )
+  // The bridge between a file dropped into chat (transient, truncated,
+  // read by nobody past this one conversation) and the durable document
+  // this class can actually keep — same api.uploadCurriculumMap call
+  // ClassDocuments.jsx's own upload uses, just fed the attachment's File
+  // instead of one picked from a native file input. Only offered while
+  // there's a real class in scope and it doesn't already have a pacing
+  // guide — same condition add-pacing-guide itself gates on.
+  const saveAttachmentAsDocument = useCallback(
+    async (attachment) => {
+      try {
+        await api.uploadCurriculumMap(activeClass.subject, attachment.file, { classId, kind: 'pacing_guide' })
+        toast.success(`Saved ${attachment.filename} as this class's pacing guide`)
+        qc.invalidateQueries({ queryKey: qk.classDocuments(classId) })
+      } catch (err) {
+        toast.apiError('Could not save that as a document', err)
+      }
+    },
+    [activeClass, classId, qc, toast]
+  )
 
   const [messages, setMessages] = useState([])
   const [artifact, setArtifact] = useState(null)
@@ -1764,15 +1783,19 @@ export function ChatPage() {
   const suggestionKey = groundableSuggestion ? `${activeClass?.id || 'none'}:${groundableSuggestion.weekNumber}` : null
   const debouncedSuggestionKey = useDebouncedValue(suggestionKey, 400)
   const suggestionCacheRef = useRef(new Map())
-  const [aiSuggestionPrompt, setAiSuggestionPrompt] = useState(null)
+  // {prompt, reason} together — grounding the message without also
+  // grounding its caption left the row reading like two different
+  // suggestions stapled together (a specific headline over a generic "this
+  // is the current unplanned teaching week").
+  const [aiSuggestion, setAiSuggestion] = useState(null)
 
   useEffect(() => {
     if (!debouncedSuggestionKey || debouncedSuggestionKey !== suggestionKey || !groundableSuggestion) {
-      setAiSuggestionPrompt(null)
+      setAiSuggestion(null)
       return undefined
     }
     if (suggestionCacheRef.current.has(debouncedSuggestionKey)) {
-      setAiSuggestionPrompt(suggestionCacheRef.current.get(debouncedSuggestionKey))
+      setAiSuggestion(suggestionCacheRef.current.get(debouncedSuggestionKey))
       return undefined
     }
     let cancelled = false
@@ -1784,11 +1807,12 @@ export function ChatPage() {
       })
       .then((res) => {
         if (cancelled) return
-        suggestionCacheRef.current.set(debouncedSuggestionKey, res.prompt || null)
-        setAiSuggestionPrompt(res.prompt || null)
+        const grounded = res.prompt ? { prompt: res.prompt, reason: res.reason || null } : null
+        suggestionCacheRef.current.set(debouncedSuggestionKey, grounded)
+        setAiSuggestion(grounded)
       })
       .catch(() => {
-        if (!cancelled) setAiSuggestionPrompt(null)
+        if (!cancelled) setAiSuggestion(null)
       })
     return () => {
       cancelled = true
@@ -1796,9 +1820,13 @@ export function ChatPage() {
   }, [debouncedSuggestionKey, suggestionKey, groundableSuggestion, activeClass?.id])
 
   const enhancedSuggestions = useMemo(() => {
-    if (!aiSuggestionPrompt || !groundableSuggestion) return contextualSuggestions
-    return contextualSuggestions.map((s) => (s.id === groundableSuggestion.id ? { ...s, prompt: aiSuggestionPrompt } : s))
-  }, [contextualSuggestions, aiSuggestionPrompt, groundableSuggestion])
+    if (!aiSuggestion || !groundableSuggestion) return contextualSuggestions
+    return contextualSuggestions.map((s) =>
+      s.id === groundableSuggestion.id
+        ? { ...s, prompt: aiSuggestion.prompt, reason: aiSuggestion.reason || s.reason }
+        : s
+    )
+  }, [contextualSuggestions, aiSuggestion, groundableSuggestion])
 
   const artifactEl =
     viewKind === 'plan' ? (
@@ -2048,6 +2076,7 @@ export function ChatPage() {
             isStreaming={busy}
             attachments={attachments}
             setAttachments={setAttachments}
+            onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
             onOpenVoice={openVoice}
             voiceModeActive={voiceOpen}
             suggestions={enhancedSuggestions}
