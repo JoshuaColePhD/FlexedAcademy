@@ -322,14 +322,11 @@
     border: none;
     cursor: pointer;
     opacity: 0.75;
-    transition:
-      opacity var(--t-fast) var(--ease),
-      background-color var(--t-fast) var(--ease);
+    transition: opacity var(--t-fast) var(--ease);
     border-radius: 11px;
   }
   .app-rail-handle:hover {
     opacity: 1;
-    background: var(--paper-sunken);
   }
   .app-rail-handle-arrow {
     width: 13px;
