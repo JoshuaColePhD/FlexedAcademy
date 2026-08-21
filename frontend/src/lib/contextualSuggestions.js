@@ -111,7 +111,7 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'plan-current-week',
       label: `Plan ${label}`,
-      prompt: `Help me plan ${label}${dateRange ? ` (${dateRange})` : ''}${className} using my pacing guide and the skill focus we have discussed.${partial ? ` Heads up: ${targetWeek.notes}.` : ''}`,
+      prompt: `Help me plan ${label}${dateRange ? ` (${dateRange})` : ''}${className}${hasPacingGuide ? ' using my pacing guide and the skill focus we have discussed' : ''}.${partial ? ` Heads up: ${targetWeek.notes}.` : ''}`,
       reason: partial
         ? `A shortened, unplanned week (${targetWeek.notes}).`
         : `${label} is the current unplanned teaching week.`,
@@ -132,7 +132,7 @@ export function getContextualSuggestions(context = {}) {
       id: 'revise-planned-week',
       label: `Revise ${label}`,
       prompt: `Help me revise or rebuild the plan for ${label}${className}.`,
-      reason: `${label} already has a plan — pick up from there or start over.`,
+      reason: 'Pick up from there, or start over.',
       priority: 2,
       context: 'new-chat',
       action: 'send-prompt',
@@ -214,9 +214,9 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'prepare-next-week',
       label: `Prepare ${label}`,
-      prompt: `Help me prepare ${label}${dateRange ? ` (${dateRange})` : ''}${className} using my pacing guide.`,
+      prompt: `Help me prepare ${label}${dateRange ? ` (${dateRange})` : ''}${className}${hasPacingGuide ? ' using my pacing guide' : ''}.`,
       reason: targetWeek && hasPlan(targetWeek)
-        ? `${weekLabel(targetWeek)} is already planned — this is the next open week.`
+        ? 'Skip ahead — nothing’s planned here yet.'
         : 'The next open teaching week on your calendar.',
       priority: 7,
       context: 'upcoming',
