@@ -4354,23 +4354,24 @@
     position: absolute;
     inset: 0;
     z-index: -2;
-    /* Four soft round blobs laid out across ONE wide virtual canvas (500% of
+    /* Four soft round blobs laid out across ONE wide virtual canvas (220% of
        the button's own width), not a flat band — same off-screen-to-off-
        screen travel principle as the sweep this replaced, just with actual
        circular shapes so it reads as "blobs passing through" rather than a
        streak. Because the canvas is WIDER than the box here (unlike the
        narrower-than-box band), a plain 0%-100% position range already scans
-       the whole thing — no need for the band's beyond-100% trick. blur()
-       softens their edges into the mesh-like wash used elsewhere in the app
-       (.app-blob) instead of hard-edged circles. */
-    background: radial-gradient(circle 30px at 8% 25%, rgb(167 139 250 / 0.7) 0%, transparent 100%),
-      radial-gradient(circle 28px at 32% 75%, rgb(244 114 182 / 0.65) 0%, transparent 100%),
-      radial-gradient(circle 32px at 58% 30%, rgb(251 146 60 / 0.6) 0%, transparent 100%),
-      radial-gradient(circle 28px at 84% 70%, rgb(52 211 153 / 0.6) 0%, transparent 100%),
+       the whole thing — no need for the band's beyond-100% trick. Sized and
+       timed to match the mesh-like wash used elsewhere in the app
+       (.app-blob) — big enough to fill the pill as one soft bubble, slow
+       enough to read as a drift rather than blobs racing past. */
+    background: radial-gradient(circle 70px at 8% 25%, rgb(167 139 250 / 0.7) 0%, transparent 100%),
+      radial-gradient(circle 64px at 32% 75%, rgb(244 114 182 / 0.65) 0%, transparent 100%),
+      radial-gradient(circle 74px at 58% 30%, rgb(251 146 60 / 0.6) 0%, transparent 100%),
+      radial-gradient(circle 64px at 84% 70%, rgb(52 211 153 / 0.6) 0%, transparent 100%),
       rgb(var(--paper-raised-rgb) / 0.85);
-    background-size: 500% 100%;
+    background-size: 220% 100%;
     filter: blur(6px) saturate(1.2);
-    animation: btn-blob-through 11s ease-in-out infinite alternate;
+    animation: btn-blob-through 20s ease-in-out infinite alternate;
     border-radius: inherit;
     pointer-events: none;
   }
