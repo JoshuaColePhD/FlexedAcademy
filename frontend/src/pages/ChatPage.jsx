@@ -1711,7 +1711,6 @@ export function ChatPage() {
         busy,
         voiceOpen,
         calendar,
-        attachments,
         hasPacingGuide,
         surface: 'chat',
         classCount: classes?.length,
@@ -1719,7 +1718,6 @@ export function ChatPage() {
     [
       activeChat,
       activeClass,
-      attachments,
       busy,
       calendar,
       classes.length,
@@ -1735,15 +1733,18 @@ export function ChatPage() {
     ]
   )
 
-  // Upgrades the one suggestion whose prompt is a generic "using my pacing
-  // guide" template (plan-current-week / prepare-next-week — the only two
-  // that carry a weekNumber) with a version grounded in what the pacing
-  // guide actually says that week covers. Debounced and cached per
-  // class+week so navigating around the same week doesn't refire; falls
-  // back to the generic template (contextualSuggestions unmodified) on any
-  // error, cold cache, or missing pacing guide — this is a visual polish
-  // layer, never something the composer should wait on or break over.
-  const groundableSuggestion = contextualSuggestions.find((s) => s.weekNumber != null) || null
+  // Upgrades the composer's one suggestion from its generic "using my pacing
+  // guide" template to a version grounded in what the pacing guide actually
+  // says that week covers — but only for plan-current-week, the primary
+  // "build this week" action. prepare-next-week (a secondary, look-ahead
+  // suggestion) isn't worth a network round-trip: it only ever surfaces when
+  // there's no more specific week in play, so there's nothing to ground it
+  // against with any confidence. Debounced and cached per class+week so
+  // navigating around the same week doesn't refire; falls back to the
+  // generic template (contextualSuggestions unmodified) on any error, cold
+  // cache, or missing pacing guide — this is a visual polish layer, never
+  // something the composer should wait on or break over.
+  const groundableSuggestion = contextualSuggestions.find((s) => s.id === 'plan-current-week') || null
   const suggestionKey = groundableSuggestion ? `${activeClass?.id || 'none'}:${groundableSuggestion.weekNumber}` : null
   const debouncedSuggestionKey = useDebouncedValue(suggestionKey, 400)
   const suggestionCacheRef = useRef(new Map())

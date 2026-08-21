@@ -3,7 +3,7 @@
  * network request just to decide what its Tab completion should be. */
 import { shortRange } from './dates.js'
 
-const MAX_SUGGESTIONS = 3
+const MAX_SUGGESTIONS = 1
 
 const weekNumber = (week) => week?.week ?? week?.week_number ?? null
 
@@ -65,7 +65,6 @@ export function getContextualSuggestions(context = {}) {
     pendingQuestions,
     busy = false,
     voiceOpen = false,
-    attachments = [],
     hasPacingGuide = true,
     classCount,
   } = context
@@ -196,16 +195,6 @@ export function getContextualSuggestions(context = {}) {
       chatId: activeChat?.id,
       contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
-    suggestions.push(makeSuggestion({
-      id: 'create-quiz',
-      label: wk ? `Create a quiz for ${wk}` : 'Create a quiz',
-      prompt: `Create a multiple-choice quiz from ${wk ? `${wk}’s` : 'this week’s'} plan.`,
-      reason: 'A supporting assessment doesn’t exist for this plan yet.',
-      priority: 6,
-      context: 'artifact',
-      action: 'send-prompt',
-      contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
-    }))
   }
 
   if (nextUnplanned && (!targetWeek || hasPlan(targetWeek) || artifact)) {
@@ -223,21 +212,6 @@ export function getContextualSuggestions(context = {}) {
       action: 'open-plan',
       weekNumber: weekNumber(nextUnplanned),
       contextLabel: weekContextLabel(nextUnplanned, activeClass, classCount),
-    }))
-  }
-
-  if (attachments.length > 0 && !hasPacingGuide) {
-    const filename = attachments[0]?.filename
-    suggestions.push(makeSuggestion({
-      id: 'use-attachment',
-      label: filename ? `Use ${filename}` : 'Use the attached guide',
-      prompt: filename
-        ? `Use ${filename} as the pacing guide to shape this week’s plan.`
-        : 'Use the attached pacing guide to shape this week’s plan.',
-      reason: 'No pacing guide set up for this class yet — this file could stand in for one.',
-      priority: 7,
-      context: 'attachment',
-      action: 'send-prompt',
     }))
   }
 
