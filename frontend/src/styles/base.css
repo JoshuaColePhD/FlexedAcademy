@@ -1879,17 +1879,26 @@
   }
 
   /* ── skeletons ──────────────────────────────────────────────────────── */
+  /* Same five hues as .app-blob/.land-blob, so a card that's actively being
+     built (a plan, a quiz, a standard) reads as connected to that ambient
+     wash rather than a generic gray "loading" convention — the color IS the
+     "working" signal. Low alpha over the ordinary paper-sunken base keeps it
+     a placeholder, not a rainbow. */
   .skeleton {
     display: block;
-    background: linear-gradient(
+    background-color: var(--paper-sunken);
+    background-image: linear-gradient(
       90deg,
-      var(--paper-sunken) 25%,
-      var(--paper-inset) 37%,
-      var(--paper-sunken) 63%
+      rgb(167 139 250 / 0.32) 0%,
+      rgb(244 114 182 / 0.32) 20%,
+      rgb(251 146 60 / 0.32) 40%,
+      rgb(52 211 153 / 0.32) 60%,
+      rgb(96 165 250 / 0.32) 80%,
+      rgb(167 139 250 / 0.32) 100%
     );
-    background-size: 400% 100%;
+    background-size: 300% 100%;
     border-radius: var(--r-xs);
-    animation: skeleton-sweep 1.4s var(--ease) infinite;
+    animation: skeleton-sweep 2.2s linear infinite;
   }
   @keyframes skeleton-sweep {
     0% {
@@ -1990,20 +1999,12 @@
     transition:
       opacity var(--t-fast) var(--ease),
       background-color var(--t-fast) var(--ease);
-    /* A plain rectangle read as a scrollbar left behind by mistake. Angling
-       the top and bottom in — a trapezoid on its side, the flat edge at top
-       and bottom instead of left and right — is what makes it read as a
-       deliberate handle instead. */
-    clip-path: polygon(
-      30% 0%,
-      70% 0%,
-      100% 10px,
-      100% calc(100% - 10px),
-      70% 100%,
-      30% 100%,
-      0% calc(100% - 10px),
-      0% 10px
-    );
+    /* A plain rectangle read as a scrollbar left behind by mistake, so the
+       top and bottom used to taper inward into a point instead. That read as
+       broken on shorter screens rather than "deliberate handle" — rounded
+       caps get the same effect (clearly not a stray scrollbar) without ever
+       narrowing to a point. */
+    border-radius: 11px;
   }
   .artifact-drawer-handle:hover,
   .artifact-drawer.is-open .artifact-drawer-handle {

@@ -271,10 +271,8 @@ function StandardStub({ code, subject, flag, where, index = 0 }) {
         {where ? <span className="detail-card-type is-flag">not retrieved — {where}</span> : null}
       </div>
       {record === undefined && !failed ? (
-        <div className="flex animate-pulse flex-col gap-2 mt-2">
-          <div className="h-3.5 w-full rounded bg-paper-inset" />
-          <div className="h-3.5 w-4/5 rounded bg-paper-inset" />
-          <div className="mt-1 h-3 w-1/3 rounded bg-paper-inset" />
+        <div className="mt-2">
+          <SkeletonText lines={3} />
         </div>
       ) : failed || !record ? (
         <p className="detail-card-answer">
