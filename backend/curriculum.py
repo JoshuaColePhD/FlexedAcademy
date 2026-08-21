@@ -196,7 +196,18 @@ CURRICULUM_PARSE_SCHEMA = {
                         "type": "string",
                         "description": "e.g. 'Week 3' or 'Week 3 — Sept 8-12'. Verbatim from the source where possible.",
                     },
-                    "unit": {"type": "string", "description": "Unit/module name this week belongs to, or ''."},
+                    "unit": {
+                        "type": "string",
+                        "description": (
+                            "The topic/unit/module this week covers, or ''. Fill this from a "
+                            "separate 'Unit N' grouping when the source has one; otherwise fill it "
+                            "from the week's OWN topic/text/skill (e.g. 'Week 3: Close Reading "
+                            "Poetry — Imagery and Sound Devices' names its own topic right there, "
+                            "with no separate unit heading needed). '' only when the row truly names "
+                            "no topic at all — never leave this empty just because there was no "
+                            "explicit 'Unit' label."
+                        ),
+                    },
                     "target_start": {
                         "type": "string",
                         "description": (
@@ -235,6 +246,13 @@ rather than filling them from general knowledge of the subject.
 If the document is organized by unit rather than by week, still emit one entry
 per week if week numbers/dates are given; otherwise emit one entry per unit and
 leave week_label as the unit's own label.
+
+`unit`: most pacing guides never use the word "unit" at all — a row like
+"Week 3: Close Reading Poetry — Imagery and Sound Devices" is naming that
+week's own topic right there, with no separate grouping above it. Fill `unit`
+from that inline topic/text/skill in that case; don't leave it '' just because
+there was no explicit "Unit N" heading. Only leave it '' when the row truly
+gives no topic at all (e.g. a bare "Week 7" with nothing else).
 
 Dates: only write target_start/target_end as YYYY-MM-DD when a real calendar
 date is determinable (the row's own date, or one inferred from a header/other
