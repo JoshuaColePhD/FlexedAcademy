@@ -19,6 +19,7 @@ import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { ShareDialog } from './ShareDialog'
+import { WeekStrip } from './WeekStrip'
 import { useToast } from '../lib/toastContext'
 
 /* A quiet line-art sketch for the one moment the rail has nothing to show —
@@ -442,6 +443,21 @@ export function ArtifactRail({
             title={checking ? grounded.join(', ') : undefined}
             onClick={onOpenStandards}
           />
+        </div>
+      ) : null}
+
+      {/* The day-by-day breakdown — used to live in the chat message itself
+          (see Message.jsx and ChatPage's own writing-progress block, both of
+          which now skip it on desktop). Under everything else: "My plans"
+          and "Built from" are both about what the plan IS, this is about
+          what's actually written in it, the last thing worth checking once
+          the rest is settled. Not in the phone bar: there's no room for a
+          five-row list in a one-row bar, so phone keeps its copy inline in
+          chat instead — see the isPhone check at both those call sites. */}
+      {!isBar && (planId ? plan?.days?.length : busy) ? (
+        <div className="rail-group">
+          <span className="eyebrow">This week</span>
+          <WeekStrip days={plan?.days} writing={!planId} loose />
         </div>
       ) : null}
 

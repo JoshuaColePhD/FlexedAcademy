@@ -1958,6 +1958,12 @@ export function ChatPage() {
                    clicking it opened a working editor whose "Send again" threw
                    and silently reverted the text. */
                 onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
+                /* The day-by-day breakdown moved into ArtifactRail's own
+                   "This week" section on desktop, which sits right next to
+                   the plan it describes instead of scrolling away with the
+                   transcript. Phone has no rail to carry it, so it stays
+                   here for isPhone. */
+                hideWeekStrip={!isPhone}
               />
             ))}
 
@@ -2029,13 +2035,21 @@ export function ChatPage() {
                 distinct in-progress row (a spinner, not just a blank line)
                 that the five-across grid never did, and each row's own
                 fa-rise plays the instant that day actually lands, not on a
-                fixed stagger. */}
+                fixed stagger.
+
+                On desktop the list itself now lives in ArtifactRail's "This
+                week" section instead — right next to the plan it's about,
+                not scrolling away with the transcript — so this keeps only
+                the eyebrow label here; isPhone still gets the full list,
+                since phone has no rail to carry it. */}
             {stream.isStreaming ? (
               <div className="w-full">
                 <p className="eyebrow mb-2">
                   {stream.preview?.days?.length ? 'Writing the week' : 'Retrieving standards'}
                 </p>
-                <WeekStrip days={stream.preview?.days} writing loose className="max-w-xs" />
+                {isPhone ? (
+                  <WeekStrip days={stream.preview?.days} writing loose className="max-w-xs" />
+                ) : null}
               </div>
             ) : revising ? (
               <p className="eyebrow">Revising…</p>

@@ -49,7 +49,7 @@ function useCopy() {
  * distinct from "said by the app" without giving the assistant an avatar or
  * a second speaker's identity — it's still the page talking back, just
  * boxed like everything else here. */
-export function Message({ message, subject, onRetry, onEdit, isLast }) {
+export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStrip = false }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -237,13 +237,17 @@ export function Message({ message, subject, onRetry, onEdit, isLast }) {
         ) : null}
 
         {/* THE VERIFICATION.
-            With the document closed by default, this is where proof lives: the
-            five days and what is on each, then which codes were retrieved and
-            which one wasn't. It is what makes a bad week catchable without
-            opening a viewer — and it is less UI than the panel it replaces. */}
+            With the document closed by default, this is where proof lives:
+            which codes were retrieved and which one wasn't, always — and,
+            on phone (hideWeekStrip), the five days and what's on each too,
+            since a phone has no side rail to carry that instead (see
+            ArtifactRail's own "This week" section, which is where this
+            lives everywhere else now). It is what makes a bad week
+            catchable without opening a viewer — and it is less UI than the
+            panel it replaces. */}
         {!isUser && message.plan?.days?.length ? (
           <div className="mt-3 flex w-full flex-col gap-3.5">
-            <WeekStrip days={message.plan.days} loose />
+            {hideWeekStrip ? null : <WeekStrip days={message.plan.days} loose />}
             {grounded.length || ungrounded.length ? (
               <div className="grounding-line">
                 <span>Grounded:</span>
