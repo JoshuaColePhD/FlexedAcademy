@@ -165,11 +165,36 @@ export function Composer({
   // suggestion, however specific, is text you can Tab to accept and nothing
   // more, the same contract VS Code's own inline completion keeps.
   const textSuggestion = candidateSuggestions[0] || null
-  const activeSuggestion = textSuggestion
-  const completion = useMemo(
-    () => (activeSuggestion ? suggestionCompletion(value, activeSuggestion) : ''),
-    [activeSuggestion, value]
-  )
+  // A stable identity for "which suggestion is this" that survives the
+  // LLM-grounding call swapping in better wording later (see ChatPage's
+  // aiSuggestion), but changes the moment the teacher moves to a different
+  // week/class — see frozenRef below for what that buys.
+  const suggestionKey = textSuggestion ? `${textSuggestion.id}:${textSuggestion.weekNumber ?? ''}` : null
+
+  // The grounded wording can arrive ~400ms+ of network latency after the
+  // instant deterministic suggestion is already showing as ghost text.
+  // Without this, that swap happens while a teacher is mid-read, which reads
+  // as the box glitching rather than "got smarter." Freezes the prompt text
+  // the moment it's on screen; only refreshes to newer wording while nothing
+  // is currently visible, or once the suggestion itself changes.
+  const frozenRef = useRef({ key: null, prompt: '' })
+  if (suggestionKey !== frozenRef.current.key) {
+    frozenRef.current = { key: suggestionKey, prompt: textSuggestion?.prompt || '' }
+  }
+  const activeSuggestion = textSuggestion ? { ...textSuggestion, prompt: frozenRef.current.prompt } : null
+
+  // Escape hides the ghost text without touching what's typed — the same
+  // dismiss gesture VS Code's own inline completion uses. Keyed to the exact
+  // (suggestion, typed text) pair so any edit un-dismisses it immediately,
+  // rather than requiring a specific "prove it's stale" keystroke.
+  const [dismissed, setDismissed] = useState(null)
+  const isDismissed = dismissed && dismissed.key === suggestionKey && dismissed.value === value
+  const completion = activeSuggestion && !isDismissed ? suggestionCompletion(value, activeSuggestion) : ''
+
+  // Safe to pick up newer wording now — nothing frozen is currently visible.
+  if (!completion && textSuggestion && frozenRef.current.prompt !== textSuggestion.prompt) {
+    frozenRef.current = { key: suggestionKey, prompt: textSuggestion.prompt }
+  }
 
   const autosize = useCallback(() => {
     const el = textareaRef.current
@@ -364,6 +389,11 @@ export function Composer({
     if (e.key === 'Tab' && completion) {
       e.preventDefault()
       acceptSuggestion()
+      return
+    }
+    if (e.key === 'Escape' && completion) {
+      e.preventDefault()
+      setDismissed({ key: suggestionKey, value })
       return
     }
     if (e.key === 'Enter' && !e.shiftKey) {
