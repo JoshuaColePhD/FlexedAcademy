@@ -1,8 +1,18 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ClassDocuments } from './ClassDocuments.jsx'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+
+// Mirrors ClassDocuments' own KIND_LABEL, but as a heading rather than a
+// dropdown option — "Add a syllabus" reads better than "Add a Syllabus
+// document" once it's the title of the whole dialog.
+const DIALOG_TITLE = {
+  pacing_guide: 'Add a pacing guide',
+  syllabus: 'Add a syllabus',
+  curriculum_map: 'Add a curriculum map',
+  other: 'Add a document',
+}
 
 /* What "Add a pacing guide" (contextualSuggestions.js's add-pacing-guide,
  * action: 'open-settings') opens from the composer, instead of the plain-text
@@ -21,6 +31,10 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 export function AddDocumentDialog({ open, onClose, cls, onChanged }) {
   const { mounted, closing } = useExitTransition(open, 200)
   const dialogRef = useRef(null)
+  // Mirrors ClassDocuments' own `kind` state (default matches its own
+  // useState default) so the heading names whatever's actually selected,
+  // not a generic "pacing guide or syllabus" regardless of choice.
+  const [kind, setKind] = useState('pacing_guide')
 
   useFocusTrap(dialogRef, { active: open, trap: true, onEscape: onClose })
 
@@ -39,12 +53,12 @@ export function AddDocumentDialog({ open, onClose, cls, onChanged }) {
         aria-modal="true"
         aria-labelledby="add-document-title"
       >
-        <h2 id="add-document-title">Add a pacing guide or syllabus</h2>
+        <h2 id="add-document-title">{DIALOG_TITLE[kind]}</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Either one keeps {cls.name}'s plans grounded in your real sequence, not a generic pace.
+          Keeps {cls.name}'s plans grounded in your real sequence, not a generic pace.
         </p>
 
-        <ClassDocuments cls={cls} onChanged={onChanged} />
+        <ClassDocuments cls={cls} onChanged={onChanged} onKindChange={setKind} />
 
         <div className="dialog-actions mt-6">
           <button type="button" className="btn btn-primary fa-press" onClick={onClose}>

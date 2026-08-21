@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileText, Link2, Loader2, Trash2, Upload } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
@@ -23,12 +23,21 @@ export const KIND_LABEL = {
    composer without pulling ClassPage's own page-level code (FrameworkPicker,
    SchoolSelect, its framer-motion animations) into whatever bundle imports
    it. */
-export function ClassDocuments({ cls, onChanged }) {
+export function ClassDocuments({ cls, onChanged, onKindChange }) {
   const confirm = useConfirm()
   const toast = useToast()
   const fileRef = useRef(null)
   const [kind, setKind] = useState('pacing_guide')
+  // AddDocumentDialog mirrors `kind` into its own state (to name the
+  // selected type in its heading) — this is the only thing ClassDocuments
+  // reports upward beyond onChanged. A no-op for ClassPage's own inline
+  // usage, which doesn't pass it.
+  useEffect(() => {
+    onKindChange?.(kind)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind])
   const [uploading, setUploading] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   // A live Google Doc (or any other public link) as the alternative to a
   // file — see routes/curriculum.py's _resolve_source, which already knows
   // how to pull real .docx bytes out of a Google Docs URL specifically, and
@@ -74,6 +83,31 @@ export function ClassDocuments({ cls, onChanged }) {
     save(file, null)
   }
 
+  // Same drag-and-drop shape as Composer.jsx's own attach handling — this
+  // dialog sits right next to a composer that's accepted a dropped file
+  // for a while now, so a browse-only button here read as an inconsistency
+  // once the two were side by side.
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    save(file, null)
+  }
+
   const submitLink = async (e) => {
     e.preventDefault()
     const url = linkUrl.trim()
@@ -111,7 +145,19 @@ export function ClassDocuments({ cls, onChanged }) {
   const rows = docs.data || []
 
   return (
-    <div className="mt-2 space-y-2">
+    <div
+      className={`relative mt-2 space-y-2 rounded-xl transition-all ${isDragging ? 'ring-2 ring-accent' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging ? (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-paper-raised/90 backdrop-blur-sm">
+          <p className="flex items-center gap-2 text-sm font-semibold text-accent-text">
+            <Upload size={16} aria-hidden="true" /> Drop file to add
+          </p>
+        </div>
+      ) : null}
       {rows.length ? (
         <ul className="neo-inset divide-y divide-edge overflow-hidden rounded-lg bg-paper-sunken">
           {rows.map((d) => (
