@@ -12,7 +12,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
-from .. import curriculum, db
+from .. import curriculum, db, storage
 from ..config import settings
 from ..deps import get_current_user
 from ..errors import AppError
@@ -97,6 +97,7 @@ async def upload_curriculum_map(
         # The ORIGINAL bytes, not the extracted text, so a later download or
         # re-embed reflects exactly what the teacher uploaded.
         stored_path.write_bytes(spooled.read_bytes())
+        storage.mirror_file(stored_path)
     finally:
         spooled.unlink(missing_ok=True)
 
@@ -161,7 +162,7 @@ def delete_curriculum_map(map_id: str, user_id: str = Depends(get_current_user))
     if not row:
         raise AppError("map_not_found", "No such curriculum map.", status=404)
     curriculum.delete_map_embeddings(map_id)
-    Path(row["stored_path"]).unlink(missing_ok=True)
+    storage.remove_file(Path(row["stored_path"]))
     return None
 
 

@@ -16,13 +16,14 @@ import hashlib
 import json
 import logging
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from openai import OpenAI
 
 from . import curriculum
 from .config import settings
 from .errors import AppError
+from .embeddings import embed_query
 from .prompts import day_field_system_prompt, day_system_prompt, week_system_prompt
 from .retrieval import RetrievalResult
 from .schema import (
@@ -109,21 +110,33 @@ def map_context_for(user_id: str, subject: str, query: str, class_id: str | None
     if not docs:
         return ""
 
+    try:
+        query_vector = embed_query(query)
+    except Exception as e:  # noqa: BLE001
+        log.warning("curriculum map query embedding failed: %s", e)
+        return ""
+
     futures = [
-        _context_pool.submit(curriculum.retrieve_map_context, doc["id"], query)
+        _context_pool.submit(curriculum.retrieve_map_context, doc["id"], query, 4, query_vector)
         for doc in docs
     ]
     
     results = []
+    done, pending = wait(futures, timeout=_MAP_CONTEXT_TIMEOUT_S)
+    if pending:
+        log.warning("%d map context lookups exceeded %.1fs", len(pending), _MAP_CONTEXT_TIMEOUT_S)
     for future in futures:
+        if future not in done:
+            continue
         try:
-            res = future.result(timeout=_MAP_CONTEXT_TIMEOUT_S)
+            res = future.result()
             if res:
                 results.append(res)
-        except FutureTimeoutError:
-            log.warning("map context lookup exceeded %.1fs, continuing without it", _MAP_CONTEXT_TIMEOUT_S)
         except Exception as e:  # noqa: BLE001
             log.warning("map context lookup failed: %s", e)
+
+    for future in pending:
+        future.cancel()
             
     return "\n\n".join(results)
 

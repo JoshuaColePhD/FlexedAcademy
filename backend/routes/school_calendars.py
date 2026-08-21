@@ -14,7 +14,7 @@ import shutil
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pathlib import Path
 
-from .. import calendar_intake, db, template_intake
+from .. import calendar_intake, db, storage, template_intake
 from ..config import settings
 from ..deps import get_current_user
 from ..errors import AppError
@@ -151,6 +151,7 @@ async def upload_school_template(
         template_id = db.new_id()
         dest = uploads_dir / f"{school_id}_{template_id}{ext}"
         shutil.move(str(spooled), str(dest))  # not Path.rename: the temp dir and uploads/ may be different filesystems
+        storage.mirror_file(dest)
     finally:
         spooled.unlink(missing_ok=True)  # no-op once moved away; cleans up on any raise before that
 

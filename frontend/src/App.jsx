@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -22,22 +22,24 @@ import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
 import { CommandPalette } from './components/CommandPalette'
 import { useClasses } from './hooks/useAppData'
-import { ChatPage } from './pages/ChatPage'
-import { ClassPage } from './pages/ClassPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { PlansPage } from './pages/PlansPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { WelcomePage } from './pages/onboarding/WelcomePage'
-import { AdminPage } from './pages/AdminPage'
-import { LandingPage } from './pages/LandingPage'
-import LoginPage from './pages/auth/LoginPage'
-import SignupPage from './pages/auth/SignupPage'
-import ResetPasswordPage from './pages/auth/ResetPasswordPage'
-import { PrivacyPolicyPage } from './pages/legal/PrivacyPolicyPage'
-import { TermsPage } from './pages/legal/TermsPage'
-import { SharedPlanPage } from './pages/SharedPlanPage'
-import { NotFoundPage } from './pages/NotFoundPage'
 import './styles/base.css'
+
+const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })))
+const ChatPage = lazyNamed(() => import('./pages/ChatPage.jsx'), 'ChatPage')
+const ClassPage = lazyNamed(() => import('./pages/ClassPage.jsx'), 'ClassPage')
+const SettingsPage = lazyNamed(() => import('./pages/SettingsPage.jsx'), 'SettingsPage')
+const PlansPage = lazyNamed(() => import('./pages/PlansPage.jsx'), 'PlansPage')
+const HistoryPage = lazyNamed(() => import('./pages/HistoryPage.jsx'), 'HistoryPage')
+const WelcomePage = lazyNamed(() => import('./pages/onboarding/WelcomePage.jsx'), 'WelcomePage')
+const AdminPage = lazyNamed(() => import('./pages/AdminPage.jsx'), 'AdminPage')
+const LandingPage = lazyNamed(() => import('./pages/LandingPage.jsx'), 'LandingPage')
+const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'))
+const SignupPage = lazy(() => import('./pages/auth/SignupPage.jsx'))
+const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage.jsx'))
+const PrivacyPolicyPage = lazyNamed(() => import('./pages/legal/PrivacyPolicyPage.jsx'), 'PrivacyPolicyPage')
+const TermsPage = lazyNamed(() => import('./pages/legal/TermsPage.jsx'), 'TermsPage')
+const SharedPlanPage = lazyNamed(() => import('./pages/SharedPlanPage.jsx'), 'SharedPlanPage')
+const NotFoundPage = lazyNamed(() => import('./pages/NotFoundPage.jsx'), 'NotFoundPage')
 
 const LEGACY_KEY = 'lesson_chats'
 const LAST_CLASS_KEY = 'aplang.lastClassId'
@@ -390,8 +392,10 @@ export default function App() {
                   {/* Inside AuthProvider: the entitlement rides on the user. */}
                   <BillingProvider>
                     <VoiceProvider>
-                      <CommandPalette />
-                      <Gate />
+                      <Suspense fallback={<BootScreen />}>
+                        <CommandPalette />
+                        <Gate />
+                      </Suspense>
                     </VoiceProvider>
                   </BillingProvider>
                 </AuthProvider>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronsRight, Download, Loader2, Edit2, Save, Share2, X } from 'lucide-react'
+import { ChevronsRight, Download, Loader2, Edit2, Save, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -452,8 +452,6 @@ export function ArtifactDetailPanel({
   // which has always had Share right in its own header. Same ShareDialog
   // ArtifactRail's collapsed card already opens for a quiz, just triggered
   // from here too now.
-  const [isEditing, setIsEditing] = useState(false)
-  const [docContent, setDocContent] = useState(doc?.content || '')
   const [shareOpen, setShareOpen] = useState(false)
 
   useFocusTrap(panelRef, {

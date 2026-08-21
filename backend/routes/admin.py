@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr, Field
 
-from .. import auth, db, mail, qa, template_intake
+from .. import auth, db, mail, qa, storage, template_intake
 from ..config import settings
 from ..deps import get_current_admin
 from ..entitlement import ENTITLED_STATUSES
@@ -331,7 +331,7 @@ def reanalyze_school_template_route(template_id: str, admin_id: str = Depends(ge
     if not template:
         raise AppError("not_found", "Template not found.", status=404)
     dest_path = Path(template["file_path"])
-    if not dest_path.is_file():
+    if not storage.ensure_local(dest_path):
         raise AppError("not_found", "The original file is missing from disk — a re-upload is needed.", status=404)
     return template_intake.run_and_persist(
         user_id=admin_id,
@@ -350,6 +350,6 @@ def download_school_template_route(template_id: str, _admin: str = Depends(get_c
     if not template:
         raise AppError("not_found", "Template not found.", status=404)
     file_path = Path(template["file_path"])
-    if not file_path.is_file():
+    if not storage.ensure_local(file_path):
         raise AppError("not_found", "File missing from disk.", status=404)
     return FileResponse(file_path, filename=template["filename"])

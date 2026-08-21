@@ -34,10 +34,20 @@ services:
     autoDeploy: true
     buildCommand: "npm --prefix frontend install && npm --prefix frontend run build && pip install -e ."
     startCommand: "uvicorn backend.server:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /api/health/ready
     envVars:
       # ── set these in the dashboard ────────────────────────────────────────
       - key: DATABASE_URL
         sync: false
+      # Durable file storage. Without these optional values the app keeps the
+      # local fallback, which is suitable for development but ephemeral on
+      # Render. Set the bucket up once in Supabase Storage before enabling.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STORAGE_BUCKET
+        value: "flexed-academy"
       - key: OPENAI_API_KEY
         sync: false
       - key: COMMON_STANDARDS_API_KEY

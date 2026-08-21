@@ -90,6 +90,8 @@ const VOICE_GREETING = 'Hey, what do you need a lesson plan for?'
 const VOICE_BUILDING = 'Building the week now — give me about thirty seconds.'
 const VOICE_REVISING = 'Updating it now — one moment.'
 
+const waitBeforeRetry = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 /* What voice mode SAYS when the model asks for clarification.
  *
  * Only the questions themselves — never their options. The options are
@@ -113,6 +115,24 @@ export function ChatPage() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const toast = useToast()
+  const persistMessage = useCallback(
+    async (chatId, payload) => {
+      if (!chatId) return null
+      const client_id = payload.client_id || nextId()
+      let lastError
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await api.addMessage(chatId, { ...payload, client_id })
+        } catch (err) {
+          lastError = err
+          if (attempt < 2) await waitBeforeRetry(250 * (attempt + 1))
+        }
+      }
+      toast.apiError("Couldn't save that message", lastError)
+      return null
+    },
+    [toast]
+  )
   const qc = useQueryClient()
   const { refresh: refreshAuth } = useAuth()
   const { mayGenerate, openPaywall } = useBilling()
@@ -600,9 +620,7 @@ export function ChatPage() {
          the transcript under. */
       const saveTo = localFor.current
       if (saveTo) {
-        api
-          .addMessage(saveTo, { role: 'assistant', content, plan_id: done.plan_id })
-          .catch(() => {})
+        void persistMessage(saveTo, { role: 'assistant', content, plan_id: done.plan_id })
       }
       qc.invalidateQueries({ queryKey: ['chats'] })
       // A week was just used. Re-read the entitlement so the next submit knows.
@@ -684,7 +702,7 @@ export function ChatPage() {
         const saveTo = localFor.current
         if (saveTo) {
           const asText = result.questions.map((q) => `• ${q.text}`).join('\n')
-          api.addMessage(saveTo, { role: 'assistant', content: `${intro}\n\n${asText}` }).catch(() => {})
+          void persistMessage(saveTo, { role: 'assistant', content: `${intro}\n\n${asText}` })
         }
         qc.invalidateQueries({ queryKey: ['chats'] })
         return
@@ -705,7 +723,7 @@ export function ChatPage() {
         setMessages((prev) => [...prev, reply])
         const saveTo = localFor.current
         if (saveTo) {
-          api.addMessage(saveTo, { role: 'assistant', content: result.text }).catch(() => {})
+          void persistMessage(saveTo, { role: 'assistant', content: result.text })
         }
         qc.invalidateQueries({ queryKey: ['chats'] })
         return
@@ -893,7 +911,13 @@ export function ChatPage() {
       }
 
       const shown = typed || `Sent ${attachments.length} file(s)`
-      if (activeChatId) api.addMessage(activeChatId, { role: 'user', content: shown }).catch(() => {})
+      if (activeChatId) {
+        const saved = await persistMessage(activeChatId, { role: 'user', content: shown })
+        if (!saved) {
+          setPreparing(false)
+          return
+        }
+      }
 
       /* No plan in this chat yet -> build one. Used to skip chat_stream
          entirely and go straight to generation (see git history: "intent
@@ -1148,9 +1172,7 @@ export function ChatPage() {
         }
         setMessages((prev) => [...prev, reply])
         if (activeChatId) {
-          api
-            .addMessage(activeChatId, { role: 'assistant', content: reply.content, plan_id: row.id })
-            .catch(() => {})
+          void persistMessage(activeChatId, { role: 'assistant', content: reply.content, plan_id: row.id })
         }
       } catch (err) {
         setMessages((prev) => [
@@ -1162,7 +1184,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage]
   )
 
   /* Per-cell revise, from clicking a cell in the document.
@@ -1183,7 +1205,7 @@ export function ChatPage() {
       // complete record of what happened to the plan. It was writing to screen
       // only, so every in-cell revision vanished on reload.
       const saveTo = localFor.current
-      if (saveTo) api.addMessage(saveTo, { role: 'user', content: ask }).catch(() => {})
+      if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask })
       setRevising(true)
       try {
         const row = await api.reviseDay({
@@ -1214,7 +1236,7 @@ export function ChatPage() {
         ])
         // Carries plan_id, so the conversation keeps its link to the document.
         if (saveTo) {
-          api.addMessage(saveTo, { role: 'assistant', content: reply, plan_id: row.id }).catch(() => {})
+          void persistMessage(saveTo, { role: 'assistant', content: reply, plan_id: row.id })
         }
       } catch (err) {
         /* The "Revise Thursday's Do Now…" message above was appended AND
@@ -1227,13 +1249,13 @@ export function ChatPage() {
           ...prev,
           { id: nextId(), role: 'assistant', isError: true, content: failed, hint: err.hint },
         ])
-        if (saveTo) api.addMessage(saveTo, { role: 'assistant', content: failed }).catch(() => {})
+        if (saveTo) void persistMessage(saveTo, { role: 'assistant', content: failed })
         toast.apiError(`Could not revise ${label}`, err)
       } finally {
         setRevising(false)
       }
     },
-    [artifact, toast, flash]
+    [artifact, toast, flash, persistMessage]
   )
 
   /* Stopping used to say nothing at all: useLessonStream returns null on an
@@ -1245,9 +1267,9 @@ export function ChatPage() {
     const content = 'Stopped. Nothing was saved — ask again when you’re ready.'
     setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content, isError: true }])
     if (localFor.current) {
-      api.addMessage(localFor.current, { role: 'assistant', content }).catch(() => {})
+      void persistMessage(localFor.current, { role: 'assistant', content })
     }
-  }, [stream])
+  }, [stream, persistMessage])
 
   /* useChatStream.stop() has worked since it was written; nothing ever called
      it. The composer's own fallback — a spinner captioned "this can't be
@@ -1258,9 +1280,9 @@ export function ChatPage() {
     const content = 'Stopped. Nothing was saved — ask again when you’re ready.'
     setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content, isError: true }])
     if (localFor.current) {
-      api.addMessage(localFor.current, { role: 'assistant', content }).catch(() => {})
+      void persistMessage(localFor.current, { role: 'assistant', content })
     }
-  }, [chatStream])
+  }, [chatStream, persistMessage])
 
   /* Rebuild the last plan from the same prompt. `onRetry` and `isLast` were
      declared on Message and never passed, so the retry button could not render

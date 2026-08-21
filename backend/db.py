@@ -1279,6 +1279,16 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE classes ADD COLUMN IF NOT EXISTS state TEXT;
     """,
+
+    # ── 43: idempotent client identifiers for message persistence ────────────
+    # A browser retry must not create a second transcript message.  The
+    # partial unique index keeps old/imported messages valid while making a
+    # client-generated id safe to reuse across retries.
+    """
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_client_id
+      ON messages (chat_id, client_id) WHERE client_id IS NOT NULL;
+    """,
 ]
 
 
@@ -1428,26 +1438,49 @@ def borrow():
 
 
 def migrate(conn: psycopg2.extensions.connection) -> None:
+    # Startup runs once per worker.  Serialize the append-only migration list
+    # so two workers cannot both observe the same version and execute the same
+    # non-idempotent historical migration at once.
+    lock_key = 827364019
     with conn.cursor() as cur:
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS schema_version (
-                version INTEGER PRIMARY KEY
-            )
-        ''')
-        cur.execute('SELECT MAX(version) FROM schema_version')
-        version_row = cur.fetchone()
-        version = version_row['max'] if version_row and version_row['max'] is not None else 0
-        
-        for i, script in enumerate(MIGRATIONS[version:], start=version):
-            log.info("applying migration %d", i + 1)
-            cur.execute(script)
-            cur.execute("INSERT INTO schema_version (version) VALUES (%s) ON CONFLICT (version) DO NOTHING", (i + 1,))
-            conn.commit()
-                
+        cur.execute("SELECT pg_advisory_lock(%s)", (lock_key,))
+    try:
+        with conn.cursor() as cur:
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY
+                )
+            ''')
+            cur.execute('SELECT MAX(version) FROM schema_version')
+            version_row = cur.fetchone()
+            version = version_row['max'] if version_row and version_row['max'] is not None else 0
+
+            if version > len(MIGRATIONS):
+                raise RuntimeError(
+                    f"Database schema version {version} is newer than this app ({len(MIGRATIONS)})."
+                )
+            for i, script in enumerate(MIGRATIONS[version:], start=version):
+                log.info("applying migration %d", i + 1)
+                cur.execute(script)
+                cur.execute("INSERT INTO schema_version (version) VALUES (%s) ON CONFLICT (version) DO NOTHING", (i + 1,))
+                conn.commit()
+
+            try:
+                register_vector(conn)
+            except psycopg2.ProgrammingError:
+                pass
+    finally:
         try:
-            register_vector(conn)
-        except psycopg2.ProgrammingError:
-            pass
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+        except Exception:
+            # A failed migration leaves the transaction aborted, so the first
+            # unlock attempt may itself be rejected. Clear that transaction
+            # before releasing the session-level lock and preserving the
+            # original migration error for the caller.
+            conn.rollback()
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
 
 
 def close() -> None:
@@ -1457,13 +1490,14 @@ def close() -> None:
         _pool = None
 
 
-def _write(sql: str, params: tuple = ()) -> psycopg2.extensions.cursor:
+def _write(sql: str, params: tuple = ()) -> int:
     with borrow() as conn:
         with conn.cursor() as cur:
             # psycopg2 uses %s for placeholders instead of ?
             cur.execute(sql.replace("?", "%s"), params)
+            rowcount = cur.rowcount
         conn.commit()
-        return cur
+        return rowcount
 
 
 def _rows(sql: str, params: tuple = ()) -> list[dict]:
@@ -1655,8 +1689,7 @@ def delete_class(user_id: str, class_id: str) -> bool:
     # Archive rather than delete. Plans reference the class and are the only
     # copy of a week's work; ON DELETE SET NULL would orphan them into the same
     # undifferentiated pile classes exist to break up.
-    cur = _write("UPDATE classes SET archived = 1 WHERE id = ? AND user_id = ?", (class_id, user_id))
-    return cur.rowcount > 0
+    return _write("UPDATE classes SET archived = 1 WHERE id = ? AND user_id = ?", (class_id, user_id)) > 0
 
 
 def sync_settings_from_class(user_id: str, class_id: str) -> None:
@@ -1718,8 +1751,7 @@ def create_school(school_id: str, name: str) -> dict:
     return get_school(school_id)  # type: ignore[return-value]
 
 def update_school_template_status(school_id: str, status: str) -> bool:
-    cur = _write("UPDATE schools SET template_status = ? WHERE id = ?", (status, school_id))
-    return cur.rowcount > 0
+    return _write("UPDATE schools SET template_status = ? WHERE id = ?", (status, school_id)) > 0
 
 def create_school_template(school_id: str, uploaded_by: str, filename: str, file_path: str) -> dict:
     template_id = new_id()
@@ -1859,8 +1891,7 @@ def count_users_with_school(school_id: str) -> int:
 
 
 def delete_school(school_id: str) -> bool:
-    cur = _write("DELETE FROM schools WHERE id = ?", (school_id,))
-    return cur.rowcount > 0
+    return _write("DELETE FROM schools WHERE id = ?", (school_id,)) > 0
 
 
 def create_calendar_submission(
@@ -2011,6 +2042,18 @@ def _hydrate_plan(row: dict) -> dict:
     return d
 
 
+_PLAN_LIST_COLUMNS = "id, created_at, course, week_label, unit, query, docx_path, retrieved_ids, warnings, chat_id, template, user_id, class_id, week_number, drive_file_id, drive_web_link, is_public, shared_at"
+
+
+def _hydrate_plan_list(row: dict) -> dict:
+    """Hydrate list metadata without transferring the full plan JSON."""
+    d = dict(row)
+    d["retrieved_ids"] = json.loads(d["retrieved_ids"]) if d.get("retrieved_ids") else []
+    d["warnings"] = json.loads(d["warnings"]) if d.get("warnings") else []
+    d["has_docx"] = bool(d.get("docx_path")) and Path(d["docx_path"]).is_file()
+    return d
+
+
 def get_plan(user_id: str, plan_id: str) -> dict | None:
     row = _row("SELECT * FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id))
     return _hydrate_plan(row) if row else None
@@ -2075,14 +2118,10 @@ def list_plans(
 
     total = _row(f"SELECT COUNT(*) AS n FROM plans {where}", tuple(params))["n"]  # type: ignore[index]
     rows = _rows(
-        f"SELECT * FROM plans {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        f"SELECT {_PLAN_LIST_COLUMNS} FROM plans {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
         tuple(params + [limit, offset]),
     )
-    items = []
-    for r in rows:
-        p = _hydrate_plan(r)
-        p.pop("plan_json", None)  # list view doesn't need the whole week
-        items.append(p)
+    items = [_hydrate_plan_list(r) for r in rows]
     return {"items": items, "total": total}
 
 
@@ -2107,15 +2146,14 @@ def list_plan_weeks(user_id: str, class_id: str) -> dict:
     from .units import week_number
 
     rows = _rows(
-        "SELECT * FROM plans WHERE user_id = ? AND class_id = ? ORDER BY created_at DESC",
+        f"SELECT {_PLAN_LIST_COLUMNS} FROM plans WHERE user_id = ? AND class_id = ? ORDER BY created_at DESC",
         (user_id, class_id),
     )
 
     by_week: dict[int, dict] = {}
     loose: list[dict] = []
     for r in rows:
-        p = _hydrate_plan(r)
-        p.pop("plan_json", None)  # list view doesn't need the whole week
+        p = _hydrate_plan_list(r)
         n = p.get("week_number") or week_number(p.get("week_label") or "")
         if n is None:
             loose.append(p)
@@ -2154,7 +2192,7 @@ def update_plan(user_id: str, plan_id: str, **fields: Any) -> dict | None:
 
 
 def delete_plan(user_id: str, plan_id: str) -> bool:
-    return _write("DELETE FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id)).rowcount > 0
+    return _write("DELETE FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id)) > 0
 
 
 def set_plan_drive_file(user_id: str, plan_id: str, *, file_id: str, web_link: str) -> None:
@@ -2324,7 +2362,7 @@ def list_quizzes_for_plan(user_id: str, plan_id: str) -> list[dict]:
 
 
 def delete_quiz(user_id: str, quiz_id: str) -> bool:
-    return _write("DELETE FROM quizzes WHERE id = ? AND user_id = ?", (quiz_id, user_id)).rowcount > 0
+    return _write("DELETE FROM quizzes WHERE id = ? AND user_id = ?", (quiz_id, user_id)) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -2796,25 +2834,51 @@ def set_chat_week(user_id: str, chat_id: str, week_number: int) -> dict | None:
 
 
 def delete_chat(user_id: str, chat_id: str) -> bool:
-    return _write("DELETE FROM chats WHERE id = ? AND user_id = ?", (chat_id, user_id)).rowcount > 0
+    return _write("DELETE FROM chats WHERE id = ? AND user_id = ?", (chat_id, user_id)) > 0
 
 
-def add_message(chat_id: str, role: str, content: str, plan_id: str | None = None) -> dict:
+def add_message(
+    chat_id: str,
+    role: str,
+    content: str,
+    plan_id: str | None = None,
+    client_id: str | None = None,
+) -> dict:
     """Not user-scoped: callers must already have verified (via get_chat) that
     this chat belongs to the requesting user. Messages have no user_id column
     of their own — ownership lives entirely on the parent chat."""
-    cur = _write(
-        "INSERT INTO messages (chat_id, role, content, plan_id, created_at) VALUES (?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
-        (chat_id, role, content, plan_id, now()),
-    )
-    _write("UPDATE chats SET updated_at = ? WHERE id = ?", (now(), chat_id))
-    return {
-        "id": 0,
-        "chat_id": chat_id,
-        "role": role,
-        "content": content,
-        "plan_id": plan_id,
-    }
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            if client_id:
+                cur.execute(
+                    """
+                    INSERT INTO messages (chat_id, role, content, plan_id, client_id, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (chat_id, client_id) WHERE client_id IS NOT NULL DO NOTHING
+                    RETURNING id, chat_id, role, content, plan_id, client_id, created_at
+                    """,
+                    (chat_id, role, content, plan_id, client_id[:128], now()),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    cur.execute(
+                        "SELECT id, chat_id, role, content, plan_id, client_id, created_at FROM messages WHERE chat_id = %s AND client_id = %s",
+                        (chat_id, client_id[:128]),
+                    )
+                    row = cur.fetchone()
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO messages (chat_id, role, content, plan_id, created_at)
+                    VALUES (%s,%s,%s,%s,%s)
+                    RETURNING id, chat_id, role, content, plan_id, client_id, created_at
+                    """,
+                    (chat_id, role, content, plan_id, now()),
+                )
+                row = cur.fetchone()
+            cur.execute("UPDATE chats SET updated_at = %s WHERE id = %s", (now(), chat_id))
+        conn.commit()
+    return dict(row)
 
 
 def list_messages(chat_id: str) -> list[dict]:

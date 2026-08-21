@@ -166,6 +166,11 @@ class Settings(BaseSettings):
     subscriber_weekly_token_cap: int = 200_000
 
     database_url: str = ""
+    # Optional Supabase Storage mirror for generated files and uploads. Local
+    # disk remains the development fallback; production should set all three.
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    storage_bucket: str = "flexed-academy"
     curriculum_maps_dir: Path = PROJECT_ROOT / "data" / "curriculum_maps"
     plans_dir: Path = PROJECT_ROOT / "plans"
     chunks_path: Path = PROJECT_ROOT / "data" / "processed" / "chunks.json"

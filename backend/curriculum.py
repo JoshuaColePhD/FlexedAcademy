@@ -97,7 +97,12 @@ def delete_map_embeddings(map_id: str) -> None:
         log.warning("could not delete curriculum chunks for map %s: %s", map_id, e)
 
 
-def retrieve_map_context(map_id: str, query: str, top_k: int = 4) -> str:
+def retrieve_map_context(
+    map_id: str,
+    query: str,
+    top_k: int = 4,
+    query_vector: list[float] | None = None,
+) -> str:
     """Best-effort snippets from ONE specific curriculum map, for the plan prompt.
 
     Takes a map_id, not a subject: filtering by subject alone mixed in every
@@ -118,7 +123,8 @@ def retrieve_map_context(map_id: str, query: str, top_k: int = 4) -> str:
     from .embeddings import embed_query
 
     try:
-        docs = db.search_curriculum_chunks(map_id, embed_query(query), top_k)
+        vector = query_vector if query_vector is not None else embed_query(query)
+        docs = db.search_curriculum_chunks(map_id, vector, top_k)
     except Exception as e:  # noqa: BLE001
         log.warning("curriculum map retrieval failed: %s", e)
         return ""

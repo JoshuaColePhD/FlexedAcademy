@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -21,7 +21,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
-import { ClassDocuments } from '../pages/ClassPage'
+const ClassDocuments = lazy(() => import('../pages/ClassPage.jsx').then((module) => ({ default: module.ClassDocuments })))
 
 
 const TIPS = [
@@ -334,7 +334,9 @@ export function OnboardingWizard({ open, onClose, cls }) {
                   <ClassStep
                     eyebrow={eyebrow}
                     cls={cls}
+                    subject={subject}
                     setSubject={setSubject}
+                    frameworks={frameworks}
                     saving={savingClass}
                     error={classError}
                     onBack={goBack}
@@ -531,7 +533,9 @@ function DocumentsStep({ eyebrow, cls, onBack, onNext }) {
         title="Ground it in your materials"
         body="A pacing guide, syllabus, or curriculum map lets plans follow YOUR sequence and units, not a generic one. Optional — add these anytime from My Classes."
       />
-      <ClassDocuments cls={cls} />
+      <Suspense fallback={<p className="text-xs text-ink-muted">Loading documents…</p>}>
+        <ClassDocuments cls={cls} />
+      </Suspense>
       <div className="dialog-actions mt-6">
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back

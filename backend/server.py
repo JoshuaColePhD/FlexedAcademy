@@ -115,11 +115,8 @@ app.add_middleware(SlowAPIMiddleware)
 # visit). minimum_size skips the small stuff, where the gzip header would cost
 # more than it saves.
 #
-# It matters most for the Silero VAD assets voice mode loads on demand: the
-# ONNX Runtime wasm binary is 12.9MB raw and 3.3MB gzipped, and without this it
-# was the former. Note the CPU tradeoff on Render's free plan — compressing that
-# file costs real time on a 0.1-CPU instance — but it's once per browser cache,
-# against a download that would otherwise be four times the size.
+# It matters most for route chunks and generated lesson-plan payloads. The
+# browser can cache those compressed responses without a second asset pipeline.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 app.add_middleware(

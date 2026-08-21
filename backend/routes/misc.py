@@ -11,7 +11,7 @@ import requests
 from collections import Counter
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from .. import db, docx_build, llm, retrieval, service
@@ -91,6 +91,29 @@ def health(user_id: str | None = Depends(get_current_user_optional)):
         out["ok"] = False
         out["pg_error"] = str(e)
     return out
+
+
+@router.get("/health/ready")
+def readiness():
+    """Deployment readiness: database reachable and migrations complete.
+
+    Keep this separate from public liveness.  A process can be alive while its
+    database pool is unavailable; advertising that process as ready makes a
+    deploy route traffic into guaranteed 503s and can hide a failed migration.
+    """
+    try:
+        row = db._row("SELECT COALESCE(MAX(version), 0) AS version FROM schema_version")
+        version = int(row["version"]) if row else 0
+        expected = len(db.MIGRATIONS)
+        if version != expected:
+            return JSONResponse(
+                {"ok": False, "code": "schema_not_ready", "version": version, "expected": expected},
+                status_code=503,
+            )
+    except Exception:
+        log.exception("readiness check failed")
+        return JSONResponse({"ok": False, "code": "database_not_ready"}, status_code=503)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -429,50 +452,6 @@ def transcribe(request: Request, audio: UploadFile = File(...), user_id: str = D
         return {"text": llm.transcribe(user_id, str(path))}
     finally:
         path.unlink(missing_ok=True)
-
-
-class TTSRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=settings.max_tts_chars)
-
-
-# 180/minute, not 30. This route is called once per SENTENCE, not once per
-# reply (see VoiceProvider's enqueue — speech starts on the first sentence
-# while the model is still writing the second), so a four-sentence answer is
-# four requests. Add the greeting prefetch, the "building your week" and
-# "revising" interjections, and Replay, and 30/minute ran out after roughly
-# seven conversational turns — at which point the teacher got "Couldn't speak
-# that reply" and voice mode went silent for the rest of the minute, during
-# exactly the fast back-and-forth the feature exists for. Cost is still bounded
-# the real way: max_tts_chars per request, and llm.stream_speech charging every
-# character against entitlement.py's cap.
-@router.post("/tts")
-@limiter.limit("180/minute")
-def synthesize_speech(req: TTSRequest, request: Request, user_id: str = Depends(get_current_user)):
-    """The assistant's chat replies, spoken aloud. Authenticated like every
-    other OpenAI-backed route — this bills the same API key transcribe()
-    already does, and a public speech-synthesis endpoint is a free relay for
-    anyone who finds it.
-
-    Streamed, not buffered. This used to read the whole clip into memory
-    (resp.content) before returning a single byte, and the client then buffered
-    it AGAIN into a Blob — two full waits before any sound. Now the OpenAI
-    response body is forwarded through as it arrives.
-
-    The body is headerless 16-bit little-endian PCM at 24kHz, mono — see
-    llm.stream_speech for the measurements behind that choice and for why the
-    container formats both lose. Declared as application/octet-stream because
-    that is honestly what it is: there is no audio/pcm media type that carries
-    the rate and bit depth, so the contract lives in the two functions that
-    share it rather than in a header the browser would ignore anyway.
-    """
-    return StreamingResponse(
-        llm.stream_speech(user_id, req.text),
-        media_type="application/octet-stream",
-        # Nothing here is cacheable per-URL (it's a POST) but proxies on the
-        # path shouldn't try to buffer the whole body before passing it on —
-        # that would undo the streaming above.
-        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
-    )
 
 
 def read_text_from_path(path: Path, ext: str) -> str:

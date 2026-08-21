@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import time
 
-from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, units
+from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, storage, units
 from .errors import AppError
 from .retrieval import RetrievalResult
 
@@ -165,7 +165,7 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
 from fastapi import BackgroundTasks
 
 def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
-    from . import docx_build, db
+    from . import db, docx_build
     try:
         plan_row = db.get_plan(user_id, plan_id)
         school_id = None
@@ -175,6 +175,7 @@ def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
                 school_id = cls.get("school")
                 
         docx_build.build_docx(plan, out_path, school_id)
+        storage.mirror_file(out_path)
         db.update_plan(user_id, plan_id, docx_path=str(out_path))
         log.info("background docx built for plan_id=%s", plan_id)
     except Exception as e:
@@ -273,6 +274,7 @@ def finalize(
         docx_path_val = None
     else:
         docx_build.build_docx(plan, out_path)
+        storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
     if class_id is None:
@@ -532,6 +534,7 @@ def revise_day(
         docx_path_val = None
     else:
         docx_build.build_docx(new_plan, out_path)
+        storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
     updated_row = db.update_plan(

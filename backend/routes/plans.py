@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
 
-from .. import db, docx_build, google_drive, llm, qti_build, schema, service, units
+from .. import db, docx_build, google_drive, llm, qti_build, schema, service, storage, units
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
@@ -377,8 +377,8 @@ def delete_plan(plan_id: str, user_id: str = Depends(get_current_user)):
     if path_str:
         p = Path(path_str).resolve()
         # Only ever unlink inside PLANS_DIR, whatever the DB happens to hold.
-        if p.is_file() and p.is_relative_to(Path(settings.plans_dir).resolve()):
-            p.unlink()
+        if p.is_relative_to(Path(settings.plans_dir).resolve()):
+            storage.remove_file(p)
     db.delete_plan(user_id, plan_id)
     return None
 
@@ -414,7 +414,7 @@ def _require_docx_path(row: dict) -> Path:
             hint="Please wait a moment and try again.",
         )
     p = Path(path_str).resolve()
-    if not p.is_relative_to(Path(settings.plans_dir).resolve()) or not p.is_file():
+    if not p.is_relative_to(Path(settings.plans_dir).resolve()) or not storage.ensure_local(p):
         raise AppError(
             "docx_missing",
             "The document for this plan is missing.",
@@ -526,6 +526,7 @@ def create_quiz(
     out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
     try:
         qti_build.build_qti_zip(quiz_raw, out_path)
+        storage.mirror_file(out_path)
         qti_path = str(out_path)
     except Exception as e:  # noqa: BLE001 - the quiz row is worth saving even if the zip failed
         warnings = [*warnings, f"QTI file could not be built: {e}"]
@@ -573,6 +574,7 @@ def revise_quiz_route(
     out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
     try:
         qti_build.build_qti_zip(quiz_raw, out_path)
+        storage.mirror_file(out_path)
         qti_path = str(out_path)
     except Exception as e:  # noqa: BLE001 - the quiz row is worth saving even if the zip failed
         warnings = [*warnings, f"QTI file could not be built: {e}"]
@@ -599,6 +601,7 @@ def update_quiz(
     out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
     try:
         qti_build.build_qti_zip(body.quiz_json, out_path)
+        storage.mirror_file(out_path)
         qti_path = str(out_path)
     except Exception as e:
         qti_path = None
@@ -616,8 +619,8 @@ def delete_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_u
     row = db.get_quiz(user_id, quiz_id)
     if row and row.get("qti_path"):
         p = Path(row["qti_path"]).resolve()
-        if p.is_file() and p.is_relative_to(Path(settings.plans_dir).resolve()):
-            p.unlink()
+        if p.is_relative_to(Path(settings.plans_dir).resolve()):
+            storage.remove_file(p)
     if not db.delete_quiz(user_id, quiz_id):
         raise AppError("quiz_not_found", "No such quiz.", status=404)
     return None
@@ -638,7 +641,7 @@ def download_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current
             hint="See its warnings, or ask for the quiz again — the quiz content is safe in the database.",
         )
     p = Path(path_str).resolve()
-    if not p.is_relative_to(Path(settings.plans_dir).resolve()) or not p.is_file():
+    if not p.is_relative_to(Path(settings.plans_dir).resolve()) or not storage.ensure_local(p):
         raise AppError(
             "qti_missing",
             "The QTI file for this quiz is missing.",

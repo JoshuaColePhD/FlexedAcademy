@@ -650,4 +650,13 @@ def add_message(chat_id: str, body: dict, user_id: str = Depends(get_current_use
         raise AppError("bad_role", f"Unknown message role {role!r}.", status=400)
     if not db.get_chat(user_id, chat_id):
         raise AppError("chat_not_found", "No such chat.", status=404)
-    return db.add_message(chat_id, role, str(body.get("content") or ""), body.get("plan_id"))
+    client_id = body.get("client_id")
+    if client_id is not None and not isinstance(client_id, str):
+        raise AppError("bad_client_id", "client_id must be a string.", status=400)
+    return db.add_message(
+        chat_id,
+        role,
+        str(body.get("content") or ""),
+        body.get("plan_id"),
+        client_id=client_id,
+    )

@@ -51,7 +51,7 @@ import { ContextualSuggestionList } from '../components/ContextualSuggestionList
  */
 
 
-export const KIND_LABEL = {
+const KIND_LABEL = {
   pacing_guide: 'Pacing guide',
   syllabus: 'Syllabus',
   curriculum_map: 'Curriculum map',
@@ -746,7 +746,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
       </header>
 
       {/* 1. Active Teaching */}
-      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+      <div className="flex flex-col gap-8 fa-rise">
         <section className="flex flex-col gap-4">
           <div className="border-b border-edge pb-2">
             <h3 className="text-sm font-semibold text-ink">Active Teaching</h3>
@@ -814,7 +814,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
       </div>
 
       {/* 2. History */}
-      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+      <div className="flex flex-col gap-8 fa-rise">
         <section className="flex flex-col gap-4">
           <div className="border-b border-edge pb-2">
             <h3 className="text-sm font-semibold text-ink">Weeks</h3>
@@ -825,7 +825,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
       </div>
 
       {/* 3. Configuration */}
-      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
+      <div className="flex flex-col gap-8 fa-rise">
         <section className="flex flex-col gap-4">
           <div className="border-b border-edge pb-2">
             <h3 className="text-sm font-semibold text-ink">Class Configuration</h3>

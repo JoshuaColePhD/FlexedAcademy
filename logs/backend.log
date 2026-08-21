@@ -1,87 +1,0 @@
-INFO:     Started server process [11353]
-INFO:     Waiting for application startup.
-2026-08-04 14:21:23,637 INFO    aplang.db  db ready at /Users/JoshuaCole/Library/Application Support/ap-lang-rag/app.db
-2026-08-04 14:21:23,655 INFO    aplang.docx  builder ok: /Users/JoshuaCole/My Drive/Iris_OS/Skills/build-lesson-plan/scripts/build_lesson_plan.py (florence-docx-v2)
-2026-08-04 14:21:23,655 WARNING aplang  SESSION_SECRET is not set — using the insecure dev default. Every login session cookie is forgeable until a real one is set in .env.
-2026-08-04 14:21:23,656 INFO    aplang.misc  left 4 pre-existing .docx in temp/ untouched (not in the plans library): LessonPlan_16c936f6b0a84b5a8d345ad901992327.docx, LessonPlan_47c097e59ee040cfb4f6980d91761d3e.docx, LessonPlan_5a21b4e93ad24cc6a806a0ebe3a2dc7d.docx, LessonPlan_b70989d5925a48e38989a644ccdc06ff.docx
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
-INFO:     127.0.0.1:53416 - "GET /api/chats HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53422 - "GET /api/curriculum_map?subject=AP_Lang HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53423 - "GET /api/curriculum_progress?subject=AP_Lang HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53431 - "GET /api/curriculum_map?subject=AP_Lang HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53433 - "GET /api/curriculum_progress?subject=AP_Lang HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53429 - "GET /api/frameworks HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53428 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53499 - "GET /api/settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53502 - "GET /api/curriculum_map?subject=ELA HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53503 - "GET /api/curriculum_progress?subject=ELA HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53505 - "PUT /api/settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53509 - "POST /api/chats HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53515 - "POST /api/generate_stream HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53514 - "POST /api/chats/d62f5642fb294c62ad78d23aa139a9e8/messages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53517 - "GET /api/chats/d62f5642fb294c62ad78d23aa139a9e8 HTTP/1.1" 200 OK
-2026-08-04 14:25:32,133 INFO    httpx  HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:53513 - "POST /api/chats/title HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53521 - "PATCH /api/chats/d62f5642fb294c62ad78d23aa139a9e8 HTTP/1.1" 200 OK
-2026-08-04 14:25:32,562 INFO    httpx  HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-2026-08-04 14:25:32,564 INFO    aplang.llm  expanded query into 5 searches
-2026-08-04 14:25:36,604 INFO    sentence_transformers.base.model  Loading SentenceTransformer model from sentence-transformers/all-MiniLM-L6-v2.
-Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 8200.71it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 11.10it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 307.91it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 358.79it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 331.67it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 335.46it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 182.65it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 320.91it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 339.21it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 319.20it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 293.25it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 220.94it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 301.92it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 318.67it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 321.99it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 299.87it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 176.75it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 298.95it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 295.94it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 301.77it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 297.87it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 192.65it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 299.96it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 321.30it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 289.60it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 321.43it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 188.61it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 310.76it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 330.94it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 312.22it/s]
-Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 291.35it/s]
-2026-08-04 14:25:37,528 INFO    aplang.retrieval  Loading CrossEncoder (ms-marco-MiniLM-L-6-v2)...
-2026-08-04 14:25:37,542 INFO    sentence_transformers.base.model  No device provided, using mps
-2026-08-04 14:25:37,543 INFO    sentence_transformers.base.model  No modules.json found for cross-encoder/ms-marco-MiniLM-L-6-v2, initializing a new CrossEncoder model.
-Loading weights:   0%|          | 0/105 [00:00<?, ?it/s]Loading weights: 100%|██████████| 105/105 [00:00<00:00, 9530.86it/s]
-Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:00<00:00,  3.49it/s]Batches: 100%|██████████| 2/2 [00:00<00:00,  3.27it/s]Batches: 100%|██████████| 2/2 [00:00<00:00,  3.30it/s]
-2026-08-04 14:25:38,495 INFO    aplang.retrieval  Reranked 48 candidates using CrossEncoder.
-2026-08-04 14:25:38,496 INFO    aplang.retrieval  retrieval query_len=36 kept=6 floor=0.78 best=0.378
-2026-08-04 14:25:40,220 INFO    httpx  HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-2026-08-04 14:25:51,746 INFO    aplang.service  plan built id=387bd7b2500f43a78d9c5958dd17e359 week='Week 03 — Aug 17-21, 2026' warnings=0 elapsed_ms=43
-INFO:     127.0.0.1:53526 - "POST /api/chats/d62f5642fb294c62ad78d23aa139a9e8/messages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53528 - "GET /api/chats HTTP/1.1" 200 OK
-2026-08-04 14:25:51,791 INFO    aplang.service  background docx built for plan_id=387bd7b2500f43a78d9c5958dd17e359
-Wrote /Users/JoshuaCole/My Drive/Iris_OS/Projects/Florence High School 2026-2027/ap-lang-rag/plans/AP_Language_Composition/Week_03_-_Aug_17-21_2026__387bd7b2.docx
-INFO:     127.0.0.1:53531 - "GET /api/plans/387bd7b2500f43a78d9c5958dd17e359/download HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53598 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53592 - "GET /api/curriculum_map?subject=ELA HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53599 - "GET /api/frameworks HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53593 - "GET /api/curriculum_progress?subject=ELA HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53602 - "GET /api/curriculum_map?subject=ELA HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53603 - "GET /api/curriculum_progress?subject=ELA HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53614 - "GET /api/curriculum_progress?subject=ELA HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53612 - "GET /api/chats/d62f5642fb294c62ad78d23aa139a9e8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53616 - "GET /api/chats/d62f5642fb294c62ad78d23aa139a9e8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53618 - "GET /api/plans/387bd7b2500f43a78d9c5958dd17e359 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53631 - "GET /api/curriculum_progress?subject=undefined HTTP/1.1" 200 OK
-/Users/JoshuaCole/.pyenv/versions/3.12.13/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
-  warnings.warn('resource_tracker: There appear to be %d '
