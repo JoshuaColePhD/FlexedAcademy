@@ -539,7 +539,6 @@ export function Composer({
               className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => {
                 setTrayDismissed(false)
-                setSelectedSuggestion(0)
                 onChange(e.target.value)
               }}
               onFocus={() => {
