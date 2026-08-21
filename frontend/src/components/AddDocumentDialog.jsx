@@ -27,6 +27,12 @@ const DIALOG_TITLE = {
  * pacing guide or syllabus added here shows up identically wherever
  * hasPacingGuide is read from (ChatPage, ClassPage, PlansPage all key off
  * the same class-documents query).
+ *
+ * .dialog-scrim--panel offsets past the sidebar at desktop widths (same
+ * `left: var(--sidebar-w)` .artifact-overlay already uses) — a plain
+ * .dialog-scrim centers across the sidebar's width too, so this dialog
+ * (only ever opened from inside the chat panel) landed visibly left of
+ * the panel it belongs to.
  */
 export function AddDocumentDialog({ open, onClose, cls, onChanged }) {
   const { mounted, closing } = useExitTransition(open, 200)
@@ -42,7 +48,7 @@ export function AddDocumentDialog({ open, onClose, cls, onChanged }) {
 
   return createPortal(
     <div
-      className={`dialog-scrim${closing ? ' is-closing' : ''}`}
+      className={`dialog-scrim dialog-scrim--panel${closing ? ' is-closing' : ''}`}
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div

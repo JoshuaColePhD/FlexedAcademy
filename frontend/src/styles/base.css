@@ -1622,6 +1622,19 @@
   .dialog-scrim.is-closing {
     animation: scrim-out var(--t-fast) var(--ease) both;
   }
+  /* AddDocumentDialog's own modifier — centered over the chat panel, not
+     the full viewport. A plain .dialog-scrim (fixed, inset: 0) centers
+     across the sidebar's width too, so a dialog opened from the composer
+     landed visibly left of the panel it actually belongs to. Same fix
+     .artifact-overlay already uses for the identical problem: offset the
+     fixed scrim past the sidebar at desktop widths, where the sidebar is
+     docked; below that breakpoint it's an overlay drawer instead and
+     takes no layout space, so no offset is needed. */
+  @media (min-width: 1024px) {
+    .dialog-scrim--panel {
+      left: var(--sidebar-w);
+    }
+  }
   @keyframes scrim-in {
     from {
       opacity: 0;
