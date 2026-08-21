@@ -121,6 +121,24 @@ export function getContextualSuggestions(context = {}) {
       weekNumber: weekNumber(targetWeek),
       contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
+  } else if (targetWeek && isOpenTeachingWeek(targetWeek) && hasPlan(targetWeek) && !artifact) {
+    // targetWeek only lands here already-planned when the teacher explicitly
+    // picked it (autoWeek/effectiveWeek's own default is always the next
+    // UNplanned week — see firstUnplanned in ChatPage). Falling through to
+    // the nextUnplanned suggestion below used to answer that deliberate pick
+    // with an unrelated future week and no explanation.
+    const label = weekLabel(targetWeek)
+    suggestions.push(makeSuggestion({
+      id: 'revise-planned-week',
+      label: `Revise ${label}`,
+      prompt: `Help me revise or rebuild the plan for ${label}${className}.`,
+      reason: `${label} already has a plan — pick up from there or start over.`,
+      priority: 2,
+      context: 'new-chat',
+      action: 'send-prompt',
+      weekNumber: weekNumber(targetWeek),
+      contextLabel: `Revising ${label}`,
+    }))
   }
 
   if (hasRecentChat(activeChat, messages) && !artifact) {

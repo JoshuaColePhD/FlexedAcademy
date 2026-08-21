@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
@@ -145,6 +145,19 @@ export function ChatPage() {
   const { data: chats = [] } = useChats()
   const { data: calendar } = useCalendar(classId)
   const { setDocOpen } = useShell()
+  // Same check ClassPage runs to gate its own "Add a pacing guide" suggestion —
+  // without it, getContextualSuggestions defaults to assuming one exists and
+  // the composer's "using my pacing guide" wording goes out regardless of
+  // whether a class has ever had one uploaded.
+  const classDocuments = useQuery({
+    queryKey: qk.classDocuments(classId),
+    queryFn: () => api.listClassDocuments(classId),
+    enabled: Boolean(classId),
+    staleTime: 5 * 60_000,
+  })
+  const hasPacingGuide = classDocuments.data
+    ? classDocuments.data.some((document) => document.kind === 'pacing_guide')
+    : true
 
   const [messages, setMessages] = useState([])
   const [artifact, setArtifact] = useState(null)
@@ -1699,6 +1712,7 @@ export function ChatPage() {
         voiceOpen,
         calendar,
         attachments,
+        hasPacingGuide,
         surface: 'chat',
         classCount: classes?.length,
       }),
@@ -1713,6 +1727,7 @@ export function ChatPage() {
       decisions,
       effectiveWeek,
       hasArtifact,
+      hasPacingGuide,
       liveArtifact,
       messages,
       pendingQuestions,
