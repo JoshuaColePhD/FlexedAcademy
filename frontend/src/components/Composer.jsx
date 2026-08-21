@@ -474,7 +474,12 @@ export function Composer({
               ref={textareaRef}
               rows={1}
               value={value}
-              placeholder={isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
+              /* Suppressed while the ghost-completion overlay above is showing a
+               * suggested prompt — that overlay already fills this space with its
+               * own text, and the native placeholder pseudo-element isn't covered
+               * by the textarea's text-transparent, so both rendered stacked on
+               * top of each other. */
+              placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
               aria-expanded={trayOpen}
               aria-controls="composer-recommendations"
