@@ -77,6 +77,12 @@ export function Composer({
   // "the composer grows to make room for it" read; the two never show at
   // once, since voice mode surfaces its own questions through voicePanel.
   questionsPanel = null,
+  // A suggestion with action: 'open-settings' (add-pacing-guide,
+  // add-school-calendar) isn't a chat message waiting to be sent — there's
+  // no reply that means "add a pacing guide," only a file to upload. Routes
+  // those to the caller instead of the usual fill-the-textarea behavior
+  // below.
+  onOpenSettings = null,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
@@ -138,8 +144,12 @@ export function Composer({
   }, [candidateSuggestions.length])
 
   const activeSuggestion = candidateSuggestions[selectedSuggestion] || candidateSuggestions[0]
+  // An open-settings suggestion doesn't insert text — accepting it opens a
+  // dialog (see acceptSuggestion) — so there's nothing here to preview as a
+  // ghost completion. Without this, the textarea showed a fake chat message
+  // as if Tab would type it in, when Tab actually opens the upload dialog.
   const completion = useMemo(
-    () => suggestionCompletion(value, activeSuggestion),
+    () => (activeSuggestion?.action === 'open-settings' ? '' : suggestionCompletion(value, activeSuggestion)),
     [activeSuggestion, value]
   )
 
@@ -314,6 +324,10 @@ export function Composer({
 
   const acceptSuggestion = (suggestionToAccept = activeSuggestion) => {
     if (!suggestionToAccept?.prompt) return
+    if (suggestionToAccept.action === 'open-settings') {
+      onOpenSettings?.(suggestionToAccept)
+      return
+    }
     const typedPrefixMatches = value && suggestionToAccept.prompt.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
     const remaining = typedPrefixMatches ? suggestionToAccept.prompt.slice(value.length) : ''
     if (value && !remaining) return
@@ -329,7 +343,7 @@ export function Composer({
   }
 
   const onKeyDown = (e) => {
-    if (e.key === 'Tab' && trayOpen && completion) {
+    if (e.key === 'Tab' && trayOpen && (completion || activeSuggestion?.action === 'open-settings')) {
       e.preventDefault()
       acceptSuggestion()
       return

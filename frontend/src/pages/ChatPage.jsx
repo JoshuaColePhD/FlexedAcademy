@@ -23,6 +23,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
+import { AddDocumentDialog } from '../components/AddDocumentDialog'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { WeekPicker } from '../components/WeekPicker'
 import { VoiceModePanel } from '../components/VoiceModePanel'
@@ -158,6 +159,21 @@ export function ChatPage() {
   const hasPacingGuide = classDocuments.data
     ? classDocuments.data.some((document) => document.kind === 'pacing_guide')
     : true
+  // Composer's add-pacing-guide/add-school-calendar suggestions carry
+  // action: 'open-settings' — accepting one used to just fill a chat prompt
+  // asking the model to "add the pacing guide," which is a network round
+  // trip to get told to go upload a file. This opens that upload directly.
+  const [documentDialogOpen, setDocumentDialogOpen] = useState(false)
+  const handleOpenSettings = useCallback(
+    (suggestion) => {
+      if (suggestion.id === 'add-school-calendar') {
+        navigate(`/c/${classId}/settings`)
+        return
+      }
+      setDocumentDialogOpen(true)
+    },
+    [classId, navigate]
+  )
 
   const [messages, setMessages] = useState([])
   const [artifact, setArtifact] = useState(null)
@@ -2036,6 +2052,7 @@ export function ChatPage() {
             voiceModeActive={voiceOpen}
             suggestions={enhancedSuggestions}
             contextLabel={suggestionContextLabel(enhancedSuggestions)}
+            onOpenSettings={handleOpenSettings}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
                 <div className={`questions-dock${pendingQuestions ? ' is-open' : ''}`}>
@@ -2233,6 +2250,13 @@ export function ChatPage() {
           </div>
         </>
       ) : null}
+
+      <AddDocumentDialog
+        open={documentDialogOpen}
+        onClose={() => setDocumentDialogOpen(false)}
+        cls={activeClass}
+        onChanged={() => qc.invalidateQueries({ queryKey: qk.classDocuments(classId) })}
+      />
 
     </div>
   )
