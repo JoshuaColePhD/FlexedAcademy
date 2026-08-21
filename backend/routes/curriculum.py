@@ -163,7 +163,6 @@ def delete_curriculum_map(map_id: str, user_id: str = Depends(get_current_user))
         raise AppError("map_not_found", "No such curriculum map.", status=404)
     curriculum.delete_map_embeddings(map_id)
     storage.remove_file(Path(row["stored_path"]))
-    return None
 
 
 @router.get("/curriculum_progress")

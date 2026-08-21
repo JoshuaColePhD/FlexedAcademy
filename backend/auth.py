@@ -23,9 +23,10 @@ import json
 import os
 import time
 
-from .config import settings
-from google.oauth2 import id_token
 from google.auth.transport import requests
+from google.oauth2 import id_token
+
+from .config import settings
 
 SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60  # 30 days
 _PBKDF2_ITERATIONS = 260_000

@@ -20,7 +20,21 @@ from .config import settings
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
 from .ratelimit import limiter, rate_limit_exceeded_handler
-from .routes import account, admin, auth, billing, canvas, classes, curriculum, drive, generate, misc, plans, school_calendars, standards
+from .routes import (
+    account,
+    admin,
+    auth,
+    billing,
+    canvas,
+    classes,
+    curriculum,
+    drive,
+    generate,
+    misc,
+    plans,
+    school_calendars,
+    standards,
+)
 from .schema import SchemaError
 
 logging.basicConfig(
@@ -56,7 +70,7 @@ async def lifespan(app: FastAPI):
     # will surface the same AppError with its hint; health reports pg_error.
     try:
         db.connect()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — an unreachable DB must not stop the app from booting
         log.error(
             "DATABASE UNAVAILABLE AT BOOT: %s — serving anyway; /api/health has details",
             getattr(e, "message", None) or e,
@@ -156,6 +170,7 @@ app.include_router(account.router)
 app.include_router(drive.router)
 app.include_router(canvas.router)
 import os
+
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 

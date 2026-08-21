@@ -59,3 +59,11 @@ packages = ["backend", "backend.routes"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint.flake8-bugbear]
+# B008 already exempts FastAPI's other call-as-default markers (Depends, Form,
+# Query, ...) since they're immutable factories evaluated once per request by
+# FastAPI itself, not a mutable default shared across calls. File(...) is the
+# same pattern and belongs on the same allowlist rather than six scattered
+# per-route noqa comments.
+extend-immutable-calls = ["fastapi.File"]

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 
 from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, storage, units
 from .errors import AppError
@@ -164,6 +165,7 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
 
 from fastapi import BackgroundTasks
 
+
 def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
     from . import db, docx_build
     try:
@@ -178,14 +180,14 @@ def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
         storage.mirror_file(out_path)
         db.update_plan(user_id, plan_id, docx_path=str(out_path))
         log.info("background docx built for plan_id=%s", plan_id)
-    except Exception as e:
+    except Exception:
         # A failure here used to be logged and then forgotten. update_plan has
         # already cleared docx_path by this point, so the row was left looking
         # exactly like one whose build had not finished yet — and /download
         # answered "still generating in the background" forever, for a build
         # that was never coming. Recording it lets the download endpoint tell
         # the teacher the truth and point at Rebuild.
-        log.exception("failed to build background docx for plan_id=%s: %s", plan_id, e)
+        log.exception("failed to build background docx for plan_id=%s", plan_id)
         try:
             db.update_plan(user_id, plan_id, warnings=(plan.get("_warnings") or []) + [DOCX_FAILED])
         except Exception:
