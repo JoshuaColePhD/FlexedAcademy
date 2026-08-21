@@ -41,8 +41,7 @@ export function AddDocumentDialog({ open, onClose, cls, onChanged }) {
       >
         <h2 id="add-document-title">Add a pacing guide or syllabus</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Either one helps plans for {cls.name} follow your real sequence and unit names instead of a generic
-          pace.
+          Either one keeps {cls.name}'s plans grounded in your real sequence, not a generic pace.
         </p>
 
         <ClassDocuments cls={cls} onChanged={onChanged} />
