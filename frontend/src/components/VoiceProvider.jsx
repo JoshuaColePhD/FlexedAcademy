@@ -231,6 +231,7 @@ export function VoiceProvider({ children }) {
       // deliberate open action while preserving the no-mic-on-page-load rule.
       const sessionPromise = api.createVoiceSession({
         chat_id: context.chatId ?? context.chat_id ?? null,
+        class_id: context.classId ?? context.class_id ?? null,
         week_number: context.weekNumber ?? context.week_number ?? null,
         mode: context.mode || 'brainstorm',
       }, { signal: connectAbort.signal })

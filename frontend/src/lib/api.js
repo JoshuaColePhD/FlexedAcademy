@@ -424,10 +424,10 @@ export const api = {
    *  Returns { token, model, expires_at }. `model` comes from the server on
    *  purpose — the SDP exchange has to name the same model the token was minted
    *  for, so it is defined once, in backend/routes/generate.py. */
-  createVoiceSession: ({ chat_id = null, week_number = null, mode = 'brainstorm' } = {}, { signal } = {}) =>
+  createVoiceSession: ({ chat_id = null, class_id = null, week_number = null, mode = 'brainstorm' } = {}, { signal } = {}) =>
     request('/api/voice/session', {
       method: 'POST',
-      body: { chat_id, week_number, mode },
+      body: { chat_id, class_id, week_number, mode },
       signal,
     }),
 

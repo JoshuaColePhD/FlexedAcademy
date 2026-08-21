@@ -125,7 +125,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, mode, voice, weekNumber, controller }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, controller }) => {
     let accumulated = ''
     setText('')
 
@@ -136,6 +136,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         messages,
         mode,
         chat_id: chatId ?? null,
+        class_id: classId ?? null,
         voice: Boolean(voice),
         week_number: weekNumber ?? null,
       }),
@@ -311,7 +312,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   }, [])
 
   const start = useCallback(
-    async (messages, { chatId, mode = 'standard', voice = false, weekNumber } = {}) => {
+    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -323,7 +324,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
-            const result = await attempt(messages, { chatId, mode, voice, weekNumber, controller })
+            const result = await attempt(messages, { chatId, classId, mode, voice, weekNumber, controller })
             onDoneRef.current?.(result)
             return result
           } catch (err) {

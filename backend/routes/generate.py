@@ -111,6 +111,16 @@ class ChatStreamRequest(BaseModel):
     # silently dropped. Now used to resolve the chat's own class below,
     # instead of the account's most-recently-touched settings row.
     chat_id: str | None = None
+    # The page's own class (ChatPage's classId route param), same reasoning
+    # as GenerateRequest.class_id: a chat's STORED class_id can be NULL (an
+    # older chat, or one created before scoping landed), and without this
+    # field _build_chat_system_prompt had no way to know which class the
+    # teacher is actually standing on — it fell back to
+    # get_settings_row(user_id)'s "most recently touched settings row for
+    # this account", which leaked one class's subject/grade into another
+    # class's conversation. Validated against the caller's own classes
+    # before use, same as GenerateRequest.class_id.
+    class_id: str | None = None
     # The same value GenerateRequest.week_number carries (ChatPage's
     # effectiveWeek — the ?week= override, or else the next unplanned week),
     # sent here too so the conversational model knows it BEFORE generation,
@@ -290,8 +300,10 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     )
 
 
-def _build_chat_system_prompt(user_id: str, chat_id: str | None, week_number: int | None, mode: str, last_user: str = "") -> str:
-    cls = _chat_class(user_id, chat_id)
+def _build_chat_system_prompt(
+    user_id: str, chat_id: str | None, week_number: int | None, mode: str, last_user: str = "", class_id: str | None = None
+) -> str:
+    cls = _request_class(user_id, class_id, chat_id)
     if cls:
         subject = cls["subject"]
         grade = cls["grade"]
@@ -407,10 +419,11 @@ class VoiceSessionRequest(BaseModel):
     and what VoiceProvider.unlock() sends.
     """
 
-    # Same three fields, same defaults, same meaning as ChatStreamRequest's —
+    # Same fields, same defaults, same meaning as ChatStreamRequest's —
     # this endpoint hands them to the very same _build_chat_system_prompt, so
     # they must not drift from it.
     chat_id: str | None = None
+    class_id: str | None = None
     week_number: int | None = None
     mode: str = "brainstorm"
 
@@ -421,7 +434,7 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
     require_entitlement(user_id)
     import requests
     
-    system_prompt = _build_chat_system_prompt(user_id, req.chat_id, req.week_number, req.mode)
+    system_prompt = _build_chat_system_prompt(user_id, req.chat_id, req.week_number, req.mode, class_id=req.class_id)
     
     # POST /v1/realtime/sessions was the pre-GA (2024 beta) endpoint and no
     # longer exists — it answered every call with
@@ -503,7 +516,9 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
             last_user = next(
                 (m.content for m in reversed(req.messages) if m.role == "user"), ""
             )
-            system_prompt = _build_chat_system_prompt(user_id, req.chat_id, req.week_number, req.mode, last_user)
+            system_prompt = _build_chat_system_prompt(
+                user_id, req.chat_id, req.week_number, req.mode, last_user, class_id=req.class_id
+            )
 
             if req.mode == "brainstorm":
                 system_prompt += (
