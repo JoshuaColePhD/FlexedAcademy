@@ -63,12 +63,14 @@ const KIND_LABEL = {
 const shortLabel = (fw, fallback) =>
   fw ? fw.label.split(' (')[0] : String(fallback || '').replace(/_/g, ' ')
 
-/* ── add a class: two picks, inline ─────────────────────────────────────────
-   The name is derived and shown so it can be corrected, not demanded up front. */
+/* ── add a class: one pick, inline ──────────────────────────────────────────
+   The name is derived and shown so it can be corrected, not demanded up front.
+   Grade level isn't asked here — it's set to DEFAULT_GRADE and can be
+   corrected later if it ever matters for a given class (see grades.js). */
 function ClassSetup({ frameworks, onCreated, onCancel }) {
   const toast = useToast()
   const [subject, setSubject] = useState('')
-  const [grade, setGrade] = useState(DEFAULT_GRADE)
+  const grade = DEFAULT_GRADE
   const [saving, setSaving] = useState(false)
 
   const fw = findFramework(frameworks, subject)
@@ -106,24 +108,6 @@ function ClassSetup({ frameworks, onCreated, onCancel }) {
             />
           </div>
           
-          <div className="flex flex-col gap-2">
-            <label htmlFor="new-class-grade" className="text-sm font-medium text-ink">
-              Grade Level
-            </label>
-            <select
-              id="new-class-grade"
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-              className="neo-select neo-inset rounded-xl bg-paper-raised py-3 pl-3 pr-8 text-sm text-ink w-full"
-            >
-              {GRADES.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="mt-2 flex items-center justify-end gap-3 pt-4 border-t border-edge">
             <button
               type="button"
@@ -605,17 +589,16 @@ function ClassWeeks({ cls, calendar, isLoading, isError }) {
 function EditClassSettings({ cls, frameworks, onChanged }) {
   const toast = useToast()
   const [subject, setSubject] = useState(cls.subject)
-  const [grade, setGrade] = useState(cls.grade)
   const [saving, setSaving] = useState(false)
 
-  const isChanged = subject !== cls.subject || grade !== cls.grade
+  const isChanged = subject !== cls.subject
 
   const submit = async (e) => {
     e.preventDefault()
     if (!isChanged) return
     setSaving(true)
     try {
-      const updated = await api.updateClass(cls.id, { subject, grade })
+      const updated = await api.updateClass(cls.id, { subject })
       toast.success('Class updated')
       onChanged?.(updated)
     } catch (err) {
@@ -637,24 +620,6 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
           onChange={setSubject}
           id="edit-class-framework"
         />
-      </div>
-      
-      <div className="flex flex-col gap-2">
-        <label htmlFor="edit-class-grade" className="text-sm font-medium text-ink">
-          Grade Level
-        </label>
-        <select
-          id="edit-class-grade"
-          value={grade}
-          onChange={(e) => setGrade(e.target.value)}
-          className="neo-select neo-inset rounded-xl bg-paper-raised py-3 pl-3 pr-8 text-sm text-ink w-full max-w-sm"
-        >
-          {GRADES.map((g) => (
-            <option key={g.value} value={g.value}>
-              {g.label}
-            </option>
-          ))}
-        </select>
       </div>
 
       <div className="mt-2">
@@ -848,7 +813,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
         <section className="flex flex-col gap-4 pt-4 border-t border-edge">
           <div className="border-b border-edge pb-2">
             <h3 className="text-sm font-semibold text-ink">Edit Class Details</h3>
-            <p className="text-xs text-ink-muted">Change the subject or grade level for this class.</p>
+            <p className="text-xs text-ink-muted">Change the subject for this class.</p>
           </div>
           <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
         </section>
