@@ -325,16 +325,7 @@
     transition:
       opacity var(--t-fast) var(--ease),
       background-color var(--t-fast) var(--ease);
-    clip-path: polygon(
-      30% 0%,
-      70% 0%,
-      100% 10px,
-      100% calc(100% - 10px),
-      70% 100%,
-      30% 100%,
-      0% calc(100% - 10px),
-      0% 10px
-    );
+    border-radius: 11px;
   }
   .app-rail-handle:hover {
     opacity: 1;
