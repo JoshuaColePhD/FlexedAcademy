@@ -9,8 +9,8 @@ import { shortRange } from '../lib/dates'
  * calendar-aware "Plan Week N", plus two pulled from the pacing guide or a
  * generic fallback pair) — removed because the teacher didn't want a new chat
  * opening with a wall of pre-filled options; it should just be an empty
- * screen waiting for whatever they type. That still stands: nothing here is
- * clickable or pre-filled.
+ * screen waiting for whatever they type. The text stays un-prefilled — the
+ * composer's own ghost text is where a real week/topic suggestion lives now.
  *
  * What removing them cost, and what `week` below puts back: this screen said
  * "I'll build THE week" without ever saying which one, while ChatPage had
@@ -19,6 +19,12 @@ import { shortRange } from '../lib/dates'
  * finished document, thirty seconds later. Naming it in the sentence that
  * was already there is not a suggestion — it's the existing copy being
  * honest about what is about to happen.
+ *
+ * `hint` is the one exception to "nothing here is clickable": an
+ * action: 'open-settings' suggestion (add-pacing-guide, add-school-calendar)
+ * isn't a sentence to type or send, so it has no ghost-text/card form the
+ * composer could use — this is its only surface, and only in the empty
+ * state this component is already scoped to.
  */
 
 function hourGreeting() {
@@ -28,7 +34,7 @@ function hourGreeting() {
   return 'Good evening'
 }
 
-export function Greeting({ onOpenVoice, className: courseName, week }) {
+export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpenSettings }) {
   const { data: me } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
   const firstName = (me?.name || '').trim().split(/\s+/)[0]
 
@@ -69,6 +75,22 @@ export function Greeting({ onOpenVoice, className: courseName, week }) {
           {courseName ? ` for ${courseName}` : ''}. Standards are quoted straight from the source,
           formatted directly into your district template.
         </p>
+
+        {/* add-pacing-guide / add-school-calendar — not a chat message, so
+         * it never belonged in the composer as ghost text or a card (there's
+         * no sentence to type or send for "go upload a file"). Only shown
+         * here, in the empty state Greeting itself is scoped to — once a
+         * conversation starts, the composer's own suggestions take over. */}
+        {hint ? (
+          <button
+            type="button"
+            onClick={() => onOpenSettings?.(hint)}
+            className="fa-press mt-3 max-w-xl text-sm font-medium text-accent-text underline-offset-2 hover:underline"
+          >
+            {hint.label}
+            {hint.reason ? ` — ${hint.reason}` : ''}
+          </button>
+        ) : null}
 
         {onOpenVoice ? (
           <button

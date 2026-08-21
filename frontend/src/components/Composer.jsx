@@ -89,6 +89,13 @@ export function Composer({
   // null (no offer shown) whenever there's no class in scope, or it already
   // has a pacing guide — see ChatPage's own gating.
   onSaveAttachmentAsDocument = null,
+  // Whether this conversation has any turns yet — the empty composer's one
+  // suggestion is a ghost-text completion (Tab, nothing else on screen);
+  // once there's an actual back-and-forth, a text suggestion (continue-
+  // draft, review-current-plan, ...) switches to a clickable card instead.
+  // Showing both at once for the same suggestion read as the same thing
+  // said twice.
+  hasMessages = false,
   onOpenVoice,
   suggestions = [],
   contextLabel = '',
@@ -110,12 +117,6 @@ export function Composer({
   // "the composer grows to make room for it" read; the two never show at
   // once, since voice mode surfaces its own questions through voicePanel.
   questionsPanel = null,
-  // A suggestion with action: 'open-settings' (add-pacing-guide,
-  // add-school-calendar) isn't a chat message waiting to be sent — there's
-  // no reply that means "add a pacing guide," only a file to upload. Routes
-  // those to the caller instead of the usual fill-the-textarea behavior
-  // below.
-  onOpenSettings = null,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
@@ -176,17 +177,16 @@ export function Composer({
     previousContextSignature.current = contextSignature
   }, [contextSignature, pulseMotion])
 
-  const activeSuggestion = candidateSuggestions[0]
-  // An open-settings suggestion (add-pacing-guide, add-school-calendar)
-  // doesn't have a sentence worth typing into the chat box — accepting it
-  // opens a dialog instead (see the row's own onClick below), so there's
-  // nothing here for Tab to complete. This is Tab's ONE job in this
-  // composer — finish whatever's previewed as ghost text — so rather than
-  // teach it a second job for this suggestion, there's simply no ghost text
-  // to complete: Tab already does nothing when `completion` is empty.
+  // ChatPage never hands this an action: 'open-settings' suggestion
+  // (add-pacing-guide, add-school-calendar) — those have no sentence to
+  // type or send, so they're the Greeting's own inline hint instead (see
+  // ChatPage's emptyStateHint). Whatever's here is always a real ghost-
+  // text/card candidate.
+  const textSuggestion = candidateSuggestions[0] || null
+  const activeSuggestion = textSuggestion
   const completion = useMemo(
-    () => (activeSuggestion?.action === 'open-settings' ? '' : suggestionCompletion(value, activeSuggestion)),
-    [activeSuggestion, value]
+    () => (hasMessages || !activeSuggestion ? '' : suggestionCompletion(value, activeSuggestion)),
+    [hasMessages, activeSuggestion, value]
   )
 
   const trayOpen =
@@ -196,7 +196,8 @@ export function Composer({
     !isRecording &&
     !isTranscribing &&
     !isStreaming &&
-    candidateSuggestions.length > 0
+    hasMessages &&
+    Boolean(textSuggestion)
 
   const autosize = useCallback(() => {
     const el = textareaRef.current
@@ -427,37 +428,27 @@ export function Composer({
               </div>
             ) : null}
             <div className="flex flex-col gap-1 p-2">
-              {candidateSuggestions.map((item) => (
+              {/* A click here is the only way to accept a card — no Tab;
+                  see `completion` above, which is deliberately empty once
+                  hasMessages is true. */}
+              {textSuggestion ? (
                 <button
-                  key={item.id}
                   type="button"
                   tabIndex={trayOpen ? 0 : -1}
                   className="composer-recommendation neo-inset flex items-start gap-3 rounded-lg bg-paper-sunken px-3 py-2 text-left transition-colors"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    // A click is a deliberate pick of THIS suggestion, so an
-                    // open-settings one (add-pacing-guide, add-school-calendar)
-                    // opens its dialog directly here. Tab is different — see
-                    // onKeyDown below — it always completes the ghost text,
-                    // even for this same suggestion, since Tab's whole
-                    // contract in this composer is "finish what's previewed,"
-                    // not "perform this suggestion's action."
-                    if (item.action === 'open-settings') {
-                      onOpenSettings?.(item)
-                      return
-                    }
-                    acceptSuggestion(item)
-                  }}
+                  onClick={() => acceptSuggestion(textSuggestion)}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-ink">{item.label || item.prompt}</span>
-                    {item.reason ? <span className="composer-recommendation-reason mt-0.5 block text-xs text-ink-muted">{item.reason}</span> : null}
+                    <span className="block text-sm font-medium text-ink">{textSuggestion.label || textSuggestion.prompt}</span>
+                    {textSuggestion.reason ? (
+                      <span className="composer-recommendation-reason mt-0.5 block text-xs text-ink-muted">
+                        {textSuggestion.reason}
+                      </span>
+                    ) : null}
                   </span>
-                  {item.action !== 'open-settings' ? (
-                    <kbd className="mt-0.5 shrink-0 text-[0.625rem] text-ink-faint">Tab</kbd>
-                  ) : null}
                 </button>
-              ))}
+              ) : null}
             </div>
           </div>
         </div>

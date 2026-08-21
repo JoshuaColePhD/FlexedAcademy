@@ -848,7 +848,7 @@ export function ChatPage() {
   const openVoice = useCallback(() => {
     // This is the deliberate user gesture that creates the one Realtime
     // session. Speech queued immediately afterward waits for the data channel.
-    voice.startSession({ chatId: chatId ?? null, weekNumber: conversationWeek ?? null, mode: 'brainstorm' })
+    voice.startSession({ chatId: chatId ?? null, classId: classId ?? null, weekNumber: conversationWeek ?? null, mode: 'brainstorm' })
     setVoiceOpen(true)
     if (messages.length === 0) voice.speak(VOICE_GREETING)
   }, [voice, messages, chatId, conversationWeek])
@@ -1033,6 +1033,7 @@ export function ChatPage() {
         // chatStream.start below) name the identical week.
         const firstResult = await chatStream.start(firstPayload, {
           chatId: activeChatId,
+          classId,
           voice: voiceOpen,
           weekNumber: effectiveWeek,
         })
@@ -1094,6 +1095,7 @@ export function ChatPage() {
          doesn't drift, so it's safe to keep sending. */
       const chatResult = await chatStream.start(payloadMessages, {
         chatId: activeChatId,
+        classId,
         voice: voiceOpen,
         weekNumber: conversationWeek,
       })
@@ -1828,6 +1830,18 @@ export function ChatPage() {
     )
   }, [contextualSuggestions, aiSuggestion, groundableSuggestion])
 
+  // An open-settings suggestion (add-pacing-guide, add-school-calendar)
+  // isn't a chat message — there's no sentence to type, send, or Tab-
+  // complete for "go upload a file." The composer never sees one; it
+  // lives in the Greeting's own sentence instead, and only there, since
+  // Greeting itself only renders in the empty state (see `isEmpty` below).
+  const emptyStateHint =
+    !messages.length && enhancedSuggestions[0]?.action === 'open-settings' ? enhancedSuggestions[0] : null
+  const composerSuggestions = useMemo(
+    () => enhancedSuggestions.filter((s) => s.action !== 'open-settings'),
+    [enhancedSuggestions]
+  )
+
   const artifactEl =
     viewKind === 'plan' ? (
       <ArtifactPanel
@@ -1921,7 +1935,13 @@ export function ChatPage() {
       </div>
 
       {isEmpty ? (
-        <Greeting className={activeClass?.name} onOpenVoice={openVoice} week={displayWeek} />
+        <Greeting
+          className={activeClass?.name}
+          onOpenVoice={openVoice}
+          week={displayWeek}
+          hint={emptyStateHint}
+          onOpenSettings={handleOpenSettings}
+        />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className={`chat-column mx-auto flex w-full flex-col gap-7 px-gutter py-8 transition-all duration-500 ease-out ${
@@ -2077,11 +2097,11 @@ export function ChatPage() {
             attachments={attachments}
             setAttachments={setAttachments}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
+            hasMessages={messages.length > 0}
             onOpenVoice={openVoice}
             voiceModeActive={voiceOpen}
-            suggestions={enhancedSuggestions}
-            contextLabel={suggestionContextLabel(enhancedSuggestions)}
-            onOpenSettings={handleOpenSettings}
+            suggestions={composerSuggestions}
+            contextLabel={suggestionContextLabel(composerSuggestions)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
                 <div className={`questions-dock${pendingQuestions ? ' is-open' : ''}`}>
