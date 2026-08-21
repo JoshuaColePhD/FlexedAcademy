@@ -67,13 +67,27 @@ export function groupFrameworks(frameworks = []) {
   })).filter((g) => g.items.length > 0)
 }
 
-/** Case- and separator-insensitive substring match, so "world lang",
- *  "World_Languages" and "worldlanguages" all find the same row. */
+/** Case- and separator-insensitive, and matched word by word rather than as
+ *  one glued-together string — "world lang", "World_Languages" and
+ *  "worldlanguages" all still find the same row (every word has to appear
+ *  *somewhere* in the label/id, not necessarily touching), but so does
+ *  "english 11", which the old single-substring version couldn't: a
+ *  teacher's own grade number is rarely IN a framework's name (Alabama's
+ *  "English Language Arts (2021)" covers K-12 in one framework and never
+ *  spells out "11" anywhere in its label), even though 11 is right there in
+ *  its own `grades` list. A purely-numeric word matches against `grades`
+ *  too for exactly that reason, so a teacher searching by the grade they
+ *  actually teach finds the general framework that covers it, not just the
+ *  AP courses whose names happen to contain "English". */
 export function matchesFramework(fw, query) {
-  const q = query.trim().toLowerCase().replace(/[\s_-]+/g, '')
-  if (!q) return true
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (!words.length) return true
   const hay = `${fw.label || ''} ${fw.id || ''}`.toLowerCase().replace(/[\s_-]+/g, '')
-  return hay.includes(q)
+  return words.every((word) => {
+    const normalized = word.replace(/[\s_-]+/g, '')
+    if (/^\d+$/.test(normalized) && fw.grades?.includes(Number(normalized))) return true
+    return hay.includes(normalized)
+  })
 }
 
 export function findFramework(frameworks, id) {
