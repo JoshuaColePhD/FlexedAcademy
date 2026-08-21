@@ -251,8 +251,7 @@ def parse_curriculum_progress(text: str, subject: str) -> list[dict]:
     """
     resp = _client().chat.completions.create(
         model=settings.openai_model,
-        temperature=0,
-        max_tokens=4000,
+        max_completion_tokens=4000,
         response_format={
             "type": "json_schema",
             "json_schema": {"name": "curriculum_schedule", "strict": True, "schema": CURRICULUM_PARSE_SCHEMA},

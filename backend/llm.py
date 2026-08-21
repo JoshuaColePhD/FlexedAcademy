@@ -728,7 +728,6 @@ def analyze_template_structure(user_id: str, structure_summary: str) -> dict:
         "analyze_template_structure",
         model=settings.openai_model,
         max_completion_tokens=4000,
-        temperature=0,
         response_format=_response_format("template_structure", TEMPLATE_ANALYSIS_JSON_SCHEMA),
         messages=[
             {"role": "system", "content": _TEMPLATE_ANALYSIS_PROMPT},
@@ -765,7 +764,6 @@ def verify_template_sections(user_id: str, structure_summary: str, sections: lis
         "verify_template_sections",
         model=settings.openai_model,
         max_completion_tokens=2000,
-        temperature=0,
         response_format=_response_format("template_verification", TEMPLATE_VERIFICATION_JSON_SCHEMA),
         messages=[
             {"role": "system", "content": _TEMPLATE_VERIFY_PROMPT},
@@ -1333,7 +1331,6 @@ def extract_standards_from_text(text: str) -> list[dict]:
                 {"role": "user", "content": text}
             ],
             response_format=_response_format("standards_extraction", STANDARDS_EXTRACTION_SCHEMA),
-            temperature=0,
         )
         _check_refusal(response.choices[0].message)
         _record("system", "extract_standards", response.usage)
