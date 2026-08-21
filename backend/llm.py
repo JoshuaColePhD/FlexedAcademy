@@ -816,6 +816,63 @@ def extract_decisions(user_id: str, messages: list[dict]) -> list[dict]:
         return []
 
 
+SUGGESTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "description": (
+                "A single natural-sounding message a teacher could send as-is to start "
+                "planning, under 30 words, in first person ('Help me plan...')."
+            ),
+        },
+    },
+    "required": ["prompt"],
+}
+
+_SUGGESTION_PROMPT = """Write ONE short message a teacher could send to a lesson-planning \
+assistant to start building the given week, first person, under 30 words. Ground it in the \
+SPECIFIC unit/topic given below rather than generic phrasing like "using my pacing guide" — \
+name the actual topic, text, or skill so it reads like the teacher already knows what they \
+want to teach, not a placeholder. No greeting, no explanation, just the message itself."""
+
+
+def generate_week_suggestion(user_id: str, *, week_label: str, unit: str | None, class_name: str | None) -> str | None:
+    """The composer's empty-state Tab suggestion, grounded in what the teacher's
+    own pacing guide actually says this week covers — instead of
+    contextualSuggestions.js's generic "using my pacing guide" template.
+
+    Best-effort like extract_decisions: cheap model, cached, swallows its own
+    failures. Never worth blocking the composer over — callers keep the
+    generic template suggestion on any error or empty unit."""
+    if not unit:
+        return None
+    try:
+        content = _cached_completion(
+            user_id,
+            "week_suggestion",
+            model="gpt-5.6-luna",
+            max_completion_tokens=120,
+            response_format=_response_format("suggestion", SUGGESTION_SCHEMA),
+            messages=[
+                {"role": "system", "content": _SUGGESTION_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Week: {week_label}\nClass: {class_name or 'this class'}\nUnit/topic: {unit}"
+                    ),
+                },
+            ],
+        )
+        data = json.loads(content or "{}")
+        prompt = str(data.get("prompt", "")).strip()
+        return prompt[:400] or None
+    except Exception as e:  # noqa: BLE001 — a visual aid, never a hard failure
+        log.warning("week suggestion generation failed: %s", e)
+        return None
+
+
 def _no_speech_prob(segment) -> float:
     if isinstance(segment, dict):
         return segment.get("no_speech_prob", 0.0)

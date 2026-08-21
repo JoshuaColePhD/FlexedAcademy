@@ -123,6 +123,12 @@ class DecisionsRequest(BaseModel):
     messages: list[ChatMessage]
 
 
+class SuggestionRequest(BaseModel):
+    class_id: str | None = None
+    week_number: int = Field(ge=1, le=52)
+    week_label: str = Field(min_length=1, max_length=80)
+
+
 class ReviseDayRequest(BaseModel):
     plan_id: str = Field(min_length=1, max_length=64)
     day_index: int = Field(ge=0, le=4)
@@ -632,6 +638,33 @@ def decisions(req: DecisionsRequest, request: Request, user_id: str = Depends(ge
     conversation, not a plan generation in its own right."""
     msgs = [{"role": m.role, "content": m.content} for m in req.messages]
     return {"decisions": llm.extract_decisions(user_id, msgs)}
+
+
+@router.post("/suggestion")
+@limiter.limit("30/minute")
+def suggestion(req: SuggestionRequest, request: Request, user_id: str = Depends(get_current_user)):
+    """The composer's empty-state Tab suggestion, upgraded from
+    contextualSuggestions.js's generic template with what the teacher's own
+    pacing guide actually says this week covers. Not gated by
+    require_entitlement — same reasoning as /decisions: a visual aid over
+    already-gated planning, not a generation in its own right. Callers keep
+    their own generic suggestion on any null/error response, so a missing
+    pacing guide or a cold cache never blocks the composer."""
+    cls = db.resolve_class(user_id, req.class_id)
+    subject = (cls or {}).get("subject")
+    if not subject:
+        return {"prompt": None}
+    school_id = db.class_school(cls, user_id)
+    weeks = schoolcal.school_weeks(school_id)
+    week = next((w for w in weeks if w["week"] == req.week_number), {"week": req.week_number, "start": None, "end": None})
+    hit = curriculum.unit_for_calendar_week(user_id, subject, week)
+    prompt = llm.generate_week_suggestion(
+        user_id,
+        week_label=req.week_label,
+        unit=(hit or {}).get("unit"),
+        class_name=(cls or {}).get("name"),
+    )
+    return {"prompt": prompt}
 
 
 @router.post("/revise_day")

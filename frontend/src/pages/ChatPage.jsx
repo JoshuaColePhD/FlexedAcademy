@@ -19,6 +19,7 @@ import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { getContextualSuggestions, suggestionContextLabel } from '../lib/contextualSuggestions'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -1698,6 +1699,54 @@ export function ChatPage() {
     ]
   )
 
+  // Upgrades the one suggestion whose prompt is a generic "using my pacing
+  // guide" template (plan-current-week / prepare-next-week — the only two
+  // that carry a weekNumber) with a version grounded in what the pacing
+  // guide actually says that week covers. Debounced and cached per
+  // class+week so navigating around the same week doesn't refire; falls
+  // back to the generic template (contextualSuggestions unmodified) on any
+  // error, cold cache, or missing pacing guide — this is a visual polish
+  // layer, never something the composer should wait on or break over.
+  const groundableSuggestion = contextualSuggestions.find((s) => s.weekNumber != null) || null
+  const suggestionKey = groundableSuggestion ? `${activeClass?.id || 'none'}:${groundableSuggestion.weekNumber}` : null
+  const debouncedSuggestionKey = useDebouncedValue(suggestionKey, 400)
+  const suggestionCacheRef = useRef(new Map())
+  const [aiSuggestionPrompt, setAiSuggestionPrompt] = useState(null)
+
+  useEffect(() => {
+    if (!debouncedSuggestionKey || debouncedSuggestionKey !== suggestionKey || !groundableSuggestion) {
+      setAiSuggestionPrompt(null)
+      return undefined
+    }
+    if (suggestionCacheRef.current.has(debouncedSuggestionKey)) {
+      setAiSuggestionPrompt(suggestionCacheRef.current.get(debouncedSuggestionKey))
+      return undefined
+    }
+    let cancelled = false
+    api
+      .getSuggestion({
+        class_id: activeClass?.id || null,
+        week_number: groundableSuggestion.weekNumber,
+        week_label: groundableSuggestion.label,
+      })
+      .then((res) => {
+        if (cancelled) return
+        suggestionCacheRef.current.set(debouncedSuggestionKey, res.prompt || null)
+        setAiSuggestionPrompt(res.prompt || null)
+      })
+      .catch(() => {
+        if (!cancelled) setAiSuggestionPrompt(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [debouncedSuggestionKey, suggestionKey, groundableSuggestion, activeClass?.id])
+
+  const enhancedSuggestions = useMemo(() => {
+    if (!aiSuggestionPrompt || !groundableSuggestion) return contextualSuggestions
+    return contextualSuggestions.map((s) => (s.id === groundableSuggestion.id ? { ...s, prompt: aiSuggestionPrompt } : s))
+  }, [contextualSuggestions, aiSuggestionPrompt, groundableSuggestion])
+
   const artifactEl =
     viewKind === 'plan' ? (
       <ArtifactPanel
@@ -1948,8 +1997,8 @@ export function ChatPage() {
             setAttachments={setAttachments}
             onOpenVoice={openVoice}
             voiceModeActive={voiceOpen}
-            suggestions={contextualSuggestions}
-            contextLabel={suggestionContextLabel(contextualSuggestions)}
+            suggestions={enhancedSuggestions}
+            contextLabel={suggestionContextLabel(enhancedSuggestions)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
                 <div className={`questions-dock${pendingQuestions ? ' is-open' : ''}`}>

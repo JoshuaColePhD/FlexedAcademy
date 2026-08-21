@@ -291,6 +291,12 @@ export const api = {
      just keeps whatever it already had. */
   getDecisions: (messages) => request('/api/decisions', { method: 'POST', body: { messages } }),
 
+  /* The composer's empty-state Tab suggestion, upgraded from the generic
+     rule-based template with what the pacing guide actually says the week
+     covers. Never worth a toast on failure; the caller just keeps the
+     generic suggestion it already had. */
+  getSuggestion: (payload) => request('/api/suggestion', { method: 'POST', body: payload }),
+
   reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload }),
 
   /* ── billing ──────────────────────────────────────────────────────────────
