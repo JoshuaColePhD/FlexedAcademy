@@ -1304,6 +1304,18 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE classes ADD COLUMN IF NOT EXISTS custom_instructions TEXT;
     """,
+    # ── 45: RLS on llm_cache ─────────────────────────────────────────────────
+    #
+    # Migration 21 created this table without the ENABLE ROW LEVEL SECURITY
+    # line every other table-creating migration carries (see 17's usage_events),
+    # so it was the one table in `public` left open to PostgREST and the anon
+    # key. Supabase's advisor flagged it as the only remaining ERROR.
+    #
+    # No policies, for the reason spelled out in migration 12: the app connects
+    # as `postgres` (BYPASSRLS) and nothing else has any business in here.
+    """
+    ALTER TABLE llm_cache ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
