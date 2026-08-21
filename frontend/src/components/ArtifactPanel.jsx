@@ -3,10 +3,8 @@ import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { Tooltip } from './Tooltip'
-import { ChevronsRight, Download, Loader2, RefreshCw, Share2, TriangleAlert } from 'lucide-react'
+import { ChevronsRight, Download, Loader2, TriangleAlert } from 'lucide-react'
 import { api } from '../lib/api'
-import { copyPlanShareLink } from '../lib/shareLink'
-import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
@@ -73,9 +71,8 @@ export function ArtifactPanel({
   openTweak,
   setOpenTweak,
 }) {
-  const [rebuilding, setRebuilding] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-  const toast = useToast()
+  const [completionPulse, setCompletionPulse] = useState(false)
     const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: api.listSchools })
   const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: api.listClasses })
   
@@ -91,7 +88,10 @@ const location = useLocation()
   const previousBusy = useRef(busy)
   
   useEffect(() => {
+    let timer
     if (previousBusy.current && !busy && artifact?.planId) {
+      setCompletionPulse(true)
+      timer = setTimeout(() => setCompletionPulse(false), 420)
       confetti({
         particleCount: 150,
         spread: 70,
@@ -99,6 +99,7 @@ const location = useLocation()
       })
     }
     previousBusy.current = busy
+    return () => clearTimeout(timer)
   }, [busy, artifact?.planId])
 
   /* Two questions, two answers. `isOverlay` decides whether the document
@@ -130,21 +131,9 @@ const location = useLocation()
   const planId = artifact?.planId
   const grounded = new Set(artifact?.grounding?.codes || artifact?.retrievedIds || [])
 
-  const rebuild = async () => {
-    setRebuilding(true)
-    try {
-      await api.rebuildPlan(planId)
-      toast.success('Document rebuilt', 'The .docx was re-emitted from the saved plan.')
-    } catch (err) {
-      toast.apiError('Could not rebuild the document', err)
-    } finally {
-      setRebuilding(false)
-    }
-  }
-
   return (
     <section
-      className="doc-shell"
+      className={`doc-shell${completionPulse ? ' fa-shadow-lift' : ''}`}
       aria-label="Generated lesson plan"
       ref={panelRef}
       tabIndex={-1}

@@ -87,7 +87,7 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
                   aria-hidden="true"
                   className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-2xs font-semibold transition-shadow ${
                     isWriting
-                      ? 'neo-raised text-accent-text'
+                    ? 'neo-raised text-accent-text fa-progress-sweep'
                       : `neo-inset ${isOff ? 'text-ink-faint' : day ? 'text-accent-text' : 'text-ink-muted'}`
                   }`}
                 >

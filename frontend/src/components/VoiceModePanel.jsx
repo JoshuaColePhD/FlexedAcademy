@@ -62,7 +62,7 @@ function BuildProgress({ days }) {
 
 function BuiltPlanCard({ builtPlan, onClose }) {
   return (
-    <div className="neo-panel flex flex-wrap items-center gap-3 rounded-[28px] bg-paper-raised p-4">
+    <div className="neo-panel fa-shadow-lift flex flex-wrap items-center gap-3 rounded-[28px] bg-paper-raised p-4">
       <span className="neo-inset grid h-9 w-9 place-items-center rounded-full text-ink"><Check size={16} strokeWidth={3} /></span>
       <div className="min-w-0 flex-1"><p className="eyebrow">Built</p><p className="text-sm font-medium text-ink">{builtPlan.weekLabel || 'This week'}</p></div>
       <a href={api.planDownloadUrl(builtPlan.planId)} download className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-ink"><Download size={12} />Download</a>
@@ -181,12 +181,12 @@ export function VoiceModePanel({
         <div className="flex items-center gap-2">
           {onReplayLast ? <button type="button" onClick={onReplayLast} aria-label="Replay the last reply" className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint hover:bg-paper-sunken"><Play size={14} fill="currentColor" /></button> : null}
           <button type="button" onClick={togglePtt} aria-pressed={mode === 'ptt'} aria-label={mode === 'auto' ? 'Switch to push-to-talk' : 'Switch to hands-free listening'} className={`tap-target flex items-center gap-2 rounded-full px-3 py-2 text-2xs font-semibold uppercase tracking-caps ${mode === 'ptt' ? 'bg-paper-sunken text-ink' : 'text-ink-faint hover:bg-paper-sunken'}`}>{mode === 'auto' ? <><Radio size={14} />Hands-free</> : <><Hand size={14} />Push to talk</>}</button>
-          {mode === 'ptt' ? <button type="button" onPointerDown={startPtt} onPointerUp={stopPtt} onPointerLeave={stopPtt} onPointerCancel={stopPtt} aria-label="Hold to talk" className="tap-target neo-raised flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-ink-soft"><Hand size={15} />Hold to talk</button> : <button type="button" onClick={toggleMute} aria-pressed={voice.muted} aria-label={voice.muted ? 'Turn the microphone back on' : 'Turn the microphone off'} className={`tap-target neo-raised flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${voice.muted ? 'bg-mark-tint text-mark' : 'text-ink-soft'}`}>{voice.muted ? <MicOff size={15} /> : <Mic size={15} />}{voice.muted ? 'Microphone off' : 'Mute'}</button>}
+          {mode === 'ptt' ? <button type="button" onPointerDown={startPtt} onPointerUp={stopPtt} onPointerLeave={stopPtt} onPointerCancel={stopPtt} aria-label="Hold to talk" className="fa-press tap-target neo-raised flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-ink-soft"><Hand size={15} />Hold to talk</button> : <button type="button" onClick={toggleMute} aria-pressed={voice.muted} aria-label={voice.muted ? 'Turn the microphone back on' : 'Turn the microphone off'} className={`fa-press tap-target neo-raised flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${!voice.muted && phase === 'listening' ? 'voice-mic-active' : ''} ${voice.muted ? 'bg-mark-tint text-mark' : 'text-ink-soft'}`}>{voice.muted ? <MicOff size={15} /> : <Mic size={15} />}{voice.muted ? 'Microphone off' : 'Mute'}</button>}
           <button type="button" onClick={onClose} aria-label="Close voice conversation" className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint hover:bg-paper-sunken"><X size={16} /></button>
         </div>
       </div>
 
-      <div className={`caption-line shrink-0${caption || showHeard || isSpeaking ? ' is-visible' : ''}`}>
+      <div className={`caption-line shrink-0${caption || showHeard || isSpeaking ? ' is-visible' : ''}${voice.interrupted ? ' fa-settle' : ''}`}>
         <div className="caption-line-inner">
           {caption ? <p className="text-sm leading-relaxed text-ink-soft">{caption}</p> : showHeard ? <HeardEcho text={heardText} onCorrect={(fixed) => { const next = fixed.trim(); if (next) onUtterance(`Sorry, I actually said: "${next}"`); setHeardText('') }} /> : voice.interrupted ? <p className="text-sm font-medium text-accent-text">Stopped — listening to you.</p> : isSpeaking ? <p className="text-sm text-ink-faint">Talk any time to cut in.</p> : null}
         </div>

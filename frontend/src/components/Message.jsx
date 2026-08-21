@@ -67,6 +67,7 @@ export function Message({ message, subject, onRetry, onEdit, isLast }) {
   }, [editing])
 
   const isUser = message.role === 'user'
+  const assistantSettled = !isUser && !message.streaming && !message.isError
 
   /* Computed here rather than handed down, so a message that carries a plan
      carries its own proof and nothing upstream has to remember to attach it. */
@@ -168,7 +169,7 @@ export function Message({ message, subject, onRetry, onEdit, isLast }) {
                      existing neutral "card" surface (see DecisionStack,
                      VoiceModePanel), not a colored one, so the two turns are
                      still visually distinct while both read as boxed. */
-                  'neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink'
+                  `neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink${assistantSettled ? ' fa-settle' : ''}`
           }
           /* Token, not a raw rgba() literal — the literal never adapted in
              dark mode, so the teacher's own bubble stayed the same light

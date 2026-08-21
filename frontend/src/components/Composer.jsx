@@ -96,6 +96,16 @@ export function Composer({
   const [isFocused, setIsFocused] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState(0)
   const [trayDismissed, setTrayDismissed] = useState(false)
+  const [motionState, setMotionState] = useState('')
+  const motionTimerRef = useRef(null)
+
+  const pulseMotion = useCallback((state, duration = 360) => {
+    setMotionState(state)
+    window.clearTimeout(motionTimerRef.current)
+    motionTimerRef.current = window.setTimeout(() => setMotionState(''), duration)
+  }, [])
+
+  useEffect(() => () => window.clearTimeout(motionTimerRef.current), [])
 
   const candidateSuggestions = useMemo(() => {
     const normalized = suggestions.length
@@ -109,6 +119,18 @@ export function Composer({
       .filter((item) => item.prompt?.toLocaleLowerCase().startsWith(query))
       .slice(0, 3)
   }, [suggestion, suggestions, value])
+
+  const contextSignature = useMemo(
+    () => suggestions.map((item) => `${item.id}:${item.prompt}`).join('|'),
+    [suggestions]
+  )
+  const previousContextSignature = useRef(contextSignature)
+  useEffect(() => {
+    if (previousContextSignature.current && previousContextSignature.current !== contextSignature) {
+      pulseMotion('context', 260)
+    }
+    previousContextSignature.current = contextSignature
+  }, [contextSignature, pulseMotion])
 
   useEffect(() => {
     setSelectedSuggestion((index) => Math.min(index, Math.max(candidateSuggestions.length - 1, 0)))
@@ -287,6 +309,7 @@ export function Composer({
      *
      * The gesture requirement is satisfied where it belongs now: by the press
      * on the voice button itself, which is the only thing that opens a session. */
+    pulseMotion('submit', 320)
     onSubmit()
   }
 
@@ -296,6 +319,7 @@ export function Composer({
     const remaining = typedPrefixMatches ? suggestionToAccept.prompt.slice(value.length) : ''
     if (value && !remaining) return
     const nextValue = value && remaining ? `${value}${remaining}` : suggestionToAccept.prompt
+    pulseMotion('accept', 300)
     onChange(nextValue)
     setTrayDismissed(false)
     requestAnimationFrame(() => {
@@ -336,7 +360,7 @@ export function Composer({
       <div
         className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised transition-all ${
           voiceModeActive ? 'rounded-3xl' : 'rounded-xl'
-        } ${isDragging ? 'ring-2 ring-accent' : ''}`}
+        } ${isDragging ? 'ring-2 ring-accent' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -354,7 +378,7 @@ export function Composer({
 
         <div
           id="composer-recommendations"
-          className={`composer-recommendations${trayOpen ? ' is-open' : ''}`}
+          className={`composer-recommendations${trayOpen ? ' is-open' : ''} ${motionState === 'context' ? 'fa-context-pop' : ''}`}
           aria-hidden={!trayOpen}
         >
           <div className="composer-recommendations-inner">
@@ -369,7 +393,7 @@ export function Composer({
                   key={item.id}
                   type="button"
                   tabIndex={trayOpen ? 0 : -1}
-                  className={`flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                  className={`composer-recommendation flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
                     index === selectedSuggestion ? 'neo-inset bg-paper-sunken' : 'hover:bg-paper-sunken'
                   }`}
                   onMouseDown={(e) => e.preventDefault()}
@@ -380,7 +404,7 @@ export function Composer({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-ink">{item.label || item.prompt}</span>
-                    {item.reason ? <span className="mt-0.5 block text-xs text-ink-muted">{item.reason}</span> : null}
+                    {item.reason ? <span className="composer-recommendation-reason mt-0.5 block text-xs text-ink-muted">{item.reason}</span> : null}
                   </span>
                   {index === 0 ? <kbd className="mt-0.5 shrink-0 text-[0.625rem] text-ink-faint">Tab</kbd> : null}
                 </button>
@@ -416,7 +440,7 @@ export function Composer({
               this makes the actual button that size instead of just its
               hit box. */}
           <label
-            className="tap-target mb-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:mb-2 md:h-9 md:w-9"
+            className="fa-press tap-target mb-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:mb-2 md:h-9 md:w-9"
             htmlFor="composer-file"
           >
             {isAttaching ? (
@@ -442,7 +466,7 @@ export function Composer({
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-pre-wrap break-words px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed"
               >
-                <span className="text-ink">{value}</span><span className="text-ink-faint">{completion}</span>
+                <span className="text-ink">{value}</span><span className="composer-ghost text-ink-faint">{completion}</span>
               </div>
             ) : null}
             <textarea
@@ -562,7 +586,7 @@ export function Composer({
                    in the composer that's allowed to hint at that with
                    colour — the accent tint on hover is the same "this opens
                    something" language RailRow's own icon tiles use. */
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper-sunken md:h-9 md:w-9"
+                className="fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper-sunken md:h-9 md:w-9"
                 onClick={onOpenVoice}
                 aria-label="Start a voice conversation"
                 title="Talk instead of type"
@@ -579,7 +603,7 @@ export function Composer({
                    whole bar. Was bg-accent-tint (a pastel wash) despite this
                    comment already arguing for the full fill — the tint never
                    actually landed here. */
-                className={`fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
+                className={`${motionState === 'submit' ? 'fa-settle ' : ''}fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
                   canSend
                     ? 'neo-raised bg-paper-raised text-ink hover:bg-paper-sunken'
                     : /* Inset, not a flat grey disc: unavailable reads as

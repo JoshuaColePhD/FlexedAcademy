@@ -10,10 +10,8 @@ import {
   FileText,
   ListChecks,
   Loader2,
-  Share2,
 } from 'lucide-react'
 import { api } from '../lib/api'
-import { copyPlanShareLink } from '../lib/shareLink'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { orderedDays, unitSuffix } from '../lib/planShape'
@@ -123,6 +121,7 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
  * delete it?") nobody was asking. Download is the row's only action now. */
 function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
   const style = { animationDelay: `${index * 60}ms` }
+  const toast = useToast()
 
   return (
     <div
@@ -223,7 +222,6 @@ export function ArtifactRail({
   // standing in for a real plan that just failed to load.
   artifactLoadError = false,
 }) {
-  const toast = useToast()
   const [shareTarget, setShareTarget] = useState(null)
   const plan = artifact?.plan
   const planId = artifact?.planId
@@ -486,7 +484,7 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
     <div className={`artifact-drawer${open ? ' is-open' : ''}`}>
       <button
         type="button"
-        className={`artifact-drawer-handle tap-target${busy ? ' is-busy' : ''}`}
+        className={`artifact-drawer-handle fa-press tap-target${busy ? ' is-busy' : ''}`}
         onClick={onToggle}
         aria-expanded={open}
         aria-label={open ? 'Collapse my plans' : 'Open my plans'}

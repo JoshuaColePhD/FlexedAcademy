@@ -2946,12 +2946,20 @@
     box-shadow:
       6px 6px 14px rgb(var(--neo-dark-rgb) / 0.6),
       -6px -6px 14px rgb(var(--neo-light-rgb) / 0.85);
+    transition:
+      border-color var(--t-fast) var(--ease),
+      box-shadow var(--t-base) var(--ease-out),
+      transform var(--t-base) var(--ease-out);
   }
   /* The signal that replaces it. A full tone step on the border, not a hairline
      nudge, because it is now the only non-caret indication that typing will go
      here (WCAG 2.4.7). */
   .composer-shell:focus-within {
     border-color: var(--edge-strong);
+    transform: translateY(-1px);
+    box-shadow:
+      7px 7px 16px rgb(var(--neo-dark-rgb) / 0.56),
+      -7px -7px 16px rgb(var(--neo-light-rgb) / 0.82);
   }
 
   /* The week and the class, above the transcript. Rule 1: no rule under it —
@@ -4576,11 +4584,45 @@
     transition: transform var(--t-base) var(--ease);
   }
   .fa-lift:hover {
-    transform: translateY(-2px);
+    transform: translateY(calc(var(--motion-lift) * -1));
   }
   .fa-press:active {
-    transform: scale(0.94);
+    transform: translateY(var(--motion-press)) scale(0.98);
     transition: transform 120ms var(--ease-spring);
+  }
+  /* A small, one-shot landing motion for a completed plan, accepted
+     suggestion, or newly available piece of context. It is intentionally
+     quieter than fa-pop: the content is already present, so the motion only
+     confirms that it has settled into place. */
+  .fa-settle {
+    animation: fa-settle 360ms var(--ease-spring) both;
+  }
+  .fa-shadow-lift {
+    animation: fa-shadow-lift 360ms var(--ease-out) both;
+  }
+  .fa-context-pop {
+    animation: fa-context-pop 220ms var(--ease-out) both;
+  }
+  .fa-composer-accept {
+    animation: fa-composer-accept 260ms var(--ease-out) both;
+  }
+  .fa-progress-sweep {
+    animation: fa-progress-sweep 1.8s var(--ease) infinite;
+  }
+  .composer-recommendation {
+    animation: fa-context-pop 220ms var(--ease-out) both;
+  }
+  .composer-recommendation:nth-child(2) {
+    animation-delay: 30ms;
+  }
+  .composer-recommendation:nth-child(3) {
+    animation-delay: 60ms;
+  }
+  .composer-recommendation-reason {
+    animation: composer-reason-in 260ms var(--ease-out) 45ms both;
+  }
+  .composer-ghost {
+    animation: composer-ghost-in 180ms var(--ease-out) both;
   }
   /* Toolbar text buttons grow a rule from the left rather than lighting up a
      background — quieter, and it keeps the header free of boxes. */
@@ -4620,6 +4662,9 @@
      glance, this is the part that keeps saying it. */
   .fa-listening {
     animation: fa-listening 1.6s var(--ease) infinite;
+  }
+  .voice-mic-active {
+    animation: voice-mic-breathe 2.4s var(--ease) infinite;
   }
   /* The streaming reply's own cursor. Was Tailwind's stock animate-pulse
      (a 2s ease-in-out fade to 50% opacity) — serviceable, but the one
@@ -4714,7 +4759,90 @@
 @keyframes fa-rise {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(var(--motion-reveal));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fa-settle {
+  0% {
+    opacity: 0.72;
+    transform: translateY(2px) scale(0.985);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-1px) scale(1.005);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fa-shadow-lift {
+  0% {
+    box-shadow: var(--shadow-md);
+    transform: translateY(0);
+  }
+  55% {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(calc(var(--motion-lift) * -1));
+  }
+  100% {
+    box-shadow: var(--shadow-md);
+    transform: translateY(0);
+  }
+}
+@keyframes fa-context-pop {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-reveal));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fa-composer-accept {
+  0% {
+    box-shadow: inset 0 0 0 rgb(var(--accent-rgb) / 0);
+  }
+  45% {
+    box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.2);
+  }
+  100% {
+    box-shadow: inset 0 0 0 rgb(var(--accent-rgb) / 0);
+  }
+}
+@keyframes fa-progress-sweep {
+  0%, 100% {
+    box-shadow:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
+      -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8),
+      0 0 0 0 rgb(var(--accent-rgb) / 0);
+  }
+  50% {
+    box-shadow:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
+      -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8),
+      0 0 0 4px rgb(var(--accent-rgb) / 0.08);
+  }
+}
+@keyframes composer-reason-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes composer-ghost-in {
+  from {
+    opacity: 0;
+    transform: translateX(3px);
   }
   to {
     opacity: 1;
@@ -4758,6 +4886,20 @@
   }
   100% {
     box-shadow: 0 0 0 0 rgb(var(--mark-rgb) / 0);
+  }
+}
+@keyframes voice-mic-breathe {
+  0%, 100% {
+    box-shadow:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
+      -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8),
+      0 0 0 0 rgb(var(--accent-rgb) / 0);
+  }
+  50% {
+    box-shadow:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
+      -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8),
+      0 0 0 4px rgb(var(--accent-rgb) / 0.08);
   }
 }
 @keyframes fa-cursor-blink {
