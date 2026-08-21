@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
-from pathlib import Path
 
 from .. import calendar_intake, db, storage, template_intake
 from ..config import settings

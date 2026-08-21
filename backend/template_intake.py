@@ -62,11 +62,10 @@ tell you.
 """
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-
-import json
 
 from . import db, llm, mail
 from .config import settings
@@ -831,7 +830,7 @@ def analyze_uploaded_template(*, user_id: str, dest_path: Path, claimed_ext: str
         }
     except TemplateAnalysisFailed as e:
         return {"status": "failed", "structure": None, "analysis": None, "findings": [f.to_dict() for f in e.findings]}
-    except Exception as e:  # noqa: BLE001 — analysis must never crash the caller
+    except Exception as e:
         log.exception("template analysis crashed unexpectedly for %s", dest_path)
         findings.append(Finding("pipeline", "unexpected_error", "error", str(e)))
         return {"status": "failed", "structure": None, "analysis": None, "findings": [f.to_dict() for f in findings]}
@@ -865,9 +864,7 @@ def _meets_auto_activation_bar(result: dict) -> bool:
     confidence = analysis.get("overall_confidence")
     if not isinstance(confidence, (int, float)) or confidence < _AUTO_ACTIVATE_MIN_CONFIDENCE:
         return False
-    if not analysis.get("recommended_for_auto_use"):
-        return False
-    return True
+    return bool(analysis.get("recommended_for_auto_use"))
 
 
 def _maybe_auto_activate(school_id: str, template_id: str, result: dict) -> bool:

@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends
-from ..deps import get_current_user
 import asyncio
+
+from fastapi import APIRouter, Depends
+
+from ..deps import get_current_user
 
 router = APIRouter(prefix="/api/canvas", tags=["canvas"])
 

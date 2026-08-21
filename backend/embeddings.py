@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import time
 
-from .config import settings
 from .errors import AppError
 
 log = logging.getLogger("aplang.embeddings")

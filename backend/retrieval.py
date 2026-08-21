@@ -32,9 +32,9 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -138,14 +138,14 @@ _ACT_SECTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     # Order matters: first match wins. "AP Computer Science A" must not read as
     # science, "AP Human Geography" must not read as science via "geo", and
     # "AP Art History" must reach the history rule before the arts rule.
-    (r"computer science|comp\s*sci|\bcsp?\b|programming|coding|engineering|"
-     r"health|physical education|\bpe\b|band|choir|orchestra|counsel", ()),
+    ((r"computer science|comp\s*sci|\bcsp?\b|programming|coding|engineering|"
+     r"health|physical education|\bpe\b|band|choir|orchestra|counsel"), ()),
     # World languages, BEFORE the English rule. "AP Spanish Literature and
     # Culture" is a Spanish course, and the word "literature" in its title was
     # matching the English rule and handing it ACT English/Reading/Writing —
     # standards about reading English prose, in a class taught in Spanish.
-    (r"spanish|french|german|\blatin\b|japanese|chinese|italian|russian|"
-     r"world language", ()),
+    ((r"spanish|french|german|\blatin\b|japanese|chinese|italian|russian|"
+     r"world language"), ()),
     # Social studies and humanities -> ACT Reading. The Reading section's
     # passages are prose fiction, social science, humanities and natural
     # science, so a history, government, economics, psychology or arts course
@@ -154,21 +154,21 @@ _ACT_SECTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     # sit here too: both are taught as close reading of sources and building an
     # argument from them, which is what the Reading section tests, and neither
     # has a section of its own.
-    (r"histor|government|civics|geograph|econom|psycholog|sociolog|"
+    ((r"histor|government|civics|geograph|econom|psycholog|sociolog|"
      r"social studies|humanities|\bart\b|arts|theatre|theater|music|visual|"
-     r"seminar|research",
+     r"seminar|research"),
      (ACT_READING,)),
-    (r"physics|chemistry|biology|anatomy|geolog|astronom|environmental|"
-     r"\bscience\b|\bsci\b", (ACT_SCIENCE,)),
-    (r"math|algebra|geometry|calculus|statistic|precalc|pre-calc|trig|"
-     r"quantitative", (ACT_MATH,)),
+    ((r"physics|chemistry|biology|anatomy|geolog|astronom|environmental|"
+     r"\bscience\b|\bsci\b"), (ACT_SCIENCE,)),
+    ((r"math|algebra|geometry|calculus|statistic|precalc|pre-calc|trig|"
+     r"quantitative"), (ACT_MATH,)),
     # English gets all three ELA-side sections. An AP Lang week is rhetorical
     # analysis (ACT Reading: R.ARG argument, R.TST text structure) and timed
     # argument essays (ACT Writing: W.DEV, W.LANG) as much as it is grammar and
     # usage (ACT English), and restricting it to the English section alone would
     # leave a rhetorical-analysis week citing punctuation conventions.
-    (r"english|language arts|\bela\b|\blang\b|literature|\blit\b|composition|"
-     r"reading|writing|rhetoric", (ACT_ENGLISH, ACT_READING, ACT_WRITING)),
+    ((r"english|language arts|\bela\b|\blang\b|literature|\blit\b|composition|"
+     r"reading|writing|rhetoric"), (ACT_ENGLISH, ACT_READING, ACT_WRITING)),
 )
 
 
@@ -387,7 +387,8 @@ def scope_error(query: str, grades: list[int], corpus_grade: int = 11) -> AppErr
 
 # Query vectors come from the OpenAI embeddings API now (see backend/embeddings.py).
 # Re-exported under the old name so callers and scripts don't need to change.
-from .embeddings import EMBED_DIMS, EMBED_MODEL, embed_queries, embed_query  # noqa: E402,F401
+from .embeddings import EMBED_DIMS, EMBED_MODEL, embed_queries, embed_query  # noqa: F401
+
 
 def load_chunks() -> list[dict]:
     """The full chunk records, straight from the *chunks.json files.
@@ -851,7 +852,7 @@ def retrieve_grounded(
         for future in futures:
             try:
                 consider(future.result())
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — one retrieval source failing shouldn't sink the others
                 log.warning("retrieval failed: %s", e)
 
     raw = sorted(best.values(), key=lambda c: c["distance"])

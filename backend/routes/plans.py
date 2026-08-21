@@ -1,9 +1,10 @@
 """The Plans library: every week ever generated, re-downloadable and rebuildable."""
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse
@@ -15,6 +16,8 @@ from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
 from .drive import get_valid_access_token
+
+log = logging.getLogger("aplang.routes.plans")
 
 router = APIRouter(prefix="/api/plans", tags=["plans"])
 
@@ -380,7 +383,6 @@ def delete_plan(plan_id: str, user_id: str = Depends(get_current_user)):
         if p.is_relative_to(Path(settings.plans_dir).resolve()):
             storage.remove_file(p)
     db.delete_plan(user_id, plan_id)
-    return None
 
 
 @router.post("/{plan_id}/feedback")
@@ -603,7 +605,8 @@ def update_quiz(
         qti_build.build_qti_zip(body.quiz_json, out_path)
         storage.mirror_file(out_path)
         qti_path = str(out_path)
-    except Exception as e:
+    except Exception:
+        log.warning("could not build QTI zip for quiz_id=%s", quiz_id, exc_info=True)
         qti_path = None
 
     return db.update_quiz(
@@ -623,7 +626,6 @@ def delete_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_u
             storage.remove_file(p)
     if not db.delete_quiz(user_id, quiz_id):
         raise AppError("quiz_not_found", "No such quiz.", status=404)
-    return None
 
 
 @router.get("/{plan_id}/quizzes/{quiz_id}/download")

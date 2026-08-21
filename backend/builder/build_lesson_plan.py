@@ -58,8 +58,8 @@ from docx import Document
 from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Pt, Twips
 
 BLUE = "6d9eeb"   # header rows + label column, matches source template

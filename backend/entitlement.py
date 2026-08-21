@@ -38,7 +38,7 @@ usage, recorded by every model call in llm.py via db.record_usage, is.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from . import db
 from .config import settings
@@ -146,7 +146,7 @@ def entitlement(user_id: str) -> Entitlement:
     # was never actually a distinct case, not that the cap was too small.
     unlimited = custom_cap is None and status == "comped"
 
-    since = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
+    since = (datetime.now(UTC) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
     tokens_used = db.tokens_used_since(user_id, since)
 
     if unlimited:
@@ -167,7 +167,7 @@ def entitlement(user_id: str) -> Entitlement:
     cap = custom_cap if custom_cap is not None else (
         settings.subscriber_weekly_token_cap if subscribed else settings.free_weekly_token_cap
     )
-    burst_since = (datetime.now(timezone.utc) - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")
+    burst_since = (datetime.now(UTC) - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")
     tokens_used_recent = db.tokens_used_since(user_id, burst_since)
     burst_cap = int(cap * BURST_FRACTION)
 

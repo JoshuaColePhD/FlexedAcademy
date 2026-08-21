@@ -161,7 +161,7 @@ def upload_as_google_doc(access_token: str, *, filename: str, content: bytes, so
         f"{metadata}\r\n"
         f"--{boundary}\r\n"
         f"Content-Type: {source_mime}\r\n\r\n"
-    ).encode("utf-8") + content + f"\r\n--{boundary}--".encode("utf-8")
+    ).encode() + content + f"\r\n--{boundary}--".encode()
 
     try:
         res = requests.post(

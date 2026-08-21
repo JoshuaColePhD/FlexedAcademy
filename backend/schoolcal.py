@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date, datetime, timedelta
-from functools import lru_cache
+from datetime import UTC, date, datetime, timedelta
+from functools import cache
 
 from .config import settings
 
@@ -73,8 +73,8 @@ _MONTHS = {
 # A week is off if its Notes say so. "no school all week" and "Winter break" are
 # whole-week closures; "Mon Jan 18 = MLK Day (no school)" is a single day and
 # must NOT take the week out — that week is still four teaching days.
-_WEEK_OFF = re.compile(r"no school all week|break\s*[—-]\s*no school|winter break", re.I)
-_ANY_CLOSURE = re.compile(r"no school", re.I)
+_WEEK_OFF = re.compile(r"no school all week|break\s*[—-]\s*no school|winter break", re.IGNORECASE)
+_ANY_CLOSURE = re.compile(r"no school", re.IGNORECASE)
 
 _DOW = ("Mon", "Tue", "Wed", "Thu", "Fri")
 
@@ -87,12 +87,12 @@ _MONTH_ALT = "|".join(_MONTHS)
 _SPAN = re.compile(
     rf"(?P<m1>{_MONTH_ALT})\s+(?P<d1>\d{{1,2}})"
     rf"(?:\s*[-–—]\s*(?:(?P<m2>{_MONTH_ALT})\s+)?(?P<d2>\d{{1,2}}))?",
-    re.I,
+    re.IGNORECASE,
 )
 
 # Bullets that name a boundary rather than a closure. "Last day May 27" is when
 # the year ENDS, not a day off — treating it as one would close the final week.
-_NOT_A_CLOSURE = re.compile(r"last day|first day|school starts|return from", re.I)
+_NOT_A_CLOSURE = re.compile(r"last day|first day|school starts|return from", re.IGNORECASE)
 
 # The human name of a closure, when the note bothers to give one:
 #   "Mon Sep 7 = Labor Day (no school)"  ->  "Labor Day"
@@ -103,7 +103,7 @@ _NAMED = re.compile(r"=\s*([^(;]+)")
 # Without this the calendar cell would read "Thu–Fri", which is both wrong and
 # already obvious from the column the cell is sitting in.
 _LEADING_DOW = re.compile(
-    r"^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*[-–—]?\s*)+", re.I
+    r"^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*[-–—]?\s*)+", re.IGNORECASE
 )
 
 
@@ -130,7 +130,7 @@ def _mk_date(token: str, fall_year: int, spring_year: int) -> date | None:
         return None
 
 
-@lru_cache(maxsize=None)
+@cache
 def _read(school_id: str) -> tuple[str, int, int]:
     """One school's calendar file plus the two years its dates belong to.
     Cached per school_id because every week board hits it and it changes
@@ -140,14 +140,15 @@ def _read(school_id: str) -> tuple[str, int, int]:
         text = path.read_text(encoding="utf-8")
     except OSError:
         log.warning("school calendar not readable at %s — week board will be empty", path)
-        return "", date.today().year, date.today().year
+        today = datetime.now(UTC).date()
+        return "", today.year, today.year
 
     m = _YEARS.search(text)
-    fall_year, spring_year = (int(m.group(1)), int(m.group(2))) if m else (date.today().year,) * 2
+    fall_year, spring_year = (int(m.group(1)), int(m.group(2))) if m else (datetime.now(UTC).date().year,) * 2
     return text, fall_year, spring_year
 
 
-@lru_cache(maxsize=None)
+@cache
 def _file_weeks(school_id: str) -> list[dict]:
     """The hand-curated file path — everything school_weeks() used to do on
     its own. Still cached indefinitely: a calendar file changes once a year,
@@ -281,7 +282,7 @@ def week_for(school_id: str, day: date | None = None) -> dict | None:
     own week by number instead of the app guessing one for them."""
     if school_id == NO_CALENDAR_SCHOOL_ID:
         return None
-    day = day or date.today()
+    day = day or datetime.now(UTC).date()
     iso = day.isoformat()
     upcoming = None
     for w in school_weeks(school_id):
@@ -337,7 +338,7 @@ def _dates_in(segment: str, fall_year: int, spring_year: int) -> list[date]:
     return out
 
 
-@lru_cache(maxsize=None)
+@cache
 def closure_days(school_id: str) -> dict[str, str]:
     """Every individual day one school is closed -> why.
 

@@ -17,7 +17,7 @@ teacher's own Drive. Three moving pieces:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
@@ -72,10 +72,10 @@ def get_valid_access_token(user_id: str) -> str:
             status=409,
         )
     expires_at = datetime.fromisoformat(row["expires_at"])
-    if expires_at - timedelta(seconds=_REFRESH_SKEW_SECONDS) > datetime.now(timezone.utc):
+    if expires_at - timedelta(seconds=_REFRESH_SKEW_SECONDS) > datetime.now(UTC):
         return row["access_token"]
     result = google_drive.refresh_access_token(row["refresh_token"])
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(result.get("expires_in", 3600)))
+    expires_at = datetime.now(UTC) + timedelta(seconds=int(result.get("expires_in", 3600)))
     db.set_drive_access_token(
         user_id, access_token=result["access_token"], expires_at=expires_at.isoformat(timespec="seconds")
     )
@@ -145,7 +145,7 @@ def callback(request: Request, code: str | None = None, state: str | None = None
         # would quietly stop working the moment it expires.
         log.warning("google drive grant for %s carried no refresh_token", payload["uid"])
         return RedirectResponse(f"{base}{return_to}?drive=error", status_code=302)
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(result.get("expires_in", 3600)))
+    expires_at = datetime.now(UTC) + timedelta(seconds=int(result.get("expires_in", 3600)))
     db.set_drive_tokens(
         payload["uid"],
         access_token=result["access_token"],

@@ -344,8 +344,9 @@ def reanalyze_school_template_route(template_id: str, admin_id: str = Depends(ge
 
 @router.get("/school-templates/{template_id}/download")
 def download_school_template_route(template_id: str, _admin: str = Depends(get_current_admin)):
-    from fastapi.responses import FileResponse
     from pathlib import Path
+
+    from fastapi.responses import FileResponse
     template = db.get_school_template(template_id)
     if not template:
         raise AppError("not_found", "Template not found.", status=404)

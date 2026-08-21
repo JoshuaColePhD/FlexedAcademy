@@ -49,12 +49,12 @@ def _frontend_url(request: Request) -> str:
 
 
 def _cookie_kwargs(request: Request) -> dict:
-    return dict(
-        httponly=True,
-        samesite="lax",
-        secure=_is_https(request),
-        max_age=auth.SESSION_MAX_AGE_SECONDS,
-    )
+    return {
+        "httponly": True,
+        "samesite": "lax",
+        "secure": _is_https(request),
+        "max_age": auth.SESSION_MAX_AGE_SECONDS,
+    }
 
 
 def _public_user(user: dict) -> dict:

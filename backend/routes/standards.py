@@ -10,13 +10,13 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from pypdf import PdfReader
-from fastapi import APIRouter, Query, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from pydantic import BaseModel, Field
+from pypdf import PdfReader
 
-from .. import retrieval, db, llm
-from ..deps import get_current_user
+from .. import db, llm, retrieval
 from ..config import settings
+from ..deps import get_current_user
 from ..errors import AppError
 from ..prompts import known_gaps
 
@@ -127,14 +127,14 @@ async def upload_global_standards(
         full_text = "\n".join(text_pages)
         if not full_text.strip():
             raise ValueError("No text could be extracted from this PDF.")
-    except Exception as e:
+    except Exception:  # noqa: BLE001 — translated into an AppError for the route to return
         raise AppError("pdf_parse_error", "Failed to extract text from the provided PDF.", status=400)
 
     try:
         extracted_standards = llm.extract_standards_from_text(full_text)
-    except AppError as e:
-        raise e
-    except Exception as e:
+    except AppError:
+        raise
+    except Exception:  # noqa: BLE001 — translated into an AppError for the route to return
         raise AppError("llm_extraction_error", "Failed to extract standards using AI.", status=500)
 
     if not extracted_standards:
@@ -142,7 +142,7 @@ async def upload_global_standards(
 
     try:
         db.insert_global_standards(user_id, state.strip(), subject.strip(), grade.strip(), extracted_standards)
-    except Exception as e:
+    except Exception:  # noqa: BLE001 — translated into an AppError for the route to return
         raise AppError("db_save_error", "Failed to save standards to the database.", status=500)
 
     return {"message": "Standards processed successfully", "count": len(extracted_standards), "standards": extracted_standards}
