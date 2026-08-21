@@ -30,7 +30,7 @@ def main() -> int:
         def json(self):
             return {"value": "ephemeral-token", "expires_at": 123}
 
-    def fake_prompt(user_id, chat_id, week_number, mode, last_user=""):
+    def fake_prompt(user_id, chat_id, week_number, mode, last_user="", class_id=None):
         captured["context"] = (user_id, chat_id, week_number, mode)
         return "grounded context"
 

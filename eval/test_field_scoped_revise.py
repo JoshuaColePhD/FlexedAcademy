@@ -98,6 +98,13 @@ def install_stubs(calls: Calls, new_value):
             calls.saved_plan = kw["plan_json"]
             return {"id": plan_id, **kw}
 
+        # Added alongside migration 29 (plan_standards) — out of scope for
+        # what this test asserts (field scoping), so a no-op rather than a
+        # tracked call.
+        @staticmethod
+        def replace_plan_standards(*a, **kw):
+            pass
+
     class FakeRetrieval:
         @staticmethod
         def retrieve_grounded(*a, **kw):
@@ -109,14 +116,20 @@ def install_stubs(calls: Calls, new_value):
             calls.audited += 1
             return []
 
+        # Same reasoning as FakeDb.replace_plan_standards just above — out
+        # of scope for field-scoping, a no-op is enough.
+        @staticmethod
+        def cited_standards(*a, **kw):
+            return []
+
     class FakeLlm:
         @staticmethod
-        def rewrite_day_field(user_id, day, feedback, field, ctx, result):
+        def rewrite_day_field(user_id, day, feedback, field, ctx, result, *, class_id=None):
             calls.scoped.append(field)
             return new_value
 
         @staticmethod
-        def rewrite_day(user_id, day, feedback, ctx, result):
+        def rewrite_day(user_id, day, feedback, ctx, result, *, class_id=None):
             calls.whole_day += 1
             # A whole-day rewrite legitimately re-emits every field. This one
             # changes two of them, which is exactly the behaviour scoping exists

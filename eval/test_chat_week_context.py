@@ -63,7 +63,7 @@ def main() -> int:
         db.list_curriculum_progress,
     )
     db.get_settings_row = lambda _uid: {"subject": state["subject"], "grade": "11"}
-    llm.map_context_for = lambda user_id, subject, query: ""
+    llm.map_context_for = lambda user_id, subject, query, *, class_id=None: ""
     llm.custom_instructions_for = lambda _uid: None
     # Only "AP Language & Composition" has a matching progress row — the
     # switch to "Biology" in section 2 below exercises the no-match path

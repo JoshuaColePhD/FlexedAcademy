@@ -64,12 +64,16 @@ def main() -> int:
     # set chat_id at all, so req.chat_id is None and these aren't even called;
     # sections 4-5 use them to check the resolve-then-fall-back branch.
     db.get_chat = lambda _uid, chat_id: {"class_id": "eng101"} if chat_id == "chat-eng101" else None
+    # "id" matters now: _build_chat_system_prompt reads cls["id"] to pass
+    # class_id through to map_context_for — a stub missing it surfaces as a
+    # KeyError deep in production code, not a clean assertion failure.
     db.get_class = lambda _uid, class_id: (
-        {"subject": "English Language Arts", "grade": "10"} if class_id == "eng101" else None
+        {"id": "eng101", "subject": "English Language Arts", "grade": "10"} if class_id == "eng101" else None
     )
 
-    def fake_map_context(user_id, subject, query):
+    def fake_map_context(user_id, subject, query, *, class_id=None):
         captured["map_context_args"] = (user_id, subject, query)
+        captured["map_context_class_id"] = class_id
         return "Unit 2, Week 2: irony and diction in short fiction." if captured.get("has_map") else ""
 
     def fake_stream_chat(user_id, messages, *, voice=False):
@@ -147,6 +151,10 @@ def main() -> int:
         check(
             "looked up the pacing guide under the chat's class subject, not settings'",
             captured.get("map_context_args", (None, None, ""))[1] == "English Language Arts",
+        )
+        check(
+            "map_context_for was scoped to the chat's own class_id, not None",
+            captured.get("map_context_class_id") == "eng101",
         )
 
         print("\n5. A chat with no resolvable class still falls back to settings")

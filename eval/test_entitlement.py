@@ -49,12 +49,27 @@ def check(label: str, got, want) -> None:
         FAILURES.append(label)
 
 
-def scenario(status, tokens_used, *, keys: bool, free_cap: int = 1000, sub_cap: int = 1_000_000, plans: int = 0):
+def scenario(
+    status, tokens_used, *, keys: bool, free_cap: int = 1000, sub_cap: int = 1_000_000, plans: int = 0, recent=None
+):
     db.get_user_by_id = lambda _uid: {"subscription_status": status}
     # Still called (Entitlement.plans_used rides along for the account menu),
     # just no longer what gates — see promise 6.
     db.count_plans = lambda _uid: plans
-    db.tokens_used_since = lambda _uid, _since: tokens_used
+    # entitlement() calls tokens_used_since TWICE, in a fixed order — the
+    # trailing-week total first, then the 24h burst window. A single stubbed
+    # value for both conflates them: a teacher who used `tokens_used` tokens
+    # over a WEEK did not necessarily use that many in the last DAY, so a
+    # case meant to isolate the weekly cap needs `recent` to say so
+    # explicitly rather than defaulting to the same number every time.
+    recent_tokens = tokens_used if recent is None else recent
+    calls = {"n": 0}
+
+    def fake_tokens_used_since(_uid, _since):
+        calls["n"] += 1
+        return tokens_used if calls["n"] == 1 else recent_tokens
+
+    db.tokens_used_since = fake_tokens_used_since
     settings.stripe_secret_key = "sk_test" if keys else ""
     settings.stripe_price_id = "price_test" if keys else ""
     settings.stripe_webhook_secret = "whsec_test" if keys else ""
@@ -91,7 +106,11 @@ def main() -> int:
 
         print("\n3. The free cap — a trailing-week token budget, not a plan count")
         check("new teacher, 0 tokens", scenario(None, 0, keys=True, free_cap=1000).may_generate, True)
-        check("new teacher, 1 token under the cap", scenario(None, 999, keys=True, free_cap=1000).may_generate, True)
+        check(
+            "new teacher, 1 token under the cap",
+            scenario(None, 999, keys=True, free_cap=1000, recent=0).may_generate,
+            True,
+        )
         check("new teacher, AT the cap", scenario(None, 1000, keys=True, free_cap=1000).may_generate, False)
         check("tokens_remaining under the cap", scenario(None, 400, keys=True, free_cap=1000).tokens_remaining, 600)
         check("tokens_remaining never negative past the cap", scenario(None, 1500, keys=True, free_cap=1000).tokens_remaining, 0)
