@@ -1131,10 +1131,16 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                     "Call this INSTEAD of generate_lesson_plan or generate_quiz when the teacher's most recent "
                     "message is too vague to act on directly — a plan request with no text/topic named, a "
                     "revision ask with no specifics ('can you change Thursday?' with no hint of how), or a "
-                    "quiz request that doesn't already say which question type(s) and roughly how many. Ask "
-                    "2-4 short, concrete questions, each with a few clickable options, so the teacher can tap "
-                    "through rather than type a paragraph. Don't ask again about something they already "
-                    "answered or already specified."
+                    "quiz request that doesn't already say which question type(s) and roughly how many. "
+                    + (
+                        "This is a spoken conversation — ask exactly ONE short, concrete question, with a few "
+                        "clickable options, then stop and wait for the answer before asking the next one. A "
+                        "person can't hold three stacked questions in their head from speech alone."
+                        if voice
+                        else "Ask 2-4 short, concrete questions, each with a few clickable options, so the "
+                        "teacher can tap through rather than type a paragraph."
+                    )
+                    + " Don't ask again about something they already answered or already specified."
                 ),
                 "parameters": {
                     "type": "object",
@@ -1142,7 +1148,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                         "questions": {
                             "type": "array",
                             "minItems": 1,
-                            "maxItems": 4,
+                            "maxItems": 1 if voice else 4,
                             "items": {
                                 "type": "object",
                                 "properties": {
@@ -1173,7 +1179,11 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
         # reasoning_effort to 'none'". Both tools below are the entire
         # mechanism of this conversation (build the plan / ask instead), so
         # without this every chat turn, typed or spoken, 400s.
-        reasoning_effort="none",
+        # gpt-5-mini (the voice path) rejects "none" itself — "Unsupported
+        # value: 'reasoning_effort' does not support 'none' with this model" —
+        # and only accepts minimal/low/medium/high, so every hands-free turn
+        # 400'd. "minimal" is the lowest tier it does accept.
+        reasoning_effort="minimal" if voice else "none",
         # Voice replies are deliberately short; the lower ceiling keeps a
         # routing turn from spending time generating an essay before its first
         # sentence can reach the browser.
