@@ -364,6 +364,18 @@ export function Composer({
 
   const acceptSuggestion = (suggestionToAccept = activeSuggestion) => {
     if (!suggestionToAccept?.prompt) return
+    // review-plan is the one card whose click already IS the decision — "yes,
+    // review it" — unlike a card like continue-draft or prepare-next-week,
+    // whose prompt is a starting point the teacher might still want to edit
+    // before sending. Filling the box and making them also hit Enter/click
+    // Send bought nothing over just typing the sentence themselves; sending
+    // outright is the actual shortcut a click is supposed to be.
+    if (suggestionToAccept.action === 'review-plan' && !value) {
+      pulseMotion('submit', 320)
+      onSubmit(suggestionToAccept.prompt)
+      setTrayDismissed(false)
+      return
+    }
     const typedPrefixMatches = value && suggestionToAccept.prompt.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
     const remaining = typedPrefixMatches ? suggestionToAccept.prompt.slice(value.length) : ''
     if (value && !remaining) return
@@ -430,7 +442,10 @@ export function Composer({
             <div className="flex flex-col gap-1 p-2">
               {/* A click here is the only way to accept a card — no Tab;
                   see `completion` above, which is deliberately empty once
-                  hasMessages is true. */}
+                  hasMessages is true. review-plan sends on click instead of
+                  just filling the box (see acceptSuggestion) — its arrow
+                  glyph marks that it's a one-click send, not a draft to edit
+                  first, the way every other card's click behaves. */}
               {textSuggestion ? (
                 <button
                   type="button"
@@ -439,6 +454,9 @@ export function Composer({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => acceptSuggestion(textSuggestion)}
                 >
+                  {textSuggestion.action === 'review-plan' ? (
+                    <ArrowUp size={14} className="mt-0.5 shrink-0 text-ink-muted" aria-hidden="true" />
+                  ) : null}
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-ink">{textSuggestion.label || textSuggestion.prompt}</span>
                     {textSuggestion.reason ? (
