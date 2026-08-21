@@ -241,10 +241,6 @@ export function getContextualSuggestions(context = {}) {
     .slice(0, MAX_SUGGESTIONS)
 }
 
-export function suggestionContextLabel(suggestions = []) {
-  return suggestions[0]?.contextLabel || ''
-}
-
 /** Return only the part of a suggestion that remains after a typed prefix. */
 export function suggestionCompletion(value = '', suggestion) {
   if (!suggestion?.prompt) return ''

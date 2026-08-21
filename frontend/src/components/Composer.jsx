@@ -89,16 +89,8 @@ export function Composer({
   // null (no offer shown) whenever there's no class in scope, or it already
   // has a pacing guide — see ChatPage's own gating.
   onSaveAttachmentAsDocument = null,
-  // Whether this conversation has any turns yet — the empty composer's one
-  // suggestion is a ghost-text completion (Tab, nothing else on screen);
-  // once there's an actual back-and-forth, a text suggestion (continue-
-  // draft, review-current-plan, ...) switches to a clickable card instead.
-  // Showing both at once for the same suggestion read as the same thing
-  // said twice.
-  hasMessages = false,
   onOpenVoice,
   suggestions = [],
-  contextLabel = '',
   /* Kept for callers outside the main chat surface while they migrate to the
      shared suggestion model. It is converted into the same shape below. */
   suggestion = null,
@@ -134,8 +126,6 @@ export function Composer({
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isAttaching, setIsAttaching] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const [isFocused, setIsFocused] = useState(false)
-  const [trayDismissed, setTrayDismissed] = useState(false)
   const [motionState, setMotionState] = useState('')
   const motionTimerRef = useRef(null)
 
@@ -165,39 +155,21 @@ export function Composer({
       .slice(0, 1)
   }, [suggestion, suggestions, value])
 
-  const contextSignature = useMemo(
-    () => suggestions.map((item) => `${item.id}:${item.prompt}:${item.contextLabel || ''}`).join('|'),
-    [suggestions]
-  )
-  const previousContextSignature = useRef(contextSignature)
-  useEffect(() => {
-    if (previousContextSignature.current && previousContextSignature.current !== contextSignature) {
-      pulseMotion('context', 260)
-    }
-    previousContextSignature.current = contextSignature
-  }, [contextSignature, pulseMotion])
-
   // ChatPage never hands this an action: 'open-settings' suggestion
   // (add-pacing-guide, add-school-calendar) — those have no sentence to
   // type or send, so they're the Greeting's own inline hint instead (see
   // ChatPage's emptyStateHint). Whatever's here is always a real ghost-
-  // text/card candidate.
+  // text candidate — the composer itself never renders a suggestion as a
+  // clickable card any more. The one thing that visually opens this box is
+  // an actual clarifying-questions round (questionsPanel below); a mere
+  // suggestion, however specific, is text you can Tab to accept and nothing
+  // more, the same contract VS Code's own inline completion keeps.
   const textSuggestion = candidateSuggestions[0] || null
   const activeSuggestion = textSuggestion
   const completion = useMemo(
-    () => (hasMessages || !activeSuggestion ? '' : suggestionCompletion(value, activeSuggestion)),
-    [hasMessages, activeSuggestion, value]
+    () => (activeSuggestion ? suggestionCompletion(value, activeSuggestion) : ''),
+    [activeSuggestion, value]
   )
-
-  const trayOpen =
-    isFocused &&
-    !trayDismissed &&
-    !voiceModeActive &&
-    !isRecording &&
-    !isTranscribing &&
-    !isStreaming &&
-    hasMessages &&
-    Boolean(textSuggestion)
 
   const autosize = useCallback(() => {
     const el = textareaRef.current
@@ -364,16 +336,15 @@ export function Composer({
 
   const acceptSuggestion = (suggestionToAccept = activeSuggestion) => {
     if (!suggestionToAccept?.prompt) return
-    // review-plan is the one card whose click already IS the decision — "yes,
-    // review it" — unlike a card like continue-draft or prepare-next-week,
-    // whose prompt is a starting point the teacher might still want to edit
-    // before sending. Filling the box and making them also hit Enter/click
-    // Send bought nothing over just typing the sentence themselves; sending
-    // outright is the actual shortcut a click is supposed to be.
+    // review-plan is the one suggestion Tab already answers as "yes, review
+    // it" — unlike continue-draft or prepare-next-week, whose prompt is a
+    // starting point a teacher might still want to edit before sending.
+    // Filling the box and making them also hit Enter/click Send bought
+    // nothing over just typing the sentence themselves; sending outright is
+    // the actual shortcut Tab is supposed to be here.
     if (suggestionToAccept.action === 'review-plan' && !value) {
       pulseMotion('submit', 320)
       onSubmit(suggestionToAccept.prompt)
-      setTrayDismissed(false)
       return
     }
     const typedPrefixMatches = value && suggestionToAccept.prompt.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
@@ -382,7 +353,6 @@ export function Composer({
     const nextValue = value && remaining ? `${value}${remaining}` : suggestionToAccept.prompt
     pulseMotion('accept', 300)
     onChange(nextValue)
-    setTrayDismissed(false)
     requestAnimationFrame(() => {
       const input = textareaRef.current
       input?.focus()
@@ -391,14 +361,9 @@ export function Composer({
   }
 
   const onKeyDown = (e) => {
-    if (e.key === 'Tab' && trayOpen && completion) {
+    if (e.key === 'Tab' && completion) {
       e.preventDefault()
       acceptSuggestion()
-      return
-    }
-    if (e.key === 'Escape' && trayOpen) {
-      e.preventDefault()
-      setTrayDismissed(true)
       return
     }
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -426,50 +391,13 @@ export function Composer({
           </div>
         )}
         {voicePanel}
+        {/* The one thing that visually opens the composer — an actual
+            clarifying-questions round (LessonQuestions, docked here by
+            ChatPage). A plain suggestion, however specific, never grows the
+            box any more; it's ghost text only (see `completion` below),
+            the same VS Code inline-completion contract: Tab to accept,
+            keep typing to ignore, nothing to click. */}
         {questionsPanel}
-
-        <div
-          id="composer-recommendations"
-          className={`composer-recommendations${trayOpen ? ' is-open' : ''} ${motionState === 'context' ? 'fa-context-pop' : ''}`}
-          aria-hidden={!trayOpen}
-        >
-          <div className="composer-recommendations-inner">
-            {contextLabel ? (
-              <div className="px-3 pt-3 text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-ink-faint">
-                {contextLabel}
-              </div>
-            ) : null}
-            <div className="flex flex-col gap-1 p-2">
-              {/* A click here is the only way to accept a card — no Tab;
-                  see `completion` above, which is deliberately empty once
-                  hasMessages is true. review-plan sends on click instead of
-                  just filling the box (see acceptSuggestion) — its arrow
-                  glyph marks that it's a one-click send, not a draft to edit
-                  first, the way every other card's click behaves. */}
-              {textSuggestion ? (
-                <button
-                  type="button"
-                  tabIndex={trayOpen ? 0 : -1}
-                  className="composer-recommendation neo-inset flex items-start gap-3 rounded-lg bg-paper-sunken px-3 py-2 text-left transition-colors"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => acceptSuggestion(textSuggestion)}
-                >
-                  {textSuggestion.action === 'review-plan' ? (
-                    <ArrowUp size={14} className="mt-0.5 shrink-0 text-ink-muted" aria-hidden="true" />
-                  ) : null}
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-ink">{textSuggestion.label || textSuggestion.prompt}</span>
-                    {textSuggestion.reason ? (
-                      <span className="composer-recommendation-reason mt-0.5 block text-xs text-ink-muted">
-                        {textSuggestion.reason}
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
 
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-3 pt-2.5">
@@ -543,20 +471,8 @@ export function Composer({
                * top of each other. */
               placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
-              aria-expanded={trayOpen}
-              aria-controls="composer-recommendations"
               className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
-              onChange={(e) => {
-                setTrayDismissed(false)
-                onChange(e.target.value)
-              }}
-              onFocus={() => {
-                setIsFocused(true)
-                setTrayDismissed(false)
-              }}
-              onBlur={(e) => {
-                if (!wrapperRef.current?.contains(e.relatedTarget)) setIsFocused(false)
-              }}
+              onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}
             />

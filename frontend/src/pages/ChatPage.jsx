@@ -18,7 +18,7 @@ import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
 import { splitDecisions } from '../lib/decisionChecklist'
-import { getContextualSuggestions, suggestionContextLabel } from '../lib/contextualSuggestions'
+import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -2123,11 +2123,9 @@ export function ChatPage() {
             attachments={attachments}
             setAttachments={setAttachments}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
-            hasMessages={messages.length > 0}
             onOpenVoice={openVoice}
             voiceModeActive={voiceOpen}
             suggestions={composerSuggestions}
-            contextLabel={suggestionContextLabel(composerSuggestions)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
                 <div className={`questions-dock${pendingQuestions ? ' is-open' : ''}`}>
