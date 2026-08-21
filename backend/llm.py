@@ -149,6 +149,17 @@ def custom_instructions_for(user_id: str) -> str | None:
     return user.get("custom_instructions") if user else None
 
 
+def class_custom_instructions_for(user_id: str, class_id: str | None) -> str | None:
+    """The per-class layer on top of custom_instructions_for — one column on
+    `classes` (migration 44), additive to the account-wide instructions
+    rather than a replacement. None when there's no class in play (a
+    class-less chat, a global curriculum map) rather than an error."""
+    if not class_id:
+        return None
+    cls = db.get_class(user_id, class_id)
+    return cls.get("custom_instructions") if cls else None
+
+
 def _cached_completion(user_id: str, kind: str, **kwargs):
     """Checks the database cache before calling OpenAI."""
     # We only cache if we have a stable way to hash the request
@@ -205,6 +216,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
                     grade=s["grade"],
                     map_context=map_context,
                     custom_instructions=custom_instructions_for(user_id),
+                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,
                 ),
             },
@@ -234,6 +246,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
                     grade=s["grade"],
                     map_context=map_context,
                     custom_instructions=custom_instructions_for(user_id),
+                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,
                 ),
             },
@@ -280,7 +293,9 @@ _QUESTION_TYPE_PROMPT_NAMES = {
 }
 
 
-def generate_quiz(user_id: str, plan: dict, question_types: list[str], num_questions: int) -> dict:
+def generate_quiz(
+    user_id: str, plan: dict, question_types: list[str], num_questions: int, *, class_id: str | None = None
+) -> dict:
     """A short quiz over an ALREADY-BUILT plan — no retrieval call of its
     own. The plan's own plan_json is the ONLY source material handed to the
     model, and the prompt forbids citing a standard that isn't already in
@@ -306,6 +321,12 @@ def generate_quiz(user_id: str, plan: dict, question_types: list[str], num_quest
             "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only, "
             "never license to add content outside the plan above:\n\n" + custom_instructions
         )
+    class_custom_instructions = class_custom_instructions_for(user_id, class_id)
+    if class_custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S CUSTOM INSTRUCTIONS FOR THIS CLASS — on top of the account-wide "
+            "ones above, never license to add content outside the plan above:\n\n" + class_custom_instructions
+        )
     content = _cached_completion(
         user_id,
         "generate_quiz",
@@ -320,7 +341,9 @@ def generate_quiz(user_id: str, plan: dict, question_types: list[str], num_quest
     return loads_lenient(content or "")
 
 
-def revise_quiz(user_id: str, plan: dict, existing_quiz: dict, feedback: str) -> dict:
+def revise_quiz(
+    user_id: str, plan: dict, existing_quiz: dict, feedback: str, *, class_id: str | None = None
+) -> dict:
     """Revise a quiz that's already been built, on the teacher's own
     follow-up ("make it harder", "add two more questions") — the same
     critique-and-revise shape critique_and_revise uses for a whole plan
@@ -349,6 +372,12 @@ def revise_quiz(user_id: str, plan: dict, existing_quiz: dict, feedback: str) ->
             "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only, "
             "never license to add content outside the plan above:\n\n" + custom_instructions
         )
+    class_custom_instructions = class_custom_instructions_for(user_id, class_id)
+    if class_custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S CUSTOM INSTRUCTIONS FOR THIS CLASS — on top of the account-wide "
+            "ones above, never license to add content outside the plan above:\n\n" + class_custom_instructions
+        )
     content = _cached_completion(
         user_id,
         "revise_quiz",
@@ -363,7 +392,10 @@ def revise_quiz(user_id: str, plan: dict, existing_quiz: dict, feedback: str) ->
     return loads_lenient(content or "")
 
 
-def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, result: RetrievalResult) -> dict:
+def rewrite_day(
+    user_id: str, day: dict, feedback: str, full_plan_context: str, result: RetrievalResult, *,
+    class_id: str | None = None,
+) -> dict:
     """Revise one day. Emits the SAME schema as generate_plan's days.
 
     Previously this returned split do_now/during/assessment with
@@ -386,6 +418,7 @@ def rewrite_day(user_id: str, day: dict, feedback: str, full_plan_context: str, 
                     subject=s["subject"],
                     grade=s["grade"],
                     custom_instructions=custom_instructions_for(user_id),
+                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                 ),
             },
             {
@@ -407,6 +440,8 @@ def rewrite_day_field(
     field: str,
     full_plan_context: str,
     result: RetrievalResult,
+    *,
+    class_id: str | None = None,
 ):
     """Rewrite ONE field of one day. Returns just that field's value.
 
@@ -435,6 +470,7 @@ def rewrite_day_field(
                     subject=s["subject"],
                     grade=s["grade"],
                     custom_instructions=custom_instructions_for(user_id),
+                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                 ),
             },
             {

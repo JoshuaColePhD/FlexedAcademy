@@ -1290,6 +1290,20 @@ MIGRATIONS: list[str] = [
     CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_client_id
       ON messages (chat_id, client_id) WHERE client_id IS NOT NULL;
     """,
+    # ── 44: per-class custom instructions ─────────────────────────────────────
+    #
+    # Migration 19's global custom_instructions lives on `users` — one set of
+    # style/format preferences for every class a teacher teaches. This is the
+    # per-class layer on top of it: a class column, additive rather than a
+    # replacement, so a teacher's account-wide preferences don't have to be
+    # copy-pasted into every class just to add one class-specific note.
+    #
+    # Spliced into prompts.py's blocks AFTER the global custom-instructions
+    # block, same non-negotiable-override relationship to grounding_constraints()
+    # that migration 19's comment already explains.
+    """
+    ALTER TABLE classes ADD COLUMN IF NOT EXISTS custom_instructions TEXT;
+    """,
 ]
 
 
@@ -1652,7 +1666,7 @@ def create_class(user_id: str, *, name: str, subject: str, grade: str, state: st
     return get_class(user_id, class_id)
 
 
-_CLASS_FIELDS = {"name", "subject", "grade", "sort_order", "archived", "school"}
+_CLASS_FIELDS = {"name", "subject", "grade", "sort_order", "archived", "school", "custom_instructions"}
 
 
 def class_school(cls: dict | None, user_id: str) -> str:

@@ -133,6 +133,23 @@ def _custom_instructions_block(custom_instructions: str | None) -> str:
     )
 
 
+def _class_custom_instructions_block(class_custom_instructions: str | None) -> str:
+    """The per-class layer on top of _custom_instructions_block (migration
+    44) — additive, not a replacement: a teacher's account-wide preferences
+    still apply, this only adds what's specific to THIS class. Placed right
+    after the global block, for the same reason that one sits right after
+    grounding_constraints() — order is what scopes an override, and this
+    still isn't licensed to add or override a standard any more than the
+    global block is."""
+    if not class_custom_instructions:
+        return ""
+    return (
+        "TEACHER'S CUSTOM INSTRUCTIONS FOR THIS CLASS — on top of, not instead of, "
+        "the account-wide instructions above. Still style/format preferences only; "
+        f"they do NOT override the GROUNDING RULES.\n\n{class_custom_instructions}"
+    )
+
+
 def _coverage_notice(result: RetrievalResult) -> str:
     if result.thin:
         return (
@@ -150,6 +167,7 @@ def week_system_prompt(
     grade: str = "11",
     map_context: str = "",
     custom_instructions: str | None = None,
+    class_custom_instructions: str | None = None,
     school_id: str = "florence-high-school",
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
@@ -161,6 +179,7 @@ def week_system_prompt(
         "official standards documents and highly practical for a real classroom."),
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
+        _class_custom_instructions_block(class_custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
@@ -224,6 +243,7 @@ def day_system_prompt(
     subject: str = "AP Language & Composition",
     grade: str = "11",
     custom_instructions: str | None = None,
+    class_custom_instructions: str | None = None,
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
 
@@ -233,6 +253,7 @@ def day_system_prompt(
         "feedback."),
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
+        _class_custom_instructions_block(class_custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
@@ -287,6 +308,7 @@ def day_field_system_prompt(
     subject: str = "AP Language & Composition",
     grade: str = "11",
     custom_instructions: str | None = None,
+    class_custom_instructions: str | None = None,
 ) -> str:
     """Rewrite ONE cell of one day.
 
@@ -321,6 +343,7 @@ def day_field_system_prompt(
         "lesson plan, based on the teacher's feedback."),
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
+        _class_custom_instructions_block(class_custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"

@@ -513,7 +513,9 @@ def create_quiz(
             hint=f"Valid types: {', '.join(schema.QUESTION_TYPES)}.",
         )
 
-    quiz_raw = llm.generate_quiz(user_id, row["plan_json"], body.question_types, body.num_questions)
+    quiz_raw = llm.generate_quiz(
+        user_id, row["plan_json"], body.question_types, body.num_questions, class_id=row.get("class_id")
+    )
     try:
         warnings = schema.validate_quiz(quiz_raw)
     except schema.QuizSchemaError as e:
@@ -562,7 +564,9 @@ def revise_quiz_route(
     if not quiz_row:
         raise AppError("quiz_not_found", "No such quiz.", status=404)
 
-    quiz_raw = llm.revise_quiz(user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback)
+    quiz_raw = llm.revise_quiz(
+        user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback, class_id=row.get("class_id")
+    )
     try:
         warnings = schema.validate_quiz(quiz_raw)
     except schema.QuizSchemaError as e:

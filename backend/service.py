@@ -488,7 +488,9 @@ def revise_day(
     import json as _json
 
     if field is None:
-        updated_raw = llm.rewrite_day(user_id, original, feedback, _json.dumps(plan, indent=2), result)
+        updated_raw = llm.rewrite_day(
+            user_id, original, feedback, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
+        )
         updated, warnings = schema.validate_day(updated_raw, path=f"days[{day_index}]")
 
         if updated["name"] != original.get("name"):
@@ -499,7 +501,7 @@ def revise_day(
             )
     else:
         value = llm.rewrite_day_field(
-            user_id, original, feedback, field, _json.dumps(plan, indent=2), result
+            user_id, original, feedback, field, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
         )
         # Merge over ONE key. Every sibling comes through by identity, which is
         # what makes "editing Wednesday's Do Now leaves Wednesday's standards

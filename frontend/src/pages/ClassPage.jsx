@@ -53,6 +53,78 @@ import { ClassDocuments, KIND_LABEL } from '../components/ClassDocuments.jsx'
 const shortLabel = (fw, fallback) =>
   fw ? fw.label.split(' (')[0] : String(fallback || '').replace(/_/g, ' ')
 
+// Same cap as SettingsPage's account-wide field (backend/routes/classes.py's
+// ClassPatch mirrors PATCH /api/me's MeBody).
+const CLASS_CUSTOM_INSTRUCTIONS_MAX = 2000
+
+/* The per-class layer on top of the account-wide Custom Instructions field on
+ * SettingsPage — same shape (own save button, optimistic update, char
+ * counter), scoped to one class instead of every plan on the account. See
+ * backend/prompts.py's _class_custom_instructions_block: additive to the
+ * global field, not a replacement — a teacher's account-wide preferences
+ * still apply here too. */
+function ClassCustomInstructions({ cls, onChanged }) {
+  const toast = useToast()
+  const [text, setText] = useState(cls.custom_instructions || '')
+  const [saved, setSaved] = useState(cls.custom_instructions || '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setText(cls.custom_instructions || '')
+    setSaved(cls.custom_instructions || '')
+  }, [cls.id, cls.custom_instructions])
+
+  const dirty = text !== saved
+
+  const save = async () => {
+    setSaving(true)
+    const previousSaved = saved
+    setSaved(text)
+    try {
+      const updated = await api.updateClass(cls.id, { custom_instructions: text })
+      toast.success('Saved')
+      onChanged?.(updated)
+    } catch (err) {
+      setSaved(previousSaved)
+      toast.apiError('Could not save this class’s instructions', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-ink">Custom instructions for this class</h3>
+      <p className="mt-1 text-xs text-ink-muted">
+        On top of your account-wide instructions (Settings), not instead of them — add only
+        what's specific to {cls.name}: a tone, a reading level, a format quirk this class needs
+        that others don't.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        maxLength={CLASS_CUSTOM_INSTRUCTIONS_MAX}
+        rows={4}
+        placeholder="e.g. This is a co-taught section — keep vocabulary concrete and check for understanding often."
+        className="neo-inset mt-2 w-full resize-y rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+      />
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-2xs text-ink-muted">
+          {text.length} / {CLASS_CUSTOM_INSTRUCTIONS_MAX}
+        </span>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-edge outline-none disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /* ── add a class: one pick, inline ──────────────────────────────────────────
    The name is derived and shown so it can be corrected, not demanded up front.
    Grade level isn't asked here — it's set to DEFAULT_GRADE and can be
@@ -460,6 +532,10 @@ function ClassDetail({ cls, frameworks, onChanged }) {
           
           <ClassDocuments cls={cls} onChanged={onChanged} />
           <ClassStandards cls={cls} />
+        </section>
+
+        <section className="flex flex-col gap-4 pt-4 border-t border-edge">
+          <ClassCustomInstructions cls={cls} onChanged={onChanged} />
         </section>
 
         <section className="flex flex-col gap-4 pt-4 border-t border-edge">

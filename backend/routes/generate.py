@@ -352,6 +352,13 @@ def _build_chat_system_prompt(user_id: str, chat_id: str | None, week_number: in
             + custom_instructions
         )
 
+    class_custom_instructions = (cls or {}).get("custom_instructions")
+    if class_custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S CUSTOM INSTRUCTIONS FOR THIS CLASS — on top of, not instead of, "
+            "the account-wide instructions above:\n\n" + class_custom_instructions
+        )
+
     if mode == "interview":
         system_prompt += (
         "Your job is to INTERVIEW the teacher to figure out what they want to teach. "

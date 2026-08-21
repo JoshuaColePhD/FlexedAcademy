@@ -41,6 +41,11 @@ class ClassPatch(BaseModel):
     # default at creation (db.create_class) and moved from here afterward,
     # the same two-step "auto-set, then editable" shape as its name.
     school: str | None = Field(default=None)
+    # The per-class layer on top of PATCH /api/me's account-wide
+    # custom_instructions (migration 44) — same 2000-char cap as that field.
+    # Not on ClassBody for the same "auto-set nothing, edit afterward" reason
+    # `school` isn't: a brand-new class starts with no class-specific note.
+    custom_instructions: str | None = Field(default=None, max_length=2000)
 
 
 def _auto_name(subject: str, grade: str) -> str:
