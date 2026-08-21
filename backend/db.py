@@ -16,20 +16,21 @@ DDL should be idempotent (IF NOT EXISTS / guarded backfills).
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import re
-import psycopg2
-from psycopg2.pool import ThreadedConnectionPool
-from psycopg2.extras import RealDictCursor
-from pgvector.psycopg2 import register_vector
 import threading
-from contextlib import contextmanager
 import uuid
-from datetime import datetime, timedelta, timezone
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-import contextvars
+
+import psycopg2
+from pgvector.psycopg2 import register_vector
+from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 
 current_user_id = contextvars.ContextVar("current_user_id", default=None)
 
@@ -1293,7 +1294,7 @@ MIGRATIONS: list[str] = [
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def new_id() -> str:
@@ -1429,7 +1430,7 @@ def borrow():
     except Exception:
         try:
             conn.rollback()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 — best-effort cleanup, the original error below still propagates
             pass
         raise
     finally:
@@ -1473,7 +1474,7 @@ def migrate(conn: psycopg2.extensions.connection) -> None:
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
-        except Exception:
+        except Exception:  # noqa: BLE001 — recovers by rolling back and retrying the unlock below
             # A failed migration leaves the transaction aborted, so the first
             # unlock attempt may itself be rejected. Clear that transaction
             # before releasing the session-level lock and preserving the
@@ -1501,18 +1502,16 @@ def _write(sql: str, params: tuple = ()) -> int:
 
 
 def _rows(sql: str, params: tuple = ()) -> list[dict]:
-    with borrow() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql.replace("?", "%s"), params)
-            return [dict(r) for r in cur.fetchall()]
+    with borrow() as conn, conn.cursor() as cur:
+        cur.execute(sql.replace("?", "%s"), params)
+        return [dict(r) for r in cur.fetchall()]
 
 
 def _row(sql: str, params: tuple = ()) -> dict | None:
-    with borrow() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql.replace("?", "%s"), params)
-            r = cur.fetchone()
-            return dict(r) if r else None
+    with borrow() as conn, conn.cursor() as cur:
+        cur.execute(sql.replace("?", "%s"), params)
+        r = cur.fetchone()
+        return dict(r) if r else None
 
 
 # ---------------------------------------------------------------------------
@@ -2459,7 +2458,7 @@ def _iso_date(value: str | None) -> str | None:
     if not value or len(value) != 10:
         return None
     try:
-        datetime.strptime(value, "%Y-%m-%d")
+        datetime.strptime(value, "%Y-%m-%d")  # noqa: DTZ007 — format check only, the parsed value is discarded
         return value
     except ValueError:
         return None
@@ -3163,12 +3162,12 @@ def list_accounts_with_stats() -> list[dict]:
     this admin table instead: one place to see who's using what, not a
     number every teacher stares at on their own account.
     """
-    since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
-    since_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(timespec="seconds")
+    since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat(timespec="seconds")
+    since_30d = (datetime.now(UTC) - timedelta(days=30)).isoformat(timespec="seconds")
     # Same 24h window entitlement.py's own burst cap checks — so this table
     # can show which accounts are CURRENTLY riding close to it, not just
     # their weekly total.
-    since_burst = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(timespec="seconds")
+    since_burst = (datetime.now(UTC) - timedelta(hours=24)).isoformat(timespec="seconds")
     rows = _rows(
         """
         SELECT u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
@@ -3223,7 +3222,7 @@ def weekly_usage_series(weeks: int = 8) -> list[dict]:
     Postgres do the bucketing means one aggregate query instead of hauling
     every row of eight weeks across the wire to sum in Python.
     """
-    since = (datetime.now(timezone.utc) - timedelta(weeks=weeks)).isoformat(timespec="seconds")
+    since = (datetime.now(UTC) - timedelta(weeks=weeks)).isoformat(timespec="seconds")
     rows = _rows(
         """
         SELECT date_trunc('week', created_at::timestamptz) AS week_start,
@@ -3299,7 +3298,7 @@ def create_beta_account(email: str, name: str, password_hash: str, *, days: int)
       separate revocation step is needed once this is set.
     """
     uid = new_id()
-    expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds")
+    expires = (datetime.now(UTC) + timedelta(days=days)).isoformat(timespec="seconds")
     _write(
         """
         INSERT INTO users (id, email, name, password_hash, subscription_status, beta_expires_at, created_at)
@@ -3315,7 +3314,7 @@ def extend_beta_account(user_id: str, *, days: int) -> dict | None:
     """Add `days` more from right now — not from the original expiry — so
     "give them another week" always means a week from today, regardless of
     whether the old window had already lapsed."""
-    expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds")
+    expires = (datetime.now(UTC) + timedelta(days=days)).isoformat(timespec="seconds")
     _write("UPDATE users SET beta_expires_at = ? WHERE id = ?", (expires, user_id))
     return get_user_by_id(user_id)
 

@@ -12,7 +12,6 @@ from __future__ import annotations
 import functools
 import json
 import logging
-import re
 from pathlib import Path
 
 from .config import settings
@@ -41,7 +40,7 @@ def school_profile() -> str:
     return path.read_text(encoding="utf-8")
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def calendar_context(school_id: str) -> str:
     """One school's calendar and week->date table, verbatim.
 
@@ -156,10 +155,10 @@ def week_system_prompt(
     rules = planning_rules() if subject == "AP Language & Composition" else ""
 
     blocks = [
-        f"You are an expert {subject} curriculum designer and master "
+        (f"You are an expert {subject} curriculum designer and master "
         f"teacher for Grade {grade}. You have decades of classroom experience and a deep understanding "
         "of pedagogical best practices, cognitive science, and student engagement. You draft weekly lesson plans that are rigorously grounded in "
-        "official standards documents and highly practical for a real classroom.",
+        "official standards documents and highly practical for a real classroom."),
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
@@ -229,9 +228,9 @@ def day_system_prompt(
     rules = planning_rules() if subject == "AP Language & Composition" else ""
 
     blocks = [
-        f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
+        (f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
         "revising ONE day of an existing weekly lesson plan based on the teacher's "
-        "feedback.",
+        "feedback."),
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
@@ -317,9 +316,9 @@ def day_field_system_prompt(
         codes_note = "Do NOT put a standard code in this field; it does not carry one."
 
     blocks = [
-        f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
+        (f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
         f"revising ONE FIELD — the '{label}' cell — of ONE day of an existing weekly "
-        "lesson plan, based on the teacher's feedback.",
+        "lesson plan, based on the teacher's feedback."),
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",

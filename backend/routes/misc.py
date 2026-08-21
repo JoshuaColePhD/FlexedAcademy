@@ -5,13 +5,12 @@ import logging
 import re
 import subprocess
 import tempfile
-from pathlib import Path
-import requests
-
 from collections import Counter
+from pathlib import Path
 
+import requests
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .. import db, docx_build, llm, retrieval, service
@@ -87,7 +86,7 @@ def health(user_id: str | None = Depends(get_current_user_optional)):
         out["builder_error"] = e.message
     try:
         out["chunks"] = db._row("SELECT COUNT(*) AS n FROM chunks")["n"]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — health check reports any DB failure, doesn't crash on one
         out["ok"] = False
         out["pg_error"] = str(e)
     return out
@@ -213,7 +212,7 @@ class SettingsBody(BaseModel):
 
 
 @router.get("/settings")
-def get_settings_route(subject: str = None, user_id: str = Depends(get_current_user)):
+def get_settings_route(subject: str | None = None, user_id: str = Depends(get_current_user)):
     """The settings row, with `subject` resolved to a live course code.
 
     Normalised on the way out rather than migrated in place, so a row written
@@ -325,7 +324,6 @@ def set_chat_week(chat_id: str, body: ChatWeekBody, user_id: str = Depends(get_c
 def delete_chat(chat_id: str, user_id: str = Depends(get_current_user)):
     if not db.delete_chat(user_id, chat_id):
         raise AppError("chat_not_found", "No such chat.", status=404)
-    return None
 
 
 @router.post("/chats/import")
@@ -348,23 +346,22 @@ def _spool(upload: UploadFile, suffix: str, max_bytes: int) -> Path:
     previously interpolated straight into a path.
     """
     total = 0
-    fd = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     try:
-        while chunk := upload.file.read(1 << 20):
-            total += len(chunk)
-            if total > max_bytes:
-                raise AppError(
-                    "file_too_large",
-                    f"That file is larger than the {max_bytes // (1024 * 1024)}MB limit.",
-                    status=413,
-                )
-            fd.write(chunk)
-        fd.flush()
-        return Path(fd.name)
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as fd:
+            name = fd.name
+            while chunk := upload.file.read(1 << 20):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise AppError(
+                        "file_too_large",
+                        f"That file is larger than the {max_bytes // (1024 * 1024)}MB limit.",
+                        status=413,
+                    )
+                fd.write(chunk)
     except Exception:
-        fd.close()
-        Path(fd.name).unlink(missing_ok=True)
+        Path(name).unlink(missing_ok=True)
         raise
+    return Path(name)
 
 
 def _download_google_doc_as_docx(url: str, max_bytes: int) -> Path | None:
@@ -398,26 +395,23 @@ def _download_google_doc_as_docx(url: str, max_bytes: int) -> Path | None:
         )
 
     total = 0
-    fd = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
     try:
-        for chunk in resp.iter_content(chunk_size=1 << 20):
-            if chunk:
-                total += len(chunk)
-                if total > max_bytes:
-                    raise AppError(
-                        "file_too_large",
-                        f"That Google Doc is larger than the {max_bytes // (1024 * 1024)}MB limit.",
-                        status=413,
-                    )
-                fd.write(chunk)
-        fd.flush()
-        return Path(fd.name)
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as fd:
+            name = fd.name
+            for chunk in resp.iter_content(chunk_size=1 << 20):
+                if chunk:
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise AppError(
+                            "file_too_large",
+                            f"That Google Doc is larger than the {max_bytes // (1024 * 1024)}MB limit.",
+                            status=413,
+                        )
+                    fd.write(chunk)
     except Exception:
-        fd.close()
-        Path(fd.name).unlink(missing_ok=True)
+        Path(name).unlink(missing_ok=True)
         raise
-    finally:
-        fd.close()
+    return Path(name)
 
 
 # 60/minute, not 30: voice mode sends one of these per spoken utterance, and a

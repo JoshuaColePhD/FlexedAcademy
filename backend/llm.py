@@ -20,10 +20,10 @@ from concurrent.futures import ThreadPoolExecutor, wait
 
 from openai import OpenAI
 
-from . import curriculum
+from . import curriculum, db
 from .config import settings
-from .errors import AppError
 from .embeddings import embed_query
+from .errors import AppError
 from .prompts import day_field_system_prompt, day_system_prompt, week_system_prompt
 from .retrieval import RetrievalResult
 from .schema import (
@@ -36,7 +36,6 @@ from .schema import (
     field_json_schema,
     loads_lenient,
 )
-from . import db
 
 log = logging.getLogger("aplang.llm")
 
@@ -1217,6 +1216,6 @@ def extract_standards_from_text(text: str) -> list[dict]:
         
         parsed = json.loads(response.choices[0].message.content)
         return parsed.get("standards", [])
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — translated into an AppError for the route to return
         log.error(f"Failed to extract standards: {e}")
-        raise AppError("standards_extraction_failed", f"Failed to extract standards: {str(e)}")
+        raise AppError("standards_extraction_failed", f"Failed to extract standards: {e!s}")

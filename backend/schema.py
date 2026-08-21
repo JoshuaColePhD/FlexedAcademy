@@ -718,8 +718,7 @@ def loads_lenient(text: str) -> dict:
     s = text.strip()
     if s.startswith("```"):
         s = re.sub(r"^```[a-zA-Z]*\s*", "", s)
-        if s.endswith("```"):
-            s = s[:-3]
+        s = s.removesuffix("```")
         s = s.strip()
     try:
         return json.loads(s)

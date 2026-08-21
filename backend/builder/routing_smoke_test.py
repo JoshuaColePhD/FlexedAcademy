@@ -97,6 +97,7 @@ def main() -> None:
         result = subprocess.run(
             [sys.executable, str(validate_py), str(out_docx)],
             capture_output=True, text=True,
+            check=False,
         )
         print(result.stdout)
         if result.returncode != 0 or "All validations PASSED" not in result.stdout:

@@ -17,6 +17,7 @@ only refreshes the page; the signed webhook is what grants access.
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 
 from fastapi import APIRouter, Depends, Request
 
@@ -172,8 +173,8 @@ def _period_end(sub: dict) -> str | None:
         ts = items[0].get("current_period_end") if items else None
     if not ts:
         return None
-    from datetime import datetime, timezone
-    return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+    from datetime import datetime
+    return datetime.fromtimestamp(int(ts), tz=UTC).isoformat()
 
 
 def _resolve_user(sub: dict) -> str | None:

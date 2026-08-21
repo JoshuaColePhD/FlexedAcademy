@@ -7,7 +7,7 @@ Replaced with the real signed session cookie set by routes/auth.py.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Cookie, Depends
 
@@ -45,7 +45,7 @@ def _verify_current(aplang_session: str | None) -> str | None:
     # (AuthProvider's aplang:unauthorized listener) takes it from there — no
     # separate UI needed for "the trial is over" versus "please log back in".
     expires = user.get("beta_expires_at")
-    if expires and expires <= datetime.now(timezone.utc).isoformat(timespec="seconds"):
+    if expires and expires <= datetime.now(UTC).isoformat(timespec="seconds"):
         return None
     return payload["uid"]
 

@@ -20,7 +20,6 @@ import json
 import logging
 import re
 import uuid
-from pathlib import Path
 
 from .config import settings
 from .errors import AppError
