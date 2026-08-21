@@ -23,7 +23,7 @@ import { useToast } from '../lib/toastContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
-import { useActiveClass, useCalendar } from '../hooks/useAppData'
+import { useActiveClass } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
@@ -31,10 +31,6 @@ import { SchoolSelect } from '../components/SchoolSelect'
 import { AccountMenu } from '../components/AccountMenu'
 import { classColor } from '../lib/classColor'
 import { findFramework, verifiedPct } from '../lib/frameworks'
-import { shortRange } from '../lib/dates'
-import { unitSuffix } from '../lib/planShape'
-import { getContextualSuggestions } from '../lib/contextualSuggestions'
-import { ContextualSuggestionList } from '../components/ContextualSuggestionList'
 
 /* Your classes.
  *
@@ -432,42 +428,9 @@ function ClassDetail({ cls, frameworks, onChanged }) {
     }
   }
 
-  const { data: calendar, isLoading } = useCalendar(cls.id)
-  const documents = useQuery({
-    queryKey: qk.classDocuments(cls.id),
-    queryFn: () => api.listClassDocuments(cls.id),
-    staleTime: 5 * 60_000,
-  })
-  const weeks = calendar?.weeks || []
-  
-  // Find current week or next un-planned week
-  const currentWeek = weeks.find(w => w.is_current) || weeks.find(w => w.status !== 'built' && w.status !== 'closed') || weeks[weeks.length - 1]
-  const contextualSuggestions = getContextualSuggestions({
-    activeClass: cls,
-    calendar,
-    conversationWeek: currentWeek?.week,
-    effectiveWeek: currentWeek?.week,
-    activeChat: currentWeek?.chat_id ? { id: currentWeek.chat_id } : null,
-    artifact: currentWeek?.status === 'built' ? { planId: currentWeek.plan_id || currentWeek.planId || 'current-plan' } : null,
-    hasPacingGuide: documents.data ? documents.data.some((document) => document.kind === 'pacing_guide') : true,
-    surface: 'class',
-  })
-
-  const openSuggestion = (suggestion) => {
-    if (suggestion.action === 'open-settings') {
-      navigate(`/c/${cls.id}/class`)
-      return
-    }
-    if ((suggestion.action === 'open-chat' || suggestion.action === 'review-plan') && suggestion.chatId) {
-      navigate(`/c/${cls.id}/chat/${suggestion.chatId}`)
-      return
-    }
-    navigate(`/c/${cls.id}${suggestion.weekNumber ? `?week=${suggestion.weekNumber}` : ''}`)
-  }
-
   return (
     <div className="w-full max-w-3xl flex flex-col gap-12 pb-16">
-      
+
       <header className="mb-2">
         <div className="flex items-center gap-3">
           <span
@@ -479,75 +442,6 @@ function ClassDetail({ cls, frameworks, onChanged }) {
         </div>
       </header>
 
-      {/* 1. Active Teaching */}
-      <div className="flex flex-col gap-8 fa-rise">
-        <section className="flex flex-col gap-4">
-          <div className="border-b border-edge pb-2">
-            <h3 className="text-sm font-semibold text-ink">Active Teaching</h3>
-            <p className="text-xs text-ink-muted">What's on the agenda for this week.</p>
-          </div>
-          
-          {currentWeek ? (
-            <div className="rounded-xl border border-edge bg-paper-sunken p-6 shadow-sm">
-              <div className="flex flex-col gap-2">
-                <span className="text-xl font-semibold text-ink">
-                  Week {String(currentWeek.week).padStart(2, '0')}
-                  {unitSuffix(currentWeek.unit)}
-                </span>
-                {shortRange(currentWeek.start, currentWeek.end) ? (
-                  <span className="text-sm font-medium text-ink-muted">{shortRange(currentWeek.start, currentWeek.end)}</span>
-                ) : null}
-              </div>
-              
-              <div className="mt-6 flex gap-3">
-                {currentWeek.status === 'built' && currentWeek.chat_id ? (
-                  <button 
-                    onClick={() => navigate(`/c/${cls.id}/chat/${currentWeek.chat_id}`)}
-                    className="fa-press neo-raised flex-1 rounded-lg bg-paper-raised px-4 py-3 text-sm font-medium text-ink hover:bg-paper-sunken text-center"
-                  >
-                    View Plan
-                  </button>
-                ) : currentWeek.status === 'closed' ? (
-                  <div className="flex-1 rounded-lg bg-paper-inset px-4 py-3 text-sm font-medium text-ink-muted text-center border border-dashed border-edge">
-                    Week Closed
-                  </div>
-                ) : (
-                  <button 
-                    onClick={() => navigate(`/c/${cls.id}?week=${currentWeek.week}`)}
-                    className="fa-press neo-raised flex-1 rounded-lg bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-tint text-center"
-                  >
-                    Plan This Week
-                  </button>
-                )}
-              </div>
-              <ContextualSuggestionList
-                suggestions={contextualSuggestions}
-                onSelect={openSuggestion}
-                className="mt-4 border-t border-edge pt-3"
-              />
-            </div>
-          ) : isLoading ? (
-            <div className="px-4 py-6 text-center text-xs text-ink-muted bg-paper-sunken rounded-xl border border-edge">Loading calendar...</div>
-          ) : (
-             <div className="px-4 py-6 text-center text-xs text-ink-muted bg-paper-sunken rounded-xl border border-edge">No active week available.</div>
-          )}
-          {!currentWeek ? <ContextualSuggestionList suggestions={contextualSuggestions} onSelect={openSuggestion} className="mt-3" /> : null}
-        </section>
-
-        <section className="flex flex-col gap-4">
-           <div>
-             <button
-               type="button"
-               onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
-               className="neo-raised inline-flex items-center justify-center gap-1.5 w-full rounded-lg px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken border border-edge"
-             >
-               Generate 5-Minute Sub Plan
-             </button>
-           </div>
-        </section>
-      </div>
-
-      {/* 3. Configuration */}
       <div className="flex flex-col gap-8 fa-rise">
         <section className="flex flex-col gap-4">
           <div className="border-b border-edge pb-2">
@@ -574,6 +468,16 @@ function ClassDetail({ cls, frameworks, onChanged }) {
             <p className="text-xs text-ink-muted">Change the subject for this class.</p>
           </div>
           <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
+        </section>
+
+        <section className="flex flex-col gap-4 pt-4 border-t border-edge">
+          <button
+            type="button"
+            onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
+            className="neo-raised inline-flex items-center justify-center gap-1.5 w-full rounded-lg px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken border border-edge"
+          >
+            Generate 5-Minute Sub Plan
+          </button>
         </section>
 
         <section className="flex flex-col gap-4 pt-4 border-t border-edge">

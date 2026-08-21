@@ -8,20 +8,66 @@ live in the Drive-synced tree, and both are rebuildable from the original.
 from __future__ import annotations
 
 import logging
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from .. import curriculum, db, storage
+from ..calendar_intake import fetch_url_text
 from ..config import settings
 from ..deps import get_current_user
 from ..errors import AppError
-from .misc import _spool, read_text_from_path
+from .misc import _download_google_doc_as_docx, _spool, read_text_from_path
 
 log = logging.getLogger("aplang.curriculum_routes")
 router = APIRouter(prefix="/api", tags=["curriculum"])
 
 SUPPORTED_EXTS = {".pdf", ".docx", ".txt", ".md", ".csv"}
+
+
+def _resolve_source(file: UploadFile | None, source_url: str | None, max_bytes: int) -> tuple[Path, str, str]:
+    """Either a real upload or a link — never both, never neither (same
+    contract as calendar_intake.extract_calendar_text, which this
+    deliberately doesn't call: that helper only ever returns text, discarding
+    a Google Doc's real bytes, and curriculum maps persist the ORIGINAL bytes
+    (see this module's docstring) so a later re-embed reflects exactly what
+    was added. Returns (spooled path, extension, a name to show the teacher).
+    """
+    if bool(file) == bool(source_url):
+        raise AppError("bad_request", "Provide either a file or a link, not both or neither.", status=400)
+
+    if file:
+        original = Path(file.filename or "curriculum_map")
+        ext = original.suffix.lower()
+        if ext not in SUPPORTED_EXTS:
+            raise AppError(
+                "unsupported_file_type",
+                f"Can't read {ext or 'that file type'}.",
+                status=400,
+                hint=f"Supported: {', '.join(sorted(SUPPORTED_EXTS))}",
+            )
+        return _spool(file, ext, max_bytes), ext, original.name
+
+    # A Google Doc's real .docx bytes when we can get them — a linked pacing
+    # guide is as likely to keep changing as any other, and downloading it
+    # for real (rather than just scraping its text) is what lets a later
+    # re-embed pick up those edits exactly the way a re-upload would.
+    if "docs.google.com/document/d/" in source_url:
+        docx_path = _download_google_doc_as_docx(source_url, max_bytes)
+        if docx_path:
+            return docx_path, ".docx", "Google Doc.docx"
+
+    # Any other link (a public PDF, a Drive-hosted file's direct link, a
+    # published page) — no original bytes to keep, so the extracted text
+    # itself becomes the stored "original."
+    text = fetch_url_text(source_url)
+    if not text.strip():
+        raise AppError("empty_document", "No text could be read from that link.", status=422)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as fd:
+        fd.write(text)
+        name = fd.name
+    return Path(name), ".txt", "Linked document.txt"
 
 
 def _map_out(row: dict) -> dict:
@@ -49,7 +95,10 @@ def list_global_documents(user_id: str = Depends(get_current_user)):
 @router.post("/curriculum_map")
 async def upload_curriculum_map(
     subject: str = Form(default="GLOBAL"),
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    # A Google Doc link (or any other public URL) as an alternative to a
+    # file — same shape as school_calendars.py's own file-or-link upload.
+    source_url: str | None = Form(default=None),
     # Both optional and both additive, so the pre-existing subject-scoped call
     # keeps working. With a class_id the row is written against the CLASS, which
     # is what GET /classes/{id}/documents reads — without it, every upload from
@@ -70,17 +119,7 @@ async def upload_curriculum_map(
             hint=f"Expected one of: {', '.join(db.DOCUMENT_KINDS)}.",
         )
 
-    original = Path(file.filename or "curriculum_map")
-    ext = original.suffix.lower()
-    if ext not in SUPPORTED_EXTS:
-        raise AppError(
-            "unsupported_file_type",
-            f"Can't read {ext or 'that file type'}.",
-            status=400,
-            hint=f"Supported: {', '.join(sorted(SUPPORTED_EXTS))}",
-        )
-
-    spooled = _spool(file, ext, settings.max_doc_bytes)
+    spooled, ext, original_name = _resolve_source(file, source_url, settings.max_doc_bytes)
     try:
         text = read_text_from_path(spooled, ext)
         if not text.strip():
@@ -111,7 +150,7 @@ async def upload_curriculum_map(
             map_id=map_id,
             user_id=user_id,
             kind=kind,
-            original_name=original.name,
+            original_name=original_name,
             stored_path=str(stored_path),
             chars=len(text),
         )
@@ -122,7 +161,7 @@ async def upload_curriculum_map(
             class_id=class_id,
             subject=subject,
             kind=kind,
-            original_name=original.name,
+            original_name=original_name,
             stored_path=str(stored_path),
             chars=len(text),
         )
@@ -131,7 +170,7 @@ async def upload_curriculum_map(
             map_id=map_id,
             user_id=user_id,
             subject=subject,
-            original_name=original.name,
+            original_name=original_name,
             stored_path=str(stored_path),
             chars=len(text),
         )

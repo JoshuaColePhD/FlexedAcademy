@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
+import { FileText, Link2, Loader2, Trash2, Upload } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useConfirm } from '../lib/confirmContext'
@@ -29,6 +29,12 @@ export function ClassDocuments({ cls, onChanged }) {
   const fileRef = useRef(null)
   const [kind, setKind] = useState('pacing_guide')
   const [uploading, setUploading] = useState(false)
+  // A live Google Doc (or any other public link) as the alternative to a
+  // file — see routes/curriculum.py's _resolve_source, which already knows
+  // how to pull real .docx bytes out of a Google Docs URL specifically, and
+  // falls back to scraping plain text out of anything else public.
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
   // Removal calls the API then refetches — the row's actual disappearance
   // rides on that refetch's own timing, not a local splice. Same reasoning
   // as PlansPage/HistoryPage's deletingIds: flag it closing the moment
@@ -41,24 +47,41 @@ export function ClassDocuments({ cls, onChanged }) {
     retry: false,
   })
 
-  const upload = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
+  const save = async (fileOrNull, sourceUrl) => {
     setUploading(true)
     try {
       // classId and kind are what make the upload land where the list reads.
-      const res = await api.uploadCurriculumMap(cls.subject, file, { classId: cls.id, kind })
+      const res = await api.uploadCurriculumMap(cls.subject, fileOrNull, { classId: cls.id, kind, sourceUrl })
       toast.success(
         `${KIND_LABEL[kind]} saved`,
         res?.weeks_parsed ? `${res.weeks_parsed} weeks read from it.` : undefined
       )
       docs.refetch()
       onChanged?.()
+      return true
     } catch (err) {
-      toast.apiError('Could not read that file', err)
+      toast.apiError(sourceUrl ? 'Could not read that link' : 'Could not read that file', err)
+      return false
     } finally {
       setUploading(false)
+    }
+  }
+
+  const upload = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    save(file, null)
+  }
+
+  const submitLink = async (e) => {
+    e.preventDefault()
+    const url = linkUrl.trim()
+    if (!url || uploading) return
+    const ok = await save(null, url)
+    if (ok) {
+      setLinkUrl('')
+      setLinkOpen(false)
     }
   }
 
@@ -156,7 +179,46 @@ export function ClassDocuments({ cls, onChanged }) {
           {uploading ? 'Reading…' : 'Add a document'}
         </button>
         <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md,.csv" hidden onChange={upload} />
+        <button
+          type="button"
+          onClick={() => setLinkOpen((open) => !open)}
+          disabled={uploading}
+          aria-pressed={linkOpen}
+          className={`fa-press inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+            linkOpen ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft hover:text-ink'
+          }`}
+        >
+          <Link2 size={13} aria-hidden="true" />
+          Add a link
+        </button>
       </div>
+
+      {linkOpen ? (
+        <form onSubmit={submitLink} className="fa-context-pop flex flex-wrap items-center gap-2">
+          <label className="visually-hidden" htmlFor={`doc-link-${cls.id}`}>
+            Google Doc or other public link
+          </label>
+          <input
+            id={`doc-link-${cls.id}`}
+            type="url"
+            inputMode="url"
+            autoFocus
+            required
+            placeholder="Paste a Google Doc link (or any public URL)"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            className="input min-w-0 flex-1 text-xs"
+          />
+          <button
+            type="submit"
+            disabled={uploading || !linkUrl.trim()}
+            className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {uploading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
+            {uploading ? 'Reading…' : 'Add'}
+          </button>
+        </form>
+      ) : null}
     </div>
   )
 }
