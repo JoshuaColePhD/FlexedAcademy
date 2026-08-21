@@ -1,6 +1,7 @@
 /* Fast, deterministic suggestions for the places teachers already work.
  * These are deliberately not LLM-generated: the composer must never wait on a
  * network request just to decide what its Tab completion should be. */
+import { shortRange } from './dates.js'
 
 const MAX_SUGGESTIONS = 3
 
@@ -14,6 +15,27 @@ const weekLabel = (week) => {
 const hasPlan = (week) => Boolean(week?.has_plan || week?.plan_id || week?.planId || week?.status === 'built')
 
 const isOpenTeachingWeek = (week) => Boolean(week && !week.no_school && !week.closed && !week.is_closed)
+
+const weekDateRange = (week) => (week ? shortRange(week.start, week.end) : '')
+
+/** Ambient truth for the tray header — which class, which dates — instead of
+ *  a paraphrase of the suggestion's own title. Class name is only included
+ *  when it actually disambiguates (more than one class, or caller doesn't
+ *  say how many there are). */
+function weekContextLabel(week, activeClass, classCount) {
+  const range = weekDateRange(week)
+  const showClass = Boolean(activeClass?.name) && (classCount == null || classCount > 1)
+  const classPart = showClass ? activeClass.name : ''
+  return classPart && range ? `${classPart} · ${range}` : classPart || range || ''
+}
+
+const relativeAge = (ms) => {
+  if (!Number.isFinite(ms)) return null
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000))
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  return `${days} days ago`
+}
 
 const makeSuggestion = (suggestion) => ({
   priority: 99,
@@ -45,6 +67,7 @@ export function getContextualSuggestions(context = {}) {
     voiceOpen = false,
     attachments = [],
     hasPacingGuide = true,
+    classCount,
   } = context
 
   if (busy || voiceOpen || pendingQuestions) return []
@@ -61,12 +84,11 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'add-school-calendar',
       label: 'Add school calendar',
-      prompt: 'Help me add my school calendar so the plan follows the right teaching weeks.',
-      reason: 'The calendar is needed to place plans on real teaching weeks.',
+      prompt: 'Help me add my school calendar so plans land on the right teaching weeks.',
+      reason: 'Nothing else can be scheduled until FlexedAcademy knows your teaching weeks.',
       priority: 1,
       context: 'setup',
       action: 'open-settings',
-      contextLabel: 'Finish the setup',
     }))
   }
 
@@ -74,112 +96,130 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'add-pacing-guide',
       label: 'Add a pacing guide',
-      prompt: 'Help me add the pacing guide for this class.',
-      reason: 'A pacing guide gives the plan its sequence, unit names, and skill context.',
+      prompt: `Help me add the pacing guide${className} so plans follow your sequence.`,
+      reason: 'Plans default to generic pacing without one.',
       priority: 1,
       context: 'setup',
       action: 'open-settings',
-      contextLabel: 'Add the class context',
     }))
   }
 
   if (targetWeek && isOpenTeachingWeek(targetWeek) && !hasPlan(targetWeek)) {
     const label = weekLabel(targetWeek)
+    const dateRange = weekDateRange(targetWeek)
+    const partial = Boolean(targetWeek.closures && targetWeek.notes)
     suggestions.push(makeSuggestion({
       id: 'plan-current-week',
       label: `Plan ${label}`,
-      prompt: `Help me plan ${label}${className} using my pacing guide and the skill focus we have discussed.`,
-      reason: `${label} is the current unplanned teaching week.`,
+      prompt: `Help me plan ${label}${dateRange ? ` (${dateRange})` : ''}${className} using my pacing guide and the skill focus we have discussed.${partial ? ` Heads up: ${targetWeek.notes}.` : ''}`,
+      reason: partial
+        ? `A shortened, unplanned week (${targetWeek.notes}).`
+        : `${label} is the current unplanned teaching week.`,
       priority: 2,
       context: 'new-chat',
       action: 'open-plan',
       weekNumber: weekNumber(targetWeek),
-      contextLabel: `Planning ${label}`,
+      contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
   }
 
   if (hasRecentChat(activeChat, messages) && !artifact) {
+    const chatAge = activeChat?.updated_at ? Date.now() - new Date(activeChat.updated_at).getTime() : null
+    const age = relativeAge(chatAge)
     suggestions.push(makeSuggestion({
       id: 'continue-draft',
-      label: 'Continue planning',
-      prompt: 'Continue where we left off and help me finish this week.',
-      reason: 'You were working on this conversation recently.',
+      label: targetWeek ? `Continue ${weekLabel(targetWeek)}` : 'Continue planning',
+      prompt: targetWeek
+        ? `Continue ${weekLabel(targetWeek)} — let's finish the plan.`
+        : 'Continue where we left off and help me finish this week.',
+      reason: age ? `Last touched ${age}.` : 'This conversation is still open with no plan finished yet.',
       priority: 3,
       context: 'recent-chat',
       action: 'open-chat',
       chatId: activeChat?.id,
-      contextLabel: 'Continue where you left off',
+      contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
   }
 
   const nextDecision = decisions.find((decision) => decision.value == null)
   if (nextDecision && !artifact) {
+    const openCount = decisions.filter((decision) => decision.value == null).length
+    const wk = targetWeek ? weekLabel(targetWeek) : 'this week'
     const prompts = {
       week: targetWeek ? `Let's plan ${weekLabel(targetWeek)}.` : 'Let’s decide which week to plan.',
-      anchor: 'Let’s choose the anchor text or topic for this week.',
-      skill: 'Let’s choose the skill focus for this week.',
-      assessment: 'Let’s choose an assessment for this week.',
+      anchor: `Let’s choose the anchor text or topic for ${wk}.`,
+      skill: `Let’s choose the skill focus for ${wk}.`,
+      assessment: `Let’s choose an assessment for ${wk}.`,
     }
     suggestions.push(makeSuggestion({
       id: `resolve-${nextDecision.key}`,
       label: `Choose ${nextDecision.label.toLowerCase()}`,
-      prompt: prompts[nextDecision.key] || `Let's settle the ${nextDecision.label.toLowerCase()} for this week.`,
-      reason: `${nextDecision.label} is the next open planning decision.`,
+      prompt: prompts[nextDecision.key] || `Let's settle the ${nextDecision.label.toLowerCase()} for ${wk}.`,
+      reason: openCount > 1
+        ? `${openCount} decisions are still open — starting with ${nextDecision.label.toLowerCase()}.`
+        : 'The last open decision before this plan is ready.',
       priority: 4,
       context: 'decision',
       action: 'send-prompt',
-      contextLabel: `Choosing ${nextDecision.label.toLowerCase()}`,
+      contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
   }
 
   if (artifact) {
+    const wk = targetWeek ? weekLabel(targetWeek) : null
     suggestions.push(makeSuggestion({
       id: 'review-current-plan',
-      label: 'Review this plan',
-      prompt: 'Review this week’s plan and point out anything that needs attention.',
-      reason: 'Your current plan is ready to review or revise.',
+      label: wk ? `Review ${wk}’s plan` : 'Review this plan',
+      prompt: `Review ${wk ? `${wk}’s` : 'this week’s'} plan and point out anything that needs attention.`,
+      reason: 'Built and ready for a second pass.',
       priority: 5,
       context: 'plan',
       action: 'review-plan',
       chatId: activeChat?.id,
-      contextLabel: 'Reviewing the current plan',
+      contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
     suggestions.push(makeSuggestion({
       id: 'create-quiz',
-      label: 'Create a quiz',
-      prompt: 'Create a multiple-choice quiz from this week’s plan.',
-      reason: 'A supporting assessment has not been created for this plan.',
+      label: wk ? `Create a quiz for ${wk}` : 'Create a quiz',
+      prompt: `Create a multiple-choice quiz from ${wk ? `${wk}’s` : 'this week’s'} plan.`,
+      reason: 'A supporting assessment doesn’t exist for this plan yet.',
       priority: 6,
       context: 'artifact',
       action: 'send-prompt',
-      contextLabel: 'Working from the current plan',
+      contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
   }
 
   if (nextUnplanned && (!targetWeek || hasPlan(targetWeek) || artifact)) {
+    const label = weekLabel(nextUnplanned)
+    const dateRange = weekDateRange(nextUnplanned)
     suggestions.push(makeSuggestion({
       id: 'prepare-next-week',
-      label: `Prepare ${weekLabel(nextUnplanned)}`,
-      prompt: `Help me prepare ${weekLabel(nextUnplanned)} using my pacing guide.`,
-      reason: `${weekLabel(nextUnplanned)} is the next unplanned teaching week.`,
+      label: `Prepare ${label}`,
+      prompt: `Help me prepare ${label}${dateRange ? ` (${dateRange})` : ''}${className} using my pacing guide.`,
+      reason: targetWeek && hasPlan(targetWeek)
+        ? `${weekLabel(targetWeek)} is already planned — this is the next open week.`
+        : 'The next open teaching week on your calendar.',
       priority: 7,
       context: 'upcoming',
       action: 'open-plan',
       weekNumber: weekNumber(nextUnplanned),
-      contextLabel: `Preparing ${weekLabel(nextUnplanned)}`,
+      contextLabel: weekContextLabel(nextUnplanned, activeClass, classCount),
     }))
   }
 
   if (attachments.length > 0 && !hasPacingGuide) {
+    const filename = attachments[0]?.filename
     suggestions.push(makeSuggestion({
       id: 'use-attachment',
-      label: 'Use the attached guide',
-      prompt: 'Use the attached pacing guide to shape this week’s plan.',
-      reason: 'A reference file is ready to add context to the conversation.',
+      label: filename ? `Use ${filename}` : 'Use the attached guide',
+      prompt: filename
+        ? `Use ${filename} as the pacing guide to shape this week’s plan.`
+        : 'Use the attached pacing guide to shape this week’s plan.',
+      reason: 'No pacing guide set up for this class yet — this file could stand in for one.',
       priority: 7,
       context: 'attachment',
       action: 'send-prompt',
-      contextLabel: 'Using the attached context',
     }))
   }
 
@@ -192,7 +232,6 @@ export function getContextualSuggestions(context = {}) {
       priority: 8,
       context: 'default',
       action: 'send-prompt',
-      contextLabel: 'Start with an idea',
     }))
   }
 

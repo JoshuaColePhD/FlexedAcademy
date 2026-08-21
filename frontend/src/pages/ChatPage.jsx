@@ -291,7 +291,7 @@ export function ChatPage() {
         different conversation, so this opens one (the same ?week= route
         ClassPage's week list uses). */
   const changeWeek = useCallback(
-    (week) => {
+    async (week) => {
       if (!week || week === conversationWeek) return
       if (!chatId) {
         setSelectedWeek(week)
@@ -301,13 +301,32 @@ export function ChatPage() {
         navigate(`/c/${classId}?week=${week}`)
         return
       }
-      qc.setQueryData(qk.chats(classId), (old) =>
+
+      const chatsKey = qk.chats(classId)
+      // Stop any in-flight GET for this class's chat list before writing the
+      // optimistic value — otherwise a straggling fetch that started before
+      // the PATCH can resolve afterward and silently overwrite it.
+      await qc.cancelQueries({ queryKey: chatsKey })
+
+      qc.setQueryData(chatsKey, (old) =>
         (old || []).map((c) => (c.id === chatId ? { ...c, week_number: week } : c))
       )
-      api.setChatWeek(chatId, week).catch((err) => {
+
+      try {
+        const updated = await api.setChatWeek(chatId, week)
+        // Re-assert the server-confirmed week so a later, unrelated refetch of
+        // this same key (sidebar, HistoryPage, another mutation's invalidate)
+        // can't reintroduce a stale week_number if it started before this
+        // PATCH resolved.
+        qc.setQueryData(chatsKey, (old) =>
+          (old || []).map((c) =>
+            c.id === chatId ? { ...c, week_number: updated?.week_number ?? week } : c
+          )
+        )
+      } catch (err) {
         qc.invalidateQueries({ queryKey: ['chats'] })
         toast.apiError('Could not change the week', err)
-      })
+      }
     },
     [chatId, classId, conversationWeek, artifact?.planId, navigate, qc, toast]
   )
@@ -1681,6 +1700,7 @@ export function ChatPage() {
         calendar,
         attachments,
         surface: 'chat',
+        classCount: classes?.length,
       }),
     [
       activeChat,
@@ -1688,6 +1708,7 @@ export function ChatPage() {
       attachments,
       busy,
       calendar,
+      classes.length,
       conversationWeek,
       decisions,
       effectiveWeek,
