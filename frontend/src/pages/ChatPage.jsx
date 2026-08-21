@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, Download } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -1929,6 +1929,23 @@ export function ChatPage() {
             <span className="hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
               {calendar.school.name}
             </span>
+          ) : null}
+          {hasArtifact ? (
+            <button
+              type="button"
+              className="btn-icon relative"
+              aria-label="Open downloads"
+              title="Downloads ready"
+              onClick={openDocument}
+            >
+              <Download size={17} aria-hidden="true" />
+              {!docOpen ? (
+                <span
+                  className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </button>
           ) : null}
           <ThemeToggle />
         </div>
