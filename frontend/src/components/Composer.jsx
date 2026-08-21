@@ -7,6 +7,7 @@ import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Square, Upload,
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
+import { suggestionCompletion } from '../lib/contextualSuggestions'
 
 const MAX_H = 220
 
@@ -121,7 +122,7 @@ export function Composer({
   }, [suggestion, suggestions, value])
 
   const contextSignature = useMemo(
-    () => suggestions.map((item) => `${item.id}:${item.prompt}`).join('|'),
+    () => suggestions.map((item) => `${item.id}:${item.prompt}:${item.contextLabel || ''}`).join('|'),
     [suggestions]
   )
   const previousContextSignature = useRef(contextSignature)
@@ -137,12 +138,10 @@ export function Composer({
   }, [candidateSuggestions.length])
 
   const activeSuggestion = candidateSuggestions[selectedSuggestion] || candidateSuggestions[0]
-  const completion = useMemo(() => {
-    if (!activeSuggestion?.prompt) return ''
-    if (!value) return activeSuggestion.prompt
-    if (!activeSuggestion.prompt.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())) return ''
-    return activeSuggestion.prompt.slice(value.length)
-  }, [activeSuggestion, value])
+  const completion = useMemo(
+    () => suggestionCompletion(value, activeSuggestion),
+    [activeSuggestion, value]
+  )
 
   const trayOpen =
     isFocused &&
@@ -463,6 +462,7 @@ export function Composer({
           <div className="relative min-w-0 flex-1">
             {completion ? (
               <div
+                key={activeSuggestion?.id || 'none'}
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-pre-wrap break-words px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed"
               >

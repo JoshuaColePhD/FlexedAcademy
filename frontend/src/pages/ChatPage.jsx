@@ -1680,6 +1680,7 @@ export function ChatPage() {
         calendar,
         attachments,
         surface: 'chat',
+        classCount: classes?.length,
       }),
     [
       activeChat,
@@ -1687,6 +1688,7 @@ export function ChatPage() {
       attachments,
       busy,
       calendar,
+      classes.length,
       conversationWeek,
       decisions,
       effectiveWeek,
