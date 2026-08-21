@@ -68,8 +68,22 @@ def calendar_context(school_id: str) -> str:
 
     path = settings.calendars_dir / f"{school_id}.md"
     if not path.is_file():
+        # A real school with no calendar FILE yet is the same situation as
+        # NO_CALENDAR_SCHOOL_ID above — just reached a different way (a
+        # school row exists, but nobody has uploaded its calendar) — and
+        # deserves the same explicit instruction. Falling through to "" here
+        # used to leave the model with no guidance at all for what is
+        # actually the default state of every school before its first
+        # calendar upload, not a rare edge case, and it improvised: real
+        # runs came back with `week_of` values like "Week not specified —
+        # dates unavailable" that are exactly the kind of invented-looking
+        # text this function exists to prevent.
         log.warning("school calendar not found at %s; dates will be guesswork", path)
-        return ""
+        return (
+            "This school's real teaching calendar is not on file yet. Refer to weeks by NUMBER "
+            "only (e.g. \"Week 12\") — do not invent, guess, or state a specific calendar date or "
+            "date range for any week; none of the dates in this conversation are confirmed real."
+        )
 
     return path.read_text(encoding="utf-8")
 

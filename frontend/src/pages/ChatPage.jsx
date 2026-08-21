@@ -1968,8 +1968,20 @@ export function ChatPage() {
                 just what's been settled so far. Same visibility as the rail
                 version had — gone once the plan itself is being written or
                 already exists, since a built plan or its progress is a
-                clearer answer to "what's settled" than this list. */}
-            {!hasArtifact && !busy && decisions.length > 0 ? (
+                clearer answer to "what's settled" than this list.
+
+                Also gone while `pendingQuestions` is open: LessonQuestions
+                answers each of its own bullet questions locally and only
+                calls onAnswerQuestions/submit once with everything bundled
+                after the LAST one — so for the entire time a teacher is
+                working through that card, none of their answers exist in
+                `messages` yet, and extract_decisions has nothing new to
+                find. Showing this list next to that card meant a teacher
+                who'd just picked an anchor text watched this keep insisting
+                "not yet decided" through every question after it, which
+                read as the app losing the answer, not as it waiting on a
+                bundle. */}
+            {!hasArtifact && !busy && !pendingQuestions && decisions.length > 0 ? (
               <div className="w-full">
                 <p className="eyebrow mb-2">The plan so far</p>
                 <ul className="flex flex-col gap-1 text-sm leading-relaxed text-ink-soft">
