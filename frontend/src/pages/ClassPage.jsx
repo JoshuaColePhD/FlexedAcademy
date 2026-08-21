@@ -14,10 +14,9 @@ import {
   Plus,
   Trash2,
   Upload,
-  X,
 } from 'lucide-react'
 import { api } from '../lib/api'
-import { GRADES, DEFAULT_GRADE, gradeLabel, gradeSelectValue } from '../lib/grades'
+import { GRADES, DEFAULT_GRADE, gradeLabel } from '../lib/grades'
 
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
@@ -28,7 +27,6 @@ import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
-import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { AccountMenu } from '../components/AccountMenu'
 import { classColor } from '../lib/classColor'
@@ -36,6 +34,8 @@ import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
 import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { unitSuffix } from '../lib/planShape'
+import { getContextualSuggestions } from '../lib/contextualSuggestions'
+import { ContextualSuggestionList } from '../components/ContextualSuggestionList'
 
 /* Your classes.
  *
@@ -699,10 +699,37 @@ function ClassDetail({ cls, frameworks, onChanged }) {
   }
 
   const { data: calendar, isLoading, isError } = useCalendar(cls.id)
+  const documents = useQuery({
+    queryKey: qk.classDocuments(cls.id),
+    queryFn: () => api.listClassDocuments(cls.id),
+    staleTime: 5 * 60_000,
+  })
   const weeks = calendar?.weeks || []
   
   // Find current week or next un-planned week
   const currentWeek = weeks.find(w => w.is_current) || weeks.find(w => w.status !== 'built' && w.status !== 'closed') || weeks[weeks.length - 1]
+  const contextualSuggestions = getContextualSuggestions({
+    activeClass: cls,
+    calendar,
+    conversationWeek: currentWeek?.week,
+    effectiveWeek: currentWeek?.week,
+    activeChat: currentWeek?.chat_id ? { id: currentWeek.chat_id } : null,
+    artifact: currentWeek?.status === 'built' ? { planId: currentWeek.plan_id || currentWeek.planId || 'current-plan' } : null,
+    hasPacingGuide: documents.data ? documents.data.some((document) => document.kind === 'pacing_guide') : true,
+    surface: 'class',
+  })
+
+  const openSuggestion = (suggestion) => {
+    if (suggestion.action === 'open-settings') {
+      navigate(`/c/${cls.id}/class`)
+      return
+    }
+    if ((suggestion.action === 'open-chat' || suggestion.action === 'review-plan') && suggestion.chatId) {
+      navigate(`/c/${cls.id}/chat/${suggestion.chatId}`)
+      return
+    }
+    navigate(`/c/${cls.id}${suggestion.weekNumber ? `?week=${suggestion.weekNumber}` : ''}`)
+  }
 
   return (
     <div className="w-full max-w-3xl flex flex-col gap-12 pb-16">
@@ -759,12 +786,18 @@ function ClassDetail({ cls, frameworks, onChanged }) {
                   </button>
                 )}
               </div>
+              <ContextualSuggestionList
+                suggestions={contextualSuggestions}
+                onSelect={openSuggestion}
+                className="mt-4 border-t border-edge pt-3"
+              />
             </div>
           ) : isLoading ? (
             <div className="px-4 py-6 text-center text-xs text-ink-muted bg-paper-sunken rounded-xl border border-edge">Loading calendar...</div>
           ) : (
              <div className="px-4 py-6 text-center text-xs text-ink-muted bg-paper-sunken rounded-xl border border-edge">No active week available.</div>
           )}
+          {!currentWeek ? <ContextualSuggestionList suggestions={contextualSuggestions} onSelect={openSuggestion} className="mt-3" /> : null}
         </section>
 
         <section className="flex flex-col gap-4">

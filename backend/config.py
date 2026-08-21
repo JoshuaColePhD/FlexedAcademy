@@ -43,6 +43,10 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-luna"
+    # Voice chat is a short intent/conversation turn. Keep plan generation on
+    # the configured quality model, but allow the spoken routing path to use a
+    # faster model without changing the grounded build/revision calls.
+    voice_chat_model: str = "gpt-5-mini"
     common_standards_api_key: str = ""
 
     # ── voice replies ────────────────────────────────────────────────────────

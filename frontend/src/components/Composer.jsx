@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 // Upload is used by the drag-and-drop overlay below and was missing from this
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
@@ -56,12 +56,10 @@ export function Composer({
   attachments,
   setAttachments,
   onOpenVoice,
-  // Fires on pointerdown of the voice button, a beat before onOpenVoice's
-  // own click — see ChatPage's warmMic, which starts the getUserMedia
-  // negotiation right then instead of waiting for VoiceModePanel to mount
-  // and request it itself. Optional: nothing breaks if the caller doesn't
-  // wire it up, the mic just starts exactly as fast as it always did.
-  onWarmVoice,
+  suggestions = [],
+  contextLabel = '',
+  /* Kept for callers outside the main chat surface while they migrate to the
+     shared suggestion model. It is converted into the same shape below. */
   suggestion = null,
   /* True while ChatPage's own voice-dock panel is open. That panel already
      has its own always-on mic listening for speech — letting the
@@ -95,6 +93,43 @@ export function Composer({
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isAttaching, setIsAttaching] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [isFocused, setIsFocused] = useState(false)
+  const [selectedSuggestion, setSelectedSuggestion] = useState(0)
+  const [trayDismissed, setTrayDismissed] = useState(false)
+
+  const candidateSuggestions = useMemo(() => {
+    const normalized = suggestions.length
+      ? suggestions
+      : suggestion
+        ? [{ id: 'legacy-suggestion', label: suggestion, prompt: suggestion, reason: '', priority: 99 }]
+        : []
+    const query = value.trim().toLocaleLowerCase()
+    if (!query) return normalized.slice(0, 3)
+    return normalized
+      .filter((item) => item.prompt?.toLocaleLowerCase().startsWith(query))
+      .slice(0, 3)
+  }, [suggestion, suggestions, value])
+
+  useEffect(() => {
+    setSelectedSuggestion((index) => Math.min(index, Math.max(candidateSuggestions.length - 1, 0)))
+  }, [candidateSuggestions.length])
+
+  const activeSuggestion = candidateSuggestions[selectedSuggestion] || candidateSuggestions[0]
+  const completion = useMemo(() => {
+    if (!activeSuggestion?.prompt) return ''
+    if (!value) return activeSuggestion.prompt
+    if (!activeSuggestion.prompt.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())) return ''
+    return activeSuggestion.prompt.slice(value.length)
+  }, [activeSuggestion, value])
+
+  const trayOpen =
+    isFocused &&
+    !trayDismissed &&
+    !voiceModeActive &&
+    !isRecording &&
+    !isTranscribing &&
+    !isStreaming &&
+    candidateSuggestions.length > 0
 
   const autosize = useCallback(() => {
     const el = textareaRef.current
@@ -255,14 +290,40 @@ export function Composer({
     onSubmit()
   }
 
+  const acceptSuggestion = (suggestionToAccept = activeSuggestion) => {
+    if (!suggestionToAccept?.prompt) return
+    const typedPrefixMatches = value && suggestionToAccept.prompt.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
+    const remaining = typedPrefixMatches ? suggestionToAccept.prompt.slice(value.length) : ''
+    if (value && !remaining) return
+    const nextValue = value && remaining ? `${value}${remaining}` : suggestionToAccept.prompt
+    onChange(nextValue)
+    setTrayDismissed(false)
+    requestAnimationFrame(() => {
+      const input = textareaRef.current
+      input?.focus()
+      input?.setSelectionRange(nextValue.length, nextValue.length)
+    })
+  }
+
   const onKeyDown = (e) => {
-    if (e.key === 'Tab' && !value) {
-      const fillText = suggestion || (placeholder.includes(' — e.g. ') ? placeholder.split(' — e.g. ')[1] : '')
-      if (fillText) {
-        e.preventDefault()
-        onChange(fillText)
-        return
-      }
+    if (e.key === 'Tab' && trayOpen && completion) {
+      e.preventDefault()
+      acceptSuggestion()
+      return
+    }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && trayOpen && candidateSuggestions.length > 1) {
+      e.preventDefault()
+      setSelectedSuggestion((index) =>
+        e.key === 'ArrowDown'
+          ? (index + 1) % candidateSuggestions.length
+          : (index - 1 + candidateSuggestions.length) % candidateSuggestions.length
+      )
+      return
+    }
+    if (e.key === 'Escape' && trayOpen) {
+      e.preventDefault()
+      setTrayDismissed(true)
+      return
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -290,6 +351,43 @@ export function Composer({
         )}
         {voicePanel}
         {questionsPanel}
+
+        <div
+          id="composer-recommendations"
+          className={`composer-recommendations${trayOpen ? ' is-open' : ''}`}
+          aria-hidden={!trayOpen}
+        >
+          <div className="composer-recommendations-inner">
+            {contextLabel ? (
+              <div className="px-3 pt-3 text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                {contextLabel}
+              </div>
+            ) : null}
+            <div className="flex flex-col gap-1 p-2">
+              {candidateSuggestions.map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  tabIndex={trayOpen ? 0 : -1}
+                  className={`flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                    index === selectedSuggestion ? 'neo-inset bg-paper-sunken' : 'hover:bg-paper-sunken'
+                  }`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setSelectedSuggestion(index)
+                    acceptSuggestion(item)
+                  }}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-ink">{item.label || item.prompt}</span>
+                    {item.reason ? <span className="mt-0.5 block text-xs text-ink-muted">{item.reason}</span> : null}
+                  </span>
+                  {index === 0 ? <kbd className="mt-0.5 shrink-0 text-[0.625rem] text-ink-faint">Tab</kbd> : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-3 pt-2.5">
@@ -338,24 +436,41 @@ export function Composer({
             disabled={isAttaching}
           />
 
-          <textarea
-            id="composer-input"
-            ref={textareaRef}
-            rows={1}
-            value={value}
-            placeholder={
-              isRecording
-                ? 'Listening…'
-                : isTranscribing
-                  ? 'Transcribing…'
-                  : suggestion || placeholder
-            }
-            title="Enter to send · Shift+Enter for a new line"
-            className="composer-input max-h-[220px] flex-1 resize-none overflow-y-auto border-none bg-transparent px-2 py-[0.9375rem] text-[0.9375rem] leading-relaxed text-ink outline-none placeholder:font-normal placeholder:text-ink-faint"
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            disabled={isRecording || isTranscribing}
-          />
+          <div className="relative min-w-0 flex-1">
+            {completion ? (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-pre-wrap break-words px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed"
+              >
+                <span className="text-ink">{value}</span><span className="text-ink-faint">{completion}</span>
+              </div>
+            ) : null}
+            <textarea
+              id="composer-input"
+              ref={textareaRef}
+              rows={1}
+              value={value}
+              placeholder={isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
+              title="Enter to send · Shift+Enter for a new line"
+              aria-expanded={trayOpen}
+              aria-controls="composer-recommendations"
+              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+              onChange={(e) => {
+                setTrayDismissed(false)
+                setSelectedSuggestion(0)
+                onChange(e.target.value)
+              }}
+              onFocus={() => {
+                setIsFocused(true)
+                setTrayDismissed(false)
+              }}
+              onBlur={(e) => {
+                if (!wrapperRef.current?.contains(e.relatedTarget)) setIsFocused(false)
+              }}
+              onKeyDown={onKeyDown}
+              disabled={isRecording || isTranscribing}
+            />
+          </div>
 
           {/* gap-1.5, not gap-1 — at 44px buttons the tighter gap read as
               the icons overlapping their own tap targets. md:gap-1 restores
@@ -449,7 +564,6 @@ export function Composer({
                    something" language RailRow's own icon tiles use. */
                 className="tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper-sunken md:h-9 md:w-9"
                 onClick={onOpenVoice}
-                onPointerDown={onWarmVoice}
                 aria-label="Start a voice conversation"
                 title="Talk instead of type"
               >

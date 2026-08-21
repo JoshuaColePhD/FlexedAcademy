@@ -1032,7 +1032,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     ]
 
     stream = client().chat.completions.create(
-        model=settings.openai_model,
+        model=settings.voice_chat_model if voice else settings.openai_model,
         # Required, not tuning: the configured model rejects function tools
         # outright in /v1/chat/completions unless reasoning is off —
         # "Function tools with reasoning_effort are not supported ... set
@@ -1040,12 +1040,10 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
         # mechanism of this conversation (build the plan / ask instead), so
         # without this every chat turn, typed or spoken, 400s.
         reasoning_effort="none",
-        # Deliberately generous even for voice: max_completion_tokens counts
-        # REASONING tokens too on this model, so a ceiling tight enough to
-        # actually shape prose length (a couple hundred) can be spent before
-        # a single visible character is emitted, and the teacher gets
-        # silence. Brevity is the prompt's job; this only stops an essay.
-        max_completion_tokens=1500 if voice else 4000,
+        # Voice replies are deliberately short; the lower ceiling keeps a
+        # routing turn from spending time generating an essay before its first
+        # sentence can reach the browser.
+        max_completion_tokens=700 if voice else 4000,
         messages=messages,
         stream=True,
         tools=tools,

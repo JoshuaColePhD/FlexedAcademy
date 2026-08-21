@@ -1,14 +1,16 @@
 import { Fragment, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Download, FileText, Search, Trash2, CheckSquare, Square } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyPlanShareLink } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
-import { useActiveClass, usePlanWeeks, useDeletePlan } from '../hooks/useAppData'
+import { useActiveClass, useCalendar, usePlanWeeks, useDeletePlan } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { SkeletonText } from '../components/Skeleton'
 import { unitSuffix } from '../lib/planShape'
+import { getContextualSuggestions } from '../lib/contextualSuggestions'
+import { ContextualSuggestionList } from '../components/ContextualSuggestionList'
 
 /* Every plan this class has ever produced, in one place — one card per
  * calendar week, not one row per raw generation.
@@ -141,6 +143,8 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
 
 export function PlansPage() {
   const { classId, activeClass } = useActiveClass()
+  const navigate = useNavigate()
+  const { data: calendar } = useCalendar(classId)
   const { data, isLoading, isError, error } = usePlanWeeks()
   const deletePlan = useDeletePlan()
   const confirm = useConfirm()
@@ -162,6 +166,19 @@ export function PlansPage() {
   const [isDeletingBulk, setIsDeletingBulk] = useState(false)
 
   const weeks = data?.weeks || []
+  const currentWeek = calendar?.weeks?.find((week) => week.is_current) || null
+  const currentPlan = weeks.find((week) => String(week.week_number) === String(currentWeek?.week))?.latest || null
+  const contextualSuggestions = calendar
+    ? getContextualSuggestions({
+        activeClass,
+        calendar,
+        conversationWeek: currentWeek?.week,
+        effectiveWeek: currentWeek?.week,
+        activeChat: currentPlan?.chat_id ? { id: currentPlan.chat_id } : null,
+        artifact: currentPlan ? { planId: currentPlan.id } : null,
+        surface: 'library',
+      })
+    : []
   // Search matches on the week's own (latest) fields — a week with an old
   // revision that happened to mention something the latest doesn't isn't
   // what "search plans" means here.
@@ -255,6 +272,20 @@ export function PlansPage() {
 
       <div className="page scroll-y">
         <div className="mx-auto w-full max-w-measure-form">
+          {contextualSuggestions.length > 0 ? (
+            <section className="neo-panel mb-4 rounded-xl bg-paper-raised/30 p-2" aria-label="Suggested actions">
+              <ContextualSuggestionList
+                suggestions={contextualSuggestions}
+                onSelect={(suggestion) => {
+                  if ((suggestion.action === 'open-chat' || suggestion.action === 'review-plan') && suggestion.chatId) {
+                    navigate(`/c/${classId}/chat/${suggestion.chatId}`)
+                    return
+                  }
+                  navigate(`/c/${classId}${suggestion.weekNumber ? `?week=${suggestion.weekNumber}` : ''}`)
+                }}
+              />
+            </section>
+          ) : null}
           {weeks.length > 0 && (
             <div className="mb-2 flex items-center justify-end gap-3">
               {selectionMode ? (

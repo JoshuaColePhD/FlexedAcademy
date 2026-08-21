@@ -1,11 +1,27 @@
 import React, { useEffect, useState } from 'react'
 import { Command } from 'cmdk'
 import { useNavigate } from 'react-router-dom'
-import { Settings, ShieldCheck, History, BookOpen, Plus, Calendar } from 'lucide-react'
+import { Settings, ShieldCheck, History, BookOpen, Plus, Calendar, Sparkles } from 'lucide-react'
+import { useActiveClass, useCalendar } from '../hooks/useAppData'
+import { getContextualSuggestions } from '../lib/contextualSuggestions'
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
+  const { activeClass } = useActiveClass()
+  const { data: calendar } = useCalendar(activeClass?.id)
+  const currentWeek = calendar?.weeks?.find((week) => week.is_current) || null
+  const suggestions = activeClass && calendar
+    ? getContextualSuggestions({
+        activeClass,
+        calendar,
+        activeChat: currentWeek?.chat_id ? { id: currentWeek.chat_id } : null,
+        conversationWeek: currentWeek?.week,
+        effectiveWeek: currentWeek?.week,
+        artifact: currentWeek?.has_plan || currentWeek?.status === 'built' ? { planId: 'current-plan' } : null,
+        surface: 'palette',
+      })
+    : []
 
   useEffect(() => {
     const down = (e) => {
@@ -21,6 +37,18 @@ export function CommandPalette() {
   const runCommand = (command) => {
     setOpen(false)
     command()
+  }
+
+  const runSuggestion = (suggestion) => {
+    if (suggestion.action === 'open-settings') {
+      navigate('/settings')
+      return
+    }
+    if ((suggestion.action === 'open-chat' || suggestion.action === 'review-plan') && suggestion.chatId) {
+      navigate(`/c/${activeClass.id}/chat/${suggestion.chatId}`)
+      return
+    }
+    navigate(`/c/${activeClass.id}${suggestion.weekNumber ? `?week=${suggestion.weekNumber}` : ''}`)
   }
 
   return (
@@ -40,6 +68,25 @@ export function CommandPalette() {
           <Command.Empty className="py-6 text-center text-sm text-ink-muted">
             No results found.
           </Command.Empty>
+
+          {suggestions.length > 0 ? (
+            <Command.Group heading="Suggested for this class" className="text-xs font-medium text-ink-muted px-2 py-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1.5">
+              {suggestions.map((suggestion) => (
+                <Command.Item
+                  key={suggestion.id}
+                  value={`${suggestion.label} ${suggestion.reason}`}
+                  onSelect={() => runCommand(() => runSuggestion(suggestion))}
+                  className="flex items-start gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
+                >
+                  <Sparkles size={16} className="mt-0.5 shrink-0 text-accent" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">{suggestion.label}</span>
+                    <span className="block text-xs font-normal text-ink-muted">{suggestion.reason}</span>
+                  </span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          ) : null}
 
           <Command.Group heading="Navigation" className="text-xs font-medium text-ink-muted px-2 py-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1.5">
             <Command.Item

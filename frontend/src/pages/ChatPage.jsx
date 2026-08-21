@@ -18,6 +18,7 @@ import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
 import { splitDecisions } from '../lib/decisionChecklist'
+import { getContextualSuggestions, suggestionContextLabel } from '../lib/contextualSuggestions'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -32,7 +33,6 @@ import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
-import * as voiceMetrics from '../lib/voiceMetrics'
 
 /* One chat, one plan.
  *
@@ -209,18 +209,6 @@ export function ChatPage() {
   // voice mode is open (see the effect further down). Empty is a normal
   // state, not a loading one: nothing has necessarily been settled yet.
   const [decisions, setDecisions] = useState([])
-  // The running text of the reply currently being spoken sentence-by-
-  // sentence, so the caption grows with the speech instead of appearing all
-  // at once when the model finally stops writing. Reset at the top of each
-  // submit — see onSentence, which appends to it.
-  const liveSpeechRef = useRef('')
-  /* Set when a barge-in cuts a reply off: {id, rest} — the message that recorded
-     what was heard, and the text that never got spoken. Held only until the
-     interrupt is confirmed real (an utterance arrives) or disproved (nothing
-     does, and VoiceModePanel calls onFalseInterrupt). See both handlers where
-     the panel is mounted. */
-  const interruptedRef = useRef(null)
-
   /* Which cell is being tweaked, and which cells just changed. `flashCells` is
      the only animation in the app that carries information: it answers "what
      changed?" without anyone having to build a diff view. */
@@ -637,6 +625,9 @@ export function ChatPage() {
   })
 
   const chatStream = useChatStream({
+    onRetry: () => {
+      if (voiceOpen) voice.cancelSpeech()
+    },
     /* Voice mode's low-latency path: speak each sentence the moment the
        model finishes writing it, rather than waiting for the whole reply,
        then a whole TTS render, then playback. VoiceProvider queues these so
@@ -646,17 +637,14 @@ export function ChatPage() {
       if (!voiceOpen) return
       /* track: true marks this as part of the model's own streamed reply, so
          VoiceProvider records it as spoken once its audio actually starts —
-         which is what onInterrupt below reads to recover an interrupted turn.
+         which is what VoiceProvider captions and the barge-in state use.
          App-authored interjections ("Building your week") are spoken too but
          deliberately aren't tracked; they're not part of the reply.
 
          The caption is no longer set here. VoiceProvider owns it now, because
          it's the only thing that knows when a sentence becomes audible rather
          than merely queued — see its own `caption` comment. */
-      voice.sendContextEvent(sentence, { track: true })
-      liveSpeechRef.current = liveSpeechRef.current
-        ? `${liveSpeechRef.current} ${sentence}`
-        : sentence
+      voice.speak(sentence)
     },
     onDone: (result) => {
       // The guided alternative to typing — see LessonQuestions and
@@ -771,98 +759,10 @@ export function ChatPage() {
      where it left off, not re-introduce itself over the top of it. */
 
 
-  /* Same warm-start idea as VOICE_GREETING above, aimed at the OTHER slow
-     round trip voice mode has to clear before it's actually usable:
-     getUserMedia's permission/hardware negotiation, which VoiceModePanel's
-     own mic-setup effect currently doesn't even start until AFTER the panel
-     has mounted — the one moment guaranteed to be the worst time to start
-     it, same as the TTS fetch used to be.
-
-     Can't warm this the instant the page loads the way the greeting is,
-     though: unlike fetching a clip nobody's listening to yet, requesting
-     the microphone is a real permission prompt, and firing it just because
-     an empty chat rendered — before the teacher has shown any intent to use
-     voice at all — would be presumptuous, possibly the very first thing an
-     unfamiliar teacher sees on this page. Firing it on pointerdown of the
-     button that opens voice mode is the compromise: it's a real, deliberate
-     gesture (the same one that's about to become a click), just started
-     ~one event earlier, so the negotiation overlaps the click instead of
-     following it. If the teacher never actually opens voice mode after the
-     press (a drag-off, e.g.), the stream releases itself. */
-  const warmMicRef = useRef(null) // Promise<MediaStream> | null
-  const warmMicTimeoutRef = useRef(null)
-
-  const releaseWarmMic = useCallback(() => {
-    clearTimeout(warmMicTimeoutRef.current)
-    warmMicRef.current
-      ?.then((stream) => stream.getTracks().forEach((t) => t.stop()))
-      .catch(() => {})
-    warmMicRef.current = null
-  }, [])
-
-  const warmMic = useCallback(() => {
-    /* Obsolete under WebRTC, and deliberately inert rather than deleted.
-     *
-     * This pre-opened a microphone on the pointerdown of whatever button was
-     * about to open voice mode, so the permission/hardware negotiation had a
-     * head start on VoiceModePanel's own getUserMedia. The panel does not
-     * capture audio any anymore — VoiceProvider's realtime session owns the
-     * microphone — so warming a SECOND stream here does nothing but open the
-     * mic twice and light the browser's recording indicator early.
-     *
-     * It also produced an unhandled rejection. The promise was stored with a
-     * .catch that re-threw, and once the panel stopped claiming it nothing was
-     * left to attach a handler, so a denied mic surfaced as
-     * "Uncaught (in promise) NotAllowedError" in the console on top of the
-     * toast the provider already shows.
-     *
-     * Kept as a no-op because several pointerdown handlers still call it; those
-     * call sites go when the panel's dead engine does. */
-    return
-    // eslint-disable-next-line no-unreachable
-    if (warmMicRef.current) return
-    warmMicRef.current = navigator.mediaDevices
-      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-      .catch((err) => {
-        warmMicRef.current = null
-        throw err
-      })
-    // Unclaimed after a few seconds means the press never turned into an
-    // actual open — release it rather than leaving the mic hot (and the
-    // browser's "microphone in use" indicator lit) for a conversation that
-    // never started.
-    clearTimeout(warmMicTimeoutRef.current)
-    warmMicTimeoutRef.current = setTimeout(releaseWarmMic, 4000)
-  }, [releaseWarmMic])
-
-  // VoiceModePanel's own mic-setup effect calls this once, synchronously, the
-  // moment it mounts — claiming (not just reading) the warm stream so a
-  // second call (e.g. "Try again" after an error) falls through to its own
-  // fresh getUserMedia rather than reusing an already-consumed promise.
-  const claimWarmMic = useCallback(() => {
-    clearTimeout(warmMicTimeoutRef.current)
-    const p = warmMicRef.current
-    warmMicRef.current = null
-    return p
-  }, [])
-
-  useEffect(() => releaseWarmMic, [releaseWarmMic])
-
   const openVoice = useCallback(() => {
-    /* The chat and week are passed through now. toggle() takes
-       (chatId, weekNumber, mode) and forwards them to POST /api/voice/session,
-       which builds the realtime session's system prompt from them — called bare
-       like this used to be, every spoken conversation was provisioned with
-       chat_id: null, so the assistant opened the call knowing neither the class
-       nor the week it was supposed to be planning.
-
-       The greeting no longer needs a delay or a retry either: unlock() is async
-       and the data channel does not exist for several awaits, so this send used
-       to be dropped in silence EVERY time — voice mode always opened saying
-       nothing. VoiceProvider.speak() queues anything sent before the channel
-       opens and flushes it on dc.onopen. */
-    if (!voice.enabled) voice.toggle(chatId ?? null, conversationWeek ?? null, 'brainstorm')
-    else voice.unlock(chatId ?? null, conversationWeek ?? null, 'brainstorm')
+    // This is the deliberate user gesture that creates the one Realtime
+    // session. Speech queued immediately afterward waits for the data channel.
+    voice.startSession({ chatId: chatId ?? null, weekNumber: conversationWeek ?? null, mode: 'brainstorm' })
     setVoiceOpen(true)
     if (messages.length === 0) voice.speak(VOICE_GREETING)
   }, [voice, messages, chatId, conversationWeek])
@@ -872,9 +772,7 @@ export function ChatPage() {
      silencing the shared <audio> element too (see its own comment), not
      just the panel's own local state. */
   const closeVoice = useCallback(() => {
-    // voice.stop() clears the caption itself now, along with silencing the
-    // graph — there's no separate caption state left here to reset.
-    voice.stop()
+    voice.stopSession()
     
     setVoiceOpen(false)
     setDecisions([])
@@ -898,17 +796,8 @@ export function ChatPage() {
 
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
-    async (text) => {
+    async (text, options = {}) => {
       const typed = (text ?? query).trim()
-      // A new turn starts a new spoken reply — see onSentence, which
-      // appends each streamed sentence onto this. resetSpoken() clears the
-      // other half of the same bookkeeping: what the PREVIOUS turn actually
-      // got out loud, which onInterrupt reads. Without the reset, an interrupt
-      // three turns later would recover the whole conversation's speech as one
-      // message.
-      liveSpeechRef.current = ''
-      
-
       /* Attached files were extracted, confirmed with a toast reporting the
          character count, and then never sent: `attachments` was written by the
          Composer and read by nobody. The chip also stayed pinned after sending,
@@ -930,7 +819,8 @@ export function ChatPage() {
       const content = docs ? `${docs}\n\n---\n\n${typed}` : typed
       // Guards on the COMBINED text, so an attachment with no typed message
       // sends — the send button was already enabled for that and did nothing.
-      if (!content.trim() || busy) return
+      const voiceTurn = Boolean(options.voiceTurn)
+      if (!content.trim() || (busy && !voiceTurn)) return
       setPreparing(true)
       setQuery('')
       // The chip has to clear here, before any request goes out — the sent
@@ -1081,7 +971,7 @@ export function ChatPage() {
            spoken conversation it lands as the assistant simply going silent
            mid-exchange, which is indistinguishable from it having broken. */
         if (voiceOpen) {
-          voice.sendContextEvent(VOICE_BUILDING)
+      voice.speak(VOICE_BUILDING)
         }
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
@@ -1223,7 +1113,7 @@ export function ChatPage() {
 
       // Same silence problem as a first build — see VOICE_BUILDING's use above.
       if (voiceOpen) {
-        voice.sendContextEvent(VOICE_REVISING)
+        voice.speak(VOICE_REVISING)
       }
       // Same fallback as the quiz-build path below, and the same reason: the
       // model isn't REQUIRED to say anything before calling generate_lesson_plan
@@ -1272,7 +1162,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode]
   )
 
   /* Per-cell revise, from clicking a cell in the document.
@@ -1417,15 +1307,13 @@ export function ChatPage() {
      effect watching `messages` catches every assistant reply this component
      creates (build confirmations, revision confirmations, errors, the whole
      handful of call sites in submit() below) without having to thread
-     voice.sendContextEvent() through each of them individually and risk a future one
+     voice.speak() through each of them individually and risk a future one
      going quiet by omission. Guarded on the message's OWN id, not a count,
      so a load-more or a deleted message can't cause a stale reply to be
      spoken again.
 
-     Fires off `voice.enabled` alone, which persists across sessions — restored
-     together with the two onOpenVoice props above, per the reasoning that
-     used to live here: a stray autoplay with no click this session is only a
-     risk if the entry points that turn it on are ALSO still disabled. */
+     Only runs while this deliberate voice conversation is open; the provider
+     never reconnects from page-load state. */
   useEffect(() => {
     const last = messages[messages.length - 1]
     if (!last || last.role !== 'assistant' || last.streaming) return
@@ -1442,7 +1330,7 @@ export function ChatPage() {
       // enqueue, not speak: a clarifying question's spokenContent follows
       // an intro that may still be playing from the stream, and replacing
       // would cut its own preamble off mid-word.
-      voice.sendContextEvent(toSpeak)
+      voice.speak(toSpeak)
     }
   }, [messages, voice, voiceOpen])
 
@@ -1475,91 +1363,20 @@ export function ChatPage() {
   }, [messages, artifact?.planId])
 
 
-  // Proactively mutate UI from WebRTC data channel events!
-  //
-  // planIdRef tracks the artifact currently on screen without this effect
-  // depending on `artifact` — that dependency was the bug. Two
-  // voice:tool_call events landing before this effect had re-run with a
-  // fresh `artifact` closure both built `newDays` from the SAME stale
-  // `artifact.plan.days`, so the second setArtifact call clobbered the
-  // first edit on screen (the server-side api.updateDay for the first edit
-  // still succeeded — only the visible document lost it, until a reload
-  // re-fetched the plan). Building newDays entirely inside the functional
-  // updater means it always starts from the latest state, no matter how
-  // many of these fire back-to-back.
-  const planIdRef = useRef(artifact?.planId)
-  useEffect(() => {
-    planIdRef.current = artifact?.planId
-  }, [artifact?.planId])
-
-  const activeChatIdRef = useRef(activeChat?.id)
-  useEffect(() => {
-    activeChatIdRef.current = activeChat?.id
-  }, [activeChat?.id])
-
-  useEffect(() => {
-    const handler = async (e) => {
-      const { name, args } = e.detail
-      if (name === 'update_lesson_plan') {
-        const { day_index, field, content } = args
-        const planId = planIdRef.current
-        if (!planId) return
-
-        let changed = false
-        setArtifact((prev) => {
-          if (!prev?.plan?.days?.[day_index]) return prev
-          changed = true
-          const newDays = [...prev.plan.days]
-          newDays[day_index] = { ...newDays[day_index], [field]: content }
-          return { ...prev, plan: { ...prev.plan, days: newDays } }
-        })
-        if (!changed) return
-
-        try {
-          await api.updateDay(planId, day_index, { field, content })
-        } catch (err) {
-          console.error('Failed to save day update', err)
-        }
-      } else if (name === 'generate_lesson_plan') {
-        // Just trigger submit with a dummy string, but wait - submit needs the UI state
-        // The easiest way is to let the user know they are building a plan
-        submit("Please generate the lesson plan.", { bypassVoice: true })
-      } else if (name === 'generate_quiz') {
-        submit(JSON.stringify(args), { bypassVoice: true })
-      } else if (name === 'ask_clarifying_questions') {
-        // The realtime model emitted ask_clarifying_questions and already asked aloud.
-        // Attach the questions to its most recent transcript in the chat log so the UI renders them.
-        setMessages((prev) => {
-          const lastIdx = prev.findLastIndex(m => m.role === 'assistant')
-          if (lastIdx === -1) return prev
-          const newMessages = [...prev]
-          newMessages[lastIdx] = { ...newMessages[lastIdx], questions: args.questions }
-          return newMessages
-        })
-      }
-    }
-    window.addEventListener('voice:tool_call', handler)
-    return () => window.removeEventListener('voice:tool_call', handler)
-  }, [submit])
-
-  /* Intercept voice transcripts to add them to history locally without hitting /api/chat_stream */
-  useEffect(() => {
-    const handler = (e) => {
-      const { role, text } = e.detail
-      if (!text) return
-      
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role, content: text }
-      ])
-      
-      if (activeChatIdRef.current) {
-        api.addMessage(activeChatIdRef.current, { role, content: text }).catch(() => {})
-      }
-    }
-    window.addEventListener('voice:transcript', handler)
-    return () => window.removeEventListener('voice:transcript', handler)
-  }, [])
+  /* Voice has one submit path. Realtime emits a completed transcription;
+     ChatPage submits it through the same grounded flow as typed text, which
+     is also the only place that saves the user message. */
+  const submitRef = useRef(submit)
+  submitRef.current = submit
+  useEffect(
+    () => voice.onUtterance((text) => {
+      // A spoken interruption cancels any still-streaming grounded reply;
+      // the new utterance itself then starts the same submit path.
+      chatStream.stop()
+      submitRef.current(text, { voiceTurn: true })
+    }),
+    [chatStream, voice]
+  )
 
   /* The clarification the conversation is currently waiting on, if any.
      Only ever the LAST message's — an older unanswered set has been
@@ -1825,49 +1642,39 @@ export function ChatPage() {
   const viewLabel = VIEW_KIND_LABELS[viewKind] || VIEW_KIND_LABELS.plan
 
   const { checklist: coreChecklist, extra: extraDecisions } = useMemo(() => splitDecisions(decisions), [decisions])
-  const nextUndecided = coreChecklist.find((c) => c.value == null)
-
-  let contextualSuggestion = ''
-  
-  const lastMsg = messages[messages.length - 1]
-  const lastMsgIsQuestion = lastMsg?.role === 'assistant' && lastMsg.content.trim().endsWith('?')
-
-  if (lastMsgIsQuestion) {
-    contextualSuggestion = 'Yes, that sounds great.'
-  } else if (nextUndecided && !hasArtifact) {
-    if (nextUndecided.key === 'week' && calendar?.weeks) {
-      if (conversationWeek) {
-        contextualSuggestion = `Let's plan Week ${conversationWeek}`
-      } else {
-        const nextWeek = calendar.weeks.find((w) => !w.built)
-        if (nextWeek) contextualSuggestion = `Let's plan Week ${nextWeek.week}`
-      }
-    } else if (nextUndecided.key === 'anchor') {
-      const selectedWeekDec = coreChecklist.find((c) => c.key === 'week')
-      const weekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\D/g, ''), 10) : null
-      const weekData = calendar?.weeks?.find((w) => w.week === weekNum)
-      if (weekData?.notes) contextualSuggestion = `Let's use the text from the calendar: ${weekData.notes}`
-    } else if (nextUndecided.key === 'skill') {
-      const selectedWeekDec = coreChecklist.find((c) => c.key === 'week')
-      const weekNum = selectedWeekDec?.value ? parseInt(String(selectedWeekDec.value).replace(/\D/g, ''), 10) : null
-      const weekData = calendar?.weeks?.find((w) => w.week === weekNum)
-      if (weekData?.topic || weekData?.unit) contextualSuggestion = `Let's focus on ${weekData.topic || weekData.unit}`
-    } else if (nextUndecided.key === 'assessment') {
-      contextualSuggestion = 'Let us do a multiple choice quiz'
-    }
-  } else if (hasArtifact) {
-    if (viewKind === 'plan') {
-      if (!artifact?.quiz) {
-        contextualSuggestion = 'Generate a multiple choice quiz for this week.'
-      } else {
-        contextualSuggestion = "Make Friday's activity more interactive."
-      }
-    } else if (viewKind === 'quiz') {
-      contextualSuggestion = 'Make the questions slightly harder.'
-    }
-  } else if (!nextUndecided && !hasArtifact) {
-    contextualSuggestion = 'Build the lesson plan.'
-  }
+  const contextualSuggestions = useMemo(
+    () =>
+      getContextualSuggestions({
+        activeClass,
+        activeChat,
+        conversationWeek,
+        effectiveWeek,
+        messages,
+        artifact: hasArtifact ? liveArtifact : null,
+        decisions,
+        pendingQuestions,
+        busy,
+        voiceOpen,
+        calendar,
+        attachments,
+        surface: 'chat',
+      }),
+    [
+      activeChat,
+      activeClass,
+      attachments,
+      busy,
+      calendar,
+      conversationWeek,
+      decisions,
+      effectiveWeek,
+      hasArtifact,
+      liveArtifact,
+      messages,
+      pendingQuestions,
+      voiceOpen,
+    ]
+  )
 
   const artifactEl =
     viewKind === 'plan' ? (
@@ -1962,7 +1769,7 @@ export function ChatPage() {
       </div>
 
       {isEmpty ? (
-        <Greeting className={activeClass?.name} onOpenVoice={openVoice} onWarmVoice={warmMic} week={displayWeek} />
+        <Greeting className={activeClass?.name} onOpenVoice={openVoice} week={displayWeek} />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
           <div className={`chat-column mx-auto flex w-full flex-col gap-7 px-gutter py-8 transition-all duration-500 ease-out ${
@@ -2118,9 +1925,9 @@ export function ChatPage() {
             attachments={attachments}
             setAttachments={setAttachments}
             onOpenVoice={openVoice}
-            onWarmVoice={warmMic}
             voiceModeActive={voiceOpen}
-            suggestion={contextualSuggestion}
+            suggestions={contextualSuggestions}
+            contextLabel={suggestionContextLabel(contextualSuggestions)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
                 <div className={`questions-dock${pendingQuestions ? ' is-open' : ''}`}>
@@ -2140,13 +1947,11 @@ export function ChatPage() {
                     <VoiceModePanel
                       onClose={closeVoice}
                       onUtterance={submit}
-                      /* So the panel's "Try again" can call voice.unlock() with
-                         the same context this conversation opened with — see
-                         retryMic's own comment for why this was missing. */
+                      /* The panel's retry uses the same active chat/week/mode
+                         context to create a fresh provider session. */
                       chatId={chatId ?? null}
                       weekNumber={conversationWeek ?? null}
                       voiceMode="brainstorm"
-                      getWarmMic={claimWarmMic}
                       busy={busy}
                       isSpeaking={voice.speaking}
                       /* Straight off VoiceProvider — the sentence whose audio is
@@ -2184,120 +1989,6 @@ export function ChatPage() {
                          counts for the same in-flight generation. */
                       building={stream.isStreaming}
                       buildDays={stream.preview?.days}
-                      /* Barge-in: silence the reply AND abort the generation behind
-                         it. Stopping only the audio would leave the model still
-                         writing sentences that VoiceProvider would dutifully queue
-                         up and speak the moment the teacher stopped talking —
-                         interrupted in sound only, not in fact.
-
-                         Then keep what was actually said. Aborting the stream means
-                         useChatStream's start() returns null on AbortError and
-                         onDone NEVER FIRES — so the reply the assistant had already
-                         spoken two sentences of was never written into `messages` at
-                         all. The next turn was then built from a transcript in which
-                         the assistant had answered nothing, which is why an
-                         interrupted conversation drifted: the model would re-answer
-                         a question it had already half-answered aloud, or reference
-                         nothing at all.
-
-                         "" is the fix, and the reason it's read from
-                         VoiceProvider rather than from liveSpeechRef is precision:
-                         liveSpeechRef holds every sentence that was QUEUED, which
-                         at the moment of an interrupt is normally one or two ahead
-                         of what came out of the speaker. getSpoken() holds only the
-                         sentences whose audio actually started. That distinction is
-                         the whole point — truncating history to what the teacher
-                         HEARD is what stops the model saying "as I mentioned" about
-                         a sentence that got cut off before it played. */
-                      onInterrupt={() => {
-                        /* What the teacher actually HEARD, read off the caption
-                           before it is cleared. This was hardcoded `""`, which
-                           made every branch below dead code: the interrupted
-                           reply was never appended to the transcript and never
-                           persisted, so talking over the assistant erased what
-                           it had already said out loud and the model's next turn
-                           re-asked a question it had half-answered aloud. It also
-                           killed the false-interrupt recovery, since
-                           interruptedRef was nulled on every interrupt.
-
-                           voice.caption is the right source: it is built from the
-                           realtime session's own output-audio transcript deltas,
-                           so it tracks what actually reached the speaker rather
-                           than what the text stream had written. */
-                        const heard = (voice.caption || '').trim()
-                        const queued = liveSpeechRef.current.trim()
-                        // A turn nobody waited out isn't a latency sample.
-                        voiceMetrics.turnAbandoned()
-                        /* cancelResponse(), NOT stop(). stop() closes the data
-                           channel, the peer connection and the microphone — so
-                           the first barge-in of a conversation left voice mode
-                           permanently mute while the panel still read
-                           "Listening", and nothing re-established the transport
-                           for a spoken turn. This silences the current reply and
-                           keeps the session. */
-                        voice.cancelResponse()
-                        chatStream.stop()
-                        liveSpeechRef.current = ''
-                        
-                        if (!heard) {
-                          interruptedRef.current = null
-                          return
-                        }
-                        // What was written but never made it out of the speaker.
-                        // Parked, not discarded — onFalseInterrupt below resumes
-                        // from it if the "interruption" turns out to have been a
-                        // cough.
-                        const rest = queued.startsWith(heard) ? queued.slice(heard.length).trim() : ''
-                        const id = nextId()
-                        // spokenLive so the auto-speak effect doesn't read it back
-                        // out; interrupted so Message.jsx can mark it if it ever
-                        // wants to. Persisted like any other assistant turn.
-                        setMessages((prev) => [
-                          ...prev,
-                          {
-                            id,
-                            role: 'assistant',
-                            content: heard,
-                            spokenLive: true,
-                            interrupted: true,
-                          },
-                        ])
-                        interruptedRef.current = rest ? { id, rest } : null
-                        const saveTo = localFor.current
-                        if (saveTo) {
-                          api.addMessage(saveTo, { role: 'assistant', content: heard }).catch(() => {})
-                        }
-                      }}
-                      /* The undo. A barge-in threshold tuned to catch a real
-                         interruption promptly will sometimes fire on a cough, a
-                         chair, or a colleague across the room — and losing a whole
-                         answer to that, with no way back except retyping the
-                         question, is the most annoying failure this panel has. So
-                         the interrupt is now provisional: if nothing follows it
-                         within a couple of seconds, the reply picks up exactly
-                         where it stopped. LiveKit ships this on by default for the
-                         same reason, and it's what lets the threshold be
-                         aggressive without a cost.
-
-                         The message's own text is repaired to match, so the model's
-                         context reflects the whole thing having been said rather
-                         than only the first half. (The persisted row keeps the
-                         truncated version — reloading a chat where a cough
-                         happened would show slightly less than was spoken, which
-                         is not worth an update-message route to fix.) */
-                      onFalseInterrupt={() => {
-                        const parked = interruptedRef.current
-                        interruptedRef.current = null
-                        if (!parked?.rest) return
-                        voice.sendContextEvent(parked.rest, { track: true })
-                        setMessages((prev) =>
-                          prev.map((m) =>
-                            m.id === parked.id
-                              ? { ...m, content: `${m.content} ${parked.rest}`, interrupted: false }
-                              : m
-                          )
-                        )
-                      }}
                       /* The clarification cards, tappable inside the panel — voice
                          mode asks ONE question at a time (see the backend's voice
                          prompt) and shows its options here rather than reading them
@@ -2307,7 +1998,7 @@ export function ChatPage() {
                         // Silence whatever is being read out, keep the session —
                         // stop() here ended voice mode outright the first time a
                         // teacher tapped an option on a clarification card.
-                        voice.cancelResponse()
+                        voice.cancelSpeech()
                         onAnswerQuestions(pendingQuestions.message, text)
                       }}
                     />

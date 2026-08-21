@@ -4842,6 +4842,28 @@
 
 /* Voice Panel UI/UX Enhancements */
 
+/* The recommendation tray is part of the composer, not a second surface. A
+   grid row gives it a real height for a smooth open/close without making the
+   input jump when suggestions are recalculated. */
+.composer-recommendations {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition: grid-template-rows 180ms ease, opacity 140ms ease;
+}
+
+.composer-recommendations.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.composer-recommendations-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* z-index: -1, not 0. A positioned element with z-index: 0 paints in the
    "positioned, z-index: 0" layer — which is ABOVE its static, in-flow siblings
    in the same stacking context. So this glow was rendering on top of the

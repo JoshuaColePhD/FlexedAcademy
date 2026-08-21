@@ -2,76 +2,43 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { VoiceContext } from '../lib/voiceContext'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
+import { createSpeechQueue } from '../lib/voiceSpeechQueue'
 
-const KEY = 'aplang.voice'
-
-/* The realtime transport for voice mode: ears and mouth, not the brain.
- *
- * The division of labour matters and is easy to get wrong, so it is stated
- * here once. The realtime session hears the teacher (server-side VAD decides
- * where a turn ends, Whisper transcribes it) and speaks the reply out loud. It
- * does NOT compose the reply. The session is provisioned with
- * turn_detection.create_response = false (backend/routes/generate.py) precisely
- * so it won't: a realtime model answering from its own weights is fluent and
- * wrong about standard codes, and "every cited standard was quoted from a real
- * document" is the entire product. Answers come from /api/chat_stream, which
- * has retrieval. See `speak` below for the other half of that contract.
- *
- * What this replaced: VoiceModePanel used to own the whole audio pipeline —
- * getUserMedia, an AudioWorklet, a Silero VAD, a WAV encoder and a Whisper
- * round trip per utterance. Commit eb498c8 deleted those modules to move here
- * and left the panel's copy of the pipeline in place behind mocks, so both
- * halves ran, two microphones were opened, and neither worked.
- */
+/* Realtime owns audio transport, turn detection, transcription, and playback.
+ * ChatPage owns transcript -> grounded chat_stream -> persistence. */
 export function VoiceProvider({ children }) {
+  const CONNECT_TIMEOUT_MS = 12000
   const toast = useToast()
-  const [enabled, setEnabled] = useState(() => {
-    try {
-      return localStorage.getItem(KEY) === '1'
-    } catch {
-      return false
-    }
-  })
-
-  /* 'idle' | 'connecting' | 'live' | 'error' — the panel's status pill reads
-     this instead of running its own microphone to find out. */
   const [status, setStatus] = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
   const [speaking, setSpeaking] = useState(false)
   const [caption, setCaption] = useState('')
-  // What the teacher was heard saying: partial while they talk, final on the
-  // completed transcript. The panel's tap-to-correct affordance reads this.
   const [heard, setHeard] = useState('')
-  const [muted, setMuted] = useState(false)
+  const [muted, setMutedState] = useState(false)
+  const [interrupted, setInterrupted] = useState(false)
 
   const pcRef = useRef(null)
   const dcRef = useRef(null)
   const audioElRef = useRef(null)
-  const localStreamRef = useRef(null)
-  const activeSessionRef = useRef(false)
-  // Bumped by stop(); unlock() compares against its own snapshot after every
-  // await. Without this, closing voice mode mid-negotiation let the rest of
-  // unlock() install a brand-new live microphone that stop() had already run
-  // past — a hot mic and a live session with nothing left holding a reference
-  // to either, unreachable until a page reload.
+  const streamRef = useRef(null)
+  const activeRef = useRef(false)
   const generationRef = useRef(0)
+  const handlersRef = useRef(new Set())
   const captionTimerRef = useRef(null)
-  // Subscribers for a completed teacher utterance. A ref, not state: ChatPage
-  // registers once and the handler identity changes on most renders.
-  const utteranceHandlersRef = useRef(new Set())
-  // Text queued because the data channel wasn't open yet. openVoice() sends
-  // the greeting on the line after unlock() starts, which is several awaits
-  // before a channel exists — that greeting used to be dropped in silence,
-  // every time, so voice mode always opened saying nothing.
-  const pendingSpeechRef = useRef([])
+  const interruptTimerRef = useRef(null)
+  const connectTimerRef = useRef(null)
+  const connectAbortRef = useRef(null)
+  const connectTimedOutRef = useRef(false)
+  const mutedRef = useRef(false)
+
 
   useEffect(() => {
-    const el = document.createElement('audio')
-    el.autoplay = true
-    audioElRef.current = el
+    const audio = document.createElement('audio')
+    audio.autoplay = true
+    audioElRef.current = audio
     return () => {
-      el.pause()
-      el.srcObject = null
+      audio.pause()
+      audio.srcObject = null
     }
   }, [])
 
@@ -82,419 +49,293 @@ export function VoiceProvider({ children }) {
     }
   }, [])
 
-  const stop = useCallback(() => {
-    generationRef.current += 1
-    activeSessionRef.current = false
-    setSpeaking(false)
-    setStatus('idle')
-    // Cleared here, which is what ChatPage's closeVoice() already assumed in a
-    // comment ("voice.stop() clears the caption itself now") while nothing
-    // actually did it. A caption left non-empty is not just stale text: the
-    // panel derives "should I offer the tap-to-correct echo" from the caption
-    // being empty, so one stop mid-utterance disabled that affordance for the
-    // rest of the conversation.
-    clearCaptionTimer()
-    setCaption('')
-    setHeard('')
-    setMuted(false)
-    pendingSpeechRef.current = []
+  const clearConnectTimer = useCallback(() => {
+    if (connectTimerRef.current) {
+      clearTimeout(connectTimerRef.current)
+      connectTimerRef.current = null
+    }
+  }, [])
 
-    if (dcRef.current) {
-      try {
-        dcRef.current.close()
-      } catch {
-        /* already closing */
-      }
-      dcRef.current = null
+  const clearInterruptTimer = useCallback(() => {
+    if (interruptTimerRef.current) {
+      clearTimeout(interruptTimerRef.current)
+      interruptTimerRef.current = null
     }
-    if (pcRef.current) {
-      try {
-        pcRef.current.close()
-      } catch {
-        /* already closing */
-      }
-      pcRef.current = null
-    }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop())
-      localStreamRef.current = null
-    }
-    if (audioElRef.current) {
-      audioElRef.current.srcObject = null
-    }
-  }, [clearCaptionTimer])
+  }, [])
 
-  const send = useCallback((event) => {
+  const sendEvent = useCallback((event) => {
     const dc = dcRef.current
     if (!dc || dc.readyState !== 'open') return false
     dc.send(JSON.stringify(event))
     return true
   }, [])
 
-  /* Read this text out loud, verbatim.
-   *
-   * The old implementation of this (named sendContextEvent) sent the text as a
-   * `system` message and then an open-ended response.create — which asks the
-   * realtime model to GENERATE a fresh spoken reply *about* the text rather
-   * than to read it. Since ChatPage calls this once per streamed sentence, one
-   * reply produced a stack of overlapping responses in which the assistant
-   * talked about its own answer. `response.instructions` is the documented way
-   * to direct a single response, and audio-only output because the words are
-   * already on screen in the transcript.
-   *
-   * Queued rather than dropped when the channel isn't open yet — see
-   * pendingSpeechRef. */
-  const speak = useCallback(
-    (text) => {
-      const line = typeof text === 'string' ? text.trim() : ''
-      if (!line) return
-      const event = {
-        type: 'response.create',
-        response: {
-          output_modalities: ['audio'],
-          instructions:
-            'Read the following text aloud, verbatim, in a natural speaking voice. ' +
-            'Do not summarise it, react to it, add to it, or omit any of it.\n\n' +
-            line,
-        },
-      }
-      if (!send(event)) pendingSpeechRef.current.push(event)
-    },
-    [send]
-  )
+  const speechQueueRef = useRef(null)
+  if (!speechQueueRef.current) {
+    speechQueueRef.current = createSpeechQueue({
+      send: sendEvent,
+      isOpen: () => activeRef.current && dcRef.current?.readyState === 'open',
+    })
+  }
 
-  /* Barge-in: silence the current reply WITHOUT tearing down the session.
-   *
-   * ChatPage called voice.stop() for this, which closes the data channel, the
-   * peer connection and the microphone. So the first time a teacher talked
-   * over the assistant, voice mode went permanently mute while the panel still
-   * said "Listening" — nothing re-establishes the transport for a spoken turn,
-   * and every later speak() silently no-opped on the closed channel. */
-  const cancelResponse = useCallback(() => {
-    send({ type: 'response.cancel' })
-    pendingSpeechRef.current = []
-    setSpeaking(false)
+  const closeTransport = useCallback(() => {
+    try { dcRef.current?.close() } catch { /* already closed */ }
+    try { pcRef.current?.close() } catch { /* already closed */ }
+    dcRef.current = null
+    pcRef.current = null
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    if (audioElRef.current) audioElRef.current.srcObject = null
+  }, [])
+
+  const stopSession = useCallback(() => {
+    generationRef.current += 1
+    activeRef.current = false
+    connectAbortRef.current?.abort()
+    connectAbortRef.current = null
+    connectTimedOutRef.current = false
+    clearConnectTimer()
+    clearInterruptTimer()
+    speechQueueRef.current.clear()
     clearCaptionTimer()
+    setSpeaking(false)
     setCaption('')
-  }, [send, clearCaptionTimer])
+    setHeard('')
+    setMutedState(false)
+    mutedRef.current = false
+    setInterrupted(false)
+    closeTransport()
+    setStatus('idle')
+    setErrorMessage('')
+  }, [clearCaptionTimer, clearConnectTimer, clearInterruptTimer, closeTransport])
 
-  const setMicMuted = useCallback((next) => {
-    const stream = localStreamRef.current
-    if (stream) stream.getAudioTracks().forEach((t) => (t.enabled = !next))
-    setMuted(next)
+  const pumpSpeech = useCallback(() => speechQueueRef.current.pump(), [])
+
+  const cancelSpeech = useCallback(() => {
+    // Barge-in cancels audio only; the microphone and WebRTC session survive.
+    speechQueueRef.current.cancel()
+    clearCaptionTimer()
+    setSpeaking(false)
+    setCaption('')
+  }, [clearCaptionTimer])
+
+  const speak = useCallback((text, options = {}) => {
+    const line = typeof text === 'string' ? text.trim() : ''
+    if (!line) return
+    speechQueueRef.current.enqueue(line, options)
+  }, [])
+
+  const setMuted = useCallback((value) => {
+    const next = Boolean(value)
+    mutedRef.current = next
+    streamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next })
+    setMutedState(next)
   }, [])
 
   const onUtterance = useCallback((handler) => {
-    utteranceHandlersRef.current.add(handler)
-    return () => utteranceHandlersRef.current.delete(handler)
+    if (typeof handler !== 'function') return () => {}
+    handlersRef.current.add(handler)
+    return () => handlersRef.current.delete(handler)
   }, [])
 
-  const handleEvent = useCallback(
-    (event) => {
-      switch (event.type) {
-        /* The assistant's own speech, as text, for the caption line. GA renamed
-           these from response.audio_transcript.* to
-           response.output_audio_transcript.*; both are accepted here rather
-           than betting the caption on which name a given model version emits. */
-        case 'response.audio_transcript.delta':
-        case 'response.output_audio_transcript.delta':
-          clearCaptionTimer()
-          setSpeaking(true)
-          setCaption((prev) => prev + (event.delta || ''))
-          break
-        case 'response.audio_transcript.done':
-        case 'response.output_audio_transcript.done':
-          setSpeaking(false)
-          if (event.transcript) {
-            window.dispatchEvent(new CustomEvent('voice:transcript', { detail: { role: 'assistant', text: event.transcript } }))
-          }
-          // Handle-tracked and cleared on the next delta, so a fast follow-up
-          // can't have its live caption blanked by the previous reply's timer,
-          // and the timer can't fire into an unmounted provider.
-          clearCaptionTimer()
-          captionTimerRef.current = setTimeout(() => {
-            captionTimerRef.current = null
-            setCaption('')
-          }, 2000)
-          break
-
-        /* The teacher's own words. This is the event the migration forgot to
-           turn on; without it nothing downstream ever learned what was said. */
-        case 'conversation.item.input_audio_transcription.delta':
-          setHeard((prev) => prev + (event.delta || ''))
-          break
-        case 'conversation.item.input_audio_transcription.completed': {
-          const said = (event.transcript || '').trim()
-          setHeard(said)
-          if (said) {
-            window.dispatchEvent(new CustomEvent('voice:transcript', { detail: { role: 'user', text: said } }))
-            for (const h of utteranceHandlersRef.current) {
-              try {
-                h(said)
-              } catch (err) {
-                console.error('voice utterance handler failed', err)
-              }
-            }
-          }
-          break
-        }
-
-        /* Server VAD heard the teacher start talking. If the assistant is
-           mid-sentence that is a barge-in, and cancelling is what makes
-           talking over it feel like talking over a person. */
-        case 'input_audio_buffer.speech_started':
-          setHeard('')
-          if (speaking) cancelResponse()
-          break
-
-        /* Correct event name: response.function_call_arguments.done. The old
-           code tested 'response.function_call.arguments.done' — a dot where
-           the API has an underscore — so the branch was never entered and the
-           whole tool-driven plan-editing feature was dead on arrival. */
-        case 'response.function_call_arguments.done':
-        case 'response.done': {
-          if (event.type === 'response.function_call_arguments.done') {
-            let args = {}
-            try {
-              args = JSON.parse(event.arguments || '{}')
-            } catch {
-              args = {}
-            }
-            window.dispatchEvent(
-              new CustomEvent('voice:tool_call', {
-                detail: { name: event.name, call_id: event.call_id, args },
-              })
-            )
-          }
-          break
-        }
-
-        case 'error':
-          // Surfaced rather than swallowed: a session that has started
-          // rejecting events otherwise looks exactly like one that is simply
-          // quiet.
-          console.error('realtime error event', event)
-          break
-
-        default:
-          break
+  const handleEvent = useCallback((event) => {
+    switch (event.type) {
+      case 'response.created':
+        speechQueueRef.current.responseCreated(event.response?.id)
+        clearCaptionTimer()
+        setCaption('')
+        break
+      case 'response.audio.delta':
+        if (speechQueueRef.current.current()) setSpeaking(true)
+        break
+      case 'response.audio_transcript.delta':
+      case 'response.output_audio_transcript.delta':
+        if (!speechQueueRef.current.current()) break
+        clearCaptionTimer()
+        setSpeaking(true)
+        setCaption((previous) => previous + (event.delta || ''))
+        break
+      case 'response.audio_transcript.done':
+      case 'response.output_audio_transcript.done':
+        if (!speechQueueRef.current.current()) break
+        clearCaptionTimer()
+        captionTimerRef.current = setTimeout(() => {
+          captionTimerRef.current = null
+          setCaption('')
+        }, 1800)
+        break
+      case 'response.done': {
+        const responseId = event.response?.id || event.response_id
+        if (!speechQueueRef.current.responseDone(responseId)) break
+        setSpeaking(false)
+        pumpSpeech()
+        break
       }
-    },
-    [clearCaptionTimer, speaking, cancelResponse]
-  )
-  // Read by the data-channel handler, which is installed once per session and
-  // must not close over a stale copy of the switch above.
+      case 'conversation.item.input_audio_transcription.delta':
+        setHeard((previous) => previous + (event.delta || ''))
+        break
+      case 'conversation.item.input_audio_transcription.completed': {
+        const text = (event.transcript || '').trim()
+        setHeard(text)
+        // Noise/empty completions never enter ChatPage's submit path.
+        if (!text) break
+        for (const handler of handlersRef.current) {
+          try { handler(text) } catch (error) { console.error('voice utterance handler failed', error) }
+        }
+        break
+      }
+      case 'input_audio_buffer.speech_started':
+        setHeard('')
+        if (speechQueueRef.current.current() || speechQueueRef.current.pending()) {
+          cancelSpeech()
+          clearInterruptTimer()
+          setInterrupted(true)
+          interruptTimerRef.current = setTimeout(() => {
+            interruptTimerRef.current = null
+            setInterrupted(false)
+          }, 1400)
+        }
+        break
+      case 'error':
+        console.error('realtime error event', event)
+        setErrorMessage(event.error?.message || 'The voice session reported an error.')
+        break
+      default:
+        break
+    }
+  }, [cancelSpeech, clearCaptionTimer, clearInterruptTimer, pumpSpeech])
+
   const handleEventRef = useRef(handleEvent)
-  useEffect(() => {
-    handleEventRef.current = handleEvent
-  }, [handleEvent])
+  useEffect(() => { handleEventRef.current = handleEvent }, [handleEvent])
 
-  const unlock = useCallback(
-    async (chatId = null, weekNumber = null, mode = 'brainstorm') => {
-      if (activeSessionRef.current) return
-      const generation = generationRef.current + 1
-      generationRef.current = generation
-      const cancelled = () => generationRef.current !== generation
+  const startSession = useCallback(async (context = {}) => {
+    if (activeRef.current) return
+    const generation = generationRef.current + 1
+    generationRef.current = generation
+    const cancelled = () => generationRef.current !== generation
+    const connectAbort = new AbortController()
+    connectAbortRef.current = connectAbort
+    connectTimedOutRef.current = false
+    activeRef.current = true
+    setStatus('connecting')
+    setErrorMessage('')
+    clearConnectTimer()
+    connectTimerRef.current = setTimeout(() => {
+      connectTimedOutRef.current = true
+      connectAbort.abort()
+    }, CONNECT_TIMEOUT_MS)
 
-      activeSessionRef.current = true
-      setStatus('connecting')
-      setErrorMessage('')
-
-      try {
-        const { token, model } = await api.createVoiceSession({
-          chat_id: chatId,
-          week_number: weekNumber,
-          mode,
-        })
-        if (cancelled()) return
-
-        const pc = new RTCPeerConnection()
-        pcRef.current = pc
-        pc.ontrack = (e) => {
-          if (audioElRef.current) audioElRef.current.srcObject = e.streams[0]
+    try {
+      // Provisioning and microphone permission are independent. Starting them
+      // together removes one full network/permission round trip from the
+      // deliberate open action while preserving the no-mic-on-page-load rule.
+      const sessionPromise = api.createVoiceSession({
+        chat_id: context.chatId ?? context.chat_id ?? null,
+        week_number: context.weekNumber ?? context.week_number ?? null,
+        mode: context.mode || 'brainstorm',
+      }, { signal: connectAbort.signal })
+      const mediaPromise = navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      }).then((stream) => {
+        // getUserMedia cannot be aborted while Chrome's permission prompt is
+        // open. If the teacher closes the panel or the handshake times out and
+        // then grants permission later, release that late stream immediately.
+        if (cancelled() || connectTimedOutRef.current) {
+          stream.getTracks().forEach((track) => track.stop())
+          return null
         }
+        return stream
+      })
+      const handshake = Promise.all([sessionPromise, mediaPromise])
+      const deadline = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Voice connection timed out.')), CONNECT_TIMEOUT_MS)
+      })
+      const [{ token, model }, stream] = await Promise.race([handshake, deadline])
+      if (cancelled()) return
+      if (!stream) throw new Error('Microphone permission was not granted.')
 
-        const ms = await navigator.mediaDevices.getUserMedia({
-          // Matching what the deleted local pipeline asked for: a classroom is
-          // a reverberant room and a laptop mic sits under the teacher's hands.
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        })
-        // Checked immediately, before the stream is stored: this is the await
-        // that used to leak a live microphone when voice mode was closed
-        // mid-negotiation.
-        if (cancelled()) {
-          ms.getTracks().forEach((t) => t.stop())
-          return
+      const pc = new RTCPeerConnection()
+      pcRef.current = pc
+      pc.ontrack = (event) => { if (audioElRef.current) audioElRef.current.srcObject = event.streams[0] }
+      pc.onconnectionstatechange = () => {
+        if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && !cancelled()) {
+          closeTransport()
+          activeRef.current = false
+          setErrorMessage('The voice connection was lost. Try again.')
+          setStatus('error')
         }
-        localStreamRef.current = ms
-        ms.getTracks().forEach((track) => pc.addTrack(track, ms))
-
-        const dc = pc.createDataChannel('oai-events')
-        dcRef.current = dc
-        dc.onmessage = (e) => {
-          try {
-            handleEventRef.current(JSON.parse(e.data))
-          } catch (err) {
-            console.error('Failed to parse data channel message', err)
-          }
-        }
-        dc.onopen = () => {
-          // Anything said before the channel existed goes now, in order.
-          const queued = pendingSpeechRef.current
-          pendingSpeechRef.current = []
-          for (const ev of queued) send(ev)
-          
-          if (queued.length === 0) {
-            send({
-              type: 'response.create',
-              response: {
-                instructions: 'Say a warm, brief greeting to the user.',
-              },
-            })
-          }
-        }
-
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        if (cancelled()) return
-
-        /* POST /v1/realtime/calls. The pre-GA path this replaced —
-           POST /v1/realtime?model=… — does not connect at all. */
-        const sdpResponse = await fetch(
-          `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`,
-          {
-            method: 'POST',
-            body: offer.sdp,
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/sdp' },
-          }
-        )
-        if (cancelled()) return
-
-        if (!sdpResponse.ok) {
-          // The status and OpenAI's own message. "Failed to connect to OpenAI
-          // Realtime" was what a teacher saw for a wrong URL, an expired key
-          // and a rejected SDP alike.
-          const detail = await sdpResponse.text().catch(() => '')
-          throw new Error(
-            `Realtime connection refused (${sdpResponse.status})${
-              detail ? `: ${detail.slice(0, 200)}` : ''
-            }`
-          )
-        }
-
-        const sdp = await sdpResponse.text()
-        if (cancelled()) return
-        await pc.setRemoteDescription({ type: 'answer', sdp })
-        if (cancelled()) return
-        setStatus('live')
-      } catch (err) {
-        console.error(err)
-        if (cancelled()) return
-        const message = err?.message || String(err)
-        setErrorMessage(message)
-        stop()
-        setStatus('error')
-        toast.error('Couldn’t start Voice Mode', message)
       }
-    },
-    [toast, stop, send]
-  )
 
-  /* Side effects out of the setState updater.
-   *
-   * toggle() used to call localStorage.setItem, unlock() and stop() inside
-   * setEnabled's updater, which React may invoke more than once for a single
-   * dispatch (and does, under StrictMode) — two negotiations and two
-   * getUserMedia calls for one click. The updater is pure now and the
-   * transport follows `enabled` from an effect. */
-  /* The transport follows the BUTTON PRESS, not the `enabled` state.
-   *
-   * Two bugs meet at this function, and only one shape avoids both.
-   *
-   * The original put localStorage.setItem, unlock() and stop() inside
-   * setEnabled's updater. React requires updaters to be pure and may run them
-   * more than once per dispatch — under StrictMode it always does — so one
-   * click negotiated two sessions and opened getUserMedia twice.
-   *
-   * Moving those effects into a useEffect keyed on `enabled` fixes that and
-   * introduces a worse one: `enabled` is seeded from localStorage, so the
-   * effect fires on MOUNT for anyone who had ever switched voice mode on —
-   * a microphone prompt and a billed realtime session on a page they came to
-   * type on. Guarding with a "skip the first run" ref does not help either,
-   * because StrictMode's mount/unmount/mount cycle re-runs the effect while
-   * the ref persists, so the second mount sails straight past the guard.
-   * (Measured: one POST /api/voice/session per page load, with the flag set.)
-   *
-   * So the side effects live here, in the event handler — the one place that
-   * runs exactly once per actual user gesture, never on mount, and never
-   * twice for one press. setEnabled takes a value rather than an updater
-   * because the next state is already known from the ref. */
-  const enabledRef = useRef(enabled)
-  const toggle = useCallback(
-    (chatId = null, weekNumber = null, mode = 'brainstorm') => {
-      const next = !enabledRef.current
-      enabledRef.current = next
-      setEnabled(next)
-      try {
-        // Remembers that the button should look on. It does NOT reconnect a
-        // session by itself — see above.
-        localStorage.setItem(KEY, next ? '1' : '0')
-      } catch {
-        /* not persisted */
+      if (cancelled()) {
+        stream.getTracks().forEach((track) => track.stop())
+        pc.close()
+        return
       }
-      if (next) unlock(chatId, weekNumber, mode)
-      else stop()
-    },
-    [unlock, stop]
-  )
+      streamRef.current = stream
+      stream.getAudioTracks().forEach((track) => { track.enabled = !mutedRef.current })
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream))
+      const dc = pc.createDataChannel('oai-events')
+      dcRef.current = dc
+      dc.onmessage = (message) => {
+        try { handleEventRef.current(JSON.parse(message.data)) } catch (error) { console.error('Failed to parse realtime event', error) }
+      }
+      dc.onopen = pumpSpeech
 
-  /* The session and the microphone are released when this provider goes away.
-   *
-   * There was no unmount cleanup at all: the only effect here created the
-   * <audio> element and its teardown paused that element. Leaving voice mode
-   * open and navigating to History or Settings left the red recording
-   * indicator lit and the room streaming to OpenAI from a page with no voice
-   * UI on it. */
-  useEffect(() => () => stop(), [stop])
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      if (cancelled()) return
+      const response = await fetch(`https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`, {
+        method: 'POST',
+        body: offer.sdp,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/sdp' },
+      })
+      if (cancelled()) return
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '')
+        throw new Error(`Realtime connection refused (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`)
+      }
+      await pc.setRemoteDescription({ type: 'answer', sdp: await response.text() })
+      if (cancelled()) return
+      clearConnectTimer()
+      connectAbortRef.current = null
+      setStatus('live')
+      pumpSpeech()
+    } catch (error) {
+      if (cancelled()) return
+      connectAbort.abort()
+      clearConnectTimer()
+      connectAbortRef.current = null
+      const message = connectTimedOutRef.current
+        ? 'Voice took too long to connect. Check Chrome microphone permissions and try again.'
+        : error?.name === 'NotAllowedError'
+          ? 'Chrome blocked microphone access. Allow the microphone for this site, then try again.'
+          : error?.message || String(error)
+      closeTransport()
+      activeRef.current = false
+      setStatus('error')
+      setErrorMessage(message)
+      toast.error('Couldn’t start Voice Mode', message)
+    }
+  }, [clearConnectTimer, closeTransport, pumpSpeech, toast])
 
-  const value = useMemo(
-    () => ({
-      enabled,
-      toggle,
-      status,
-      errorMessage,
-      speaking,
-      caption,
-      heard,
-      muted,
-      setMuted: setMicMuted,
-      stop,
-      unlock,
-      speak,
-      cancelResponse,
-      onUtterance,
-      /* Kept as an alias so existing call sites keep working while they are
-         migrated. The name was always wrong for what callers wanted — every
-         one of them means "say this out loud", which is what speak() does. */
-      sendContextEvent: speak,
-    }),
-    [
-      enabled,
-      toggle,
-      status,
-      errorMessage,
-      speaking,
-      caption,
-      heard,
-      muted,
-      setMicMuted,
-      stop,
-      unlock,
-      speak,
-      cancelResponse,
-      onUtterance,
-    ]
-  )
+  useEffect(() => () => stopSession(), [stopSession])
+
+  const value = useMemo(() => ({
+    enabled: status === 'connecting' || status === 'live',
+    status,
+    errorMessage,
+    speaking,
+    caption,
+    heard,
+    muted,
+    interrupted,
+    startSession,
+    stopSession,
+    speak,
+    cancelSpeech,
+    onUtterance,
+    setMuted,
+  }), [cancelSpeech, caption, errorMessage, heard, interrupted, muted, onUtterance, speak, startSession, status, stopSession, setMuted, speaking])
 
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
 }

@@ -358,16 +358,11 @@ def _build_chat_system_prompt(user_id: str, chat_id: str | None, week_number: in
             "Suggest broad topics and narrow down what standards they should focus on. "
         )
 
-    if chat_id:
-        recent_messages = db.list_messages(chat_id)
-        if recent_messages:
-            system_prompt += "\n\nCONVERSATION HISTORY:\n"
-            for msg in recent_messages[-10:]:
-                role = msg.get("role", "").upper()
-                content = msg.get("content", "")
-                if content:
-                    system_prompt += f"{role}: {content}\n\n"
-
+    # The request already carries the full conversational message list below.
+    # Re-reading and embedding the same history into the system prompt added a
+    # database round trip and duplicated prompt tokens on every turn. Keeping
+    # history in the messages array also gives the provider a stable system
+    # prefix, which is friendlier to prompt-prefix caching.
     return system_prompt
 
 # The realtime model and voice, named once. Both the ephemeral-key request and
@@ -415,86 +410,6 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
     
     system_prompt = _build_chat_system_prompt(user_id, req.chat_id, req.week_number, req.mode)
     
-    # Tools to allow proactive UI mutation
-    tools = [
-        {
-            "type": "function",
-            "name": "update_lesson_plan",
-            "description": "Mutate the UI to update a specific day's lesson plan block based on user request. The UI will animate this change.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "day_index": {"type": "integer", "description": "0 for Monday, 4 for Friday"},
-                    "field": {"type": "string", "enum": ["objective", "assessment", "method"], "description": "The block being updated"},
-                    "content": {"type": "string", "description": "The new content"}
-                },
-                "required": ["day_index", "field", "content"]
-            }
-        },
-        {
-            "type": "function",
-            "name": "highlight_ui",
-            "description": "Draw the user's attention to a specific day in the lesson plan table.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "day_index": {"type": "integer", "description": "0 for Monday, 4 for Friday"}
-                },
-                "required": ["day_index"]
-            }
-        },
-        {
-            "type": "function",
-            "name": "generate_lesson_plan",
-            "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
-            "parameters": {"type": "object", "properties": {}}
-        },
-        {
-            "type": "function",
-            "name": "generate_quiz",
-            "description": (
-                "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
-                "downloadable file, AND their request already says which question type(s) they want and "
-                "roughly how many."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "question_types": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    },
-                    "num_questions": {"type": "integer"},
-                    "revises_current": {"type": "boolean"}
-                },
-                "required": ["question_types"]
-            }
-        },
-        {
-            "type": "function",
-            "name": "ask_clarifying_questions",
-            "description": "Call this when the teacher's most recent message is too vague to act on directly. Ask 2-4 short, concrete questions, each with a few clickable options.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "questions": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "id": {"type": "string"},
-                                "text": {"type": "string"},
-                                "options": {"type": "array", "items": {"type": "string"}}
-                            },
-                            "required": ["id", "text", "options"]
-                        }
-                    }
-                },
-                "required": ["questions"]
-            }
-        }
-    ]
-
     # POST /v1/realtime/sessions was the pre-GA (2024 beta) endpoint and no
     # longer exists — it answered every call with
     #   {"error":{"message":"Invalid URL (POST /v1/realtime/sessions)"}}
@@ -512,7 +427,6 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
                 "type": "realtime",
                 "model": REALTIME_MODEL,
                 "instructions": system_prompt,
-                "tools": tools,
                 "audio": {
                     "input": {
                         # Without this the session streams the teacher's audio
@@ -523,11 +437,10 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
                         # replacement, so nothing downstream ever learned what
                         # was said.
                         "transcription": {"model": "whisper-1"},
-                        # Server-side VAD is the whole reason to hold a realtime
-                        # socket open for input: it decides where a turn ends.
-                        # We now enable create_response: True so the realtime model
-                        # answers directly, cutting out the chat_stream latency.
-                        "turn_detection": {"type": "server_vad", "create_response": True},
+                        # Realtime only transports audio, detects turns, and
+                        # transcribes them. ChatPage sends the completed
+                        # transcript through grounded /api/chat_stream.
+                        "turn_detection": {"type": "server_vad", "create_response": False},
                     },
                     "output": {"voice": REALTIME_VOICE},
                 },

@@ -56,6 +56,7 @@ export function useCalendar(classId) {
   return useQuery({
     queryKey: qk.calendar(classId),
     queryFn: () => api.getWeeks(classId),
+    enabled: Boolean(classId),
     // The school year does not change while a teacher is looking at it. This is
     // what stops four surfaces reading the same board from firing four requests.
     staleTime: 5 * 60_000,

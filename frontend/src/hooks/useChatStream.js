@@ -94,7 +94,7 @@ function openerCut(s) {
   return -1
 }
 
-export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = {}) {
+export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onRetry } = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [text, setText] = useState('')
   const abortRef = useRef(null)
@@ -103,10 +103,12 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
   const onErrorRef = useRef(onError)
   const onGeneratePlanRef = useRef(onGeneratePlan)
   const onSentenceRef = useRef(onSentence)
+  const onRetryRef = useRef(onRetry)
   onDoneRef.current = onDone
   onErrorRef.current = onError
   onGeneratePlanRef.current = onGeneratePlan
   onSentenceRef.current = onSentence
+  onRetryRef.current = onRetry
 
   const stop = useCallback(() => {
     abortRef.current?.abort()
@@ -329,6 +331,11 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence } = 
             lastErr = err
             const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
             if (!retryable || tryNum === MAX_AUTO_RETRIES) break
+            // A voice stream may already have handed its first sentence to
+            // Realtime before the network failed. Clear that partial attempt
+            // before retrying the model, otherwise the retry speaks the same
+            // opening sentence twice.
+            onRetryRef.current?.()
           }
         }
         onErrorRef.current?.(lastErr)
