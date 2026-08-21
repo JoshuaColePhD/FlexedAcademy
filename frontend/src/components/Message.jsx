@@ -217,11 +217,14 @@ export function Message({ message, subject, onRetry, onEdit, isLast }) {
             non-interactive summary instead of silently dropping what was
             asked. */}
         {!isUser && message.questions?.length && !isLast ? (
-          <ul className="mt-3 flex list-none flex-col gap-1 text-sm text-ink-muted">
-            {message.questions.map((q) => (
-              <li key={q.id}>• {q.text}</li>
-            ))}
-          </ul>
+          <div className="mt-3 flex flex-col gap-1 rounded-2xl bg-paper-sunken p-2.5 text-sm text-ink-muted">
+            <p className="eyebrow text-ink-faint">Never answered</p>
+            <ul className="flex list-none flex-col gap-1">
+              {message.questions.map((q) => (
+                <li key={q.id}>{q.text}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
 
         {message.unsaved ? (

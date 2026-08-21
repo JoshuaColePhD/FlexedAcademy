@@ -35,8 +35,14 @@ function QuestionCards({ questions, onAnswer, muted }) {
   return (
     <div className="neo-panel flex flex-col gap-3 rounded-[28px] bg-paper-raised p-4">
       <p className="eyebrow">{questions.length > 1 ? `Question ${index + 1} of ${questions.length}` : 'One quick question'}</p>
-      <p className="text-sm font-medium leading-snug text-ink">{question.text}</p>
-      <div className="flex flex-wrap gap-2">
+      {/* fa-context-pop, keyed by question id — the same rise-up reveal the
+          composer's suggestion tray uses when its content changes, so
+          advancing between questions reads as new content arriving rather
+          than the panel silently swapping text underneath a static frame
+          (LessonQuestions, this panel's text-mode twin, gets the same
+          treatment). */}
+      <p key={question.id} className="fa-context-pop text-sm font-medium leading-snug text-ink">{question.text}</p>
+      <div key={`opts-${question.id}`} className="fa-context-pop flex flex-wrap gap-2">
         {(question.options || []).filter((option) => !isBareOther(option)).map((option) => (
           <button key={option} type="button" onClick={() => choose(option)} className="tap-target neo-raised rounded-full px-3 py-1.5 text-xs font-medium text-ink-soft">
             {option}

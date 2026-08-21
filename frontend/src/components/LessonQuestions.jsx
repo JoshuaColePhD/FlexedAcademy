@@ -107,15 +107,17 @@ export function LessonQuestions({ questions, onSubmit }) {
         {total > 1 ? `Question ${index + 1} of ${total}` : 'One quick question'}
       </p>
 
-      <p key={`q-${q.id}`} className="fa-card-drop text-sm font-medium leading-snug text-ink">
+      <p key={`q-${q.id}`} className="fa-context-pop text-sm font-medium leading-snug text-ink">
         {q.text}
       </p>
 
       {typingOther ? (
-        // fa-card-drop, the same settle-into-place CellTweak's own popover
-        // uses for the identical moment elsewhere — a small editor appearing
-        // in place of what was just tapped.
-        <div className="fa-card-drop flex flex-col gap-2">
+        // fa-context-pop, the same rise-up reveal the composer's own
+        // suggestion tray uses when its content changes — a new question
+        // (or this editor swapping in for its options) is content arriving,
+        // not a popover dropping down from an anchor above it, which is
+        // what fa-card-drop communicates elsewhere.
+        <div className="fa-context-pop flex flex-col gap-2">
           <label className="visually-hidden" htmlFor="clarify-custom-input">
             Type your own answer instead
           </label>
@@ -154,7 +156,7 @@ export function LessonQuestions({ questions, onSubmit }) {
           </div>
         </div>
       ) : (
-        <div key={`opts-${q.id}`} className="fa-card-drop flex flex-col gap-1.5">
+        <div key={`opts-${q.id}`} className="fa-context-pop flex flex-col gap-1.5">
           {options.map((opt, i) => (
             <button
               key={opt}
