@@ -144,12 +144,8 @@ export function Composer({
   }, [candidateSuggestions.length])
 
   const activeSuggestion = candidateSuggestions[selectedSuggestion] || candidateSuggestions[0]
-  // An open-settings suggestion doesn't insert text — accepting it opens a
-  // dialog (see acceptSuggestion) — so there's nothing here to preview as a
-  // ghost completion. Without this, the textarea showed a fake chat message
-  // as if Tab would type it in, when Tab actually opens the upload dialog.
   const completion = useMemo(
-    () => (activeSuggestion?.action === 'open-settings' ? '' : suggestionCompletion(value, activeSuggestion)),
+    () => suggestionCompletion(value, activeSuggestion),
     [activeSuggestion, value]
   )
 
@@ -324,10 +320,6 @@ export function Composer({
 
   const acceptSuggestion = (suggestionToAccept = activeSuggestion) => {
     if (!suggestionToAccept?.prompt) return
-    if (suggestionToAccept.action === 'open-settings') {
-      onOpenSettings?.(suggestionToAccept)
-      return
-    }
     const typedPrefixMatches = value && suggestionToAccept.prompt.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
     const remaining = typedPrefixMatches ? suggestionToAccept.prompt.slice(value.length) : ''
     if (value && !remaining) return
@@ -343,7 +335,7 @@ export function Composer({
   }
 
   const onKeyDown = (e) => {
-    if (e.key === 'Tab' && trayOpen && (completion || activeSuggestion?.action === 'open-settings')) {
+    if (e.key === 'Tab' && trayOpen && completion) {
       e.preventDefault()
       acceptSuggestion()
       return
@@ -412,6 +404,17 @@ export function Composer({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     setSelectedSuggestion(index)
+                    // A click is a deliberate pick of THIS suggestion, so an
+                    // open-settings one (add-pacing-guide, add-school-calendar)
+                    // opens its dialog directly here. Tab is different — see
+                    // onKeyDown below — it always completes the ghost text,
+                    // even for this same suggestion, since Tab's whole
+                    // contract in this composer is "finish what's previewed,"
+                    // not "perform this suggestion's action."
+                    if (item.action === 'open-settings') {
+                      onOpenSettings?.(item)
+                      return
+                    }
                     acceptSuggestion(item)
                   }}
                 >

@@ -32,7 +32,6 @@ import { AccountMenu } from '../components/AccountMenu'
 import { classColor } from '../lib/classColor'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 import { shortRange } from '../lib/dates'
-import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
 import { unitSuffix } from '../lib/planShape'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { ContextualSuggestionList } from '../components/ContextualSuggestionList'
@@ -356,90 +355,6 @@ function ClassStandards({ cls }) {
   )
 }
 
-/* ── the semester, one row per week ────────────────────────────────────────
-   Each week is a project: built or not, in the past or still ahead. This is
-   the one thing GET /api/weeks always knew (plan_id, chat_id, is_current,
-   is_past — db.week_board) with nowhere on screen it was shown as a whole —
-   only two rows of it, on the Greeting screen's "Continue…" suggestions. */
-function ClassWeeks({ cls, calendar, isLoading, isError }) {
-  const currentRef = useRef(null)
-  const weeks = calendar?.weeks || []
-
-  // A school year is ~36 weeks; opening straight to the one that matters
-  // beats scrolling from Week 01 every single time.
-  useEffect(() => {
-    currentRef.current?.scrollIntoView({ block: 'center' })
-  }, [weeks.length])
-
-  if (isLoading) return <p className="mt-2 text-xs text-ink-muted">Loading weeks…</p>
-  if (isError) return <p className="mt-2 text-xs text-mark">Couldn’t load the calendar.</p>
-  // Named, because "no school calendar on file" doesn't tell a teacher which
-  // school's is missing — and the fix (add a calendar for THAT school)
-  // depends entirely on knowing.
-  if (!weeks.length) {
-    return (
-      <p className="mt-2 text-xs text-ink-muted">
-        No calendar on file{calendar?.school?.name ? ` for ${calendar.school.name}` : ''}.
-      </p>
-    )
-  }
-
-  return (
-    <ul className="neo-inset mt-2 max-h-72 divide-y divide-edge overflow-y-auto rounded-lg bg-paper-sunken">
-      {weeks.map((w) => {
-        const status = weekStatus(w)
-        const { dot, label } = WEEK_STATUS[status]
-        // Built weeks with an orphaned chat_id (written before chat_id was
-        // tracked) fall back to plain text — nowhere to send that click.
-        const openable = status === 'built' && w.chat_id
-        const content = (
-          <>
-            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-ink">
-                Week {String(w.week).padStart(2, '0')}
-                {unitSuffix(w.unit)}
-              </span>
-              <span className="block text-xs text-ink-muted">
-                {/* No calendar on file yet for this school (schoolcal.py's
-                    own synthetic weeks carry no start/end) — the status
-                    alone, not a bare "· status" with no date before it. */}
-                {shortRange(w.start, w.end) ? `${shortRange(w.start, w.end)} · ` : ''}
-                {label}
-              </span>
-            </span>
-          </>
-        )
-        return (
-          <li key={w.week} ref={w.is_current ? currentRef : undefined}>
-            {openable ? (
-              <Link
-                to={`/c/${cls.id}/chat/${w.chat_id}`}
-                className="flex min-h-touch items-center gap-2.5 px-3 py-2 transition-colors hover:bg-paper-inset"
-              >
-                {content}
-              </Link>
-            ) : status === 'closed' || status === 'built' ? (
-              // Closed weeks have nothing to open; built-but-orphaned weeks
-              // (no chat_id) have a plan but nowhere for this click to go —
-              // a "plan this week" link there would claim the week was
-              // still open when it's already built.
-              <div className="flex min-h-touch items-center gap-2.5 px-3 py-2 opacity-60">{content}</div>
-            ) : (
-              <Link
-                to={`/c/${cls.id}?week=${w.week}`}
-                className="flex min-h-touch items-center gap-2.5 px-3 py-2 transition-colors hover:bg-paper-inset"
-              >
-                {content}
-              </Link>
-            )}
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
 function EditClassSettings({ cls, frameworks, onChanged }) {
   const toast = useToast()
   const [subject, setSubject] = useState(cls.subject)
@@ -517,7 +432,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
     }
   }
 
-  const { data: calendar, isLoading, isError } = useCalendar(cls.id)
+  const { data: calendar, isLoading } = useCalendar(cls.id)
   const documents = useQuery({
     queryKey: qk.classDocuments(cls.id),
     queryFn: () => api.listClassDocuments(cls.id),
@@ -629,17 +544,6 @@ function ClassDetail({ cls, frameworks, onChanged }) {
                Generate 5-Minute Sub Plan
              </button>
            </div>
-        </section>
-      </div>
-
-      {/* 2. History */}
-      <div className="flex flex-col gap-8 fa-rise">
-        <section className="flex flex-col gap-4">
-          <div className="border-b border-edge pb-2">
-            <h3 className="text-sm font-semibold text-ink">Weeks</h3>
-            <p className="text-xs text-ink-muted">School calendar and lesson plan history for this class.</p>
-          </div>
-          <ClassWeeks cls={cls} calendar={calendar} isLoading={isLoading} isError={isError} />
         </section>
       </div>
 
