@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BookOpen,
   Calendar,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -214,6 +215,14 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
 }
 
 
+// Two is the common real case — a first attempt and a revision — and stays
+// readable with no disclosure at all. Past that, a plan that's accumulated
+// several "make me a new quiz" requests over a semester would otherwise turn
+// the rail into a long scroll of quiz cards before a teacher ever reaches
+// "Built from" or "This week" below. Collapsing anything past the two most
+// recent behind a tap keeps the common case exactly as it was.
+const VISIBLE_QUIZZES = 2
+
 export function ArtifactRail({
   artifact,
   classId,
@@ -242,6 +251,10 @@ export function ArtifactRail({
   artifactLoadError = false,
 }) {
   const [shareTarget, setShareTarget] = useState(null)
+  // One-way: once a teacher taps through to see the older attempts, there's
+  // no reason to hide them again for the rest of this rail's life, so this
+  // is a reveal, not a toggle with its own collapsed-again affordance.
+  const [quizzesExpanded, setQuizzesExpanded] = useState(false)
   const plan = artifact?.plan
   const planId = artifact?.planId
   /* Every quiz already built for this plan (backend db.py migration 26) —
@@ -407,9 +420,20 @@ export function ArtifactRail({
               </span>
             </div>
           ) : null}
-          {quizzes.map((quiz, i) => (
+          {(quizzesExpanded ? quizzes : quizzes.slice(0, VISIBLE_QUIZZES)).map((quiz, i) => (
             <QuizRow key={quiz.id} quiz={quiz} index={i} onOpen={onOpenQuiz} color={color} onShare={(quiz) => setShareTarget({ type: 'quiz', quiz })} />
           ))}
+          {!quizzesExpanded && quizzes.length > VISIBLE_QUIZZES ? (
+            <RailRow
+              index={VISIBLE_QUIZZES}
+              icon={ChevronDown}
+              label={`${quizzes.length - VISIBLE_QUIZZES} earlier attempt${
+                quizzes.length - VISIBLE_QUIZZES === 1 ? '' : 's'
+              }`}
+              sub="Tap to show"
+              onClick={() => setQuizzesExpanded(true)}
+            />
+          ) : null}
         </div>
       ) : null}
 
