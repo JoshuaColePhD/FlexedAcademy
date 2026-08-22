@@ -17,6 +17,7 @@ import { scanGrounding } from '../lib/grounding'
 import { orderedDays, unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
+import { shortDateTime } from '../lib/dates'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { ShareDialog } from './ShareDialog'
 import { WeekStrip } from './WeekStrip'
@@ -123,6 +124,29 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
 function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
   const style = { animationDelay: `${index * 60}ms` }
   const toast = useToast()
+  // Asking for "a new quiz" for a week that already has one doesn't revise
+  // the existing row — it inserts a second one (see plans.py's create_quiz),
+  // and the model tends to hand both the same title for the same week's
+  // content ("Week 05 Quiz — Rhetorical..." twice, word for word). Without
+  // something else to go on, two such rows were visually identical: same
+  // title, same question-type label, no way to tell which is newer or
+  // whether they even differ. Question count and a built timestamp are
+  // both already on the record (quiz_json, created_at) — surfacing them
+  // costs no backend change and is real information, not decoration: two
+  // otherwise-identical cards NOW read "10 questions · Aug 22, 9:41 AM" vs
+  // "8 questions · Aug 22, 9:48 AM".
+  const count = quiz.quiz_json?.questions?.length
+  const built = shortDateTime(quiz.created_at)
+  const subLine = (
+    <>
+      <span className="rail-sub">
+        {questionTypesLabel(quiz.question_types)}
+        {count ? ` · ${count} question${count === 1 ? '' : 's'}` : ''}
+        {quiz.has_qti ? '' : ' · file failed, ask again'}
+      </span>
+      {built ? <span className="rail-sub">{built}</span> : null}
+    </>
+  )
 
   return (
     <div
@@ -147,18 +171,12 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
             }}
           >
             <span className="rail-title">{quiz.title}</span>
-            <span className="rail-sub">
-              {questionTypesLabel(quiz.question_types)}
-              {quiz.has_qti ? '' : ' · file failed, ask again'}
-            </span>
+            {subLine}
           </button>
         ) : (
           <span className="rail-text">
             <span className="rail-title">{quiz.title}</span>
-            <span className="rail-sub">
-              {questionTypesLabel(quiz.question_types)}
-              {quiz.has_qti ? '' : ' · file failed, ask again'}
-            </span>
+            {subLine}
           </span>
         )}
       </span>
