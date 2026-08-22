@@ -7,7 +7,7 @@ import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
-import { monthKey, monthLabel, parseISO, todayISO } from '../lib/dates'
+import { longDay, monthKey, monthLabel, parseISO, todayISO } from '../lib/dates'
 import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
 import { Skeleton, SkeletonText } from './Skeleton'
 import { ShareDialog } from './ShareDialog'
@@ -455,7 +455,7 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
                     className={`cal-day${cell.isOff ? ' is-off' : ''}${cell.note ? ' has-note' : ''}${
                       isToday ? ' is-today' : ''
                     }${isThisPlanWeek ? ' is-current-week' : ''}${openable ? ' is-openable' : ''}`}
-                    title={cell.note || undefined}
+                    title={`${longDay(cell.iso)}${cell.note ? ` — ${cell.note}` : ''}`}
                   >
                     {cell.day}
                   </span>
