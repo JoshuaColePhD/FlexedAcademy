@@ -371,6 +371,14 @@ export const api = {
       `/api/standards/${encodeURIComponent(code)}${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`,
       { signal }
     ),
+  // Same lookup as getStandard, for every code a plan cites in one request —
+  // see backend/routes/standards.py's get_standards_batch for why. Returns
+  // {code: chunk | null}.
+  getStandardsBatch: (codes, { subject, signal } = {}) => {
+    const qs = new URLSearchParams({ codes: codes.join(',') })
+    if (subject) qs.set('subject', subject)
+    return request(`/api/standards/batch?${qs}`, { signal })
+  },
   standardsStats: ({ signal, ...params } = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')

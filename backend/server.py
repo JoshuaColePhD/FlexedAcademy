@@ -5,6 +5,7 @@ Run it with ./run.sh, or:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -15,7 +16,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from . import db
+from . import db, retrieval
 from .config import settings
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
@@ -114,6 +115,18 @@ async def lifespan(app: FastAPI):
             )
         log.warning("%s Allowed only because REQUIRE_LOGIN is false (local dev).", message)
     misc.purge_legacy_temp()
+    # retrieval.chunk_for_code() — GET /api/standards/{code}, which both the
+    # Standards rail panel and every chat citation hit — reads through
+    # chunks_by_code() AND _chunks_by_course_and_code(), each an
+    # `lru_cache(maxsize=1)` that independently parses every *chunks.json in
+    # data/processed/ (~21MB) the first time it's called. Left lazy, that
+    # one-time cost landed on whichever teacher's click happened to be first
+    # after a boot/redeploy, who watched a blank card for the whole parse.
+    # Warming both here, off the request path, pays it during boot instead —
+    # in a background thread so it doesn't hold up the app becoming ready.
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, retrieval.chunks_by_code)
+    loop.run_in_executor(None, retrieval._chunks_by_course_and_code)
     yield
     db.close()
 

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PHONE, useMediaQuery } from '../hooks/useMediaQuery'
-import { api } from '../lib/api'
 import { codeRe, groundedSet, normalizeCode } from '../lib/codes'
 import { errorParts, isNotFound } from '../lib/apiError'
+import { fetchStandard, getCached } from '../lib/standardsCache'
 
 /* THE SIGNATURE ELEMENT — the grounding apparatus.
 
@@ -20,8 +20,6 @@ import { errorParts, isNotFound } from '../lib/apiError'
    recognition, and a second copy of that regex is how the screen and the
    backend audit would drift. */
 
-const cache = new Map()
-
 /* Only one popover open at a time. Every Cite owned its own `open` state, so
    clicking three codes left three popovers stacked over each other. */
 let closeOpenPopover = null
@@ -29,34 +27,28 @@ let closeOpenPopover = null
 const normalize = normalizeCode
 
 function Popover({ code, subject, anchorRef, onClose, popoverId }) {
-  // Subject is part of the cache key, not just the request: the same code
-  // resolves to a DIFFERENT chunk depending on course (see
-  // backend/retrieval.py's chunk_for_code), so a key of the code alone would
-  // let AP Lang's answer for "3.2.3" get served back for a Pre-AP Algebra 2
-  // citation that happened to look it up second.
-  const cacheKey = `${normalize(code)}::${subject || ''}`
-  const [record, setRecord] = useState(() => cache.get(cacheKey))
+  // The lookup and its cache both live in lib/standardsCache.js now, shared
+  // with the rail's Standards panel — see that module for why `subject` is
+  // part of the cache key, not just the request.
+  const [record, setRecord] = useState(() => getCached(code, subject))
   const [error, setError] = useState(null)
   const [pos, setPos] = useState(null)
   const popRef = useRef(null)
 
   useEffect(() => {
-    if (cache.has(cacheKey)) {
-      setRecord(cache.get(cacheKey))
+    const cached = getCached(code, subject)
+    if (cached !== undefined) {
+      setRecord(cached)
       return
     }
     const controller = new AbortController()
-    api
-      .getStandard(code, { subject, signal: controller.signal })
-      .then((r) => {
-        cache.set(cacheKey, r)
-        setRecord(r)
-      })
+    fetchStandard(code, { subject, signal: controller.signal })
+      .then(setRecord)
       .catch((e) => {
         if (e?.name !== 'AbortError') setError(e)
       })
     return () => controller.abort()
-  }, [code, subject, cacheKey])
+  }, [code, subject])
 
   /* Below --md this is a bottom sheet, not a popover.
      A getBoundingClientRect-positioned card is fiddly on a phone and lands
