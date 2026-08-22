@@ -337,7 +337,14 @@ export function Composer({
 
   const hasContent = value.trim().length > 0 || attachments.length > 0
 
-  const canSend = hasContent && !isStreaming && !isRecording && !isTranscribing
+  // isStreaming no longer gates this: a teacher thinking of a follow-up
+  // while the current reply is still generating can now type it and hit
+  // Enter — ChatPage's onSubmit (queueOrSubmit) holds it and sends it the
+  // moment this turn finishes, instead of Enter silently doing nothing.
+  // The button slot below still shows Stop/a spinner while isStreaming
+  // (aborting is a separate, still-available action), so this only changes
+  // what Enter itself does — see onKeyDown below.
+  const canSend = hasContent && !isRecording && !isTranscribing
 
   const submit = () => {
     /* No voice.unlock() here any more.

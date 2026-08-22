@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, Download } from 'lucide-react'
+import { ArrowDown, Clock, Download, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -206,6 +206,12 @@ export function ChatPage() {
   const [artifactLoadError, setArtifactLoadError] = useState(false)
   const [query, setQuery] = useState('')
   const [attachments, setAttachments] = useState([])
+  /* A follow-up typed and sent while the current turn is still busy — held
+     here rather than lost. Composer's Enter/Send no longer waits on `busy`
+     (see its own canSend comment); this is what it hands off to instead of
+     calling submit() directly while a reply is still in flight. Cleared and
+     actually sent the moment `busy` goes false — see the effect below. */
+  const [queuedMessage, setQueuedMessage] = useState(null)
   /* Which week a NEW plan will be built for. Null means "auto" — the
      next-unplanned week (autoWeek, below) — until a ?week= param overrides
      it, which is how the Library hands a specific week over.
@@ -1303,6 +1309,40 @@ export function ChatPage() {
     [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage]
   )
 
+  /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
+     the current turn is still busy used to just do nothing (canSend was
+     false, so the keydown handler never called submit at all): the text
+     sat there, with no feedback that anything had or hadn't happened. Now
+     it queues instead, and the effect below sends it the moment `busy`
+     clears — same submit() everything else already goes through, just
+     deferred rather than dropped. */
+  const queueOrSubmit = useCallback(
+    (text) => {
+      const typed = (text ?? query).trim()
+      if (!typed) return
+      if (busy) {
+        setQueuedMessage(typed)
+        setQuery('')
+        return
+      }
+      submit(text)
+    },
+    [busy, query, submit]
+  )
+  useEffect(() => {
+    if (busy || !queuedMessage) return
+    const next = queuedMessage
+    setQueuedMessage(null)
+    submit(next)
+    // submit is intentionally excluded: it's recreated on every render (its
+    // own dependency array above is enormous), and this only needs to run
+    // when `busy` actually flips or a new message gets queued — the
+    // null-out-before-submit above already makes a spurious re-run
+    // harmless (queuedMessage is already null), so this is purely to avoid
+    // re-checking on every unrelated render, not a correctness guard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, queuedMessage])
+
   /* Per-cell revise, from clicking a cell in the document.
    *
    * `field` is what makes this surgical rather than merely local: without it the
@@ -2192,10 +2232,35 @@ export function ChatPage() {
         <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
           voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
         }`}>
+          {/* The only visible sign a queued follow-up exists at all — without
+              it, Enter clearing the box while busy would look identical to
+              the text just vanishing. Sent automatically the moment `busy`
+              clears (see the effect near queueOrSubmit); the × here is the
+              one way to change your mind and get the text back instead. */}
+          {queuedMessage ? (
+            <div className="neo-inset mb-2 flex items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-soft">
+              <Clock size={13} className="shrink-0 text-ink-faint" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">
+                Will send when ready: <span className="text-ink">{queuedMessage}</span>
+              </span>
+              <button
+                type="button"
+                className="btn-icon shrink-0"
+                aria-label="Cancel queued message"
+                title="Cancel — puts the text back in the box"
+                onClick={() => {
+                  setQuery(queuedMessage)
+                  setQueuedMessage(null)
+                }}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </div>
+          ) : null}
           <Composer
             value={query}
             onChange={setQuery}
-            onSubmit={submit}
+            onSubmit={queueOrSubmit}
             /* Only a real stream is abortable — see the Composer. Revising has
                no AbortController yet, so `busy` without either flag correctly
                falls through to the composer's "can't be interrupted" spinner. */
