@@ -21,7 +21,7 @@ from backend.routes import generate  # noqa: E402
 
 def main() -> int:
     captured: dict[str, object] = {}
-    original_prompt, original_entitlement = generate._build_chat_system_prompt, generate.require_entitlement
+    original_entitlement = generate.require_entitlement
     original_post = None
 
     class Response:
@@ -29,10 +29,6 @@ def main() -> int:
 
         def json(self):
             return {"value": "ephemeral-token", "expires_at": 123}
-
-    def fake_prompt(user_id, chat_id, week_number, mode, last_user="", class_id=None):
-        captured["context"] = (user_id, chat_id, week_number, mode)
-        return "grounded context"
 
     def fake_entitlement(_user_id):
         return None
@@ -45,7 +41,6 @@ def main() -> int:
     import requests
 
     original_post = requests.post
-    generate._build_chat_system_prompt = fake_prompt
     generate.require_entitlement = fake_entitlement
     requests.post = fake_post
     app.dependency_overrides[get_current_user] = lambda: "teacher-1"
@@ -55,12 +50,28 @@ def main() -> int:
             json={"chat_id": "chat-7", "week_number": 7, "mode": "brainstorm"},
         )
         assert response.status_code == 200, response.text
-        assert captured["context"] == ("teacher-1", "chat-7", 7, "brainstorm")
         session = captured["payload"]["session"]
         assert "tools" not in session
-        assert session["audio"]["input"]["transcription"] == {"model": "whisper-1"}
+        # No `instructions` at all any more, and no _build_chat_system_prompt
+        # call behind it — see voice_session's own comment for why: this
+        # session's model never generates (create_response is False below),
+        # so a system prompt here was pure session-open latency spent on a
+        # value nothing ever reads.
+        assert "instructions" not in session
+        assert session["audio"]["input"]["transcription"] == {
+            "model": "whisper-1",
+            # Pins the language the way llm.transcribe's own no_speech_prob
+            # guard used to — see voice_session's own comment for why that
+            # guard has no equivalent on this path otherwise.
+            "language": "en",
+        }
         assert session["audio"]["input"]["turn_detection"] == {
             "type": "server_vad",
+            "threshold": 0.5,
+            "prefix_padding_ms": 300,
+            # Lowered from the (measured ~500ms) default — this sits
+            # directly in the end-to-end latency budget on every turn.
+            "silence_duration_ms": 350,
             "create_response": False,
         }
 
@@ -89,7 +100,6 @@ def main() -> int:
         print("PASSED — Realtime is transport-only and voice turns use ChatPage submit.")
         return 0
     finally:
-        generate._build_chat_system_prompt = original_prompt
         generate.require_entitlement = original_entitlement
         if original_post is not None:
             requests.post = original_post

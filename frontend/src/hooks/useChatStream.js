@@ -165,6 +165,11 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     // would otherwise try to build a plan for a quiz request instead of
     // building the quiz.
     let quizRequested = null
+    // The update_lesson_day alternative — same separate-field reasoning as
+    // quizRequested just above: a caller checking only `toolCalled` would
+    // otherwise try to rebuild the whole week for what was meant to be a
+    // one-field, surgical change.
+    let dayRevisionRequested = null
 
     /* How much of `accumulated` has already been handed to onSentence. The
        caller (voice mode) starts synthesizing each sentence the moment it
@@ -172,6 +177,18 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
        VoiceProvider's queue. Nothing here changes for the text chat, which
        passes no onSentence at all. */
     let emittedTo = 0
+    /* True once the opener has been cut and handed off. voiceSpeechQueue is
+       strictly serial — it will not even SEND the next response.create until
+       the Realtime API reports the previous one `response.done` (see its own
+       comment on why: the Realtime API models one response at a time per
+       conversation, so overlapping calls isn't something the client gets to
+       choose). Every additional mid-stream cut past the opener was therefore
+       a full extra model-response round trip, with dead air between each
+       one — a five-sentence reply cost five serialized turnarounds instead
+       of one. Cutting only ONCE here (the opener, for the "the teacher hears
+       something within a third of a second" win) and letting everything
+       else go out as a single flush at the end turns that into exactly two
+       response.create calls no matter how long the reply runs. */
     const emitSentences = (final) => {
       if (!onSentenceRef.current) return
       const pending = accumulated.slice(emittedTo)
@@ -185,14 +202,15 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         if (rest) onSentenceRef.current(rest)
         return
       }
+      if (emittedTo > 0) return // opener already sent; the rest waits for the final flush
       let cut = sentenceCut(pending)
       /* Nothing has ended a sentence yet, and this is still the turn's very
          first utterance — accept a clause boundary instead, so the opening
          acknowledgement goes out now rather than waiting for the whole first
-         sentence. Only ever on the first emission (emittedTo === 0): every
-         later cut wants a real sentence, because a mid-sentence fragment is
-         synthesized with no prosodic shape and sounds like it. */
-      if (cut <= 0 && emittedTo === 0) cut = openerCut(pending)
+         sentence. A mid-sentence fragment anywhere else is synthesized with
+         no prosodic shape and sounds like it, which is why this only ever
+         fires for the opener (emittedTo === 0, checked above). */
+      if (cut <= 0) cut = openerCut(pending)
       if (cut <= 0) return
       const chunk = pending.slice(0, cut).trim()
       emittedTo += cut
@@ -250,6 +268,17 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
             }
           }
 
+          // The targeted, one-field alternative to generate_lesson_plan —
+          // see backend/llm.py's update_lesson_day tool. Same reasoning as
+          // generate_quiz above: its own arguments are the entire payload.
+          if (event.tool_call === 'update_lesson_day') {
+            dayRevisionRequested = {
+              day: event.day,
+              field: event.field,
+              feedback: event.feedback,
+            }
+          }
+
           if (event.chunk) {
             // Time-to-first-token, the middle third of the latency budget.
             // No-op outside voice mode (the metrics module only records while a
@@ -287,7 +316,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
        real, tappable question card on screen instead; the actual fix is
        getting the model to call the tool reliably (generate.py's system
        prompt), which no amount of client-side recovery can guarantee. */
-    if (!questions && !toolCalled && !quizRequested) {
+    if (!questions && !toolCalled && !quizRequested && !dayRevisionRequested) {
       const trimmed = accumulated.trim()
       if (trimmed.startsWith('{') && trimmed.includes('"questions"')) {
         try {
@@ -308,7 +337,14 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     emitSentences(true)
     // `spokeStream` tells the caller this reply has ALREADY been spoken,
     // piece by piece, so its own end-of-turn speak() would be a duplicate.
-    return { text: accumulated, toolCalled, questions, quizRequested, spokeStream: emittedTo > 0 }
+    return {
+      text: accumulated,
+      toolCalled,
+      questions,
+      quizRequested,
+      dayRevisionRequested,
+      spokeStream: emittedTo > 0,
+    }
   }, [])
 
   const start = useCallback(

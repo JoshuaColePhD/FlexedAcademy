@@ -149,7 +149,16 @@ export function VoiceModePanel({
     voice.setMuted(next === 'ptt')
   }
   const startPtt = () => { if (mode === 'ptt') voice.setMuted(false) }
-  const stopPtt = () => { if (mode === 'ptt') voice.setMuted(true) }
+  // commitTurn() BEFORE setMuted(true): the commit has to reach the
+  // Realtime session while the track can still be heard as "just stopped,"
+  // not after — see commitTurn's own comment in VoiceProvider for why this
+  // is what actually saves the ~350ms silence-timeout wait a release would
+  // otherwise still sit through.
+  const stopPtt = () => {
+    if (mode !== 'ptt') return
+    voice.commitTurn()
+    voice.setMuted(true)
+  }
 
   const phase = voice.status === 'connecting'
     ? 'connecting'
