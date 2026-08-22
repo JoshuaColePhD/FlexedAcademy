@@ -15,6 +15,7 @@ import functools
 import hashlib
 import json
 import logging
+import random
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, wait
 
@@ -319,6 +320,28 @@ _ITEM_WRITING_GUIDELINES = (
 )
 
 
+def _randomize_mc_choice_order(quiz: dict) -> dict:
+    """Shuffle each multiple_choice question's `choices` in place and remap
+    `correct_index` to match. Models writing MC options are well known to
+    have a positional bias toward putting the correct answer first or
+    second regardless of what the prompt asks for — asking nicely in the
+    prompt doesn't reliably fix that, so the order is re-randomized here in
+    code, after generation, where it's guaranteed rather than requested.
+    """
+    for q in quiz.get("questions") or []:
+        if q.get("type") != "multiple_choice":
+            continue
+        choices = q.get("choices") or []
+        idx = q.get("correct_index")
+        if not isinstance(idx, int) or not (0 <= idx < len(choices)):
+            continue
+        order = list(range(len(choices)))
+        random.shuffle(order)
+        q["choices"] = [choices[i] for i in order]
+        q["correct_index"] = order.index(idx)
+    return quiz
+
+
 def generate_quiz(
     user_id: str, plan: dict, question_types: list[str], num_questions: int, *, class_id: str | None = None
 ) -> dict:
@@ -365,7 +388,7 @@ def generate_quiz(
             {"role": "user", "content": "Write the quiz now."},
         ],
     )
-    return loads_lenient(content or "")
+    return _randomize_mc_choice_order(loads_lenient(content or ""))
 
 
 def revise_quiz(
@@ -417,7 +440,7 @@ def revise_quiz(
             {"role": "user", "content": f"Revise the quiz above. Teacher's feedback: {feedback}"},
         ],
     )
-    return loads_lenient(content or "")
+    return _randomize_mc_choice_order(loads_lenient(content or ""))
 
 
 def rewrite_day(
