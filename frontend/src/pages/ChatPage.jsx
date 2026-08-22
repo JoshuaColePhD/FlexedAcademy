@@ -1459,6 +1459,15 @@ export function ChatPage() {
   const onAnswerQuestions = useCallback(
     (message, text) => {
       setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, questions: null } : m)))
+      // The clarifying-questions form lives in its own dock ABOVE the
+      // composer (questionsPanel, below) — answering it collapses that dock,
+      // which can leave `atBottom` stuck false from whatever it read before
+      // (the dock's own height factors into the scroll math the same as any
+      // other layout change). Answering is exactly as much "stay with the
+      // conversation" as typing a reply and hitting send, so it force-snaps
+      // back to the bottom rather than trusting a scroll position measured
+      // against a dock that's mid-close.
+      setAtBottom(true)
       submit(text)
     },
     [submit]
