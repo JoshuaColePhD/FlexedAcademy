@@ -53,7 +53,7 @@ export default function SignupPage() {
   return (
     <AuthLayout
       title="Create an account"
-      subtitle="Then set up your first class — it takes two picks."
+      subtitle="Then set up your first class — it takes one pick."
       footer={
         <>
           Already have an account?{' '}
