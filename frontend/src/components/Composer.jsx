@@ -493,7 +493,13 @@ export function Composer({
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-pre-wrap break-words px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed"
               >
-                <span className="text-ink">{value}</span><span className="composer-ghost text-ink-faint">{completion}</span>
+                <span className="text-ink">{value}</span>
+                <span className="composer-ghost text-ink-faint">
+                  {completion}
+                  <span className="ml-2 inline-flex items-center gap-1 rounded bg-paper-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted ring-1 ring-inset ring-edge">
+                    Tab ⇥
+                  </span>
+                </span>
               </div>
             ) : null}
             <textarea
