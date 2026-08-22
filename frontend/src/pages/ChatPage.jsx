@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, Download } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -24,7 +24,6 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
 import { AddDocumentDialog } from '../components/AddDocumentDialog'
-import { ThemeToggle } from '../components/ThemeToggle'
 import { WeekPicker } from '../components/WeekPicker'
 import { VoiceModePanel } from '../components/VoiceModePanel'
 import { ClassSwitcher } from '../components/ClassSwitcher'
@@ -1879,16 +1878,16 @@ export function ChatPage() {
 
   const chatPane = (
     <div className="relative flex h-full min-h-0 flex-col bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-      {/* Always on, unlike chat-head below it — the theme toggle used to live
-          in the account rail, but that put it a whole scroll away from the
-          content it affects. Right-aligned so it sits at the seam with
-          whatever's docked on the right (the plans rail, or the open
-          document), not lost against the far edge of the screen. */}
-      {/* The top header bar: Theme toggle pinned right. The class/week row
-          used to be centered via absolute positioning — on Josh's own ask,
-          it's a plain leading flex item now, flush against the same left
-          edge as the message list and composer below it, not floating apart
-          from the rest of the pane's own left margin. */}
+      {/* Always on, unlike chat-head below it — right-aligned so it sits at
+          the seam with whatever's docked on the right (the plans rail, or
+          the open document), not lost against the far edge of the screen. */}
+      {/* The top header bar: the downloads button pinned right (theme is now
+          a Settings preference, not a header control — see SettingsPage).
+          The class/week row used to be centered via absolute positioning —
+          on Josh's own ask, it's a plain leading flex item now, flush
+          against the same left edge as the message list and composer below
+          it, not floating apart from the rest of the pane's own left
+          margin. */}
       <div className="flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10">
         {!docOpen ? (
           <div className="chat-head pointer-events-auto flex min-w-0 max-w-[70%] flex-nowrap items-center">
@@ -1930,7 +1929,23 @@ export function ChatPage() {
               {calendar.school.name}
             </span>
           ) : null}
-          <ThemeToggle />
+          {hasArtifact ? (
+            <button
+              type="button"
+              className="btn-icon relative"
+              aria-label="Open downloads"
+              title="Downloads ready"
+              onClick={openDocument}
+            >
+              <Download size={17} aria-hidden="true" />
+              {!docOpen ? (
+                <span
+                  className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </button>
+          ) : null}
         </div>
       </div>
 
