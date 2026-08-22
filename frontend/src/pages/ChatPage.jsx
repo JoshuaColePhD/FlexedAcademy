@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, Clock, Download, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, Clock, Download, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -212,6 +212,23 @@ export function ChatPage() {
      calling submit() directly while a reply is still in flight. Cleared and
      actually sent the moment `busy` goes false — see the effect below. */
   const [queuedMessage, setQueuedMessage] = useState(null)
+  /* A transient "it's done" notice in the same slot as the queued-message
+     pill above — set only on a SUCCESSFUL plan/quiz build (see onDone below
+     and the quiz try-block), never on error, so it can't misreport a failed
+     build as ready. Self-clears after a few seconds; showReadyNotice below
+     is the only way anything sets it, so one build finishing can't leave a
+     stale notice from an earlier one still on screen. */
+  const [readyNotice, setReadyNotice] = useState(null)
+  const readyNoticeTimerRef = useRef(null)
+  const showReadyNotice = useCallback((text) => {
+    if (readyNoticeTimerRef.current) clearTimeout(readyNoticeTimerRef.current)
+    setReadyNotice(text)
+    readyNoticeTimerRef.current = setTimeout(() => {
+      readyNoticeTimerRef.current = null
+      setReadyNotice(null)
+    }, 4000)
+  }, [])
+  useEffect(() => () => clearTimeout(readyNoticeTimerRef.current), [])
   /* Which week a NEW plan will be built for. Null means "auto" — the
      next-unplanned week (autoWeek, below) — until a ?week= param overrides
      it, which is how the Library hands a specific week over.
@@ -671,6 +688,7 @@ export function ChatPage() {
 
   const stream = useLessonStream({
     onDone: (done) => {
+      showReadyNotice('Lesson plan ready')
       setArtifact({
         planId: done.plan_id,
         plan: done.plan,
@@ -1184,6 +1202,7 @@ export function ChatPage() {
           const quiz = revisingQuizId
             ? await api.reviseQuiz(artifact.planId, revisingQuizId, content)
             : await api.createQuiz(artifact.planId, chatResult.quizRequested)
+          showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
           qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
           setViewingQuiz(quiz)
           setMessages((prev) => [
@@ -1306,7 +1325,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2232,6 +2251,18 @@ export function ChatPage() {
         <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
           voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
         }`}>
+          {/* A build finishing already gets its own message in the transcript
+              ("Built ... Tell me what to change") — this is for the teacher
+              who scrolled up to reread something, or alt-tabbed away, and
+              would otherwise miss it landing. Self-dismisses; there's
+              nothing to act on here, unlike the queued-message pill below,
+              so no × or click target. */}
+          {readyNotice ? (
+            <div className="fa-rise mb-2 flex items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-soft">
+              <CheckCircle2 size={13} className="shrink-0 text-ok" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">{readyNotice}</span>
+            </div>
+          ) : null}
           {/* The only visible sign a queued follow-up exists at all — without
               it, Enter clearing the box while busy would look identical to
               the text just vanishing. Sent automatically the moment `busy`
@@ -2240,9 +2271,11 @@ export function ChatPage() {
           {queuedMessage ? (
             <div className="neo-inset mb-2 flex items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-soft">
               <Clock size={13} className="shrink-0 text-ink-faint" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate">
-                Will send when ready: <span className="text-ink">{queuedMessage}</span>
-              </span>
+              {/* Not echoing the message text back — "Your message is in the
+                  queue" says everything a teacher needs (something happened,
+                  it's handled) without turning this into a second place
+                  their own words show up on screen. */}
+              <span className="min-w-0 flex-1 truncate">Your message is in the queue.</span>
               <button
                 type="button"
                 className="btn-icon shrink-0"
