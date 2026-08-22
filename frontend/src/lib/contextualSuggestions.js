@@ -91,7 +91,7 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'add-school-calendar',
       label: 'Add school calendar',
-      prompt: 'Help me add my school calendar so plans land on the right teaching weeks.',
+      prompt: 'Help me add my school calendar.',
       reason: 'Nothing else can be scheduled until FlexedAcademy knows your teaching weeks.',
       priority: 1,
       context: 'setup',
@@ -103,7 +103,7 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'add-pacing-guide',
       label: 'Add a pacing guide',
-      prompt: `Help me add the pacing guide${className} so plans follow your sequence.`,
+      prompt: `Help me add my pacing guide${className}.`,
       reason: 'Plans default to generic pacing without one.',
       priority: 1,
       context: 'setup',
@@ -113,12 +113,11 @@ export function getContextualSuggestions(context = {}) {
 
   if (targetWeek && isOpenTeachingWeek(targetWeek) && !hasPlan(targetWeek)) {
     const label = weekLabel(targetWeek)
-    const dateRange = weekDateRange(targetWeek)
     const partial = Boolean(targetWeek.closures && targetWeek.notes)
     suggestions.push(makeSuggestion({
       id: 'plan-current-week',
       label: `Plan ${label}`,
-      prompt: `Help me plan ${label}${dateRange ? ` (${dateRange})` : ''}${className}${hasPacingGuide ? ' using my pacing guide and the skill focus we have discussed' : ''}.${partial ? ` Heads up: ${targetWeek.notes}.` : ''}`,
+      prompt: `Help me plan ${label}${className}.`,
       reason: partial
         ? `A shortened, unplanned week (${targetWeek.notes}).`
         : `${label} is the current unplanned teaching week.`,
@@ -138,7 +137,7 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'revise-planned-week',
       label: `Revise ${label}`,
-      prompt: `Help me revise or rebuild the plan for ${label}${className}.`,
+      prompt: `I want to revise the plan for ${label}.`,
       reason: 'Pick up from there, or start over.',
       priority: 2,
       context: 'new-chat',
@@ -155,8 +154,8 @@ export function getContextualSuggestions(context = {}) {
       id: 'continue-draft',
       label: targetWeek ? `Continue ${weekLabel(targetWeek)}` : 'Continue planning',
       prompt: targetWeek
-        ? `Continue ${weekLabel(targetWeek)} — let's finish the plan.`
-        : 'Continue where we left off and help me finish this week.',
+        ? `Let's finish the plan for ${weekLabel(targetWeek)}.`
+        : 'Let\'s pick up where we left off.',
       reason: age ? `Last touched ${age}.` : 'This conversation is still open with no plan finished yet.',
       priority: 3,
       context: 'recent-chat',
@@ -197,7 +196,7 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'review-current-plan',
       label: wk ? `Review ${wk}’s plan` : 'Review this plan',
-      prompt: `Review ${wk ? `${wk}’s` : 'this week’s'} plan and point out anything that needs attention.`,
+      prompt: `Let's review ${wk ? `${wk}’s` : 'this'} plan.`,
       reason: 'Built and ready for a second pass.',
       priority: 5,
       context: 'plan',
@@ -210,11 +209,10 @@ export function getContextualSuggestions(context = {}) {
 
   if (nextUnplanned && (!targetWeek || hasPlan(targetWeek) || artifact)) {
     const label = weekLabel(nextUnplanned)
-    const dateRange = weekDateRange(nextUnplanned)
     suggestions.push(makeSuggestion({
       id: 'prepare-next-week',
       label: `Prepare ${label}`,
-      prompt: `Help me prepare ${label}${dateRange ? ` (${dateRange})` : ''}${className}${hasPacingGuide ? ' using my pacing guide' : ''}.`,
+      prompt: `Let's start planning ${label}.`,
       reason: targetWeek && hasPlan(targetWeek)
         ? 'Skip ahead — nothing’s planned here yet.'
         : 'The next open teaching week on your calendar.',
@@ -230,7 +228,7 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'start-planning',
       label: 'Start planning',
-      prompt: 'Help me think through what to teach next.',
+      prompt: 'Help me plan what to teach next.',
       reason: 'Start with an idea, text, skill, or week and we’ll shape it together.',
       priority: 8,
       context: 'default',

@@ -139,8 +139,14 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
         <ul
           role="listbox"
           aria-label="Your classes"
-          className={`neo-panel fa-card-drop absolute z-50 mt-1 w-56 overflow-hidden rounded-2xl bg-paper-raised py-1 ${
-            inline ? 'left-0' : 'left-2 right-2'
+          /* Inline: matches the trigger's own width (text + caret) exactly —
+             w-full of this relative wrapper, whose only in-flow child is
+             that trigger button — rather than a fixed 224px box that
+             dangled far past a compact pill. The non-inline (full sidebar
+             row) trigger still gets the fixed w-56 via left/right insets;
+             that one has room to be a real menu width. */
+          className={`neo-panel fa-card-drop absolute z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised py-1 ${
+            inline ? 'left-0 w-full' : 'left-2 right-2 w-56'
           }${closing ? ' fa-chip-exit' : ''}`}
         >
           {classes.map((c) => (
