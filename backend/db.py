@@ -32,10 +32,11 @@ from pgvector.psycopg2 import register_vector
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 
-current_user_id = contextvars.ContextVar("current_user_id", default=None)
-
+from . import storage
 from .config import settings
 from .errors import AppError
+
+current_user_id = contextvars.ContextVar("current_user_id", default=None)
 
 log = logging.getLogger("aplang.db")
 
@@ -2319,7 +2320,15 @@ def _hydrate_quiz(row: dict) -> dict:
     # Same shape as plans' own has_docx — a row can outlive its file (a
     # crashed build_qti_zip, or the file cleaned up outside the app), and
     # the download route needs to say so rather than 500 on a missing path.
-    d["has_qti"] = bool(d.get("qti_path")) and Path(d["qti_path"]).is_file()
+    #
+    # On a host with an ephemeral disk (Render's free plan — see render.yaml),
+    # every restart wipes plans_dir, so a plain is_file() check would gray
+    # out the download button for every quiz built before the last restart
+    # even though storage.mirror_file() backed it up. Try to self-heal from
+    # durable storage here (the same call download_quiz already makes)
+    # rather than only offering to restore it once the user clicks Download.
+    qti_path = d.get("qti_path")
+    d["has_qti"] = bool(qti_path) and storage.ensure_local(Path(qti_path))
     return d
 
 
