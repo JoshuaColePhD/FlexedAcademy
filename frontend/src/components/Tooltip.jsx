@@ -38,9 +38,10 @@ export function Tooltip({ content, position = 'top', children }) {
         {show && (
           <motion.span
             role="tooltip"
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 5 }}
+            initial={{ opacity: 0, scale: 0.9, y: 5 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 5 }}
+            transition={{ type: "spring", stiffness: 350, damping: 20 }}
             className={`pointer-events-none absolute z-50 w-max max-w-xs rounded bg-ink px-2 py-1.5 text-xs text-paper shadow-lg ${placement}`}
           >
             {content}

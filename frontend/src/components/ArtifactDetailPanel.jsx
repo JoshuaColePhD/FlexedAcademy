@@ -380,7 +380,7 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
     <div className="detail-card-stack">
       {weeks.map((w, i) => {
         const status = weekStatus(w)
-        const { dot, label } = WEEK_STATUS[status]
+        const { dot, label, tone } = WEEK_STATUS[status]
         const isThisPlan = w.week === currentWeek
         const openable = status === 'built' && w.chat_id && !isThisPlan
         // Capped, not a flat i * 60ms: a school year is ~36 rows, and the
@@ -401,7 +401,7 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
                 {unitSuffix(w.unit)}
                 {isThisPlan ? ' — this plan' : ''}
               </span>
-              <span className="detail-card-code">{label}</span>
+              <span className={`detail-status-chip is-${tone}`}>{label}</span>
             </div>
             {/* Blank for a school with no real calendar on file yet
                 (schoolcal.py's NO_CALENDAR_SCHOOL_ID) rather than an empty

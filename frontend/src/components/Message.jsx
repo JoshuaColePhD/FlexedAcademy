@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { Check, Copy, Pencil, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { scanGrounding } from '../lib/grounding'
@@ -147,7 +148,12 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
      would sit invisible for hundreds of milliseconds before fading in, which is
      worse than no animation at all. The entry reads fine without it. */
   return (
-    <div className={`fa-rise group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <motion.div 
+      className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
+      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 260, damping: 20 }}
+    >
       <div className={`flex max-w-full flex-col ${isUser ? 'items-end' : 'w-full items-start'}`}>
         {/* An error reply used to render as ordinary assistant body copy, on
             the same ruled lines as a real plan — `isError` only tinted the
@@ -329,6 +335,6 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
           ) : null}
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }

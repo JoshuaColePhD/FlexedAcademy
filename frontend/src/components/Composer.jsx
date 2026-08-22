@@ -412,7 +412,7 @@ export function Composer({
   return (
     <div className="relative w-full">
       <div
-        className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised transition-all ${
+        className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised transition-all focus-within:scale-[1.01] focus-within:ring-2 focus-within:ring-accent/50 focus-within:shadow-lg ${
           voiceModeActive ? 'rounded-3xl' : 'rounded-xl'
         } ${isDragging ? 'ring-2 ring-accent' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}

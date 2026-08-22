@@ -2420,6 +2420,11 @@
     position: relative;
     flex-shrink: 0;
     width: 10px;
+    /* Was transparent — the "seam" this was meant to read as (see comment
+       above) assumed a neutral page background falling through it. Against
+       this app's own colorful gradient backdrop it read as a stray pink
+       stripe between two solid panels instead of a shadowed recess. */
+    background: var(--paper-sunken);
     cursor: col-resize;
     touch-action: none;
     outline: none;
@@ -2698,6 +2703,35 @@
     color: var(--accent-text);
     background: var(--accent-tint);
     border-radius: var(--r-full);
+  }
+  /* The calendar table's own status pill — was reusing .detail-card-code,
+     built for a standard code and always accent-tinted, so "Built" and "Not
+     built" rendered as the same colored chip and only the words told them
+     apart. Tone comes from WEEK_STATUS itself (lib/weekStatus.js), the same
+     source the row's own dot color already reads from, so the two never
+     disagree. */
+  .detail-status-chip {
+    margin-left: auto;
+    padding: 1px 7px;
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    border-radius: var(--r-full);
+  }
+  .detail-status-chip.is-ok {
+    color: var(--ok);
+    background: var(--ok-tint);
+  }
+  .detail-status-chip.is-flag {
+    color: var(--flag);
+    background: var(--flag-tint);
+  }
+  .detail-status-chip.is-accent {
+    color: var(--accent-text);
+    background: var(--accent-tint);
+  }
+  .detail-status-chip.is-neutral {
+    color: var(--ink-faint);
+    background: var(--paper-inset);
   }
   .detail-card-prompt {
     margin: var(--sp-2) 0 0;

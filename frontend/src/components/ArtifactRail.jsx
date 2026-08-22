@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { motion } from 'framer-motion'
 import {
   AlertTriangle,
   BookOpen,
@@ -77,7 +78,6 @@ function EmptyRailArt({ color }) {
  *  documents and the standards really did resolve in roughly that order, even
  *  though the stagger itself is a fixed 60ms, not a trace of real timing. */
 function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
-  const style = { animationDelay: `${index * 60}ms` }
   const body = (
     <>
       <span className="rail-row-tile">
@@ -91,21 +91,30 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
   )
   if (!onClick) {
     return (
-      <div className="rail-row fa-rise" style={style} title={title}>
+      <motion.div
+        className="rail-row"
+        title={title}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.06 }}
+      >
         {body}
-      </div>
+      </motion.div>
     )
   }
   return (
-    <button
+    <motion.button
       type="button"
-      className="rail-row is-interactive fa-press fa-rise"
-      style={style}
-      onClick={onClick}
+      className="rail-row is-interactive fa-press"
       title={title}
+      onClick={onClick}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06 }}
+      whileHover={{ scale: 1.02, y: -2, backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
     >
       {body}
-    </button>
+    </motion.button>
   )
 }
 
@@ -121,14 +130,16 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
  * teacher actually came for, answering a question ("why would you want to
  * delete it?") nobody was asking. Download is the row's only action now. */
 function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
-  const style = { animationDelay: `${index * 60}ms` }
   const toast = useToast()
 
   return (
-    <div
-      className="rail-card fa-lift fa-rise"
-      style={style}
+    <motion.div
+      className="rail-card fa-lift"
       onClick={onOpen ? () => onOpen(quiz) : undefined}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06 }}
+      whileHover={{ scale: 1.02, y: -2, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
     >
       <span className="rail-card-head">
         <span
@@ -191,7 +202,7 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
           </button>
         )}
       </span>
-    </div>
+    </motion.div>
   )
 }
 

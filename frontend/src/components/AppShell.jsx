@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
@@ -38,7 +39,12 @@ function ChatRow({ chat, classId, onDelete, onNavigate }) {
 
   if (editing) {
     return (
-      <li className="px-2">
+      <motion.li 
+        className="px-2"
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0, x: -20 }}
+      >
         <input
           autoFocus
           value={draft}
@@ -54,12 +60,17 @@ function ChatRow({ chat, classId, onDelete, onNavigate }) {
           aria-label={`Rename ${chat.title}`}
           className="w-full rounded-md bg-paper-inset px-2 py-1.5 text-sm text-ink outline-none"
         />
-      </li>
+      </motion.li>
     )
   }
 
   return (
-    <li className="group relative px-2">
+    <motion.li 
+      className="group relative px-2"
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0, x: -20, transition: { duration: 0.2 } }}
+    >
       <NavLink
         to={`/c/${classId}/chat/${chat.id}`}
         // Every other row in this rail (New plan, History, Plans) already
@@ -98,7 +109,7 @@ function ChatRow({ chat, classId, onDelete, onNavigate }) {
           <Trash2 size={13} aria-hidden="true" />
         </button>
       </span>
-    </li>
+    </motion.li>
   )
 }
 
@@ -160,15 +171,17 @@ function Rail({ onNavigate, onClose }) {
             rail instead — still the rarest warm note, just this world's
             warm note. Solid fill now, not a pastel tint — the one button in
             the rail that should read as unmistakably "press me." */}
-        <Link
-          to={classPath}
-          onClick={onNavigate}
-          className="fa-press neo-raised btn-blob flex min-h-touch items-center gap-2 rounded-lg px-3 text-sm font-medium text-ink"
-        >
-          <Plus size={15} aria-hidden="true" />
-          <span className="flex-1">New plan</span>
-          <kbd className="font-mono text-2xs">⌘K</kbd>
-        </Link>
+        <motion.div whileHover={{ scale: 1.02, y: -1 }}>
+          <Link
+            to={classPath}
+            onClick={onNavigate}
+            className="fa-press neo-raised btn-blob flex min-h-touch items-center gap-2 rounded-lg px-3 text-sm font-medium text-ink"
+          >
+            <Plus size={15} aria-hidden="true" />
+            <span className="flex-1">New plan</span>
+            <kbd className="font-mono text-2xs">⌘K</kbd>
+          </Link>
+        </motion.div>
       </div>
 
 
@@ -194,9 +207,11 @@ function Rail({ onNavigate, onClose }) {
         ) : chats?.length ? (
           <div className="flex flex-col pb-4">
             <ul className="flex flex-col gap-0.5">
-              {chats.map((c) => (
-                <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onNavigate={onNavigate} />
-              ))}
+              <AnimatePresence initial={false}>
+                {chats.map((c) => (
+                  <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onNavigate={onNavigate} />
+                ))}
+              </AnimatePresence>
             </ul>
           </div>
         ) : (
