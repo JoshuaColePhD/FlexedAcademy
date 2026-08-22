@@ -1,5 +1,14 @@
 /* Serialize Realtime response.create events. The transport can stay open
- * while the queue waits; only response.done releases the next item. */
+ * while the queue waits; only response.done releases the next item.
+ *
+ * Deliberately serial, not a missed pipelining opportunity: the Realtime API
+ * models one active response per conversation at a time, so a second
+ * response.create sent before the first's response.done is a protocol error,
+ * not a free speedup. The actual fix for "sentences have dead air between
+ * them" lives one layer up, in useChatStream's emitSentences — it now cuts
+ * only the turn's opener as its own early response.create and coalesces
+ * everything after it into one final flush, so a reply costs exactly two
+ * serialized round trips through this queue instead of one per sentence. */
 export function createSpeechQueue({ send, isOpen }) {
   const items = []
   let current = null

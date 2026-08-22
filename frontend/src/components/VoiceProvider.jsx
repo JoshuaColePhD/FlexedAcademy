@@ -3,6 +3,7 @@ import { VoiceContext } from '../lib/voiceContext'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { createSpeechQueue } from '../lib/voiceSpeechQueue'
+import * as metrics from '../lib/voiceMetrics'
 
 /* Realtime owns audio transport, turn detection, transcription, and playback.
  * ChatPage owns transcript -> grounded chat_stream -> persistence. */
@@ -98,6 +99,9 @@ export function VoiceProvider({ children }) {
     clearInterruptTimer()
     speechQueueRef.current.clear()
     clearCaptionTimer()
+    // "A closed panel" — voiceMetrics' own third named abandonment case.
+    // A no-op if no turn was open (the guard is inside turnAbandoned itself).
+    metrics.turnAbandoned()
     setSpeaking(false)
     setCaption('')
     setHeard('')
@@ -117,11 +121,31 @@ export function VoiceProvider({ children }) {
     clearCaptionTimer()
     setSpeaking(false)
     setCaption('')
+    // response.cancel (above, inside speechQueueRef.cancel()) stops the
+    // SERVER from generating more audio, but says nothing about audio
+    // already in flight — the WebRTC jitter buffer and the <audio> element
+    // itself can both be holding a second or more of already-decided sound,
+    // which then keeps playing right through the "barge-in," undercutting
+    // the whole point of interrupting. Detaching and immediately
+    // reattaching the same live MediaStream forces the element to drop
+    // whatever it had buffered and pick back up at the stream's current
+    // (silent, post-cancel) position — there is no seekable file to rewind,
+    // so this is the flush.
+    const el = audioElRef.current
+    const track = el?.srcObject
+    if (el && track) {
+      el.srcObject = null
+      el.srcObject = track
+    }
   }, [clearCaptionTimer])
 
   const speak = useCallback((text, options = {}) => {
     const line = typeof text === 'string' ? text.trim() : ''
     if (!line) return
+    // Only the turn's first call actually records anything — see
+    // sentenceQueued's own guard — so it's safe to call this on every
+    // enqueue rather than threading "is this the first one" through here.
+    metrics.sentenceQueued()
     speechQueueRef.current.enqueue(line, options)
   }, [])
 
@@ -131,6 +155,20 @@ export function VoiceProvider({ children }) {
     streamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next })
     setMutedState(next)
   }, [])
+
+  /* Push-to-talk's own "I'm done" signal. Releasing PTT already mutes the
+     track (setMuted(true), called right after this by the caller) — but a
+     muted track still sends silence, not nothing, so without this the
+     server's VAD silence timer has to elapse on that silence before it
+     decides the turn is over: a guaranteed extra ~350ms tacked onto every
+     single push-to-talk turn, on top of whatever the teacher already waited
+     holding the button. commit tells the Realtime session the turn is over
+     RIGHT NOW, since a manual release is a stronger, more immediate signal
+     than silence ever is. A no-op in auto mode, where server VAD alone
+     decides turn boundaries and there is no release to hang this off of. */
+  const commitTurn = useCallback(() => {
+    sendEvent({ type: 'input_audio_buffer.commit' })
+  }, [sendEvent])
 
   const onUtterance = useCallback((handler) => {
     if (typeof handler !== 'function') return () => {}
@@ -146,7 +184,15 @@ export function VoiceProvider({ children }) {
         setCaption('')
         break
       case 'response.audio.delta':
-        if (speechQueueRef.current.current()) setSpeaking(true)
+        if (speechQueueRef.current.current()) {
+          setSpeaking(true)
+          // Only the turn's first call records anything (firstAudio's own
+          // guard) — this fires on every delta of every response, which is
+          // exactly what makes it correct: the FIRST one to land after
+          // turnStarted() is, by definition, the moment the teacher's wait
+          // ends.
+          metrics.firstAudio()
+        }
         break
       case 'response.audio_transcript.delta':
       case 'response.output_audio_transcript.delta':
@@ -179,14 +225,29 @@ export function VoiceProvider({ children }) {
         setHeard(text)
         // Noise/empty completions never enter ChatPage's submit path.
         if (!text) break
+        // "A transcript came back" — the STT leg of the latency budget ends
+        // here, whether or not anything downstream ends up using it.
+        metrics.transcriptReady()
         for (const handler of handlersRef.current) {
           try { handler(text) } catch (error) { console.error('voice utterance handler failed', error) }
         }
         break
       }
+      // The teacher stopped talking — turnStarted()'s own docstring is
+      // explicit that the clock has to start HERE, not when a transcript
+      // comes back, because everything after this point is latency the
+      // teacher actually sits through.
+      case 'input_audio_buffer.speech_stopped':
+        metrics.turnStarted()
+        break
       case 'input_audio_buffer.speech_started':
         setHeard('')
         if (speechQueueRef.current.current() || speechQueueRef.current.pending()) {
+          // Barge-in: the assistant was still talking when the teacher
+          // started again. Whatever turn was in flight (already spoken, by
+          // definition, or it wouldn't be in this branch) is done being
+          // measured — recorded as abandoned rather than left to dangle.
+          metrics.turnAbandoned()
           cancelSpeech()
           clearInterruptTimer()
           setInterrupted(true)
@@ -199,6 +260,7 @@ export function VoiceProvider({ children }) {
       case 'error':
         console.error('realtime error event', event)
         setErrorMessage(event.error?.message || 'The voice session reported an error.')
+        metrics.turnAbandoned()
         break
       default:
         break
@@ -336,7 +398,8 @@ export function VoiceProvider({ children }) {
     cancelSpeech,
     onUtterance,
     setMuted,
-  }), [cancelSpeech, caption, errorMessage, heard, interrupted, muted, onUtterance, speak, startSession, status, stopSession, setMuted, speaking])
+    commitTurn,
+  }), [cancelSpeech, caption, commitTurn, errorMessage, heard, interrupted, muted, onUtterance, speak, startSession, status, stopSession, setMuted, speaking])
 
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
 }

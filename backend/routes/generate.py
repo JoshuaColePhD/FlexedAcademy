@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from .. import curriculum, db, llm, schoolcal, service
+from .. import curriculum, db, llm, prompts, schoolcal, service
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
@@ -415,13 +415,18 @@ class VoiceSessionRequest(BaseModel):
         422 {"detail":[{"type":"missing","loc":["query","req"], ...}]}
 
     Verified with TestClient before writing this. Field names and defaults
-    match what the handler reads (req.chat_id / req.week_number / req.mode)
-    and what VoiceProvider.unlock() sends.
+    match what VoiceProvider.startSession() sends.
     """
 
-    # Same fields, same defaults, same meaning as ChatStreamRequest's —
-    # this endpoint hands them to the very same _build_chat_system_prompt, so
-    # they must not drift from it.
+    # Kept for API-contract stability with the client (VoiceProvider.jsx
+    # sends all four on every session start) and because a future feature
+    # may want per-session context again — but the handler below no longer
+    # READS any of them. It used to hand them to _build_chat_system_prompt
+    # and pass the result as the Realtime session's `instructions`, which
+    # was pure session-open latency for a value the realtime model can
+    # never act on (turn_detection sets create_response=False, so this
+    # session only transports/transcribes; see voice_session's own
+    # comment).
     chat_id: str | None = None
     class_id: str | None = None
     week_number: int | None = None
@@ -433,9 +438,7 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
     """Provisions an ephemeral WebRTC token for OpenAI's Realtime API."""
     require_entitlement(user_id)
     import requests
-    
-    system_prompt = _build_chat_system_prompt(user_id, req.chat_id, req.week_number, req.mode, class_id=req.class_id)
-    
+
     # POST /v1/realtime/sessions was the pre-GA (2024 beta) endpoint and no
     # longer exists — it answered every call with
     #   {"error":{"message":"Invalid URL (POST /v1/realtime/sessions)"}}
@@ -452,7 +455,17 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
             "session": {
                 "type": "realtime",
                 "model": REALTIME_MODEL,
-                "instructions": system_prompt,
+                # No `instructions` here on purpose. This used to be a full
+                # _build_chat_system_prompt() call — a class lookup, a
+                # calendar walk, a custom-instructions read, a unit
+                # resolution — spent on session-open latency for a value the
+                # realtime model can never act on: turn_detection below sets
+                # create_response=False, so this session only transports
+                # audio, detects turns, and transcribes; it never generates a
+                # reply. Every `response.create` the client sends later
+                # supplies its own instructions (voiceSpeechQueue.js's
+                # "read this aloud verbatim"), which is the only text this
+                # session's model ever reads.
                 "audio": {
                     "input": {
                         # Without this the session streams the teacher's audio
@@ -462,11 +475,37 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
                         # migration deleted that pipeline without turning on the
                         # replacement, so nothing downstream ever learned what
                         # was said.
-                        "transcription": {"model": "whisper-1"},
+                        #
+                        # `language` pins the transcription the way llm.transcribe
+                        # (the Composer-dictation path) already does — without it,
+                        # Whisper is free to guess a language from a snippet of
+                        # room noise or silence, which is exactly the kind of
+                        # hallucinated transcript that used to get filtered by
+                        # transcribe()'s own no_speech_prob check. The Realtime
+                        # API's completed-transcription event carries no
+                        # per-segment no_speech_prob to repeat that check here, so
+                        # pinning the language is the guard actually available on
+                        # this path.
+                        "transcription": {"model": "whisper-1", "language": "en"},
                         # Realtime only transports audio, detects turns, and
                         # transcribes them. ChatPage sends the completed
                         # transcript through grounded /api/chat_stream.
-                        "turn_detection": {"type": "server_vad", "create_response": False},
+                        #
+                        # silence_duration_ms lowered from the (undocumented but
+                        # measured ~500ms) default toward 350ms, and the other
+                        # two made explicit rather than left to whatever the
+                        # default happens to be — this sits directly in the
+                        # end-to-end latency budget on every single turn, and it
+                        # runs on every hands-free release too (there is no
+                        # server-side "end this turn now" signal from push-to-
+                        # talk other than this same silence timer).
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "threshold": 0.5,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 350,
+                            "create_response": False,
+                        },
                     },
                     "output": {"voice": REALTIME_VOICE},
                 },
@@ -520,7 +559,10 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
                 user_id, req.chat_id, req.week_number, req.mode, last_user, class_id=req.class_id
             )
 
-            if req.mode == "brainstorm":
+            # Mutually exclusive, not stacked — see prompts.voice_prompt's own
+            # docstring for why appending both used to directly contradict
+            # each other on every spoken turn.
+            if req.mode == "brainstorm" and not req.voice:
                 system_prompt += (
                     "Act as an expert in education having a natural back-and-forth conversation with a colleague. Brainstorm ideas for their upcoming week, or discuss revisions to an existing week. "
                     "Give advice, feedback, and clear choices directly in your conversational replies. When a teacher names a text, a skill, or an angle, "
@@ -602,35 +644,13 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
             # questions' 2-4-questions-with-several-options-each shape is
             # built for tappable cards (LessonQuestions) — read aloud as a
             # single paragraph, it's not answerable in one breath.
-            if req.voice:
-                system_prompt += (
-                    "\n\nTHIS IS A LIVE SPOKEN CONVERSATION, read aloud by text-to-speech and answered "
-                    "by transcribing the teacher's voice — not a written chat. Reply the way a person "
-                    "actually talks: ONE short sentence, sometimes two, never more. Never a list, "
-                    "never a paragraph, never more than one question in a turn. Get to the point; a "
-                    "teacher mid-conversation can always ask you to say more.\n\n"
-                    "OPEN EVERY TURN WITH A TWO-OR-THREE-WORD ACKNOWLEDGEMENT, punctuated as its own "
-                    "sentence, before anything else: \"Got it.\" \"Okay.\" \"Sure thing.\" \"Let me "
-                    "look.\" \"Nice one.\" Vary it; never the same opener twice in a row. This is not "
-                    "filler — it is the first thing spoken aloud, and it goes out while the rest of "
-                    "your reply is still being written, so the teacher hears you respond in about a "
-                    "third of a second instead of waiting in silence for the whole sentence. A gap "
-                    "over about seven hundred milliseconds is heard as reluctance rather than as "
-                    "thinking, which is why this matters more in speech than it would in writing.\n\n"
-                    "WHEN SOMETHING IS UNDERSPECIFIED, call `ask_clarifying_questions` with exactly "
-                    "ONE question and 3-4 short options. The options are rendered as buttons the "
-                    "teacher can tap, so make each one a concrete, distinct choice of a few words — "
-                    "never 'other' or 'something else', and never options that are rephrasings of "
-                    "each other. Your spoken text alongside it should be just the question itself; "
-                    "do NOT read the options aloud, they are already on screen.\n\n"
-                    "DO NOT call `generate_lesson_plan` until you actually have a week's worth of "
-                    "plan to build: at minimum you must know WHICH WEEK OR UNIT (already named for you "
-                    "above if it was resolved — don't ask about it again unless the teacher says "
-                    "otherwise) and WHAT THE WEEK IS ABOUT — an anchor text, a skill, or a specific "
-                    "focus. If that's genuinely missing, ask for it instead of building. Building a week "
-                    "off a one-line request wastes the teacher's time correcting a plan they never "
-                    "described."
-                )
+            #
+            # elif, not a second `if` — see the `and not req.voice` guard
+            # above. The two prompts each say the opposite thing about
+            # length and question count, so a voice turn must get only this
+            # one.
+            elif req.voice:
+                system_prompt += prompts.voice_prompt()
 
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])

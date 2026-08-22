@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import random
+import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, wait
 
@@ -30,8 +31,10 @@ from .retrieval import RetrievalResult
 from .schema import (
     CALENDAR_JSON_SCHEMA,
     DAY_JSON_SCHEMA,
+    DAY_NAMES,
     PLAN_JSON_SCHEMA,
     QUIZ_JSON_SCHEMA,
+    REVISABLE_FIELDS,
     TEMPLATE_ANALYSIS_JSON_SCHEMA,
     TEMPLATE_VERIFICATION_JSON_SCHEMA,
     field_json_schema,
@@ -106,12 +109,28 @@ def map_context_for(user_id: str, subject: str, query: str, class_id: str | None
             docs.append(active)
             
     docs.extend(db.list_global_documents(user_id))
-    
+
     if not docs:
         return ""
 
+    # This whole function must never be the reason a chat reply is slow to
+    # start (see _MAP_CONTEXT_TIMEOUT_S's own comment) — but the embed call
+    # used to run synchronously, outside any bound, BEFORE the retrieval
+    # fan-out's own `wait(..., timeout=_MAP_CONTEXT_TIMEOUT_S)` even started.
+    # A slow embeddings round trip could eat most of the request's 30s
+    # client timeout while the teacher heard silence, with nothing here to
+    # stop it. One deadline now covers the embed AND the fan-out together, so
+    # the function's total contribution is bounded, not just the back half
+    # of it.
+    deadline = time.monotonic() + _MAP_CONTEXT_TIMEOUT_S
+    embed_future = _context_pool.submit(embed_query, query)
+    _embed_done, embed_pending = wait([embed_future], timeout=max(0.0, deadline - time.monotonic()))
+    if embed_pending:
+        embed_future.cancel()
+        log.warning("map context query embedding exceeded %.1fs", _MAP_CONTEXT_TIMEOUT_S)
+        return ""
     try:
-        query_vector = embed_query(query)
+        query_vector = embed_future.result()
     except Exception as e:  # noqa: BLE001
         log.warning("curriculum map query embedding failed: %s", e)
         return ""
@@ -120,9 +139,9 @@ def map_context_for(user_id: str, subject: str, query: str, class_id: str | None
         _context_pool.submit(curriculum.retrieve_map_context, doc["id"], query, 4, query_vector)
         for doc in docs
     ]
-    
+
     results = []
-    done, pending = wait(futures, timeout=_MAP_CONTEXT_TIMEOUT_S)
+    done, pending = wait(futures, timeout=max(0.0, deadline - time.monotonic()))
     if pending:
         log.warning("%d map context lookups exceeded %.1fs", len(pending), _MAP_CONTEXT_TIMEOUT_S)
     for future in futures:
@@ -1039,6 +1058,20 @@ def stream_speech(user_id: str, text: str) -> Iterator[bytes]:
     """The other half of transcribe() above — text in, spoken audio out, as a
     stream of chunks rather than one finished clip.
 
+    CURRENTLY UNREACHABLE: no route calls this. The WebRTC/Realtime migration
+    moved speech synthesis onto the client (voiceSpeechQueue.js asks the
+    Realtime session itself to "read this aloud verbatim" via
+    response.create) and no `/tts` endpoint was ever wired back up to this
+    function. Kept, not deleted, because the benchmark below is real
+    measured research that a future move away from "TTS by asking a
+    reasoning model to read text aloud" would want — see the review that
+    flagged this (voice chat latency review) for why that's worth revisiting.
+    If you're reading this because you just wired a caller back up: delete
+    this paragraph.
+
+    settings.tts_model / tts_voice / max_tts_chars exist only for this
+    function's use — same "currently unused" status applies to them.
+
     Was synthesize_speech(), which returned `resp.content`: the complete audio
     file, meaning the caller couldn't send a byte until OpenAI had synthesized
     the last syllable. For a per-sentence pipeline that wait sat in the critical
@@ -1161,6 +1194,59 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                         },
                     },
                     "required": ["question_types"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_lesson_day",
+                # A targeted alternative to generate_lesson_plan, which
+                # rebuilds the entire week — this changes exactly one field
+                # of one day (backend/routes/generate.py's /revise_day, the
+                # same surgical rewrite a teacher gets from clicking a
+                # single cell in the document). Without this, "just redo
+                # Thursday's warm-up" had no tool narrower than "rebuild the
+                # whole week," which is slower, costs more, and risks
+                # touching days the teacher didn't ask about.
+                "description": (
+                    "Call this when the teacher asks to change ONE part of ONE day of the "
+                    "already-built lesson plan — a targeted ask like 'redo Thursday's warm-up' or "
+                    "'make Monday's assessment harder'. Only the named field changes; every other "
+                    "field of that day, and every other day, is left untouched, and the document is "
+                    "rebuilt automatically to match. Requires a plan to already exist for this "
+                    "conversation; if none does yet, tell the teacher to build the week first instead "
+                    "of calling this. Never call this for a change spanning more than one day or one "
+                    "field in a single turn — call it once per field, or use generate_lesson_plan "
+                    "instead for a broader rewrite."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "day": {
+                            "type": "string",
+                            "enum": DAY_NAMES,
+                            "description": "Which weekday to change.",
+                        },
+                        "field": {
+                            "type": "string",
+                            "enum": list(REVISABLE_FIELDS),
+                            "description": (
+                                "Which part of that day to change: learning_targets, standards, "
+                                "act_alignment, engagement_strategy, do_now (the warm-up/hook), "
+                                "during (direct instruction/guided practice), assessment, or title."
+                            ),
+                        },
+                        "feedback": {
+                            "type": "string",
+                            "description": (
+                                "What to change and how, in the teacher's own words — this is handed "
+                                "to the rewrite as their actual instruction, so keep it concrete "
+                                "('make it a think-pair-share instead', 'add two more DOK-3 questions')."
+                            ),
+                        },
+                    },
+                    "required": ["day", "field", "feedback"],
                 },
             },
         },
@@ -1339,6 +1425,33 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                     "question_types": question_types,
                     "num_questions": args.get("num_questions") or 10,
                     "revises_current": bool(args.get("revises_current")),
+                }
+                break
+
+            # Same reasoning as generate_quiz just above — day/field/feedback
+            # ARE the payload, so this waits for finish_reason too.
+            if choice.finish_reason == "tool_calls" and tool_name == "update_lesson_day":
+                try:
+                    args = json.loads(tool_args)
+                except ValueError:
+                    args = {}
+                day = args.get("day")
+                field = args.get("field")
+                feedback = args.get("feedback")
+                if day not in DAY_NAMES or field not in REVISABLE_FIELDS or not feedback:
+                    raise AppError(
+                        "malformed_tool_call",
+                        "The model tried to revise a day but didn't send back which day, "
+                        "field, and change.",
+                        status=502,
+                        hint="Try asking for that change again.",
+                    )
+                yielded_anything = True
+                yield {
+                    "tool_call": "update_lesson_day",
+                    "day": day,
+                    "field": field,
+                    "feedback": feedback,
                 }
                 break
 

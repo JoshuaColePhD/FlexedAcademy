@@ -12,7 +12,7 @@ import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
 import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
-import { FIELD_LABELS } from '../lib/planShape'
+import { DAYS, FIELD_LABELS } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
@@ -403,6 +403,17 @@ export function ChatPage() {
    * been in the meantime. Comparing ids makes the skip idempotent too, which
    * matters because StrictMode double-invokes effects in dev. */
   const localFor = useRef(null)
+
+  /* reviseDay is declared further down this component (it's the per-cell
+     revise handler, defined near the document it edits), but submit() —
+     declared above it — needs to call it for the update_lesson_day tool
+     call. Same reasoning as submitRef below: a plain closure over reviseDay
+     from inside submit would either be a temporal-dead-zone crash (it isn't
+     defined yet at the point submit's own useCallback runs) or, listed in
+     submit's dependency array, the exact same crash a render earlier. Kept
+     current via the plain assignment right after reviseDay's own
+     declaration. */
+  const reviseDayRef = useRef(null)
 
   /* The last message id VoiceProvider has already spoken (or been told to
      skip, on history load — see below). Primed to the newly-loaded
@@ -1187,6 +1198,42 @@ export function ChatPage() {
         return
       }
 
+      // The update_lesson_day alternative — a targeted, one-field change
+      // instead of generate_lesson_plan's whole-week rebuild (see
+      // backend/llm.py's tool declaration). Handled by handing off to the
+      // SAME reviseDay() a teacher's own click on a document cell already
+      // uses, rather than inventing a second revision path — one surgical
+      // rewrite, two ways to ask for it.
+      if (chatResult?.dayRevisionRequested) {
+        const { day: dayName, field, feedback } = chatResult.dayRevisionRequested
+        const dayIndex = DAYS.indexOf(dayName)
+        // Recomputed here rather than closing over the top-level `livePlan`
+        // const, same reasoning as reviseDayRef just below: that const is
+        // declared further down this component, and referencing it from
+        // this earlier-declared callback would be a temporal-dead-zone
+        // crash on every render, not just a staleness risk. `artifact` and
+        // `stream` are already this callback's own dependencies, so this
+        // stays exactly as fresh as `livePlan` itself is.
+        const days = (artifact?.plan || stream.preview)?.days || []
+        const day = dayIndex >= 0 ? days[dayIndex] : null
+        if (!artifact?.planId || !day) {
+          // The system prompt already tells the model not to call this
+          // tool with no plan built yet — same race-not-a-drifted-model
+          // reasoning as the equivalent guard on generate_quiz above.
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'assistant',
+              content: "I need to build this week's plan before I can change a specific day.",
+            },
+          ])
+          return
+        }
+        await reviseDayRef.current?.(dayIndex, day, feedback, field)
+        return
+      }
+
       if (!chatResult || !chatResult.toolCalled) {
         // AI decided to just converse, no revision needed.
         return
@@ -1326,6 +1373,9 @@ export function ChatPage() {
     },
     [artifact, toast, flash, persistMessage]
   )
+  // See reviseDayRef's own declaration, above submit(), for why this is a
+  // plain assignment rather than a dependency-array entry.
+  reviseDayRef.current = reviseDay
 
   /* Stopping used to say nothing at all: useLessonStream returns null on an
      AbortError and fires no callback, so the transcript kept the question and
@@ -2176,8 +2226,9 @@ export function ChatPage() {
                       busy={busy}
                       isSpeaking={voice.speaking}
                       /* Straight off VoiceProvider — the sentence whose audio is
-                         playing right now, timed off the AudioContext clock rather
-                         than guessed at from a character interval. */
+                         playing right now, from the Realtime session's own
+                         output-transcript deltas rather than guessed at from a
+                         character interval. */
                       caption={voice.caption}
                       decisions={decisions}
                       messages={messages}
@@ -2185,10 +2236,10 @@ export function ChatPage() {
                       calendar={calendar}
                       onBuild={() => submit('Looks good, build the lesson plan.')}
                       /* Replay button: speaks the last reply again through the same
-                         Web Audio graph, captioning itself as it goes like any other
-                         spoken text. undefined (not a no-op function) when there's
-                         nothing to replay yet — VoiceModePanel hides the button
-                         outright rather than rendering it disabled. */
+                         Realtime speech queue, captioning itself as it goes like any
+                         other spoken text. undefined (not a no-op function) when
+                         there's nothing to replay yet — VoiceModePanel hides the
+                         button outright rather than rendering it disabled. */
                       onReplayLast={
                         lastReplyText
                           ? () => {
