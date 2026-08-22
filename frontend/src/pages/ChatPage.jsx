@@ -1441,8 +1441,16 @@ export function ChatPage() {
     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120)
   }
   useEffect(() => {
+    // messages alone used to gate this — but the live reply while it's still
+    // streaming (chatStream.text, rendered below as its own growing Message
+    // before it ever lands in `messages`) and the plan-building preview
+    // (stream.preview, the WeekStrip filling in day by day) both grow the
+    // transcript's height turn by turn without ever changing `messages`
+    // itself. Without them here, a teacher already at the bottom watched
+    // new content arrive below the fold with no follow-scroll until the
+    // whole generation finished and the final message finally landed.
     if (atBottom) endRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, atBottom])
+  }, [messages, atBottom, chatStream.text, stream.preview])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
      effect watching `messages` catches every assistant reply this component

@@ -323,7 +323,13 @@
     cursor: pointer;
     opacity: 0.75;
     transition: opacity var(--t-fast) var(--ease);
-    border-radius: 11px;
+    /* No border-radius: this strip is align-self:stretch, so its top and
+       bottom edges sit flush against the very top and bottom of the app
+       frame with no margin — a rounded corner there has nowhere to round
+       INTO, so it just cuts a triangular gap out of the strip and lets the
+       background show through, right at the screen edge. Square corners
+       read as flush; the taper this handle used to have (see git history)
+       is what actually needed fixing, not the corner radius. */
   }
   .app-rail-handle:hover {
     opacity: 1;
@@ -1993,12 +1999,13 @@
     transition:
       opacity var(--t-fast) var(--ease),
       background-color var(--t-fast) var(--ease);
-    /* A plain rectangle read as a scrollbar left behind by mistake, so the
-       top and bottom used to taper inward into a point instead. That read as
-       broken on shorter screens rather than "deliberate handle" — rounded
-       caps get the same effect (clearly not a stray scrollbar) without ever
-       narrowing to a point. */
-    border-radius: 11px;
+    /* No border-radius: this strip is align-self:stretch — flush against
+       the very top and bottom of the app frame with no margin — so a
+       rounded corner has nowhere to round INTO and just cuts a gap out of
+       the strip, letting the background show through at the screen edge.
+       (A plain rectangle used to read as a scrollbar left behind by
+       mistake because the top and bottom tapered inward into a point —
+       square corners still avoid that taper without introducing this gap.) */
   }
   .artifact-drawer-handle:hover,
   .artifact-drawer.is-open .artifact-drawer-handle {
