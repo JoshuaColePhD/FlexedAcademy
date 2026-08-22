@@ -162,6 +162,7 @@ export function getContextualSuggestions(context = {}) {
       context: 'recent-chat',
       action: 'open-chat',
       chatId: activeChat?.id,
+      weekNumber: targetWeek ? weekNumber(targetWeek) : null,
       contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
   }
@@ -186,6 +187,7 @@ export function getContextualSuggestions(context = {}) {
       priority: 4,
       context: 'decision',
       action: 'send-prompt',
+      weekNumber: targetWeek ? weekNumber(targetWeek) : null,
       contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
   }
@@ -201,6 +203,7 @@ export function getContextualSuggestions(context = {}) {
       context: 'plan',
       action: 'review-plan',
       chatId: activeChat?.id,
+      weekNumber: targetWeek ? weekNumber(targetWeek) : null,
       contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
     }))
   }
