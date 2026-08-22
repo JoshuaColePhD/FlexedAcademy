@@ -7,9 +7,7 @@ import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
-import { unitSuffix } from '../lib/planShape'
-import { shortRange } from '../lib/dates'
-import { WEEK_STATUS, weekStatus } from '../lib/weekStatus'
+import { monthKey, monthLabel, parseISO, todayISO } from '../lib/dates'
 import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
 import { Skeleton, SkeletonText } from './Skeleton'
 import { ShareDialog } from './ShareDialog'
@@ -351,77 +349,131 @@ function StandardsBody({ grounded = [], ungrounded = [], subject }) {
   )
 }
 
-/* Was five rows repeating "Monday: Teaching day" — this week's own no-school
- * flags, which the chat message already carries as the week strip (see
- * Message.jsx). "Actually open up a calendar table that shows you what's
- * going on" meant the school's calendar, not a second copy of the plan:
- * every week the school board already has (same query key ClassPage's own
- * Weeks panel and ArtifactRail's "Other weeks" use, so this costs nothing
- * extra to fetch), classified with the same WEEK_STATUS every other calendar
- * surface in the app uses, with the week this plan is actually FOR pinned
- * open at the top so it doesn't get lost scrolling a 36-week list. */
+const WEEKDAY_LETTERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+/* Every week's own `days` array (backend/schoolcal.py's week_days, already
+ * attached to each /api/weeks row — see db.py's week_board) flattened into
+ * one date → info map, then re-grouped into real calendar months. Weekends
+ * carry no record at all (the school week is Mon–Fri only) — treated as
+ * closed here rather than left blank, since a wall calendar with two
+ * unexplained gaps every row would read as missing data, not as Saturday. */
+function buildMonths(weeks) {
+  const byDate = new Map()
+  weeks.forEach((w) => {
+    ;(w.days || []).forEach((d) => {
+      byDate.set(d.date, {
+        isSchool: d.is_school,
+        note: d.note,
+        week: w.week,
+        hasPlan: w.has_plan,
+        chatId: w.chat_id,
+      })
+    })
+  })
+  const dates = Array.from(byDate.keys()).sort()
+  if (!dates.length) return []
+
+  const months = []
+  const cursor = parseISO(dates[0])
+  cursor.setDate(1)
+  const last = parseISO(dates[dates.length - 1])
+  while (cursor <= last) {
+    const y = cursor.getFullYear()
+    const m = cursor.getMonth()
+    const daysInMonth = new Date(y, m + 1, 0).getDate()
+    const leading = new Date(y, m, 1).getDay()
+    const cells = Array.from({ length: leading }, () => null)
+    for (let day = 1; day <= daysInMonth; day++) {
+      const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      const dow = new Date(y, m, day).getDay()
+      const isWeekend = dow === 0 || dow === 6
+      const info = byDate.get(iso)
+      cells.push({
+        iso,
+        day,
+        isOff: info ? info.isSchool === false : isWeekend,
+        note: info?.note,
+        week: info?.week,
+        hasPlan: info?.hasPlan,
+        chatId: info?.chatId,
+      })
+    }
+    months.push({ key: monthKey(`${y}-${String(m + 1).padStart(2, '0')}-01`), label: monthLabel(`${y}-${String(m + 1).padStart(2, '0')}-01`), cells })
+    cursor.setMonth(m + 1)
+  }
+  return months
+}
+
+/* A traditional wall calendar — was a flat list of week rows repeating
+ * "Monday: Teaching day," which answered "is this week built" but not the
+ * thing a teacher actually opens this for: is Thursday a real school day.
+ * Every day's own status (backend/schoolcal.py's per-day closures, already
+ * on the API response — see buildMonths above) instead of a per-week
+ * summary, so a single holiday inside an otherwise-normal week is visible
+ * without opening anything further. */
 function CalendarBody({ weeks = [], currentWeek, classId }) {
+  const months = useMemo(() => buildMonths(weeks), [weeks])
+  const today = todayISO()
   const currentRef = useRef(null)
-  // Once, not on every weeks.length change — a teacher scrolling this list
-  // shouldn't get yanked back to "this plan" if the list's size shifts
-  // (e.g. a background refetch) while they're mid-browse.
   const hasScrolled = useRef(false)
   useEffect(() => {
-    if (hasScrolled.current || !weeks.length) return
+    if (hasScrolled.current || !months.length) return
     hasScrolled.current = true
     currentRef.current?.scrollIntoView({ block: 'center' })
-  }, [weeks.length])
+  }, [months.length])
 
   if (!weeks.length) {
     return <p className="note">No school calendar is on file for this class.</p>
   }
 
   return (
-    <div className="detail-card-stack">
-      {weeks.map((w, i) => {
-        const status = weekStatus(w)
-        const { dot, label, tone } = WEEK_STATUS[status]
-        const isThisPlan = w.week === currentWeek
-        const openable = status === 'built' && w.chat_id && !isThisPlan
-        // Capped, not a flat i * 60ms: a school year is ~36 rows, and the
-        // stagger's job is to read as "settling into place," not to make a
-        // teacher wait over two seconds for Week 30 to appear. Flattens
-        // after the first 9 rows rather than climbing the whole list.
-        const style = { animationDelay: `${Math.min(i * 40, 360)}ms` }
-        const row = (
-          <div
-            className={`detail-card neo-raised fa-rise${w.no_school ? ' is-closed' : ''}${isThisPlan ? ' is-current' : ''
-              }`}
-            style={style}
-          >
-            <div className="detail-card-head">
-              <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
-              <span className="detail-card-type">
-                Week {String(w.week).padStart(2, '0')}
-                {unitSuffix(w.unit)}
-                {isThisPlan ? ' — this plan' : ''}
-              </span>
-              <span className={`detail-status-chip is-${tone}`}>{label}</span>
-            </div>
-            {/* Blank for a school with no real calendar on file yet
-                (schoolcal.py's NO_CALENDAR_SCHOOL_ID) rather than an empty
-                paragraph — shortRange itself already returns '' for a
-                week with no start/end. */}
-            {shortRange(w.start, w.end) ? (
-              <p className="detail-card-answer">{shortRange(w.start, w.end)}</p>
-            ) : null}
+    <div className="cal-months">
+      {months.map((month) => (
+        <div key={month.key} className="cal-month fa-rise">
+          <h3 className="cal-month-label">{month.label}</h3>
+          <div className="cal-weekday-row" aria-hidden="true">
+            {WEEKDAY_LETTERS.map((d) => (
+              <span key={d}>{d}</span>
+            ))}
           </div>
-        )
-        return openable ? (
-          <Link key={w.week} to={`/c/${classId}/chat/${w.chat_id}`} className="detail-card-link">
-            {row}
-          </Link>
-        ) : (
-          <div key={w.week} ref={isThisPlan ? currentRef : undefined}>
-            {row}
+          <div className="cal-grid">
+            {(() => {
+              // Ref goes on the FIRST day of the plan's own week only — every
+              // day in that week would otherwise reassign currentRef as the
+              // map runs, and scrollIntoView on whichever happened to run
+              // last (Friday) centers the same week either way, but only one
+              // DOM node should actually own the ref.
+              let refAssigned = false
+              return month.cells.map((cell, i) => {
+                if (!cell) return <span key={`pad-${i}`} className="cal-day is-pad" aria-hidden="true" />
+                const isToday = cell.iso === today
+                const isThisPlanWeek = cell.week === currentWeek
+                const openable = cell.hasPlan && cell.chatId && !isThisPlanWeek && !cell.isOff
+                const ref = isThisPlanWeek && !refAssigned ? ((refAssigned = true), currentRef) : undefined
+                const cellBody = (
+                  <span
+                    className={`cal-day${cell.isOff ? ' is-off' : ''}${cell.note ? ' has-note' : ''}${
+                      isToday ? ' is-today' : ''
+                    }${isThisPlanWeek ? ' is-current-week' : ''}${openable ? ' is-openable' : ''}`}
+                    title={cell.note || undefined}
+                  >
+                    {cell.day}
+                  </span>
+                )
+                return openable ? (
+                  <Link key={cell.iso} to={`/c/${classId}/chat/${cell.chatId}`} className="cal-day-link" ref={ref}>
+                    {cellBody}
+                  </Link>
+                ) : (
+                  <span key={cell.iso} ref={ref}>
+                    {cellBody}
+                  </span>
+                )
+              })
+            })()}
           </div>
-        )
-      })}
+        </div>
+      ))}
     </div>
   )
 }

@@ -2787,6 +2787,85 @@
   .detail-pair-list li span:nth-child(2) {
     color: var(--ink-faint);
   }
+  /* ── the school calendar's own month grid ─────────────────────────────────
+     A traditional wall calendar (ArtifactDetailPanel's CalendarBody) instead
+     of a flat list of week rows — see that component's own header comment.
+     Weekends carry no per-day record from the backend (the school week is
+     Mon–Fri only) and are treated as off the same as a named closure; the
+     "flag" tint below is reserved for closures that carry a real reason
+     (`.has-note` — a holiday, a workday), so a plain Saturday and "No school:
+     Labor Day" don't compete for the same visual weight. */
+  .cal-months {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+  }
+  .cal-month-label {
+    margin: 0 0 var(--sp-2);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--ink);
+  }
+  .cal-weekday-row,
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+  }
+  .cal-weekday-row {
+    margin-bottom: 4px;
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-align: center;
+    color: var(--ink-faint);
+  }
+  .cal-day-link {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+  }
+  .cal-day {
+    display: flex;
+    aspect-ratio: 1;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fs-xs);
+    color: var(--ink);
+    background: var(--paper-raised);
+    border-radius: var(--r-md);
+  }
+  .cal-day.is-pad {
+    background: transparent;
+  }
+  .cal-day.is-off {
+    color: var(--ink-faint);
+    background: var(--paper-inset);
+  }
+  .cal-day.is-off.has-note {
+    color: var(--flag);
+    background: var(--flag-tint);
+  }
+  .cal-day.is-today {
+    box-shadow: inset 0 0 0 1.5px var(--ink-soft);
+    font-weight: var(--fw-semibold);
+  }
+  /* The week this plan is actually FOR — same "found it" job the old list's
+     .is-current outline did, just per-day now. Accent, not --ok/--flag: this
+     isn't a status judgement on the week, only a locator. */
+  .cal-day.is-current-week {
+    box-shadow: inset 0 0 0 1.5px rgb(var(--accent-rgb) / 0.6);
+  }
+  .cal-day.is-today.is-current-week {
+    box-shadow: inset 0 0 0 1.5px var(--ink-soft), inset 0 0 0 3px rgb(var(--accent-rgb) / 0.6);
+  }
+  .cal-day-link .cal-day.is-openable {
+    cursor: pointer;
+    transition: box-shadow var(--t-fast) var(--ease);
+  }
+  .cal-day-link:hover .cal-day.is-openable {
+    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.4), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
+  }
   .detail-code {
     padding: 6px 10px;
     font-family: var(--font-mono);

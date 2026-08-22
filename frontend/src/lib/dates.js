@@ -7,6 +7,12 @@ const MONTH_DAY = { month: 'short', day: 'numeric' }
 
 const parse = (iso) => new Date(`${iso}T00:00:00`)
 
+/** Local midnight, not UTC — a plain `new Date(iso)` on a date-only string
+ * parses as UTC and can land on the wrong calendar day in any timezone west
+ * of it. Exported for building an actual month grid (see ArtifactDetailPanel's
+ * CalendarBody), where every cell needs a real Date to walk day-by-day. */
+export const parseISO = parse
+
 /** "Oct 19–23", or "Aug 31–Sep 4" when the week straddles a month. */
 export function shortRange(startISO, endISO) {
   if (!startISO || !endISO) return ''
