@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronsRight, Download, Loader2, Edit2, Save, X } from 'lucide-react'
 import { api } from '../lib/api'
+import { fetchStandardsBatch } from '../lib/standardsCache'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
@@ -235,30 +236,21 @@ function QuizBody({ quiz }) {
 
 /* A code alone ("1.1.3a") answers nothing a teacher would actually be
  * asking when they click through from the rail — what does it SAY, and
- * what document is it FROM. StandardStub fetches exactly that: the same
- * api.getStandard(code, {subject}) the chat's own inline citations use
- * (see Citation.jsx), scoped to this plan's course so a code that collides
- * across corpora (a real, hit bug: "3.2.3" rendered sourced to an AP
- * Japanese Language and Culture PDF inside a Pre-AP Algebra 2 plan) resolves
- * to THIS course's own text, not whichever course the corpus-wide lookup
- * happened to keep. */
-function StandardStub({ code, subject, flag, where, index = 0 }) {
-  const [record, setRecord] = useState(undefined)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    setRecord(undefined)
-    setFailed(false)
-    const controller = new AbortController()
-    api
-      .getStandard(code, { subject, signal: controller.signal })
-      .then(setRecord)
-      .catch((e) => {
-        if (e?.name !== 'AbortError') setFailed(true)
-      })
-    return () => controller.abort()
-  }, [code, subject])
-
+ * what document is it FROM. `record` is looked up by StandardsBody, not
+ * fetched here: this used to be one api.getStandard(code, {subject}) call
+ * PER stub (the same lookup the chat's own inline citations use — see
+ * Citation.jsx), so a plan citing a dozen codes fired a dozen requests on
+ * every open, none of them cached across mounts. StandardsBody now fetches
+ * every code in this plan in one request via lib/standardsCache.js, which
+ * shares its cache with Citation.jsx's popovers — a code seen once, by
+ * either surface, is free everywhere after. `subject` still scopes each
+ * lookup to this plan's course, so a code that collides across corpora (a
+ * real, hit bug: "3.2.3" rendered sourced to an AP Japanese Language and
+ * Culture PDF inside a Pre-AP Algebra 2 plan) resolves to THIS course's own
+ * text, not whichever course the corpus-wide lookup happened to keep.
+ * `record` is undefined while the batch is in flight, null once fetched and
+ * not found. */
+function StandardStub({ code, record, flag, where, index = 0 }) {
   return (
     <div
       className={`detail-card neo-raised fa-rise${flag ? ' is-flag' : ''}`}
@@ -270,11 +262,11 @@ function StandardStub({ code, subject, flag, where, index = 0 }) {
         </span>
         {where ? <span className="detail-card-type is-flag">not retrieved — {where}</span> : null}
       </div>
-      {record === undefined && !failed ? (
+      {record === undefined ? (
         <div className="mt-2">
           <SkeletonText lines={3} />
         </div>
-      ) : failed || !record ? (
+      ) : !record ? (
         <p className="detail-card-answer">
           Not in the standards corpus — no source document we hold defines this code.
         </p>
@@ -298,19 +290,45 @@ function StandardStub({ code, subject, flag, where, index = 0 }) {
 }
 
 function StandardsBody({ grounded = [], ungrounded = [], subject }) {
+  // One request for every code this plan cites, instead of one per stub —
+  // see StandardStub's own comment and lib/standardsCache.js. Keyed by
+  // subject + the joined code list so re-mounting with the same plan (the
+  // panel closes and reopens; the codes don't change) re-renders from the
+  // shared cache with no new request, while a genuinely different plan's
+  // codes still trigger one.
+  const codes = useMemo(
+    () => [...grounded, ...ungrounded.map((u) => u.code)],
+    [grounded, ungrounded]
+  )
+  const [records, setRecords] = useState({})
+
+  useEffect(() => {
+    if (!codes.length) return undefined
+    const controller = new AbortController()
+    fetchStandardsBatch(codes, { subject, signal: controller.signal })
+      .then(setRecords)
+      .catch((e) => {
+        // A failed batch leaves every code showing "not in the corpus"
+        // rather than an endless skeleton — same fallback StandardStub
+        // already renders for a genuinely missing code.
+        if (e?.name !== 'AbortError') setRecords(Object.fromEntries(codes.map((c) => [c, null])))
+      })
+    return () => controller.abort()
+  }, [codes, subject])
+
   if (!grounded.length && !ungrounded.length) {
     return <p className="note">No grounding was recorded for this plan.</p>
   }
   return (
     <div className="detail-card-stack">
       {grounded.map((code, i) => (
-        <StandardStub key={code} code={code} subject={subject} index={i} />
+        <StandardStub key={code} code={code} record={records[code]} index={i} />
       ))}
       {ungrounded.map((u, i) => (
         <StandardStub
           key={`${u.code}-${u.dayName}`}
           code={u.code}
-          subject={subject}
+          record={records[u.code]}
           flag
           where={u.dayName}
           index={grounded.length + i}

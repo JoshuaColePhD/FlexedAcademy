@@ -212,6 +212,24 @@ def search(req: SearchRequest):
     }
 
 
+@router.get("/batch")
+def get_standards_batch(codes: str = Query(..., max_length=4000), subject: str | None = Query(None)):
+    """The same lookup as GET /{code}, for every code a plan cites at once.
+
+    The Standards rail panel used to call GET /{code} once per cited code —
+    a plan citing a dozen standards fired a dozen separate requests, all
+    competing for the same connection pool and (on a cold process) the same
+    first, slow chunks.json parse. One request here does the same lookups
+    server-side, where they're free once the *chunks.json files are loaded.
+
+    A comma-separated query param, not a JSON body, so this stays a GET —
+    cacheable and bookmarkable like every other read here, and simple enough
+    that a querystring doesn't need the ceremony of a request model.
+    """
+    requested = [c.strip() for c in codes.split(",") if c.strip()]
+    return {code: retrieval.chunk_for_code(code, subject_code=subject) for code in requested}
+
+
 @router.get("/{code:path}")
 def get_standard(code: str, subject: str | None = Query(None)):
     """A code alone is not a safe key across the whole corpus — see
