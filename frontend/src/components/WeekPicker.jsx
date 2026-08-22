@@ -49,25 +49,29 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
       {/* min-w-0 alone does NOT stop a native <select> sizing itself to its
           longest option's text — that's the box's intrinsic content width,
           which flex-shrink doesn't reliably override for form controls on
-          mobile Safari. A real unit name plus " · already planned" is long
-          enough to push the whole app shell past 100vw once that happens:
-          not a clipped select, a horizontally scrolling page. flex-1
-          (flex-basis 0, not auto) sidesteps that intrinsic sizing entirely
-          so the OS clips the rendered text instead — but flex-grow:1 alone
-          also let it claim ALL of the row's leftover space whenever the
-          class name beside it was short, stretching the box (and the arrow
-          painted at ITS right edge, not the text's) far past the visible
-          label. max-w caps how far it grows without reintroducing the
-          intrinsic-sizing bug max-width alone would (a max-width computed
-          from auto content still sizes off the longest option); flex-shrink
-          still takes it below that cap under real pressure. */}
+          mobile Safari. A real unit name plus a cross-month date range is
+          long enough to push the whole app shell past 100vw once that
+          happens: not a clipped select, a horizontally scrolling page.
+          flex-1 (flex-basis 0, not auto) sidesteps that intrinsic sizing
+          entirely so the OS clips the rendered text instead — but
+          flex-grow:1 alone also let it claim ALL of the row's leftover
+          space whenever the class name beside it was short, stretching the
+          box (and the arrow painted at ITS right edge, not the text's) far
+          past the visible label. max-w caps how far it grows without
+          reintroducing the intrinsic-sizing bug max-width alone would (a
+          max-width computed from auto content still sizes off the longest
+          option); flex-shrink still takes it below that cap under real
+          pressure. 28ch comfortably covers the longest realistic option
+          ("Week 12 · Sep 29–Oct 3 ✓", ~24 chars) now that "already
+          planned" is a checkmark instead of eighteen characters of text —
+          shrink this back down if the option text ever grows again. */}
       <select
         id="week-picker"
         aria-label={schoolName ? `${schoolName} week` : 'Week'}
         value={value ?? ''}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="week-picker-select bg-paper-raised min-w-0 max-w-[34ch] flex-1 truncate"
+        className="week-picker-select bg-paper-raised min-w-0 max-w-[28ch] flex-1 truncate"
       >
         {/* Chats created before the week was pinned (db.py migration 24) have
             no week to show. Without an option matching value="" the browser
@@ -88,9 +92,14 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
           const range = shortRange(w.start, w.end)
           return (
             <option key={w.week} value={w.week}>
+              {/* A native <option> can only hold plain text — no icon, no
+                  markup — so "already planned" (long enough on its own to
+                  be most of what got truncated to "alre…" in the closed
+                  select) becomes a bare checkmark instead: same signal,
+                  three characters instead of eighteen. */}
               Week {String(w.week).padStart(2, '0')}
               {range ? ` · ${range}` : ''}
-              {w.has_plan ? ' · already planned' : ''}
+              {w.has_plan ? ' ✓' : ''}
             </option>
           )
         })}
