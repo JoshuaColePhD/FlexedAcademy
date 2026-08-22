@@ -222,6 +222,11 @@ export function ArtifactRail({
   // rail-empty state below: conflating the two would show a stale rail
   // standing in for a real plan that just failed to load.
   artifactLoadError = false,
+  // Re-runs just the failed plan fetch — see ChatPage's retryArtifactLoad.
+  // Falls back to a full reload only if a caller genuinely has nothing
+  // better to offer, so this never regresses to a hard crash on a stray
+  // render that forgot to pass it.
+  onRetryArtifact = () => window.location.reload(),
 }) {
   const [shareTarget, setShareTarget] = useState(null)
   const plan = artifact?.plan
@@ -351,7 +356,7 @@ export function ArtifactRail({
           <div className="rail-empty">
             <AlertTriangle size={20} aria-hidden="true" className="text-mark" />
             <p>Couldn’t load this week’s plan.</p>
-            <button type="button" className="btn text-xs" onClick={() => window.location.reload()}>
+            <button type="button" className="btn text-xs" onClick={onRetryArtifact}>
               Reload
             </button>
           </div>
@@ -361,6 +366,16 @@ export function ArtifactRail({
                 dropping "Built from" a few lines up. */}
             {!isBar ? <EmptyRailArt color={color.rgb} /> : null}
             <p>Nothing built yet. Describe a week in the chat.</p>
+            {/* Composer's own id — the same one ChatPage restores focus to
+                when the document panel closes (see rail-open-title above) —
+                rather than a new ref threaded down just for this button. */}
+            <button
+              type="button"
+              className="btn text-xs"
+              onClick={() => document.getElementById('composer-input')?.focus()}
+            >
+              Start a plan
+            </button>
           </div>
         )}
       </div>
@@ -440,7 +455,17 @@ export function ArtifactRail({
                   : 'all retrieved'
             }
             flag={checking && ungrounded.length > 0}
-            title={checking ? grounded.join(', ') : undefined}
+            // Capped rather than the full list: a plan citing a few dozen
+            // standards turned this into one giant, unwrapped tooltip line.
+            // Click-through to the Standards row itself is still the real
+            // answer for "show me all of them."
+            title={
+              checking
+                ? grounded.length > 8
+                  ? `${grounded.slice(0, 8).join(', ')}, and ${grounded.length - 8} more`
+                  : grounded.join(', ')
+                : undefined
+            }
             onClick={onOpenStandards}
           />
         </div>

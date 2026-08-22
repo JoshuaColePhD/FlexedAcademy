@@ -515,7 +515,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
       </header>
 
       <div className="flex flex-col gap-8 fa-rise">
-        <section className="flex flex-col gap-4">
+        <section id="class-documents" className="flex flex-col gap-4">
           <div className="border-b border-edge pb-2">
             <h3 className="text-sm font-semibold text-ink">Class Configuration</h3>
             <p className="text-xs text-ink-muted">Reference documents and settings for this class.</p>

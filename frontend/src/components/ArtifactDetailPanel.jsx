@@ -36,7 +36,14 @@ function QuizQuestionCard({ q, index, onUpdate }) {
     if (!isEditing) setDraft(q)
   }, [q, isEditing])
 
+  // An empty prompt or an empty MC choice isn't a smaller question, it's a
+  // broken one — the quiz export would ship a blank line to students.
+  const isValid =
+    draft.prompt?.trim() &&
+    (draft.type !== 'multiple_choice' || (draft.choices || []).every((c) => c?.trim()))
+
   const handleSave = () => {
+    if (!isValid) return
     onUpdate(draft)
     setIsEditing(false)
   }
@@ -56,7 +63,13 @@ function QuizQuestionCard({ q, index, onUpdate }) {
             <button type="button" className="p-1 text-ink-muted hover:text-ink transition-colors" onClick={handleCancel} title="Cancel">
               <X size={14} />
             </button>
-            <button type="button" className="p-1 text-primary hover:text-primary-dark transition-colors" onClick={handleSave} title="Save">
+            <button
+              type="button"
+              className="p-1 text-primary hover:text-primary-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={handleSave}
+              disabled={!isValid}
+              title={isValid ? 'Save' : 'A question needs a prompt and every choice filled in'}
+            >
               <Save size={14} />
             </button>
           </div>
@@ -349,7 +362,13 @@ function StandardsBody({ grounded = [], ungrounded = [], subject }) {
  * open at the top so it doesn't get lost scrolling a 36-week list. */
 function CalendarBody({ weeks = [], currentWeek, classId }) {
   const currentRef = useRef(null)
+  // Once, not on every weeks.length change — a teacher scrolling this list
+  // shouldn't get yanked back to "this plan" if the list's size shifts
+  // (e.g. a background refetch) while they're mid-browse.
+  const hasScrolled = useRef(false)
   useEffect(() => {
+    if (hasScrolled.current || !weeks.length) return
+    hasScrolled.current = true
     currentRef.current?.scrollIntoView({ block: 'center' })
   }, [weeks.length])
 
@@ -407,7 +426,7 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
   )
 }
 
-function DocumentBody({ doc }) {
+function DocumentBody({ doc, classId }) {
   if (!doc) return <p className="note">This document is no longer attached to the class.</p>
   return (
     <div className="detail-card-stack">
@@ -422,7 +441,17 @@ function DocumentBody({ doc }) {
         </p>
         <p className="note" style={{ marginTop: 'var(--sp-2)' }}>
           Used as context when this week was built. The full text isn't shown here —
-          re-upload it from the class page to replace it.
+          {classId ? (
+            <>
+              {' '}
+              <Link to={`/c/${classId}/class#class-documents`} className="underline hover:no-underline">
+                re-upload it from the class page
+              </Link>{' '}
+              to replace it.
+            </>
+          ) : (
+            ' re-upload it from the class page to replace it.'
+          )}
         </p>
       </div>
     </div>
@@ -463,6 +492,7 @@ export function ArtifactDetailPanel({
   const titleRef = useRef(null)
   const color = classColor(classId)
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
+  const toast = useToast()
   // Was rail-card-only — sharing a quiz meant collapsing back out of the
   // very view you were reading it in, unlike the plan viewer (ArtifactPanel),
   // which has always had Share right in its own header. Same ShareDialog
@@ -557,7 +587,7 @@ export function ArtifactDetailPanel({
           {kind === 'calendar' ? (
             <CalendarBody weeks={weeks} currentWeek={currentWeek} classId={classId} />
           ) : null}
-          {kind === 'document' ? <DocumentBody doc={doc} /> : null}
+          {kind === 'document' ? <DocumentBody doc={doc} classId={classId} /> : null}
         </div>
       </div>
 

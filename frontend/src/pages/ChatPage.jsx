@@ -204,6 +204,13 @@ export function ChatPage() {
      built doesn't exist" while the chat above it says otherwise. See the
      reload effect below. */
   const [artifactLoadError, setArtifactLoadError] = useState(false)
+  // Bumped by the rail's own Reload button — see retryArtifactLoad below and
+  // its use in the load effect's dependency array. Was a plain
+  // window.location.reload(): recovering a single failed getPlan() call by
+  // reloading the entire app (transcript, composer draft, scroll position,
+  // every other query's cache) is a much bigger hammer than the one failed
+  // request calls for.
+  const [artifactRetryTick, setArtifactRetryTick] = useState(0)
   const [query, setQuery] = useState('')
   const [attachments, setAttachments] = useState([])
   /* A follow-up typed and sent while the current turn is still busy — held
@@ -608,7 +615,20 @@ export function ChatPage() {
     // useCallback closed over a ref, so even this closure's "stale" copy
     // still aborts whatever is actually in flight — see useLessonStream.js.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, toast])
+  }, [chatId, toast, artifactRetryTick])
+
+  // The rail's Reload button, for the "a real plan exists and its fetch
+  // failed" case. localFor.current already equals chatId by the time
+  // artifactLoadError can be true (it's set right after getChat succeeds,
+  // before the plan-specific fetch that can fail) — so the load effect's own
+  // "already loaded this chat" guard would otherwise skip a bare re-run.
+  // Clearing it here is what makes bumping artifactRetryTick actually redo
+  // the fetch instead of being a no-op.
+  const retryArtifactLoad = useCallback(() => {
+    localFor.current = null
+    setArtifactLoadError(false)
+    setArtifactRetryTick((t) => t + 1)
+  }, [])
 
   /* ClassPage's week list links an unplanned week here as `?week=N`, the one
      way left to target a specific week rather than the auto-detected next
@@ -2230,6 +2250,7 @@ export function ChatPage() {
           quizBuilding={quizBuilding}
           variant="bar"
           artifactLoadError={artifactLoadError}
+          onRetryArtifact={retryArtifactLoad}
         />
       ) : null}
 
@@ -2446,6 +2467,7 @@ export function ChatPage() {
           busy={busy}
           quizBuilding={quizBuilding}
           artifactLoadError={artifactLoadError}
+          onRetryArtifact={retryArtifactLoad}
         />
       ) : null}
 
