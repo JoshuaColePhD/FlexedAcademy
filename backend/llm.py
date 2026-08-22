@@ -15,6 +15,7 @@ import functools
 import hashlib
 import json
 import logging
+import random
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -311,6 +312,54 @@ _QUESTION_TYPE_PROMPT_NAMES = {
     "matching": "matching",
 }
 
+# Standard item-writing guidance (Haladyna & Downing-style MC guidelines,
+# Bloom's-level spread) folded straight into the prompt rather than a
+# separate pass — there's no cheap structural check for "is this a good
+# distractor," so the only lever is asking the model to follow the same
+# rules a human item-writer would before it ever generates text.
+_ITEM_WRITING_GUIDELINES = (
+    "Cognitive level: don't make every question pure recall. Where the plan's content "
+    "supports it, include some questions that ask students to apply, compare, or reason "
+    "about the material (e.g. 'which best explains why...', 'what would happen if...') "
+    "alongside straightforward recall/definition questions — not everything needs to be "
+    "hard, but a quiz that's 100% 'what is the definition of X' is weak.\n"
+    "Multiple choice: write 3-5 options that are homogeneous in length, grammar, and "
+    "specificity, so the correct answer isn't the odd one out. Wrong options should be "
+    "plausible — reflect a real misconception or a common mistake a student might make, "
+    "not random or absurd text. Never use 'all of the above' or 'none of the above'. "
+    "Exactly one option should be unambiguously correct.\n"
+    "Stems (the question text): ask a complete question or state a complete problem — "
+    "avoid stems that are just a sentence fragment options are appended to. Avoid negative "
+    "phrasing ('which of these is NOT...') unless the negative word is unmistakable; "
+    "prefer a positive stem instead.\n"
+    "True/false: base the statement on one specific, checkable fact from the plan, not a "
+    "vague or partially-true compound statement.\n"
+    "Matching: keep terms and matches each roughly the same length/type so answers can't "
+    "be guessed by process of elimination on format alone.\n\n"
+)
+
+
+def _randomize_mc_choice_order(quiz: dict) -> dict:
+    """Shuffle each multiple_choice question's `choices` in place and remap
+    `correct_index` to match. Models writing MC options are well known to
+    have a positional bias toward putting the correct answer first or
+    second regardless of what the prompt asks for — asking nicely in the
+    prompt doesn't reliably fix that, so the order is re-randomized here in
+    code, after generation, where it's guaranteed rather than requested.
+    """
+    for q in quiz.get("questions") or []:
+        if q.get("type") != "multiple_choice":
+            continue
+        choices = q.get("choices") or []
+        idx = q.get("correct_index")
+        if not isinstance(idx, int) or not (0 <= idx < len(choices)):
+            continue
+        order = list(range(len(choices)))
+        random.shuffle(order)
+        q["choices"] = [choices[i] for i in order]
+        q["correct_index"] = order.index(idx)
+    return quiz
+
 
 def generate_quiz(
     user_id: str, plan: dict, question_types: list[str], num_questions: int, *, class_id: str | None = None
@@ -332,7 +381,8 @@ def generate_quiz(
         f"Write approximately {num_questions} questions, using ONLY these question type(s): {types_wanted}. "
         "Spread the questions across the days rather than clustering them on one. "
         "Each question must be self-contained — a student answering it should not need to see the plan itself.\n\n"
-        "THE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
+        + _ITEM_WRITING_GUIDELINES
+        + "\nTHE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
     )
     custom_instructions = custom_instructions_for(user_id)
     if custom_instructions:
@@ -357,7 +407,7 @@ def generate_quiz(
             {"role": "user", "content": "Write the quiz now."},
         ],
     )
-    return loads_lenient(content or "")
+    return _randomize_mc_choice_order(loads_lenient(content or ""))
 
 
 def revise_quiz(
@@ -382,7 +432,8 @@ def revise_quiz(
         "never invent a standard code, term, or fact that isn't already in it. Keep the same question "
         "types and roughly the same number of questions as the quiz below unless the teacher's feedback "
         "says otherwise.\n\n"
-        "THE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
+        + _ITEM_WRITING_GUIDELINES
+        + "THE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
         + "\n\nTHE QUIZ YOU ALREADY WROTE:\n\n" + json.dumps(existing_quiz, indent=2)
     )
     custom_instructions = custom_instructions_for(user_id)
@@ -408,7 +459,7 @@ def revise_quiz(
             {"role": "user", "content": f"Revise the quiz above. Teacher's feedback: {feedback}"},
         ],
     )
-    return loads_lenient(content or "")
+    return _randomize_mc_choice_order(loads_lenient(content or ""))
 
 
 def rewrite_day(

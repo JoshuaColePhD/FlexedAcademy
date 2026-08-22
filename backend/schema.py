@@ -356,10 +356,12 @@ def validate_quiz(quiz: dict) -> list[str]:
         if qtype == "multiple_choice":
             choices = q.get("choices") or []
             idx = q.get("correct_index")
-            if len(choices) < 2:
-                raise QuizSchemaError(f"{label}: fewer than 2 choices.")
+            if len(choices) < 3:
+                raise QuizSchemaError(f"{label}: fewer than 3 choices.")
             if not isinstance(idx, int) or not (0 <= idx < len(choices)):
                 raise QuizSchemaError(f"{label}: correct_index {idx!r} doesn't point into choices.")
+            if any(c.strip().lower() in ("all of the above", "none of the above") for c in choices):
+                warnings.append(f"{label}: uses 'all/none of the above', which is a weak distractor pattern.")
         elif qtype == "short_answer":
             if not (q.get("accepted_answers") or []):
                 raise QuizSchemaError(f"{label}: no accepted_answers.")
