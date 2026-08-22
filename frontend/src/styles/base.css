@@ -1793,12 +1793,18 @@
      A separate class rather than reusing .voice-dock directly: the two are
      never open at once, but voiceOpen/voiceModeActive elsewhere key off the
      class name, and conflating them would make "is voice mode open" and "is
-     a question pending" the same flag by accident. */
+     a question pending" the same flag by accident.
+
+     --t-slow, not --t-base: at --t-base (220ms) the row's own grow/shrink
+     read as an instant cut rather than a visible expand — on Josh's own
+     ask, slowed down so the composer visibly growing to make room (and
+     shrinking back after Skip/answer) is actually legible, not just felt as
+     a pop. */
   .questions-dock {
     display: grid;
     flex-shrink: 0;
     grid-template-rows: 0fr;
-    transition: grid-template-rows var(--t-base) var(--ease-out);
+    transition: grid-template-rows var(--t-slow) var(--ease-out);
   }
   .questions-dock.is-open {
     grid-template-rows: 1fr;

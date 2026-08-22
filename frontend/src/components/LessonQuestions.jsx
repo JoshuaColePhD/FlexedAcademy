@@ -102,7 +102,18 @@ export function LessonQuestions({ questions, onSubmit }) {
   if (submitted) return null
 
   return (
-    <div className="neo-world neo-panel flex flex-col gap-2 rounded-2xl bg-paper-raised p-3">
+    // neo-inset, not neo-panel: this card sits flush against the edges of
+    // questions-dock-body (ChatPage), which clips overflow with zero margin
+    // to spare. neo-panel's shadow bleeds OUTSIDE its own box (12px offset,
+    // 28px blur on each side) to read as "raised" — with no room to fade
+    // before the clip, the dark half of it got cut off hard, showing up as
+    // a visible rectangular notch in whichever corner that shadow happened
+    // to fall in (bottom-right in a left-to-right, top-to-bottom light).
+    // neo-inset's shadow is entirely INSET, so it can never bleed past this
+    // element's own border box no matter how tightly its container clips —
+    // the same reasoning composer's own .input textarea (just below this)
+    // already used its inset shadow for.
+    <div className="neo-world neo-inset flex flex-col gap-2 rounded-2xl bg-paper-raised p-3">
       <p className="eyebrow">
         {total > 1 ? `Question ${index + 1} of ${total}` : 'One quick question'}
       </p>

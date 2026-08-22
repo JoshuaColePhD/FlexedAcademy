@@ -1935,10 +1935,18 @@ export function ChatPage() {
               className="btn-icon relative"
               aria-label="Open downloads"
               title="Downloads ready"
-              onClick={openDocument}
+              /* Opens the docked rail (ArtifactDrawer), not the full document —
+                 on Josh's own ask, this button surfaces "a download is ready"
+                 and lets the rail's own Download row take it from there,
+                 instead of jumping straight into the lesson plan itself.
+                 A phone has no docked rail to open (see the isPhone-only
+                 ArtifactRail "bar" variant above the composer, which has no
+                 open/close state of its own), so there openDocument() is
+                 still the only way to reach it. */
+              onClick={() => (isPhone ? openDocument() : setRailOpen(true))}
             >
               <Download size={17} aria-hidden="true" />
-              {!docOpen ? (
+              {!docOpen && !railOpen ? (
                 <span
                   className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
                   aria-hidden="true"

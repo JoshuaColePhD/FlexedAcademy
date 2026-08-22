@@ -51,16 +51,23 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
           which flex-shrink doesn't reliably override for form controls on
           mobile Safari. A real unit name plus " · already planned" is long
           enough to push the whole app shell past 100vw once that happens:
-          not a clipped select, a horizontally scrolling page. flex-1 makes
-          the box claim the row's remaining space instead of its content's
-          width, so the OS clips the rendered text instead. */}
+          not a clipped select, a horizontally scrolling page. flex-1
+          (flex-basis 0, not auto) sidesteps that intrinsic sizing entirely
+          so the OS clips the rendered text instead — but flex-grow:1 alone
+          also let it claim ALL of the row's leftover space whenever the
+          class name beside it was short, stretching the box (and the arrow
+          painted at ITS right edge, not the text's) far past the visible
+          label. max-w caps how far it grows without reintroducing the
+          intrinsic-sizing bug max-width alone would (a max-width computed
+          from auto content still sizes off the longest option); flex-shrink
+          still takes it below that cap under real pressure. */}
       <select
         id="week-picker"
         aria-label={schoolName ? `${schoolName} week` : 'Week'}
         value={value ?? ''}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="week-picker-select bg-paper-raised min-w-0 flex-1 truncate"
+        className="week-picker-select bg-paper-raised min-w-0 max-w-[34ch] flex-1 truncate"
       >
         {/* Chats created before the week was pinned (db.py migration 24) have
             no week to show. Without an option matching value="" the browser
