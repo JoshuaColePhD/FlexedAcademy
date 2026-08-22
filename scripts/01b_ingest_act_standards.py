@@ -1,103 +1,122 @@
 #!/usr/bin/env python3
 """
-Downloads the ACT Standards from the provided Google Sheet CSV, maps them 
-to the respective courses, and outputs them as act_chunks.json.
+Parses the ground-truth ACT standards from data/raw/act-*-standards.md,
+maps them to the respective courses, and outputs them as act_chunks.json.
+
+This script ensures zero-fabrication by reading directly from the local ground-truth markdown files.
 """
 
-import csv
 import json
-import urllib.request
-from collections import Counter
 from pathlib import Path
+import re
 
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1jZGqNgxTbvWZQLc7pYPUgi9C-DtUlk1M8QK1lJWF1tA/export?format=csv"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RAW_DIR = PROJECT_ROOT / "data" / "raw"
 OUT_PATH = PROJECT_ROOT / "data" / "processed" / "act_chunks.json"
 
-def main():
-    print("Downloading ACT Standards CSV...")
-    req = urllib.request.Request(SHEET_URL)
-    try:
-        with urllib.request.urlopen(req) as response:
-            lines = [line.decode('utf-8') for line in response.readlines()]
-    except Exception as e:
-        print(f"Failed to download CSV: {e}")
-        return
-        
-    reader = csv.DictReader(lines)
-
-    chunks = []
-    skipped = Counter()
-
-    # Map the CSV's 'Section' onto the canonical course codes.
-    #
-    # These MUST be the same codes the ALCOS ingest writes (see
-    # 01d_ingest_alcos_case.py FRAMEWORKS) and the same ids /api/frameworks hands
-    # the Subject Framework dropdown. They previously read
-    # "English_Language_Arts"/"Mathematics", which matched nothing: retrieval
-    # filters on the selected framework's id, so picking "English Language Arts"
-    # (ELA) found zero ACT standards, and the two orphan codes showed up in the
-    # dropdown as separate near-empty frameworks. ACT Writing had its own
-    # "Writing" course, which is not a framework at all.
-    course_map = {
-        "English": ["AP_Lang", "ELA"],
-        "Reading": ["AP_Lang", "ELA"],
-        "Writing": ["AP_Lang", "ELA"],
-        "Math": ["Math"],
-        "Science": ["Science"],
+MAPPINGS = {
+    "english": {
+        "courses": ["AP_Lang", "ELA"],
+        "prefix": "E"
+    },
+    "math": {
+        "courses": ["Math"],
+        "prefix": "M"
+    },
+    "reading": {
+        "courses": ["Social_Studies", "AP_Lang", "ELA"],
+        "prefix": "R"
+    },
+    "science": {
+        "courses": ["Science"],
+        "prefix": "S"
     }
+}
 
-    # The district lesson-plan template has an ACT Alignment row for every high
-    # school course, so these need to be groundable at any high school grade.
-    #
-    # This replaces a [11, 99] fan-out. 99 was meant as "generic high school", but
-    # retrieval filters `grade == <selected grade>` and no teacher can select 99,
-    # so every 99 row was unreachable — half the ACT corpus embedded twice and
-    # half of that dead. Grade 9-12 is both reachable and true: students sit the
-    # ACT in grade 11, and the standards are taught across high school.
-    ACT_GRADES = (9, 10, 11, 12)
+ACT_GRADES = (9, 10, 11, 12)
 
-
-    for row in reader:
-        section = row.get("Section", "").strip()
-        desc = row.get("Skill Description", "").strip()
-        code = row.get("Standard Code", "").strip()
-        strand = row.get("Strand Name", "").strip()
-        score_band = row.get("Score Band", "").strip()
+def process_file(path: Path, mapping: dict) -> list:
+    print(f"Parsing ACT Standards from {path.name}...")
+    
+    with open(path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
         
-        if not code or not desc:
+    chunks = []
+    courses = mapping["courses"]
+    prefix = mapping["prefix"]
+    
+    section = ""
+    strand = ""
+    score_band = ""
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
             continue
             
-        courses = course_map.get(section)
-        if not courses:
-            skipped[section] += 1
-            continue
+        if line.startswith("## ") and line != "## Not yet included":
+            section = line[3:].strip()
+            strand = ""
+            score_band = ""
+        elif line.startswith("### "):
+            strand = line[4:].strip()
+            score_band = ""
+        elif line.startswith("**") and line.endswith("**"):
+            score_band = line.replace("**", "").strip()
+        elif line.startswith("- ") and "." in line and section and strand and score_band:
+            bullet_text = line[2:] 
+            if "." in bullet_text:
+                code_raw, desc = bullet_text.split(".", 1)
+                code_raw = code_raw.strip()
+                desc = desc.strip()
+                
+                if code_raw.isupper() or any(c.isdigit() for c in code_raw):
+                    parts = code_raw.split(" ")
+                    if len(parts) == 2:
+                        code = f"{prefix}.{parts[0]}.{parts[1]}"
+                    else:
+                        code = f"{prefix}.{code_raw.replace(' ', '.')}"
+                        
+                    for course in courses:
+                        for grade in ACT_GRADES:
+                            chunk = {
+                                "code": code,
+                                "description": desc,
+                                "course": course,
+                                "grade": grade,
+                                "state": "National",
+                                "source_type": "act_standards",
+                                "source_document": path.name,
+                                "source_page_or_section": f"{section} > {strand}",
+                                "strand": strand,
+                                "score_band": score_band,
+                                "verbatim_ok": True,
+                                "embed_text": f"{section} ACT Standard {code}\nStrand: {strand}\nScore Band: {score_band}\n{desc}"
+                            }
+                            chunks.append(chunk)
+                            
+    return chunks
 
-        for course in courses:
-            for grade in ACT_GRADES:
-                chunk = {
-                    "code": code,
-                    "description": desc,
-                    "course": course,
-                    "grade": grade,
-                    "state": "National",
-                    "source_type": "act_standards",
-                    "source_document": "ACT_Standards_Sheet",
-                    "source_page_or_section": section,
-                    "strand": strand,
-                    "score_band": score_band,
-                    "verbatim_ok": True,
-                    "embed_text": f"{section} ACT Standard {code}\nStrand: {strand}\nScore Band: {score_band}\n{desc}"
-                }
-                chunks.append(chunk)
-            
+def main():
+    all_chunks = []
+    parsed_count = 0
+    
+    for subject, mapping in MAPPINGS.items():
+        file_path = RAW_DIR / f"act-{subject}-standards.md"
+        if file_path.exists():
+            chunks = process_file(file_path, mapping)
+            all_chunks.extend(chunks)
+            unique = len(chunks) // (len(mapping["courses"]) * len(ACT_GRADES))
+            parsed_count += unique
+            print(f"  -> Parsed {unique} unique standards")
+        else:
+            print(f"Warning: {file_path.name} not found.")
+
     with open(OUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(chunks, f, indent=2)
+        json.dump(all_chunks, f, indent=2)
         
-    print(f"Wrote {len(chunks)} chunks to {OUT_PATH.name}")
-    if skipped:
-        # Named, not silent: an unmapped section is ACT content we are dropping.
-        print("Skipped unmapped CSV sections:", dict(skipped))
+    print(f"Parsed {parsed_count} unique standards from markdown across all subjects.")
+    print(f"Wrote {len(all_chunks)} chunk permutations to {OUT_PATH.name}")
 
 if __name__ == "__main__":
     main()

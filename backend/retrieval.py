@@ -64,8 +64,8 @@ UNGROUNDABLE_FAMILIES = ("CLR", "IKI")
 _CODE_RE = re.compile(
     r"(?<![\w.])("
     # ACT standards as published in our source sheet: section letter, strand,
-    # score band. e.g. E.CSE.301, R.WME.501, M.NCP.401, S.IOD.301, W.DEV.501
-    r"[ERMSW]\.[A-Z]{2,4}\.\d{3}"
+    # score band. e.g. E.CSE.301, R.WME.501, M.N.401, S.IOD.301, W.DEV.501
+    r"[ERMSW]\.[A-Z]{1,4}\.\d{3}"
     # College Board: learning objectives, essential knowledge, science
     # practices, enduring understandings, key concepts.
     # e.g. LO.3.A.3.1, EK 1.2.A.1, SP 4.2, KC 5.3.I.B
@@ -217,6 +217,41 @@ _COURSE_ALIASES = {
     "ap us government and politics": "ap us government & politics",
     "ap english language and composition": "ap lang",
     "ap english literature": "ap english literature and composition",
+    # "9-12ap..." has no word boundary between the digit and "ap", so
+    # _COURSE_SUFFIX_RE's own "grades? ?9-12" branch never fires on it (unlike
+    # every other course this ingest produced). Found 2026-08-22: 11 real
+    # standards (climate change, recycling/waste, prescribed burns, food-web
+    # feedback loops) existed ONLY under this raw value and were invisible to
+    # anyone who selected "AP Environmental Science" — retrieve_grounded and
+    # course_variants() both filter by identity, so the misfiled 694 chunks
+    # never matched.
+    "grades 9 12ap environmental science": "ap environmental science",
+    # Holds real AP English Lit CED skill codes (CHR-1, STR-3, FIG-5/6, LAN-7,
+    # NAR-4, SET-2) under a name with no "AP" or "Literature" in it, so neither
+    # the suffix regex nor a name-pattern guess could ever have joined it.
+    # Found 2026-08-22 alongside the AP Environmental Science gap.
+    "advanced english": "ap english literature and composition",
+    # _COURSE_SUFFIX_RE strips "skills standards" and "topic outline" as
+    # publication-artefact noise — correct for e.g. "AP Statistics - Course
+    # Skills" collapsing onto "ap statistics", wrong here because it ALSO eats
+    # "Calculus", leaving "ap" alone rather than "ap calculus ab bc". Found
+    # 2026-08-22: 27 chunks of Calculus math practices (rounding, graphing
+    # technique, notation) and 88 chunks of BC-specific topics (Taylor series,
+    # radius of convergence, Lagrange error bound) were both orphaned this way
+    # — this app has no separate "AP Calculus BC" course to file the second
+    # set under, so both merge into the one Calculus course offered.
+    "ap calculus": "ap calculus ab bc",
+    "ap calculus bc": "ap calculus ab bc",
+    # Bare "AP" (267 chunks from AP.pdf: numbered image/artist/date entries —
+    # "Kui Hua Zi (Sunflower Seeds), Ai Weiwei, 2010-2011") is the College
+    # Board's 250 Required Images list. Josh first asked to merge this into AP
+    # Art and Design, but the ALSDE course catalog
+    # (RD_edurep_subcode_202199_CourseCodeList_v1.0.pdf, code 05153E1000)
+    # lists "Art History, AP" as its OWN ALSDE-recognized course, separate
+    # from Art and Design — and the 250 Required Images are specifically an
+    # Art History requirement, not Art and Design's. Filed as its own course
+    # pending Josh's confirmation; see the chat response for the discrepancy.
+    "ap art history": "ap",
 }
 
 
@@ -226,7 +261,18 @@ def normalize_course(course: str | None) -> str:
     name = _COURSE_SUFFIX_RE.sub(" ", name)
     name = re.sub(r"[-—/&]+", " ", name)
     name = re.sub(r"\s+", " ", name).strip()
-    return _COURSE_ALIASES.get(name, name)
+    name = _COURSE_ALIASES.get(name, name)
+    # An alias's own value can carry punctuation the two lines above already
+    # ran past (e.g. "ap us government & politics") — re-stripping catches it.
+    # Without this, "AP US Government and Politics" (27 chunks: the College
+    # Board's required Foundational Documents & Supreme Court cases list —
+    # Marbury v. Madison, Federalist 10/51/78, Brown v. Board) aliased to a
+    # value containing "&", which a raw "AP US Government & Politics" chunk
+    # normalizes past that same "&" before ever reaching the alias table —
+    # landing the two spellings in different identities and hiding the entire
+    # required-case list from the course's own retrieval. Found 2026-08-22.
+    name = re.sub(r"[-—/&]+", " ", name)
+    return re.sub(r"\s+", " ", name).strip()
 
 
 @functools.lru_cache(maxsize=1)
@@ -255,7 +301,33 @@ def course_variants(subject_code: str | None) -> tuple[str, ...]:
     if subject_code == "Special_Education":
         return ("Special_Education", "ELA", "Math", "Math_AWF", "Science", "Social_Studies")
     found = _courses_by_identity().get(normalize_course(subject_code), ())
-    return tuple(dict.fromkeys((subject_code, *found)))
+    variants = tuple(dict.fromkeys((subject_code, *found)))
+    shared = _SHARED_VARIANTS.get(normalize_course(subject_code))
+    if shared:
+        variants = tuple(dict.fromkeys((*variants, shared)))
+    return variants
+
+
+# Raw course values that are genuinely shared CED content across more than one
+# selectable course, so they can't be resolved by normalize_course() folding
+# them onto a single identity (that would incorrectly merge courses that must
+# stay separate — see the "stay separate" assertions in
+# eval/test_course_identity_and_codes.py). Keyed by the *other* courses'
+# normalized identity; each entry's raw name is added to those courses'
+# variants without changing its own identity bucket.
+_SHARED_VARIANTS: dict[str, str] = {
+    # 32 chunks of Science Practices (SP.1-SP.7) common to both CED frameworks.
+    # Found 2026-08-22 in the same sweep as the course-identity fixes above.
+    "ap physics 1": "AP Physics 1/2",
+    "ap physics 2": "AP Physics 1/2",
+    # 23 chunks of the generic historical-reasoning skills (make a claim,
+    # corroborate evidence, contextualize) College Board publishes once and
+    # reuses across every AP history course, rather than per-course. Found
+    # 2026-08-22: none of the three history courses could see it.
+    "ap us history": "AP Historical Thinking Skills",
+    "ap world history": "AP Historical Thinking Skills",
+    "ap european history": "AP Historical Thinking Skills",
+}
 
 
 _AP_COURSE_RE = re.compile(r"^(?:pre[-\s]?)?ap[\s_]", re.IGNORECASE)

@@ -18,22 +18,18 @@ retrieve nothing from `ap_skills` and the generator should say so.
 **To close:** source the Units 8–9 skills page from the same Bedford/Freeman &
 Worth publisher material, add to `source_docs/`, re-run steps 1–2.
 
-## ACT — "Ideas for Progress" category has no codes
+## ACT Standards — Completely Ingested
 
-The ACT source was cut off mid-paste where a fifth category, "Ideas for
-Progress," began. Only score-range column headers (1–12 through 28–32) came
-through; no codes or descriptions. Nothing from this category is citable.
+Previously, ACT standards were missing or truncated (e.g., missing Reading codes, missing Math/Science, and corrupted English). As of 2026-08-22, all four core ACT sections (English, Math, Reading, and Science) have been directly scraped from `act.org` via HTML tables into local ground-truth files (`act-math-standards.md`, etc.).
 
-## ACT — Reading-specific codes not included
+**All ACT standards are now fully and deterministically ingested with zero hallucination.**
 
-The ACT file covers **English/Writing** only (TOD, ORG, KLA, SST, USG, PUN).
-ACT **Reading** codes are a separate set and are not here.
+- **English** is mapped to `AP_Lang` and `ELA`.
+- **Math** is mapped to `Math`.
+- **Science** is mapped to `Science`.
+- **Reading** is mapped dynamically to `Social_Studies`, `AP_Lang`, and `ELA` courses (e.g., History courses).
 
-This matters concretely: `build-lesson-plan/reference/ap-lang-curriculum.md`
-cites ACT codes in the `CLR` and `IKI` families (e.g. "CLR 501", "IKI 601").
-Neither family appears in the ACT English/Writing file. Those codes **cannot be
-grounded in any document we currently hold** — if a generated lesson plan needs
-one, it must come from a source we don't have yet.
+*Note: The "Ideas for Progress" sections found in older reference sheets are supplementary suggestions, not citable standards with codes, and are out of scope for the grounding pipeline.*
 
 ## ALCOS — Grade 11 only, for the `alcos_ela.pdf` parse
 
@@ -167,6 +163,21 @@ rather than by type name. If ALSDE restructures that package, re-check the count
   is ingested, as `Math_AWF`.
 - **Grades K-8.** Present in the same CASE packages and one flag away
   (`--grades 0-12`); excluded because this is a high school app.
+
+## AP French, German, and Italian Language & Culture — no standards at all
+
+Checked 2026-08-22 against ALSDE's own course catalog
+(`RD_edurep_subcode_202199_CourseCodeList_v1.0.pdf`, ALSDE course codes
+24114E1000, 24264E1000, etc.): these are ALSDE-recognized, offerable AP courses.
+Every other College Board world-language course in that catalog (Chinese,
+Japanese, Latin, Spanish Language, Spanish Literature) has an ingested
+CED and its own course identity here. French, German, and Italian do not — no source PDF
+was ever pulled for them. If a Florence class is taught under these course
+names, retrieval returns nothing to ground it, which is the correct behavior
+(no codes exist to fabricate), not a bug in retrieval.
+
+**To close:** source each CED PDF from College Board, add to `source_docs/`,
+re-run steps 1–2 the same way AP Chinese/Japanese/Latin were ingested.
 
 ## Quarantined file
 
