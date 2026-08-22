@@ -111,7 +111,7 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
                     SHORT[name].slice(0, 2).toUpperCase()
                   )}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                <span className="min-w-0 flex-1 line-clamp-2 text-sm text-ink">
                   {isOff ? (
                     <span className="text-ink-faint">{title || 'No school'}</span>
                   ) : day ? (
