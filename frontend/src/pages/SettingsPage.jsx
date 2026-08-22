@@ -908,24 +908,10 @@ export function SettingsPage() {
               <h2 className="text-xl font-bold text-ink mb-6">General</h2>
               
               <section className="mb-8">
-                <div className="neo-panel rounded-xl bg-paper-sunken/40 p-4 border border-accent/20">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
-                        <Sparkles size={16} className="text-accent" aria-hidden="true" /> Time Saved
-                      </h3>
-                      <p className="text-xs text-ink-muted mt-1">Based on an average of 45 minutes saved per lesson plan.</p>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      <div className="text-2xl font-bold text-ink">
-                        {Math.floor(((meState.data?.generated_plan_count || 0) * 45) / 60)} <span className="text-sm font-medium text-ink-muted">hours</span>
-                      </div>
-                      <div className="text-xs text-accent font-medium mt-1">
-                        {meState.data?.generated_plan_count || 0} plans generated
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <CustomInstructions
+                  value={meState.data?.custom_instructions}
+                  onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                />
               </section>
 
               <section className="mb-8">
@@ -1071,13 +1057,6 @@ export function SettingsPage() {
                 >
                   <Sparkles size={14} className="mr-1.5" aria-hidden="true" /> Take the tour again
                 </button>
-              </section>
-
-              <section>
-                <CustomInstructions
-                  value={meState.data?.custom_instructions}
-                  onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
-                />
               </section>
             </div>
 
