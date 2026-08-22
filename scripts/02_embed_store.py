@@ -33,7 +33,7 @@ import argparse
 import json
 import re
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 
@@ -107,15 +107,37 @@ def main() -> int:
     for line in notes:
         print(line)
 
-    # Collapse duplicates deterministically: last file wins for a given id, and
-    # the winner is reported so a real collision can't hide.
+    # Group by the naive (course, grade, code) id first. Two chunks that land
+    # on the same naive id with the SAME description are the same standard
+    # (dedup, keep one) — but two with DIFFERENT descriptions are two real,
+    # distinct standards that happen to share a short code, which is the norm
+    # for the 2026-08-22 AP CED re-ingest: bare sub-skill codes like "1.A" or
+    # "2.B" repeat across every unit in a course, not just once. The old
+    # last-write-wins behavior treated the second case exactly like the
+    # first and silently discarded every standard but the last at each id —
+    # 2,756 of 5,468 fresh AP standards (50%) on the first real run of the
+    # new pipeline, with only a same-sized "collisions" counter printed to
+    # suggest anything was wrong. Every DISTINCT description now gets its own
+    # id (a numeric suffix beyond the first), so nothing is dropped; a
+    # genuine re-run of unchanged data still collapses to the same ids.
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for chunk in chunks:
+        groups[chunk_id(chunk)].append(chunk)
+
     by_id: dict[str, dict] = {}
     collisions = Counter()
-    for chunk in chunks:
-        cid = chunk_id(chunk)
-        if cid in by_id and by_id[cid].get("description") != chunk.get("description"):
-            collisions[cid] += 1
-        by_id[cid] = chunk
+    for cid, group in groups.items():
+        seen_descriptions: dict[str, str] = {}  # description -> assigned id
+        for chunk in group:
+            desc = chunk.get("description")
+            if desc in seen_descriptions:
+                by_id[seen_descriptions[desc]] = chunk  # later file/batch wins the content, same id
+                continue
+            assigned_id = cid if not seen_descriptions else f"{cid}:{len(seen_descriptions) + 1}"
+            if seen_descriptions:
+                collisions[cid] += 1
+            seen_descriptions[desc] = assigned_id
+            by_id[assigned_id] = chunk
 
     ids = list(by_id)
     documents = [by_id[i].get("embed_text") or by_id[i].get("description") or "" for i in ids]

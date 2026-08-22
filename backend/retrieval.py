@@ -303,9 +303,26 @@ def course_variants(subject_code: str | None) -> tuple[str, ...]:
     found = _courses_by_identity().get(normalize_course(subject_code), ())
     variants = tuple(dict.fromkeys((subject_code, *found)))
     shared = _SHARED_VARIANTS.get(normalize_course(subject_code))
-    if shared:
+    # Gated on the shared document actually existing in the corpus right now
+    # — not just declared in the dict below. Un-gated, this used to add "AP
+    # Physics 1/2" and "AP Historical Thinking Skills" to every relevant
+    # course's variants unconditionally, which was harmless while those
+    # shared documents existed but became actively wrong on 2026-08-22: the
+    # AP corpus was re-ingested straight from each course's own official CED,
+    # and each one already carries its Science Practices / historical-
+    # reasoning Skill codes inline — there's no separate shared document to
+    # find anymore, so the un-gated version claimed a variant that matched
+    # zero chunks. Self-healing if a future ingest ever reintroduces a split
+    # like this: the dict entry doesn't need to be touched, only the data has
+    # to bring that raw course value back.
+    if shared and shared in _all_raw_courses():
         variants = tuple(dict.fromkeys((*variants, shared)))
     return variants
+
+
+@functools.lru_cache(maxsize=1)
+def _all_raw_courses() -> frozenset[str]:
+    return frozenset(c["course"] for c in load_chunks() if c.get("course"))
 
 
 # Raw course values that are genuinely shared CED content across more than one

@@ -69,6 +69,78 @@ OFF_DOMAIN = [
     "photosynthesis lab for biology",
 ]
 
+# KNOWN_GAPS.md flagged Math, Science, and PE as un-calibrated: the floor
+# never rejects off-domain input for these three, because they'd been swept
+# with the AP Lang POSITIVES/OFF_DOMAIN above, which are meaningless for them
+# (half of that OFF_DOMAIN list — quadratic equations, photosynthesis — is
+# actually IN-domain for Math and Science). Real teacher-phrased queries,
+# grounded in what's actually in each course's corpus (spot-checked against
+# load_chunks() grade-11 content 2026-08-22), with an OFF_DOMAIN set that
+# excludes whichever off-domain probes are actually in-domain for that course.
+PER_COURSE_POSITIVES: dict[str, list[str]] = {
+    "Math": [
+        "solving systems of equations by substitution",
+        "graphing a quadratic function and finding the vertex",
+        "using vectors to represent velocity in a word problem",
+        "proving theorems about parallelograms and quadrilaterals",
+        "using counting techniques to find probabilities",
+        "determining when a rational expression is undefined",
+    ],
+    "Science": [
+        "photosynthesis and the conversion of light energy in plants",
+        "building series and parallel circuits in a lab",
+        "the cell cycle and how it leads to two daughter cells",
+        "using Einstein's mass-energy equation to find a star's energy output",
+        "predicting the outcome of an additional trial in an experiment",
+        "analyzing balanced and unbalanced forces on an object",
+    ],
+    "PE": [
+        "setting individual fitness goals and tracking them in a portfolio",
+        "critiquing the officiating during a game",
+        "identifying skills needed to participate in team sports",
+        "evaluating advertisements for fitness products",
+        "components of the state-mandated physical fitness test",
+        "problem solving and teamwork during group physical activity",
+    ],
+}
+
+PER_COURSE_OFF_DOMAIN: dict[str, list[str]] = {
+    # Drop "solve quadratic equations by factoring" (in-domain here) and
+    # "AP Calculus BC unit 3 derivatives" (same subject, just a different
+    # course) from the default list; add PE, which nothing in the default
+    # list actually covers.
+    "Math": [
+        "balancing chemical equations in stoichiometry",
+        "photosynthesis lab for biology",
+        "pizza recipe with sourdough crust",
+        "asdf qwerty zxcv",
+        "rhetorical analysis of tone in an essay",
+        "basketball officiating rules for a scrimmage",
+    ],
+    # Drop "photosynthesis lab for biology" (in-domain here). Also drop
+    # "balancing chemical equations in stoichiometry" — not off-domain at all
+    # for the general ALCOS Science course, which includes its own Chemistry
+    # strand (SC23.CHEM.4 is literally "use stoichiometric ratios..."). Found
+    # 2026-08-22: the sweep correctly flagged this as unseparable, and it was
+    # the probe that was wrong, not the embedding model.
+    "Science": [
+        "solve quadratic equations by factoring",
+        "pizza recipe with sourdough crust",
+        "asdf qwerty zxcv",
+        "AP Calculus BC unit 3 derivatives",
+        "rhetorical analysis of tone in an essay",
+        "basketball officiating rules for a scrimmage",
+    ],
+    "PE": [
+        "balancing chemical equations in stoichiometry",
+        "solve quadratic equations by factoring",
+        "pizza recipe with sourdough crust",
+        "asdf qwerty zxcv",
+        "photosynthesis lab for biology",
+        "rhetorical analysis of tone in an essay",
+    ],
+}
+
 # Wrong-scope queries. These are NEAR in embedding space — they are the same
 # subject, just outside what we parsed — so no threshold separates them and it is
 # a mistake to grade the floor against them. "Grade 9 ELA standards" measures
@@ -112,9 +184,14 @@ def main() -> int:
     print(f"Scope: course={args.course} grade={args.grade}")
     print(f"Floor in effect for this course: "
           f"{settings.floor_for(args.course):.2f}\n")
+    positives = PER_COURSE_POSITIVES.get(args.course, POSITIVES)
+    off_domain = PER_COURSE_OFF_DOMAIN.get(args.course, OFF_DOMAIN)
+    if args.course in PER_COURSE_POSITIVES:
+        print(f"Using {args.course}-specific positive/off-domain probes (not the AP Lang defaults).\n")
+
     print(f"Embedding queries via {retrieval.EMBED_MODEL} ({retrieval.EMBED_DIMS} dims)...\n")
-    pos = best_distances(POSITIVES, args.course, args.grade)
-    off = best_distances(OFF_DOMAIN, args.course, args.grade)
+    pos = best_distances(positives, args.course, args.grade)
+    off = best_distances(off_domain, args.course, args.grade)
     gap = best_distances(WRONG_SCOPE, args.course, args.grade)
 
     if all(d == float("inf") for d in pos.values()):

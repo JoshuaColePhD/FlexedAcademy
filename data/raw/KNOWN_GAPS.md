@@ -18,11 +18,28 @@ retrieve nothing from `ap_skills` and the generator should say so.
 **To close:** source the Units 8–9 skills page from the same Bedford/Freeman &
 Worth publisher material, add to `source_docs/`, re-run steps 1–2.
 
-## ACT Standards — Completely Ingested
+## ACT Standards — Math, Reading, and Science freshly scraped; English unchanged
 
-Previously, ACT standards were missing or truncated (e.g., missing Reading codes, missing Math/Science, and corrupted English). As of 2026-08-22, all four core ACT sections (English, Math, Reading, and Science) have been directly scraped from `act.org` via HTML tables into local ground-truth files (`act-math-standards.md`, etc.).
+Previously, ACT standards were missing or truncated (missing Reading codes,
+missing Math/Science). As of 2026-08-22, three of the four core ACT sections —
+**Math, Reading, and Science** — have been directly scraped from `act.org` via
+HTML tables (`scripts/01b_scrape_act_standards.py`) into local ground-truth
+files (`act-math-standards.md`, `act-reading-standards.md`,
+`act-science-standards.md`). No LLM is in that extraction path, so these three
+are deterministic and citable with zero hallucination risk.
 
-**All ACT standards are now fully and deterministically ingested with zero hallucination.**
+**English was NOT re-scraped** — `scripts/01b_scrape_act_standards.py`'s `URLS`
+dict only has Math, Reading, and Science entries. `act-english-standards.md`
+is still the same file "pasted by Josh 2026-08-03" from the district's own ACT
+reference (verified unchanged — same content, same file timestamp). That file
+was already fine on its own terms (see the "Ideas for Progress" gap below,
+which is a property of that original paste, not a new problem); the
+`act-english-standards.CONTAMINATED.md` file in `quarantine/` is a *different*,
+already-excluded document (AI-altered AP Lang skills mislabeled as ACT
+English) and was never part of what changed today. Recorded here because an
+earlier version of this note claimed all four sections were freshly scraped,
+which overstated what actually happened — worth closing for real if English
+coverage needs the same act.org-sourced treatment as the other three.
 
 - **English** is mapped to `AP_Lang` and `ELA`.
 - **Math** is mapped to `Math`.
@@ -129,20 +146,45 @@ comfortably safe — while K-8 was loaded, and moved inside the floor when the c
 narrowed to grades 9-12. Re-measure after any change to grade scope, framework set,
 chunking, or embedding model.
 
-No number has been guessed for the three. The viable band is now wide (in-domain
-tops out at 0.47 against off-domain at 0.75), so something near 0.60 would
-probably hold — but that is two probe queries per subject, and the AP Lang corpus
-has legitimate in-domain phrasing out at 0.73, which is exactly the kind of query
-an over-tightened floor silently kills. **To close:** write real teacher-phrased
-positives for the framework and run
+**Closed 2026-08-22.** Real teacher-phrased positives were written for each of
+the three (`PER_COURSE_POSITIVES`/`PER_COURSE_OFF_DOMAIN` in
+`scripts/06_threshold_sweep.py` — the script's own AP-Lang-flavored defaults
+are meaningless for these subjects; half the default OFF_DOMAIN list is
+actually in-domain for Math and Science). Re-measured and set in `.env`:
 
 ```
-python scripts/06_threshold_sweep.py --course Math --grade 11
+RETRIEVAL_FLOORS='{"Math": 0.52, "Science": 0.55, "PE": 0.60, "AP_Lang": 0.64}'
 ```
 
-then set the measured value in `.env` as `RETRIEVAL_FLOORS='{"Math": 0.62}'` — see
-`Settings.retrieval_floors`. Until then only `AP_Lang` and `ELA` should be
-considered floor-calibrated.
+Math (0.407 .. 0.624) and PE (0.498 .. 0.697) both have a wide, comfortable
+margin. **Science's margin is narrow (0.525 .. 0.583, 0.058 wide)** — the first
+off-domain probe tried, "balancing chemical equations in stoichiometry",
+turned out not to be off-domain at all (`SC23.CHEM.4` is a real Alabama
+Science standard covering exactly stoichiometric ratios), which is itself the
+useful finding: the general ALCOS Science course's own Chemistry strand sits
+close enough to genuinely-off-domain chemistry-flavored queries that this
+floor has less room for future drift than the other two. Re-measure this one
+first if grade scope, chunking, or the embedding model ever change.
+
+AP_Lang got its own override rather than inheriting a fresh global default:
+its underlying content changed today (`AP English Language and Composition`
+was re-ingested from the real CED, replacing what the original 0.78
+measurement below was run against), so re-measuring it produced 0.64 — a real
+drift caused by new content, not a mistake in the original 0.78 measurement.
+
+Separately, closed 2026-08-22: `RETRIEVAL_MAX_DISTANCE` was documented as
+"measured at 0.78" below but was **never actually set** in the real `.env` —
+only in `.env.example` as a template — so every course without its own
+`RETRIEVAL_FLOORS` entry (every ALCOS framework except AP_Lang above, every
+individual AP course, everything) had been running on
+`backend/config.py`'s fallback default of 0.65 since this table was written.
+0.65 is tighter than every "safe at 0.78" framework's own hardest in-domain
+probe below, so nothing was made unsafe by that gap — but it could have been
+silently rejecting legitimate in-domain queries for any framework whose
+hardest positive fell between 0.65 and 0.78 (this table's own AP Lang row
+shows 0.462, safely under 0.65, but KNOWN-GAP-adjacent jargon-heavy AP Lang
+phrasing was separately measured up to 0.71-0.73 — right in the gap). Now set
+to 0.78 for real.
 
 ### School Counseling is structurally odd
 

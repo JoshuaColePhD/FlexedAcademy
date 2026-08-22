@@ -52,6 +52,21 @@ services:
         sync: false
       - key: COMMON_STANDARDS_API_KEY
         sync: false
+      # Not secrets, so tracked directly here rather than left to the
+      # dashboard. KNOWN_GAPS.md documented RETRIEVAL_MAX_DISTANCE as
+      # "measured at 0.78" but it was never actually present in this file (or
+      # in a real .env — only in .env.example as a template), so production
+      # had been running on backend/config.py's fallback default of 0.65
+      # since that measurement was written. 0.65 is tighter than every
+      # framework's "safe at 0.78" margin in that table, so nothing became
+      # unsafe, but it risked rejecting legitimate in-domain queries that
+      # fell between 0.65 and 0.78. See KNOWN_GAPS.md's floor-calibration
+      # section for the per-course RETRIEVAL_FLOORS values and how each was
+      # measured (scripts/06_threshold_sweep.py).
+      - key: RETRIEVAL_MAX_DISTANCE
+        value: "0.78"
+      - key: RETRIEVAL_FLOORS
+        value: '{"Math": 0.52, "Science": 0.55, "PE": 0.60, "AP_Lang": 0.64}'
       # Vite inlines this at BUILD time, so it must exist before the build runs,
       # not merely at boot. Without it GoogleOAuthProvider receives clientId
       # undefined and the Google button on the login page renders but fails.

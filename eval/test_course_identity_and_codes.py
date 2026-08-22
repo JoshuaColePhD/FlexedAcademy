@@ -59,23 +59,56 @@ def main() -> int:
         check(f"act_sections_for({course!r}) is empty", R.act_sections_for(course), ())
 
     print("\n--- 2. course identity: variants join, real courses stay apart ---")
-    for course, must_include in [
-        ("AP US History", {"AP US History Key Concepts", "AP United States History",
-                           "AP US History Themes 2014-2015"}),
-        ("AP Human Geography", {"APHuG", "AP Human Geography 2019 Updated CED Standards"}),
-        ("AP Biology", {"AP Biology Big Ideas", "AP Biology Science Practices"}),
-        ("AP Seminar", {"AP Seminar Curriculum Framework"}),
-        ("AP_Lang", {"AP English Language and Composition"}),
+    # As of 2026-08-22 the whole AP/college_board corpus was re-ingested by
+    # scripts/01c_ingest_ap_ceds.py directly from official College Board CED
+    # PDFs, one PDF -> one canonical course name via an explicit lookup table
+    # (_FILENAME_TO_COURSE in that script). That eliminates the entire class
+    # of bug this section used to guard against: a course's content used to
+    # arrive scattered across several oddly-named raw `course` values (the
+    # Common Standards Project import's "APHuG", "Advanced English",
+    # "AP Biology Big Ideas", "AP Calculus Skills Standards", a separate
+    # "AP US Government and Politics" foundational-documents file, etc.) that
+    # backend/retrieval.py's _COURSE_ALIASES/_SHARED_VARIANTS had to stitch
+    # back together after the fact. None of those raw values exist anymore —
+    # each course's skills/practices/foundational-documents content is simply
+    # part of that one course's own CED chunks now (confirmed: AP US
+    # Government & Politics's own chunks include the Federalist Papers and
+    # Anti-Federalist material directly; AP Physics 1 and AP US History each
+    # carry their own Science Practices / historical-thinking Skill codes
+    # inline, with no separate "AP Physics 1/2" or "AP Historical Thinking
+    # Skills" document needed). The old aliases stay in retrieval.py in case
+    # a future ingest ever reintroduces a split like this, but nothing in the
+    # current corpus should need them.
+    for course, must_equal in [
+        # The new ingest genuinely produces this as its own raw course value
+        # (from ap-english-language-and-composition-...pdf) and relies on the
+        # "ap english language and composition" -> "ap lang" alias to join it.
+        ("AP_Lang", {"AP_Lang", "AP English Language and Composition"}),
+        ("AP English Literature and Composition", {"AP English Literature and Composition"}),
+        ("AP US History", {"AP US History"}),
+        ("AP Human Geography", {"AP Human Geography"}),
+        ("AP Biology", {"AP Biology"}),
+        ("AP Seminar", {"AP Seminar"}),
+        ("AP Environmental Science", {"AP Environmental Science"}),
+        ("AP Calculus AB & BC", {"AP Calculus AB & BC"}),
+        ("AP US Government & Politics", {"AP US Government & Politics"}),
+        ("AP World History", {"AP World History"}),
+        ("AP European History", {"AP European History"}),
+        ("AP Physics 1", {"AP Physics 1"}),
+        ("AP Physics 2", {"AP Physics 2"}),
     ]:
-        got = set(R.course_variants(course))
-        missing = must_include - got
-        check(f"course_variants({course!r}) joins its partitions", missing, set())
+        check(f"course_variants({course!r}) is just itself now (single-PDF ingest)",
+              set(R.course_variants(course)), must_equal)
 
-    # Distinct courses that share a name stem must NOT be merged.
-    for a, b in [("AP Physics 1", "AP Physics 2"), ("AP Physics 1", "AP Physics C"),
-                 ("Pre-AP Algebra 1", "Pre-AP Algebra 2"),
-                 ("AP Microeconomics", "AP Macroeconomics"),
-                 ("AP English Literature and Composition", "AP_Lang")]:
+    # Distinct courses must never be merged.
+    for a, b in [
+        ("AP Physics 1", "AP Physics 2"), ("AP Physics 1", "AP Physics C"),
+        ("Pre-AP Algebra 1", "Pre-AP Algebra 2"),
+        ("AP Microeconomics", "AP Macroeconomics"),
+        ("AP English Literature and Composition", "AP_Lang"),
+        ("AP US History", "AP World History"), ("AP US History", "AP European History"),
+        ("AP World History", "AP European History"),
+    ]:
         overlap = set(R.course_variants(a)) & set(R.course_variants(b))
         check(f"{a!r} and {b!r} stay separate", overlap, set())
 
@@ -91,18 +124,26 @@ def main() -> int:
         set(), subject_code="AP_Lang",
     )
     check("audit flags 2.C in an AP Lang plan", bool(warned), True)
-    # A variant's codes still count as this course's own.
-    check("AP US History owns a Key Concepts code",
-          "KC 5.3.I.B" in R.codes_for_course("AP US History"), True)
+    # The 2026-08-22 CED re-ingest spells Key Concept codes with a hyphen
+    # ("KC-1.1.I.B"), matching the official CED's own formatting. It's also an
+    # independent extraction pass from a different source pipeline, so it
+    # doesn't reproduce the exact same sub-codes the old CSP import happened
+    # to have (that import's "KC 5.3.I.B" specifically isn't present here) —
+    # this checks a code confirmed to actually exist in the current corpus.
+    check("AP US History owns a Key Concept code",
+          "KC-1.1.I.B" in R.codes_for_course("AP US History"), True)
 
     print("\n--- 4. a code named in the query retrieves itself ---")
     for course, query, want in [
-        ("AP Physics 1", "LO.3.A.3.1", "LO.3.A.3.1"),
+        # Real codes confirmed present in the 2026-08-22 CED re-ingest — the
+        # old CSP-import codes these used to check (LO.3.A.3.1, CHA-3.E.1,
+        # PSO-2.F.1) don't exist in this independently-extracted corpus.
+        ("AP Physics 1", "1.1.A.2", "1.1.A.2"),
         ("Science", "SC23.PHYS.2", "SC23.PHYS.2"),
         ("ELA", "plan week 3 around ELA21.11.24", "ELA21.11.24"),
-        ("AP US History", "KC-5.3.I.B", "KC 5.3.I.B"),        # hyphen/space spelling
-        ("AP Calculus AB & BC", "CHA-3.E.1", "CHA-3.E.1"),
-        ("AP Human Geography", "PSO-2.F.1", "PSO-2.F.1"),
+        ("AP US History", "KC-1.1.I.B", "KC-1.1.I.B"),
+        ("AP Calculus AB & BC", "CHA-1.A.2", "CHA-1.A.2"),
+        ("AP Human Geography", "IMP-1.A.3", "IMP-1.A.3"),
     ]:
         r = R.retrieve_grounded(query, subject_code=course, grade=11)
         got = {R._norm_code(str((c["metadata"] or {}).get("code"))) for c in r.chunks}
