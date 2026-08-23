@@ -543,6 +543,11 @@ export const api = {
 
   getCurriculumProgress: (subject, { signal } = {}) =>
     request(`/api/curriculum_progress?subject=${encodeURIComponent(subject)}`, { signal }),
-    
+
   updateDay: (planId, dayIndex, body) => request(`/api/plans/${planId}/days/${dayIndex}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** A standalone quick warm-up for a day with no built plan yet — see
+   *  TodayPage and backend/routes/bell_ringer.py. */
+  getBellRinger: ({ subject, grade, topic }, { signal } = {}) =>
+    request('/api/bell_ringer', { method: 'POST', body: { subject, grade, topic }, signal }),
 }

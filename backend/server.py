@@ -25,6 +25,7 @@ from .routes import (
     account,
     admin,
     auth,
+    bell_ringer,
     billing,
     canvas,
     classes,
@@ -182,6 +183,7 @@ app.include_router(admin.router)
 app.include_router(account.router)
 app.include_router(drive.router)
 app.include_router(canvas.router)
+app.include_router(bell_ringer.router)
 import os
 
 from fastapi.responses import FileResponse

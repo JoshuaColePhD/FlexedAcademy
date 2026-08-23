@@ -1008,6 +1008,77 @@ def generate_week_suggestion(
         return None
 
 
+BELL_RINGER_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "description": "The bell-ringer/warm-up itself, ready to project or read aloud, 1-3 sentences.",
+        },
+        "minutes": {
+            "type": "integer",
+            "description": "How many minutes this should take — typically 5.",
+        },
+    },
+    "required": ["prompt", "minutes"],
+}
+
+_BELL_RINGER_PROMPT = (
+    "You write ONE bell-ringer / warm-up activity for the START of class — the same kind "
+    "of quick, low-stakes task a full week's own lesson plan calls its 'Do Now' (bell work, "
+    "about 5 minutes) — except this one stands entirely on its own: no week has been "
+    "planned yet, so there is no other context to lean on. Ground it in the subject and "
+    "grade given, and the topic if one is named; if no topic is given, pick any single "
+    "engaging, grade-appropriate skill or question relevant to the subject on your own — "
+    "never generic filler like 'journal about your day'. Write it the way a teacher would "
+    "actually project it or read it aloud to a class, not as a lesson-plan entry describing "
+    "one."
+)
+
+
+def generate_bell_ringer(user_id: str, subject: str, grade: str, topic: str | None = None) -> dict:
+    """A standalone quick warm-up for a day with no built plan yet — the
+    daily-use companion to a full week's own `do_now` field (schema.py's
+    DAY_JSON_SCHEMA), for the days that field doesn't exist for.
+
+    Cheap model, tiny token budget, deliberately NOT run through
+    _cached_completion: a "give me another one" click should actually get a
+    different one back, not the same cached answer for the same
+    subject/grade/topic every time. Same reasoning as extract_decisions
+    otherwise — a low-stakes visual aid, not a graded artifact, so this
+    raises on failure (unlike extract_decisions) only because there's no
+    reasonable empty-state fallback for "here's your warm-up" the way an
+    empty decision list is a perfectly normal answer.
+    """
+    user_line = f"{grade} {subject}."
+    if topic and topic.strip():
+        user_line += f" Today's topic or skill: {topic.strip()[:200]}"
+    resp = client().chat.completions.create(
+        model="gpt-5.6-luna",
+        max_completion_tokens=300,
+        response_format=_response_format("bell_ringer", BELL_RINGER_SCHEMA),
+        messages=[
+            {"role": "system", "content": _BELL_RINGER_PROMPT},
+            {"role": "user", "content": user_line},
+        ],
+    )
+    msg = resp.choices[0].message
+    _check_refusal(msg)
+    _record(user_id, "bell_ringer", resp.usage)
+    data = json.loads(msg.content or "{}")
+    prompt = str(data.get("prompt", "")).strip()
+    if not prompt:
+        raise AppError(
+            "empty_reply", "Didn't get a warm-up back.", status=502, hint="Try again."
+        )
+    minutes = data.get("minutes")
+    return {
+        "prompt": prompt[:600],
+        "minutes": int(minutes) if isinstance(minutes, (int, float)) and minutes > 0 else 5,
+    }
+
+
 def _no_speech_prob(segment) -> float:
     if isinstance(segment, dict):
         return segment.get("no_speech_prob", 0.0)
