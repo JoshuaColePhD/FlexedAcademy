@@ -268,16 +268,17 @@ function Gate() {
       /* not available */
     }
     return (
-      <Routes>
-        {/* The public front door. There wasn't one: every anonymous visitor,
-            including someone arriving from a link who had never seen the
-            product, was redirected straight to a password field. `/` is the
-            landing page when signed OUT and RootRedirect when signed in, which
-            is why it is declared in both trees. */}
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Suspense fallback={<div className="flex h-app w-full bg-paper" />}>
+        <Routes>
+          {/* The public front door. There wasn't one: every anonymous visitor,
+              including someone arriving from a link who had never seen the
+              product, was redirected straight to a password field. `/` is the
+              landing page when signed OUT and RootRedirect when signed in, which
+              is why it is declared in both trees. */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         {/* Public regardless of sign-in state — a signed-in teacher can
             read these too, so they're declared identically in both trees
             rather than gated like /login et al. */}
@@ -300,7 +301,8 @@ function Gate() {
             />
           }
         />
-      </Routes>
+        </Routes>
+      </Suspense>
     )
   }
 

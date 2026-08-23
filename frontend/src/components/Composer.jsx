@@ -127,8 +127,14 @@ export function Composer({
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isAttaching, setIsAttaching] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [shake, setShake] = useState(false)
   const [motionState, setMotionState] = useState('')
   const motionTimerRef = useRef(null)
+
+  const triggerShake = useCallback(() => {
+    setShake(true)
+    setTimeout(() => setShake(false), 400)
+  }, [])
 
   const pulseMotion = useCallback((state, duration = 360) => {
     setMotionState(state)
@@ -299,6 +305,7 @@ export function Composer({
       setAttachments((prev) => [...prev, { ...data, file }])
       toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
     } catch (err) {
+      triggerShake()
       toast.error(`Could not read ${file.name}`, err.hint || err.message)
     } finally {
       setIsAttaching(false)
@@ -318,6 +325,7 @@ export function Composer({
       setAttachments((prev) => [...prev, { ...data, file }])
       toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
     } catch (err) {
+      triggerShake()
       toast.error(`Could not read ${file.name}`, err.hint || err.message)
     } finally {
       setIsAttaching(false)
@@ -420,7 +428,7 @@ export function Composer({
       <div
         className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised transition-all focus-within:scale-[1.01] focus-within:ring-2 focus-within:ring-accent/50 focus-within:shadow-lg ${
           voiceModeActive ? 'rounded-3xl' : 'rounded-xl'
-        } ${isDragging ? 'ring-2 ring-accent' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
+        } ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}
       >
         {isDragging ? createPortal(
@@ -504,7 +512,7 @@ export function Composer({
                 className="pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-pre-wrap break-words px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed"
               >
                 <span className="text-ink">{value}</span>
-                <span className="composer-ghost text-ink-faint">
+                <span className="composer-ghost animate-slide-in-right text-ink-faint">
                   {completion}
                   <span className="ml-2 inline-flex items-center gap-1 rounded bg-paper-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted ring-1 ring-inset ring-edge">
                     Tab ⇥
@@ -524,7 +532,7 @@ export function Composer({
                * top of each other. */
               placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
-              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}
@@ -579,48 +587,9 @@ export function Composer({
               </button>
             )}
 
-            {/* Stop only when there is something abortable. `isStreaming` is
-                true during a revision too, but revisePlan/reviseDay have no
-                AbortController — so this rendered a Stop square that did
-                nothing for 20-40 seconds. Without onStop it's a spinner, which
-                is at least honest about being un-interruptible. */}
-            {isStreaming && onStop ? (
+            {!hasContent && onOpenVoice && !voiceModeActive && !isStreaming ? (
               <button
                 type="button"
-                className="fa-press neo-raised tap-target flex h-11 w-11 items-center justify-center rounded-full bg-mark-tint text-mark transition-shadow md:h-9 md:w-9"
-                onClick={onStop}
-                aria-label="Stop generating"
-              >
-                <Square size={15} className="md:size-3.5" fill="currentColor" aria-hidden="true" />
-              </button>
-            ) : isStreaming ? (
-              <span
-                className="neo-inset tap-target flex h-11 w-11 items-center justify-center rounded-full bg-paper-sunken text-ink-faint md:h-9 md:w-9"
-                title="Revising — this can't be interrupted"
-              >
-                <Loader2 size={17} className="animate-spin md:size-4" aria-hidden="true" />
-              </span>
-            ) : !hasContent && onOpenVoice && !voiceModeActive ? (
-              /* The send slot's idle form. Nothing typed yet means there is
-                 nothing TO send — Gemini's own composer makes the same call,
-                 showing the live-voice entry point here instead of a greyed-
-                 out arrow with nothing to do. The instant there's a
-                 character (or an attachment) this same slot becomes the real
-                 Send button below; it never sits alongside it as a second,
-                 separate icon. Hidden (not just disabled) while voiceModeActive
-                 — the conversation this button starts is already the one
-                 open on screen, so it has nothing left to do. */
-              <button
-                type="button"
-                /* text-accent-text at rest, not ink-muted — sitting right
-                   beside the plain grey dictate mic (Mic icon, above), this
-                   button used to read as a near-identical twin at a glance:
-                   same size, same neutral colour, same hover, just a
-                   different glyph. Voice mode is a whole conversation, not a
-                   second way to fill the text box, and it's the one place
-                   in the composer that's allowed to hint at that with
-                   colour — the accent tint on hover is the same "this opens
-                   something" language RailRow's own icon tiles use. */
                 className="fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper-sunken md:h-9 md:w-9"
                 onClick={onOpenVoice}
                 aria-label="Start a voice conversation"
@@ -631,27 +600,19 @@ export function Composer({
             ) : (
               <button
                 type="button"
-                /* bg-accent, not bg-ink: the district blue is the app's own
-                   established "this is the primary action" color (see the
-                   filled buttons on ClassPage) — a plain black circle here
-                   just wasn't reading as the one button that matters on the
-                   whole bar. Was bg-accent-tint (a pastel wash) despite this
-                   comment already arguing for the full fill — the tint never
-                   actually landed here. */
-                className={`${motionState === 'submit' ? 'fa-settle ' : ''}fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full transition-all md:h-9 md:w-9 ${
-                  canSend
-                    ? 'neo-raised bg-paper-raised text-ink hover:bg-paper-sunken'
-                    : /* Inset, not a flat grey disc: unavailable reads as
-                         pressed into the bar and out of reach, which is the
-                         same language the rest of the app uses for "not
-                         something you can act on right now." */
-                      'neo-inset cursor-not-allowed bg-paper-sunken text-ink-faint'
-                }`}
-                onClick={submit}
-                disabled={!canSend}
-                aria-label={sendLabel}
+                className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-9 md:w-9 ${
+                  isStreaming && onStop ? 'neo-raised bg-mark-tint text-mark hover:shadow-md'
+                  : isStreaming ? 'bg-transparent text-ink-muted'
+                  : canSend ? 'neo-raised bg-paper-raised text-ink hover:bg-paper-sunken'
+                  : 'neo-inset cursor-not-allowed bg-paper-sunken text-ink-faint'
+                } ${motionState === 'submit' ? 'fa-settle' : ''}`}
+                onClick={isStreaming && onStop ? onStop : isStreaming ? undefined : submit}
+                disabled={(!canSend && !isStreaming) || (isStreaming && !onStop)}
+                aria-label={isStreaming && onStop ? "Stop generating" : sendLabel}
               >
-                <ArrowUp size={19} className="md:size-[18px]" strokeWidth={3} aria-hidden="true" />
+                <ArrowUp size={19} className={`absolute transition-all duration-300 md:size-[18px] ${isStreaming ? 'scale-50 opacity-0 rotate-90' : 'scale-100 opacity-100 rotate-0'}`} strokeWidth={3} aria-hidden="true" />
+                <Loader2 size={20} className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${isStreaming && !onStop ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`} aria-hidden="true" />
+                <Square size={15} className={`absolute transition-all duration-300 md:size-3.5 ${isStreaming && onStop ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`} fill="currentColor" aria-hidden="true" />
               </button>
             )}
           </div>

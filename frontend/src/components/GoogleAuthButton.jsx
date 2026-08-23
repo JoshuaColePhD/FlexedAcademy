@@ -50,7 +50,10 @@ export function GoogleAuthButton({ onSuccess, onError, size = 'large', text = 'c
 
   useLayoutEffect(() => {
     try {
-      document.cookie = 'g_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+      const past = 'expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+      document.cookie = `g_state=; ${past}`
+      document.cookie = `g_state=; ${past} domain=${window.location.hostname};`
+      document.cookie = `g_state=; ${past} domain=.${window.location.hostname};`
     } catch {
       /* Cookies blocked — Google's script falls back to its own default
          (possibly still personalized), same as if this line didn't run. */
@@ -71,7 +74,7 @@ export function GoogleAuthButton({ onSuccess, onError, size = 'large', text = 'c
   return (
     // Plain and unstyled on purpose — see the comment above. Nothing here
     // clips or frames Google's own button, whichever variant it renders.
-    <div ref={wrapRef} className="w-full">
+    <div ref={wrapRef} className={`w-full overflow-hidden rounded-full isolate [transform:translateZ(0)] flex justify-center ${size === 'large' ? 'h-[40px]' : 'h-[32px]'}`}>
       {/* Nothing to render until the real width is known — a 0 or stale
           width handed to Google's own renderButton call is the exact bug
           this component exists to avoid. */}

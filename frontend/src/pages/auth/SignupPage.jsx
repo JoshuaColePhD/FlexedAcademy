@@ -73,7 +73,6 @@ export default function SignupPage() {
           onSuccess={handleGoogleSuccess}
           onError={() => setError('Google sign-in didn’t complete. Try again.')}
           size="large"
-          text="signup_with"
         />
       </div>
 
