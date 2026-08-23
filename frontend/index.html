@@ -38,8 +38,17 @@
     />
     <title>FlexEd Academy</title>
 
-    <!-- Fonts via preconnect + stylesheet rather than an @import at the top of
-         the CSS, which blocks rendering until it resolves.
+    <!-- Self-hosted (src/styles/fonts.css, from @fontsource/*) rather than
+         Google's own CSS + CDN — that used to cost a DNS+TLS round trip to
+         fonts.googleapis.com just to learn the font URLs, then a second to
+         fonts.gstatic.com for the files themselves, before Inter could even
+         start downloading. One same-origin stylesheet removes both hops,
+         which matters most exactly where it's slowest: school wifi. Same
+         font-display: swap, same latin/latin-ext-only subsets Google would
+         have served this app anyway (no Cyrillic/Greek/Vietnamese text
+         anywhere in it), so the byte budget doesn't change — only the
+         number of round trips to pay it does. See fonts.css's own header for
+         how to regenerate it if a weight or family ever needs to change.
 
          Inter is the whole interface; JetBrains Mono sets standard codes, which
          are identifiers and should look like identifiers. Newsreader used to be
@@ -50,12 +59,7 @@
          excerpts) are landing-page-only, same rule as --brand violet: used by
          .land-* classes and nowhere in the authenticated app, which stays on
          Inter + JetBrains Mono alone. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Bricolage+Grotesque:wght@600;700;800&family=Source+Serif+4:ital,wght@0,400;1,400;1,500&display=swap"
-      rel="stylesheet"
-    />
+    <link rel="stylesheet" href="/src/styles/fonts.css" />
 
     <!-- Set the theme before first paint so a dark-mode load doesn't flash white. -->
     <script>
