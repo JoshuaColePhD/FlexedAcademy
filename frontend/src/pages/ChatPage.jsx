@@ -994,6 +994,14 @@ export function ChatPage() {
   const submit = useCallback(
     async (text, options = {}) => {
       const typed = (text ?? query).trim()
+      // `attachmentsOverride` is what a queued follow-up sends through —
+      // see queueOrSubmit's own comment. Without it, a message queued
+      // while busy would flush against whatever attachments happen to be
+      // in the composer at THAT later moment (a plain empty-array default
+      // if the composer's own chips already cleared, or a teacher's next
+      // batch if they attached something new in the meantime), not the
+      // ones actually present when they hit Enter.
+      const atts = options.attachmentsOverride ?? attachments
       /* Attached files were extracted, confirmed with a toast reporting the
          character count, and then never sent: `attachments` was written by the
          Composer and read by nobody. The chip also stayed pinned after sending,
@@ -1002,7 +1010,7 @@ export function ChatPage() {
 
          Capped, because a 40-page PDF is both a context-window and a bill
          problem, and the truncation is stated in the text rather than silent. */
-      const docs = attachments
+      const docs = atts
         .map((a) => {
           const body = String(a.text || '')
           const clipped = body.length > ATTACHMENT_CHAR_CAP
@@ -1024,7 +1032,7 @@ export function ChatPage() {
       // payload; leaving the chip pinned implied they were still in context
       // for every later message, which was never true even before this fix.
       setAttachments([])
-      const newUserMessage = { id: nextId(), role: 'user', content: typed || `Sent ${attachments.length} file(s)` }
+      const newUserMessage = { id: nextId(), role: 'user', content: typed || `Sent ${atts.length} file(s)` }
       const nextMessages = [...messages, newUserMessage]
       // See pinToTopIdRef's own comment — the scroll effect reads this once
       // and clears it, so the reply that's about to arrive doesn't drag the
@@ -1040,7 +1048,7 @@ export function ChatPage() {
           // what every later turn reads back (conversationWeek) instead of
           // recomputing — see db.py migration 23.
           const created = await api.createChat(
-            (typed || attachments[0]?.filename || 'New plan').slice(0, 80),
+            (typed || atts[0]?.filename || 'New plan').slice(0, 80),
             classId,
             effectiveWeek,
             location.state?.mode
@@ -1062,7 +1070,7 @@ export function ChatPage() {
              Deliberately not awaited: it is a second model call, it is purely
              cosmetic, and nothing about sending the first message should wait
              on it. Failure leaves the placeholder, which is what we have today. */
-          const basis = typed || attachments[0]?.filename
+          const basis = typed || atts[0]?.filename
           if (basis) {
             api
               .suggestChatTitle(basis)
@@ -1090,7 +1098,7 @@ export function ChatPage() {
         }
       }
 
-      const shown = typed || `Sent ${attachments.length} file(s)`
+      const shown = typed || `Sent ${atts.length} file(s)`
       if (activeChatId) {
         const saved = await persistMessage(activeChatId, { role: 'user', content: shown })
         if (!saved) {
@@ -1421,25 +1429,40 @@ export function ChatPage() {
      sat there, with no feedback that anything had or hadn't happened. Now
      it queues instead, and the effect below sends it the moment `busy`
      clears — same submit() everything else already goes through, just
-     deferred rather than dropped. */
+     deferred rather than dropped.
+
+     Guards on typed text OR attachments, not text alone — submit() itself
+     already treats an attachment with no typed comment as real content to
+     send (its own "Guards on the COMBINED text" comment). This function
+     used to check `typed` by itself, so attaching a file with nothing
+     typed and hitting Send did nothing at all: no message, no queue entry,
+     no error — Composer's own canSend had already lit the button up for
+     exactly that case, so it looked like a plain dropped click.
+
+     Queues a snapshot of the CURRENT attachments alongside the text, and
+     clears the composer's own list immediately (same as typed text
+     clearing right below) — otherwise whatever the teacher attaches or
+     removes between queuing and `busy` clearing is what actually ends up
+     sent, not what was there when they hit Enter. */
   const queueOrSubmit = useCallback(
     (text) => {
       const typed = (text ?? query).trim()
-      if (!typed) return
+      if (!typed && attachments.length === 0) return
       if (busy) {
-        setQueuedMessage(typed)
+        setQueuedMessage({ text: typed, attachments })
         setQuery('')
+        setAttachments([])
         return
       }
       submit(text)
     },
-    [busy, query, submit]
+    [busy, query, submit, attachments]
   )
   useEffect(() => {
     if (busy || !queuedMessage) return
     const next = queuedMessage
     setQueuedMessage(null)
-    submit(next)
+    submit(next.text, { attachmentsOverride: next.attachments })
     // submit is intentionally excluded: it's recreated on every render (its
     // own dependency array above is enormous), and this only needs to run
     // when `busy` actually flips or a new message gets queued — the
@@ -2400,15 +2423,19 @@ export function ChatPage() {
             <div className="neo-inset mb-2 flex items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-soft">
               <Clock size={13} className="shrink-0 text-ink-faint" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate">
-                Will send when ready: <span className="text-ink">{queuedMessage}</span>
+                Will send when ready:{' '}
+                <span className="text-ink">
+                  {queuedMessage.text || `Sent ${queuedMessage.attachments.length} file(s)`}
+                </span>
               </span>
               <button
                 type="button"
                 className="btn-icon shrink-0"
                 aria-label="Cancel queued message"
-                title="Cancel — puts the text back in the box"
+                title="Cancel — puts the text and attachments back in the box"
                 onClick={() => {
-                  setQuery(queuedMessage)
+                  setQuery(queuedMessage.text)
+                  setAttachments(queuedMessage.attachments)
                   setQueuedMessage(null)
                 }}
               >

@@ -123,6 +123,9 @@ export function Composer({
   const wrapperRef = useRef(null)
   const mediaRecorder = useRef(null)
   const audioChunks = useRef([])
+  // Stamped onto each attachment as `_id` at attach-time — see Chip's own
+  // key comment below for why filename+index wasn't a safe key.
+  const attachmentIdRef = useRef(0)
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isAttaching, setIsAttaching] = useState(false)
@@ -301,8 +304,9 @@ export function Composer({
       const data = await api.extractText(file)
       // The raw File alongside the extracted text — not read again, just
       // kept in case onSaveAttachmentAsDocument wants to upload the exact
-      // same bytes as a real class document later.
-      setAttachments((prev) => [...prev, { ...data, file }])
+      // same bytes as a real class document later. `_id` is a stable key
+      // independent of array position — see Chip's own key comment below.
+      setAttachments((prev) => [...prev, { ...data, file, _id: attachmentIdRef.current++ }])
       toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
     } catch (err) {
       triggerShake()
@@ -322,7 +326,7 @@ export function Composer({
     setIsAttaching(true)
     try {
       const data = await api.extractText(file)
-      setAttachments((prev) => [...prev, { ...data, file }])
+      setAttachments((prev) => [...prev, { ...data, file, _id: attachmentIdRef.current++ }])
       toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
     } catch (err) {
       triggerShake()
@@ -456,9 +460,19 @@ export function Composer({
 
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-3 pt-2.5">
-            {attachments.map((f, i) => (
+            {attachments.map((f) => (
               <Chip
-                key={`${f.filename}-${i}`}
+                // Was `${f.filename}-${i}` — a removed chip only leaves the
+                // array once its own 150ms exit animation finishes
+                // (useExitTransition below), so removing two chips within
+                // that window reindexes everything after the first one to
+                // finish. That changed a still-animating chip's key mid-exit,
+                // which React reads as an entirely new element: it remounted
+                // fresh (mounted: true, closing: false) and visibly snapped
+                // back to fully opaque instead of finishing its fade. `_id`
+                // is stamped once at attach time and never depends on
+                // position, so a sibling's removal can't touch it.
+                key={f._id}
                 file={f}
                 onRemove={() => setAttachments((prev) => prev.filter((x) => x !== f))}
                 onSaveAsDocument={
@@ -472,8 +486,14 @@ export function Composer({
         <div
           className={`relative flex min-h-[60px] items-end px-2 pb-2 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
         >
+          {/* Was hardcoded to "Describe the week you want to plan" — missed
+              when `placeholder`/`sendLabel` below were made props specifically
+              so a non-chat caller wasn't stuck with chat-specific wording (see
+              that comment). A screen-reader user on any other surface still
+              heard this exact chat-only sentence regardless of what
+              `placeholder` actually said. */}
           <label className="sr-only" htmlFor="composer-input">
-            Describe the week you want to plan
+            {placeholder}
           </label>
 
           {/* h-11/w-11 (44px, Apple/Android's own touch-target minimum)
