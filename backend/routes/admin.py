@@ -92,6 +92,9 @@ def set_comped(account_id: str, body: CompBody, _admin: str = Depends(get_curren
     else:
         db.clear_subscription_status(account_id)
     db.log_admin_action(_admin, "comp_grant" if body.comped else "comp_revoke", target=account_id)
+    db.record_audit_log(
+        _admin, "admin.set_comped", target_user_id=account_id, detail={"comped": body.comped}
+    )
     return {"account": next(
         (a for a in db.list_accounts_with_stats() if a["id"] == account_id), None
     )}
@@ -227,6 +230,7 @@ def create_school_route(body: SchoolBody, _admin: str = Depends(get_current_admi
         )
     school = db.create_school(body.id, body.name)
     db.log_admin_action(_admin, "school_add", target=body.id, detail={"name": body.name})
+    db.record_audit_log(_admin, "admin.create_school", detail={"school_id": body.id, "name": body.name})
     return school
 
 
@@ -244,6 +248,7 @@ def delete_school_route(school_id: str, _admin: str = Depends(get_current_admin)
         )
     db.delete_school(school_id)
     db.log_admin_action(_admin, "school_remove", target=school_id)
+    db.record_audit_log(_admin, "admin.delete_school", detail={"school_id": school_id})
 
 
 @router.get("/calendar-submissions")

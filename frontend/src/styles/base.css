@@ -1418,6 +1418,40 @@
     color: var(--ink-muted);
   }
 
+  /* ── plain-text policy pages ─────────────────────────────────────────────
+     PrivacyPage is the one page meant to read like a document, not a UI
+     surface — a fixed measure and ordinary heading/paragraph rhythm rather
+     than the app's component styling. */
+  .prose {
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: var(--sp-4) 0;
+  }
+  .prose h1 {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    margin-top: var(--sp-4);
+  }
+  .prose h2 {
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-semibold);
+    margin-top: var(--sp-6);
+  }
+  .prose p,
+  .prose li {
+    font-size: var(--fs-sm);
+    line-height: var(--lh-relaxed, 1.6);
+    color: var(--ink-soft);
+  }
+  .prose ul {
+    padding-left: var(--sp-5);
+    list-style: disc;
+  }
+  .prose .prose-meta {
+    color: var(--ink-faint);
+    font-size: var(--fs-xs);
+  }
+
   /* ── the crash screen ────────────────────────────────────────────────────
      This is the one surface a teacher only ever sees when something has
      already gone wrong, and it has been rendering unstyled. It sits outside

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronUp, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
+import { BookOpen, ChevronUp, Info, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -187,6 +187,13 @@ export function AccountMenu({ classPath }) {
           ) : null}
 
           <div className="mt-1 border-t border-hairline pt-1">
+            <Link
+              to="/privacy"
+              onClick={() => setOpen(false)}
+              className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+            >
+              <Info size={14} aria-hidden="true" /> Privacy &amp; data policy
+            </Link>
             <Link
               to={`${classPath}/class`}
               onClick={() => setOpen(false)}
