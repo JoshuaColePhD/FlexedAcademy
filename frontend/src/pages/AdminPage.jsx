@@ -44,6 +44,56 @@ import { AccountMenu } from '../components/AccountMenu'
  * (grant/revoke/cap several accounts at once instead of one row at a time).
  */
 
+const STATUS_LABELS = {
+  active: 'Active',
+  trialing: 'Trialing',
+  past_due: 'Past due',
+  canceled: 'Canceled',
+  comped: 'Comped',
+  none: 'No subscription',
+}
+
+/* Same shape as BillingProvider's own formatPrice — cents and a currency
+   code in, a locale-formatted figure out. Not imported from there: that
+   component's version also appends "/ month", which an aggregate MRR figure
+   has no use for. */
+function formatCents(cents, currency = 'USD') {
+  if (cents == null) return '—'
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100)
+}
+
+/* One human-readable line per admin_audit_log row (backend/db.py migration
+   28). Kept next to the log fetch rather than in a shared util — nothing
+   else in the app renders this shape, and it would be one more file to open
+   to follow what "comp_grant" means. */
+function describeAuditEntry(entry) {
+  const who = entry.actor_email || 'unknown admin'
+  switch (entry.action) {
+    case 'comp_grant':
+      return `${who} granted unlimited access to ${entry.target}`
+    case 'comp_revoke':
+      return `${who} revoked unlimited access from ${entry.target}`
+    case 'school_add':
+      return `${who} added school "${entry.detail?.name || entry.target}" (${entry.target})`
+    case 'school_remove':
+      return `${who} removed school ${entry.target}`
+    case 'settings_update': {
+      const before = entry.detail?.before
+      const after = entry.detail?.after
+      if (before && after) {
+        return `${who} changed token caps: free ${before.free_weekly_token_cap.toLocaleString()} → ${after.free_weekly_token_cap.toLocaleString()}, subscriber ${before.subscriber_weekly_token_cap.toLocaleString()} → ${after.subscriber_weekly_token_cap.toLocaleString()}`
+      }
+      return `${who} updated settings`
+    }
+    default:
+      return `${who} · ${entry.action}${entry.target ? ` · ${entry.target}` : ''}`
+  }
+}
+
 const ENTITLED = new Set(['active', 'trialing', 'past_due', 'comped'])
 
 // Mirrors config.py/entitlement.py — see their own comments for where these
@@ -1080,8 +1130,249 @@ function AutoActivatedTemplates() {
   )
 }
 
+/* Revenue and payment-risk without a Stripe dashboard login. Read-only —
+   there is nothing here for an admin to edit; everything that changes a
+   subscription happens on Stripe's own hosted pages (checkout, portal), and
+   this app never touches a card. MRR is an estimate (routes/admin.py's own
+   comment explains why), not a Stripe-reported figure. */
+function BillingAdmin() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'billing'],
+    queryFn: () => api.adminBilling(),
+  })
+
+  if (isLoading) return <p className="mt-8 text-sm text-ink-muted">Loading…</p>
+  if (isError) return <p className="mt-8 text-sm text-mark">Could not load billing data.</p>
+
+  const counts = data.counts || {}
+  const statusOrder = ['active', 'trialing', 'past_due', 'comped', 'canceled', 'none']
+  const pastDue = data.past_due_accounts || []
+
+  return (
+    <div className="mt-8 space-y-6">
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink">Revenue</h2>
+        {!data.billing_enabled ? (
+          <p className="mt-3 text-sm text-ink-muted">
+            Billing isn't configured yet (no Stripe keys) — every account may generate for free.
+          </p>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-6 text-sm">
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-ink-muted">Estimated MRR</div>
+              <div className="font-mono text-lg text-ink">
+                {formatCents(data.mrr_cents, data.price?.currency)}
+              </div>
+            </div>
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-ink-muted">Paying accounts</div>
+              <div className="font-mono text-ink-soft">{data.paying_accounts}</div>
+            </div>
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-ink-muted">Price</div>
+              <div className="font-mono text-ink-soft">
+                {data.price ? `${formatCents(data.price.amount, data.price.currency)} / ${data.price.interval}` : '—'}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink">Accounts by status</h2>
+        <div className="mt-3 flex flex-wrap gap-6 text-sm">
+          {statusOrder
+            .filter((s) => counts[s])
+            .map((s) => (
+              <div key={s}>
+                <div className="text-2xs uppercase tracking-wide text-ink-muted">{STATUS_LABELS[s] || s}</div>
+                <div className="font-mono text-ink-soft">{counts[s]}</div>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink">Payment at risk</h2>
+        <p className="mt-1 text-2xs text-ink-muted">
+          Accounts whose card failed on renewal — Stripe will keep retrying, but access lapses if it never succeeds.
+        </p>
+        {pastDue.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-muted">No accounts currently past due.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-edge">
+            {pastDue.map((a) => (
+              <li key={a.id} className="py-2 text-sm">
+                <div className="font-medium text-ink">{a.name}</div>
+                <div className="text-2xs text-ink-muted">{a.email}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* The two weekly token caps entitlement.py enforces (backend/entitlement.py),
+   editable here instead of only via config.py + a redeploy. Everything else
+   in config.py — Stripe keys, retrieval floors, TTS model — stays env-only on
+   purpose: those are either security-sensitive or measured constants (see
+   config.py's own comments), not knobs an admin should turn casually. These
+   two are the one pair actually likely to need tuning in response to real
+   usage, so they get a form; nothing else does yet. */
+function SettingsAdmin() {
+  const toast = useToast()
+  const confirm = useConfirm()
+  const qc = useQueryClient()
+  const { data: appSettings, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'settings'],
+    queryFn: () => api.adminGetSettings(),
+  })
+  const { data: auditData, isLoading: auditLoading, isError: auditError } = useQuery({
+    queryKey: ['admin', 'audit-log'],
+    queryFn: () => api.adminAuditLog({ limit: 20 }),
+  })
+  const [freeCap, setFreeCap] = useState('')
+  const [subscriberCap, setSubscriberCap] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [editing, setEditing] = useState(false)
+
+  const startEditing = () => {
+    setFreeCap(String(appSettings.free_weekly_token_cap))
+    setSubscriberCap(String(appSettings.subscriber_weekly_token_cap))
+    setEditing(true)
+  }
+
+  const save = async (e) => {
+    e.preventDefault()
+    const free = Number(freeCap)
+    const subscriber = Number(subscriberCap)
+    if (!Number.isInteger(free) || free <= 0 || !Number.isInteger(subscriber) || subscriber <= 0) {
+      toast.error('Both caps must be whole numbers greater than zero.')
+      return
+    }
+    if (subscriber < free) {
+      toast.error('Subscriber cap must be at least the free cap.')
+      return
+    }
+    const ok = await confirm({
+      title: 'Update weekly token caps?',
+      body: 'This changes the usage limit for every account immediately — not just new signups.',
+      confirmLabel: 'Update',
+      tone: 'default',
+    })
+    if (!ok) return
+    setSaving(true)
+    try {
+      await api.adminUpdateSettings(free, subscriber)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['admin', 'settings'] }),
+        qc.invalidateQueries({ queryKey: ['admin', 'audit-log'] }),
+      ])
+      setEditing(false)
+      toast.success('Token caps updated')
+    } catch (err) {
+      toast.apiError('Could not update settings', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const entries = auditData?.entries ?? []
+
+  return (
+    <div className="mt-8 space-y-6">
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink">Weekly token caps</h2>
+        <p className="mt-1 text-2xs text-ink-muted">
+          What entitlement.py enforces before refusing a generation — a rolling 7-day window, per account.
+        </p>
+
+        {isLoading ? (
+          <p className="mt-3 text-sm text-ink-muted">Loading…</p>
+        ) : isError ? (
+          <p className="mt-3 text-sm text-mark">Could not load settings.</p>
+        ) : editing ? (
+          <form onSubmit={save} className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-2xs text-ink-muted">
+              Free cap (tokens/week)
+              <input
+                type="number"
+                min="1"
+                value={freeCap}
+                onChange={(e) => setFreeCap(e.target.value)}
+                className="w-40 rounded-lg border border-edge bg-paper px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-2xs text-ink-muted">
+              Subscriber cap (tokens/week)
+              <input
+                type="number"
+                min="1"
+                value={subscriberCap}
+                onChange={(e) => setSubscriberCap(e.target.value)}
+                className="w-40 rounded-lg border border-edge bg-paper px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+              />
+            </label>
+            <button type="submit" disabled={saving} className="btn text-xs">
+              Save
+            </button>
+            <button
+              type="button"
+              className="text-xs text-ink-muted hover:text-ink"
+              disabled={saving}
+              onClick={() => setEditing(false)}
+            >
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-6 text-sm">
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-ink-muted">Free</div>
+              <div className="font-mono text-ink-soft">{appSettings.free_weekly_token_cap.toLocaleString()}</div>
+            </div>
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-ink-muted">Subscriber</div>
+              <div className="font-mono text-ink-soft">{appSettings.subscriber_weekly_token_cap.toLocaleString()}</div>
+            </div>
+            <button type="button" className="btn text-xs" onClick={startEditing}>
+              Edit
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink">Recent admin activity</h2>
+        <p className="mt-1 text-2xs text-ink-muted">
+          Every comp grant/revoke, school change, and settings update — who did it and when.
+        </p>
+
+        {auditLoading ? (
+          <p className="mt-3 text-sm text-ink-muted">Loading…</p>
+        ) : auditError ? (
+          <p className="mt-3 text-sm text-mark">Could not load the audit log.</p>
+        ) : entries.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-muted">No admin actions recorded yet.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-edge">
+            {entries.map((entry) => (
+              <li key={entry.id} className="py-2 text-sm text-ink-soft">
+                <span className="text-2xs text-ink-faint">{relative(entry.created_at)}</span>
+                {' — '}
+                {describeAuditEntry(entry)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function AdminPage() {
-  useDocumentTitle('Accounts')
   const toast = useToast()
   const confirm = useConfirm()
   const qc = useQueryClient()
@@ -1238,7 +1529,11 @@ export function AdminPage() {
     { id: 'users', label: 'User Management' },
     { id: 'standards', label: 'Standards Check' },
     { id: 'schools', label: 'Schools' },
+    { id: 'billing', label: 'Billing' },
+    { id: 'settings', label: 'Settings' },
   ], [])
+
+  useDocumentTitle(tabs.find((t) => t.id === activeTab)?.label || 'Admin')
 
   React.useEffect(() => {
     const observer = new IntersectionObserver(
@@ -1629,6 +1924,18 @@ export function AdminPage() {
             <div id="section-schools" className="scroll-mt-8">
               <h2 className="text-xl font-bold text-ink mb-6">Schools & Calendars</h2>
               <SchoolsAdmin />
+            </div>
+
+            {/* Billing Section */}
+            <div id="section-billing" className="scroll-mt-8">
+              <h2 className="text-xl font-bold text-ink mb-6">Billing</h2>
+              <BillingAdmin />
+            </div>
+
+            {/* Settings Section */}
+            <div id="section-settings" className="scroll-mt-8">
+              <h2 className="text-xl font-bold text-ink mb-6">Settings</h2>
+              <SettingsAdmin />
             </div>
 
           </div>

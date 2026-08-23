@@ -164,8 +164,13 @@ def entitlement(user_id: str) -> Entitlement:
             unlimited=True,
         )
 
+    # Admin-editable via the Settings tab (routes/admin.py) — config.py's own
+    # values are only the seed for app_settings' singleton row (migration
+    # 46), read here so a cap change takes effect on the next request, not
+    # the next deploy.
+    caps = db.get_app_settings()
     cap = custom_cap if custom_cap is not None else (
-        settings.subscriber_weekly_token_cap if subscribed else settings.free_weekly_token_cap
+        caps["subscriber_weekly_token_cap"] if subscribed else caps["free_weekly_token_cap"]
     )
     burst_since = (datetime.now(UTC) - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")
     tokens_used_recent = db.tokens_used_since(user_id, burst_since)

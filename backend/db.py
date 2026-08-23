@@ -1317,6 +1317,50 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE llm_cache ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 46: admin settings + audit log ───────────────────────────────────────
+    #
+    # app_settings is a singleton row (id BOOLEAN PRIMARY KEY DEFAULT true,
+    # CHECK (id)), the same shape migration 1's `settings` table used for its
+    # own single-teacher config — there is exactly one value of each cap, ever,
+    # so a real table with a WHERE clause would be answering a question
+    # ("which row?") that doesn't exist. Seeded from config.py's own defaults
+    # so a fresh deploy's admin Settings tab shows the same numbers
+    # entitlement.py already enforced before this table existed. Distinct from
+    # migration 28's per-account custom_weekly_token_cap: that's one
+    # account's override, this is the tier-wide default everyone else falls
+    # back to.
+    #
+    # admin_audit_log exists because the two admin actions that predate it —
+    # granting/revoking comped access, adding/removing a school — had no
+    # record of who did it or when, only current state. actor_id has no FK:
+    # an admin account can be deleted later and the log should still read who
+    # did it, not silently lose the row.
+    f"""
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id                           BOOLEAN PRIMARY KEY DEFAULT true,
+      free_weekly_token_cap        INTEGER NOT NULL,
+      subscriber_weekly_token_cap  INTEGER NOT NULL,
+      updated_at                   TEXT NOT NULL,
+      updated_by                   TEXT,
+      CHECK (id)
+    );
+    ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+
+    INSERT INTO app_settings (id, free_weekly_token_cap, subscriber_weekly_token_cap, updated_at)
+    VALUES (true, {settings.free_weekly_token_cap}, {settings.subscriber_weekly_token_cap}, '2026-08-15T00:00:00+00:00')
+    ON CONFLICT (id) DO NOTHING;
+
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id         SERIAL PRIMARY KEY,
+      actor_id   TEXT NOT NULL,
+      action     TEXT NOT NULL,
+      target     TEXT,
+      detail     TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created ON admin_audit_log(created_at DESC);
+    ALTER TABLE admin_audit_log ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -3303,6 +3347,88 @@ def set_custom_token_cap(user_id: str, cap: int | None) -> None:
     """An admin override on top of the two tier defaults (config.py) — see
     migration 28. `cap=None` clears it back to "use the tier's own cap"."""
     _write("UPDATE users SET custom_weekly_token_cap = ? WHERE id = ?", (cap, user_id))
+
+
+def get_app_settings() -> dict:
+    """The two admin-editable weekly token caps. Falls back to config.py's
+    defaults if the singleton row is somehow missing (never happens after
+    migration 28 runs, but a missing row should degrade to the pre-Settings-
+    tab behavior rather than a 500)."""
+    row = _row("SELECT * FROM app_settings WHERE id = true")
+    if row:
+        return row
+    return {
+        "free_weekly_token_cap": settings.free_weekly_token_cap,
+        "subscriber_weekly_token_cap": settings.subscriber_weekly_token_cap,
+        "updated_at": None,
+        "updated_by": None,
+    }
+
+
+def update_app_settings(*, free_weekly_token_cap: int, subscriber_weekly_token_cap: int, actor_id: str) -> dict:
+    _write(
+        """
+        UPDATE app_settings
+        SET free_weekly_token_cap = ?, subscriber_weekly_token_cap = ?, updated_at = ?, updated_by = ?
+        WHERE id = true
+        """,
+        (free_weekly_token_cap, subscriber_weekly_token_cap, now(), actor_id),
+    )
+    return get_app_settings()
+
+
+def log_admin_action(actor_id: str, action: str, target: str | None = None, detail: dict | None = None) -> None:
+    """One row per admin action — comp grant/revoke, school add/remove,
+    a settings change. Never raised on failure to the caller: an admin
+    action that succeeded but went unlogged is a worse outcome than one
+    with a thin log entry, not one that gets undone or refused."""
+    _write(
+        "INSERT INTO admin_audit_log (actor_id, action, target, detail, created_at) VALUES (?,?,?,?,?)",
+        (actor_id, action, target, json.dumps(detail) if detail is not None else None, now()),
+    )
+
+
+def list_admin_audit_log(limit: int = 50) -> list[dict]:
+    """Most recent admin actions, actor's email joined in — the log table
+    only has actor_id, and the page has no use for a bare uuid."""
+    rows = _rows(
+        """
+        SELECT l.id, l.action, l.target, l.detail, l.created_at,
+               u.email AS actor_email
+        FROM admin_audit_log l
+        LEFT JOIN users u ON u.id = l.actor_id
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    for r in rows:
+        r["detail"] = json.loads(r["detail"]) if r.get("detail") else None
+    return rows
+
+
+def billing_summary() -> dict:
+    """Account counts by subscription_status, plus the 'past_due' accounts by
+    name — the two things an admin actually needs from Stripe without
+    calling Stripe: how many people are paying, and who's at risk of losing
+    access because a card failed. 'past_due' is set by the same webhook
+    (routes/billing.py) that would otherwise only ever be seen in the Stripe
+    dashboard, so this is that state surfaced somewhere an admin already is.
+
+    MRR is computed by the caller (routes/admin.py), not here — it needs the
+    live Stripe price, which is a network call this DB layer has no business
+    making.
+    """
+    counts = _rows(
+        "SELECT COALESCE(subscription_status, 'none') AS status, COUNT(*) AS n FROM users GROUP BY subscription_status"
+    )
+    past_due = _rows(
+        "SELECT id, email, name, subscription_period_end FROM users WHERE subscription_status = 'past_due' ORDER BY email"
+    )
+    return {
+        "counts": {row["status"]: row["n"] for row in counts},
+        "past_due_accounts": past_due,
+    }
 
 
 def create_user(email: str, name: str, password_hash: str) -> dict:

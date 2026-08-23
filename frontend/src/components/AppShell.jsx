@@ -264,9 +264,6 @@ function Rail({ onNavigate, onClose }) {
             </>
           )}
         </NavLink>
-        {/* Only rendered for is_admin accounts — everyone else never sees this
-            link exists. The route and every request it makes are gated again
-            server-side, so this is convenience, not the security boundary. */}
         <AccountMenu classPath={classPath} />
       </div>
     </>
