@@ -18,7 +18,6 @@ import { scanGrounding } from '../lib/grounding'
 import { orderedDays, unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
-import { useExitTransition } from '../hooks/useExitTransition'
 import { ShareDialog } from './ShareDialog'
 import { WeekStrip } from './WeekStrip'
 import { useToast } from '../lib/toastContext'
@@ -521,17 +520,19 @@ export function ArtifactRail({
  * effect); afterward it is the teacher's to open or close, and closing it
  * once does not get silently overridden on the next render.
  *
- * The body used to be a bare conditional {open ? <div>…</div> : null} —
- * appearing already full-width the instant `open` flipped, and vanishing
- * with no exit animation at all, unlike every other drawer in this app
- * (the phone nav rail, the document overlay, every dialog/toast) which
- * plays a mirrored close via useExitTransition. `mounted` keeps the node
- * around for one more tick so the CSS exit animation below has something
- * to play on; `open` itself still drives the outer width immediately, so
- * the handle springs open at once and the content eases in behind it.
+ * A bare conditional {open ? <div>…</div> : null} — same as the nav rail's
+ * own collapse on the other side of the screen (AppShell.jsx), which only
+ * ever animates its own width and lets the content just be there or not.
+ * This used to also keep the body mounted for an extra tick to play its own
+ * mirrored slide-and-fade on top of that width change, on the theory that a
+ * plain unmount read as unpolished. In practice the two competing motions —
+ * the container's width easing open while the content separately slides in
+ * from its own offset — read as the panel glitching or shrinking rather
+ * than opening cleanly, which is exactly what the nav rail's plainer version
+ * doesn't do. One motion, not two: the width transition below is the whole
+ * animation now.
  */
 export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps }) {
-  const { mounted, closing } = useExitTransition(open, 130)
   return (
     <div className={`artifact-drawer${open ? ' is-open' : ''}`}>
       <button
@@ -560,8 +561,8 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
           <ChevronLeft className="artifact-drawer-arrow" aria-hidden="true" />
         )}
       </button>
-      {mounted ? (
-        <div className={`artifact-drawer-body${closing ? ' is-closing' : ''} bg-paper-raised h-full`}>
+      {open ? (
+        <div className="artifact-drawer-body bg-paper-raised h-full">
           <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
         </div>
       ) : null}
