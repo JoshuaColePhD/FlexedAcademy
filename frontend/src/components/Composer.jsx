@@ -368,17 +368,11 @@ export function Composer({
 
   const acceptSuggestion = (suggestionToAccept = activeSuggestion) => {
     if (!suggestionToAccept?.prompt) return
-    // review-plan is the one suggestion Tab already answers as "yes, review
-    // it" — unlike continue-draft or prepare-next-week, whose prompt is a
-    // starting point a teacher might still want to edit before sending.
-    // Filling the box and making them also hit Enter/click Send bought
-    // nothing over just typing the sentence themselves; sending outright is
-    // the actual shortcut Tab is supposed to be here.
-    if (suggestionToAccept.action === 'review-plan' && !value) {
-      pulseMotion('submit', 320)
-      onSubmit(suggestionToAccept.prompt)
-      return
-    }
+    // Tab only ever fills the box, for every suggestion including
+    // review-plan — it used to send review-plan outright on the theory that
+    // there was nothing left to edit, but that meant Tab did two very
+    // different things depending on which suggestion happened to be
+    // showing. One consistent contract: Tab accepts text, Enter sends it.
     const typedPrefixMatches = value && suggestionToAccept.prompt.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
     const remaining = typedPrefixMatches ? suggestionToAccept.prompt.slice(value.length) : ''
     if (value && !remaining) return
