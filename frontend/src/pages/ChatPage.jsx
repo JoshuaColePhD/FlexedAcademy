@@ -299,6 +299,25 @@ export function ChatPage() {
 
   const scrollRef = useRef(null)
   const endRef = useRef(null)
+  // Every rendered message's own DOM node, by id — see the ref callback on
+  // each row below and pinToTopIdRef's own comment just under this.
+  const messageRefs = useRef(new Map())
+  /* Set the moment a new turn's own user message is pushed (see submit()) —
+     the scroll effect below reads it once, scrolls THAT message's top to
+     the top of the transcript, then clears it. Was: every new chunk of a
+     streaming reply re-snapped the view to the very BOTTOM of everything
+     (endRef), which for any reply longer than one screen meant finishing
+     already scrolled past its own opening line — reading it back required
+     scrolling back up by hand every single time. Pinning the NEW message's
+     top instead means the exchange starts exactly where a teacher would
+     look for it, and the reply just grows into the room below rather than
+     dragging the viewport down after it. */
+  const pinToTopIdRef = useRef(null)
+  // 'bottom' (chase the very end, e.g. an existing conversation just
+  // loaded) or 'pinned' (a turn's start is pinned; don't chase anything
+  // until the next one begins). Reset to 'bottom' wherever `messages` is
+  // replaced wholesale rather than appended to — see the chat-load effect.
+  const scrollModeRef = useRef('bottom')
 
   const activeChat = chats.find((c) => c.id === chatId)
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
@@ -497,6 +516,7 @@ export function ChatPage() {
       stream.stop()
       chatStream.stop()
       setMessages([])
+      scrollModeRef.current = 'bottom'
       setArtifact(null)
       setArtifactLoadError(false)
       setExpanded(false)
@@ -563,6 +583,7 @@ export function ChatPage() {
           planId: m.plan_id || null,
         }))
         setMessages(loaded)
+        scrollModeRef.current = 'bottom'
         localFor.current = chatId
         lastSpokenRef.current = loaded.length ? loaded[loaded.length - 1].id : null
         const last = [...loaded].reverse().find((m) => m.planId)
@@ -1003,10 +1024,12 @@ export function ChatPage() {
       // payload; leaving the chip pinned implied they were still in context
       // for every later message, which was never true even before this fix.
       setAttachments([])
-      const nextMessages = [
-        ...messages,
-        { id: nextId(), role: 'user', content: typed || `Sent ${attachments.length} file(s)` }
-      ]
+      const newUserMessage = { id: nextId(), role: 'user', content: typed || `Sent ${attachments.length} file(s)` }
+      const nextMessages = [...messages, newUserMessage]
+      // See pinToTopIdRef's own comment — the scroll effect reads this once
+      // and clears it, so the reply that's about to arrive doesn't drag the
+      // view any further than this turn's own opening line.
+      pinToTopIdRef.current = newUserMessage.id
 
       setMessages(nextMessages)
 
@@ -1438,7 +1461,9 @@ export function ChatPage() {
       if (!artifact?.planId) return
       const label = field ? `${day.name}’s ${FIELD_LABELS[field] || field}` : day.name
       const ask = `Revise ${label}: ${feedback}`
-      setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: ask }])
+      const askId = nextId()
+      pinToTopIdRef.current = askId
+      setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask }])
       // Persisted for the same reason as the composer's own messages: a cell
       // tweak is a real edit to the week, and the transcript is meant to be a
       // complete record of what happened to the plan. It was writing to screen
@@ -1589,27 +1614,40 @@ export function ChatPage() {
     if (!el) return
     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120)
   }
-  // messages alone used to gate this — but the plan-building preview
-  // (stream.preview, the WeekStrip filling in day by day) grows the
-  // transcript's height turn by turn without ever changing `messages`
-  // itself. Without it here, a teacher already at the bottom watched new
-  // content arrive below the fold with no follow-scroll until the whole
-  // generation finished. (The live reply's own growth is `messages` itself
-  // now — see liveMessageIdRef's sync effect above — so it doesn't need its
-  // own dependency here any more.)
-  const scrollFrameRef = useRef(null)
+  // Two very different jobs, picked apart by scrollModeRef (see its own
+  // comment above): 'bottom' chases the very end — right for a
+  // conversation that just loaded, where the latest exchange IS the thing
+  // to land on. 'pinned' means a turn already anchored its own start
+  // (pinToTopIdRef fired below) and nothing should drag the view further
+  // while the reply grows underneath it — that dragging, once per SSE
+  // chunk, was the whole "why do I have to scroll back up" complaint: for
+  // any reply longer than one screen, chasing its bottom scrolls straight
+  // past its own opening line.
+  // Was requestAnimationFrame, to coalesce several SSE chunks landing in the
+  // same frame into one scroll call — but rAF is throttled to roughly
+  // nothing the moment a tab is backgrounded (switching tabs while the AI
+  // is still writing, then coming back, is an ordinary thing to do), and a
+  // pin that silently never fires is worse than a few redundant scroll
+  // calls. The pin itself only ever needs to run once per turn regardless
+  // (mode flips to 'pinned' and everything after returns early), so there
+  // was nothing left to actually coalesce.
   useEffect(() => {
-    if (!atBottom) return undefined
-    // Coalesced to one scroll per animation frame rather than one per SSE
-    // chunk — a long reply can stream several chunks within a single frame,
-    // and calling scrollIntoView for each of them re-snapped the scrollport
-    // that many times a frame: a rapid flicker of small instant jumps
-    // instead of one smooth follow. rAF collapses however many of those
-    // land in the same tick into the single call that actually paints.
-    scrollFrameRef.current = requestAnimationFrame(() => {
-      endRef.current?.scrollIntoView({ block: 'end' })
-    })
-    return () => cancelAnimationFrame(scrollFrameRef.current)
+    const pinId = pinToTopIdRef.current
+    if (pinId) {
+      pinToTopIdRef.current = null
+      scrollModeRef.current = 'pinned'
+      // Instant, not smooth — smooth scrolling is itself an animation the
+      // browser is free to throttle or stall exactly when a tab is
+      // backgrounded (switching tabs while a reply is still being written
+      // is ordinary), and this is a hard "you're on a new turn now"
+      // repositioning, not a decorative flourish worth the risk of it
+      // silently never finishing.
+      messageRefs.current.get(pinId)?.scrollIntoView({ block: 'start' })
+      return
+    }
+    if (scrollModeRef.current === 'pinned') return
+    if (!atBottom) return
+    endRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, atBottom, stream.preview])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
@@ -2200,24 +2238,33 @@ export function ChatPage() {
             voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
           }`}>
             {messages.map((m, i) => (
-              <Message
-                key={m.id}
-                message={m}
-                subject={activeClass?.subject}
-                isLast={i === messages.length - 1}
-                onRetry={m.isError && !busy ? retryLast : undefined}
-                /* The pencil rendered unguarded while this was never passed, so
-                   clicking it opened a working editor whose "Send again" threw
-                   and silently reverted the text. */
-                onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
-                /* The day-by-day breakdown moved into ArtifactRail's own
-                   "This week" section on desktop, which sits right next to
-                   the plan it describes instead of scrolling away with the
-                   transcript. Phone has no rail to carry it, so it stays
-                   here for isPhone. */
-                hideWeekStrip={!isPhone}
-                voiceOpen={voiceOpen}
-              />
+              // The wrapper, not Message itself, carries the scroll ref —
+              // Message is a plain function component, not forwardRef, and
+              // wrapping costs nothing layout-wise (a bare block div around
+              // what's already a block-level flex item). See messageRefs and
+              // pinToTopIdRef's own comment below for what this ref is for.
+              <div key={m.id} ref={(el) => {
+                if (el) messageRefs.current.set(m.id, el)
+                else messageRefs.current.delete(m.id)
+              }}>
+                <Message
+                  message={m}
+                  subject={activeClass?.subject}
+                  isLast={i === messages.length - 1}
+                  onRetry={m.isError && !busy ? retryLast : undefined}
+                  /* The pencil rendered unguarded while this was never passed, so
+                     clicking it opened a working editor whose "Send again" threw
+                     and silently reverted the text. */
+                  onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
+                  /* The day-by-day breakdown moved into ArtifactRail's own
+                     "This week" section on desktop, which sits right next to
+                     the plan it describes instead of scrolling away with the
+                     transcript. Phone has no rail to carry it, so it stays
+                     here for isPhone. */
+                  hideWeekStrip={!isPhone}
+                  voiceOpen={voiceOpen}
+                />
+              </div>
             ))}
 
             {/* "The plan so far" — used to live only in the side rail
