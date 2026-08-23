@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, Clock, Download, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, Clock, Download, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -12,7 +12,7 @@ import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
 import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
-import { DAYS, FIELD_LABELS } from '../lib/planShape'
+import { DAYS, FIELD_LABELS, SHORT_DAY, dayTitle } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
@@ -220,6 +220,36 @@ export function ChatPage() {
      calling submit() directly while a reply is still in flight. Cleared and
      actually sent the moment `busy` goes false — see the effect below. */
   const [queuedMessage, setQueuedMessage] = useState(null)
+  /* A transient "it's done" notice in the same slot as the queued-message
+     pill above — set only on a SUCCESSFUL plan/quiz build (see onDone below
+     and the quiz try-block), never on error, so it can't misreport a failed
+     build as ready. Self-clears after a few seconds; showReadyNotice below
+     is the only way anything sets it, so one build finishing can't leave a
+     stale notice from an earlier one still on screen. */
+  const [readyNotice, setReadyNotice] = useState(null)
+  // Text survives into the exit animation below — `readyNotice` itself goes
+  // null the instant a new one replaces it or the timer clears it, which is
+  // exactly when the fading-out node still needs something to show.
+  const [lastReadyNotice, setLastReadyNotice] = useState(null)
+  // Bumped on every call so each new notice — even back-to-back days with
+  // different text — gets a fresh `key` below and replays the pop-in
+  // animation instead of the DOM node just having its text swapped in place.
+  const [readyNoticeSeq, setReadyNoticeSeq] = useState(0)
+  const readyNoticeTimerRef = useRef(null)
+  const showReadyNotice = useCallback((text) => {
+    if (readyNoticeTimerRef.current) clearTimeout(readyNoticeTimerRef.current)
+    setReadyNotice(text)
+    setLastReadyNotice(text)
+    setReadyNoticeSeq((n) => n + 1)
+    readyNoticeTimerRef.current = setTimeout(() => {
+      readyNoticeTimerRef.current = null
+      setReadyNotice(null)
+    }, 4000)
+  }, [])
+  useEffect(() => () => clearTimeout(readyNoticeTimerRef.current), [])
+  // 150ms to match .fa-chip-exit, the same shrink-and-fade this app already
+  // uses elsewhere for a small chip disappearing in place.
+  const readyNoticeExit = useExitTransition(Boolean(readyNotice), 150)
   /* Which week a NEW plan will be built for. Null means "auto" — the
      next-unplanned week (autoWeek, below) — until a ?week= param overrides
      it, which is how the Library hands a specific week over.
@@ -744,6 +774,7 @@ export function ChatPage() {
 
   const stream = useLessonStream({
     onDone: (done) => {
+      showReadyNotice('Lesson plan ready')
       setArtifact({
         planId: done.plan_id,
         plan: done.plan,
@@ -798,6 +829,35 @@ export function ChatPage() {
       toast.apiError("Couldn't build that", err)
     },
   })
+
+  /* Same "This week" list ArtifactRail already shows while building — one
+     more place it lands: each day pops up here, above the composer, the
+     moment its own title is known, then gets replaced by the next one
+     (showReadyNotice's own clearTimeout+reset already does the "new one
+     replaces the old" and "fades after a few seconds" behavior). Friday
+     never gets its own pop this way — nothing arrives after it in the
+     stream to signal it's closed — but "Lesson plan ready" lands right
+     behind it regardless, so the gap is a day early, not a silent one. */
+  const announcedDaysRef = useRef(new Set())
+  useEffect(() => {
+    if (stream.isStreaming) announcedDaysRef.current = new Set()
+  }, [stream.isStreaming])
+  useEffect(() => {
+    if (!stream.isStreaming) return
+    const days = stream.preview?.days || []
+    // Only a day BEFORE the last one in the array is actually done writing —
+    // the model streams days in order, so the last element is still being
+    // filled in and its title may not have landed (or settled) yet.
+    for (let i = 0; i < days.length - 1; i++) {
+      const day = days[i]
+      const name = day?.name
+      if (!name || announcedDaysRef.current.has(name)) continue
+      const title = dayTitle(day)
+      if (!title) continue
+      announcedDaysRef.current.add(name)
+      showReadyNotice(`${SHORT_DAY[name] || name}: ${title}`)
+    }
+  }, [stream.preview, stream.isStreaming, showReadyNotice])
 
   const chatStream = useChatStream({
     onRetry: () => {
@@ -1298,6 +1358,7 @@ export function ChatPage() {
           const quiz = revisingQuizId
             ? await api.reviseQuiz(artifact.planId, revisingQuizId, content)
             : await api.createQuiz(artifact.planId, chatResult.quizRequested)
+          showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
           qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
           setViewingQuiz(quiz)
           setMessages((prev) => [
@@ -1420,7 +1481,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage]
+    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2414,6 +2475,23 @@ export function ChatPage() {
         <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
           voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
         }`}>
+          {/* A build finishing already gets its own message in the transcript
+              ("Built ... Tell me what to change") — this is for the teacher
+              who scrolled up to reread something, or alt-tabbed away, and
+              would otherwise miss it landing. Self-dismisses; there's
+              nothing to act on here, unlike the queued-message pill below,
+              so no × or click target. */}
+          {readyNoticeExit.mounted ? (
+            <div
+              key={readyNoticeSeq}
+              className={`mb-2 flex items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-soft ${
+                readyNoticeExit.closing ? 'fa-chip-exit' : 'fa-rise'
+              }`}
+            >
+              <CheckCircle2 size={13} className="shrink-0 text-ok" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">{lastReadyNotice}</span>
+            </div>
+          ) : null}
           {/* The only visible sign a queued follow-up exists at all — without
               it, Enter clearing the box while busy would look identical to
               the text just vanishing. Sent automatically the moment `busy`
