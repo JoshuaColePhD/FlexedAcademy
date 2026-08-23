@@ -101,6 +101,10 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
       </motion.div>
     )
   }
+  // Hover used to also carry a framer-motion whileHover (scale/lift/tint) on
+  // top of .rail-row.is-interactive's own CSS :hover background — same effect
+  // fired twice, fighting each other on every mouseenter and reading as
+  // bouncy next to the plan card's plain CSS hover. CSS-only now, everywhere.
   return (
     <motion.button
       type="button"
@@ -110,7 +114,6 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06 }}
-      whileHover={{ scale: 1.02, y: -2, backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
     >
       {body}
     </motion.button>
@@ -138,7 +141,6 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06 }}
-      whileHover={{ scale: 1.02, y: -2, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
     >
       <span className="rail-card-head">
         <span
