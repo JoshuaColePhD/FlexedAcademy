@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   BookOpen,
   Calendar,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -18,6 +19,7 @@ import { scanGrounding } from '../lib/grounding'
 import { orderedDays, unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
+import { shortDateTime } from '../lib/dates'
 import { ShareDialog } from './ShareDialog'
 import { WeekStrip } from './WeekStrip'
 import { useToast } from '../lib/toastContext'
@@ -133,6 +135,29 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
  * delete it?") nobody was asking. Download is the row's only action now. */
 function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
   const toast = useToast()
+  // Asking for "a new quiz" for a week that already has one doesn't revise
+  // the existing row — it inserts a second one (see plans.py's create_quiz),
+  // and the model tends to hand both the same title for the same week's
+  // content ("Week 05 Quiz — Rhetorical..." twice, word for word). Without
+  // something else to go on, two such rows were visually identical: same
+  // title, same question-type label, no way to tell which is newer or
+  // whether they even differ. Question count and a built timestamp are
+  // both already on the record (quiz_json, created_at) — surfacing them
+  // costs no backend change and is real information, not decoration: two
+  // otherwise-identical cards NOW read "10 questions · Aug 22, 9:41 AM" vs
+  // "8 questions · Aug 22, 9:48 AM".
+  const count = quiz.quiz_json?.questions?.length
+  const built = shortDateTime(quiz.created_at)
+  const subLine = (
+    <>
+      <span className="rail-sub">
+        Quiz · QTI · {questionTypesLabel(quiz.question_types)}
+        {count ? ` · ${count} question${count === 1 ? '' : 's'}` : ''}
+        {quiz.has_qti ? '' : ' (failed to build, ask again)'}
+      </span>
+      {built ? <span className="rail-sub">{built}</span> : null}
+    </>
+  )
 
   return (
     <motion.div
@@ -159,18 +184,12 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
             }}
           >
             <span className="rail-title">{quiz.title}</span>
-            <span className="rail-sub">
-              Quiz · QTI · {questionTypesLabel(quiz.question_types)}
-              {quiz.has_qti ? '' : ' (failed to build, ask again)'}
-            </span>
+            {subLine}
           </button>
         ) : (
           <span className="rail-text">
             <span className="rail-title">{quiz.title}</span>
-            <span className="rail-sub">
-              Quiz · QTI · {questionTypesLabel(quiz.question_types)}
-              {quiz.has_qti ? '' : ' (failed to build, ask again)'}
-            </span>
+            {subLine}
           </span>
         )}
       </span>
@@ -208,6 +227,14 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
 }
 
 
+// Two is the common real case — a first attempt and a revision — and stays
+// readable with no disclosure at all. Past that, a plan that's accumulated
+// several "make me a new quiz" requests over a semester would otherwise turn
+// the rail into a long scroll of quiz cards before a teacher ever reaches
+// "Built from" or "This week" below. Collapsing anything past the two most
+// recent behind a tap keeps the common case exactly as it was.
+const VISIBLE_QUIZZES = 2
+
 export function ArtifactRail({
   artifact,
   classId,
@@ -241,6 +268,10 @@ export function ArtifactRail({
   onRetryArtifact = () => window.location.reload(),
 }) {
   const [shareTarget, setShareTarget] = useState(null)
+  // One-way: once a teacher taps through to see the older attempts, there's
+  // no reason to hide them again for the rest of this rail's life, so this
+  // is a reveal, not a toggle with its own collapsed-again affordance.
+  const [quizzesExpanded, setQuizzesExpanded] = useState(false)
   const plan = artifact?.plan
   const planId = artifact?.planId
   /* Every quiz already built for this plan (backend db.py migration 26) —
@@ -416,9 +447,20 @@ export function ArtifactRail({
               </span>
             </div>
           ) : null}
-          {quizzes.map((quiz, i) => (
+          {(quizzesExpanded ? quizzes : quizzes.slice(0, VISIBLE_QUIZZES)).map((quiz, i) => (
             <QuizRow key={quiz.id} quiz={quiz} index={i} onOpen={onOpenQuiz} color={color} onShare={(quiz) => setShareTarget({ type: 'quiz', quiz })} />
           ))}
+          {!quizzesExpanded && quizzes.length > VISIBLE_QUIZZES ? (
+            <RailRow
+              index={VISIBLE_QUIZZES}
+              icon={ChevronDown}
+              label={`${quizzes.length - VISIBLE_QUIZZES} earlier attempt${
+                quizzes.length - VISIBLE_QUIZZES === 1 ? '' : 's'
+              }`}
+              sub="Tap to show"
+              onClick={() => setQuizzesExpanded(true)}
+            />
+          ) : null}
         </div>
       ) : null}
 

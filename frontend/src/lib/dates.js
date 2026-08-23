@@ -53,3 +53,18 @@ export function monthLabel(iso) {
 export const monthKey = (iso) => (iso ? iso.slice(0, 7) : '')
 
 export const todayISO = () => new Date().toISOString().slice(0, 10)
+
+/** "Aug 22, 9:48 AM" — a full created/built timestamp, not a plain calendar
+ *  date: for telling apart two records that otherwise share a title (e.g.
+ *  two quizzes built for the same week, minutes apart). `iso` here is a
+ *  real datetime (a DB created_at), not the date-only strings the rest of
+ *  this file parses, so it goes straight to `Date`, no `parse()`. */
+export function shortDateTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
