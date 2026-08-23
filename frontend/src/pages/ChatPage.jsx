@@ -2004,7 +2004,14 @@ export function ChatPage() {
     )
 
   const chatPane = (
-    <div className="relative flex h-full min-h-0 flex-col bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
+    /* border-r-0, not a plain `border`: this pane's own background is only
+       30% opaque (the glassmorphism pass above), so a border on the edge
+       that touches the docked rail/document (ArtifactDrawer or ArtifactPanel,
+       both fully opaque) let the page's own colourful gradient bleed through
+       right at that seam — a visible tinted line between two panels that
+       otherwise sit flush. The other three edges keep the glass border;
+       only the shared seam drops it. */
+    <div className="relative flex h-full min-h-0 flex-col bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-r-0 border-white/5 shadow-inner shadow-white/5">
       {/* Always on, unlike chat-head below it — right-aligned so it sits at
           the seam with whatever's docked on the right (the plans rail, or
           the open document), not lost against the far edge of the screen. */}

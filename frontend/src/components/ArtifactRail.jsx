@@ -537,7 +537,13 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
     <div className={`artifact-drawer${open ? ' is-open' : ''}`}>
       <button
         type="button"
-        className={`artifact-drawer-handle fa-press tap-target${busy ? ' is-busy' : ''}`}
+        /* No .fa-press here — that class's :active state applies
+           translateY+scale(0.98), a real shrink-and-drop the instant the
+           button is pressed, independent of the open/close width transition
+           entirely. The left nav rail's own handle (AppShell.jsx's
+           .app-rail-handle) never had it and only ever fades its opacity on
+           press — this now matches that. */
+        className={`artifact-drawer-handle tap-target${busy ? ' is-busy' : ''}`}
         onClick={onToggle}
         aria-expanded={open}
         aria-label={open ? 'Collapse my plans' : 'Open my plans'}
