@@ -331,7 +331,8 @@
        read as flush; the taper this handle used to have (see git history)
        is what actually needed fixing, not the corner radius. */
   }
-  .app-rail-handle:hover {
+  .app-rail-handle:hover,
+  .app-rail-handle:active {
     opacity: 1;
   }
   .app-rail-handle-arrow {
@@ -341,7 +342,8 @@
     opacity: 0.85;
     pointer-events: none;
   }
-  .app-rail-handle:hover .app-rail-handle-arrow {
+  .app-rail-handle:hover .app-rail-handle-arrow,
+  .app-rail-handle:active .app-rail-handle-arrow {
     opacity: 1;
     color: var(--ink-muted);
   }
@@ -821,11 +823,27 @@
   }
 
   /* Keeps its border where cards lost theirs: this table mirrors the printed
-     .docx, and the frame is part of what it is showing you. */
+     .docx, and the frame is part of what it is showing you.
+
+     The two extra gradient layers are a scroll-shadow hint: on a phone the
+     860px table is 2+ screens wider than the viewport, with nothing else to
+     say "there's more to the right" once the row-label column has scrolled
+     past. `background-attachment: local` scrolls the first pair WITH the
+     table's content so the fade only shows while there's unseen content on
+     that side; `scroll` keeps the second pair fixed to the viewport edge so
+     the shadow itself doesn't slide away. */
   .plan-table-scroll {
     width: 100%;
     overflow-x: auto;
-    background: var(--district-cell);
+    background:
+      linear-gradient(to right, var(--district-cell) 30%, transparent) left,
+      linear-gradient(to left, var(--district-cell) 30%, transparent) right,
+      linear-gradient(to right, rgb(var(--neo-dark-rgb) / 0.25), rgb(var(--neo-dark-rgb) / 0)) left,
+      linear-gradient(to left, rgb(var(--neo-dark-rgb) / 0.25), rgb(var(--neo-dark-rgb) / 0)) right;
+    background-repeat: no-repeat;
+    background-color: var(--district-cell);
+    background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
     border: 1px solid var(--edge);
     border-radius: var(--r-md);
   }
@@ -854,6 +872,18 @@
        give near-black text on mid-blue in dark mode. */
     color: #fff;
     font-weight: var(--fw-semibold);
+  }
+  /* Pinned so the row's own label ("Do Now", "Homework"...) stays on screen
+     while the rest of the row scrolls under a finger — without it, scrolling
+     far enough right to read Friday loses all context for which lesson
+     part you're even looking at. The corner cell needs both this and the
+     header row's own `position: sticky; top: 0` at once, so it gets a
+     higher z-index than either alone to stay above cells doing just one. */
+  .plan-table thead th:first-child,
+  .plan-table tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 2;
   }
   .plan-table tbody th {
     width: 10.5rem;
@@ -947,7 +977,8 @@
     width: max(100%, var(--touch-min));
     height: var(--touch-min);
   }
-  .cite:hover {
+  .cite:hover,
+  .cite:active {
     color: var(--ink);
     text-decoration-color: currentColor;
   }
@@ -2008,6 +2039,7 @@
        square corners still avoid that taper without introducing this gap.) */
   }
   .artifact-drawer-handle:hover,
+  .artifact-drawer-handle:active,
   .artifact-drawer.is-open .artifact-drawer-handle {
     opacity: 1;
     background: var(--paper-sunken);
@@ -2025,7 +2057,8 @@
     opacity: 0.85;
     pointer-events: none;
   }
-  .artifact-drawer-handle:hover .artifact-drawer-arrow {
+  .artifact-drawer-handle:hover .artifact-drawer-arrow,
+  .artifact-drawer-handle:active .artifact-drawer-arrow {
     opacity: 1;
     color: var(--ink-muted);
   }
@@ -2311,7 +2344,13 @@
     display: flex;
     gap: 5px;
   }
+  /* 30px on screen, 44px to a thumb — same .btn-icon::before technique
+     above, repeated here because .rail-open's neomorphic inset shadow reads
+     as the button's whole visible surface, so growing the box itself (rather
+     than a separate invisible hit-area) would draw a bigger pill than the
+     rest of the rail's icon buttons. */
   .rail-open {
+    position: relative;
     display: grid;
     width: 30px;
     height: 30px;
@@ -2324,6 +2363,15 @@
     cursor: pointer;
     box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
     transition: color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  }
+  .rail-open::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: var(--touch-min);
+    height: var(--touch-min);
   }
   .rail-open:hover {
     color: var(--ink);
@@ -2395,7 +2443,8 @@
   .rail-row.is-interactive {
     cursor: pointer;
   }
-  .rail-row.is-interactive:hover {
+  .rail-row.is-interactive:hover,
+  .rail-row.is-interactive:active {
     background: var(--paper-raised);
   }
   .rail-empty {
@@ -2421,7 +2470,8 @@
     font-weight: var(--fw-medium);
     transition: color var(--t-fast);
   }
-  .rail-empty-hint:hover {
+  .rail-empty-hint:hover,
+  .rail-empty-hint:active {
     color: var(--accent-hover);
   }
 
@@ -2688,7 +2738,8 @@
     color: inherit;
     text-decoration: none;
   }
-  .detail-card-link:hover .detail-card {
+  .detail-card-link:hover .detail-card,
+  .detail-card-link:active .detail-card {
     box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.4), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
   .detail-card-index {
@@ -2884,7 +2935,8 @@
     cursor: pointer;
     transition: box-shadow var(--t-fast) var(--ease);
   }
-  .cal-day-link:hover .cal-day.is-openable {
+  .cal-day-link:hover .cal-day.is-openable,
+  .cal-day-link:active .cal-day.is-openable {
     box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.4), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
   }
   .detail-code {
@@ -2933,12 +2985,29 @@
   .plan-lesson-part.is-editable:hover {
     background: rgb(var(--accent-rgb) / 0.05);
   }
+  .plan-lesson-part.is-editable:active {
+    background: rgb(var(--accent-rgb) / 0.1);
+  }
   .plan-table td.is-editable {
     cursor: text;
     transition: background var(--t-fast) var(--ease);
   }
   .plan-table td.is-editable:hover {
     background: rgb(var(--accent-rgb) / 0.05);
+  }
+  .plan-table td.is-editable:active {
+    background: rgb(var(--accent-rgb) / 0.1);
+  }
+  /* No permanent per-cell chrome on a mouse — the affordance is the hover
+     tint and the cursor. A touch device has no hover, so the tint alone
+     never shows: it needs a standing tint on coarse pointers, same tone as
+     the mouse's hover tint, or a teacher on a tablet has no way to discover
+     which cells are tappable. */
+  @media (hover: none) and (pointer: coarse) {
+    .plan-lesson-part.is-editable,
+    .plan-table td.is-editable {
+      background: rgb(var(--accent-rgb) / 0.05);
+    }
   }
   /* No permanent per-cell chrome — the affordance is the hover tint and the
      cursor. A pencil in every cell would put 35 icons on the district table. */
@@ -3043,7 +3112,8 @@
     cursor: pointer;
     transition: background var(--t-fast) var(--ease);
   }
-  .cell-tweak-apply:hover:not(:disabled) {
+  .cell-tweak-apply:hover:not(:disabled),
+  .cell-tweak-apply:active:not(:disabled) {
     background: var(--accent-hover);
   }
   .cell-tweak-apply:disabled {
@@ -3066,7 +3136,8 @@
     cursor: pointer;
     transition: background var(--t-fast) var(--ease);
   }
-  .cell-tweak-chip:hover {
+  .cell-tweak-chip:hover,
+  .cell-tweak-chip:active {
     background: var(--paper-inset);
   }
 
@@ -3397,7 +3468,8 @@
     text-decoration: none;
     transition: background var(--t-fast) var(--ease);
   }
-  .artifact-card-download:hover {
+  .artifact-card-download:hover,
+  .artifact-card-download:active {
     background: var(--accent-hover);
   }
 
@@ -3560,11 +3632,13 @@
     transition: transform var(--t-base) var(--ease);
   }
   .land-signin:hover,
-  .land-signin:focus-visible {
+  .land-signin:focus-visible,
+  .land-signin:active {
     color: var(--brand-ink);
   }
   .land-signin:hover::after,
-  .land-signin:focus-visible::after {
+  .land-signin:focus-visible::after,
+  .land-signin:active::after {
     transform: scaleX(1);
     transform-origin: left;
   }
@@ -4198,7 +4272,8 @@
     color: var(--land-gold);
     text-decoration: none;
   }
-  .land-foot-cta:hover {
+  .land-foot-cta:hover,
+  .land-foot-cta:active {
     color: var(--land-gold-bright);
   }
   /* Below the CTA, not beside it — a legal link fighting the primary CTA
@@ -4213,7 +4288,8 @@
     color: rgb(var(--brand-ink-rgb) / 0.5);
     text-decoration: none;
   }
-  .land-foot-legal a:hover {
+  .land-foot-legal a:hover,
+  .land-foot-legal a:active {
     color: rgb(var(--brand-ink-rgb) / 0.8);
     text-decoration: underline;
   }
