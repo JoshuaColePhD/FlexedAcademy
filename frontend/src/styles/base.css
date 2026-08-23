@@ -2202,24 +2202,21 @@
     width: 100%;
     align-items: center;
     justify-content: space-between;
-    gap: 9px;
-    padding: 13px;
+    gap: 12px;
+    padding: 16px;
     text-align: left;
-    background: var(--paper-raised);
-    border: none;
-    border-radius: var(--r-lg);
+    background: var(--paper);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-xl);
     cursor: pointer;
-    /* The one card in the rail that's actually a document, not a row of
-       metadata about one — the same lift .neo-raised gives every button,
-       so it reads as the rail's own "the thing you came for" surface. */
-    box-shadow: 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.4), -3px -3px 7px rgb(var(--neo-light-rgb) / 0.75);
-    transition: box-shadow var(--t-fast) var(--ease);
+    box-shadow: 2px 2px 6px rgb(var(--neo-dark-rgb) / 0.2), -2px -2px 6px rgb(var(--neo-light-rgb) / 0.5);
+    transition: box-shadow var(--t-fast) var(--ease), border-color var(--t-fast);
   }
-  /* The card is a button (onClick={onExpand}) but only ever gave feedback via
-     the browser's default nothing — every other .neo-raised surface in the
-     app presses in on :active and this was the one exception. */
+  .rail-card:hover {
+    border-color: var(--edge-hover);
+  }
   .rail-card:active {
-    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
+    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.3), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.5);
   }
   .rail-card-head {
     display: flex;
@@ -2228,19 +2225,17 @@
     min-width: 0;
     flex: 1;
   }
-  /* --paper-inset alone was just a flat, slightly-darker fill — the actual
-     "stamped into the surface" read needs the inset pair, not just the tone
-     that implies it. */
   .rail-tile {
     display: grid;
-    height: 30px;
-    width: 30px;
+    height: 38px;
+    width: 38px;
     flex-shrink: 0;
     place-items: center;
     background: var(--paper-inset);
-    border-radius: var(--r-md);
+    border-radius: var(--r-lg);
     color: var(--accent-text);
-    box-shadow: inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.5), inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
+    border: 1px solid var(--edge);
+    box-shadow: inset 1px 1px 2px rgb(var(--neo-dark-rgb) / 0.2), inset -1px -1px 2px rgb(var(--neo-light-rgb) / 0.4);
   }
   .rail-text {
     display: flex;
@@ -2283,9 +2278,8 @@
     max-width: 100%;
     overflow: hidden;
     font-size: var(--fs-sm);
-    font-weight: var(--fw-medium);
+    font-weight: var(--fw-semibold);
     line-height: 1.35;
-    min-height: 2.7em;
     color: var(--ink);
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -2294,9 +2288,8 @@
     display: -webkit-box;
     max-width: 100%;
     overflow: hidden;
-    font-size: var(--fs-2xs);
+    font-size: var(--fs-xs);
     line-height: 1.35;
-    min-height: 2.7em;
     color: var(--ink-faint);
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -2490,7 +2483,8 @@
       background-color var(--t-fast) var(--ease);
   }
   .panel-resize-handle:hover::before,
-  .panel-resize-handle:focus-visible::before {
+  .panel-resize-handle:focus-visible::before,
+  .panel-resize-handle:active::before {
     height: 72px;
     background: rgb(var(--accent-rgb) / 0.4);
   }
@@ -2511,6 +2505,14 @@
        document is the same panel, one layer deeper. */
     box-shadow: -5px 0 12px rgb(var(--neo-dark-rgb) / 0.35);
     animation: fa-slide var(--t-slow) var(--ease-out) both;
+  }
+  .doc-shell.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
   /* In the overlay form it IS the panel, so it fills it and drops the rule
      AND the shadow — there's no adjacent chat pane for the step-down to
@@ -2618,8 +2620,8 @@
     padding: 0 13px;
     font-size: var(--fs-sm);
     font-weight: var(--fw-semibold);
-    color: var(--accent-text);
-    background: var(--accent-tint);
+    color: var(--ink);
+    background: var(--paper-raised);
     border: none;
     border-radius: var(--r-md);
     text-decoration: none;
@@ -2627,6 +2629,42 @@
     transition: box-shadow var(--t-fast) var(--ease);
   }
   .doc-download:active {
+    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
+  }
+  .doc-download-group {
+    display: flex;
+    align-items: stretch;
+    height: 34px;
+    background: var(--paper-raised);
+    border-radius: var(--r-md);
+    box-shadow: 2px 2px 5px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 5px rgb(var(--neo-light-rgb) / 0.75);
+    transition: box-shadow var(--t-fast) var(--ease);
+  }
+  .doc-download-main {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 10px 0 13px;
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--ink);
+    border-radius: var(--r-md) 0 0 var(--r-md);
+  }
+  .doc-download-divider {
+    width: 1px;
+    background: var(--edge);
+    margin: 6px 0;
+  }
+  .doc-download-drop {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    color: var(--ink);
+    border-radius: 0 var(--r-md) var(--r-md) 0;
+  }
+  .doc-download-main:active,
+  .doc-download-drop:active {
     box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
   }
   .doc-body {

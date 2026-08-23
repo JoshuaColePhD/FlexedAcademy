@@ -83,7 +83,7 @@ export function GoogleAuthButton({ onSuccess, onError, size = 'large', text = 'c
           size={size}
           width={width}
           text={text}
-          shape="rectangular"
+          shape="pill"
         />
       ) : null}
     </div>

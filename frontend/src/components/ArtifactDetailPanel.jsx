@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronsRight, Download, Loader2, Edit2, Save, X } from 'lucide-react'
+import { ChevronsRight, Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { fetchStandardsBatch } from '../lib/standardsCache'
 import { useToast } from '../lib/toastContext'
@@ -551,12 +551,19 @@ export function ArtifactDetailPanel({
   // ArtifactRail's collapsed card already opens for a quiz, just triggered
   // from here too now.
   const [shareOpen, setShareOpen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   useFocusTrap(panelRef, {
     active: true,
     trap: isOverlay,
     initialFocus: titleRef,
-    onEscape: onCollapse,
+    onEscape: () => {
+      if (isFullscreen) {
+        setIsFullscreen(false)
+      } else {
+        onCollapse()
+      }
+    },
   })
 
   const item = kind === 'quiz' ? quiz : kind === 'document' ? doc : null
@@ -565,34 +572,17 @@ export function ArtifactDetailPanel({
 
   return (
     <section
-      className="doc-shell"
+      className={`doc-shell${isFullscreen ? ' is-fullscreen' : ''}`}
       aria-label={title}
       ref={panelRef}
       tabIndex={-1}
       role={isOverlay ? 'dialog' : undefined}
       aria-modal={isOverlay ? 'true' : undefined}
     >
-      {/* doc-head-keep-title: the phone media query that hides .doc-titles
-          below 768px was written for ArtifactPanel's own plan view, whose
-          sheet restates the week as its own heading right below — nothing
-          here does that. Without this override, opening the quiz/standards/
-          calendar/document view on a phone showed no title at all: just
-          the collapse arrow, Download, and content with no idea what it
-          was content OF. */}
       <div
         className="doc-head doc-head-keep-title"
         style={{ '--doc-head-accent': `rgb(${color.rgb})` }}
       >
-        <button
-          type="button"
-          className="doc-collapse fa-press"
-          onClick={onCollapse}
-          aria-label="Back to my plans"
-          title="Back to my plans"
-        >
-          <ChevronsRight size={15} aria-hidden="true" />
-        </button>
-
         <span className="doc-titles" ref={titleRef} tabIndex={-1}>
           <strong className="doc-title">{title}</strong>
           {sub ? <span className="doc-sub">{sub}</span> : null}
@@ -600,32 +590,74 @@ export function ArtifactDetailPanel({
 
         <span className="flex-1" />
 
-        {/* Quiz download button: always present for UI consistency, but disabled if 
-            the file failed to build. */}
-        {kind === 'quiz' && planId ? (
-          quiz?.has_qti ? (
-            <button
-              type="button"
-              className="doc-download fa-press flex items-center gap-1.5"
-              onClick={() => setShareOpen(true)}
-              title="Download or Share"
-              aria-label="Download or Share this quiz"
-            >
-              <Download size={14} aria-hidden="true" /> Download
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="doc-download"
-              aria-disabled="true"
-              style={{ opacity: 0.45 }}
-              onClick={() => toast.apiError('Quiz file failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Canvas QTI file.'))}
-              title="The file failed to build — ask again in chat to rebuild it"
-            >
-              <Download size={14} aria-hidden="true" /> Download
-            </button>
-          )
-        ) : null}
+        <div className="flex items-center gap-2">
+          {kind === 'quiz' && planId ? (
+            quiz?.has_qti ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-icon fa-press"
+                  aria-label="Save to Google Drive"
+                  title="Save to Google Drive"
+                >
+                  <Cloud size={16} className="text-ink-muted" />
+                </button>
+
+                <div className="doc-download-group flex items-stretch">
+                  <button
+                    type="button"
+                    className="doc-download-main fa-press flex items-center gap-1.5"
+                    onClick={() => setShareOpen(true)}
+                    aria-label="Download or Share this quiz"
+                    title="Download or Share"
+                  >
+                    <Download size={14} aria-hidden="true" className="text-ink-muted" />
+                    <span className="font-medium">Download as DOCX</span>
+                  </button>
+                  <div className="doc-download-divider" />
+                  <button
+                    type="button"
+                    className="doc-download-drop fa-press flex items-center justify-center"
+                    onClick={() => setShareOpen(true)}
+                    aria-label="More download options"
+                  >
+                    <ChevronDown size={14} aria-hidden="true" className="text-ink-muted" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <span 
+                className="doc-download opacity-45 flex items-center gap-1.5" 
+                aria-disabled="true"
+                onClick={() => toast.apiError('Quiz file failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Canvas QTI file.'))}
+                title="The file failed to build — ask again in chat to rebuild it"
+              >
+                <Download size={14} aria-hidden="true" className="text-ink-muted" />
+                <span className="font-medium">Download as DOCX</span>
+              </span>
+            )
+          ) : null}
+
+          <button
+            type="button"
+            className="btn-icon fa-press ml-1"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+
+          <button
+            type="button"
+            className="btn-icon fa-press"
+            onClick={onCollapse}
+            aria-label="Close document"
+            title="Close document"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <div className="doc-body" tabIndex={0} role="region" aria-label={title}>

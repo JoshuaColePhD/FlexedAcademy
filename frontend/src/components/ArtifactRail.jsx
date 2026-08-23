@@ -158,16 +158,16 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
           >
             <span className="rail-title">{quiz.title}</span>
             <span className="rail-sub">
-              {questionTypesLabel(quiz.question_types)}
-              {quiz.has_qti ? '' : ' · file failed, ask again'}
+              Quiz · QTI · {questionTypesLabel(quiz.question_types)}
+              {quiz.has_qti ? '' : ' (failed to build, ask again)'}
             </span>
           </button>
         ) : (
           <span className="rail-text">
             <span className="rail-title">{quiz.title}</span>
             <span className="rail-sub">
-              {questionTypesLabel(quiz.question_types)}
-              {quiz.has_qti ? '' : ' · file failed, ask again'}
+              Quiz · QTI · {questionTypesLabel(quiz.question_types)}
+              {quiz.has_qti ? '' : ' (failed to build, ask again)'}
             </span>
           </span>
         )}
@@ -285,9 +285,9 @@ export function ArtifactRail({
   const teachingDays = 5 - closed.length
 
   return (
-    <aside className={`artifact-rail${isBar ? ' is-bar' : ''}`} aria-label="My plans">
+    <aside className={`artifact-rail${isBar ? ' is-bar' : ''}`} aria-label="Materials">
       <div className="rail-group">
-        {isBar ? null : <span className="eyebrow">My plans</span>}
+        {isBar ? null : <span className="eyebrow">Materials</span>}
 
         {planId ? (
           /* The whole card expands the panel. Download stops the event: the one
@@ -327,7 +327,7 @@ export function ArtifactRail({
               >
                 <span className="rail-title">{plan?.week_of || 'Weekly lesson plan'}</span>
                 <span className="rail-sub">
-                  .docx{unitSuffix(artifact?.unit, ' · ')}
+                  Document · DOCX{unitSuffix(artifact?.unit, ' · ')}
                 </span>
               </button>
             </span>

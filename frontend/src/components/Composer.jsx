@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 // Upload is used by the drag-and-drop overlay below and was missing from this
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
@@ -305,23 +306,11 @@ export function Composer({
   }
 
 
-  const handleDragOver = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = (e) => {
+  const handleGlobalDrop = useCallback(async (e) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
-  }
-
-  const handleDrop = async (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-    const file = e.dataTransfer.files?.[0]
+    const file = e.dataTransfer?.files?.[0]
     if (!file) return
     setIsAttaching(true)
     try {
@@ -333,7 +322,30 @@ export function Composer({
     } finally {
       setIsAttaching(false)
     }
-  }
+  }, [api, toast])
+
+  useEffect(() => {
+    const handleDragOver = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsDragging(true)
+    }
+    const handleDragLeave = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.relatedTarget === null || e.clientX === 0 || e.clientY === 0) {
+        setIsDragging(false)
+      }
+    }
+    window.addEventListener('dragover', handleDragOver)
+    window.addEventListener('dragleave', handleDragLeave)
+    window.addEventListener('drop', handleGlobalDrop)
+    return () => {
+      window.removeEventListener('dragover', handleDragOver)
+      window.removeEventListener('dragleave', handleDragLeave)
+      window.removeEventListener('drop', handleGlobalDrop)
+    }
+  }, [handleGlobalDrop])
 
   const hasContent = value.trim().length > 0 || attachments.length > 0
 
@@ -410,17 +422,21 @@ export function Composer({
           voiceModeActive ? 'rounded-3xl' : 'rounded-xl'
         } ${isDragging ? 'ring-2 ring-accent' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
       >
-        {isDragging && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-paper-raised/90 backdrop-blur-sm rounded-inherit">
-            <p className="text-sm font-semibold text-accent-text flex items-center gap-2">
-              <Upload size={16} /> Drop file to attach
-            </p>
-          </div>
-        )}
+        {isDragging ? createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/60 backdrop-blur-md">
+            <div className="flex flex-col items-center justify-center gap-4 rounded-[32px] bg-paper-raised px-16 py-12 shadow-[4px_4px_12px_rgba(var(--neo-dark-rgb),0.3),-4px_-4px_12px_rgba(var(--neo-light-rgb),0.6),inset_2px_2px_4px_rgba(var(--neo-light-rgb),0.4)] ring-1 ring-edge animate-pulse">
+              <span className="neo-inset flex h-20 w-20 items-center justify-center rounded-full text-accent shadow-[inset_3px_3px_6px_rgba(var(--neo-dark-rgb),0.4),inset_-3px_-3px_6px_rgba(var(--neo-light-rgb),0.6)]">
+                <Upload size={32} strokeWidth={2.5} />
+              </span>
+              <div className="flex flex-col items-center text-center">
+                <h3 className="text-xl font-bold tracking-tight text-ink">Drop file to attach</h3>
+                <p className="mt-1 text-sm font-medium text-ink-muted">PDF, TXT, MD, or CSV</p>
+              </div>
+            </div>
+          </div>,
+          document.body
+        ) : null}
         {voicePanel}
         {/* The one thing that visually opens the composer — an actual
             clarifying-questions round (LessonQuestions, docked here by

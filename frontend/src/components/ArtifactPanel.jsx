@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { Tooltip } from './Tooltip'
-import { ChevronsRight, Download, Loader2, TriangleAlert } from 'lucide-react'
+import { ChevronsRight, Download, Loader2, TriangleAlert, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
@@ -72,6 +72,7 @@ export function ArtifactPanel({
 }) {
   const [shareOpen, setShareOpen] = useState(false)
   const [completionPulse, setCompletionPulse] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
     const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: api.listSchools })
   const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: api.listClasses })
   
@@ -118,7 +119,13 @@ const location = useLocation()
     active: true,
     trap: isOverlay,
     initialFocus: titleRef,
-    onEscape: () => (openTweak ? setOpenTweak(null) : onCollapse()),
+    onEscape: () => {
+      if (isFullscreen) {
+        setIsFullscreen(false)
+      } else {
+        openTweak ? setOpenTweak(null) : onCollapse()
+      }
+    },
   })
 
   const plan = artifact?.plan
@@ -127,7 +134,7 @@ const location = useLocation()
 
   return (
     <section
-      className={`doc-shell${completionPulse ? ' fa-shadow-lift' : ''}`}
+      className={`doc-shell${completionPulse ? ' fa-shadow-lift' : ''}${isFullscreen ? ' is-fullscreen' : ''}`}
       aria-label="Generated lesson plan"
       ref={panelRef}
       tabIndex={-1}
@@ -135,16 +142,6 @@ const location = useLocation()
       aria-modal={isOverlay ? 'true' : undefined}
     >
       <div className="doc-head" style={{ '--doc-head-accent': `rgb(${color.rgb})` }}>
-        <button
-          type="button"
-          className="doc-collapse fa-press"
-          onClick={onCollapse}
-          aria-label="Back to my plans"
-          title="Back to my plans"
-        >
-          <ChevronsRight size={15} aria-hidden="true" />
-        </button>
-
         <span className="doc-titles" ref={titleRef} tabIndex={-1}>
           <strong className="doc-title">{plan?.week_of || 'Lesson plan'}</strong>
           <span className="doc-sub">
@@ -156,26 +153,72 @@ const location = useLocation()
 
         <span className="flex-1" />
 
-        {planId ? (
-            <button
-              type="button"
-              className="doc-download fa-press flex items-center gap-1.5"
-              onClick={() => setShareOpen(true)}
-              aria-label="Export or Share this plan"
-              title="Export or Share"
-            >
-              {isPendingTemplate ? (
-                <Tooltip content="We are currently training our AI on your district's specific format. In the meantime, this plan will download in a generic format." position="bottom-right">
-                  <TriangleAlert size={14} className="text-amber-500" aria-hidden="true" />
-                </Tooltip>
-              ) : null}
-              <Download size={14} aria-hidden="true" /> Download
-            </button>
-        ) : (
-          <span className="doc-download" aria-disabled="true" style={{ opacity: 0.45 }}>
-            <Download size={14} aria-hidden="true" /> Download
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {planId ? (
+            <>
+              <button
+                type="button"
+                className="btn-icon fa-press"
+                aria-label="Save to Google Drive"
+                title="Save to Google Drive"
+              >
+                <Cloud size={16} className="text-ink-muted" />
+              </button>
+
+              <div className="doc-download-group flex items-stretch">
+                <button
+                  type="button"
+                  className="doc-download-main fa-press flex items-center gap-1.5"
+                  onClick={() => setShareOpen(true)}
+                  aria-label="Download as DOCX"
+                  title="Download as DOCX"
+                >
+                  {isPendingTemplate ? (
+                    <Tooltip content="We are currently training our AI on your district's specific format. In the meantime, this plan will download in a generic format." position="bottom-right">
+                      <TriangleAlert size={14} className="text-amber-500" aria-hidden="true" />
+                    </Tooltip>
+                  ) : null}
+                  <Download size={14} aria-hidden="true" className="text-ink-muted" />
+                  <span className="font-medium">Download as DOCX</span>
+                </button>
+                <div className="doc-download-divider" />
+                <button
+                  type="button"
+                  className="doc-download-drop fa-press flex items-center justify-center"
+                  onClick={() => setShareOpen(true)}
+                  aria-label="More download options"
+                >
+                  <ChevronDown size={14} aria-hidden="true" className="text-ink-muted" />
+                </button>
+              </div>
+            </>
+          ) : (
+            <span className="doc-download opacity-45 flex items-center gap-1.5" aria-disabled="true">
+              <Download size={14} aria-hidden="true" className="text-ink-muted" />
+              <span className="font-medium">Download as DOCX</span>
+            </span>
+          )}
+
+          <button
+            type="button"
+            className="btn-icon fa-press ml-1"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+
+          <button
+            type="button"
+            className="btn-icon fa-press"
+            onClick={onCollapse}
+            aria-label="Close document"
+            title="Close document"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {/* tabIndex + role + label are not polish: a scroll region that only

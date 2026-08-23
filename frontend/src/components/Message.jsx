@@ -6,6 +6,7 @@ import { scanGrounding } from '../lib/grounding'
 import { dayTitle, orderedDays } from '../lib/planShape'
 import { Cite } from './Citation'
 import { WeekStrip } from './WeekStrip'
+import { ThinkingIndicator } from './ThinkingIndicator'
 
 /** What Copy puts on the clipboard: the reply, plus the week and the codes the
  *  message is actually showing. */
@@ -50,7 +51,7 @@ function useCopy() {
  * distinct from "said by the app" without giving the assistant an avatar or
  * a second speaker's identity — it's still the page talking back, just
  * boxed like everything else here. */
-export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStrip = false }) {
+export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStrip = false, voiceOpen = false }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -136,6 +137,17 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
         </div>
       </div>
     )
+  }
+
+  /* The placeholder ChatPage pushes right before a reply starts streaming
+     (see liveMessageIdRef in ChatPage.jsx) has nothing in it yet — a bare
+     blinking cursor on an empty line reads as "nothing is happening," not
+     "it's working." Voice mode's own status pill already says as much, so
+     showing this too would say it twice; the placeholder still exists there
+     (it becomes the real reply once one arrives), it just renders nothing
+     until it has something to show. */
+  if (!isUser && message.streaming && !message.content?.trim()) {
+    return voiceOpen ? null : <ThinkingIndicator />
   }
 
   /* fa-rise was written for exactly this and then never attached to anything,

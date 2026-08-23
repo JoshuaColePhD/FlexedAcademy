@@ -10,6 +10,20 @@ import { api } from '../lib/api'
 
 const isBareOther = (option) => option.trim().toLowerCase() === 'other'
 
+function DynamicMicIcon({ isActive }) {
+  return (
+    <div className="relative flex items-center justify-center h-4 w-4">
+      {isActive && (
+        <>
+          <span className="absolute -inset-2 rounded-full bg-[rgb(var(--accent-rgb))] opacity-20 animate-ping" style={{ animationDuration: '2s' }} />
+          <span className="absolute -inset-1 rounded-full bg-[rgb(var(--accent-rgb))] opacity-30 animate-ping" style={{ animationDuration: '1.5s', animationDelay: '0.5s' }} />
+        </>
+      )}
+      <Mic size={15} className={`relative z-10 ${isActive ? 'text-accent' : ''}`} />
+    </div>
+  )
+}
+
 function QuestionCards({ questions, onAnswer, muted }) {
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState({})
@@ -196,7 +210,7 @@ export function VoiceModePanel({
         <div className="flex items-center gap-2">
           {onReplayLast ? <button type="button" onClick={onReplayLast} aria-label="Replay the last reply" className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint hover:bg-paper-sunken"><Play size={14} fill="currentColor" /></button> : null}
           <button type="button" onClick={togglePtt} aria-pressed={mode === 'ptt'} aria-label={mode === 'auto' ? 'Switch to push-to-talk' : 'Switch to hands-free listening'} className={`tap-target flex items-center gap-2 rounded-full px-3 py-2 text-2xs font-semibold uppercase tracking-caps ${mode === 'ptt' ? 'bg-paper-sunken text-ink' : 'text-ink-faint hover:bg-paper-sunken'}`}>{mode === 'auto' ? <><Radio size={14} />Hands-free</> : <><Hand size={14} />Push to talk</>}</button>
-          {mode === 'ptt' ? <button type="button" onPointerDown={startPtt} onPointerUp={stopPtt} onPointerLeave={stopPtt} onPointerCancel={stopPtt} aria-label="Hold to talk" className="fa-press tap-target neo-raised flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-ink-soft"><Hand size={15} />Hold to talk</button> : <button type="button" onClick={toggleMute} aria-pressed={voice.muted} aria-label={voice.muted ? 'Turn the microphone back on' : 'Turn the microphone off'} className={`fa-press tap-target neo-raised flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${!voice.muted && phase === 'listening' ? 'voice-mic-active' : ''} ${voice.muted ? 'bg-mark-tint text-mark' : 'text-ink-soft'}`}>{voice.muted ? <MicOff size={15} /> : <Mic size={15} />}{voice.muted ? 'Microphone off' : 'Mute'}</button>}
+          {mode === 'ptt' ? <button type="button" onPointerDown={startPtt} onPointerUp={stopPtt} onPointerLeave={stopPtt} onPointerCancel={stopPtt} aria-label="Hold to talk" className="fa-press tap-target neo-raised flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-ink-soft"><Hand size={15} />Hold to talk</button> : <button type="button" onClick={toggleMute} aria-pressed={voice.muted} aria-label={voice.muted ? 'Turn the microphone back on' : 'Turn the microphone off'} className={`fa-press tap-target neo-raised flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${!voice.muted && phase === 'listening' ? 'voice-mic-active ring-1 ring-accent/30' : ''} ${voice.muted ? 'bg-mark-tint text-mark' : 'text-ink-soft'}`}>{voice.muted ? <MicOff size={15} /> : <DynamicMicIcon isActive={!voice.muted && (phase === 'listening' || phase === 'speaking')} />}{voice.muted ? 'Microphone off' : 'Mute'}</button>}
           <button type="button" onClick={onClose} aria-label="Close voice conversation" className="tap-target flex h-9 w-9 items-center justify-center rounded-full text-ink-faint hover:bg-paper-sunken"><X size={16} /></button>
         </div>
       </div>

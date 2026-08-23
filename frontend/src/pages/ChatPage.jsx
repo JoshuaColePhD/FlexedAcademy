@@ -32,6 +32,7 @@ import { LessonQuestions } from '../components/LessonQuestions'
 import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
+import { DecisionStack } from '../components/DecisionStack'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
 
@@ -417,6 +418,35 @@ export function ChatPage() {
    * matters because StrictMode double-invokes effects in dev. */
   const localFor = useRef(null)
 
+  /* The id of the placeholder message a plain chat reply streams into, while
+     it's in flight — see chatStream's onDone below and the two
+     chatStream.start() call sites in submit(). Was: the growing reply
+     rendered as a wholly separate element (key 'chat-stream-live') outside
+     `messages`, so the instant it finished, that element unmounted and the
+     REAL message mounted fresh in its place, replaying Message.jsx's
+     mount-in spring on text the teacher had already finished reading — the
+     single biggest "jarring" moment in the whole transcript. Streaming
+     straight into a real, stable `messages` entry means the reply is the
+     same DOM node throughout: it settles (Message.jsx's own fa-settle) when
+     `streaming` flips false instead of disappearing and reappearing. */
+  const liveMessageIdRef = useRef(null)
+
+  /* Turns whatever's mid-flight into its resting state instead of leaving it
+     stuck at streaming:true forever — the interruption paths (Stop button,
+     a spoken utterance barging in) abort the network call directly, which
+     never reaches onDone. Empty (nothing streamed yet) is dropped rather
+     than left as an empty bubble. */
+  const finalizeLiveMessage = useCallback(() => {
+    const id = liveMessageIdRef.current
+    liveMessageIdRef.current = null
+    if (!id) return
+    setMessages((prev) =>
+      prev
+        .map((m) => (m.id === id ? { ...m, streaming: false } : m))
+        .filter((m) => m.id !== id || m.content.trim())
+    )
+  }, [])
+
   /* reviseDay is declared further down this component (it's the per-cell
      revise handler, defined near the document it edits), but submit() —
      declared above it — needs to call it for the update_lesson_day tool
@@ -478,6 +508,7 @@ export function ChatPage() {
       setSelectedWeek(null)
       localFor.current = null
       lastSpokenRef.current = null
+      liveMessageIdRef.current = null
       setDecisions([])
       return undefined
     }
@@ -488,6 +519,7 @@ export function ChatPage() {
     // NOW it's safe to stop whatever the old one had running.
     stream.stop()
     chatStream.stop()
+    liveMessageIdRef.current = null
 
     /* Drop the previous conversation's artifact NOW, not when the fetch
        resolves. Otherwise the rail and the open document keep showing the last
@@ -769,6 +801,20 @@ export function ChatPage() {
       voice.speak(sentence)
     },
     onDone: (result) => {
+      // The placeholder pushed right before chatStream.start() (both call
+      // sites, in submit()) — every branch below settles it in place rather
+      // than pushing a separate message, so the reply the teacher was
+      // already watching stream in is the SAME element that lands, not one
+      // that vanishes and gets replaced. See liveMessageIdRef's own comment.
+      const liveId = liveMessageIdRef.current
+      liveMessageIdRef.current = null
+      const settle = (patch) =>
+        setMessages((prev) =>
+          liveId && prev.some((m) => m.id === liveId)
+            ? prev.map((m) => (m.id === liveId ? { ...m, ...patch, streaming: false } : m))
+            : [...prev, { id: nextId(), ...patch }]
+        )
+
       // The guided alternative to typing — see LessonQuestions and
       // backend/llm.py's ask_clarifying_questions tool. Rendered as its own
       // message (Message.jsx reads `questions` off it) rather than routed
@@ -788,8 +834,7 @@ export function ChatPage() {
         // the prompt fix: this can only shorten what shows, not improve it.
         const intro =
           result.text?.trim().split('\n')[0]?.trim() || 'A couple of quick questions to get this right:'
-        const reply = {
-          id: nextId(),
+        settle({
           role: 'assistant',
           content: intro,
           questions: result.questions,
@@ -801,8 +846,7 @@ export function ChatPage() {
           // already went out sentence-by-sentence while the model was
           // writing it, so repeating it here would say it twice.
           spokenContent: speakableQuestions(result.spokeStream ? '' : intro, result.questions),
-        }
-        setMessages((prev) => [...prev, reply])
+        })
         const saveTo = localFor.current
         if (saveTo) {
           const asText = result.questions.map((q) => `• ${q.text}`).join('\n')
@@ -815,16 +859,14 @@ export function ChatPage() {
       // If it called the tool, we save the text (e.g. "I'll make that plan now!") and then
       // trigger the actual plan build from the submit function.
       if (result?.text?.trim()) {
-        const reply = {
-          id: nextId(),
+        settle({
           role: 'assistant',
           content: result.text,
           // Already read aloud a sentence at a time as it streamed — the
           // auto-speak effect below skips it rather than saying the whole
           // reply a second time.
           spokenLive: Boolean(result.spokeStream),
-        }
-        setMessages((prev) => [...prev, reply])
+        })
         const saveTo = localFor.current
         if (saveTo) {
           void persistMessage(saveTo, { role: 'assistant', content: result.text })
@@ -845,23 +887,34 @@ export function ChatPage() {
       // this backstop and showed "Didn't get a reply back" a beat before
       // submit()'s own "Built ... Quiz" message landed right under it.
       if (!result?.toolCalled && !result?.quizRequested) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: nextId(),
-            role: 'assistant',
-            isError: true,
-            content: "Didn't get a reply back.",
-            hint: 'Try sending that again.',
-          },
-        ])
+        settle({
+          role: 'assistant',
+          isError: true,
+          content: "Didn't get a reply back.",
+          hint: 'Try sending that again.',
+        })
+      } else if (liveId) {
+        // A tool call with nothing said first — drop the now-empty
+        // placeholder; submit()'s own dedicated follow-up ("Building your
+        // quiz now…", "Updating the week now…") is the message that shows.
+        setMessages((prev) => prev.filter((m) => m.id !== liveId))
       }
     },
     onError: (err) => {
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
-      ])
+      // Same placeholder as onDone above — a request that fails still owns
+      // one, and it should turn into the error rather than leave an empty,
+      // permanently-streaming bubble sitting above a second, separate one.
+      const liveId = liveMessageIdRef.current
+      liveMessageIdRef.current = null
+      setMessages((prev) =>
+        liveId && prev.some((m) => m.id === liveId)
+          ? prev.map((m) =>
+              m.id === liveId
+                ? { ...m, isError: true, content: err.message, hint: err.hint, streaming: false }
+                : m
+            )
+          : [...prev, { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint }]
+      )
       toast.apiError("Chat failed", err)
     },
   })
@@ -1064,6 +1117,11 @@ export function ChatPage() {
           { role: 'user', content },
         ]
         setPreparing(false)
+        liveMessageIdRef.current = nextId()
+        setMessages((prev) => [
+          ...prev,
+          { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true },
+        ])
         // The same value just pinned onto the chat by createChat above, so
         // this first turn and every later one (see the second
         // chatStream.start below) name the identical week.
@@ -1129,6 +1187,11 @@ export function ChatPage() {
          again — so the model spent the rest of every conversation (typed or
          spoken) with no idea which week it was on. The chat's pinned week
          doesn't drift, so it's safe to keep sending. */
+      liveMessageIdRef.current = nextId()
+      setMessages((prev) => [
+        ...prev,
+        { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true },
+      ])
       const chatResult = await chatStream.start(payloadMessages, {
         chatId: activeChatId,
         classId,
@@ -1456,12 +1519,17 @@ export function ChatPage() {
      reply, which is interruptible and just wasn't wired. */
   const stopChatting = useCallback(() => {
     chatStream.stop()
+    // Aborting never reaches onDone/onError, so the live placeholder (see
+    // liveMessageIdRef) would otherwise sit there permanently mid-stream —
+    // settle it (or drop it, if nothing had streamed yet) before adding the
+    // "Stopped" message below.
+    finalizeLiveMessage()
     const content = 'Stopped. Nothing was saved — ask again when you’re ready.'
     setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content, isError: true }])
     if (localFor.current) {
       void persistMessage(localFor.current, { role: 'assistant', content })
     }
-  }, [chatStream, persistMessage])
+  }, [chatStream, persistMessage, finalizeLiveMessage])
 
   /* Rebuild the last plan from the same prompt. `onRetry` and `isLast` were
      declared on Message and never passed, so the retry button could not render
@@ -1503,23 +1571,46 @@ export function ChatPage() {
     }))
   }, [])
 
+  /* Mirrors chatStream's own growing text into the placeholder message
+     pushed right before chatStream.start() (see the two call sites in
+     submit(), and liveMessageIdRef's own comment above) — this is what lets
+     that message grow in place instead of living outside `messages` until
+     it's finished. */
+  useEffect(() => {
+    if (!chatStream.isStreaming) return
+    const id = liveMessageIdRef.current
+    if (!id) return
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: chatStream.text } : m)))
+  }, [chatStream.text, chatStream.isStreaming])
+
   /* ── scroll ───────────────────────────────────────────────────────────── */
   const onScroll = () => {
     const el = scrollRef.current
     if (!el) return
     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120)
   }
+  // messages alone used to gate this — but the plan-building preview
+  // (stream.preview, the WeekStrip filling in day by day) grows the
+  // transcript's height turn by turn without ever changing `messages`
+  // itself. Without it here, a teacher already at the bottom watched new
+  // content arrive below the fold with no follow-scroll until the whole
+  // generation finished. (The live reply's own growth is `messages` itself
+  // now — see liveMessageIdRef's sync effect above — so it doesn't need its
+  // own dependency here any more.)
+  const scrollFrameRef = useRef(null)
   useEffect(() => {
-    // messages alone used to gate this — but the live reply while it's still
-    // streaming (chatStream.text, rendered below as its own growing Message
-    // before it ever lands in `messages`) and the plan-building preview
-    // (stream.preview, the WeekStrip filling in day by day) both grow the
-    // transcript's height turn by turn without ever changing `messages`
-    // itself. Without them here, a teacher already at the bottom watched
-    // new content arrive below the fold with no follow-scroll until the
-    // whole generation finished and the final message finally landed.
-    if (atBottom) endRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, atBottom, chatStream.text, stream.preview])
+    if (!atBottom) return undefined
+    // Coalesced to one scroll per animation frame rather than one per SSE
+    // chunk — a long reply can stream several chunks within a single frame,
+    // and calling scrollIntoView for each of them re-snapped the scrollport
+    // that many times a frame: a rapid flicker of small instant jumps
+    // instead of one smooth follow. rAF collapses however many of those
+    // land in the same tick into the single call that actually paints.
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      endRef.current?.scrollIntoView({ block: 'end' })
+    })
+    return () => cancelAnimationFrame(scrollFrameRef.current)
+  }, [messages, atBottom, stream.preview])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
      effect watching `messages` catches every assistant reply this component
@@ -1589,11 +1680,15 @@ export function ChatPage() {
   useEffect(
     () => voice.onUtterance((text) => {
       // A spoken interruption cancels any still-streaming grounded reply;
-      // the new utterance itself then starts the same submit path.
+      // the new utterance itself then starts the same submit path. Settle
+      // the interrupted turn's own placeholder first — otherwise the next
+      // turn pushes a second one and the first is left stuck mid-stream,
+      // stranded above it.
       chatStream.stop()
+      finalizeLiveMessage()
       submitRef.current(text, { voiceTurn: true })
     }),
-    [chatStream, voice]
+    [chatStream, voice, finalizeLiveMessage]
   )
 
   /* The clarification the conversation is currently waiting on, if any.
@@ -2066,7 +2161,7 @@ export function ChatPage() {
           {hasArtifact ? (
             <button
               type="button"
-              className="btn-icon relative"
+              className="fa-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--paper-raised)] text-[var(--accent-text)] shadow-[2px_2px_5px_rgba(var(--neo-dark-rgb),0.4),-2px_-2px_5px_rgba(var(--neo-light-rgb),0.75)] active:shadow-[inset_2px_2px_4px_rgba(var(--neo-dark-rgb),0.5),inset_-2px_-2px_4px_rgba(var(--neo-light-rgb),0.7)]"
               aria-label="Open downloads"
               title="Downloads ready"
               /* Opens the docked rail (ArtifactDrawer), not the full document —
@@ -2079,7 +2174,7 @@ export function ChatPage() {
                  still the only way to reach it. */
               onClick={() => (isPhone ? openDocument() : setRailOpen(true))}
             >
-              <Download size={17} aria-hidden="true" />
+              <Download size={18} aria-hidden="true" />
               {!docOpen && !railOpen ? (
                 <span
                   className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
@@ -2121,6 +2216,7 @@ export function ChatPage() {
                    transcript. Phone has no rail to carry it, so it stays
                    here for isPhone. */
                 hideWeekStrip={!isPhone}
+                voiceOpen={voiceOpen}
               />
             ))}
 
@@ -2145,7 +2241,13 @@ export function ChatPage() {
                 read as the app losing the answer, not as it waiting on a
                 bundle. */}
             {!hasArtifact && !busy && !pendingQuestions && decisions.length > 0 ? (
-              <div className="w-full">
+              // fa-rise: this used to pop in/out with the conditional itself,
+              // no different from any other layout change — but it's tied to
+              // a few booleans that flip turn to turn (hasArtifact, busy),
+              // so it visibly appeared and vanished as the teacher was mid-
+              // conversation, not just once. An entrance at least announces
+              // "new" rather than the list just being suddenly there.
+              <div className="w-full fa-rise">
                 <p className="eyebrow mb-2">The plan so far</p>
                 <ul className="flex flex-col gap-1 text-sm leading-relaxed text-ink-soft">
                   {[...coreChecklist, ...extraDecisions].map((item) => (
@@ -2156,33 +2258,6 @@ export function ChatPage() {
                   ))}
                 </ul>
               </div>
-            ) : null}
-
-            {/* The conversational reply (chat_stream, ahead of any tool call)
-                had no on-screen presence at all until its first token — the
-                accumulating chatStream.text was tracked in state and never
-                rendered. From a submit to either a reply or the plan-generation
-                progress below, the screen just sat blank. Message already
-                understands a `streaming` message (a blinking cursor, used
-                elsewhere) — this is that, fed live text as it arrives instead
-                of only the finished string once onDone fires.
-
-                Before that first token, though, a bare blinking cursor on an
-                empty line reads as "nothing is happening," not "it's working" —
-                same gap "Sending…" below exists to close for chat creation. So
-                this now shows the same eyebrow-label treatment (matching
-                "Retrieving standards" / "Writing the week") until there's
-                actual text to show the cursor against. */}
-            {chatStream.isStreaming && !stream.isStreaming ? (
-              chatStream.text ? (
-                <Message
-                  message={{ id: 'chat-stream-live', role: 'assistant', content: chatStream.text, streaming: true }}
-                />
-              ) : /* voice mode's own status pill already says "Thinking…" —
-                     showing it again here read as two different things
-                     happening instead of one. */ !voiceOpen ? (
-                <p className="eyebrow">Thinking…</p>
-              ) : null
             ) : null}
 
             {/* Progress is the week filling in, not three bouncing dots — a
