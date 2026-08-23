@@ -1015,6 +1015,39 @@ export function ChatPage() {
      where it left off, not re-introduce itself over the top of it. */
 
 
+  /* A realtime session needs a chat_id before it can even open — its
+     system prompt (resolve_conversation_context) resolves class/subject/
+     week from it — unlike submit()'s lazy creation, which always has some
+     typed text to name the chat's placeholder title with. Mirrors that
+     same creation block; kept separate rather than shared so neither
+     path's error handling has to account for the other's caller. */
+  const ensureChatId = useCallback(async () => {
+    if (chatId) return chatId
+    const created = await api.createChat('New plan', classId, effectiveWeek)
+    localFor.current = created.id
+    qc.invalidateQueries({ queryKey: ['chats'] })
+    navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
+    return created.id
+  }, [chatId, classId, effectiveWeek, navigate, qc])
+
+  const openRealtimeVoice = useCallback(async () => {
+    // Same reasoning as submit()'s own check: the server enforces this too
+    // (require_entitlement, called from POST /api/realtime/session), but
+    // asking first means a blocked teacher sees the paywall immediately
+    // instead of a WebRTC handshake that was always going to fail.
+    if (!mayGenerate) {
+      openPaywall()
+      return
+    }
+    try {
+      await ensureChatId()
+    } catch (err) {
+      toast.apiError("Couldn't start that conversation", err)
+      return
+    }
+    setRealtimeVoiceOpen(true)
+  }, [ensureChatId, mayGenerate, openPaywall, toast])
+
   const openVoice = useCallback(() => {
     // This is the deliberate user gesture that creates the one Realtime
     // session. Speech queued immediately afterward waits for the data channel.

@@ -661,10 +661,10 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
 
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
-            
+
             for event in llm.stream_chat(user_id, messages, voice=req.voice):
                 yield _sse(event)
-                
+
             yield _sse({"done": True})
         except (AppError, SchemaError) as e:
             log.warning("chat stream failed code=%s", e.code)
