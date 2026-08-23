@@ -36,6 +36,15 @@ export function LessonQuestions({ questions, onSubmit }) {
   const [submitted, setSubmitted] = useState(false)
   const [typingOther, setTypingOther] = useState(false)
   const [customText, setCustomText] = useState('')
+  // The picked option, held just long enough to actually be seen. choose()
+  // used to set the answer and advance to the next question in the same
+  // event — both batched into one render, so the option's own "selected"
+  // state (aria-pressed below) never painted before it was replaced by an
+  // entirely different question. Tapping registered nothing back, which is
+  // most of why this read as filling out a form rather than answering
+  // someone. advancePending holds the swap for one short beat so the tap
+  // has a visible effect before the next question appears.
+  const [advancePending, setAdvancePending] = useState(null)
 
   const total = questions.length
   const q = questions[index]
@@ -66,13 +75,31 @@ export function LessonQuestions({ questions, onSubmit }) {
     else setIndex((i) => i + 1)
   }
 
+  // The actual swap, held one beat by advancePending — see that state's own
+  // comment. A ref, not a cleanup return from the effect below: unmounting
+  // mid-pause (the whole card can vanish if the teacher types over it) must
+  // not fire a state update on a gone component.
+  useEffect(() => {
+    if (!advancePending) return undefined
+    const t = setTimeout(() => {
+      advance(advancePending)
+      setAdvancePending(null)
+    }, 320)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [advancePending])
+
   const choose = (opt) => {
+    if (advancePending) return
     const next = { ...answers, [q.id]: opt }
     setAnswers(next)
-    advance(next)
+    setAdvancePending(next)
   }
 
-  const skip = () => advance(answers)
+  const skip = () => {
+    if (advancePending) return
+    advance(answers)
+  }
 
   const submitCustom = () => {
     if (!customText.trim()) return
@@ -83,7 +110,7 @@ export function LessonQuestions({ questions, onSubmit }) {
   // for "Other" — dead while the free-text row is open, so typing a digit
   // into it doesn't jump questions out from under the cursor.
   useEffect(() => {
-    if (typingOther || submitted) return undefined
+    if (typingOther || submitted || advancePending) return undefined
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       // Not while the teacher is actually typing somewhere — the composer
@@ -97,7 +124,7 @@ export function LessonQuestions({ questions, onSubmit }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typingOther, submitted, q, index, answers, options, otherKey])
+  }, [typingOther, submitted, advancePending, q, index, answers, options, otherKey])
 
   if (submitted) return null
 
@@ -114,9 +141,25 @@ export function LessonQuestions({ questions, onSubmit }) {
     // the same reasoning composer's own .input textarea (just below this)
     // already used its inset shadow for.
     <div className="neo-world neo-inset flex flex-col gap-2 rounded-2xl bg-paper-raised p-3">
-      <p className="eyebrow">
-        {total > 1 ? `Question ${index + 1} of ${total}` : 'One quick question'}
-      </p>
+      {/* Was literal "Question 2 of 4" — the label a form field carries, not
+          something a person asking you things would ever say out loud. A
+          teacher already sees the question itself right below; what this
+          line is actually for is just "there's more than one, and here's
+          where you are," which a few dots say without sounding like
+          paperwork. */}
+      {total > 1 ? (
+        <div className="flex items-center gap-1" role="img" aria-label={`Question ${index + 1} of ${total}`}>
+          {questions.map((qq, i) => (
+            <span
+              key={qq.id}
+              aria-hidden="true"
+              className={`h-1.5 rounded-full transition-all ${
+                i === index ? 'w-4 bg-accent' : i < index ? 'w-1.5 bg-accent/40' : 'w-1.5 bg-paper-sunken'
+              }`}
+            />
+          ))}
+        </div>
+      ) : null}
 
       <p key={`q-${q.id}`} className="fa-context-pop text-sm font-medium leading-snug text-ink">
         {q.text}
@@ -168,29 +211,44 @@ export function LessonQuestions({ questions, onSubmit }) {
         </div>
       ) : (
         <div key={`opts-${q.id}`} className="fa-context-pop flex flex-col gap-1.5">
-          {options.map((opt, i) => (
-            <button
-              key={opt}
-              type="button"
-              aria-pressed={answers[q.id] === opt}
-              onClick={() => choose(opt)}
-              className={`fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-shadow ${
-                answers[q.id] === opt ? 'neo-inset text-accent-text' : 'neo-raised text-ink-soft'
-              }`}
-            >
-              <span
-                aria-hidden="true"
-                className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-paper-sunken text-2xs font-semibold text-ink-faint"
+          {options.map((opt, i) => {
+            const picked = answers[q.id] === opt
+            return (
+              <button
+                key={opt}
+                type="button"
+                aria-pressed={picked}
+                onClick={() => choose(opt)}
+                // The other options fade back once one is picked — advancePending
+                // is the brief pause between tap and moving on (see its own
+                // comment above); without this every option still looked equally
+                // choosable right up to the instant the next question replaced
+                // them, so the tap read as having done nothing.
+                className={`fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-all ${
+                  picked
+                    ? 'neo-inset text-accent-text'
+                    : advancePending
+                      ? 'neo-raised text-ink-soft opacity-40'
+                      : 'neo-raised text-ink-soft'
+                }`}
               >
-                {i + 1}
-              </span>
-              {opt}
-            </button>
-          ))}
+                <span
+                  aria-hidden="true"
+                  className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-paper-sunken text-2xs font-semibold text-ink-faint"
+                >
+                  {i + 1}
+                </span>
+                {opt}
+              </button>
+            )
+          })}
           <button
             type="button"
             onClick={() => setTypingOther(true)}
-            className="fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken"
+            disabled={Boolean(advancePending)}
+            className={`fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken ${
+              advancePending ? 'opacity-40' : ''
+            }`}
           >
             <span
               aria-hidden="true"
@@ -214,7 +272,12 @@ export function LessonQuestions({ questions, onSubmit }) {
           after it but the answer being sent. */}
       {!typingOther ? (
         <div className="flex items-center justify-between gap-3">
-          <button type="button" className="text-sm font-medium text-ink-muted hover:underline" onClick={skip}>
+          <button
+            type="button"
+            className="text-sm font-medium text-ink-muted hover:underline disabled:pointer-events-none disabled:opacity-40"
+            onClick={skip}
+            disabled={Boolean(advancePending)}
+          >
             Skip
           </button>
           {!isLast ? (
