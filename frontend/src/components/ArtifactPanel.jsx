@@ -13,7 +13,6 @@ import { LessonPlanTable } from './LessonPlanTable'
 import { Marginalia } from './Marginalia'
 import { ShareDialog } from './ShareDialog'
 import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
-import confetti from 'canvas-confetti'
 
 /* The artifact, expanded into a working document.
  *
@@ -84,19 +83,14 @@ const location = useLocation()
   const titleRef = useRef(null)
   const color = classColor(classId)
 
-  // Trigger confetti when a generation finishes (busy transitions true -> false while we have a plan)
+  // Pulse the shadow when a generation finishes (busy transitions true -> false while we have a plan)
   const previousBusy = useRef(busy)
-  
+
   useEffect(() => {
     let timer
     if (previousBusy.current && !busy && artifact?.planId) {
       setCompletionPulse(true)
       timer = setTimeout(() => setCompletionPulse(false), 420)
-      confetti({
-        particleCount: 150,
-        spread: 70,
-        origin: { y: 0.6 }
-      })
     }
     previousBusy.current = busy
     return () => clearTimeout(timer)
