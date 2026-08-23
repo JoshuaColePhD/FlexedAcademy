@@ -111,7 +111,14 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
                     SHORT[name].slice(0, 2).toUpperCase()
                   )}
                 </span>
-                <span className="min-w-0 flex-1 line-clamp-2 text-sm text-ink">
+                {/* min-h-[2.7em]/leading-[1.35]: reserves the full two-line
+                    box up front rather than sizing to however many lines the
+                    text needs. This list sits inside ArtifactRail's drawer
+                    (ArtifactRail.jsx's ArtifactDrawer), which animates its
+                    own `width` open/closed — without a reserved height, a
+                    line straddling the 1-line/2-line boundary visibly
+                    resizes mid-transition as the drawer's width changes. */}
+                <span className="min-w-0 flex-1 line-clamp-2 min-h-[2.7em] leading-[1.35] text-sm text-ink">
                   {isOff ? (
                     <span className="text-ink-faint">{title || 'No school'}</span>
                   ) : day ? (

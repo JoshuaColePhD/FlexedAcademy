@@ -2261,12 +2261,22 @@
      rows ever need. Two lines instead of one gives a title room to actually
      finish without either cost — a rail row has the vertical space to
      spare, unlike the composer's single-line pills. */
+  /* line-height + min-height reserve the full two-line box up front, rather
+     than letting it size to however many lines the text actually needs.
+     The drawer this sits in (ArtifactRail.jsx's ArtifactDrawer) animates
+     its own `width` open/closed — a layout property, so the browser
+     re-flows every row's text at every intermediate width during that
+     transition. Without a reserved height, a title straddling the 1-line/
+     2-line boundary visibly grows and shrinks mid-animation, reading as the
+     whole panel "shrinking" oddly rather than a clean open/close. */
   .rail-title {
     display: -webkit-box;
     max-width: 100%;
     overflow: hidden;
     font-size: var(--fs-sm);
     font-weight: var(--fw-medium);
+    line-height: 1.35;
+    min-height: 2.7em;
     color: var(--ink);
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -2276,6 +2286,8 @@
     max-width: 100%;
     overflow: hidden;
     font-size: var(--fs-2xs);
+    line-height: 1.35;
+    min-height: 2.7em;
     color: var(--ink-faint);
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -2366,11 +2378,16 @@
        and Quadratic Features") just overflowed past its box and crowded
        into the Download/Remove icons instead of eliding. Two lines, same
        reasoning as .rail-title just above: a document name or standards
-       count gets room to finish instead of eliding after a few characters. */
+       count gets room to finish instead of eliding after a few characters.
+       line-height/min-height reserve the two-line box up front for the same
+       reason .rail-title does just above — this row sits in the same
+       width-animating drawer. */
     display: -webkit-box;
     max-width: 100%;
     overflow: hidden;
     font-size: var(--fs-xs);
+    line-height: 1.35;
+    min-height: 2.7em;
     color: var(--ink-soft);
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
