@@ -1141,7 +1141,7 @@ function BillingAdmin() {
     queryFn: () => api.adminBilling(),
   })
 
-  if (isLoading) return <p className="mt-8 text-sm text-ink-muted">Loading…</p>
+  if (isLoading || !data) return <p className="mt-8 text-sm text-ink-muted">Loading…</p>
   if (isError) return <p className="mt-8 text-sm text-mark">Could not load billing data.</p>
 
   const counts = data.counts || {}
@@ -1289,7 +1289,7 @@ function SettingsAdmin() {
           What entitlement.py enforces before refusing a generation — a rolling 7-day window, per account.
         </p>
 
-        {isLoading ? (
+        {isLoading || !appSettings ? (
           <p className="mt-3 text-sm text-ink-muted">Loading…</p>
         ) : isError ? (
           <p className="mt-3 text-sm text-mark">Could not load settings.</p>
