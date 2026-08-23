@@ -1731,8 +1731,15 @@ export function ChatPage() {
     }
     if (scrollModeRef.current === 'pinned') return
     if (!atBottom) return
+    // chatStream.text (the live reply streaming in below, before it lands in
+    // `messages`) and stream.preview (the plan-building WeekStrip filling in
+    // day by day) both grow the transcript's height without changing
+    // `messages` itself — without them here, an existing conversation a
+    // teacher is already at the bottom of wouldn't follow-scroll until the
+    // whole generation finished. Irrelevant once a turn is 'pinned' above:
+    // that branch already returns before this runs.
     endRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, atBottom, stream.preview])
+  }, [messages, atBottom, chatStream.text, stream.preview])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
      effect watching `messages` catches every assistant reply this component
