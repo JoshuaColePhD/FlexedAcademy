@@ -157,28 +157,41 @@ function AiGenerationPreferences({ value, onSaved }) {
     }
   }
 
-  const Slider = ({ title, description, tag, options, currentValue }) => (
-    <div className="mt-5">
-      <h3 className="text-sm font-semibold text-ink">{title}</h3>
-      <p className="mt-1 text-xs text-ink-muted">{description}</p>
-      <div className="mt-2 flex gap-2">
-        {options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => handleSelect(tag, opt)}
+  const Slider = ({ title, description, tag, options, currentValue }) => {
+    const currentIndex = options.indexOf(currentValue)
+    const val = currentIndex !== -1 ? currentIndex : Math.floor((options.length - 1) / 2)
+    return (
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
+        <p className="mt-1 text-xs text-ink-muted">{description}</p>
+        <div className="mt-6 px-1 max-w-xl">
+          <input 
+            type="range" 
+            min="0" 
+            max={options.length - 1} 
+            step="1"
+            value={val}
+            onChange={(e) => handleSelect(tag, options[parseInt(e.target.value, 10)])}
             disabled={saving}
-            aria-pressed={currentValue === opt}
-            className={`neo-raised flex-1 py-2 text-center text-sm font-medium rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-accent outline-none ${
-              currentValue === opt ? 'neo-inset text-accent-text' : 'text-ink-soft hover:bg-paper-sunken'
-            }`}
-          >
-            {opt}
-          </button>
-        ))}
+            className="w-full h-1.5 bg-edge rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent"
+            style={{ accentColor: 'rgb(var(--accent-rgb))' }}
+          />
+          <div className="flex justify-between mt-2">
+            {options.map((opt, i) => (
+              <span 
+                key={opt} 
+                className={`text-xs font-medium transition-colors cursor-pointer select-none ${i === val ? 'text-accent-text' : 'text-ink-muted hover:text-ink-soft'}`}
+                style={{ width: `${100/options.length}%`, textAlign: i === 0 ? 'left' : i === options.length - 1 ? 'right' : 'center' }}
+                onClick={() => handleSelect(tag, opt)}
+              >
+                {opt}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="mt-6 border-t border-edge pt-4">
