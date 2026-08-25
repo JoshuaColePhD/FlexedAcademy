@@ -530,13 +530,16 @@ export function LandingPage() {
           Start a week free
           <ArrowIcon />
         </Link>
-        <div className="land-foot-legal">
-          <Link to="/privacy">Privacy Policy</Link>
-          <Link to="/terms">Terms of Service</Link>
+        <div className="land-foot-legal mt-4 flex-col gap-2">
+          <div className="flex gap-4 justify-center">
+            <Link to="/privacy">Privacy Policy</Link>
+            <Link to="/terms">Terms of Service</Link>
+          </div>
+          <span className="text-[10px] text-ink-muted/50 max-w-lg text-center mt-2 leading-relaxed">
+            AP®, Pre-AP®, and College Board® are trademarks registered by the College Board, which is not affiliated with, and does not endorse, this product. ACT® is a registered trademark of ACT, Inc.
+          </span>
         </div>
-        <p className="mt-8 text-center text-[10px] text-ink-muted/50 max-w-2xl mx-auto leading-relaxed">
-          AP®, Pre-AP®, and College Board® are trademarks registered by the College Board, which is not affiliated with, and does not endorse, this product. ACT® is a registered trademark of ACT, Inc.
-        </p>
+        
       </footer>
     </div>
   )
