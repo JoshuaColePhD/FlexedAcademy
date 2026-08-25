@@ -518,6 +518,8 @@ export const api = {
   },
   getPendingSchoolCalendar: (schoolId, { signal } = {}) =>
     request(`/api/school-calendars/pending?school_id=${encodeURIComponent(schoolId)}`, { signal }),
+  getConfirmedSchoolCalendar: (schoolId, { signal } = {}) =>
+    request(`/api/school-calendars/confirmed/${encodeURIComponent(schoolId)}`, { signal }),
   confirmSchoolCalendar: (submissionId) =>
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/confirm`, { method: 'POST' }),
   rejectSchoolCalendar: (submissionId) =>

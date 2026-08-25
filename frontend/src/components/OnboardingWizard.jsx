@@ -21,6 +21,8 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
+import { PendingCalendarReview } from './PendingCalendarReview'
+import { CalendarPreview } from './CalendarPreview'
 const ClassDocuments = lazy(() => import('../pages/ClassPage.jsx').then((module) => ({ default: module.ClassDocuments })))
 
 
@@ -209,6 +211,8 @@ export function OnboardingWizard({ open, onClose, cls }) {
   const formSteps = plan.filter((s) => s !== 'welcome' && s !== 'done')
   const formIndex = formSteps.indexOf(stepKey)
   const eyebrow = formIndex >= 0 ? `Step ${formIndex + 1} of ${formSteps.length}` : null
+  const currentStep = formIndex >= 0 ? formIndex + 1 : 0
+  const totalSteps = formSteps.length
 
   const saveSchool = async () => {
     setSavingSchool(true)
@@ -316,7 +320,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
                   <WelcomeStep steps={formSteps.length} onNext={goNext} />
                 ) : stepKey === 'school' ? (
                   <SchoolStep
-                    eyebrow={eyebrow}
+                    eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
                     school={school}
                     setSchool={setSchool}
                     schools={schools}
@@ -332,7 +336,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
                   />
                 ) : stepKey === 'class' ? (
                   <ClassStep
-                    eyebrow={eyebrow}
+                    eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
                     cls={cls}
                     subject={subject}
                     setSubject={setSubject}
@@ -343,9 +347,9 @@ export function OnboardingWizard({ open, onClose, cls }) {
                     onNext={saveClass}
                   />
                 ) : stepKey === 'documents' ? (
-                  <DocumentsStep eyebrow={eyebrow} cls={cls} onBack={goBack} onNext={goNext} />
+                  <DocumentsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} cls={cls} onBack={goBack} onNext={goNext} />
                 ) : stepKey === 'tips' ? (
-                  <TipsStep eyebrow={eyebrow} onBack={goBack} onNext={goNext} />
+                  <TipsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} onBack={goBack} onNext={goNext} />
                 ) : (
                   <DoneStep finishing={finishing} onFinish={finish} />
                 )}
@@ -413,6 +417,8 @@ function WelcomeStep({ steps, onNext }) {
 
 function SchoolStep({
   eyebrow,
+  currentStep,
+  totalSteps,
   school,
   setSchool,
   schools,
@@ -429,7 +435,7 @@ function SchoolStep({
   return (
     <div>
       <StepHeader
-        eyebrow={eyebrow}
+        eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
         title="Where are we teaching?"
         body="Sets your school calendar — which weeks are teaching weeks and which days are closed."
       />
@@ -442,13 +448,18 @@ function SchoolStep({
         emptyOption={{ value: '', label: 'Choose a school' }}
         inputClassName="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
       />
-      {schoolNeedsTemplate ? (
-        <div className="mt-4 rounded-lg border border-edge bg-paper-sunken p-4 text-sm text-ink-soft">
-          <p>
-            <span className="font-medium text-ink">No lesson-plan template on file yet</span> for this
-            school. If you have a blank one (a Word doc or PDF), upload it and we’ll train the AI to
-            export in your district’s exact format.
-          </p>
+      {school ? (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-lg border border-edge bg-paper-sunken p-4 text-sm text-ink-soft">
+          {schoolNeedsTemplate ? (
+            <p>
+              <span className="font-medium text-ink">Got a rigid district lesson plan format?</span> Toss it here, and the AI will handle the formatting for you.
+            </p>
+          ) : (
+            <p>
+              <span className="font-medium text-ink">A standard lesson-plan template is already on file</span> for this
+              school. You will automatically use this standard template, but you can upload your own below to override it for your classes.
+            </p>
+          )}
           <input
             ref={templateFileRef}
             type="file"
@@ -485,9 +496,21 @@ function SchoolStep({
               />
             </div>
           </div>
-        </div>
+        </motion.div>
       ) : null}
-      <div className="dialog-actions mt-6">
+      
+      {school && schools.find(s => s.id === school)?.has_pending_calendar ? (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
+          <h3 className="text-sm font-medium text-ink mb-2">Look at that! A colleague already did the heavy lifting and set up the calendar. Look right to you?</h3>
+          <PendingCalendarReview schoolId={school} />
+        </motion.div>
+      ) : school && schools.find(s => s.id === school)?.has_calendar ? (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
+          <h3 className="text-sm font-medium text-ink mb-2">School Calendar</h3>
+          <ConfirmedCalendarReview schoolId={school} />
+        </motion.div>
+      ) : null}
+<div className="dialog-actions mt-6">
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
@@ -503,7 +526,7 @@ function ClassStep({ eyebrow, cls, subject, setSubject, frameworks, saving, erro
   return (
     <div>
       <StepHeader
-        eyebrow={eyebrow}
+        eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
         title={<span>Confirm {cls.name || 'your class'}</span>}
         body="The course decides which standards get retrieved. Change it any time from My Classes."
       />
@@ -525,11 +548,11 @@ function ClassStep({ eyebrow, cls, subject, setSubject, frameworks, saving, erro
     </div>
   )
 }
-function DocumentsStep({ eyebrow, cls, onBack, onNext }) {
+function DocumentsStep({ eyebrow, currentStep, totalSteps, cls, onBack, onNext }) {
   return (
     <div>
       <StepHeader
-        eyebrow={eyebrow}
+        eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
         title="Ground it in your materials"
         body="A pacing guide, syllabus, or curriculum map lets plans follow YOUR sequence and units, not a generic one. Optional — add these anytime from My Classes."
       />
@@ -548,10 +571,10 @@ function DocumentsStep({ eyebrow, cls, onBack, onNext }) {
   )
 }
 
-function TipsStep({ eyebrow, onBack, onNext }) {
+function TipsStep({ eyebrow, currentStep, totalSteps, onBack, onNext }) {
   return (
     <div>
-      <StepHeader eyebrow={eyebrow} title="Getting the most out of FlexEd" />
+      <StepHeader eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} title="Getting the most out of FlexEd" />
       {/* 0.1s per item over three items ran ~400ms with the last item still
           invisible — and SmoothHeight (which now wraps the steps) sizes the
           panel to the FINAL height immediately, so that delay showed as a
@@ -626,5 +649,24 @@ function DoneStep({ finishing, onFinish }) {
         {finishing ? 'Taking you there...' : 'Start planning 🚀'}
       </motion.button>
     </motion.div>
+  )
+}
+
+function ConfirmedCalendarReview({ schoolId }) {
+  const { data: submission, isLoading } = useQuery({
+    queryKey: ['schoolCalendarConfirmed', schoolId],
+    queryFn: () => api.getConfirmedSchoolCalendar(schoolId),
+    enabled: !!schoolId,
+    retry: false,
+  })
+
+  if (isLoading) return <p className="mt-2 text-xs text-ink-muted">Loading calendar...</p>
+  if (!submission || !submission.weeks) return null
+
+  return (
+    <div className="mt-2 max-w-sm rounded-lg bg-ok/10 p-3 text-xs">
+      <p className="font-medium text-ok mb-2">Confirmed by your colleagues</p>
+      <CalendarPreview weeks={submission.weeks} />
+    </div>
   )
 }

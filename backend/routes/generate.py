@@ -202,7 +202,7 @@ def _openai_error_event(e: Exception) -> dict:
 
 
 @router.post("/generate")
-@limiter.limit("20/minute")
+@limiter.limit("100/minute")
 def generate(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     require_entitlement(user_id)
     # Resolved once, from the chat this generation belongs to (see
@@ -227,7 +227,7 @@ def generate(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, 
 
 
 @router.post("/generate_stream")
-@limiter.limit("20/minute")
+@limiter.limit("100/minute")
 def generate_stream(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     """Stream tokens, then emit the finished plan.
 
@@ -543,7 +543,7 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
 
 
 @router.post("/chat_stream")
-@limiter.limit("30/minute")
+@limiter.limit("100/minute")
 def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Stream a standard conversational response, not a JSON schema."""
     def event_stream():
@@ -680,7 +680,7 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
 
 
 @router.post("/decisions")
-@limiter.limit("30/minute")
+@limiter.limit("100/minute")
 def decisions(req: DecisionsRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Voice mode's card stack — see llm.extract_decisions for why this isn't
     gated by require_entitlement: it's a visual aid over an ALREADY-gated
@@ -690,7 +690,7 @@ def decisions(req: DecisionsRequest, request: Request, user_id: str = Depends(ge
 
 
 @router.post("/suggestion")
-@limiter.limit("30/minute")
+@limiter.limit("100/minute")
 def suggestion(req: SuggestionRequest, request: Request, user_id: str = Depends(get_current_user)):
     """The composer's empty-state Tab suggestion, upgraded from
     contextualSuggestions.js's generic template with what the teacher's own
@@ -719,7 +719,7 @@ def suggestion(req: SuggestionRequest, request: Request, user_id: str = Depends(
 
 
 @router.post("/revise_day")
-@limiter.limit("20/minute")
+@limiter.limit("100/minute")
 def revise_day(req: ReviseDayRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Rewrite one day — or one cell of it — AND rebuild the .docx, so the file
     matches what's on screen."""

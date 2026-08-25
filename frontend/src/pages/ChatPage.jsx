@@ -1580,13 +1580,13 @@ export function ChatPage() {
       const ask = `Revise ${label}: ${feedback}`
       const askId = nextId()
       pinToTopIdRef.current = askId
-      setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask }])
+      setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       // Persisted for the same reason as the composer's own messages: a cell
       // tweak is a real edit to the week, and the transcript is meant to be a
       // complete record of what happened to the plan. It was writing to screen
       // only, so every in-cell revision vanished on reload.
       const saveTo = localFor.current
-      if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask })
+      if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
       setRevising(true)
       try {
         const row = await api.reviseDay({
@@ -1608,7 +1608,7 @@ export function ChatPage() {
           {
             id: nextId(),
             role: 'assistant',
-            content: reply,
+            content: reply, created_at: new Date().toISOString(),
             planId: row.id,
             weekLabel: row.week_label,
             plan: row.plan_json,
@@ -1617,7 +1617,7 @@ export function ChatPage() {
         ])
         // Carries plan_id, so the conversation keeps its link to the document.
         if (saveTo) {
-          void persistMessage(saveTo, { role: 'assistant', content: reply, plan_id: row.id })
+          void persistMessage(saveTo, { role: 'assistant', content: reply, created_at: new Date().toISOString(), plan_id: row.id })
         }
       } catch (err) {
         /* The "Revise Thursday's Do Now…" message above was appended AND

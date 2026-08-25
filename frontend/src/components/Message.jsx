@@ -70,6 +70,18 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
 
   const isUser = message.role === 'user'
   const assistantSettled = !isUser && !message.streaming && !message.isError
+  const timeString = useMemo(() => {
+    if (!message.created_at) return ''
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(new Date(message.created_at))
+    } catch {
+      return ''
+    }
+  }, [message.created_at])
+
 
   /* Computed here rather than handed down, so a message that carries a plan
      carries its own proof and nothing upstream has to remember to attach it. */
@@ -300,6 +312,7 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
             isUser ? 'justify-end' : 'justify-start'
           } ${message.isError ? 'text-mark' : 'text-ink-muted'}`}
         >
+          {timeString ? <span className="text-3xs tracking-wider opacity-60 mr-1">{timeString}</span> : null}
           <button
             type="button"
             className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"

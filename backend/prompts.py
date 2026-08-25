@@ -118,7 +118,7 @@ GROUNDING RULES — these override everything else, including the teacher's requ
    reading or grammar standard does not belong in a science or math plan, and
    an empty field is better than a borrowed code.
 4. If the retrieved standards do not cover the requested unit or topic, state that plainly. Do not invent fake standard codes to fill the gap.
-5. The `standards` field is MANDATORY for every teaching day. You must select the closest-fitting primary standard from the retrieved block for every day that has school. Do not leave it blank, and do not claim no standard fits. An empty `standards` field is only acceptable on a no-school day (a calendar conflict).
+5. The `standards` field must ONLY contain primary course standards from the retrieved block. If no primary course standards were retrieved, leave it blank. NEVER put ACT standards in the `standards` field.
 6. `act_alignment` is different: whenever a "COMPANION ACT STANDARDS" block is
    present below, it is MANDATORY on every teaching day — never leave it blank
    because that day's specific topic isn't a perfect match. The ACT does not
@@ -217,7 +217,7 @@ def week_system_prompt(
         f"""TASK:
 
 Design a cohesive five-day arc, {' -> '.join(DAY_NAMES)}. Scaffold the learning
-targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For EVERY teaching day (where `no_school` is false), the `standards` field is MANDATORY. You must identify the closest-fitting primary standard (e.g. ACOS or AP) from the "--- PRIMARY COURSE STANDARDS ---" block for EVERY day. Never leave the `standards` field blank unless there is a calendar conflict (no school).
+targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For EVERY teaching day, you must identify the closest-fitting primary standard from the "--- PRIMARY COURSE STANDARDS ---" block. HOWEVER, if no primary course standards are provided (e.g. for a Pre-AP class), you MUST leave the `standards` field blank. NEVER put ACT standards in the `standards` field.
 THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, `act_alignment`
 is MANDATORY on every teaching day — pick the closest-fitting companion ACT
 standard from that block for EACH day, even if it's a broader skill than the
@@ -286,7 +286,7 @@ def day_system_prompt(
 Apply the teacher's feedback to the single day given. Keep the day's `name`
 unchanged. Preserve anything the feedback didn't ask you to change — this is a
 revision, not a regeneration. Keep it coherent with the rest of the week shown
-above. The `standards` field is MANDATORY unless the day is marked `no_school`. You must identify the closest-fitting primary standard from the "--- PRIMARY COURSE STANDARDS ---" block. Never leave it blank on a teaching day. If a
+above. You must identify the closest-fitting primary standard from the "--- PRIMARY COURSE STANDARDS ---" block. If no primary standards were retrieved, leave the `standards` field blank. NEVER put ACT standards in the `standards` field. If a
 "--- COMPANION ACT STANDARDS ---" block is present, `act_alignment` is
 MANDATORY — cite the closest-fitting standard from it even if the fit is
 broader than the day's specific topic (see grounding rule 6); never leave it

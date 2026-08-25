@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
@@ -64,23 +65,27 @@ export function PendingCalendarReview({ schoolId, onDecided }) {
         <CalendarPreview weeks={submission.weeks} />
       </div>
       {!isSubmitter ? (
-        <div className="mt-2 flex gap-2">
-          <button
+        <div className="mt-3 flex gap-2">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             type="button"
             disabled={deciding}
             onClick={() => decide('confirm')}
-            className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn btn-primary text-2xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
           >
             Looks right
-          </button>
-          <button
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             type="button"
             disabled={deciding}
             onClick={() => decide('reject')}
             className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
           >
             Doesn't match
-          </button>
+          </motion.button>
         </div>
       ) : null}
     </div>

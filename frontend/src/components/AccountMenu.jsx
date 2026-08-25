@@ -73,7 +73,7 @@ function UsageMeter({ entitlement }) {
     <div className="px-3 py-2">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-2xs font-medium uppercase tracking-wider text-ink-muted">Usage</span>
-        <span className="text-2xs text-ink-muted">{days === 7 ? 'resets weekly' : `resets every ${days} days`}</span>
+        <span className="text-2xs text-ink-muted">{days === 7 ? 'resets after 7 days' : `resets every ${days} days`}</span>
       </div>
       <div className="neo-inset mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-paper-sunken">
         <div
@@ -86,7 +86,7 @@ function UsageMeter({ entitlement }) {
           the percentage is the one number worth keeping, since it's the same
           unit the bar above it is already drawn in. */}
       <p className="text-2xs text-ink-muted">
-        {pct}% used · {100 - pct}% left
+        {pct}% / 100% usage limit
       </p>
     </div>
   )

@@ -52,14 +52,58 @@ export function SchoolSelect({
         ? emptyOption.label
         : ''
 
-  const suffixFor = (s) =>
-    s.has_pending_calendar ? ' — pending confirmation' : s.has_calendar === false ? ' — no calendar yet' : ''
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const base = q ? schools.filter((s) => s.name.toLowerCase().includes(q)) : schools
-    return base.slice(0, MAX_RESULTS)
+    
+    const getScore = (school) => {
+      const name = school.name.toLowerCase()
+      let score = 0
+      
+      if (!q) {
+        // No query: prioritize active schools
+        score += school.has_calendar ? 100 : school.has_pending_calendar ? 50 : 0
+        return score
+      }
+
+      if (!name.includes(q)) return -1 // Doesn't match
+
+      // Exact match gets highest score
+      if (name === q) score += 1000
+      // Prefix match gets high score
+      else if (name.startsWith(q)) score += 500
+      // Word boundary match
+      else if (name.includes(` ${q}`)) score += 200
+      // Normal substring
+      else score += 10
+
+      // Prioritize active schools among matches
+      score += school.has_calendar ? 50 : school.has_pending_calendar ? 25 : 0
+
+      return score
+    }
+
+    if (!q) {
+      return [...schools].sort((a, b) => getScore(b) - getScore(a)).slice(0, MAX_RESULTS)
+    }
+
+    return schools
+      .map((s) => ({ school: s, score: getScore(s) }))
+      .filter((x) => x.score >= 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_RESULTS)
+      .map((x) => x.school)
   }, [schools, query])
+
+  const parseSchoolName = (name) => {
+    let type = null
+    let base = name
+    if (name.includes('High School')) { type = 'High'; base = name.replace('High School', '').trim() }
+    else if (name.includes('Middle School')) { type = 'Middle'; base = name.replace('Middle School', '').trim() }
+    else if (name.includes('Elementary School')) { type = 'Elementary'; base = name.replace('Elementary School', '').trim() }
+    else if (name.includes('Primary School')) { type = 'Primary'; base = name.replace('Primary School', '').trim() }
+    else if (name.includes('Intermediate School')) { type = 'Intermediate'; base = name.replace('Intermediate School', '').trim() }
+    return { base, type }
+  }
 
   // The generic option matches "isn't listed" style queries too, not just an
   // empty query — typing "not listed" while searching should still surface it.
@@ -187,11 +231,20 @@ export function SchoolSelect({
                       i === highlight ? 'bg-paper-sunken' : ''
                     } ${s.id === value ? 'text-ink' : 'text-ink-soft'}`}
                   >
-                    <span className="min-w-0 flex-1 truncate">
-                      {s.name}
-                      <span className="text-ink-faint">{suffixFor(s)}</span>
+                    <span className="min-w-0 flex-1 flex items-center gap-2 truncate">
+                      <span className={s.id === value ? 'font-medium' : ''}>{parseSchoolName(s.name).base}</span>
+                      {parseSchoolName(s.name).type && (
+                        <span className="shrink-0 rounded bg-paper-sunken px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+                          {parseSchoolName(s.name).type}
+                        </span>
+                      )}
                     </span>
-                    {s.id === value ? <Check size={13} aria-hidden="true" className="shrink-0 text-ok" /> : null}
+                    {s.has_calendar ? (
+                      <span className="shrink-0 rounded bg-ok/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ok">Active</span>
+                    ) : s.has_pending_calendar ? (
+                      <span className="shrink-0 rounded bg-warn/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-warn">Pending</span>
+                    ) : null}
+                    {s.id === value ? <Check size={14} aria-hidden="true" className="shrink-0 text-ok ml-1" /> : null}
                   </button>
                 </li>
               ))}

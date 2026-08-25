@@ -159,3 +159,11 @@ async def upload_school_template(
     return template_intake.run_and_persist(
         user_id=user_id, template_id=row["id"], school_id=school_id, dest_path=dest, claimed_ext=ext
     )
+
+@router.get("/confirmed/{school_id}")
+def get_confirmed_calendar_route(school_id: str, _user_id: str = Depends(get_current_user)):
+    from .. import schoolcal
+    weeks = schoolcal.school_weeks(school_id)
+    if not weeks:
+        raise HTTPException(status_code=404, detail="No calendar found")
+    return {"weeks": weeks}
