@@ -30,7 +30,6 @@ const ClassPage = lazyNamed(() => import('./pages/ClassPage.jsx'), 'ClassPage')
 const SettingsPage = lazyNamed(() => import('./pages/SettingsPage.jsx'), 'SettingsPage')
 const PlansPage = lazyNamed(() => import('./pages/PlansPage.jsx'), 'PlansPage')
 const HistoryPage = lazyNamed(() => import('./pages/HistoryPage.jsx'), 'HistoryPage')
-const TodayPage = lazyNamed(() => import('./pages/TodayPage.jsx'), 'TodayPage')
 const WelcomePage = lazyNamed(() => import('./pages/onboarding/WelcomePage.jsx'), 'WelcomePage')
 const AdminPage = lazyNamed(() => import('./pages/AdminPage.jsx'), 'AdminPage')
 const LandingPage = lazyNamed(() => import('./pages/LandingPage.jsx'), 'LandingPage')
@@ -190,7 +189,6 @@ function ClassRoutes() {
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
           <Route index element={<ChatPage />} />
           <Route path="chat/:chatId" element={<ChatPage />} />
-          <Route path="today" element={<TodayPage />} />
           <Route path="plans" element={<PlansPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="class" element={<ClassPage />} />
