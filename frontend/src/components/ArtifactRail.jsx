@@ -36,7 +36,32 @@ const RailGroup = ({ title, defaultOpen, isBar, children }) => {
 import { WeekStrip } from './WeekStrip'
 import { useToast } from '../lib/toastContext'
 
-
+/* A quiet line-art sketch for the one moment the rail has nothing to show —
+   an open notebook, not a stock "empty box" glyph. Authored, not a Unicode
+   glyph standing in for an icon (craft-floor's own ban); currentColor so it
+   themes with whatever wraps it rather than carrying its own hex. */
+function EmptyRailArt({ color }) {
+  return (
+    <svg
+      viewBox="0 0 64 48"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="rail-empty-art"
+      style={{ color: `rgb(${color})` }}
+    >
+      <path d="M32 10 C27 6 19 5 10 6 L10 38 C19 37 27 38 32 42 C37 38 45 37 54 38 L54 6 C45 5 37 6 32 10 Z" />
+      <path d="M32 10 L32 42" />
+      <path d="M15 15 L26 14" opacity="0.55" />
+      <path d="M15 21 L25 20" opacity="0.55" />
+      <path d="M38 14 L49 15" opacity="0.55" />
+      <path d="M39 20 L49 21" opacity="0.55" />
+    </svg>
+  )
+}
 
 /* The artifact rail — the content that fills the drawer once it's open (see
  * ArtifactDrawer at the bottom of this file for the always-mounted shell
@@ -376,31 +401,33 @@ export function ArtifactRail({
             </span>
           </div>
         ) : artifactLoadError ? (
-          <div className="neo-inset bg-paper-sunken rounded-xl p-4 flex flex-col items-center justify-center text-center gap-3">
-            <AlertTriangle size={24} aria-hidden="true" className="text-amber-500/80 drop-shadow-sm" />
-            <p className="text-sm font-medium text-ink-muted">Couldn’t load this week’s plan.</p>
-            <button 
-              type="button" 
-              className="neo-raised flex items-center justify-center px-4 py-1.5 rounded-lg text-xs font-medium text-ink-soft hover:text-ink transition-colors"
-              onClick={onRetryArtifact}
-            >
+          /* A real plan exists for this chat (a message or the plans table
+             named its id) and fetching it just failed — NOT the same as
+             "nothing built yet," the plain rail-empty state below. Checked
+             first, so a failed load never falls through to that empty
+             state — reading as "nothing was built" when the opposite is
+             true. */
+          <div className="rail-empty">
+            <AlertTriangle size={20} aria-hidden="true" className="text-mark" />
+            <p>Couldn’t load this week’s plan.</p>
+            <button type="button" className="btn text-xs" onClick={onRetryArtifact}>
               Reload
             </button>
           </div>
         ) : null}
         </RailGroup>
       ) : (
-        <div className="neo-inset bg-paper-sunken rounded-xl p-6 mx-2 mb-2 flex flex-col items-center justify-center text-center gap-4 border border-edge/30">
-          <div className="relative">
-            <div className="absolute inset-0 bg-accent/20 blur-xl rounded-full" />
-            {!isBar ? <FileText size={32} className="relative text-accent/80 drop-shadow-sm" strokeWidth={1.5} /> : null}
-          </div>
-          <p className="text-sm font-medium text-ink-muted leading-relaxed">
-            Nothing built yet.<br/>Describe a week in the chat to get started.
-          </p>
+        <div className="rail-empty">
+          {/* No room for it in the one-row phone bar — same reasoning as
+              dropping "Built from" a few lines up. */}
+          {!isBar ? <EmptyRailArt color={color.rgb} /> : null}
+          <p>Nothing built yet. Describe a week in the chat.</p>
+          {/* Composer's own id — the same one ChatPage restores focus to
+              when the document panel closes (see rail-open-title above) —
+              rather than a new ref threaded down just for this button. */}
           <button
             type="button"
-            className="neo-raised flex items-center justify-center px-5 py-2 rounded-lg text-sm font-medium text-accent-text hover:text-accent-hover transition-colors"
+            className="btn text-xs"
             onClick={() => document.getElementById('composer-input')?.focus()}
           >
             Start a plan
