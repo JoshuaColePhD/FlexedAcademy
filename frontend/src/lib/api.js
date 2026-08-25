@@ -191,6 +191,7 @@ export const api = {
     }),
   getChat: (id) => request(`/api/chats/${id}`),
   renameChat: (id, title) => request(`/api/chats/${id}`, { method: 'PATCH', body: { title } }),
+  togglePin: (id, isPinned) => request(`/api/chats/${id}/pin`, { method: 'PATCH', body: { is_pinned: isPinned } }),
   /** Re-point an existing conversation at a different week — the composer's
    *  week dropdown. Separate from renameChat because that route requires a
    *  title this has no business inventing. */

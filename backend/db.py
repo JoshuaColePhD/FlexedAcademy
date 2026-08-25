@@ -2920,6 +2920,10 @@ MIGRATIONS: list[str] = [
     ON CONFLICT (id) DO NOTHING;
     
     """,
+    # ── 32: pinned chats ─────────────────────────────────────────────────────
+    """
+    ALTER TABLE chats ADD COLUMN IF NOT EXISTS is_pinned INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 
@@ -4460,6 +4464,13 @@ def list_chats(user_id: str, limit: int = 100, class_id: str | None = None) -> l
         )
     ]
 
+
+def toggle_chat_pin(user_id: str, chat_id: str, is_pinned: bool) -> dict | None:
+    _write(
+        "UPDATE chats SET is_pinned = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+        (int(is_pinned), now(), chat_id, user_id),
+    )
+    return get_chat(user_id, chat_id)
 
 def rename_chat(user_id: str, chat_id: str, title: str) -> dict | None:
     _write(

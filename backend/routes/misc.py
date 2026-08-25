@@ -302,6 +302,16 @@ def rename_chat(chat_id: str, body: ChatBody, user_id: str = Depends(get_current
         raise AppError("chat_not_found", "No such chat.", status=404)
     return chat
 
+class PinBody(BaseModel):
+    is_pinned: bool
+
+@router.patch("/chats/{chat_id}/pin")
+def pin_chat(chat_id: str, body: PinBody, user_id: str = Depends(get_current_user)):
+    chat = db.toggle_chat_pin(user_id, chat_id, body.is_pinned)
+    if not chat:
+        raise AppError("chat_not_found", "No such chat.", status=404)
+    return chat
+
 
 class ChatWeekBody(BaseModel):
     week_number: int = Field(ge=1, le=52)

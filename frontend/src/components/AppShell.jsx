@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, Trash2, TriangleAlert, Users, X, Database } from 'lucide-react'
+
 import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
 import { useAuth } from '../lib/authContext'
@@ -25,7 +26,7 @@ import { qk } from '../lib/queryKeys'
  * 264px nav. The one PanelGroup left splits the chat from the plan.
  */
 
-function ChatRow({ chat, classId, onDelete, onNavigate }) {
+function ChatRow({ chat, classId, onDelete, onPin, onNavigate }) {
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(chat.title)
@@ -94,6 +95,14 @@ function ChatRow({ chat, classId, onDelete, onNavigate }) {
       <span className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
         <button
           type="button"
+          className={`btn-icon ${chat.is_pinned ? 'text-amber-500' : ''}`}
+          aria-label={chat.is_pinned ? `Unpin ${chat.title}` : `Pin ${chat.title}`}
+          onClick={() => onPin(chat)}
+        >
+          <Pin size={13} aria-hidden="true" className={chat.is_pinned ? 'fill-amber-500' : ''} />
+        </button>
+        <button
+          type="button"
           className="btn-icon"
           aria-label={`Rename ${chat.title}`}
           onClick={() => setEditing(true)}
@@ -114,14 +123,36 @@ function ChatRow({ chat, classId, onDelete, onNavigate }) {
 }
 
 function Rail({ onNavigate, onClose }) {
+  const { entitlement } = useAuth()
   const { classId } = useParams()
   const location = useLocation()
-  const { data: chats, isLoading } = useChats()
+  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
+  const { data: chats, isLoading, refetch } = useChats()
   const deleteChat = useDeleteChat()
   const confirm = useConfirm()
   const toast = useToast()
   const navigate = useNavigate()
   const classPath = `/c/${classId}`
+
+  const [classDropdownOpen, setClassDropdownOpen] = useState(false)
+
+  const activeClass = classes.find(c => c.id === classId) || classes[0]
+  const togglePin = async (chat) => {
+    try {
+      await api.togglePin(chat.id, !chat.is_pinned)
+      refetch()
+    } catch (err) {
+      toast.apiError('Could not pin chat', err)
+    }
+  }
+
+  const pinnedChats = chats?.filter(c => c.is_pinned) || []
+  const recentChats = chats?.filter(c => !c.is_pinned) || []
+  
+  const isFreeTier = entitlement && (!entitlement.subscribed || entitlement.status !== 'active')
+  const freePlansUsed = entitlement ? entitlement.tokens_used : 0
+  const freePlansTotal = entitlement ? entitlement.token_cap : 10
+  const freePlansProgress = Math.min(100, Math.max(0, (freePlansUsed / (freePlansTotal || 1)) * 100))
 
   const remove = async (chat) => {
     const ok = await confirm({
@@ -163,6 +194,45 @@ function Rail({ onNavigate, onClose }) {
           lets "New plan" — the one thing a teacher opens this app to do — sit
           right under the logo instead of one row down. */}
       <div className="px-2 pb-1 pt-1">
+        {/* Class Switcher */}
+        {classes.length > 0 && (
+          <div className="relative mb-3 z-20">
+            <button 
+              type="button"
+              onClick={() => setClassDropdownOpen(!classDropdownOpen)}
+              className="w-full flex items-center justify-between bg-paper-inset hover:bg-paper-sunken px-3 py-2 rounded-lg text-sm font-medium transition-colors outline-none"
+            >
+              <span className="truncate">{activeClass?.name || 'Select Class'}</span>
+              <ChevronDown size={14} className="text-ink-muted opacity-60" />
+            </button>
+            <AnimatePresence>
+              {classDropdownOpen && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="absolute top-full left-0 right-0 mt-1 bg-paper-raised border border-edge rounded-lg shadow-md overflow-hidden z-30"
+                >
+                  {classes.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setClassDropdownOpen(false)
+                        navigate(`/c/${c.id}`)
+                        onNavigate?.()
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm transition-colors ${c.id === classId ? 'bg-paper-inset text-accent-text font-semibold' : 'hover:bg-paper-inset'}`}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         {/* The one thing a teacher opens this app to do. Was .rail-cta's own
             --rail-pop teal (colorize.md) — a token .neo-world doesn't
             redeclare, so it rendered as a mismatched accent against the
@@ -187,42 +257,105 @@ function Rail({ onNavigate, onClose }) {
 
 
       <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
-        <div className="flex items-center justify-between px-4 pb-1">
-          <p className="eyebrow">Recent</p>
-          <Link
-            to={`${classPath}/history`}
-            onClick={onNavigate}
-            className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-ink-muted hover:text-ink"
-            aria-label="Edit chat history"
-          >
-            <Pencil size={11} aria-hidden="true" />
-            Edit
-          </Link>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="px-4 py-2">
-            <SkeletonText lines={4} />
+        <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+          
+          {pinnedChats.length > 0 && (
+            <div className="mb-4">
+              <p className="eyebrow px-4 pb-1">Pinned</p>
+              <ul className="flex flex-col gap-0.5">
+                <AnimatePresence initial={false}>
+                  {pinnedChats.map((c) => (
+                    <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between px-4 pb-1 mt-2">
+            <p className="eyebrow">Recent</p>
+            <Link
+              to={`${classPath}/history`}
+              onClick={onNavigate}
+              className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-ink-muted hover:text-ink"
+              aria-label="Edit chat history"
+            >
+              <Pencil size={11} aria-hidden="true" />
+              Edit
+            </Link>
           </div>
-        ) : chats?.length ? (
-          <div className="flex flex-col pb-4">
+          
+          {isLoading ? (
+            <div className="px-4 py-2">
+              <SkeletonText lines={4} />
+            </div>
+          ) : recentChats.length ? (
             <ul className="flex flex-col gap-0.5">
               <AnimatePresence initial={false}>
-                {chats.map((c) => (
-                  <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onNavigate={onNavigate} />
+                {recentChats.map((c) => (
+                  <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} />
                 ))}
               </AnimatePresence>
             </ul>
+          ) : !pinnedChats.length && (
+            <p className="px-4 py-2 text-xs text-ink-muted">
+              Nothing yet. Describe a week to get started.
+            </p>
+          )}
+
+          <div className="mt-6 border-t border-edge/50 pt-4">
+            <p className="eyebrow px-4 pb-2">Workspace Tools</p>
+            <ul className="flex flex-col gap-0.5 px-2">
+              <li>
+                <NavLink
+                  to="/settings/integrations"
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-all duration-300 ${
+                      isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
+                    }`
+                  }
+                >
+                  <Database size={15} aria-hidden="true" />
+                  Standards Browser
+                </NavLink>
+              </li>
+              <li>
+                <NavLink
+                  to="/settings"
+                  end
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-all duration-300 ${
+                      isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
+                    }`
+                  }
+                >
+                  <Users size={15} aria-hidden="true" />
+                  Classroom Profile
+                </NavLink>
+              </li>
+            </ul>
           </div>
-        ) : (
-          <p className="px-4 py-2 text-xs text-ink-muted">
-            Nothing yet. Describe a week to get started.
-          </p>
-        )}
         </div>
       </nav>
 
-      <div className="shrink-0 border-t border-edge">
+      <div className="shrink-0 border-t border-edge pt-2">
+        {isFreeTier && (
+          <div className="px-4 pb-3">
+            <div className="flex justify-between text-[10px] font-medium text-ink-muted mb-1.5 uppercase tracking-wider">
+              <span>{freePlansUsed} Plans Used</span>
+              <span>Trial</span>
+            </div>
+            <div className="h-1.5 w-full bg-paper-sunken neo-inset rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-accent transition-all duration-500 ease-out" 
+                style={{ width: `${freePlansProgress}%` }} 
+              />
+            </div>
+          </div>
+        )}
+        
         {/* Every plan this class has ever built, placed at the bottom near account settings. */}
         <NavLink
           to={`${classPath}/plans`}
