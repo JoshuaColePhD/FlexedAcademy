@@ -164,7 +164,7 @@ function AiGenerationPreferences({ value, onSaved }) {
       <div className="mt-5">
         <h3 className="text-sm font-semibold text-ink">{title}</h3>
         <p className="mt-1 text-xs text-ink-muted">{description}</p>
-        <div className="mt-6 px-1 max-w-xl">
+        <div className="mt-6 px-2 max-w-xl">
           <input 
             type="range" 
             min="0" 
@@ -176,16 +176,20 @@ function AiGenerationPreferences({ value, onSaved }) {
             className="w-full h-1.5 bg-edge rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent"
             style={{ accentColor: 'rgb(var(--accent-rgb))' }}
           />
-          <div className="flex justify-between mt-2">
+          <div className="flex justify-between mt-3 gap-2">
             {options.map((opt, i) => (
-              <span 
-                key={opt} 
-                className={`text-xs font-medium transition-colors cursor-pointer select-none ${i === val ? 'text-accent-text' : 'text-ink-muted hover:text-ink-soft'}`}
-                style={{ width: `${100/options.length}%`, textAlign: i === 0 ? 'left' : i === options.length - 1 ? 'right' : 'center' }}
+              <button
+                key={opt}
+                type="button"
                 onClick={() => handleSelect(tag, opt)}
+                disabled={saving}
+                aria-pressed={i === val}
+                className={`neo-raised flex-1 py-1.5 text-center text-xs font-medium rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-accent outline-none ${
+                  i === val ? 'neo-inset text-accent-text' : 'text-ink-soft hover:bg-paper-sunken'
+                }`}
               >
                 {opt}
-              </span>
+              </button>
             ))}
           </div>
         </div>
