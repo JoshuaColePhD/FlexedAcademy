@@ -331,9 +331,9 @@ export function ArtifactRail({
 
   return (
     <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Materials">
-      <RailGroup title="Materials" defaultOpen={true} isBar={isBar}>
-
-        {planId ? (
+      {planId || busy || artifactLoadError ? (
+        <RailGroup title="Materials" defaultOpen={true} isBar={isBar}>
+          {planId ? (
           /* The whole card expands the panel. Download stops the event: the one
              button a teacher came for must not also open a viewer they didn't
              ask for. */
@@ -414,25 +414,26 @@ export function ArtifactRail({
               Reload
             </button>
           </div>
-        ) : (
-          <div className="rail-empty">
-            {/* No room for it in the one-row phone bar — same reasoning as
-                dropping "Built from" a few lines up. */}
-            {!isBar ? <EmptyRailArt color={color.rgb} /> : null}
-            <p>Nothing built yet. Describe a week in the chat.</p>
-            {/* Composer's own id — the same one ChatPage restores focus to
-                when the document panel closes (see rail-open-title above) —
-                rather than a new ref threaded down just for this button. */}
-            <button
-              type="button"
-              className="btn text-xs"
-              onClick={() => document.getElementById('composer-input')?.focus()}
-            >
-              Start a plan
-            </button>
-          </div>
-        )}
-      </RailGroup>
+        ) : null}
+        </RailGroup>
+      ) : (
+        <div className="rail-empty">
+          {/* No room for it in the one-row phone bar — same reasoning as
+              dropping "Built from" a few lines up. */}
+          {!isBar ? <EmptyRailArt color={color.rgb} /> : null}
+          <p>Nothing built yet. Describe a week in the chat.</p>
+          {/* Composer's own id — the same one ChatPage restores focus to
+              when the document panel closes (see rail-open-title above) —
+              rather than a new ref threaded down just for this button. */}
+          <button
+            type="button"
+            className="btn text-xs"
+            onClick={() => document.getElementById('composer-input')?.focus()}
+          >
+            Start a plan
+          </button>
+        </div>
+      )}
 
       {/* Quizzes over this plan — right under My Plans, ahead of Built From:
           a quiz is a second artifact this conversation produced, the same
