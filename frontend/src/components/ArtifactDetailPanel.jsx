@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronsRight, Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
+import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { fetchStandardsBatch } from '../lib/standardsCache'
 import { useToast } from '../lib/toastContext'

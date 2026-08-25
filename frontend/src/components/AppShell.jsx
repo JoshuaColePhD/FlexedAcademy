@@ -385,7 +385,7 @@ export function AppShell({ children }) {
         (landing, login/signup) keep their own separate fixed world
         (.auth-ground) — a different deliberate brand system, not this
         one, and AppShell never wraps them anyway. */}
-    <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper font-sans text-ink">
+    <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper-sunken font-sans text-ink p-2 gap-2">
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
         href="#main"
@@ -396,7 +396,7 @@ export function AppShell({ children }) {
       {/* docked */}
       {!isNarrow && !isFocusMode ? (
         <div
-          className="app-rail flex shrink-0 flex-row overflow-hidden transition-[width]"
+          className="app-rail flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper rounded-2xl border border-edge shadow-sm"
           style={{
             width: railCollapsed ? '18px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
@@ -450,7 +450,7 @@ export function AppShell({ children }) {
         </>
       ) : null}
 
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden" id="main">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper rounded-2xl border border-edge shadow-sm" id="main">
         {/* The landing hero's own floating aurora (see .app-blob in
             base.css), scoped to this pane instead of the viewport — on
             request, so every page behind the rail carries the same

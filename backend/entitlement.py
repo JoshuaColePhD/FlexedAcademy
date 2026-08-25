@@ -169,9 +169,23 @@ def entitlement(user_id: str) -> Entitlement:
     # 46), read here so a cap change takes effect on the next request, not
     # the next deploy.
     caps = db.get_app_settings()
+    
+    # Reverse Trial Logic: 
+    # If the user is in their first N days (defined by trial_period_days), they get the premium cap automatically!
+    is_in_free_trial = False
+    created_at_str = user.get("created_at")
+    if created_at_str and not subscribed:
+        try:
+            created_at = datetime.fromisoformat(created_at_str)
+            if datetime.now(UTC) - created_at < timedelta(days=settings.trial_period_days):
+                is_in_free_trial = True
+        except ValueError:
+            pass
+
     cap = custom_cap if custom_cap is not None else (
-        caps["subscriber_weekly_token_cap"] if subscribed else caps["free_weekly_token_cap"]
+        caps["subscriber_weekly_token_cap"] if (subscribed or is_in_free_trial) else caps["free_weekly_token_cap"]
     )
+
     burst_since = (datetime.now(UTC) - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")
     tokens_used_recent = db.tokens_used_since(user_id, burst_since)
     burst_cap = int(cap * BURST_FRACTION)

@@ -2248,7 +2248,7 @@
     transition: box-shadow var(--t-fast) var(--ease), border-color var(--t-fast);
   }
   .rail-card:hover {
-    border-color: var(--edge-hover);
+    border-color: var(--edge-strong);
   }
   .rail-card:active {
     box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.3), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.5);

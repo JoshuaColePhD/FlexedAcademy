@@ -104,7 +104,6 @@ def billing_status(request: Request, user_id: str = Depends(get_current_user)):
     else:
         # Fallback price so the paywall can list $11.99/mo before Stripe is live.
         price = {"amount": 1199, "currency": "USD", "interval": "month", "interval_count": 1}
-    user = db.get_user_by_id(user_id) or {}
     return {
         **ent,
         "price": price,
@@ -113,7 +112,7 @@ def billing_status(request: Request, user_id: str = Depends(get_current_user)):
         # out right now — see checkout()'s own reasoning. Lets the paywall
         # say "start your free week" only when that's true, rather than
         # promising a trial to someone who's already used theirs.
-        "trial_eligible": settings.trial_period_days > 0 and not user.get("stripe_customer_id"),
+        "trial_eligible": False,  # Reverse trial means UI does not offer Stripe trials.
     }
 
 
@@ -142,7 +141,7 @@ def checkout(request: Request, user_id: str = Depends(get_current_user)):
         # stop someone from deleting the account and signing up again under
         # a new email — that's a different, harder problem this doesn't
         # attempt to solve.
-        trial_days=0 if existing_customer else settings.trial_period_days,
+        trial_days=0,
     )
     return {"url": session["url"]}
 

@@ -92,23 +92,28 @@ function AiGenerationPreferences({ value, onSaved }) {
     const match = (value || '').match(regex)
     return match ? match[1] : defaultLevel
   }
+  
+  const getProfile = () => {
+    const match = (value || '').match(/\[Classroom Profile: (.*?)\]/is)
+    return match ? match[1].trim() : ''
+  }
 
   const length = getLevel('Response Length', 'Medium')
   const detail = getLevel('Level of Detail', 'Standard')
   const examples = getLevel('Specific Examples', 'Some')
+  const differentiation = getLevel('Differentiation', 'None')
+  const [profileText, setProfileText] = useState(getProfile())
 
-  const handleSelect = async (tag, level) => {
+  const handleSelect = async (tag, level, customProfileText = null) => {
     setSaving(true)
     
     let baseInstructions = (value || '')
-      .replace(/\[Response Length: .*?\].*?
-?/g, '')
-      .replace(/\[Level of Detail: .*?\].*?
-?/g, '')
-      .replace(/\[Specific Examples: .*?\].*?
-?/g, '')
-      .replace(/\[NOTE: These preferences only apply to the narrative.*?\].*?
-?/g, '')
+      .replace(/\[Response Length: .*?\].*?\n?/g, '')
+      .replace(/\[Level of Detail: .*?\].*?\n?/g, '')
+      .replace(/\[Specific Examples: .*?\].*?\n?/g, '')
+      .replace(/\[Differentiation: .*?\].*?\n?/g, '')
+      .replace(/\[Classroom Profile: .*?\].*?\n?/gs, '')
+      .replace(/\[NOTE: These preferences only apply to the narrative.*?\].*?\n?/g, '')
       .trim()
       
     const activeTags = []
@@ -116,6 +121,8 @@ function AiGenerationPreferences({ value, onSaved }) {
     const newLength = tag === 'Response Length' ? level : length
     const newDetail = tag === 'Level of Detail' ? level : detail
     const newExamples = tag === 'Specific Examples' ? level : examples
+    const newDiff = tag === 'Differentiation' ? level : differentiation
+    const newProfile = tag === 'Classroom Profile' ? customProfileText : profileText
 
     if (newLength !== 'Medium') {
       activeTags.push(`[Response Length: ${newLength}] ${newLength === 'Short' ? 'Keep responses brief and to the point.' : 'Provide extended, comprehensive answers.'}`)
@@ -126,18 +133,22 @@ function AiGenerationPreferences({ value, onSaved }) {
     if (newExamples !== 'Some') {
       activeTags.push(`[Specific Examples: ${newExamples}] ${newExamples === 'Few' ? 'Use examples only when strictly necessary.' : 'Use abundant, specific, real-world examples.'}`)
     }
+    if (newDiff !== 'None') {
+      activeTags.push(`[Differentiation: ${newDiff}] ${newDiff === 'Light' ? 'Provide brief scaffolding tips in the margins for the specified classroom profile.' : 'Actively generate alternative/modified versions of the assignments and assessments for the specified classroom profile.'}`)
+    }
+    if (newProfile) {
+      activeTags.push(`[Classroom Profile: ${newProfile}]`)
+    }
     
     if (activeTags.length > 0) {
       activeTags.push(`[NOTE: These preferences only apply to the narrative lesson plan and activities. Do NOT alter or abbreviate the text of the academic standards themselves.]`)
-      baseInstructions += (baseInstructions ? '
-
-' : '') + activeTags.join('
-')
+      baseInstructions += (baseInstructions ? '\n\n' : '') + activeTags.join('\n')
     }
 
     try {
       await api.updateMe({ customInstructions: baseInstructions })
-      toast.success(`Updated ${tag}`)
+      if (tag !== 'Classroom Profile') toast.success(`Updated ${tag}`)
+      else toast.success('Saved Classroom Profile')
       onSaved?.()
     } catch (err) {
       toast.apiError('Could not save preference', err)
@@ -173,6 +184,7 @@ function AiGenerationPreferences({ value, onSaved }) {
     <div className="mt-6 border-t border-edge pt-4">
       <h2 className="text-sm font-semibold text-ink">AI Generation Criteria</h2>
       <p className="mt-1 text-xs text-ink-muted">Control the length, detail, and tone of the AI's outputs.</p>
+      
       <Slider 
         title="Response Length" 
         description="How long the AI's generated narratives and plans should be."
@@ -194,9 +206,44 @@ function AiGenerationPreferences({ value, onSaved }) {
         options={['Few', 'Some', 'Many']}
         currentValue={examples}
       />
+      
+      <div className="mt-8 border-t border-edge pt-4">
+        <h2 className="text-sm font-semibold text-ink">Differentiation & IEPs</h2>
+        <p className="mt-1 text-xs text-ink-muted">Tailor the AI's lesson plans to specific student needs in your classroom.</p>
+        
+        <div className="mt-4">
+          <label className="text-xs font-semibold text-ink">Classroom Profile</label>
+          <textarea
+            value={profileText}
+            onChange={(e) => setProfileText(e.target.value)}
+            rows={2}
+            placeholder="e.g. 3 students with ADHD, 2 ELL students, 1 visually impaired"
+            className="neo-inset mt-1 w-full resize-y rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+          />
+          <div className="mt-1 flex justify-end">
+             <button
+              type="button"
+              onClick={() => handleSelect('Classroom Profile', null, profileText)}
+              disabled={saving}
+              className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink hover:bg-paper-sunken focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-edge outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Save Profile
+            </button>
+          </div>
+        </div>
+
+        <Slider 
+          title="Differentiation Level" 
+          description="How aggressively the AI should adapt the lesson for your Classroom Profile."
+          tag="Differentiation"
+          options={['None', 'Light', 'Heavy']}
+          currentValue={differentiation}
+        />
+      </div>
     </div>
   )
 }
+
 
 
 function CustomInstructions({ value, onSaved }) {
@@ -1026,6 +1073,10 @@ export function SettingsPage() {
               
               <section className="mb-8">
                 <CustomInstructions
+                  value={meState.data?.custom_instructions}
+                  onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                />
+                <AiGenerationPreferences
                   value={meState.data?.custom_instructions}
                   onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
                 />

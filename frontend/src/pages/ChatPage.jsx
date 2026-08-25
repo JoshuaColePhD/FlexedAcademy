@@ -32,7 +32,6 @@ import { LessonQuestions } from '../components/LessonQuestions'
 import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
-import { DecisionStack } from '../components/DecisionStack'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
 
@@ -1021,33 +1020,6 @@ export function ChatPage() {
      typed text to name the chat's placeholder title with. Mirrors that
      same creation block; kept separate rather than shared so neither
      path's error handling has to account for the other's caller. */
-  const ensureChatId = useCallback(async () => {
-    if (chatId) return chatId
-    const created = await api.createChat('New plan', classId, effectiveWeek)
-    localFor.current = created.id
-    qc.invalidateQueries({ queryKey: ['chats'] })
-    navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
-    return created.id
-  }, [chatId, classId, effectiveWeek, navigate, qc])
-
-  const openRealtimeVoice = useCallback(async () => {
-    // Same reasoning as submit()'s own check: the server enforces this too
-    // (require_entitlement, called from POST /api/realtime/session), but
-    // asking first means a blocked teacher sees the paywall immediately
-    // instead of a WebRTC handshake that was always going to fail.
-    if (!mayGenerate) {
-      openPaywall()
-      return
-    }
-    try {
-      await ensureChatId()
-    } catch (err) {
-      toast.apiError("Couldn't start that conversation", err)
-      return
-    }
-    setRealtimeVoiceOpen(true)
-  }, [ensureChatId, mayGenerate, openPaywall, toast])
-
   const openVoice = useCallback(() => {
     // This is the deliberate user gesture that creates the one Realtime
     // session. Speech queued immediately afterward waits for the data channel.

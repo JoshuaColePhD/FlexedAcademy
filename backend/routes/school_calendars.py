@@ -12,7 +12,7 @@ import re
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from .. import calendar_intake, db, storage, template_intake
 from ..config import settings

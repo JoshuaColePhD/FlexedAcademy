@@ -52,8 +52,8 @@ function priceLine(data) {
   // promise a number Stripe isn't actually configured to honor.
   const days = data?.trial_period_days
   return days > 0
-    ? `Free for ${days} days, then ${money} a ${every}. Cancel any time.`
-    : `Free to start, ${money} a ${every}. Cancel any time.`
+    ? `Get ${days} days of Premium automatically — no credit card required. Then ${money} a ${every}.`
+    : `Free to start, ${money} a ${every}.`
 }
 
 /* Reveal-on-scroll, with a backstop that does not depend on

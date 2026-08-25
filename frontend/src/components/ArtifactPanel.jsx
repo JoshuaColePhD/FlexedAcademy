@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { Tooltip } from './Tooltip'
-import { ChevronsRight, Download, Loader2, TriangleAlert, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
+import { Download, Loader2, TriangleAlert, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PANEL_OVERLAY, useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
@@ -123,7 +123,7 @@ const location = useLocation()
       if (isFullscreen) {
         setIsFullscreen(false)
       } else {
-        openTweak ? setOpenTweak(null) : onCollapse()
+        if (openTweak) setOpenTweak(null); else onCollapse();
       }
     },
   })

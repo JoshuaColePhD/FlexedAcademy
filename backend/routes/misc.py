@@ -162,7 +162,7 @@ def get_frameworks():
         counts[course] += 1
         if c.get("verbatim_ok"):
             verbatim[course] += 1
-        if course.startswith("AP") or course.startswith("Pre-AP"):
+        if course.startswith(("AP", "Pre-AP")):
             grades.setdefault(course, set()).update([9, 10, 11, 12])
         else:
             grade = c.get("grade")
