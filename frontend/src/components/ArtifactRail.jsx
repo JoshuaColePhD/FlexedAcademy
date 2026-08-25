@@ -20,7 +20,19 @@ import { orderedDays, unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { shortDateTime } from '../lib/dates'
+import { AccordionPanel } from './AccordionPanel'
 import { ShareDialog } from './ShareDialog'
+
+const RailGroup = ({ title, defaultOpen, isBar, children }) => {
+  if (isBar) {
+    return <div className="rail-group">{children}</div>
+  }
+  return (
+    <AccordionPanel title={title} defaultOpen={defaultOpen}>
+      <div className="rail-group border-none bg-transparent m-0 p-0">{children}</div>
+    </AccordionPanel>
+  )
+}
 import { WeekStrip } from './WeekStrip'
 import { useToast } from '../lib/toastContext'
 
@@ -318,9 +330,8 @@ export function ArtifactRail({
   const teachingDays = 5 - closed.length
 
   return (
-    <aside className={`artifact-rail${isBar ? ' is-bar' : ''}`} aria-label="Materials">
-      <div className="rail-group">
-        {isBar ? null : <span className="eyebrow">Materials</span>}
+    <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Materials">
+      <RailGroup title="Materials" defaultOpen={true} isBar={isBar}>
 
         {planId ? (
           /* The whole card expands the panel. Download stops the event: the one
@@ -421,7 +432,7 @@ export function ArtifactRail({
             </button>
           </div>
         )}
-      </div>
+      </RailGroup>
 
       {/* Quizzes over this plan — right under My Plans, ahead of Built From:
           a quiz is a second artifact this conversation produced, the same
@@ -434,8 +445,7 @@ export function ArtifactRail({
           be true for one render right after the request lands, before the
           query below has anything cached yet. */}
       {quizBuilding || quizzes.length > 0 ? (
-        <div className="rail-group">
-          {isBar ? null : <span className="eyebrow">Quizzes</span>}
+        <RailGroup title="Quizzes" defaultOpen={false} isBar={isBar}>
           {quizBuilding ? (
             <div className="rail-row fa-rise">
               <span className="rail-row-tile">
@@ -461,12 +471,11 @@ export function ArtifactRail({
               onClick={() => setQuizzesExpanded(true)}
             />
           ) : null}
-        </div>
+        </RailGroup>
       ) : null}
 
       {planId && !isBar ? (
-        <div className="rail-group">
-          <span className="eyebrow">Built from</span>
+        <RailGroup title="Built from" defaultOpen={false} isBar={isBar}>
 
           <RailRow
             index={0}
@@ -522,7 +531,7 @@ export function ArtifactRail({
             }
             onClick={onOpenStandards}
           />
-        </div>
+        </RailGroup>
       ) : null}
 
       {/* The day-by-day breakdown — used to live in the chat message itself
@@ -534,10 +543,9 @@ export function ArtifactRail({
           five-row list in a one-row bar, so phone keeps its copy inline in
           chat instead — see the isPhone check at both those call sites. */}
       {!isBar && (planId ? plan?.days?.length : busy) ? (
-        <div className="rail-group">
-          <span className="eyebrow">This week</span>
+        <RailGroup title="This week" defaultOpen={false} isBar={isBar}>
           <WeekStrip days={plan?.days} writing={!planId} loose />
-        </div>
+        </RailGroup>
       ) : null}
 
       <ShareDialog
