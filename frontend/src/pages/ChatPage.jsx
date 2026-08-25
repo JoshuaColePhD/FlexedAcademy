@@ -262,9 +262,8 @@ export function ChatPage() {
      in the composer's own chip, rather than as a suggestion. */
   const [selectedWeek, setSelectedWeek] = useState(null)
 
-  /* Was `panelOpen`. The document is closed by default now — the rail and the
-     message carry enough that opening it is a choice, not a requirement. */
-  const [expanded, setExpanded] = useState(false)
+  /* The document is now open by default so users can immediately see the lesson plan/artifacts. */
+  const [expanded, setExpanded] = useState(true)
   /* What `expanded` actually shows — the plan itself (ArtifactPanel, the
      original and only option until now) or one of the rail's other rows,
      rendered through the shared embossed shell in ArtifactDetailPanel.
