@@ -84,8 +84,8 @@ function ChatRow({ chat, classId, onDelete, onNavigate }) {
              own :active state), so the active row reads as a permanent
              version of that same press instead of a third, unrelated
              signal. */
-          `flex min-h-touch items-center rounded-md px-2 pr-14 text-sm transition-colors ${
-            isActive ? 'neo-inset text-ink' : 'text-ink-soft hover:bg-paper-inset/60'
+          `flex min-h-touch items-center rounded-md px-2 pr-14 text-sm transition-all duration-300 ${
+            isActive ? 'neo-inset bg-paper-sunken text-accent-text drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] font-medium' : 'text-ink-soft hover:bg-paper-inset/60 hover:text-ink'
           }`
         }
       >
@@ -228,12 +228,12 @@ function Rail({ onNavigate, onClose }) {
           to={`${classPath}/plans`}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
-              isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
+            `flex min-h-touch items-center gap-2.5 px-4 rounded-md text-sm transition-all duration-300 ${
+              isActive ? 'neo-inset bg-paper-sunken text-accent-text drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] font-medium' : 'text-ink-soft hover:bg-paper-inset/60 hover:text-ink'
             }`
           }
         >
-          {({ isActive }) => (
+          {() => (
             <>
               {/* rail-pop, not --accent — this is the app's own established
                   accent (the logo mark, the New plan CTA's idle glow), not
@@ -243,7 +243,7 @@ function Rail({ onNavigate, onClose }) {
               <FileText
                 size={15}
                 aria-hidden="true"
-                style={isActive ? { color: 'rgb(var(--rail-pop-rgb))' } : undefined}
+                /* Inherits text-accent-text from parent when active */
               />
               Library
             </>
