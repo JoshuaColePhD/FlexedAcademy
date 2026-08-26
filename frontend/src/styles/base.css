@@ -307,7 +307,18 @@
      the opposite way (right, not left) while collapsed. Widened from 14px to
      18px (with .artifact-drawer-handle) — the panel widths themselves were
      fine, it was this strip that was too thin to reliably see or click, and
-     22px (a first pass at that) read as too heavy a bar down the screen. */
+     22px (a first pass at that) read as too heavy a bar down the screen.
+
+     Still too easy to miss once the frosted-glass center panel (glass-panel)
+     started letting the drifting background orbs show through right next to
+     this strip — the whole point of the neomorphic groove was "found by
+     touch, not announced by colour" (see .artifact-drawer-handle's own
+     comment), but a solid, muted fill dimmed further by element-level
+     opacity just gets visually absorbed next to a moving, colourful
+     backdrop. A crisp edge line survives that regardless of what's behind
+     it; opacity now only dims the ARROW's rest state, not the strip itself,
+     so the groove's own shadow keeps its full contrast at rest instead of
+     fading along with everything else. */
   .app-rail-handle {
     position: relative;
     flex-shrink: 0;
@@ -320,10 +331,10 @@
     box-shadow:
       inset 2px 0 4px rgb(var(--neo-dark-rgb) / 0.5),
       inset -2px 0 4px rgb(var(--neo-light-rgb) / 0.7);
-    border: none;
+    border-left: 1px solid var(--edge-strong);
+    border-right: none;
     cursor: pointer;
-    opacity: 0.75;
-    transition: opacity var(--t-fast) var(--ease);
+    transition: background-color var(--t-fast) var(--ease);
     /* No border-radius: this strip is align-self:stretch, so its top and
        bottom edges sit flush against the very top and bottom of the app
        frame with no margin — a rounded corner there has nowhere to round
@@ -334,19 +345,19 @@
   }
   .app-rail-handle:hover,
   .app-rail-handle:active {
-    opacity: 1;
+    background: var(--paper-sunken);
   }
   .app-rail-handle-arrow {
     width: 13px;
     height: 13px;
-    color: var(--ink-faint);
-    opacity: 0.85;
+    color: var(--ink-muted);
+    opacity: 0.9;
     pointer-events: none;
   }
   .app-rail-handle:hover .app-rail-handle-arrow,
   .app-rail-handle:active .app-rail-handle-arrow {
     opacity: 1;
-    color: var(--ink-muted);
+    color: var(--ink);
   }
 
   /* Per-class colour, decoration with a job — see lib/classColor.js. Sized by
@@ -2060,11 +2071,9 @@
       inset 2px 0 4px rgb(var(--neo-dark-rgb) / 0.5),
       inset -2px 0 4px rgb(var(--neo-light-rgb) / 0.7);
     border: none;
+    border-right: 1px solid var(--edge-strong);
     cursor: pointer;
-    opacity: 0.75;
-    transition:
-      opacity var(--t-fast) var(--ease),
-      background-color var(--t-fast) var(--ease);
+    transition: background-color var(--t-fast) var(--ease);
     /* No border-radius: this strip is align-self:stretch — flush against
        the very top and bottom of the app frame with no margin — so a
        rounded corner has nowhere to round INTO and just cuts a gap out of
@@ -2076,7 +2085,6 @@
   .artifact-drawer-handle:hover,
   .artifact-drawer-handle:active,
   .artifact-drawer.is-open .artifact-drawer-handle {
-    opacity: 1;
     background: var(--paper-sunken);
   }
   /* The handle's own groove is already the primary affordance (found by
@@ -2084,18 +2092,24 @@
      hasn't tried yet. Sized under the 18px strip's own width so it never
      forces the groove wider — bumped from 10px/opacity 0.7 alongside the
      strip's own 14px->18px widening, since "hard to see, hard to click"
-     was the whole complaint this strip existed to answer. */
+     was the whole complaint this strip existed to answer.
+
+     Was --ink-faint/0.85, dimmed further by the strip's own element-level
+     opacity (removed above, same reasoning as .app-rail-handle) — against
+     the frosted center panel's drifting background orbs, that stacked
+     dimming made this arrow nearly impossible to notice without already
+     knowing to look for it. */
   .artifact-drawer-arrow {
     width: 13px;
     height: 13px;
-    color: var(--ink-faint);
-    opacity: 0.85;
+    color: var(--ink-muted);
+    opacity: 0.9;
     pointer-events: none;
   }
   .artifact-drawer-handle:hover .artifact-drawer-arrow,
   .artifact-drawer-handle:active .artifact-drawer-arrow {
     opacity: 1;
-    color: var(--ink-muted);
+    color: var(--ink);
   }
   /* While a week is being built or revised, the thin edge is the only sign
      of it for a teacher who hasn't opened the drawer — so it gets the one
