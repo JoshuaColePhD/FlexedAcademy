@@ -20,7 +20,7 @@ from pathlib import Path
 
 from ..errors import AppError
 
-log = logging.getLogger("aplang.builder.rasterize")
+log = logging.getLogger("flexedacademy.builder.rasterize")
 
 _DPI = 150  # enough detail for a vision model to read cell text; not print quality
 _MAX_PAGES = 3  # a weekly plan template is 1 page; bound cost on anything unusual

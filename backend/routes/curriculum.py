@@ -20,7 +20,7 @@ from ..deps import get_current_user
 from ..errors import AppError
 from .misc import _download_google_doc_as_docx, _spool, read_text_from_path
 
-log = logging.getLogger("aplang.curriculum_routes")
+log = logging.getLogger("flexedacademy.curriculum_routes")
 router = APIRouter(prefix="/api", tags=["curriculum"])
 
 SUPPORTED_EXTS = {".pdf", ".docx", ".txt", ".md", ".csv"}

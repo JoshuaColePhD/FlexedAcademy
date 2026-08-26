@@ -14,7 +14,7 @@ import requests
 
 from .config import settings
 
-log = logging.getLogger("aplang.mail")
+log = logging.getLogger("flexedacademy.mail")
 
 RESEND_URL = "https://api.resend.com/emails"
 

@@ -14,7 +14,7 @@ from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, sto
 from .errors import AppError
 from .retrieval import RetrievalResult
 
-log = logging.getLogger("aplang.service")
+log = logging.getLogger("flexedacademy.service")
 
 
 # The settings row can hold either form of the subject, and both must resolve or

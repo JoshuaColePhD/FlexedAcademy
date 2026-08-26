@@ -28,7 +28,7 @@ import requests
 from .config import settings
 from .errors import AppError
 
-log = logging.getLogger("aplang.drive")
+log = logging.getLogger("flexedacademy.drive")
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"

@@ -27,7 +27,7 @@ from ..deps import get_current_user
 from ..entitlement import entitlement
 from ..errors import AppError
 
-log = logging.getLogger("aplang.billing")
+log = logging.getLogger("flexedacademy.billing")
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 # Stripe statuses we store verbatim. Anything else ('incomplete_expired',

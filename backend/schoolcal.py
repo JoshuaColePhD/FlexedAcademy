@@ -24,7 +24,7 @@ from functools import cache
 
 from .config import settings
 
-log = logging.getLogger("aplang.schoolcal")
+log = logging.getLogger("flexedacademy.schoolcal")
 
 # The school id a teacher lands on when their real school isn't set up yet
 # (frontend/src/pages/onboarding/WelcomePage.jsx's own picker) — no calendar

@@ -25,7 +25,7 @@ from .config import settings
 from .errors import AppError
 from .schema import ENGAGEMENT_OPTIONS
 
-log = logging.getLogger("aplang.docx")
+log = logging.getLogger("flexedacademy.docx")
 
 
 def _generated_spec_builder(school_id: str, layout_spec: dict) -> SimpleNamespace:

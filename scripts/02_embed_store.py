@@ -39,7 +39,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "db" / "chroma_db"
-COLLECTION_NAME = "ap_lang_standards"
+COLLECTION_NAME = "flexed_academy_standards"
 # Kept as a label for the printout; the authoritative values live in
 # backend/embeddings.py, which is what actually does the work.
 from backend.embeddings import EMBED_DIMS, EMBED_MODEL  # noqa: E402

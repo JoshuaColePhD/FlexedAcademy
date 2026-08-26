@@ -1,4 +1,4 @@
-# AP Lang Planner — frontend
+# FlexEd Academy — frontend
 
 React 19 + Vite. Chat-shaped UI over the RAG backend: describe a week, get a
 lesson plan grounded in real standards documents plus the Florence City Schools

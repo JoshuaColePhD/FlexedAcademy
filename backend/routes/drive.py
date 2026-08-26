@@ -27,7 +27,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..errors import AppError
 
-log = logging.getLogger("aplang.drive")
+log = logging.getLogger("flexedacademy.drive")
 
 router = APIRouter(prefix="/api/drive", tags=["drive"])
 

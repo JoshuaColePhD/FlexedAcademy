@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Response
 from .. import db
 from ..deps import get_current_user
 
-log = logging.getLogger("aplang.account")
+log = logging.getLogger("flexedacademy.account")
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 

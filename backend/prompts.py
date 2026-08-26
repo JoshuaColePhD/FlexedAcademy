@@ -19,7 +19,7 @@ from .retrieval import UNGROUNDABLE_FAMILIES, RetrievalResult, format_context
 from .schema import DAY_NAMES, day_schema_snippet, field_json_schema, plan_schema_snippet
 from .schoolcal import NO_CALENDAR_SCHOOL_ID
 
-log = logging.getLogger("aplang.prompts")
+log = logging.getLogger("flexedacademy.prompts")
 
 
 @functools.lru_cache(maxsize=1)

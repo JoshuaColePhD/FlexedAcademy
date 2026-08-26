@@ -15,7 +15,7 @@ from ..deps import get_current_user
 from ..errors import AppError
 from ..schoolcal import NO_CALENDAR_SCHOOL_ID
 
-log = logging.getLogger("aplang.classes")
+log = logging.getLogger("flexedacademy.classes")
 
 router = APIRouter(prefix="/api", tags=["classes"])
 

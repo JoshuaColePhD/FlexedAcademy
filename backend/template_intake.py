@@ -71,7 +71,7 @@ from . import db, llm, mail
 from .config import settings
 from .errors import AppError
 
-log = logging.getLogger("aplang.template_intake")
+log = logging.getLogger("flexedacademy.template_intake")
 
 # Deliberately narrower than calendar_intake.SUPPORTED_EXTS: a lesson-plan
 # template is always the actual document a school prints/edits, not a link

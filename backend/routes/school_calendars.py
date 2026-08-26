@@ -20,7 +20,7 @@ from ..deps import get_current_user
 from ..errors import AppError
 from .misc import _spool
 
-log = logging.getLogger("aplang.school_calendars")
+log = logging.getLogger("flexedacademy.school_calendars")
 
 router = APIRouter(prefix="/api/school-calendars", tags=["school-calendars"])
 

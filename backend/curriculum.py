@@ -24,7 +24,7 @@ import uuid
 from .config import settings
 from .errors import AppError
 
-log = logging.getLogger("aplang.curriculum")
+log = logging.getLogger("flexedacademy.curriculum")
 
 # Not imported from llm.py: llm.py imports this module (to pull curriculum-map
 # context into the plan prompt), so importing back would cycle. The OpenAI

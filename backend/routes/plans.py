@@ -17,7 +17,7 @@ from ..entitlement import require_entitlement
 from ..errors import AppError
 from .drive import get_valid_access_token
 
-log = logging.getLogger("aplang.routes.plans")
+log = logging.getLogger("flexedacademy.routes.plans")
 
 router = APIRouter(prefix="/api/plans", tags=["plans"])
 

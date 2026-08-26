@@ -44,7 +44,7 @@ logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)-7s %(name)s  %(message)s",
 )
-log = logging.getLogger("aplang")
+log = logging.getLogger("flexedacademy")
 
 _codegen_worker_task: asyncio.Task | None = None
 _CODEGEN_POLL_INTERVAL_S = 15
@@ -181,7 +181,7 @@ async def lifespan(app: FastAPI):
     db.close()
 
 
-app = FastAPI(title="AP Lang RAG", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="FlexEd Academy", version="2.0.0", lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
@@ -283,4 +283,4 @@ if os.path.isdir(dist_dir):
 else:
     @app.get("/")
     def root():
-        return {"name": "AP Lang RAG (Frontend not built)", "docs": "/docs"}
+        return {"name": "FlexEd Academy (Frontend not built)", "docs": "/docs"}

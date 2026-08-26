@@ -17,7 +17,7 @@ from ..errors import AppError
 from ..ratelimit import limiter
 from ..schema import SchemaError
 
-log = logging.getLogger("aplang.generate")
+log = logging.getLogger("flexedacademy.generate")
 router = APIRouter(prefix="/api", tags=["generate"])
 
 

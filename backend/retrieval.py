@@ -41,9 +41,9 @@ from pathlib import Path
 from .config import settings
 from .errors import AppError
 
-log = logging.getLogger("aplang.retrieval")
+log = logging.getLogger("flexedacademy.retrieval")
 
-COLLECTION_NAME = "ap_lang_standards"
+COLLECTION_NAME = "flexed_academy_standards"
 
 # Families that appear in our sources.
 GROUNDED_FAMILIES = ("TOD", "ORG", "KLA", "SST", "USG", "PUN")

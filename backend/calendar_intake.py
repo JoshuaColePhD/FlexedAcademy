@@ -28,7 +28,7 @@ from .config import settings
 from .errors import AppError
 from .routes.misc import _spool, read_text_from_path
 
-log = logging.getLogger("aplang.calendar_intake")
+log = logging.getLogger("flexedacademy.calendar_intake")
 
 # Deliberately excludes macro-capable formats (.doc, .docm, .xlsm, ...) — see
 # the plan's "Document safety" section. Extraction never executes anything in

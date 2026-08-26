@@ -43,7 +43,7 @@ from .schema import (
     loads_lenient,
 )
 
-log = logging.getLogger("aplang.llm")
+log = logging.getLogger("flexedacademy.llm")
 
 # A hung call sitting open indefinitely (rather than erroring) is what turns a
 # transient upstream blip into "the chat is stuck" for the teacher watching it.

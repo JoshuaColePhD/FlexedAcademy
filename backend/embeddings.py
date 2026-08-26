@@ -25,7 +25,7 @@ import time
 
 from .errors import AppError
 
-log = logging.getLogger("aplang.embeddings")
+log = logging.getLogger("flexedacademy.embeddings")
 
 # Must match what the corpus was embedded with. Changing either of these means
 # re-running scripts/02_embed_store.py over the whole corpus — a query vector

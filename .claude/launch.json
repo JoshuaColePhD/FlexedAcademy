@@ -2,14 +2,14 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ap-lang-frontend",
+      "name": "flexed-academy-frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
       "port": 5174
     },
     {
-      "name": "ap-lang-backend",
+      "name": "flexed-academy-backend",
       "runtimeExecutable": "venv/bin/uvicorn",
       "runtimeArgs": ["backend.server:app", "--host", "127.0.0.1", "--port", "8010"],
       "port": 8010

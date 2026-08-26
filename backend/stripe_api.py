@@ -27,7 +27,7 @@ import requests
 from .config import settings
 from .errors import AppError
 
-log = logging.getLogger("aplang.stripe")
+log = logging.getLogger("flexedacademy.stripe")
 
 API = "https://api.stripe.com/v1"
 TIMEOUT = 20

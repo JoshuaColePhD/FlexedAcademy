@@ -30,7 +30,7 @@ from .fixtures import fixture_expectations, synthetic_week_fixture
 from .generic_renderer import SpecRenderError, render as render_spec
 from .spec_validate import validate_spec_against_analysis
 
-log = logging.getLogger("aplang.builder.codegen")
+log = logging.getLogger("flexedacademy.builder.codegen")
 
 _ATTEMPT_ARTIFACT_DIR = Path("uploads/builder_codegen")
 

@@ -380,7 +380,7 @@ class Settings(BaseSettings):
             parsed = json.loads(raw)
             return {str(k): float(v) for k, v in parsed.items()}
         except (ValueError, TypeError, AttributeError):
-            logging.getLogger("aplang.config").warning(
+            logging.getLogger("flexedacademy.config").warning(
                 "RETRIEVAL_FLOORS is not a JSON object of course->float (%r); "
                 "ignoring it and using RETRIEVAL_MAX_DISTANCE=%.2f for every course.",
                 raw, self.retrieval_max_distance,

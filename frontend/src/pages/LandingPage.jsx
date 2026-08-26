@@ -461,9 +461,9 @@ export function LandingPage() {
             <div>
               <span className="land-tag land-tag--cited">Cited standard</span>
               <p className="land-quote">
-                AP Lang Skill 4.B — Reading: explain how word choice and syntax convey tone.
+                ELA Reading Standard 4.B — Reading: explain how word choice and syntax convey tone.
               </p>
-              <span className="land-loc">source_docs/APLangSkills.pdf, p. 6</span>
+              <span className="land-loc">source_docs/ELAReadingStandards.pdf, p. 6</span>
             </div>
           </div>
         </div>
@@ -504,10 +504,10 @@ export function LandingPage() {
           <div className="land-mech-step">
             <span className="land-tag">Retrieved</span>
             <p className="land-quote">
-              AP Lang Skill 4.B — Reading: explain how{' '}
+              ELA Reading Standard 4.B — Reading: explain how{' '}
               <mark className="land-mark">word choice and syntax convey tone</mark>.
             </p>
-            <span className="land-loc">source_docs/APLangSkills.pdf, p. 6</span>
+            <span className="land-loc">source_docs/ELAReadingStandards.pdf, p. 6</span>
           </div>
           <ArrowIcon className="land-mech-arrow" />
           <div className="land-mech-step">

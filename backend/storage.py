@@ -10,7 +10,7 @@ import requests
 
 from .config import PROJECT_ROOT, settings
 
-log = logging.getLogger("aplang.storage")
+log = logging.getLogger("flexedacademy.storage")
 
 
 def configured() -> bool:

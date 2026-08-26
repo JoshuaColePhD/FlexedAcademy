@@ -34,7 +34,7 @@ from ..entitlement import require_entitlement
 from ..errors import AppError
 from .generate import build_system_prompt, resolve_conversation_context
 
-log = logging.getLogger("aplang.realtime")
+log = logging.getLogger("flexedacademy.realtime")
 router = APIRouter(prefix="/api/realtime", tags=["realtime"])
 
 _CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets"

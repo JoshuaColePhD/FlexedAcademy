@@ -38,7 +38,7 @@ from .errors import AppError
 
 current_user_id = contextvars.ContextVar("current_user_id", default=None)
 
-log = logging.getLogger("aplang.db")
+log = logging.getLogger("flexedacademy.db")
 
 # One pool per process, opened lazily. `_conn` and the global `_lock` it was
 # guarded by are gone: they made every query in the app serialise against every

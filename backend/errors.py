@@ -15,7 +15,7 @@ import uuid
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-log = logging.getLogger("aplang")
+log = logging.getLogger("flexedacademy")
 
 
 class AppError(Exception):

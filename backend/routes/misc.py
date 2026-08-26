@@ -19,7 +19,7 @@ from ..deps import get_current_user, get_current_user_optional
 from ..errors import AppError
 from ..ratelimit import limiter
 
-log = logging.getLogger("aplang.misc")
+log = logging.getLogger("flexedacademy.misc")
 router = APIRouter(prefix="/api", tags=["misc"])
 
 TEXT_EXTS = {".txt", ".md", ".csv"}

@@ -14,7 +14,7 @@ from ..entitlement import entitlement
 from ..errors import AppError
 from ..ratelimit import limiter
 
-log = logging.getLogger("aplang.auth")
+log = logging.getLogger("flexedacademy.auth")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
