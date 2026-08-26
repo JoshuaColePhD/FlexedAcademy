@@ -201,6 +201,17 @@ class Settings(BaseSettings):
     # small enough to bound cost — this runs once per school onboarding, not
     # per document generation, so a few minutes of wall-clock is acceptable.
     builder_codegen_max_attempts: int = 4
+    # A ceiling independent of any one job's own attempt cap — jobs are
+    # enqueued from template uploads (template_intake.run_and_persist), not
+    # gated by entitlement.py at all (that gate is per-teacher spend on plan
+    # generation; a codegen job belongs to a school's onboarding, not a
+    # generation a specific teacher asked for). Without this, a bug that
+    # re-queues jobs, or an admin re-triggering retries in a loop, has no
+    # ceiling: up to builder_codegen_max_attempts attempts x 2 vision-judge
+    # calls x 1 generation call each, with no upper bound on how many JOBS
+    # can start in a day. This bounds worst case to
+    # builder_codegen_max_jobs_per_day x (up to ~12 OpenAI calls).
+    builder_codegen_max_jobs_per_day: int = 5
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
     school_profile_path: Path = Path(__file__).resolve().parent / "context" / "school_profile.md"
     # One calendar file per registered school (backend/db.py's `schools` table),

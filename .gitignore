@@ -18,14 +18,33 @@ chroma_db/
 # Node
 node_modules/
 
+# Wrangler's own local cache (Cloudflare account id + email for whoever ran
+# `wrangler` on this machine) — regenerated on demand, not build input.
+.wrangler/
+
 # Application database (lives outside the repo by default; ignored in case
 # APP_DB_PATH is ever pointed in here). SQLite WAL sidecars must never sync.
+# *.db alone missed a *.sqlite dev DB (database.sqlite) that slipped in and
+# got tracked — covering the extension family, not just one spelling of it.
 *.db
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # Generated lesson plans — the .docx output dir. Rebuildable from plans.plan_json.
 plans/
+
+# Uploaded school templates (school_calendars.py) — real, sometimes
+# district-owned documents landing under uploads/templates/, and generated
+# builder-codegen sample renders under uploads/builder_codegen/. Neither
+# belongs in git; both are already reproducible from the DB row + a
+# re-analysis, not the repo's own source of truth.
+uploads/
+
+# Generated eval-run output, not source.
+quality_results.json
 
 # Scratch. temp/ is no longer a store as of the 2026-08-04 refactor; kept
 # ignored so any stragglers don't get committed.

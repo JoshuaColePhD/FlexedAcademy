@@ -3628,6 +3628,15 @@ def get_template_findings(template_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def count_builder_codegen_jobs_created_since(since_iso: str) -> int:
+    """Backs the daily job cap (settings.builder_codegen_max_jobs_per_day) —
+    a ceiling on how many codegen jobs may START in a rolling window,
+    independent of entitlement.py (which gates per-teacher plan generation
+    spend, not a school-onboarding pipeline no single teacher requested)."""
+    row = _row("SELECT COUNT(*) AS n FROM builder_codegen_jobs WHERE created_at >= ?", (since_iso,))
+    return int(row["n"]) if row else 0
+
+
 def enqueue_builder_codegen_job(school_id: str, template_id: str) -> dict:
     job_id = new_id()
     _write(
@@ -4918,12 +4927,39 @@ def delete_user_account(user_id: str) -> None:
 
     Deletes in an order that lets each table's own ON DELETE CASCADE take
     the rest of its subtree with it: curriculum_maps takes
-    curriculum_progress and curriculum_chunks; plans takes plan_feedback;
-    chats takes messages. usage_events cascades from the users row itself
-    (the one table that already declared a real FK to users, per migration
-    17). Nothing here is reversible — routes/auth.py's delete_account is
-    what gates reaching this behind re-entering a password.
-    """
+    curriculum_progress and curriculum_chunks; plans takes plan_feedback and
+    quizzes (which itself takes nothing further); chats takes messages.
+    usage_events cascades from the users row itself (the one table that
+    already declared a real FK to users, per migration 17). Nothing here is
+    reversible — routes/auth.py's delete_account is what gates reaching
+    this behind re-entering a password.
+
+    The actual FILES those rows point at — generated .docx plans, QTI quiz
+    exports, uploaded pacing guides — used to be left behind on disk and in
+    Supabase Storage after this ran, since ON DELETE CASCADE only ever
+    touches rows. Collected and removed via storage.remove_file (which
+    handles both the local copy and the durable-storage mirror) BEFORE the
+    DB rows disappear, since every path lives in a column this query would
+    otherwise be deleting a moment later. Best-effort per file — a missing
+    or already-gone file must not abort the account deletion itself, which
+    is why each removal is wrapped individually rather than trusted to
+    storage.remove_file's own internal try/except alone."""
+    docx_paths = [r["docx_path"] for r in _rows("SELECT docx_path FROM plans WHERE user_id = ? AND docx_path IS NOT NULL", (user_id,))]
+    qti_paths = [
+        r["qti_path"] for r in _rows(
+            "SELECT q.qti_path FROM quizzes q JOIN plans p ON p.id = q.plan_id "
+            "WHERE p.user_id = ? AND q.qti_path IS NOT NULL",
+            (user_id,),
+        )
+    ]
+    map_paths = [r["stored_path"] for r in _rows("SELECT stored_path FROM curriculum_maps WHERE user_id = ?", (user_id,))]
+
+    for path_str in [*docx_paths, *qti_paths, *map_paths]:
+        try:
+            storage.remove_file(Path(path_str))
+        except Exception:  # noqa: BLE001 — one bad path must not abort account deletion
+            log.warning("delete_user_account: could not remove file %r for user %s", path_str, user_id)
+
     _write("DELETE FROM curriculum_maps WHERE user_id = ?", (user_id,))
     _write("DELETE FROM plans WHERE user_id = ?", (user_id,))
     _write("DELETE FROM chats WHERE user_id = ?", (user_id,))

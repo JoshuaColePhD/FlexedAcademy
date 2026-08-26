@@ -39,3 +39,21 @@ jobs:
         run: python -m compileall -q backend
       - name: Run backend lint
         run: ruff check backend
+      - name: Run eval suites that need no DB or API
+        # eval/run_all.py --fast runs exactly the suites eval/run_all.py's own
+        # SUITES list marks needs_corpus=False (test_entitlement,
+        # test_grounding_audit, test_field_scoped_revise,
+        # test_chat_pacing_guide, test_chat_week_context,
+        # test_schoolcal_per_school, test_quiz_generation) — real regression
+        # coverage (the paywall math, the retrieval code-shape parser, the
+        # schema contract) that ran only by hand before this, despite
+        # `compileall`+`ruff` alone never having caught any of it. The
+        # remaining suites (test_security_contracts.py and the retrieval
+        # sweeps) need a real DATABASE_URL/OPENAI_API_KEY and, per
+        # test_security_contracts.py's own docstring, a database the runner
+        # doesn't mind it writing throwaway accounts into — not something to
+        # point at production from a public CI runner without a deliberate
+        # decision on which DB that is, so they stay a manual
+        # `./venv/bin/python eval/run_all.py` before anything touching
+        # retrieval/auth ships, exactly as eval/README.md already documents.
+        run: python eval/run_all.py --fast

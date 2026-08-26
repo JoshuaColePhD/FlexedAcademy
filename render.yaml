@@ -82,6 +82,20 @@ services:
       - key: GOOGLE_CLIENT_ID
         sync: false
 
+      # CORS. This is a single service — the build bundles the frontend as
+      # static assets served by this SAME FastAPI app (buildCommand above,
+      # server.py's serve_spa) — so ordinary browser traffic to
+      # flexedacademy.com is same-origin and never touches this check at
+      # all. It matters the moment that stops being true: a custom domain
+      # added alongside the default onrender.com one, a future split
+      # frontend deploy, or a teacher-facing API client hitting this from
+      # somewhere else. Left unset, config.py's default is dev-only
+      # localhost origins, which would reject exactly that traffic with no
+      # explanation beyond a browser console CORS error. Not a secret, so
+      # tracked directly here rather than left to the dashboard.
+      - key: ALLOWED_ORIGINS
+        value: "https://flexedacademy.com"
+
       # ── transactional email (Resend) ──────────────────────────────────────
       # Without these, "Forgot your password?" is a permanent silent no-op:
       # mail.send() logs a warning and returns False, forgot_password discards
@@ -97,6 +111,19 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+
+      # ── error tracking (Sentry) ──────────────────────────────────────────
+      # server.py only calls sentry_sdk.init if this is set (backend/config.py
+      # defaults sentry_dsn to "", same inert-until-configured shape as
+      # Stripe/Resend). This key was never declared here at all, which means
+      # a deploy that never visits the dashboard for it ships with NO error
+      # tracking and no way to notice — stdout logs only, read by nobody
+      # until a teacher reports something broken. Get the DSN from
+      # Sentry → Settings → Client Keys (DSN) for the project.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: "production"
 
       # ── billing (Stripe) ─────────────────────────────────────────────────
       # The subscription gate is INERT until all three of these are set, so

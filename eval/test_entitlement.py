@@ -70,6 +70,21 @@ def scenario(
         return tokens_used if calls["n"] == 1 else recent_tokens
 
     db.tokens_used_since = fake_tokens_used_since
+    # entitlement() reads the two caps from db.get_app_settings() — an
+    # admin-editable DB row (Settings tab, migration 46) that only FALLS
+    # BACK to these settings.* values if the row is missing — not from
+    # settings.free_weekly_token_cap/subscriber_weekly_token_cap directly.
+    # Stubbing only settings.* (as this used to) left get_app_settings()
+    # hitting the real, unstubbed database and silently returning whatever
+    # caps happen to be configured there, which is exactly the kind of
+    # false "No database, no API" this suite's own docstring promises isn't
+    # happening — every cap-dependent check below was actually asserting
+    # against production data, not the free_cap/sub_cap this scenario says
+    # it's testing.
+    db.get_app_settings = lambda: {
+        "free_weekly_token_cap": free_cap,
+        "subscriber_weekly_token_cap": sub_cap,
+    }
     settings.stripe_secret_key = "sk_test" if keys else ""
     settings.stripe_price_id = "price_test" if keys else ""
     settings.stripe_webhook_secret = "whsec_test" if keys else ""
@@ -79,7 +94,7 @@ def scenario(
 
 
 def main() -> int:
-    real = (db.get_user_by_id, db.count_plans, db.tokens_used_since)
+    real = (db.get_user_by_id, db.count_plans, db.tokens_used_since, db.get_app_settings)
     real_settings = (
         settings.stripe_secret_key,
         settings.stripe_price_id,
@@ -135,10 +150,11 @@ def main() -> int:
         db.get_user_by_id = lambda _uid: None
         db.count_plans = lambda _uid: 5
         db.tokens_used_since = lambda _uid, _since: 5000
+        db.get_app_settings = lambda: {"free_weekly_token_cap": 1000, "subscriber_weekly_token_cap": 1_000_000}
         settings.free_weekly_token_cap = 1000
         check("no user row, over the free cap", E.entitlement("ghost").may_generate, False)
     finally:
-        db.get_user_by_id, db.count_plans, db.tokens_used_since = real
+        db.get_user_by_id, db.count_plans, db.tokens_used_since, db.get_app_settings = real
         (
             settings.stripe_secret_key,
             settings.stripe_price_id,

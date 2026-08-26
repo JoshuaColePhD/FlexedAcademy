@@ -153,6 +153,24 @@ async def lifespan(app: FastAPI):
                 "SESSION_SECRET (Render: generateValue, or `openssl rand -hex 32`)."
             )
         log.warning("%s Allowed only because REQUIRE_LOGIN is false (local dev).", message)
+    # billing_enabled=False is a legitimate, intentional state (entitlement.py:
+    # "a gate with no way through it is a broken app") — a free launch, or
+    # Stripe not wired up yet, both mean every account generates unmetered.
+    # That's fine as a deliberate choice; it's a real spend risk as an
+    # ACCIDENTAL one (one missing/typo'd Stripe env var on an otherwise-real
+    # production deploy, with no signal anywhere that the paywall never
+    # engaged). cookie_secure is this app's own existing "this is really
+    # production, not local dev" signal (COOKIE_SECURE=true only in
+    # render.yaml) — warn, don't refuse to boot, since unlike SESSION_SECRET
+    # there's no unsafe default being silently accepted here, just a cap
+    # worth someone's eyes before real usage accrues against it.
+    if settings.cookie_secure and not settings.billing_enabled:
+        log.warning(
+            "BILLING IS NOT ENABLED (billing_enabled=False) on what looks like a "
+            "production boot (COOKIE_SECURE=true). Every account generates "
+            "unmetered until STRIPE_SECRET_KEY, STRIPE_PRICE_ID, and "
+            "STRIPE_WEBHOOK_SECRET are all set. Confirm this is intentional."
+        )
     misc.purge_legacy_temp()
     # retrieval.chunk_for_code() — GET /api/standards/{code}, which both the
     # Standards rail panel and every chat citation hit — reads through

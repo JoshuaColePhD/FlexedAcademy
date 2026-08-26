@@ -169,21 +169,23 @@ def entitlement(user_id: str) -> Entitlement:
     # 46), read here so a cap change takes effect on the next request, not
     # the next deploy.
     caps = db.get_app_settings()
-    
-    # Reverse Trial Logic: 
-    # If the user is in their first N days (defined by trial_period_days), they get the premium cap automatically!
-    is_in_free_trial = False
-    created_at_str = user.get("created_at")
-    if created_at_str and not subscribed:
-        try:
-            created_at = datetime.fromisoformat(created_at_str)
-            if datetime.now(UTC) - created_at < timedelta(days=settings.trial_period_days):
-                is_in_free_trial = True
-        except ValueError:
-            pass
 
+    # A "reverse trial" (subscriber-tier caps for any unsubscribed account
+    # within trial_period_days of signup, no matter its status) used to live
+    # here. Removed: trial_period_days is documented in config.py as the
+    # Stripe-side, card-required trial (subscription_data.trial_period_days
+    # on the Checkout Session) — that comment says outright "no other code
+    # needed a trial to exist" before it was added, because ENTITLED_STATUSES
+    # already grants full entitlement to Stripe's own 'trialing' status. This
+    # second, reused-the-same-setting-for-something-else implementation
+    # applied to EVERY non-subscribed status, including 'canceled' and
+    # 'incomplete_expired' — which rule 5 above says explicitly must NOT
+    # entitle — so a lapsed subscriber got subscriber-tier caps for a week
+    # after any cancellation near their signup date. Caught by
+    # eval/test_entitlement.py once it actually ran in CI again; the module's
+    # documented contract (and that test) never described this exception.
     cap = custom_cap if custom_cap is not None else (
-        caps["subscriber_weekly_token_cap"] if (subscribed or is_in_free_trial) else caps["free_weekly_token_cap"]
+        caps["subscriber_weekly_token_cap"] if subscribed else caps["free_weekly_token_cap"]
     )
 
     burst_since = (datetime.now(UTC) - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")

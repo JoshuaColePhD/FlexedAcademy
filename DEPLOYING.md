@@ -64,6 +64,31 @@ Because it applies automatically on deploy, a new migration is the one change
 worth reading twice before merging. Write it idempotent (`IF NOT EXISTS`,
 guarded backfills) so a replay after a failed deploy is safe.
 
+## Row-Level Security — what it actually guards
+
+Every user-data table has `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, with
+**no policies**. That is not half-finished — read migration 12's own comment
+in `backend/db.py` before "finishing" it by adding policies or removing the
+statements.
+
+The app connects over the Supabase pooler as `postgres`, which has
+`BYPASSRLS` — so RLS enforces nothing against this app's own queries at all;
+authorization there is entirely the `WHERE user_id = ?` filters already in
+`backend/db.py`'s own functions. What RLS-with-no-policies actually blocks is
+Supabase's **public PostgREST API**: the `anon`/`authenticated` roles that key
+have no `BYPASSRLS`, so with RLS on and zero policies, a request against
+`https://<project>.supabase.co/rest/v1/<table>` using the project's anon key
+(which Supabase treats as public by design, and which ships in frontend code
+by convention) returns zero rows instead of the whole table. Supabase's own
+security advisor flagged all twelve tables as ERROR before this existed.
+
+So: turning RLS off, or adding a policy that grants `anon`/`authenticated`
+access "to make it do something," reopens that exact public read/write hole —
+it does not add protection this app is missing, it removes protection this
+app already has. If app-layer authorization ever needs a second, DB-enforced
+layer (e.g. a future lower-privileged connection role for reporting/admin
+tooling), that's a deliberate follow-up, not a fix for what's here now.
+
 ## Rolling back
 
 Render keeps previous deploys and can roll back from the dashboard. From git:

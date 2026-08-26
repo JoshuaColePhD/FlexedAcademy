@@ -65,6 +65,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import db, llm, mail
@@ -930,6 +931,20 @@ def run_and_persist(*, user_id: str, template_id: str, school_id: str, dest_path
     if settings.builder_codegen_enabled and result["status"] in ("analyzed", "analyzed_with_warnings"):
         sections = (result["analysis"] or {}).get("sections") or []
         if sections:
-            db.enqueue_builder_codegen_job(school_id, template_id)
+            since = (datetime.now(UTC) - timedelta(days=1)).isoformat(timespec="seconds")
+            recent_jobs = db.count_builder_codegen_jobs_created_since(since)
+            if recent_jobs < settings.builder_codegen_max_jobs_per_day:
+                db.enqueue_builder_codegen_job(school_id, template_id)
+            else:
+                # Not a failure of THIS upload's analysis — it stays exactly
+                # as clean/warned as it already was, in the ordinary admin
+                # queue. Just no codegen job for it today; a re-analyze or
+                # tomorrow's next upload tries again. Logged, not silently
+                # dropped, since "why didn't a job start" should be
+                # answerable without reading this function's source.
+                log.warning(
+                    "builder codegen: daily cap (%d) reached — skipping job for template %s (school %s)",
+                    settings.builder_codegen_max_jobs_per_day, template_id, school_id,
+                )
 
     return {"template": row, "findings": result["findings"], "auto_activated": auto_activated}
