@@ -2248,6 +2248,18 @@
   .rail-card:active {
     box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.3), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.5);
   }
+
+  /* The empty rail's three starter cards (AccordionSkeleton) — same cursor
+     and border-brighten-on-hover language as .rail-card, so they read as
+     clickable the same way the real plan card does once one exists. */
+  .rail-starter-card {
+    cursor: pointer;
+    transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  }
+  .rail-starter-card:hover {
+    border-color: var(--edge-strong);
+    background: var(--paper-inset);
+  }
   .rail-card-head {
     display: flex;
     align-items: center;
@@ -3423,6 +3435,26 @@
   }
   .msg-markdown strong {
     font-weight: var(--fw-semibold);
+  }
+  /* A paragraph that's nothing but a bold run ("**Monday: Introduction to
+     Rhetorical Analysis**") is how the model marks the start of a new
+     day/section within a longer reply — but nothing distinguished that from
+     a bold WORD inside an ordinary sentence, so five day-labels in a row
+     read as one dense, undifferentiated wall with no seam between days.
+     :has() lets CSS single out "this whole line IS the label," not just
+     "something here is bold," without asking the model to write anything
+     differently. A thin top rule + extra breathing room is the same "new
+     section starts here" language .msg-markdown hr already implies. */
+  .msg-markdown p:has(> strong:only-child) {
+    margin-top: var(--sp-5);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--edge);
+    font-size: var(--fs-sm);
+  }
+  .msg-markdown p:has(> strong:only-child):first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
   }
 
   .grounding-line {

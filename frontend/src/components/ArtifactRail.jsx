@@ -23,12 +23,12 @@ import { shortDateTime } from '../lib/dates'
 import { AccordionPanel } from './AccordionPanel'
 import { ShareDialog } from './ShareDialog'
 
-const RailGroup = ({ title, defaultOpen, isBar, children }) => {
+const RailGroup = ({ title, defaultOpen, forceOpen, isBar, children }) => {
   if (isBar) {
     return <div className="rail-group">{children}</div>
   }
   return (
-    <AccordionPanel title={title} defaultOpen={defaultOpen}>
+    <AccordionPanel title={title} defaultOpen={defaultOpen} forceOpen={forceOpen}>
       <div className="rail-group border-none bg-transparent m-0 p-0">{children}</div>
     </AccordionPanel>
   )
@@ -242,6 +242,10 @@ export function ArtifactRail({
   onOpenStandards,
   onOpenCalendar,
   onOpenDocument,
+  // Drops a starter prompt into the composer — see AccordionSkeleton, the
+  // empty-rail state before any plan exists for this chat. Optional: when
+  // omitted the skeleton falls back to its old inert-preview rendering.
+  onSuggestPrompt,
   // True only when a plan is KNOWN to exist for this chat (a message or
   // the plans table named its id) and fetching it failed — see ChatPage's
   // own reload effect. Distinct from "nothing built yet," the plain
@@ -392,7 +396,7 @@ export function ArtifactRail({
         ) : null}
         </RailGroup>
       ) : (
-        <AccordionSkeleton />
+        <AccordionSkeleton color={color} onSuggestPrompt={onSuggestPrompt} />
       )}
 
       {/* Quizzes over this plan — right under My Plans, ahead of Built From:
@@ -504,7 +508,11 @@ export function ArtifactRail({
           five-row list in a one-row bar, so phone keeps its copy inline in
           chat instead — see the isPhone check at both those call sites. */}
       {!isBar && (planId ? plan?.days?.length : busy) ? (
-        <RailGroup title="This week" defaultOpen={false} isBar={isBar}>
+        // forceOpen while a week is actually being written — a teacher
+        // shouldn't have to know to go click this open to watch Mon–Fri
+        // check off as they land; see AccordionPanel's own comment for why
+        // this is forceOpen and not just defaultOpen={busy}.
+        <RailGroup title="This week" defaultOpen={false} forceOpen={busy && !planId} isBar={isBar}>
           <WeekStrip days={plan?.days} writing={!planId} loose />
         </RailGroup>
       ) : null}
@@ -590,36 +598,81 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
 }
 
 
-function AccordionSkeleton() {
+/* Was three inert preview cards ("...will appear here"), permanently
+ * opacity-60/pointer-events-none — pure description of what the rail would
+ * eventually hold, nothing to act on before that. Now three parallel
+ * invitations instead: each drops a starter prompt into the composer (via
+ * onSuggestPrompt, ChatPage's setQuery + refocus) so a teacher looking at an
+ * empty rail has something to click rather than something to wait out.
+ *
+ * Deliberately NOT the checklist-with-checkmarks pattern (numbered,
+ * sequential, permanently completed) — these three aren't one-time
+ * onboarding milestones, they're three concurrent facets of THIS week's
+ * plan that get rebuilt every week. A checkmark here would still read
+ * "done" next week before anything for that week exists. */
+const STARTER_CARDS = [
+  {
+    icon: Calendar,
+    title: 'Week Overview',
+    desc: "Core objectives, daily breakdown, and standards for this week.",
+    prompt: "Build this week's lesson plan.",
+  },
+  {
+    icon: FileText,
+    title: 'Materials & Resources',
+    desc: 'Worksheets, reading texts, and slide decks generated for this plan.',
+    prompt: 'Generate the worksheets and materials for this week.',
+  },
+  {
+    icon: ListChecks,
+    title: 'Assessments',
+    desc: "Quizzes, rubrics, and exit tickets tied to this week's instruction.",
+    prompt: 'Build a quiz for this week.',
+  },
+]
+
+function AccordionSkeleton({ color, onSuggestPrompt }) {
+  const interactive = Boolean(onSuggestPrompt)
   return (
-    <div className="flex flex-col gap-4 p-4 w-full select-none opacity-60 pointer-events-none">
-      {[
-        {
-          title: "Week Overview",
-          desc: "Core objectives, daily breakdown, and standards for this week will appear here."
-        },
-        {
-          title: "Materials & Resources",
-          desc: "Worksheets, reading texts, and slide decks generated for this plan."
-        },
-        {
-          title: "Assessments",
-          desc: "Quizzes, rubrics, and exit tickets tied to this week's instruction."
-        }
-      ].map((card, i) => (
-        <div 
-          key={i} 
-          className="bg-paper-sunken border border-edge rounded-2xl p-5 flex flex-col gap-3 transition-opacity duration-300"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-ink">{card.title}</span>
-            <ChevronDown size={14} className="text-ink-muted" />
-          </div>
-          <p className="text-[12px] text-ink-muted/90 leading-relaxed pr-4">
-            {card.desc}
-          </p>
-        </div>
-      ))}
+    <div className="flex flex-col gap-4 p-4 w-full">
+      {STARTER_CARDS.map((card, i) => {
+        const Icon = card.icon
+        const Wrapper = interactive ? motion.button : motion.div
+        return (
+          <Wrapper
+            key={card.title}
+            type={interactive ? 'button' : undefined}
+            className={`bg-paper-sunken border border-edge rounded-2xl p-5 flex flex-col gap-3 text-left w-full${
+              interactive ? ' rail-starter-card fa-press' : ''
+            }`}
+            onClick={interactive ? () => onSuggestPrompt(card.prompt) : undefined}
+            title={interactive ? `Ask: “${card.prompt}”` : undefined}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.06 }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <span
+                  className="rail-tile"
+                  style={{ background: `rgb(${color.rgb} / 0.16)`, color: `rgb(${color.rgb})` }}
+                >
+                  <Icon size={14} aria-hidden="true" />
+                </span>
+                <span className="text-[13px] font-semibold text-ink">{card.title}</span>
+              </span>
+              {interactive ? (
+                <ChevronRight size={14} className="text-ink-muted" aria-hidden="true" />
+              ) : (
+                <ChevronDown size={14} className="text-ink-muted" aria-hidden="true" />
+              )}
+            </div>
+            <p className="text-[12px] text-ink-muted/90 leading-relaxed pr-4">
+              {card.desc}
+            </p>
+          </Wrapper>
+        )
+      })}
     </div>
   );
 }

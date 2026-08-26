@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Copy, Pencil, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { scanGrounding } from '../lib/grounding'
@@ -51,7 +51,20 @@ function useCopy() {
  * distinct from "said by the app" without giving the assistant an avatar or
  * a second speaker's identity — it's still the page talking back, just
  * boxed like everything else here. */
-export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStrip = false, voiceOpen = false }) {
+export function Message({
+  message,
+  subject,
+  onRetry,
+  onEdit,
+  isLast,
+  hideWeekStrip = false,
+  voiceOpen = false,
+  // False for every bubble but the last in a same-role run (ChatPage's own
+  // grouping) — a tightly-stacked run only needs one timestamp, on the
+  // bubble it actually ended at, not one per line fighting the same-role
+  // spacing that's supposed to read as "one thought, several lines."
+  showTimestamp = true,
+}) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -70,13 +83,20 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
 
   const isUser = message.role === 'user'
   const assistantSettled = !isUser && !message.streaming && !message.isError
+  /* message.created_at only exists once a message has round-tripped through
+     the server (see ChatPage's `loaded` mapping on reopening a chat) — a
+     message this session just sent or received locally has no timestamp of
+     its own yet, and nothing here re-fetches to backfill one. Falling back
+     to "now" the one time this memo runs for that message (the dependency
+     is `undefined` either way, so it never recomputes on a later render —
+     no ticking clock, no drift while a reply streams in) means every
+     message shows a real time immediately instead of only after a reload. */
   const timeString = useMemo(() => {
-    if (!message.created_at) return ''
     try {
       return new Intl.DateTimeFormat('en-US', {
         hour: 'numeric',
         minute: '2-digit',
-      }).format(new Date(message.created_at))
+      }).format(message.created_at ? new Date(message.created_at) : new Date())
     } catch {
       return ''
     }
@@ -158,9 +178,8 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
      showing this too would say it twice; the placeholder still exists there
      (it becomes the real reply once one arrives), it just renders nothing
      until it has something to show. */
-  if (!isUser && message.streaming && !message.content?.trim()) {
-    return voiceOpen ? null : <ThinkingIndicator />
-  }
+  const isThinking = !isUser && message.streaming && !message.content?.trim()
+  if (isThinking && voiceOpen) return null
 
   /* fa-rise was written for exactly this and then never attached to anything,
      so every message simply appeared — which is most of why the transcript felt
@@ -170,72 +189,117 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
      Deliberately NOT staggered per sibling. A stagger is computed from the
      index, and the index of an appended message is large — so your own message
      would sit invisible for hundreds of milliseconds before fading in, which is
-     worse than no animation at all. The entry reads fine without it. */
+     worse than no animation at all. The entry reads fine without it.
+
+     isUser gets its own, snappier entrance than the assistant's — a sent
+     message should feel like it was just launched (a firmer spring, a
+     shorter travel distance since it's appearing right where the composer
+     was), while a reply settles in more gently, matching the softer
+     thinking→content cross-fade below rather than popping in on top of it. */
   return (
-    <motion.div 
+    <motion.div
       className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
-      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+      initial={isUser ? { opacity: 0, scale: 0.97, y: 6 } : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 260, damping: 20 }}
+      transition={
+        isUser
+          ? { type: 'spring', stiffness: 420, damping: 28 }
+          : { type: 'spring', stiffness: 220, damping: 24 }
+      }
     >
       <div className={`flex max-w-full flex-col ${isUser ? 'items-end' : 'w-full items-start'}`}>
-        {/* An error reply used to render as ordinary assistant body copy, on
-            the same ruled lines as a real plan — `isError` only tinted the
-            hover-only icon row, so "The connection closed before the plan was
-            finished." read as a normal answer unless you happened to hover it.
-            Same marking as .marginalia uses for a grounding warning. */}
-        <div
-          className={
-            isUser
-              ? /* The teacher's own turn, lifted off the page as its own
-                   bubble rather than cut into it. Used to use bg-accent-tint
-                   but now uses the logo's purple (brand) for a distinct voice
-                   that does not shift with the selected class. */
-                'neo-raised rounded-2xl px-4 py-3 text-[0.9375rem] leading-relaxed'
-              : message.isError
-                ? 'msg-error text-[0.9375rem] leading-relaxed'
-                : /* Same neo-raised box as the teacher's own bubble, but
-                     bg-paper-raised instead of bg-accent-tint — the app's
-                     existing neutral "card" surface (see DecisionStack,
-                     VoiceModePanel), not a colored one, so the two turns are
-                     still visually distinct while both read as boxed. */
-                  `neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink${assistantSettled ? ' fa-settle' : ''}`
-          }
-          /* Token, not a raw rgba() literal — the literal never adapted in
-             dark mode, so the teacher's own bubble stayed the same light
-             lavender tint regardless of theme while every other surface
-             (--accent-tint, --paper-raised) properly switched. */
-          style={isUser ? { backgroundColor: 'rgb(var(--msg-user-bg-rgb) / 0.15)', color: 'var(--ink)' } : undefined}
-        >
-          {isUser ? (
-            <p className="m-0 whitespace-pre-wrap">{message.content}</p>
-          ) : (
-            <div className="msg-markdown">
-              <ReactMarkdown>{message.content}</ReactMarkdown>
-              {message.streaming ? (
-                <span
-                  className="fa-cursor ml-1 inline-block h-4 w-1.5 bg-accent align-middle"
-                  aria-hidden="true"
-                />
-              ) : null}
-            </div>
-          )}
-          {message.hint ? (
-            <small className="mt-2 block rounded-md bg-mark-tint p-2 text-xs text-mark">
-              {message.hint}
-            </small>
-          ) : null}
-
-          {message.isError && isLast && onRetry ? (
-            <button
-              onClick={onRetry}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-mark px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-mark-dark sm:w-auto"
+        {/* Thinking dots and the real reply used to be two entirely separate
+            component returns — the dots vanished the instant content
+            arrived and the bubble popped in a beat later with no visual
+            relationship between the two, reading as a hard cut rather than
+            a reply arriving. Cross-fading them in the same slot (instead of
+            the whole message remounting) makes that a single continuous
+            moment: dots fade out as the bubble fades in. */}
+        <AnimatePresence mode="wait" initial={false}>
+          {isThinking ? (
+            <motion.div
+              key="thinking"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
-              <RotateCcw size={16} />
-              Retry Request
-            </button>
-          ) : null}
-        </div>
+              <ThinkingIndicator />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="content"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              // layout: as streamed markdown grows or reflows (a list or
+              // heading forming mid-reply), the bubble's own height changes
+              // — without this it just snaps to the new size every chunk.
+              // Framer animates the size change itself (FLIP), so growth
+              // reads as the bubble easing open rather than jumping.
+              layout="size"
+            >
+              {/* An error reply used to render as ordinary assistant body copy, on
+                  the same ruled lines as a real plan — `isError` only tinted the
+                  hover-only icon row, so "The connection closed before the plan was
+                  finished." read as a normal answer unless you happened to hover it.
+                  Same marking as .marginalia uses for a grounding warning. */}
+              <div
+                className={
+                  isUser
+                    ? /* The teacher's own turn, lifted off the page as its own
+                         bubble rather than cut into it. Used to use bg-accent-tint
+                         but now uses the logo's purple (brand) for a distinct voice
+                         that does not shift with the selected class. */
+                      'neo-raised rounded-2xl px-4 py-3 text-[0.9375rem] leading-relaxed'
+                    : message.isError
+                      ? 'msg-error text-[0.9375rem] leading-relaxed'
+                      : /* Same neo-raised box as the teacher's own bubble, but
+                           bg-paper-raised instead of bg-accent-tint — the app's
+                           existing neutral "card" surface (see DecisionStack,
+                           VoiceModePanel), not a colored one, so the two turns are
+                           still visually distinct while both read as boxed. */
+                        `neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink${assistantSettled ? ' fa-settle' : ''}`
+                }
+                /* Token, not a raw rgba() literal — the literal never adapted in
+                   dark mode, so the teacher's own bubble stayed the same light
+                   lavender tint regardless of theme while every other surface
+                   (--accent-tint, --paper-raised) properly switched. */
+                style={isUser ? { backgroundColor: 'rgb(var(--msg-user-bg-rgb) / 0.15)', color: 'var(--ink)' } : undefined}
+              >
+                {isUser ? (
+                  <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+                ) : (
+                  <div className="msg-markdown">
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                    {message.streaming ? (
+                      <span
+                        className="fa-cursor ml-1 inline-block h-4 w-1.5 bg-accent align-middle"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                  </div>
+                )}
+                {message.hint ? (
+                  <small className="mt-2 block rounded-md bg-mark-tint p-2 text-xs text-mark">
+                    {message.hint}
+                  </small>
+                ) : null}
+
+                {message.isError && isLast && onRetry ? (
+                  <button
+                    onClick={onRetry}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-mark px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-mark-dark sm:w-auto"
+                  >
+                    <RotateCcw size={16} />
+                    Retry Request
+                  </button>
+                ) : null}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* The guided alternative to typing — see LessonQuestions, which now
             renders in a dock above the composer (ChatPage's pendingQuestions)
@@ -307,12 +371,24 @@ export function Message({ message, subject, onRetry, onEdit, isLast, hideWeekStr
           </div>
         ) : null}
 
+        {/* Always on when it's the last bubble of a run (ChatPage's own
+            groupEnd) — was folded into the hover-only action row below, so
+            "what time was this" cost a mouse. A real conversation log reads
+            its own timestamps at a glance; it shouldn't take a hover to
+            find out when something was said. */}
+        {timeString && showTimestamp ? (
+          <span
+            className={`mt-1 block text-3xs tracking-wider text-ink-faint ${isUser ? 'text-right' : 'text-left'}`}
+          >
+            {timeString}
+          </span>
+        ) : null}
+
         <div
-          className={`mt-1 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
-            isUser ? 'justify-end' : 'justify-start'
-          } ${message.isError ? 'text-mark' : 'text-ink-muted'}`}
+          className={`flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
+            timeString && showTimestamp ? '' : 'mt-1'
+          } ${isUser ? 'justify-end' : 'justify-start'} ${message.isError ? 'text-mark' : 'text-ink-muted'}`}
         >
-          {timeString ? <span className="text-3xs tracking-wider opacity-60 mr-1">{timeString}</span> : null}
           <button
             type="button"
             className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"

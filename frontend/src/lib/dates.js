@@ -54,6 +54,35 @@ export const monthKey = (iso) => (iso ? iso.slice(0, 7) : '')
 
 export const todayISO = () => new Date().toISOString().slice(0, 10)
 
+/** Same calendar day, local time, for two real datetimes (created_at
+ *  values) — not the date-only strings the rest of this file parses. Used to
+ *  decide whether the transcript needs a day separator between two adjacent
+ *  messages (see ChatPage.jsx's DaySeparator). */
+export function isSameDay(isoA, isoB) {
+  if (!isoA || !isoB) return false
+  const a = new Date(isoA)
+  const b = new Date(isoB)
+  return (
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  )
+}
+
+/** "Today" / "Yesterday" / "Tuesday, August 25" (the year only when it isn't
+ *  this one) — the label on a transcript's day separator. `iso` is a real
+ *  datetime, same as isSameDay above. */
+export function dayLabel(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000)
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  const opts = { weekday: 'long', month: 'long', day: 'numeric' }
+  if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric'
+  return d.toLocaleDateString('en-US', opts)
+}
+
 /** "Aug 22, 9:48 AM" — a full created/built timestamp, not a plain calendar
  *  date: for telling apart two records that otherwise share a title (e.g.
  *  two quizzes built for the same week, minutes apart). `iso` here is a

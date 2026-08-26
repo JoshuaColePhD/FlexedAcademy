@@ -18,6 +18,7 @@ import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
 import { splitDecisions } from '../lib/decisionChecklist'
+import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
@@ -68,6 +69,21 @@ let idSeq = 0
 const nextId = () => `m${++idSeq}`
 
 const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
+
+/* A running transcript reopened days later used to read as one unbroken
+ * column — nothing marked where "last Tuesday" ended and "just now" began.
+ * A plain centered label, same eyebrow language (faint, tracked caps) the
+ * rest of the app already uses for a section break, not a full chat-bubble
+ * treatment of its own — it's a seam in the transcript, not a message. */
+function DaySeparator({ label }) {
+  return (
+    <div className="flex items-center gap-3 px-1" role="separator" aria-label={label}>
+      <span className="h-px flex-1 bg-edge" aria-hidden="true" />
+      <span className="eyebrow shrink-0 text-ink-faint">{label}</span>
+      <span className="h-px flex-1 bg-edge" aria-hidden="true" />
+    </div>
+  )
+}
 
 // What each `viewKind` is called in copy the teacher reads — the overlay's
 // close button and (for a screen reader) ArtifactDetailPanel's own region.
@@ -213,6 +229,14 @@ export function ChatPage() {
   // request calls for.
   const [artifactRetryTick, setArtifactRetryTick] = useState(0)
   const [query, setQuery] = useState('')
+  /* ArtifactRail's empty-state starter cards (Week Overview / Materials /
+     Assessments) hand their prompt here rather than submitting straight
+     away — same "fill, don't fire" convention as everywhere else a click
+     populates the composer, so a teacher can edit before sending. */
+  const suggestRailPrompt = (prompt) => {
+    setQuery(prompt)
+    requestAnimationFrame(() => document.getElementById('composer-input')?.focus())
+  }
   const [attachments, setAttachments] = useState([])
   /* A follow-up typed and sent while the current turn is still busy — held
      here rather than lost. Composer's Enter/Send no longer waits on `busy`
@@ -610,6 +634,7 @@ export function ChatPage() {
           role: m.role,
           content: m.content,
           planId: m.plan_id || null,
+          created_at: m.created_at || null,
         }))
         setMessages(loaded)
         scrollModeRef.current = 'bottom'
@@ -2376,38 +2401,73 @@ export function ChatPage() {
         />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
-          <div className={`chat-column mx-auto flex w-full flex-col gap-7 px-gutter py-8 transition-all duration-500 ease-out ${
+          <div className={`chat-column mx-auto flex w-full flex-col px-gutter py-8 transition-all duration-500 ease-out ${
             voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
           }`}>
-            {messages.map((m, i) => (
-              // The wrapper, not Message itself, carries the scroll ref —
-              // Message is a plain function component, not forwardRef, and
-              // wrapping costs nothing layout-wise (a bare block div around
-              // what's already a block-level flex item). See messageRefs and
-              // pinToTopIdRef's own comment below for what this ref is for.
-              <div key={m.id} ref={(el) => {
-                if (el) messageRefs.current.set(m.id, el)
-                else messageRefs.current.delete(m.id)
-              }}>
-                <Message
-                  message={m}
-                  subject={activeClass?.subject}
-                  isLast={i === messages.length - 1}
-                  onRetry={m.isError && !busy ? retryLast : undefined}
-                  /* The pencil rendered unguarded while this was never passed, so
-                     clicking it opened a working editor whose "Send again" threw
-                     and silently reverted the text. */
-                  onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
-                  /* The day-by-day breakdown moved into ArtifactRail's own
-                     "This week" section on desktop, which sits right next to
-                     the plan it describes instead of scrolling away with the
-                     transcript. Phone has no rail to carry it, so it stays
-                     here for isPhone. */
-                  hideWeekStrip={!isPhone}
-                  voiceOpen={voiceOpen}
-                />
-              </div>
-            ))}
+            {messages.map((m, i) => {
+              const prev = i > 0 ? messages[i - 1] : null
+              const nextMsg = i < messages.length - 1 ? messages[i + 1] : null
+              // A separator needs a real datetime on both sides of the seam —
+              // an optimistic message pushed before its created_at comes back
+              // from the server just doesn't get one this render; it picks
+              // one up the moment the real message replaces it.
+              const daySep = Boolean(m.created_at) && (!prev?.created_at || !isSameDay(prev.created_at, m.created_at))
+              // Tight spacing for a same-role run (a quick multi-part reply,
+              // or a teacher firing off two messages before one lands) — but
+              // never across the seam a day separator already draws; that
+              // seam is its own reset regardless of who said what either
+              // side of it.
+              const grouped = !daySep && prev?.role === m.role
+              // Timestamp only on the last bubble of a run — same as any
+              // chat app's own convention, and it means the common case
+              // (turns already alternate every message) shows one on nearly
+              // everything, while a run of same-role bubbles only labels
+              // where it actually ended.
+              const groupEnd =
+                !nextMsg ||
+                nextMsg.role !== m.role ||
+                (nextMsg.created_at && m.created_at && !isSameDay(nextMsg.created_at, m.created_at))
+              return (
+                <div key={m.id}>
+                  {daySep ? (
+                    <div className={i === 0 ? 'pb-4' : 'pb-4 pt-3'}>
+                      <DaySeparator label={dayLabel(m.created_at)} />
+                    </div>
+                  ) : null}
+                  {/* The wrapper, not Message itself, carries the scroll ref —
+                      Message is a plain function component, not forwardRef, and
+                      wrapping costs nothing layout-wise (a bare block div around
+                      what's already a block-level flex item). See messageRefs and
+                      pinToTopIdRef's own comment below for what this ref is for. */}
+                  <div
+                    className={i === 0 || daySep ? '' : grouped ? 'mt-2' : 'mt-7'}
+                    ref={(el) => {
+                      if (el) messageRefs.current.set(m.id, el)
+                      else messageRefs.current.delete(m.id)
+                    }}
+                  >
+                    <Message
+                      message={m}
+                      subject={activeClass?.subject}
+                      isLast={i === messages.length - 1}
+                      onRetry={m.isError && !busy ? retryLast : undefined}
+                      /* The pencil rendered unguarded while this was never passed, so
+                         clicking it opened a working editor whose "Send again" threw
+                         and silently reverted the text. */
+                      onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
+                      /* The day-by-day breakdown moved into ArtifactRail's own
+                         "This week" section on desktop, which sits right next to
+                         the plan it describes instead of scrolling away with the
+                         transcript. Phone has no rail to carry it, so it stays
+                         here for isPhone. */
+                      hideWeekStrip={!isPhone}
+                      voiceOpen={voiceOpen}
+                      showTimestamp={groupEnd}
+                    />
+                  </div>
+                </div>
+              )
+            })}
 
             {/* "The plan so far" — used to live only in the side rail
                 (ArtifactRail's own DecisionStack), a separate card next to
@@ -2760,6 +2820,7 @@ export function ChatPage() {
           quizBuilding={quizBuilding}
           artifactLoadError={artifactLoadError}
           onRetryArtifact={retryArtifactLoad}
+          onSuggestPrompt={suggestRailPrompt}
         />
       ) : null}
 
