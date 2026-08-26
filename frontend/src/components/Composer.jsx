@@ -427,11 +427,21 @@ export function Composer({
     }
   }
 
+  // rounded-full is a single-line pill — right for the default composer,
+  // wrong the instant questionsPanel/voicePanel grows this shell to several
+  // lines tall: a 9999px radius on a tall box reads as two huge semicircle
+  // caps top and bottom, and overflow-hidden then clips the square-cornered
+  // content inside those caps (the first few characters of the top row of
+  // LessonQuestions' own card, in practice). Both docks used to share this
+  // shell's radius unconditionally; this is the same "the composer visibly
+  // grows to make room" moment .questions-dock's own comment describes,
+  // so the shell's shape has to grow with it, not stay pill-shaped.
+  const isExpanded = Boolean(questionsPanel) || voiceModeActive
   return (
     <div className="relative w-full">
       <div
         className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper transition-all focus-within:scale-[1.01] focus-within:ring-1 focus-within:ring-accent/50 ${
-          voiceModeActive ? 'rounded-full' : 'rounded-full shadow-sm'
+          isExpanded ? 'rounded-[28px]' : 'rounded-full shadow-sm'
         } ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}
       >
@@ -504,14 +514,26 @@ export function Composer({
               this makes the actual button that size instead of just its
               hit box. */}
           <label
-            className="fa-press tap-target mb-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:mb-2 md:h-9 md:w-9"
+            className="fa-press tap-target relative mb-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:mb-2 md:h-9 md:w-9"
             htmlFor="composer-file"
           >
-            {isAttaching ? (
-              <Loader2 size={19} className="animate-spin md:size-[18px]" aria-hidden="true" />
-            ) : (
-              <Paperclip size={19} className="md:size-[18px]" aria-hidden="true" />
-            )}
+            {/* Same stacked-icon cross-fade the send button uses (below) —
+                was a hard swap straight to the spinner, the one task-state
+                change in this bar with no motion of its own. */}
+            <Paperclip
+              size={19}
+              className={`absolute transition-all duration-300 md:size-[18px] ${
+                isAttaching ? 'scale-50 -rotate-90 opacity-0' : 'scale-100 rotate-0 opacity-100'
+              }`}
+              aria-hidden="true"
+            />
+            <Loader2
+              size={19}
+              className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${
+                isAttaching ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
+              }`}
+              aria-hidden="true"
+            />
             <span className="sr-only">Attach a PDF or text file</span>
           </label>
           <input
@@ -572,40 +594,64 @@ export function Composer({
               cluster. A row keeps the bar's height constant regardless of
               which button is showing. */}
           <div className="flex flex-row shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
-            {isTranscribing ? (
-              <button
-                type="button"
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted md:h-9 md:w-9"
-                disabled
-                aria-label="Transcribing"
-              >
-                <Loader2 size={19} className="animate-spin md:size-[18px]" aria-hidden="true" />
-              </button>
-            ) : isRecording ? (
-              <button
-                type="button"
-                /* fa-listening: the tinted background already says "recording
-                   is on," a fact — this ring says the mic is live RIGHT NOW,
-                   an ongoing one, the way a hardware recording light doesn't
-                   just switch on but keeps pulsing for as long as it's true. */
-                className="fa-listening tap-target flex h-11 w-11 items-center justify-center rounded-lg text-mark transition-colors hover:bg-mark-tint md:h-9 md:w-9"
-                onClick={stopRecording}
-                aria-label="Stop recording"
-              >
-                <Square size={17} className="md:size-4" fill="currentColor" aria-hidden="true" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="tap-target flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50 md:h-9 md:w-9"
-                onClick={startRecording}
-                disabled={isStreaming || voiceModeActive}
-                aria-label={voiceModeActive ? 'Dictate (already listening in voice mode)' : 'Dictate'}
-                title={voiceModeActive ? "Already listening — it's transcribing straight into the chat" : undefined}
-              >
-                <Mic size={19} className="md:size-[18px]" aria-hidden="true" />
-              </button>
-            )}
+            {/* One persistent button now, not three swapped in and out —
+                a swapped-out button unmounts outright, so nothing about a
+                plain CSS transition could ever animate THAT change; only an
+                icon morphing in place on the same element can. Same stacked
+                cross-fade as the send button below, across all three of
+                this control's states instead of just two. */}
+            <button
+              type="button"
+              className={`tap-target relative flex h-11 w-11 items-center justify-center rounded-lg transition-colors md:h-9 md:w-9 ${
+                isRecording
+                  ? /* fa-listening: the tinted background already says
+                       "recording is on," a fact — this ring says the mic is
+                       live RIGHT NOW, an ongoing one, the way a hardware
+                       recording light doesn't just switch on but keeps
+                       pulsing for as long as it's true. */
+                    'fa-listening text-mark hover:bg-mark-tint'
+                  : 'text-ink-muted hover:bg-paper-sunken hover:text-ink disabled:opacity-50'
+              }`}
+              onClick={isTranscribing ? undefined : isRecording ? stopRecording : startRecording}
+              disabled={isTranscribing || (!isRecording && (isStreaming || voiceModeActive))}
+              aria-label={
+                isTranscribing
+                  ? 'Transcribing'
+                  : isRecording
+                    ? 'Stop recording'
+                    : voiceModeActive
+                      ? 'Dictate (already listening in voice mode)'
+                      : 'Dictate'
+              }
+              title={
+                !isRecording && !isTranscribing && voiceModeActive
+                  ? "Already listening — it's transcribing straight into the chat"
+                  : undefined
+              }
+            >
+              <Mic
+                size={19}
+                className={`absolute transition-all duration-300 md:size-[18px] ${
+                  !isRecording && !isTranscribing ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
+                }`}
+                aria-hidden="true"
+              />
+              <Square
+                size={17}
+                className={`absolute transition-all duration-300 md:size-4 ${
+                  isRecording ? 'scale-100 rotate-0 opacity-100' : 'scale-50 rotate-90 opacity-0'
+                }`}
+                fill="currentColor"
+                aria-hidden="true"
+              />
+              <Loader2
+                size={19}
+                className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${
+                  isTranscribing ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
+                }`}
+                aria-hidden="true"
+              />
+            </button>
 
             {!hasContent && onOpenVoice && !voiceModeActive && !isStreaming ? (
               <button
