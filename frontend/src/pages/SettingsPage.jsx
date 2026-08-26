@@ -1176,6 +1176,8 @@ export function SettingsPage() {
                 </div>
               </section>
               
+              <AvatarSelect />
+              
               <section className="mb-8">
                 <SchoolPicker
                   value={meState.data?.school}
@@ -1301,8 +1303,6 @@ export function SettingsPage() {
             {/* Account Section */}
             <div id="section-account" className="scroll-mt-8">
                             <h2 className="text-xl font-bold text-ink mb-6">Account & Security</h2>
-              
-              <AvatarSelect />
               
               {meState.data && meState.data.has_password ? (
                 <section className="mb-8">
