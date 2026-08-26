@@ -26,10 +26,23 @@ SUITES: list[tuple[str, bool]] = [
     ("test_entitlement.py", False),
     # Needs the live DB (no test double exists for it), so --fast skips it.
     ("test_security_contracts.py", True),
-    ("test_chat_pacing_guide.py", False),
-    ("test_chat_week_context.py", False),
-    ("test_schoolcal_per_school.py", False),
-    ("test_quiz_generation.py", False),
+    # These four each stub SOME of the db.* calls their own code path makes
+    # (per their own docstrings, "no DB, no OpenAI call"), but not all of
+    # them — e.g. test_quiz_generation.py stubs llm.db.get_llm_cache but not
+    # the db.get_user_by_id a few frames deeper in the same call
+    # (custom_instructions_for), and test_schoolcal_per_school.py never
+    # stubs db.get_confirmed_calendar_submission at all. That's invisible
+    # against a real local dev DATABASE_URL (the unstubbed call just
+    # succeeds against whatever's really there) but breaks outright with no
+    # DATABASE_URL at all — confirmed 2026-08-26 by running with .env moved
+    # aside, matching CI's actual environment, and again by CI itself
+    # failing this exact way the first time this step was wired in. Marked
+    # True until each is given the same complete-stub treatment
+    # test_entitlement.py's own db.get_app_settings gap already got.
+    ("test_chat_pacing_guide.py", True),
+    ("test_chat_week_context.py", True),
+    ("test_schoolcal_per_school.py", True),
+    ("test_quiz_generation.py", True),
     ("test_course_identity_and_codes.py", True),
     ("test_cross_course_grounding.py", True),
     ("test_offdomain_refusal.py", True),

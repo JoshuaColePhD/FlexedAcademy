@@ -40,16 +40,28 @@ jobs:
       - name: Run backend lint
         run: ruff check backend
       - name: Run eval suites that need no DB or API
-        # eval/run_all.py --fast runs exactly the suites eval/run_all.py's own
-        # SUITES list marks needs_corpus=False (test_entitlement,
-        # test_grounding_audit, test_field_scoped_revise,
-        # test_chat_pacing_guide, test_chat_week_context,
-        # test_schoolcal_per_school, test_quiz_generation) — real regression
-        # coverage (the paywall math, the retrieval code-shape parser, the
-        # schema contract) that ran only by hand before this, despite
-        # `compileall`+`ruff` alone never having caught any of it. The
-        # remaining suites (test_security_contracts.py and the retrieval
-        # sweeps) need a real DATABASE_URL/OPENAI_API_KEY and, per
+        # eval/run_all.py --fast runs exactly the suites its own SUITES list
+        # marks needs_corpus=False: test_grounding_audit, test_field_scoped_
+        # revise, test_entitlement — real regression coverage (the retrieval
+        # code-shape parser, the schema contract, the paywall math) that ran
+        # only by hand before this, despite `compileall`+`ruff` alone never
+        # having caught any of it.
+        #
+        # Four more suites (test_chat_pacing_guide, test_chat_week_context,
+        # test_schoolcal_per_school, test_quiz_generation) LOOK db-free from
+        # their own docstrings but aren't fully: each stubs some db.* calls
+        # on its own code path but not all of them (e.g.
+        # test_quiz_generation.py stubs llm.db.get_llm_cache but not the
+        # db.get_user_by_id a few frames deeper via custom_instructions_for).
+        # That's invisible with a real local DATABASE_URL — the unstubbed
+        # call just quietly succeeds against whatever's really there — but
+        # breaks outright here, where none is set. Confirmed 2026-08-26 (see
+        # eval/run_all.py's own comment on the SUITES list) and reclassified
+        # needs_corpus=True until each gets the same complete-stub fix
+        # test_entitlement's db.get_app_settings gap already got.
+        #
+        # The remaining suites (test_security_contracts.py and the retrieval
+        # sweeps) genuinely need a real DATABASE_URL/OPENAI_API_KEY and, per
         # test_security_contracts.py's own docstring, a database the runner
         # doesn't mind it writing throwaway accounts into — not something to
         # point at production from a public CI runner without a deliberate
