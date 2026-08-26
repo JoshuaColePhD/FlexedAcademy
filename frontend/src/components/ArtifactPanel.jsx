@@ -61,6 +61,7 @@ export function ArtifactPanel({
   subject,
   onCollapse,
   onReviseDay,
+  onReviseDays,
   onPlanRevised,
   busy,
   preparing,
@@ -232,6 +233,7 @@ const location = useLocation()
               subject={subject}
               groundedCodes={grounded}
               onReviseDay={planId ? onReviseDay : undefined}
+              onReviseDays={planId ? onReviseDays : undefined}
               onPlanRevised={onPlanRevised}
               busy={busy}
               missingDays={missingDays}

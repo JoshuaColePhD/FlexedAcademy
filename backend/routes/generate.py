@@ -152,6 +152,17 @@ class ReviseDayRequest(BaseModel):
     field: str | None = None
 
 
+class ReviseDaysRequest(BaseModel):
+    """The batch counterpart to ReviseDayRequest: one instruction, one field,
+    applied across several days at once. `field` is required here — batching
+    only makes sense for a scoped cell tweak, never a whole-day rewrite."""
+
+    plan_id: str = Field(min_length=1, max_length=64)
+    day_indices: list[int] = Field(min_length=1, max_length=5)
+    feedback: str = Field(min_length=1, max_length=4000)
+    field: str
+
+
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
@@ -794,6 +805,15 @@ def revise_day(req: ReviseDayRequest, request: Request, user_id: str = Depends(g
     matches what's on screen."""
     require_entitlement(user_id)
     return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback, req.field)
+
+
+@router.post("/revise_days")
+@limiter.limit("100/minute")
+def revise_days(req: ReviseDaysRequest, request: Request, user_id: str = Depends(get_current_user)):
+    """Rewrite one field across several days from a single instruction, then
+    rebuild the .docx once."""
+    require_entitlement(user_id)
+    return service.revise_days(user_id, req.plan_id, req.day_indices, req.feedback, req.field)
 
 
 @router.post("/chats/{chat_id}/messages")

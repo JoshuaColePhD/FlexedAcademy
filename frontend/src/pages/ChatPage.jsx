@@ -1748,6 +1748,66 @@ export function ChatPage() {
   // plain assignment rather than a dependency-array entry.
   reviseDayRef.current = reviseDay
 
+  /* The batch counterpart: one instruction, one field, applied to several days
+     at once — what the tweak popover's "All N days" scope sends. Not reachable
+     from submit()'s tool-call loop (there's no batch tool call), so unlike
+     reviseDay this needs no ref. */
+  const reviseDays = useCallback(
+    async (dayIndices, feedback, field) => {
+      if (!artifact?.planId) return
+      const label = `${FIELD_LABELS[field] || field} across ${dayIndices.length} days`
+      const ask = `Revise ${label}: ${feedback}`
+      const askId = nextId()
+      pinToTopIdRef.current = askId
+      setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
+      const saveTo = localFor.current
+      if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
+      setRevising(true)
+      try {
+        const row = await api.reviseDays({
+          plan_id: artifact.planId,
+          day_indices: dayIndices,
+          feedback,
+          field,
+        })
+        setArtifact((a) => ({
+          ...a,
+          plan: row.plan_json,
+          warnings: row.warnings,
+          retrievedIds: row.retrieved_ids,
+        }))
+        flash(dayIndices.map((i) => cellKey(i, field)))
+        const reply = `Updated ${label} and rebuilt the document.`
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: 'assistant',
+            content: reply, created_at: new Date().toISOString(),
+            planId: row.id,
+            weekLabel: row.week_label,
+            plan: row.plan_json,
+            retrievedCodes: row.retrieved_ids,
+          },
+        ])
+        if (saveTo) {
+          void persistMessage(saveTo, { role: 'assistant', content: reply, created_at: new Date().toISOString(), plan_id: row.id })
+        }
+      } catch (err) {
+        const failed = `Couldn’t revise ${label}. ${err.message}`
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: 'assistant', isError: true, content: failed, hint: err.hint },
+        ])
+        if (saveTo) void persistMessage(saveTo, { role: 'assistant', content: failed })
+        toast.apiError(`Could not revise ${label}`, err)
+      } finally {
+        setRevising(false)
+      }
+    },
+    [artifact, toast, flash, persistMessage]
+  )
+
   /* Stopping used to say nothing at all: useLessonStream returns null on an
      AbortError and fires no callback, so the transcript kept the question and
      never acquired a reply. The teacher was left looking at their own message
@@ -2340,6 +2400,7 @@ export function ChatPage() {
         missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
         onCollapse={collapse}
         onReviseDay={artifact?.planId ? reviseDay : undefined}
+        onReviseDays={artifact?.planId ? reviseDays : undefined}
         onPlanRevised={onPlanRevised}
         busy={busy}
         preparing={preparing}

@@ -3172,6 +3172,27 @@
     text-transform: uppercase;
     color: var(--accent-text);
   }
+  .cell-tweak-scope {
+    display: flex;
+    gap: 4px;
+    padding: 0 10px 6px;
+  }
+  .cell-tweak-scope-opt {
+    flex: 1 1 0;
+    padding: 5px 8px;
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-medium);
+    color: var(--ink-soft);
+    background: var(--paper-sunken);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .cell-tweak-scope-opt.is-active {
+    color: var(--accent-on);
+    background: var(--accent);
+  }
   /* Wraps rather than squeezing. A district-table column is ~130px wide; an
      input, an Apply and an X laid out in a row inside one would give the input
      about 20px, which is not a text field, it's a decoration. */

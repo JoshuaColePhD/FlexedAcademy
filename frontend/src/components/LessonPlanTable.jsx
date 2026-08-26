@@ -3,7 +3,7 @@ import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useLayoutMode } from '../hooks/useMediaQuery'
-import { LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
+import { LESSON_PARTS, ROWS, dayState, orderedDays } from '../lib/planShape'
 import { CitedText } from './Citation'
 import { PlanDayCards } from './PlanDayCards'
 import { SkeletonText } from './Skeleton'
@@ -49,6 +49,7 @@ export function LessonPlanTable({
   subject,
   groundedCodes,
   onReviseDay,
+  onReviseDays,
   onPlanRevised,
   busy,
   missingDays = 'no_school',
@@ -61,6 +62,10 @@ export function LessonPlanTable({
   setOpenTweak,
 }) {
   const [draft, setDraft] = useState('')
+  // 'day' | 'week' — which days a tweak's instruction targets. Lives beside
+  // draft for the same reason: one open cell, one in-flight choice, reset
+  // together whenever a different cell opens.
+  const [scope, setScope] = useState('day')
   // null = not sent yet; true/false = which thumb was actually clicked, not
   // just "sent" — disabling both buttons on a plain boolean left no visible
   // trace of which one you'd picked, only a toast that had already faded.
@@ -120,19 +125,33 @@ export function LessonPlanTable({
   const openCell = (dayIndex, field) => {
     if (!canTweak) return
     setDraft('')
+    setScope('day')
     setOpenTweak({ dayIndex, field })
   }
 
   const closeCell = () => {
     setDraft('')
+    setScope('day')
     setOpenTweak(null)
   }
+
+  // Every day actually taught this week — no_school/pending/incomplete days
+  // have nothing in this field to rewrite, so "All N days" only ever targets
+  // days that are really there, and N in its own label matches what happens.
+  const weekDayIndices = ordered.reduce(
+    (acc, d, i) => (dayState(d) === 'ok' ? [...acc, i] : acc),
+    []
+  )
 
   const applyTweak = () => {
     const feedback = draft.trim()
     if (!feedback || !openTweak) return
     const { dayIndex, field } = openTweak
-    onReviseDay(dayIndex, ordered[dayIndex], feedback, field)
+    if (scope === 'week' && onReviseDays && weekDayIndices.length > 1) {
+      onReviseDays(weekDayIndices, feedback, field)
+    } else {
+      onReviseDay(dayIndex, ordered[dayIndex], feedback, field)
+    }
     closeCell()
   }
 
@@ -225,6 +244,9 @@ export function LessonPlanTable({
             applyTweak={applyTweak}
             draft={draft}
             setDraft={setDraft}
+            scope={scope}
+            setScope={setScope}
+            weekDayCount={weekDayIndices.length}
           />
         ) : (
           <PlanTable
@@ -240,6 +262,9 @@ export function LessonPlanTable({
             applyTweak={applyTweak}
             draft={draft}
             setDraft={setDraft}
+            scope={scope}
+            setScope={setScope}
+            weekDayCount={weekDayIndices.length}
           />
         )}
       </div>
@@ -263,6 +288,9 @@ function PlanTable({
   applyTweak,
   draft,
   setDraft,
+  scope,
+  setScope,
+  weekDayCount,
 }) {
   const { isOpen, flashed, editableProps, Trigger, tweakBody } = cellKit({
     busy,
@@ -274,6 +302,9 @@ function PlanTable({
     applyTweak,
     draft,
     setDraft,
+    scope,
+    setScope,
+    weekDayCount,
   })
 
   return (

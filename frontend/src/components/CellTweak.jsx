@@ -26,7 +26,18 @@ export const CHIPS = {
 export const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
 
 /** The editor, rendered where the text was. */
-export function CellTweak({ field, current, draft, setDraft, onApply, onCancel, busy }) {
+export function CellTweak({
+  field,
+  current,
+  draft,
+  setDraft,
+  onApply,
+  onCancel,
+  busy,
+  scope,
+  setScope,
+  weekDayCount,
+}) {
   return (
     // fa-card-drop, not a bare Fragment: this popover used to appear/
     // disappear as a hard conditional render with zero animation — a
@@ -37,6 +48,31 @@ export function CellTweak({ field, current, draft, setDraft, onApply, onCancel, 
         <b className="cell-tweak-label">{FIELD_LABELS[field] || field} · tweaking</b>
         {current}
       </div>
+      {/* Only worth asking when there's more than one day to spread the
+          instruction across — a single-teaching-day week has nothing for
+          "All N days" to mean. */}
+      {setScope && weekDayCount > 1 ? (
+        <div className="cell-tweak-scope" role="radiogroup" aria-label="Apply this tweak to">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={scope !== 'week'}
+            className={`cell-tweak-scope-opt${scope !== 'week' ? ' is-active' : ''}`}
+            onClick={() => setScope('day')}
+          >
+            This day
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={scope === 'week'}
+            className={`cell-tweak-scope-opt${scope === 'week' ? ' is-active' : ''}`}
+            onClick={() => setScope('week')}
+          >
+            All {weekDayCount} days
+          </button>
+        </div>
+      ) : null}
       <div className="cell-tweak-row">
         <label className="visually-hidden" htmlFor="cell-tweak-input">
           What should change about this {FIELD_LABELS[field] || field}?
@@ -104,6 +140,9 @@ export function cellKit({
   applyTweak,
   draft,
   setDraft,
+  scope,
+  setScope,
+  weekDayCount,
 }) {
   const isOpen = (dayIndex, field) =>
     openTweak?.dayIndex === dayIndex && openTweak?.field === field
@@ -148,6 +187,9 @@ export function cellKit({
       onApply={applyTweak}
       onCancel={closeCell}
       busy={busy}
+      scope={scope}
+      setScope={setScope}
+      weekDayCount={weekDayCount}
     />
   )
 

@@ -301,6 +301,8 @@ export const api = {
 
   reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload }),
 
+  reviseDays: (payload) => request('/api/revise_days', { method: 'POST', body: payload }),
+
   /* ── billing ──────────────────────────────────────────────────────────────
      `billing` carries the entitlement AND the price, read from Stripe at
      request time — the price is never a number typed into this codebase.

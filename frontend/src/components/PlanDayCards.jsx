@@ -188,6 +188,9 @@ export function PlanDayCards({
   applyTweak,
   draft,
   setDraft,
+  scope,
+  setScope,
+  weekDayCount,
 }) {
   const days = orderedDays(plan, missingDays)
   const [active, setActive] = useState(() => initialDayIndex(days, TODAY_NAME))
@@ -199,7 +202,20 @@ export function PlanDayCards({
   // open. Undefined props (canTweak/openCell/etc, when this is rendered from
   // a context with no revise capability at all) fall through cellKit's own
   // `Boolean(...)`-style guards the same way they do for the table.
-  const kit = cellKit({ busy, flashCells, canTweak, openTweak, openCell, closeCell, applyTweak, draft, setDraft })
+  const kit = cellKit({
+    busy,
+    flashCells,
+    canTweak,
+    openTweak,
+    openCell,
+    closeCell,
+    applyTweak,
+    draft,
+    setDraft,
+    scope,
+    setScope,
+    weekDayCount,
+  })
 
   /* Read the card's ACTUAL offset instead of computing i * clientWidth.
      The scroller is a grid with `gap: var(--sp-3)`, so card i actually starts

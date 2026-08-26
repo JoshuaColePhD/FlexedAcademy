@@ -557,3 +557,117 @@ def revise_day(
         entries=cited,
     )
     return updated_row  # type: ignore[return-value]
+
+
+def revise_days(
+    user_id: str,
+    plan_id: str,
+    day_indices: list[int],
+    feedback: str,
+    field: str,
+    bg_tasks: BackgroundTasks | None = None,
+) -> dict:
+    """The same one-field, one-key rewrite as revise_day's `field` path, applied
+    to several days from a single instruction — the batch counterpart to
+    tweaking one cell at a time. One docx rebuild and one grounding audit
+    cover every touched day, rather than N of each for N cells.
+
+    A day marked `no_school` has nothing to rewrite and is silently skipped
+    rather than erroring the whole batch over one closed day.
+    """
+    if field not in schema.REVISABLE_FIELDS:
+        raise AppError(
+            "bad_field",
+            f"{field!r} is not a revisable field.",
+            status=400,
+            hint=f"Expected one of: {', '.join(schema.REVISABLE_FIELDS)}.",
+        )
+
+    row = db.get_plan(user_id, plan_id)
+    if not row:
+        raise AppError("plan_not_found", "No such plan.", status=404)
+
+    plan = row["plan_json"]
+    days = plan.get("days", [])
+    for idx in day_indices:
+        if not 0 <= idx < len(days):
+            raise AppError(
+                "day_out_of_range",
+                f"Day index {idx} is outside this plan's {len(days)} days.",
+                status=400,
+            )
+
+    targets = [i for i in day_indices if not days[i].get("no_school")]
+    if not targets:
+        raise AppError(
+            "no_revisable_days",
+            "None of the selected days have this field to revise.",
+            status=400,
+        )
+
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    needs_retrieval = field in schema.CODE_BEARING_FIELDS
+
+    import json as _json
+
+    new_days = list(days)
+    warnings: list[str] = []
+    retrieved_codes: set[str] = set()
+    for idx in targets:
+        original = days[idx]
+        if needs_retrieval:
+            contextual_feedback = (
+                f"Course: {subject_code}, Grade: {grade} - {feedback} {original.get('learning_targets', '')}"
+            )
+            result = retrieval.retrieve_grounded(contextual_feedback, subject_code=subject_code, grade=grade)
+            if result.empty:
+                result = RetrievalResult(chunks=[], rejected=result.rejected, floor=result.floor)
+        else:
+            result = RetrievalResult()
+        retrieved_codes |= result.codes
+
+        value = llm.rewrite_day_field(
+            user_id, original, feedback, field, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
+        )
+        merged = {**original, field: value}
+        updated, day_warnings = schema.validate_day(merged, path=f"days[{idx}]")
+        for key, was in original.items():
+            if key != field and key in updated:
+                updated[key] = was
+        new_days[idx] = updated
+        warnings += day_warnings
+
+    new_plan = {**plan, "days": new_days}
+
+    allowed = set(row.get("retrieved_ids") or []) | retrieved_codes
+    if needs_retrieval:
+        warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
+    cited = retrieval.cited_standards(new_plan, allowed, subject_code=subject_code)
+
+    out_path = docx_build.plan_output_path(new_plan, plan_id)
+
+    if bg_tasks is not None:
+        bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
+        docx_path_val = None
+    else:
+        docx_build.build_docx(new_plan, out_path)
+        storage.mirror_file(out_path)
+        docx_path_val = str(out_path)
+
+    updated_row = db.update_plan(
+        user_id,
+        plan_id,
+        plan_json=new_plan,
+        docx_path=docx_path_val,
+        warnings=(row.get("warnings") or []) + warnings,
+    )
+    db.replace_plan_standards(
+        plan_id,
+        user_id,
+        class_id=row.get("class_id"),
+        subject=subject_code,
+        grade=str(grade),
+        entries=cited,
+    )
+    return updated_row  # type: ignore[return-value]
