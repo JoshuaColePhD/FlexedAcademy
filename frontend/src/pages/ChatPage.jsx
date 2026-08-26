@@ -22,6 +22,7 @@ import { splitDecisions } from '../lib/decisionChecklist'
 import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -273,6 +274,12 @@ export function ChatPage() {
   // request calls for.
   const [artifactRetryTick, setArtifactRetryTick] = useState(0)
   const [query, setQuery] = useState('')
+  // chatId once one exists, else a per-class placeholder — so a draft
+  // started before the first message creates the chat isn't lost either.
+  // See useComposerDraft's own comment for why this re-syncs on every KEY
+  // change (switching chats), not just once on mount.
+  const draftKey = chatId || (classId ? `new:${classId}` : null)
+  useComposerDraft(draftKey, query, setQuery)
   /* ArtifactRail's empty-state starter cards (Week Overview / Materials /
      Assessments) hand their prompt here rather than submitting straight
      away — same "fill, don't fire" convention as everywhere else a click
@@ -1171,6 +1178,11 @@ export function ChatPage() {
       if (!content.trim() || (busy && !voiceTurn)) return
       setPreparing(true)
       setQuery('')
+      // A sent message shouldn't leave a stale draft behind to reappear on
+      // the next visit — see clearComposerDraft's own comment for why this
+      // can't just wait on the debounced write-back noticing `query` went
+      // empty.
+      clearComposerDraft(draftKey)
       // The chip has to clear here, before any request goes out — the sent
       // files are captured in `content` below and folded into this turn's
       // payload; leaving the chip pinned implied they were still in context
@@ -1571,7 +1583,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
+    [query, attachments, busy, chatId, classId, draftKey, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -1602,12 +1614,13 @@ export function ChatPage() {
       if (busy) {
         setQueuedMessage({ text: typed, attachments })
         setQuery('')
+        clearComposerDraft(draftKey)
         setAttachments([])
         return
       }
       submit(text)
     },
-    [busy, query, submit, attachments]
+    [busy, query, submit, attachments, draftKey]
   )
   useEffect(() => {
     if (busy || !queuedMessage) return

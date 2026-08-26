@@ -11,6 +11,10 @@ import { useExitTransition } from '../hooks/useExitTransition'
 import { suggestionCompletion } from '../lib/contextualSuggestions'
 
 const MAX_H = 220
+// A guardrail, not a technical ceiling — bounds how many extractText calls
+// one drop/pick can fire at once. See attachFiles' own comment for why the
+// overflow gets its own toast instead of just being quietly ignored.
+const MAX_ATTACH_BATCH = 5
 
 /* An attachment chip's own mount lifecycle — entrance was already implicit
  * (a plain array render, no fade), removal was a hard splice. This is
@@ -206,6 +210,24 @@ export function Composer({
     frozenRef.current = { key: suggestionKey, prompt: textSuggestion.prompt }
   }
 
+  // The ghost-text overlay below is aria-hidden — its whole point is to sit
+  // behind the real text, not be read as a second copy of it — so without
+  // this, a screen-reader user never learns Tab-completion exists at all.
+  // Announces once per suggestion (keyed on suggestionKey + whether one is
+  // currently showing), not on every keystroke that narrows `completion`
+  // within the SAME suggestion — Boolean(completion) only flips at the
+  // edges (appears/dismissed), so typing further into an already-announced
+  // suggestion doesn't retrigger this.
+  const [suggestionAnnouncement, setSuggestionAnnouncement] = useState('')
+  useEffect(() => {
+    setSuggestionAnnouncement(
+      completion && activeSuggestion
+        ? `Suggestion available: ${activeSuggestion.prompt}. Press Tab to accept, Escape to dismiss.`
+        : ''
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestionKey, Boolean(completion)])
+
   // Whether the box is already at MAX_H and scrolling instead of still
   // growing — the moment content FIRST crosses that line is the one point
   // in typing (or pasting) a long prompt that's worth a signal; every
@@ -301,48 +323,71 @@ export function Composer({
     []
   )
 
-  const handleFile = async (e) => {
-    const file = e.target.files?.[0]
+  // Both the file-picker input and drag-and-drop used to take only
+  // `files?.[0]` — the input had no `multiple`, and drop silently ignored
+  // everything past the first file. Selecting or dropping 3 files attached
+  // 1 and threw the other 2 away with no error, no toast, nothing. One
+  // shared batch path for both now, capped rather than unbounded (a
+  // teacher dropping a whole folder shouldn't fire 40 concurrent
+  // extractText calls) — and the cap itself is reported, not silent,
+  // since silent was exactly the bug.
+  const attachFiles = useCallback(
+    async (fileList) => {
+      const files = Array.from(fileList ?? [])
+      if (!files.length) return
+      const toProcess = files.slice(0, MAX_ATTACH_BATCH)
+      const skipped = files.length - toProcess.length
+
+      setIsAttaching(true)
+      try {
+        const results = await Promise.allSettled(toProcess.map((file) => api.extractText(file)))
+        const attached = []
+        const failed = []
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') attached.push({ ...r.value, file: toProcess[i], _id: attachmentIdRef.current++ })
+          else failed.push({ file: toProcess[i], err: r.reason })
+        })
+
+        if (attached.length) {
+          setAttachments((prev) => [...prev, ...attached])
+          if (attached.length === 1) {
+            toast.success(`Attached ${attached[0].filename}`, `${attached[0].chars.toLocaleString()} characters`)
+          } else {
+            toast.success(`Attached ${attached.length} files`, attached.map((a) => a.filename).join(', '))
+          }
+        }
+        if (failed.length) {
+          triggerShake()
+          failed.forEach(({ file, err }) => toast.error(`Could not read ${file.name}`, err.hint || err.message))
+        }
+        if (skipped > 0) {
+          toast.error(
+            `Only attached the first ${MAX_ATTACH_BATCH} files`,
+            `${skipped} more ${skipped === 1 ? 'was' : 'were'} skipped — attach ${skipped === 1 ? 'it' : 'them'} separately.`
+          )
+        }
+      } finally {
+        setIsAttaching(false)
+      }
+    },
+    [toast, triggerShake]
+  )
+
+  const handleFile = (e) => {
+    const files = e.target.files
     e.target.value = ''
-    if (!file) return
-    // Its own flag — the old code reused isGenerating, so parsing a PDF showed
-    // the assistant's typing indicator.
-    setIsAttaching(true)
-    try {
-      const data = await api.extractText(file)
-      // The raw File alongside the extracted text — not read again, just
-      // kept in case onSaveAttachmentAsDocument wants to upload the exact
-      // same bytes as a real class document later. `_id` is a stable key
-      // independent of array position — see Chip's own key comment below.
-      setAttachments((prev) => [...prev, { ...data, file, _id: attachmentIdRef.current++ }])
-      toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
-    } catch (err) {
-      triggerShake()
-      toast.error(`Could not read ${file.name}`, err.hint || err.message)
-    } finally {
-      setIsAttaching(false)
-    }
+    void attachFiles(files)
   }
 
-
-  const handleGlobalDrop = useCallback(async (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-    const file = e.dataTransfer?.files?.[0]
-    if (!file) return
-    setIsAttaching(true)
-    try {
-      const data = await api.extractText(file)
-      setAttachments((prev) => [...prev, { ...data, file, _id: attachmentIdRef.current++ }])
-      toast.success(`Attached ${data.filename}`, `${data.chars.toLocaleString()} characters`)
-    } catch (err) {
-      triggerShake()
-      toast.error(`Could not read ${file.name}`, err.hint || err.message)
-    } finally {
-      setIsAttaching(false)
-    }
-  }, [api, toast])
+  const handleGlobalDrop = useCallback(
+    (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsDragging(false)
+      void attachFiles(e.dataTransfer?.files)
+    },
+    [attachFiles]
+  )
 
   useEffect(() => {
     const handleDragOver = (e) => {
@@ -563,6 +608,7 @@ export function Composer({
             aria-label="Attach a PDF or text file"
             type="file"
             accept=".pdf,.txt,.md,.csv"
+            multiple
             onChange={handleFile}
             disabled={isAttaching}
           />
@@ -572,6 +618,9 @@ export function Composer({
               motionState === 'accept' || motionState === 'capped' ? 'fa-input-flash' : ''
             }`}
           >
+            <span className="sr-only" role="status" aria-live="polite">
+              {suggestionAnnouncement}
+            </span>
             {completion ? (
               <div
                 key={activeSuggestion?.id || 'none'}
