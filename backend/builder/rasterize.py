@@ -31,7 +31,7 @@ def _soffice_available() -> bool:
     return shutil.which("soffice") is not None
 
 
-def pdf_to_images(path: Path) -> list["object"]:
+def pdf_to_images(path: Path) -> list[object]:
     """list[PIL.Image.Image] for up to _MAX_PAGES pages. Raises on failure —
     same "never lie about succeeding" contract as template_intake._ocr_pdf_text."""
     import pdf2image
@@ -39,7 +39,7 @@ def pdf_to_images(path: Path) -> list["object"]:
     return pdf2image.convert_from_path(str(path), dpi=_DPI, first_page=1, last_page=_MAX_PAGES)
 
 
-def docx_to_images(path: Path) -> list["object"]:
+def docx_to_images(path: Path) -> list[object]:
     """Convert a .docx to PDF via LibreOffice headless, then rasterize. Raises
     AppError if LibreOffice isn't installed (a clear, actionable error rather
     than a vision-judge call silently comparing against nothing) or if the

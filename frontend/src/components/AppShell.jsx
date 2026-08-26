@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, Trash2, Users, X, Database } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, Trash2, Users, X, Database } from 'lucide-react'
 
 import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
@@ -126,17 +126,12 @@ function Rail({ onNavigate, onClose, collapsed, onToggleCollapse }) {
   const { entitlement } = useAuth()
   const { classId } = useParams()
   const location = useLocation()
-  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
   const { data: chats, isLoading, refetch } = useChats()
   const deleteChat = useDeleteChat()
   const confirm = useConfirm()
   const toast = useToast()
   const navigate = useNavigate()
   const classPath = `/c/${classId}`
-
-  const [classDropdownOpen, setClassDropdownOpen] = useState(false)
-
-  const activeClass = classes.find(c => c.id === classId) || classes[0]
   const togglePin = async (chat) => {
     try {
       await api.togglePin(chat.id, !chat.is_pinned)

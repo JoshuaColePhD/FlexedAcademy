@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { Info } from 'lucide-react'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { SplitLayout } from '../components/SplitLayout'

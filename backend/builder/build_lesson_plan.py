@@ -66,9 +66,15 @@ from docx.shared import Twips
 _THIS_DIR = str(Path(__file__).resolve().parent)
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
-from docx_helpers import (  # noqa: E402
-    fixed_layout, set_width, shade, strip_bloat, write_content_lines,
-    write_dropdown, write_label, write_plain,
+from docx_helpers import (
+    fixed_layout,
+    set_width,
+    shade,
+    strip_bloat,
+    write_content_lines,
+    write_dropdown,
+    write_label,
+    write_plain,
 )
 
 BLUE = "6d9eeb"   # header rows + label column, matches source template

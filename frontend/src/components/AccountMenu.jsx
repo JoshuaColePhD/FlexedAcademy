@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronUp, Info, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
+import { ChevronUp, Info, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
 import { getAvatar } from '../lib/avatars'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'

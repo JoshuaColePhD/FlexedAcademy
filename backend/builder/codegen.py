@@ -27,7 +27,8 @@ from .. import db, llm
 from ..config import settings
 from . import rasterize
 from .fixtures import fixture_expectations, synthetic_week_fixture
-from .generic_renderer import SpecRenderError, render as render_spec
+from .generic_renderer import SpecRenderError
+from .generic_renderer import render as render_spec
 from .spec_validate import validate_spec_against_analysis
 
 log = logging.getLogger("flexedacademy.builder.codegen")
@@ -148,7 +149,9 @@ def run_codegen_job(job_id: str) -> None:
     structure = json.loads(template["structure_json"])
     analysis = json.loads(template["analysis_summary"])
 
-    from ..template_intake import _summarize_for_llm  # local import: avoid a hard import cycle at module load
+    from ..template_intake import (
+        _summarize_for_llm,  # local import: avoid a hard import cycle at module load
+    )
     structure_summary = _summarize_for_llm(structure)
 
     original_path = Path(template["file_path"])

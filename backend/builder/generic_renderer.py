@@ -25,11 +25,17 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Twips
 
-from .docx_helpers import (
-    fixed_layout, set_width, shade, strip_bloat, write_content_lines,
-    write_dropdown, write_label, write_plain,
-)
 from ..schema import DAY_NAMES, ENGAGEMENT_OPTIONS
+from .docx_helpers import (
+    fixed_layout,
+    set_width,
+    shade,
+    strip_bloat,
+    write_content_lines,
+    write_dropdown,
+    write_label,
+    write_plain,
+)
 
 # The only named option lists a generated spec is allowed to reference by
 # name — deliberately not "any list the LLM writes out", so a dropdown's

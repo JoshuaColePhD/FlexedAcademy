@@ -1,13 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Link, NavLink } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  FileText,
   Plus,
   RotateCcw,
   Search,
@@ -19,10 +16,8 @@ import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
-import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { SplitLayout } from "../components/SplitLayout"
 import { useActiveClass } from '../hooks/useAppData'
-import { AccountMenu } from '../components/AccountMenu'
 
 /* Account management, as a page instead of a Supabase SQL editor tab.
  *
@@ -1593,7 +1588,7 @@ export function AdminPage() {
   const toast = useToast()
   const confirm = useConfirm()
   const qc = useQueryClient()
-  const { activeClass } = useActiveClass()
+  const { activeClass: _activeClass } = useActiveClass()
 
 
 

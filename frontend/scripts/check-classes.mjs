@@ -56,7 +56,7 @@ const TW = new RegExp(
       'p', 'px', 'py', 'pt', 'pr', 'pb', 'pl', 'm', 'mx', 'my', 'mt', 'mr', 'mb', 'ml',
       'w', 'h', 'min', 'max', 'size', 'inset', 'top', 'right', 'bottom', 'left',
       'overflow', 'overscroll', 'items', 'justify', 'self', 'place', 'content',
-      'col', 'row', 'order', 'basis', 'shrink', 'grow', 'z', 'opacity', 'shadow',
+      'col', 'row', 'order', 'basis', 'shrink', 'grow', 'z', 'opacity', 'shadow', 'drop',
       'font', 'leading', 'tracking', 'truncate', 'line', 'whitespace', 'break',
       'animate', 'transition', 'duration', 'delay', 'ease', 'origin', 'scale',
       'translate', 'rotate', 'skew', 'transform', 'cursor', 'select', 'pointer',

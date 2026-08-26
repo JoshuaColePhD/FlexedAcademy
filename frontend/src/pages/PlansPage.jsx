@@ -1,7 +1,7 @@
 import { SplitLayout } from "../components/SplitLayout"
 import { Fragment, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Download, FileText, Search, Trash2, CheckSquare, Square, LayoutGrid, List as ListIcon, Filter } from 'lucide-react'
+import { Download, FileText, Search, Trash2, CheckSquare, Square, LayoutGrid, List as ListIcon } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyPlanShareLink } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
@@ -9,7 +9,6 @@ import { useConfirm } from '../lib/confirmContext'
 import { useActiveClass, useCalendar, usePlanWeeks, useDeletePlan } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { SkeletonText } from '../components/Skeleton'
-import { unitSuffix } from '../lib/planShape'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { ContextualSuggestionList } from '../components/ContextualSuggestionList'
 
@@ -30,8 +29,6 @@ import { ContextualSuggestionList } from '../components/ContextualSuggestionList
  * times, however many times it had been rebuilt — with no way to tell which
  * was current without opening each one.
  */
-
-const SEARCH_THRESHOLD = 8
 
 function matchesSearch(plan, query) {
   const q = query.trim().toLowerCase()

@@ -67,7 +67,7 @@ async def _builder_codegen_worker_loop() -> None:
         reset = await loop.run_in_executor(None, db.reset_stale_running_builder_codegen_jobs)
         if reset:
             log.warning("builder codegen: reset %d stale 'running' job(s) back to 'queued' at boot", reset)
-    except Exception:  # noqa: BLE001 — a failed sweep must not stop the worker loop from starting
+    except Exception:
         log.exception("builder codegen: startup staleness sweep failed")
 
     while True:
@@ -79,7 +79,7 @@ async def _builder_codegen_worker_loop() -> None:
                 continue  # a job just finished — check immediately for another, instead of sleeping first
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 — one bad job must not kill the loop for every school after it
+        except Exception:
             log.exception("builder codegen worker loop: unexpected error")
         await asyncio.sleep(_CODEGEN_POLL_INTERVAL_S)
 

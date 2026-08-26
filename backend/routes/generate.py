@@ -615,7 +615,7 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
                 if text.startswith("a couple of quick questions"):
                     prior_clarify_rounds += 1
                     continue
-                if " is built" in text or " is updated" in text or text.startswith("done —") or text.startswith("done -"):
+                if " is built" in text or " is updated" in text or text.startswith(("done —", "done -")):
                     break  # a real commitment — the unbuilt stretch ends here
                 # Anything else (a plain nudge, a brainstorm reply) is still
                 # part of the same unbuilt stretch — keep scanning past it.

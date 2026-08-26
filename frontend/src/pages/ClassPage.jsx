@@ -1,18 +1,13 @@
 import { SplitLayout } from "../components/SplitLayout"
-import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import {
   Check,
   ArrowDown,
-  ArrowLeft,
   ArrowRight,
   ArrowUp,
-  
   BookOpen,
   FileText,
   Loader2,
-  
-  Plus,
   Trash2,
   Upload,
   Settings,
@@ -27,14 +22,13 @@ import { GRADES, DEFAULT_GRADE, gradeLabel } from '../lib/grades'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
 import { useActiveClass } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { SkeletonText } from '../components/Skeleton'
 import { SchoolSelect } from '../components/SchoolSelect'
-import { AccountMenu } from '../components/AccountMenu'
 import { classColor } from '../lib/classColor'
 import { findFramework, verifiedPct } from '../lib/frameworks'
 

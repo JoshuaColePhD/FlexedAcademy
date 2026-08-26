@@ -260,7 +260,7 @@ export function ClassDocuments({ cls, onChanged, onKindChange }) {
           </div>
 
           {linkOpen ? (
-            <form onSubmit={submitLink} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-edge/30 mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+            <form onSubmit={submitLink} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-edge/30 mt-1 fa-rise">
               <label className="visually-hidden" htmlFor={`doc-link-${cls.id}`}>
                 Google Doc or other public link
               </label>

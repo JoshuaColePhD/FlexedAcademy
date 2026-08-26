@@ -1,13 +1,13 @@
 import { SplitLayout } from "../components/SplitLayout"
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Loader2, Database, BookOpen, ChevronDown, ListFilter, Plus, FileText } from 'lucide-react'
+import { Search, Loader2, Database, BookOpen, ChevronDown, Plus, FileText } from 'lucide-react'
 import { api } from '../lib/api'
 import { useActiveClass } from '../hooks/useAppData'
 import { useNavigate, Link } from 'react-router-dom'
 import { useToast } from '../lib/toastContext'
 
-function StandardRow({ s, classId, subject, coverageCount }) {
+function StandardRow({ s, classId, subject: _subject, coverageCount }) {
   const [expanded, setExpanded] = useState(false)
   const navigate = useNavigate()
   const toast = useToast()
