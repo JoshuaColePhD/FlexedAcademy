@@ -170,11 +170,15 @@ export function getContextualSuggestions(context = {}) {
   if (nextDecision && !artifact) {
     const openCount = decisions.filter((decision) => decision.value == null).length
     const wk = targetWeek ? weekLabel(targetWeek) : 'this week'
+    // Straight apostrophes throughout — matching every other prompt in this
+    // file (and what a teacher's own keyboard actually produces by
+    // default), so suggestionCompletion's prefix match isn't left to depend
+    // on which of these templates happened to get picked.
     const prompts = {
-      week: targetWeek ? `Let's plan ${weekLabel(targetWeek)}.` : 'Let’s decide which week to plan.',
-      anchor: `Let’s choose the anchor text or topic for ${wk}.`,
-      skill: `Let’s choose the skill focus for ${wk}.`,
-      assessment: `Let’s choose an assessment for ${wk}.`,
+      week: targetWeek ? `Let's plan ${weekLabel(targetWeek)}.` : "Let's decide which week to plan.",
+      anchor: `Let's choose the anchor text or topic for ${wk}.`,
+      skill: `Let's choose the skill focus for ${wk}.`,
+      assessment: `Let's choose an assessment for ${wk}.`,
     }
     suggestions.push(makeSuggestion({
       id: `resolve-${nextDecision.key}`,
@@ -196,7 +200,7 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'review-current-plan',
       label: wk ? `Review ${wk}’s plan` : 'Review this plan',
-      prompt: `Let's review ${wk ? `${wk}’s` : 'this'} plan.`,
+      prompt: `Let's review ${wk ? `${wk}'s` : 'this'} plan.`,
       reason: 'Built and ready for a second pass.',
       priority: 5,
       context: 'plan',
@@ -242,12 +246,27 @@ export function getContextualSuggestions(context = {}) {
     .slice(0, MAX_SUGGESTIONS)
 }
 
-/** Return only the part of a suggestion that remains after a typed prefix. */
+// Quote style is inconsistent across the suggestion templates above (compare
+// line 157's straight "Let's" to line 174's curly "Let's") — not something a
+// teacher typing their own straight-quote apostrophe (what every keyboard
+// and most autocorrect produce by default) should have to match by luck.
+// 1:1 character substitution only, never collapsing/removing anything —
+// suggestionCompletion slices the ORIGINAL prompt at `prefix.length`, which
+// only stays a valid offset if normalizing can't change string length.
+const normalizeQuotes = (s) => s.replace(/[’‘]/g, "'").replace(/[“”]/g, '"')
+
+/** Return only the part of a suggestion that remains after a typed prefix.
+ *  Matching is on a normalized (lowercase, straight-quoted) form so a minor
+ *  typographic difference — curly vs straight apostrophe, most commonly —
+ *  doesn't make an otherwise-correct continuation look like a mismatch and
+ *  silently drop the ghost text a teacher is plainly still typing toward. */
 export function suggestionCompletion(value = '', suggestion) {
   if (!suggestion?.prompt) return ''
   const prefix = String(value)
   if (!prefix) return suggestion.prompt
-  if (!suggestion.prompt.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())) return ''
+  const normalizedPrompt = normalizeQuotes(suggestion.prompt).toLocaleLowerCase()
+  const normalizedPrefix = normalizeQuotes(prefix).toLocaleLowerCase()
+  if (!normalizedPrompt.startsWith(normalizedPrefix)) return ''
   return suggestion.prompt.slice(prefix.length)
 }
 
