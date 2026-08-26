@@ -20,10 +20,12 @@ export function Tooltip({ content, position = 'top', interactive = false, childr
   const placement =
     position === 'bottom-right'
       ? 'left-0 top-full pt-2'
-      : position === 'bottom'
-        ? 'left-1/2 top-full pt-2 -translate-x-1/2'
-        : // 'top', the default: centered above the trigger.
-          'left-1/2 bottom-full pb-2 -translate-x-1/2'
+      : position === 'bottom-left'
+        ? 'right-0 top-full pt-2'
+        : position === 'bottom'
+          ? 'left-1/2 top-full pt-2 -translate-x-1/2'
+          : // 'top', the default: centered above the trigger.
+            'left-1/2 bottom-full pb-2 -translate-x-1/2'
 
   return (
     <span

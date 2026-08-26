@@ -475,6 +475,7 @@ export function AppShell({ children }) {
   return (
     <ShellContext.Provider value={shell}>
     <div className="flex h-full w-full overflow-hidden p-2 gap-2 relative z-10">
+      <div className="app-blob" aria-hidden="true" />
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
         href="#main"

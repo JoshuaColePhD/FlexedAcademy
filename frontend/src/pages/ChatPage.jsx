@@ -2309,7 +2309,7 @@ export function ChatPage() {
             !calendar.school.has_calendar ? (
               <Tooltip
                 interactive
-                position="bottom"
+                position="bottom-left"
                 content={
                   <span>
                     No calendar on file.{' '}
@@ -2725,7 +2725,7 @@ export function ChatPage() {
 
       <div
         ref={chatPaneWrapRef}
-        className="flex min-w-0 flex-col transition-[flex-basis] bg-paper rounded-2xl border border-edge shadow-sm overflow-hidden"
+        className="flex min-w-0 flex-col transition-[flex-basis] glass-panel rounded-2xl shadow-sm overflow-hidden"
         style={
           docOpen
             ? {
