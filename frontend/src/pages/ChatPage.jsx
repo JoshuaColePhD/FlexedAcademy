@@ -2651,7 +2651,7 @@ export function ChatPage() {
      and the Composer owns a MediaRecorder and a ResizeObserver that do not
      survive that. */
   return (
-    <div className="flex h-full w-full min-w-0" ref={splitRef}>
+    <div className="flex h-full w-full min-w-0 gap-2" ref={splitRef}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document
@@ -2678,7 +2678,7 @@ export function ChatPage() {
 
       <div
         ref={chatPaneWrapRef}
-        className="flex min-w-0 flex-col transition-[flex-basis]"
+        className="flex min-w-0 flex-col transition-[flex-basis] bg-paper rounded-2xl border border-edge shadow-sm overflow-hidden"
         style={
           docOpen
             ? {

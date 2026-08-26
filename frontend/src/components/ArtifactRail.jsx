@@ -36,32 +36,7 @@ const RailGroup = ({ title, defaultOpen, isBar, children }) => {
 import { WeekStrip } from './WeekStrip'
 import { useToast } from '../lib/toastContext'
 
-/* A quiet line-art sketch for the one moment the rail has nothing to show —
-   an open notebook, not a stock "empty box" glyph. Authored, not a Unicode
-   glyph standing in for an icon (craft-floor's own ban); currentColor so it
-   themes with whatever wraps it rather than carrying its own hex. */
-function EmptyRailArt({ color }) {
-  return (
-    <svg
-      viewBox="0 0 64 48"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="rail-empty-art"
-      style={{ color: `rgb(${color})` }}
-    >
-      <path d="M32 10 C27 6 19 5 10 6 L10 38 C19 37 27 38 32 42 C37 38 45 37 54 38 L54 6 C45 5 37 6 32 10 Z" />
-      <path d="M32 10 L32 42" />
-      <path d="M15 15 L26 14" opacity="0.55" />
-      <path d="M15 21 L25 20" opacity="0.55" />
-      <path d="M38 14 L49 15" opacity="0.55" />
-      <path d="M39 20 L49 21" opacity="0.55" />
-    </svg>
-  )
-}
+
 
 /* The artifact rail — the content that fills the drawer once it's open (see
  * ArtifactDrawer at the bottom of this file for the always-mounted shell
@@ -417,21 +392,37 @@ export function ArtifactRail({
         ) : null}
         </RailGroup>
       ) : (
-        <div className="rail-empty">
-          {/* No room for it in the one-row phone bar — same reasoning as
-              dropping "Built from" a few lines up. */}
-          {!isBar ? <EmptyRailArt color={color.rgb} /> : null}
-          <p>Nothing built yet. Describe a week in the chat.</p>
-          {/* Composer's own id — the same one ChatPage restores focus to
-              when the document panel closes (see rail-open-title above) —
-              rather than a new ref threaded down just for this button. */}
-          <button
-            type="button"
-            className="btn text-xs"
-            onClick={() => document.getElementById('composer-input')?.focus()}
-          >
-            Start a plan
-          </button>
+        <div className="flex flex-col gap-6 p-4 w-full opacity-60 pointer-events-none select-none">
+          {/* Wireframe Header */}
+          <div className="flex flex-col gap-3 border-b border-edge/50 pb-5">
+            <div className="h-6 w-1/3 border-2 border-edge border-dashed rounded-md animate-pulse" />
+            <div className="h-10 w-3/4 border-2 border-edge rounded-lg animate-pulse" />
+          </div>
+          
+          {/* Wireframe Section 1 */}
+          <div className="flex flex-col gap-3">
+            <div className="h-6 w-1/4 border-2 border-edge border-dashed rounded-md animate-pulse mb-1" />
+            <div className="h-4 w-full border border-edge rounded animate-pulse" />
+            <div className="h-4 w-[90%] border border-edge rounded animate-pulse" />
+            <div className="h-4 w-[75%] border border-edge rounded animate-pulse" />
+          </div>
+
+          {/* Wireframe Cards */}
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            <div className="h-24 border-2 border-edge border-dashed rounded-xl flex items-center justify-center animate-pulse">
+              <div className="h-8 w-8 border border-edge rounded-md" />
+            </div>
+            <div className="h-24 border-2 border-edge border-dashed rounded-xl flex items-center justify-center animate-pulse">
+              <div className="h-8 w-8 border border-edge rounded-md" />
+            </div>
+          </div>
+          
+          {/* Wireframe Section 2 */}
+          <div className="flex flex-col gap-3 mt-2">
+            <div className="h-6 w-1/3 border-2 border-edge border-dashed rounded-md animate-pulse mb-1" />
+            <div className="h-4 w-full border border-edge rounded animate-pulse" />
+            <div className="h-4 w-[85%] border border-edge rounded animate-pulse" />
+          </div>
         </div>
       )}
 

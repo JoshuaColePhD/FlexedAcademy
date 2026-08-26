@@ -194,44 +194,7 @@ function Rail({ onNavigate, onClose }) {
           lets "New plan" — the one thing a teacher opens this app to do — sit
           right under the logo instead of one row down. */}
       <div className="px-2 pb-1 pt-1">
-        {/* Class Switcher */}
-        {classes.length > 0 && (
-          <div className="relative mb-3 z-20">
-            <button 
-              type="button"
-              onClick={() => setClassDropdownOpen(!classDropdownOpen)}
-              className="w-full flex items-center justify-between bg-paper-inset hover:bg-paper-sunken px-3 py-2 rounded-lg text-sm font-medium transition-colors outline-none"
-            >
-              <span className="truncate">{activeClass?.name || 'Select Class'}</span>
-              <ChevronDown size={14} className="text-ink-muted opacity-60" />
-            </button>
-            <AnimatePresence>
-              {classDropdownOpen && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  className="absolute top-full left-0 right-0 mt-1 bg-paper-raised border border-edge rounded-lg shadow-md overflow-hidden z-30"
-                >
-                  {classes.map(c => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        setClassDropdownOpen(false)
-                        navigate(`/c/${c.id}`)
-                        onNavigate?.()
-                      }}
-                      className={`w-full text-left px-3 py-2 text-sm transition-colors ${c.id === classId ? 'bg-paper-inset text-accent-text font-semibold' : 'hover:bg-paper-inset'}`}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
+
 
         {/* The one thing a teacher opens this app to do. Was .rail-cta's own
             --rail-pop teal (colorize.md) — a token .neo-world doesn't
@@ -568,18 +531,14 @@ export function AppShell({ children }) {
         </>
       ) : null}
 
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper rounded-2xl border border-edge shadow-sm" id="main">
-        {/* The landing hero's own floating aurora (see .app-blob in
-            base.css), scoped to this pane instead of the viewport — on
-            request, so every page behind the rail carries the same
-            drifting wash the marketing hero does instead of a plainer,
-            static glow. z-index: -1 keeps it under #main's own content
-            (the header bar and children below) without needing to touch
-            either of those. */}
-        <div className="app-blob" aria-hidden="true" />
+      <div 
+        className={`relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden ${!location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) ? 'bg-paper rounded-2xl border border-edge shadow-sm' : ''}`} 
+        id="main"
+      >
+        {!location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) && <div className="app-blob" aria-hidden="true" />}
         <TemplateBanner />
         <OnboardingWizardHost />
-        {isNarrow ? (
+        {isNarrow && !location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button
               type="button"
@@ -589,19 +548,19 @@ export function AppShell({ children }) {
             >
               <PanelLeft size={17} aria-hidden="true" />
             </button>
-            {/* The drawer carries the same wordmark (see Rail, above), but with
-                the rail closed by default on a phone there was nothing on
-                screen naming the app at all — just a browser tab bar showing
-                the bare domain. Absolutely centered on the bar itself, not
-                the leftover space beside the menu button — flex-1 centered
-                it against the wrong span and it read as off-center next to
-                a button with no matching weight on the right. */}
             <span className="pointer-events-none absolute inset-x-0 truncate text-center text-sm font-semibold tracking-tight text-ink">
               FlexEd Academy
             </span>
           </div>
         ) : null}
-        <div className="min-h-0 flex-1">{children}</div>
+        
+        {location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) ? (
+          <div className="min-h-0 flex-1 flex flex-row gap-2">
+            {children}
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1">{children}</div>
+        )}
       </div>
     </div>
     </ShellContext.Provider>

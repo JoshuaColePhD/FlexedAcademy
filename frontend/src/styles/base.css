@@ -2172,8 +2172,10 @@
     flex-shrink: 0;
     flex-direction: column;
     overflow-y: auto;
-    /* Rule 1's exception: two surfaces of identical tone meet here. */
-    border-left: 1px solid var(--edge);
+    /* Curved like other panels */
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-sm);
     background: var(--paper);
     padding: var(--sp-4) 14px;
     /* Same reasoning as .app-rail's own shadow, mirrored — this panel sits
