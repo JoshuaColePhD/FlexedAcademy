@@ -229,6 +229,29 @@ def get_standards_batch(codes: str = Query(..., max_length=4000), subject: str |
     requested = [c.strip() for c in codes.split(",") if c.strip()]
     return {code: retrieval.chunk_for_code(code, subject_code=subject) for code in requested}
 
+@router.get("/coverage")
+def get_coverage(class_id: str = Query(...)):
+    """Returns a mapping of standard code to citation count for the given class."""
+    return db.get_standards_coverage(class_id)
+
+
+@router.get("/{code:path}/lessons")
+def get_standard_lessons(code: str, class_id: str = Query(...)):
+    """Returns past lessons where this standard was cited."""
+    return db.get_standard_lessons(class_id, code)
+
+
+@router.get("/{code:path}/deconstruct")
+def deconstruct_standard(code: str, subject: str | None = Query(None), user_id: str = Depends(get_current_user)):
+    """Uses LLM to simplify a dense standard into an 'I can' statement."""
+    chunk = retrieval.chunk_for_code(code, subject_code=subject)
+    if not chunk:
+        raise AppError("standard_not_found", f"No standard with code {code!r}.", status=404)
+        
+    description = (chunk.get("metadata") or {}).get("description") or chunk.get("document", "")
+    simplified = llm.deconstruct_standard(user_id, code, description)
+    return {"simplified": simplified}
+
 
 @router.get("/{code:path}")
 def get_standard(code: str, subject: str | None = Query(None)):

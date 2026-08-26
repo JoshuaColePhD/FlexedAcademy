@@ -185,90 +185,107 @@ export function ClassDocuments({ cls, onChanged, onKindChange }) {
           ))}
         </ul>
       ) : docs.isLoading ? (
-        <p className="text-xs text-ink-muted">Loading documents…</p>
+        <div className="flex flex-col items-center justify-center p-6 bg-paper-sunken/30 rounded-xl border border-dashed border-edge/30">
+          <Loader2 size={24} className="animate-spin text-ink-muted mb-2" />
+          <p className="text-xs text-ink-muted">Loading documents…</p>
+        </div>
       ) : docs.isError ? (
-        /* Was indistinguishable from "no documents": rows fell back to [] on
-           any error, so a failed request read as an empty class. */
-        <p className="text-xs text-mark">
-          Couldn’t load documents. {errorParts(docs.error).message}
-        </p>
+        <div className="p-4 bg-mark/5 border border-mark/20 rounded-xl">
+          <p className="text-xs text-mark">
+            Couldn’t load documents. {errorParts(docs.error).message}
+          </p>
+        </div>
       ) : (
-        <p className="text-xs text-ink-muted">No documents yet — add one below.</p>
+        <div className="flex flex-col items-center justify-center p-8 bg-paper-sunken/30 rounded-xl border border-dashed border-edge/30 text-center">
+          <div className="bg-paper p-3 rounded-full shadow-sm border border-edge/20 mb-3">
+            <FileText size={24} className="text-ink-muted" />
+          </div>
+          <p className="text-sm font-medium text-ink">No documents yet</p>
+          <p className="text-xs text-ink-muted mt-1 max-w-xs">Upload your pacing guides, rubrics, and syllabi to give the AI context about this class.</p>
+        </div>
       )}
 
-      <div className="mt-1 flex flex-col gap-2.5">
-        <label className="flex items-center gap-2 text-xs text-ink-muted">
-          Save as
-          <select
-            aria-label="Document type"
-            value={kind}
-            onChange={(e) => setKind(e.target.value)}
-            className="neo-select neo-inset rounded-lg bg-paper-raised py-1.5 pl-2 pr-7 text-xs font-medium text-ink"
-          >
-            {Object.entries(KIND_LABEL).map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="fa-press neo-raised inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {uploading ? (
-              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-            ) : (
-              <Upload size={14} aria-hidden="true" />
-            )}
-            {uploading ? 'Reading…' : 'Add a document'}
-          </button>
-          <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md,.csv" hidden onChange={upload} />
-          <span className="text-xs text-ink-faint" aria-hidden="true">or</span>
-          <button
-            type="button"
-            onClick={() => setLinkOpen((open) => !open)}
-            disabled={uploading}
-            aria-pressed={linkOpen}
-            className={`fa-press inline-flex items-center gap-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-              linkOpen ? 'text-accent-text' : 'text-ink-muted hover:text-ink hover:underline'
-            }`}
-          >
-            <Link2 size={12} aria-hidden="true" />
-            paste a link instead
-          </button>
-        </div>
-
-        {linkOpen ? (
-          <form onSubmit={submitLink} className="fa-context-pop flex flex-wrap items-center gap-2">
-            <label className="visually-hidden" htmlFor={`doc-link-${cls.id}`}>
-              Google Doc or other public link
+      <div className="mt-4 rounded-xl border border-dashed border-edge/60 bg-paper/30 p-5 transition-colors hover:border-edge/80">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-4">
+            <label className="flex items-center gap-2 text-sm font-medium text-ink">
+              <span className="text-ink-muted">Adding:</span>
+              <select
+                aria-label="Document type"
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+                className="neo-select rounded-lg bg-paper border border-edge/30 py-1.5 pl-3 pr-8 text-xs font-semibold text-ink shadow-sm cursor-pointer"
+              >
+                {Object.entries(KIND_LABEL).map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </label>
-            <input
-              id={`doc-link-${cls.id}`}
-              type="url"
-              inputMode="url"
-              autoFocus
-              required
-              placeholder="Paste a Google Doc link (or any public URL)"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              className="input min-w-0 flex-1 text-xs"
-            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
             <button
-              type="submit"
-              disabled={uploading || !linkUrl.trim()}
-              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-lg bg-paper-raised px-4 py-2.5 text-sm font-medium text-ink hover:bg-paper-sunken border border-edge/40 shadow-sm transition-all disabled:opacity-50"
             >
-              {uploading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
-              {uploading ? 'Reading…' : 'Add'}
+              {uploading ? (
+                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Upload size={16} className="text-ink-muted" aria-hidden="true" />
+              )}
+              {uploading ? 'Uploading…' : 'Upload File'}
             </button>
-          </form>
-        ) : null}
+            <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md,.csv" hidden onChange={upload} />
+            
+            <span className="text-xs text-ink-muted font-medium px-1" aria-hidden="true">OR</span>
+            
+            <button
+              type="button"
+              onClick={() => setLinkOpen((open) => !open)}
+              disabled={uploading}
+              aria-pressed={linkOpen}
+              className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium border transition-all disabled:opacity-50 ${
+                linkOpen 
+                  ? 'bg-paper-sunken border-edge/60 text-ink shadow-inner' 
+                  : 'bg-transparent border-dashed border-edge/50 text-ink-muted hover:border-edge/80 hover:text-ink hover:bg-paper/50'
+              }`}
+            >
+              <Link2 size={16} aria-hidden="true" />
+              Paste Link
+            </button>
+          </div>
+
+          {linkOpen ? (
+            <form onSubmit={submitLink} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-edge/30 mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+              <label className="visually-hidden" htmlFor={`doc-link-${cls.id}`}>
+                Google Doc or other public link
+              </label>
+              <input
+                id={`doc-link-${cls.id}`}
+                type="url"
+                inputMode="url"
+                autoFocus
+                required
+                placeholder="Paste a Google Doc link (or any public URL)"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                className="input min-w-0 flex-1 text-sm bg-paper shadow-sm py-2 px-3 rounded-lg border-edge/40"
+              />
+              <button
+                type="submit"
+                disabled={uploading || !linkUrl.trim()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper transition-all hover:bg-ink/90 disabled:opacity-50 shadow-sm"
+              >
+                {uploading ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
+                {uploading ? 'Reading…' : 'Add Link'}
+              </button>
+            </form>
+          ) : null}
+        </div>
       </div>
     </div>
   )

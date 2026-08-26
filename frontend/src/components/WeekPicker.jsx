@@ -35,12 +35,7 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
      message and the select's accessible name, neither of which is visible
      text anymore. */
   if (!options.length) {
-    return (
-      <p className="chat-week">
-        <CalendarDays size={12} aria-hidden="true" />
-        {schoolName ? `${schoolName} — no calendar on file` : 'No school calendar on file'}
-      </p>
-    )
+    return null
   }
 
   return (

@@ -1,3 +1,4 @@
+import { SplitLayout } from "../components/SplitLayout"
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -14,6 +15,11 @@ import {
   Plus,
   Trash2,
   Upload,
+  Settings,
+  Database,
+  Sparkles,
+  AlertTriangle,
+  Zap,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { GRADES, DEFAULT_GRADE, gradeLabel } from '../lib/grades'
@@ -326,116 +332,30 @@ export function GlobalDocuments() {
   )
 }
 
-function ClassStandards({ cls }) {
-  const toast = useToast()
-  const [uploading, setUploading] = useState(false)
-  const fileRef = useRef(null)
-  
-  const standards = useQuery({
-    queryKey: ['globalStandards', cls.state, cls.subject, cls.grade],
-    queryFn: () => api.getGlobalStandards(cls.state, cls.subject, cls.grade),
-    retry: false,
-    enabled: !!cls.state,
-  })
-
-  if (!cls.state) return null
-
-  const upload = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    setUploading(true)
-    try {
-      const res = await api.uploadGlobalStandards(cls.state, cls.subject, cls.grade, file)
-      toast.success('Standards mapped!', `${res.count} standards extracted.`)
-      standards.refetch()
-    } catch (err) {
-      toast.apiError('Could not map standards from that PDF', err)
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  if (standards.isLoading) {
-    return (
-      <div className="neo-panel mt-4 rounded-xl bg-paper/60 p-4">
-        <SkeletonText lines={1} className="w-1/3" />
-      </div>
-    )
-  }
-
-  const list = standards.data?.standards || []
-
-  return (
-    <div className="neo-panel mt-4 rounded-xl bg-paper/30 p-4 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-      <div className="mb-4 flex items-center justify-between border-b border-edge pb-2">
-        <div>
-          <h2 className="text-sm font-semibold text-ink">{cls.state} Standards</h2>
-          <p className="text-xs text-ink-muted">For {cls.subject} · Grade {gradeLabel(cls.grade)}</p>
-        </div>
-      </div>
-
-      {list.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-edge p-6 text-center">
-          <FileText className="mx-auto mb-2 text-ink-muted" size={24} />
-          <h3 className="text-sm font-medium text-ink">Be the first!</h3>
-          <p className="mt-1 text-sm text-ink-muted">
-            We don't have the {cls.state} {gradeLabel(cls.grade)} {cls.subject} standards yet. Upload your state's standards PDF, and our AI will map it for everyone.
-          </p>
-          <input
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            ref={fileRef}
-            onChange={upload}
-            disabled={uploading}
-          />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="fa-press mt-4 inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-4 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {uploading ? (
-              <><Loader2 size={16} className="animate-spin" /> Mapping PDF...</>
-            ) : (
-              <><Upload size={16} /> Upload Standards PDF</>
-            )}
-          </button>
-        </div>
-      ) : (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-              {list.length} standards mapped
-            </span>
-          </div>
-          <div className="max-h-48 overflow-y-auto rounded border border-edge bg-paper-raised p-2">
-            {list.map((s, i) => (
-              <div key={i} className="mb-2 last:mb-0 border-b border-edge/50 pb-2 last:border-0 last:pb-0">
-                <span className="font-medium text-xs text-ink block">{s.code}</span>
-                <span className="text-xs text-ink-muted">{s.description}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function EditClassSettings({ cls, frameworks, onChanged }) {
   const toast = useToast()
+  const [name, setName] = useState(cls.name || '')
   const [subject, setSubject] = useState(cls.subject)
   const [saving, setSaving] = useState(false)
 
-  const isChanged = subject !== cls.subject
+  const isChanged = subject !== cls.subject || name !== cls.name
+
+  const handleSubjectChange = (newSubject) => {
+    setSubject(newSubject)
+    const fw = findFramework(frameworks, newSubject)
+    if (fw) {
+      setName(`${shortLabel(fw)} · ${gradeLabel(cls.grade)}`)
+    } else {
+      setName(newSubject)
+    }
+  }
 
   const submit = async (e) => {
     e.preventDefault()
     if (!isChanged) return
     setSaving(true)
     try {
-      const updated = await api.updateClass(cls.id, { subject })
+      const updated = await api.updateClass(cls.id, { subject, name })
       toast.success('Class updated')
       onChanged?.(updated)
     } catch (err) {
@@ -448,13 +368,25 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
+        <label htmlFor="edit-class-name" className="text-sm font-medium text-ink">
+          Class Name
+        </label>
+        <input
+          id="edit-class-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="neo-inset w-full rounded-lg bg-paper-sunken px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+        />
+      </div>
+      <div className="flex flex-col gap-2">
         <label htmlFor="edit-class-framework" className="text-sm font-medium text-ink">
           Subject
         </label>
         <FrameworkPicker
           frameworks={frameworks}
           value={subject}
-          onChange={setSubject}
+          onChange={handleSubjectChange}
           id="edit-class-framework"
         />
       </div>
@@ -463,7 +395,7 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
         <button
           type="submit"
           disabled={!isChanged || saving}
-          className="fa-press neo-raised flex items-center justify-center gap-2 rounded-lg bg-paper-raised px-6 py-2.5 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
+          className="fa-press neo-raised flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : null}
           Save Changes
@@ -501,65 +433,80 @@ function ClassDetail({ cls, frameworks, onChanged }) {
   }
 
   return (
-    <div className="w-full max-w-3xl flex flex-col gap-12 pb-16">
+    <div className="w-full max-w-5xl flex flex-col gap-6">
 
-      <header className="mb-2">
+      <header className="mb-4">
         <div className="flex items-center gap-3">
           <span
-            className="class-dot h-4 w-4 rounded-full"
+            className="class-dot h-5 w-5 rounded-full"
             aria-hidden="true"
             style={{ '--class-dot-color': `rgb(${classColor(cls.id).rgb})`, backgroundColor: 'var(--class-dot-color)' }}
           />
-          <h2 className="text-xl font-semibold text-ink">{cls.name}</h2>
+          <h2 className="text-2xl font-bold text-ink">{cls.name}</h2>
         </div>
       </header>
 
-      <div className="flex flex-col gap-8 fa-rise">
-        <section id="class-documents" className="flex flex-col gap-4">
-          <div className="border-b border-edge pb-2">
-            <h3 className="text-sm font-semibold text-ink">Class Configuration</h3>
-            <p className="text-xs text-ink-muted">Reference documents and settings for this class.</p>
-          </div>
-          
-          {verified !== null && verified < 100 ? (
-            <p className="text-xs text-ink-muted mt-2">
-              <span className="rounded-full bg-flag-tint px-1.5 py-0.5 font-medium text-flag">
-                {verified}% verified
-              </span>{' '}
-              of {shortLabel(fw)} word-for-word against the source PDF.
-            </p>
-          ) : null}
-          
-          <ClassDocuments cls={cls} onChanged={onChanged} />
-          <ClassStandards cls={cls} />
-        </section>
-
-        <section className="flex flex-col gap-4 pt-4 border-t border-edge">
-          <ClassCustomInstructions cls={cls} onChanged={onChanged} />
-        </section>
-
-        <section className="flex flex-col gap-4 pt-4 border-t border-edge">
-          <div className="border-b border-edge pb-2">
-            <h3 className="text-sm font-semibold text-ink">Edit Class Details</h3>
-            <p className="text-xs text-ink-muted">Change the subject for this class.</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 fa-rise">
+        
+        {/* Core Settings Card */}
+        <div id="section-core" className="flex flex-col gap-4 p-6 rounded-2xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm scroll-mt-8">
+          <div className="flex items-center gap-2 mb-2 border-b border-edge/50 pb-3">
+            <Settings size={18} className="text-ink-muted" />
+            <h3 className="text-base font-semibold text-ink">Core Settings</h3>
           </div>
           <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
-        </section>
-
-        <section className="flex flex-col gap-4 pt-4 border-t border-edge">
-          <button
-            type="button"
-            onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
-            className="neo-raised inline-flex items-center justify-center gap-1.5 w-full rounded-lg px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-paper-sunken border border-edge"
-          >
-            Generate 5-Minute Sub Plan
-          </button>
-        </section>
-
-        <section className="flex flex-col gap-4 pt-4 border-t border-edge">
-          <div className="border-b border-edge pb-2">
-            <h3 className="text-sm font-semibold text-mark">Danger Zone</h3>
+          
+          <div className="pt-4 mt-2 border-t border-edge/30">
+            <button
+              type="button"
+              onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
+              className="neo-raised inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold text-ink transition-colors hover:bg-paper-sunken border border-edge shadow-sm"
+            >
+              <Zap size={16} className="text-amber-500" />
+              Generate 5-Minute Sub Plan
+            </button>
           </div>
+        </div>
+
+        {/* AI Personality Card */}
+        <div id="section-ai" className="flex flex-col gap-4 p-6 rounded-2xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm scroll-mt-8">
+          <div className="flex items-center gap-2 mb-2 border-b border-edge/50 pb-3">
+            <Sparkles size={18} className="text-accent" />
+            <h3 className="text-base font-semibold text-ink">AI Personality</h3>
+          </div>
+          <ClassCustomInstructions cls={cls} onChanged={onChanged} />
+        </div>
+
+        {/* Knowledge Base Card */}
+        <div id="section-docs" className="flex flex-col p-6 rounded-2xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm lg:col-span-2 scroll-mt-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 border-b border-edge/50 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Database size={18} className="text-ink-muted" />
+                <h3 className="text-base font-semibold text-ink">Class Documents</h3>
+              </div>
+              <p className="text-xs text-ink-muted mt-1">Pacing guides, syllabi, and rubrics</p>
+            </div>
+            
+            {verified !== null && verified < 100 ? (
+              <div className="shrink-0">
+                <span className="rounded-full bg-flag-tint px-2 py-1 text-[11px] font-medium text-flag">
+                  {verified}% verified against source
+                </span>
+              </div>
+            ) : null}
+          </div>
+          
+          <ClassDocuments cls={cls} onChanged={onChanged} />
+        </div>
+
+        {/* Danger Zone */}
+        <div id="section-danger" className="flex flex-col gap-4 p-6 rounded-2xl bg-mark/5 border border-mark/10 shadow-sm lg:col-span-2 mt-4 scroll-mt-8">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={18} className="text-mark" />
+            <h3 className="text-base font-semibold text-mark">Danger Zone</h3>
+          </div>
+          <p className="text-sm text-mark/80 mb-2">Archiving a class hides it from the sidebar, but preserves all associated lesson plans and data.</p>
           <div>
             <button
               type="button"
@@ -567,12 +514,12 @@ function ClassDetail({ cls, frameworks, onChanged }) {
               className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
             >
               <Trash2 size={14} aria-hidden="true" />
-              Delete Class
+              Archive / Delete Class
             </button>
           </div>
-        </section>
-      </div>
+        </div>
 
+      </div>
     </div>
   )
 }
@@ -823,6 +770,13 @@ function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
 
 /* ── Your classes layout (Master-Detail) ──────────────────────────────────── */
 
+const CLASS_TABS = [
+  { id: 'core', label: 'Core Settings' },
+  { id: 'ai', label: 'AI Personality' },
+  { id: 'docs', label: 'Class Documents' },
+  { id: 'danger', label: 'Danger Zone' },
+]
+
 export function ClassPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -838,191 +792,54 @@ export function ClassPage() {
   const { classId } = useParams()
   const isNew = classId === 'new'
   const reloadClasses = () => qc.invalidateQueries({ queryKey: qk.classes })
-  const list = (classes || []).filter(c => !c.archived)
+
+  // When no active class or loading, just show the dashboard/setup centered (or we could wrap it in SplitLayout without tabs).
+  // But if there is an active class, we use SplitLayout with tabs.
+  if (classesLoading && !activeClass) {
+    return (
+      <div className="flex h-full w-full overflow-hidden bg-transparent items-center justify-center">
+        <div className="w-full max-w-3xl flex flex-col py-8 px-8">
+          <SkeletonText lines={5} />
+        </div>
+      </div>
+    )
+  }
+
+  if (isNew) {
+    return (
+      <div className="flex h-full w-full overflow-hidden bg-transparent items-center justify-center">
+        <div className="w-full max-w-3xl flex flex-col py-8 px-8">
+          <ClassSetup
+            frameworks={frameworks}
+            onCancel={() => navigate('/')}
+            onCreated={async (created) => {
+              await reloadClasses()
+              navigate(`/c/${created.id}/class`)
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (!activeClass) {
+    return (
+      <div className="flex h-full w-full overflow-hidden bg-transparent items-center justify-center">
+        <div className="w-full max-w-3xl flex flex-col py-8 px-8">
+          <GlobalClassDashboard classes={classes} frameworks={frameworks} onUpdated={reloadClasses} />
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-      
-      {/* Left Sidebar (Master) */}
-      <div className={`flex w-full md:w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken ${activeClass ? 'hidden md:flex' : ''}`}>
-        <header className="flex h-14 shrink-0 items-center gap-2 px-4">
-          {/* "/", not `/c/${activeClass?.id}` — this renders while activeClass may
-              still be null (nothing selected on mobile yet), and a bare `/c/`
-              404s: only `/c/:classId/*` is a registered route. RootRedirect
-              resolves "/" to the last-active class (or /welcome with none), so
-              it's the one destination that's never broken. */}
-          <Link
-            to="/"
-            aria-label="Back to Chat"
-            className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-          </Link>
-          <div className="flex items-center gap-1.5">
-            <BookOpen size={16} aria-hidden="true" className="text-ink-muted" />
-            <h1 className="text-sm font-semibold text-ink">My Classes</h1>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto py-2">
-          <div className="px-3 pb-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Your Classes</h2>
-          </div>
-          
-          <nav className="flex flex-col px-2 gap-0.5">
-            {list.length ? (
-              list.map((c) => {
-                const isActive = c.id === activeClass?.id
-                return (
-                  <Link
-                    key={c.id}
-                    to={`/c/${c.id}/class`}
-                    className={`group flex items-center justify-between min-h-touch rounded-lg px-2 text-sm transition-colors ${
-                      isActive 
-                        ? 'bg-paper-inset font-medium text-ink' 
-                        : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
-                    }`}
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                      <span
-                        className="class-dot"
-                        aria-hidden="true"
-                        style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
-                      />
-                      <span className="truncate">{c.name}</span>
-                    </div>
-                  </Link>
-                )
-              })
-            ) : classesLoading ? (
-              <div className="px-2 py-2">
-                <SkeletonText lines={2} />
-              </div>
-            ) : null}
-          </nav>
-          <div className="mt-4 px-3">
-            <NavLink
-              to="/c/new/class"
-              onClick={(e) => {
-                if (frameworksState.isLoading) e.preventDefault()
-              }}
-              className={({ isActive }) =>
-                `flex min-h-touch w-full items-center gap-2 rounded-lg px-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-paper-inset text-ink'
-                    : 'text-ink-muted hover:bg-paper-inset hover:text-ink'
-                } ${frameworksState.isLoading ? 'opacity-50 cursor-not-allowed' : ''}`
-              }
-            >
-              <Plus size={14} aria-hidden="true" /> Add a class
-            </NavLink>
-            {frameworksState.isError ? (
-              <p className="mt-2 text-xs text-mark">
-                {errorParts(frameworksState.error).hint ||
-                  errorParts(frameworksState.error).message}
-              </p>
-            ) : null}
-          </div>
-        </div>
-        
-        <div className="shrink-0 border-t border-edge">
-          {/* Every plan this class has ever built, placed at the bottom near account settings. */}
-          <NavLink
-            to={activeClass ? `/c/${activeClass.id}/plans` : '/c/default/plans'}
-            className={({ isActive }) =>
-              `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
-                isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <FileText
-                  size={15}
-                  aria-hidden="true"
-                  style={isActive ? { color: 'rgb(var(--rail-pop-rgb))' } : undefined}
-                />
-                Library
-              </>
-            )}
-          </NavLink>
-          <AccountMenu classPath={activeClass ? `/c/${activeClass.id}` : '/c/default'} />
-        </div>
-      </div>
-
-      {/* Right Content Area (Detail) */}
-      <div className={`flex-1 min-w-0 flex flex-col ${!activeClass ? 'hidden md:flex' : ''}`}>
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-edge bg-paper px-4 md:px-8 z-10">
-          {/* "/", not "/c" — every route this page's sibling routes live under is
-              "/c/:classId/*" (see App.jsx's ClassRoutes), so a bare "/c" was never
-              a registered route and 404'd. There's no classless "list" URL to
-              return to (the master list on the left IS this same route, just
-              hidden on mobile once a class is selected), so "/" — the same
-              fallback CommandPalette's "My Classes" already uses — is the
-              nearest valid destination rather than inventing a new route. */}
-          <Link
-            to="/"
-            className="md:hidden rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
-            aria-label="Back to class list"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-          </Link>
-          <div className="text-sm font-medium text-ink-muted">
-            {activeClass ? 'Class Configuration' : isNew ? 'Add a class' : ''}
-          </div>
-        </header>
-
-        {/* The loading skeleton is NOT a keyed child of this AnimatePresence,
-            and the first render does not animate in. Both of those were what
-            made this whole screen render at 9% opacity and stay there.
-            The sequence: classes are loading, so the keyed child is
-            'dashboard' and starts its 150ms entrance; the query resolves
-            mid-flight; the key flips to the class id; mode="wait" holds the
-            incoming child until the outgoing one has EXITED, and the exit
-            interrupts an entrance that never finished. The state machine
-            settled with opacity frozen at 0.09 — no error, no console
-            warning, just a Class Configuration page that was there in the DOM
-            (every field, every value) and invisible on screen.
-            The skeleton -> content swap was never a transition worth
-            animating; only moving BETWEEN classes is. initial={false} is the
-            belt to that braces: an entrance animation is the only reason a
-            stall here could hide content rather than merely fail to flourish
-            it, so the first paint no longer depends on one completing. */}
-        <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 overflow-x-hidden relative">
-          {classesLoading && !activeClass ? (
-            <div className="w-full max-w-3xl">
-              <SkeletonText lines={5} />
-            </div>
-          ) : (
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={activeClass ? activeClass.id : isNew ? 'new' : 'dashboard'}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.15 }}
-                className="w-full"
-              >
-                {activeClass ? (
-                  <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
-                ) : isNew ? (
-                  <ClassSetup
-                    frameworks={frameworks}
-                    onCancel={() => navigate('/')}
-                    onCreated={async (created) => {
-                      await reloadClasses()
-                      navigate(`/c/${created.id}/class`)
-                    }}
-                  />
-                ) : (
-                  <GlobalClassDashboard classes={classes} frameworks={frameworks} onUpdated={reloadClasses} />
-                )}
-              </motion.div>
-            </AnimatePresence>
-          )}
-        </div>
-      </div>
-
-    </div>
+    <SplitLayout
+      title="Classroom Profile"
+      icon={BookOpen}
+      tabs={CLASS_TABS}
+      backPath="/"
+    >
+      <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
+    </SplitLayout>
   )
 }

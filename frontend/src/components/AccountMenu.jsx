@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpen, ChevronUp, Info, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
+import { getAvatar } from '../lib/avatars'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -92,7 +93,7 @@ function UsageMeter({ entitlement }) {
   )
 }
 
-export function AccountMenu({ classPath }) {
+export function AccountMenu({ classPath, collapsed }) {
   const { user, logout } = useAuth()
   const { entitlement } = useBilling()
   const [open, setOpen] = useState(false)
@@ -129,25 +130,41 @@ export function AccountMenu({ classPath }) {
   const name = user?.name || user?.email || 'Signed in'
 
   return (
-    <div className="relative flex items-center gap-1 px-2 py-2" ref={ref}>
+    <div className={`relative flex items-center gap-1 py-2 ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-paper-inset"
+        className={`flex items-center rounded-md text-left transition-colors hover:bg-paper-inset ${collapsed ? 'justify-center p-2' : 'min-w-0 flex-1 gap-2 px-2 py-1.5'}`}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        title={collapsed ? name : undefined}
       >
-        <span
-          aria-hidden="true"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted"
-        >
-          <User size={13} />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
-        {/* Points up, not the two-way ChevronsUpDown ClassSwitcher uses — this
-            popover only ever opens upward (bottom-full, right above the
-            trigger), so a single up-chevron says exactly what will happen
-            instead of a symbol that also implies "or down." */}
-        <ChevronUp size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
+        {(() => {
+          const avatar = getAvatar(user?.avatar)
+          if (avatar) {
+            return (
+              <span
+                aria-hidden="true"
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${avatar.bg} ${avatar.color} border border-edge/30`}
+              >
+                <avatar.icon size={15} />
+              </span>
+            )
+          }
+          return (
+            <span
+              aria-hidden="true"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted border border-edge/30"
+            >
+              <User size={15} />
+            </span>
+          )
+        })()}
+        {collapsed ? null : (
+          <>
+            <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
+            <ChevronUp size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
+          </>
+        )}
       </button>
 
       {mounted ? (
@@ -177,7 +194,7 @@ export function AccountMenu({ classPath }) {
           {user?.is_admin ? (
             <div className="mt-1 border-t border-hairline pt-1">
               <Link
-                to="/admin"
+                to={`${classPath}/admin`}
                 onClick={() => setOpen(false)}
                 className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
               >
@@ -193,13 +210,6 @@ export function AccountMenu({ classPath }) {
               className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
             >
               <Info size={14} aria-hidden="true" /> Privacy &amp; data policy
-            </Link>
-            <Link
-              to={`${classPath}/class`}
-              onClick={() => setOpen(false)}
-              className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-            >
-              <BookOpen size={14} aria-hidden="true" /> My classes
             </Link>
             <div className="flex items-center">
               <Link

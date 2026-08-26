@@ -1541,3 +1541,24 @@ def extract_standards_from_text(text: str) -> list[dict]:
     except Exception as e:  # noqa: BLE001 — translated into an AppError for the route to return
         log.error(f"Failed to extract standards: {e}")
         raise AppError("standards_extraction_failed", f"Failed to extract standards: {e!s}")
+
+def deconstruct_standard(user_id: str, standard_code: str, standard_description: str) -> str:
+    """Uses the LLM to translate a dense academic standard into a teacher-friendly I can statement."""
+    res = _cached_completion(
+        user_id,
+        "deconstruct_standard",
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an expert curriculum coordinator. Your job is to take complex, academic educational standards and translate them into a single, simple, student-friendly 'I can...' statement. Return ONLY the 'I can...' statement and nothing else."
+            },
+            {
+                "role": "user",
+                "content": f"Standard {standard_code}: {standard_description}"
+            }
+        ],
+        temperature=0.7,
+        max_tokens=100,
+    )
+    return res.choices[0].message.content.strip()

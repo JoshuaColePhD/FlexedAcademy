@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Loader2, Settings, Sparkles, Upload } from 'lucide-react'
+import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Loader2, Settings, Sparkles, Upload, User } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -15,6 +15,8 @@ import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { Tooltip } from '../components/Tooltip'
 import { AccountMenu } from '../components/AccountMenu'
+import { AVATAR_OPTIONS } from '../lib/avatars'
+
 import { openOnboardingWizard } from '../lib/onboardingWizardBus'
 
 /* Account-level settings — split out of ClassPage (which used to be "Classes &
@@ -377,7 +379,7 @@ function SchoolPicker({ value, onSaved }) {
   }
 
   return (
-    <div className="mt-5">
+    <div id="section-school-calendar" className="mt-5 scroll-mt-8">
       <h2 className="text-sm font-semibold text-ink">School</h2>
       {/* Was "Sets your school calendar" — true when school lived only on
           the account (migration 22). Now that a class can pin its own
@@ -920,6 +922,61 @@ function IntegrationPlaceholder({ name, description, icon }) {
   )
 }
 
+export 
+function AvatarSelect() {
+  const { data: user, refetch } = useQuery({ queryKey: ['me'], queryFn: api.me })
+  const [saving, setSaving] = useState(false)
+  const toast = useToast()
+
+  const handleSelect = async (avatarId) => {
+    if (saving || user?.avatar === avatarId) return
+    setSaving(true)
+    try {
+      await api.updateAvatar(avatarId)
+      await refetch()
+      toast.success('Avatar updated')
+    } catch (err) {
+      toast.apiError('Could not update avatar', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mb-8 border-b border-edge pb-8">
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold text-ink">Profile Icon</h3>
+        <p className="mt-1 text-xs text-ink-muted">Choose a fun icon to give your profile some personality.</p>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => handleSelect(null)}
+          className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${!user?.avatar ? 'border-[var(--accent)] shadow-md' : 'border-transparent bg-paper-inset text-ink-muted hover:bg-paper-sunken'}`}
+          disabled={saving}
+          aria-label="Default avatar"
+          title="Default"
+        >
+          <User size={20} />
+        </button>
+        {AVATAR_OPTIONS.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => handleSelect(opt.id)}
+            disabled={saving}
+            className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${opt.bg} ${opt.color} ${user?.avatar === opt.id ? 'border-[var(--accent)] shadow-[0_0_0_2px_var(--paper),0_0_0_4px_var(--accent)]' : 'border-transparent'}`}
+            aria-label={opt.label}
+            title={opt.label}
+          >
+            <opt.icon size={20} />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function SettingsPage() {
   const qc = useQueryClient()
   const toast = useToast()
@@ -1243,7 +1300,9 @@ export function SettingsPage() {
 
             {/* Account Section */}
             <div id="section-account" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Account & Security</h2>
+                            <h2 className="text-xl font-bold text-ink mb-6">Account & Security</h2>
+              
+              <AvatarSelect />
               
               {meState.data && meState.data.has_password ? (
                 <section className="mb-8">

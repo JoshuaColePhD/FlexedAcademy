@@ -430,8 +430,8 @@ export function Composer({
   return (
     <div className="relative w-full">
       <div
-        className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised transition-all focus-within:scale-[1.01] focus-within:ring-2 focus-within:ring-accent/50 focus-within:shadow-lg ${
-          voiceModeActive ? 'rounded-3xl' : 'rounded-2xl shadow-sm'
+        className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper transition-all focus-within:scale-[1.01] focus-within:ring-1 focus-within:ring-accent/50 ${
+          voiceModeActive ? 'rounded-full' : 'rounded-full shadow-sm'
         } ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}
       >
@@ -552,7 +552,7 @@ export function Composer({
                * top of each other. */
               placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
-              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-2.5 text-sm leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}
@@ -620,11 +620,11 @@ export function Composer({
             ) : (
               <button
                 type="button"
-                className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-9 md:w-9 ${
-                  isStreaming && onStop ? 'neo-raised bg-mark-tint text-mark hover:shadow-md'
+                className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-8 md:w-8 ${
+                  isStreaming && onStop ? 'bg-mark-tint text-mark hover:shadow-sm'
                   : isStreaming ? 'bg-transparent text-ink-muted'
-                  : canSend ? 'neo-raised bg-paper-raised text-ink hover:bg-paper-sunken'
-                  : 'neo-inset cursor-not-allowed bg-paper-sunken text-ink-faint'
+                  : canSend ? 'bg-ink text-ink-inverse hover:opacity-90'
+                  : 'cursor-not-allowed bg-paper-inset text-ink-faint'
                 } ${motionState === 'submit' ? 'fa-settle' : ''}`}
                 onClick={isStreaming && onStop ? onStop : isStreaming ? undefined : submit}
                 disabled={(!canSend && !isStreaming) || (isStreaming && !onStop)}

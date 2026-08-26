@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, CheckCircle2, Clock, Download, X } from 'lucide-react'
 import { api } from '../lib/api'
@@ -27,6 +27,7 @@ import { AddDocumentDialog } from '../components/AddDocumentDialog'
 import { WeekPicker } from '../components/WeekPicker'
 import { VoiceModePanel } from '../components/VoiceModePanel'
 import { ClassSwitcher } from '../components/ClassSwitcher'
+import { Tooltip } from '../components/Tooltip'
 import { Message } from '../components/Message'
 import { LessonQuestions } from '../components/LessonQuestions'
 import { ArtifactPanel } from '../components/ArtifactPanel'
@@ -2263,17 +2264,37 @@ export function ChatPage() {
                 gets min-w-0 so it truncates under real width pressure (an
                 iPad's narrower chat pane, a long class name) rather than
                 forcing the row wide enough to overflow the screen. */}
-            <ClassSwitcher
-              classes={classes}
-              activeClass={activeClass}
-              classPath={`/c/${classId}`}
-              inline
-            />
-            {/* WeekPicker doesn't take a className, and .chat-week itself has
-                no min-width:0 of its own (it never needed to shrink before —
-                it was the only thing in this row). Wrapped so it can actually
-                give ground to ClassSwitcher instead of just pushing the row
-                wider. */}
+            <div className="flex items-center gap-2 shrink min-w-0">
+              <ClassSwitcher
+                classes={classes}
+                activeClass={activeClass}
+                classPath={`/c/${classId}`}
+                inline
+              />
+              {!hasPacingGuide ? (
+                <Tooltip
+                  interactive
+                  position="bottom"
+                  content={
+                    <span>
+                      No pacing guide on file.{' '}
+                      <Link
+                        to={`/c/${classId}/class#section-docs`}
+                        className="underline transition-colors hover:text-white"
+                      >
+                        Upload one
+                      </Link>
+                    </span>
+                  }
+                >
+                  <div className="h-2 w-2 shrink-0 cursor-default rounded-full bg-red-500" aria-hidden="true" />
+                </Tooltip>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <div className="ml-auto flex min-w-0 items-center gap-3">
+          {classId && classId !== 'default' && classes.length > 0 ? (
             <div className="min-w-0 shrink">
               <WeekPicker
                 options={weekOptions}
@@ -2283,13 +2304,39 @@ export function ChatPage() {
                 disabled={busy}
               />
             </div>
-          </div>
-        ) : null}
-        <div className="ml-auto flex min-w-0 items-center gap-3">
+          ) : null}
           {calendar?.school?.name ? (
-            <span className="hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
-              {calendar.school.name}
-            </span>
+            !calendar.school.has_calendar ? (
+              <Tooltip
+                interactive
+                position="bottom"
+                content={
+                  <span>
+                    No calendar on file.{' '}
+                    <Link
+                      to={`/c/${classId}/settings#section-school-calendar`}
+                      className="underline transition-colors hover:text-white"
+                    >
+                      Upload one in settings
+                    </Link>
+                  </span>
+                }
+              >
+                <div className="hidden min-w-0 cursor-default items-center gap-2 md:flex">
+                  <span className="truncate text-xs font-medium text-ink-muted">
+                    {calendar.school.name}
+                  </span>
+                  <div 
+                    className="h-2 w-2 shrink-0 rounded-full bg-red-500"
+                    aria-hidden="true"
+                  />
+                </div>
+              </Tooltip>
+            ) : (
+              <span className="hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
+                {calendar.school.name}
+              </span>
+            )
           ) : null}
           {hasArtifact ? (
             <button

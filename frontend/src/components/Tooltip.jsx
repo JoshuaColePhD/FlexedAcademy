@@ -14,16 +14,16 @@ import { AnimatePresence, motion } from 'framer-motion'
  * Token-driven (`bg-ink`/`text-paper`), not a hardcoded color — the thing this
  * app's own design-system conventions ask for.
  */
-export function Tooltip({ content, position = 'top', children }) {
+export function Tooltip({ content, position = 'top', interactive = false, children }) {
   const [show, setShow] = useState(false)
 
   const placement =
     position === 'bottom-right'
-      ? 'left-0 top-full mt-2'
+      ? 'left-0 top-full pt-2'
       : position === 'bottom'
-        ? 'left-1/2 top-full mt-2 -translate-x-1/2'
+        ? 'left-1/2 top-full pt-2 -translate-x-1/2'
         : // 'top', the default: centered above the trigger.
-          'left-1/2 bottom-full mb-2 -translate-x-1/2'
+          'left-1/2 bottom-full pb-2 -translate-x-1/2'
 
   return (
     <span
@@ -36,16 +36,20 @@ export function Tooltip({ content, position = 'top', children }) {
       {children}
       <AnimatePresence>
         {show && (
-          <motion.span
-            role="tooltip"
-            initial={{ opacity: 0, scale: 0.9, y: 5 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 5 }}
-            transition={{ type: "spring", stiffness: 350, damping: 20 }}
-            className={`pointer-events-none absolute z-50 w-max max-w-xs rounded bg-ink px-2 py-1.5 text-xs text-paper shadow-lg ${placement}`}
+          <div
+            className={`absolute z-50 flex ${interactive ? '' : 'pointer-events-none'} ${placement}`}
           >
-            {content}
-          </motion.span>
+            <motion.div
+              role="tooltip"
+              initial={{ opacity: 0, scale: 0.9, y: position.startsWith('bottom') ? -5 : 5 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: position.startsWith('bottom') ? -5 : 5 }}
+              transition={{ type: "spring", stiffness: 350, damping: 20 }}
+              className="w-max max-w-xs rounded bg-ink px-2 py-1.5 text-xs text-paper shadow-lg"
+            >
+              {content}
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </span>

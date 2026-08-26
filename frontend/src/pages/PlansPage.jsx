@@ -1,6 +1,7 @@
+import { SplitLayout } from "../components/SplitLayout"
 import { Fragment, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Download, FileText, Search, Trash2, CheckSquare, Square } from 'lucide-react'
+import { Download, FileText, Search, Trash2, CheckSquare, Square, LayoutGrid, List as ListIcon, Filter } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyPlanShareLink } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
@@ -56,20 +57,24 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
     <>
       {selectionMode ? (
         selected ? (
-          <CheckSquare size={15} aria-hidden="true" className="shrink-0 text-accent" />
+          <CheckSquare size={16} aria-hidden="true" className="shrink-0 text-accent" />
         ) : (
-          <Square size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
+          <Square size={16} aria-hidden="true" className="shrink-0 text-ink-muted/50" />
         )
       ) : (
-        <FileText size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
+        <div className="p-2 bg-paper/50 rounded-md border border-edge/20 shrink-0 group-hover:border-edge/50 transition-colors">
+          <FileText size={16} aria-hidden="true" className="text-ink-muted" />
+        </div>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-ink">
+        <span className="block truncate text-sm font-semibold text-ink group-hover:text-accent transition-colors">
           {label}
-          {unitSuffix(plan.unit)}
+          {plan.unit && <span className="ml-1.5 text-xs font-normal text-ink-muted">Unit {plan.unit}</span>}
         </span>
-        <span className="block truncate text-xs text-ink-muted">
-          {plan.course ? `${plan.course} · ` : ''}
+        <span className="flex items-center gap-2 truncate text-xs text-ink-muted mt-0.5">
+          {plan.course && (
+             <span className="bg-edge/30 text-ink-soft px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider">{plan.course}</span>
+          )}
           {formatDate(plan.created_at)}
         </span>
       </span>
@@ -78,15 +83,12 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
 
   if (selectionMode) {
     return (
-      <li className={`group flex items-center gap-1 px-2 py-1${closing ? ' fa-row-exit' : ''}`}>
-        {/* pressed-in, not a background tint — "selected" already reads as
-            neo-inset everywhere else in this world (the sidebar's active chat,
-            LessonQuestions' picked answer). */}
+      <li className={`group flex items-center gap-1 px-3 py-2.5 transition-colors border-b border-edge/10 last:border-0 ${closing ? ' fa-row-exit' : ''}`}>
         <button
           type="button"
           onClick={() => onToggleSelect(plan.id)}
-          className={`flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-left transition-shadow ${
-            selected ? 'neo-inset' : 'hover:bg-paper-sunken'
+          className={`flex min-h-touch min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-1.5 text-left transition-all ${
+            selected ? 'bg-accent/10 border-accent/30' : 'hover:bg-paper-sunken'
           }`}
         >
           {content}
@@ -96,48 +98,137 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
   }
 
   return (
-    <li className={`group flex items-center gap-1 px-2 py-1${closing ? ' fa-row-exit' : ''}`}>
+    <li className={`group flex items-center gap-1 px-3 py-2.5 transition-colors hover:bg-paper/30 border-b border-edge/10 last:border-0 ${closing ? ' fa-row-exit' : ''}`}>
       {openable ? (
         <Link
           to={`/c/${classId}/chat/${plan.chat_id}`}
-          className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-paper-sunken"
+          className="flex min-h-touch min-w-0 flex-1 items-center gap-3 rounded-lg px-2 transition-colors"
         >
           {content}
         </Link>
       ) : (
-        <span className="flex min-h-touch min-w-0 flex-1 items-center gap-2.5 px-2 opacity-60">{content}</span>
+        <span className="flex min-h-touch min-w-0 flex-1 items-center gap-3 px-2 opacity-60">{content}</span>
       )}
-      <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+      <span className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 pr-2">
         <button
           type="button"
-          className="btn-icon"
+          className="p-1.5 text-ink-muted hover:text-ink hover:bg-paper rounded-md transition-colors shadow-sm border border-transparent hover:border-edge/20"
           onClick={() => copyPlanShareLink(plan.id, toast)}
-          aria-label={`Copy share link for ${label}`}
           title="Copy Link"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
         </button>
         <a
-          className="btn-icon"
+          className="p-1.5 text-ink-muted hover:text-ink hover:bg-paper rounded-md transition-colors shadow-sm border border-transparent hover:border-edge/20"
           href={api.planDownloadUrl(plan.id)}
           download
-          aria-label={`Download ${label}`}
           title="Download"
         >
-          <Download size={13} aria-hidden="true" />
+          <Download size={14} />
         </a>
         <button
           type="button"
-          className="btn-icon"
+          className="p-1.5 text-ink-muted hover:text-mark hover:bg-mark-tint rounded-md transition-colors shadow-sm border border-transparent hover:border-mark/20"
           onClick={() => onDelete(plan)}
           disabled={deleting}
-          aria-label={`Delete ${label}`}
           title="Delete"
         >
-          <Trash2 size={13} aria-hidden="true" />
+          <Trash2 size={14} />
         </button>
       </span>
     </li>
+  )
+}
+
+function CardContent({ plan, label }) {
+  return (
+    <>
+      <div className="flex items-start gap-3 mb-2">
+        <div className="p-2.5 bg-paper rounded-lg border border-edge/20 shadow-sm shrink-0">
+          <FileText size={20} className="text-ink-muted" />
+        </div>
+        <div className="flex-1 min-w-0 pt-0.5">
+          <h3 className="text-sm font-bold text-ink truncate group-hover:text-accent transition-colors pr-6">
+            {label}
+          </h3>
+          <p className="text-xs font-medium text-ink-muted truncate mt-0.5">
+            {plan.unit ? `Unit ${plan.unit}` : 'No unit'}
+          </p>
+        </div>
+      </div>
+      {plan.course && (
+        <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider text-ink-soft bg-edge/30 px-2 py-0.5 rounded">
+          {plan.course}
+        </span>
+      )}
+    </>
+  )
+}
+
+function PlanCard({ plan, classId, onDelete, deleting, closing, selectionMode, selected, onToggleSelect }) {
+  const toast = useToast()
+  const openable = Boolean(plan.chat_id)
+  const label = plan.week_label || 'Untitled week'
+
+  return (
+    <div className={`group relative flex flex-col rounded-xl border border-edge/30 bg-paper-sunken/40 p-4 transition-all hover:bg-paper-sunken hover:shadow-md hover:border-edge/50 ${closing ? 'fa-row-exit' : ''} ${selected ? 'ring-2 ring-accent border-accent/50 bg-accent/5' : ''}`}>
+      {selectionMode && (
+        <button
+          type="button"
+          onClick={() => onToggleSelect(plan.id)}
+          className="absolute top-3 right-3 z-10"
+        >
+          {selected ? (
+            <CheckSquare size={18} className="text-accent bg-paper rounded" />
+          ) : (
+            <Square size={18} className="text-ink-muted bg-paper rounded opacity-50 group-hover:opacity-100 transition-opacity" />
+          )}
+        </button>
+      )}
+
+      {openable ? (
+        <Link to={`/c/${classId}/chat/${plan.chat_id}`} className="flex-1 outline-none">
+          <CardContent plan={plan} label={label} />
+        </Link>
+      ) : (
+        <div className="flex-1 opacity-60">
+          <CardContent plan={plan} label={label} />
+        </div>
+      )}
+
+      <div className="mt-4 pt-3 flex items-center justify-between border-t border-edge/20">
+        <span className="text-[11px] font-medium text-ink-muted bg-paper px-2 py-0.5 rounded-md border border-edge/20">
+          {formatDate(plan.created_at)}
+        </span>
+        <div className="flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            type="button"
+            className="p-1.5 text-ink-muted hover:text-ink hover:bg-paper rounded transition-colors"
+            onClick={() => copyPlanShareLink(plan.id, toast)}
+            title="Copy Link"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          </button>
+          <a
+            className="p-1.5 text-ink-muted hover:text-ink hover:bg-paper rounded transition-colors"
+            href={api.planDownloadUrl(plan.id)}
+            download
+            title="Download"
+          >
+            <Download size={14} />
+          </a>
+          <button
+            type="button"
+            className="p-1.5 text-ink-muted hover:text-mark hover:bg-mark-tint rounded transition-colors"
+            onClick={() => onDelete(plan)}
+            disabled={deleting}
+            title="Delete"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -165,7 +256,13 @@ export function PlansPage() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [isDeletingBulk, setIsDeletingBulk] = useState(false)
 
+  const [viewMode, setViewMode] = useState('grid')
+  const [filterCourse, setFilterCourse] = useState('All')
+  const [sortOrder, setSortOrder] = useState('Newest')
+
   const weeks = data?.weeks || []
+  const courses = ['All', ...new Set(weeks.map(w => w.latest.course).filter(Boolean))]
+
   const currentWeek = calendar?.weeks?.find((week) => week.is_current) || null
   const currentPlan = weeks.find((week) => String(week.week_number) === String(currentWeek?.week))?.latest || null
   const contextualSuggestions = calendar
@@ -179,10 +276,18 @@ export function PlansPage() {
         surface: 'library',
       })
     : []
-  // Search matches on the week's own (latest) fields — a week with an old
-  // revision that happened to mention something the latest doesn't isn't
-  // what "search plans" means here.
-  const filtered = search.trim() ? weeks.filter((w) => matchesSearch(w.latest, search)) : weeks
+
+  let filtered = search.trim() ? weeks.filter((w) => matchesSearch(w.latest, search)) : [...weeks]
+  
+  if (filterCourse !== 'All') {
+    filtered = filtered.filter(w => w.latest.course === filterCourse)
+  }
+
+  filtered.sort((a, b) => {
+    const dateA = new Date(a.latest.created_at).getTime()
+    const dateB = new Date(b.latest.created_at).getTime()
+    return sortOrder === 'Newest' ? dateB - dateA : dateA - dateB
+  })
 
   // Selection/bulk-delete is scoped to the top-level (latest-per-week) rows
   // only — a revision is a single, deliberate delete from inside its own
@@ -260,92 +365,148 @@ export function PlansPage() {
     }
   }
 
-  return (
-    <div className="column bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-      <header className="flex h-14 shrink-0 items-center justify-between px-gutter bg-paper border-b border-edge z-10">
-        <h1 className="text-sm font-semibold text-ink">
-          Library{activeClass?.name ? ` — ${activeClass.name}` : ''}
-        </h1>
-        <div className="flex items-center gap-3">
-        </div>
-      </header>
+  const tabs = courses.map(c => ({
+    id: c,
+    label: c === 'All' ? 'All Courses' : c,
+  }))
 
-      <div className="page scroll-y">
-        <div className="mx-auto w-full max-w-measure-form">
-          {contextualSuggestions.length > 0 ? (
-            <section className="neo-panel mb-4 rounded-xl bg-paper-raised/30 p-2" aria-label="Suggested actions">
-              <ContextualSuggestionList
-                suggestions={contextualSuggestions}
-                onSelect={(suggestion) => {
-                  if ((suggestion.action === 'open-chat' || suggestion.action === 'review-plan') && suggestion.chatId) {
-                    navigate(`/c/${classId}/chat/${suggestion.chatId}`)
-                    return
-                  }
-                  navigate(`/c/${classId}${suggestion.weekNumber ? `?week=${suggestion.weekNumber}` : ''}`)
-                }}
-              />
-            </section>
-          ) : null}
-          {weeks.length > 0 && (
-            <div className="mb-2 flex items-center justify-end gap-3">
-              {selectionMode ? (
-                <>
-                  <button
-                    type="button"
-                    disabled={isDeletingBulk}
-                    onClick={toggleSelectAll}
-                    className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-ink hover:bg-paper-sunken disabled:opacity-50"
-                  >
-                    {selectedIds.size === filtered.length && filtered.length > 0 ? 'Deselect all' : 'Select all'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={selectedIds.size === 0 || isDeletingBulk}
-                    onClick={handleBulkDelete}
-                    className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-mark hover:bg-paper-sunken disabled:opacity-50"
-                  >
-                    Delete ({selectedIds.size})
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isDeletingBulk}
-                    onClick={() => {
-                      setSelectionMode(false)
-                      setSelectedIds(new Set())
-                    }}
-                    className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
+  return (
+    <SplitLayout
+      title="Library"
+      icon={FileText}
+      tabs={tabs}
+      activeTab={filterCourse}
+      onTabChange={setFilterCourse}
+      backPath="/"
+    >
+      <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
+          <div>
+            <h1 className="text-xl font-bold text-ink flex items-center gap-2">
+              Library{activeClass?.name ? <span className="text-ink-muted font-medium">/ {activeClass.name}</span> : ''}
+            </h1>
+            {weeks.length > 0 && (
+              <p className="text-xs text-ink-muted mt-1 font-medium">
+                You've built {weeks.length} plan{weeks.length === 1 ? '' : 's'} so far
+              </p>
+            )}
+          </div>
+          <Link
+            to={`/c/${classId}`}
+            className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper transition-all hover:bg-ink/90 shadow-sm shrink-0 w-fit"
+          >
+            <span className="text-lg leading-none mt-[-2px]">+</span> New Plan
+          </Link>
+        </header>
+
+        {contextualSuggestions.length > 0 ? (
+          <section className="neo-panel rounded-xl bg-paper-raised/30 p-2" aria-label="Suggested actions">
+            <ContextualSuggestionList
+              suggestions={contextualSuggestions}
+              onSelect={(suggestion) => {
+                if ((suggestion.action === 'open-chat' || suggestion.action === 'review-plan') && suggestion.chatId) {
+                  navigate(`/c/${classId}/chat/${suggestion.chatId}`)
+                  return
+                }
+                navigate(`/c/${classId}${suggestion.weekNumber ? `?week=${suggestion.weekNumber}` : ''}`)
+              }}
+            />
+          </section>
+        ) : null}
+        
+        {weeks.length > 0 && (
+          <div className="mb-2 flex items-center justify-end gap-3">
+            {selectionMode ? (
+              <>
                 <button
                   type="button"
-                  onClick={() => setSelectionMode(true)}
-                  className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-ink hover:bg-paper-sunken"
+                  disabled={isDeletingBulk}
+                  onClick={toggleSelectAll}
+                  className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-ink hover:bg-paper-sunken disabled:opacity-50"
                 >
-                  Select multiple
+                  {selectedIds.size === filtered.length && filtered.length > 0 ? 'Deselect all' : 'Select all'}
                 </button>
-              )}
-            </div>
-          )}
+                <button
+                  type="button"
+                  disabled={selectedIds.size === 0 || isDeletingBulk}
+                  onClick={handleBulkDelete}
+                  className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-mark hover:bg-paper-sunken disabled:opacity-50"
+                >
+                  Delete ({selectedIds.size})
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingBulk}
+                  onClick={() => {
+                    setSelectionMode(false)
+                    setSelectedIds(new Set())
+                  }}
+                  className="neo-raised rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSelectionMode(true)}
+                className="neo-raised rounded-md bg-paper-raised px-2.5 py-1 text-xs font-medium text-ink hover:bg-paper-sunken"
+              >
+                Select multiple
+              </button>
+            )}
+          </div>
+        )}
 
-          {weeks.length > SEARCH_THRESHOLD ? (
-            <div className="neo-inset mb-3 flex items-center gap-2 rounded-lg bg-paper-sunken px-2.5 py-1.5">
-              <Search size={13} aria-hidden="true" className="shrink-0 text-ink-muted" />
+        {weeks.length > 0 ? (
+          <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="neo-inset flex flex-1 max-w-sm items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2">
+              <Search size={14} aria-hidden="true" className="shrink-0 text-ink-muted" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search plans"
+                placeholder="Search your library..."
                 aria-label="Search plans"
-                className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
+                className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted font-medium"
               />
             </div>
-          ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 bg-paper-raised/50 rounded-lg p-1 border border-edge/30">
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-ink pl-2 pr-6 py-1 outline-none cursor-pointer appearance-none"
+                  style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23a3a3a3\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpolyline points=\'6 9 12 15 18 9\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.2rem center', backgroundSize: '12px' }}
+                >
+                  <option value="Newest">Newest First</option>
+                  <option value="Oldest">Oldest First</option>
+                </select>
+              </div>
+
+              <div className="flex items-center rounded-lg bg-paper-raised/80 p-1 border border-edge/30 ml-auto md:ml-2">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-paper shadow-sm text-ink' : 'text-ink-muted hover:text-ink'}`}
+                  title="Grid View"
+                >
+                  <LayoutGrid size={14} />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-paper shadow-sm text-ink' : 'text-ink-muted hover:text-ink'}`}
+                  title="List View"
+                >
+                  <ListIcon size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
           {isLoading ? (
-            <div className="neo-panel rounded-xl bg-paper-raised/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5 px-3 py-4">
+            <div className="neo-panel rounded-xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm px-4 py-6">
               <SkeletonText lines={4} />
             </div>
           ) : isError ? (
@@ -353,10 +514,11 @@ export function PlansPage() {
               Couldn’t load your plans. {errorParts(error).message}
             </p>
           ) : filtered.length ? (
-            <ul className="neo-panel divide-y divide-edge overflow-hidden rounded-xl bg-paper-raised/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-              {filtered.map((week) => (
-                <Fragment key={week.week_number ?? week.latest.id}>
-                  <PlanRow
+            viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-8">
+                {filtered.map((week) => (
+                  <PlanCard
+                    key={week.week_number ?? week.latest.id}
                     plan={week.latest}
                     classId={classId}
                     onDelete={handleDelete}
@@ -366,42 +528,74 @@ export function PlansPage() {
                     selected={selectedIds.has(week.latest.id)}
                     onToggleSelect={toggleSelect}
                   />
-                  {week.revisions.length > 0 && (
-                    <li className="px-2 pb-1.5 pl-9">
-                      <details>
-                        <summary className="cursor-pointer text-xs text-ink-muted hover:text-ink">
-                          {week.revisions.length} earlier version{week.revisions.length === 1 ? '' : 's'}
-                        </summary>
-                        <ul className="mt-1 divide-y divide-edge/60 overflow-hidden rounded-lg bg-paper-sunken/40">
-                          {week.revisions.map((rev) => (
-                            <PlanRow
-                              key={rev.id}
-                              plan={rev}
-                              classId={classId}
-                              onDelete={handleDelete}
-                              deleting={deletingId === rev.id}
-                              closing={deletingIds.has(rev.id)}
-                              selectionMode={false}
-                              selected={false}
-                              onToggleSelect={() => {}}
-                            />
-                          ))}
-                        </ul>
-                      </details>
-                    </li>
-                  )}
-                </Fragment>
-              ))}
-            </ul>
+                ))}
+              </div>
+            ) : (
+              <ul className="neo-panel divide-y divide-edge/30 overflow-hidden rounded-xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm mb-8">
+                {filtered.map((week) => (
+                  <Fragment key={week.week_number ?? week.latest.id}>
+                    <PlanRow
+                      plan={week.latest}
+                      classId={classId}
+                      onDelete={handleDelete}
+                      deleting={deletingId === week.latest.id}
+                      closing={deletingIds.has(week.latest.id)}
+                      selectionMode={selectionMode}
+                      selected={selectedIds.has(week.latest.id)}
+                      onToggleSelect={toggleSelect}
+                    />
+                    {week.revisions.length > 0 && (
+                      <li className="px-2 pb-1.5 pl-9">
+                        <details>
+                          <summary className="cursor-pointer text-xs text-ink-muted hover:text-ink">
+                            {week.revisions.length} earlier version{week.revisions.length === 1 ? '' : 's'}
+                          </summary>
+                          <ul className="mt-1 divide-y divide-edge/60 overflow-hidden rounded-lg bg-paper-sunken/40">
+                            {week.revisions.map((rev) => (
+                              <PlanRow
+                                key={rev.id}
+                                plan={rev}
+                                classId={classId}
+                                onDelete={handleDelete}
+                                deleting={deletingId === rev.id}
+                                closing={deletingIds.has(rev.id)}
+                                selectionMode={false}
+                                selected={false}
+                                onToggleSelect={() => {}}
+                              />
+                            ))}
+                          </ul>
+                        </details>
+                      </li>
+                    )}
+                  </Fragment>
+                ))}
+              </ul>
+            )
           ) : weeks.length ? (
-            <p className="text-sm text-ink-muted">No plans match “{search}”.</p>
+            <div className="flex flex-col items-center justify-center p-12 text-center mt-8">
+              <Search size={32} className="text-ink-muted/30 mb-3" />
+              <p className="text-sm font-medium text-ink">No plans found</p>
+              <p className="text-sm text-ink-muted mt-1">We couldn't find any plans matching “{search}”.</p>
+            </div>
           ) : (
-            <p className="text-sm text-ink-muted">
-              Nothing yet. Describe a week in a new chat and it will show up here once it's built.
-            </p>
+            <div className="flex flex-col items-center justify-center p-12 bg-paper/30 backdrop-blur-md rounded-2xl border border-dashed border-edge/50 text-center mt-4">
+              <div className="bg-paper shadow-sm rounded-full p-4 mb-4 border border-edge/30">
+                <FileText size={32} className="text-ink-muted" />
+              </div>
+              <h2 className="text-lg font-bold text-ink mb-2">Your library is empty</h2>
+              <p className="text-sm text-ink-muted max-w-sm mb-6">
+                When you build a weekly plan with the AI, it automatically saves here so you can download, share, and reuse it anytime.
+              </p>
+              <Link
+                to={`/c/${classId}`}
+                className="neo-raised inline-flex items-center gap-2 rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition-all hover:bg-ink/90 shadow-md"
+              >
+                <span className="text-lg leading-none mt-[-2px]">+</span> Start Your First Plan
+              </Link>
+            </div>
           )}
         </div>
-      </div>
-    </div>
+    </SplitLayout>
   )
 }

@@ -68,6 +68,7 @@ def _public_user(user: dict) -> dict:
         "id": user["id"],
         "email": user["email"],
         "name": user["name"],
+        "avatar": user.get("avatar"),
         "is_admin": bool(user.get("is_admin")),
         # Never the hash itself — just whether one exists, so the settings
         # page can decide between "change password" and "this account signs
@@ -312,6 +313,13 @@ def delete_account(
     return {"ok": True}
 
 
+
+@router.put("/avatar")
+def set_avatar(body: AvatarBody, user_id: str = Depends(get_current_user)):
+    db.update_user_avatar(user_id, body.avatar)
+    user = db.get_user_by_id(user_id)
+    return _public_user(user)
+
 @router.get("/me")
 def me(user_id: str = Depends(get_current_user)):
     user = db.get_user_by_id(user_id)
@@ -340,6 +348,10 @@ class ResetPasswordBody(BaseModel):
     token: str = Field(min_length=1)
     password: str = Field(min_length=8, max_length=200)
 
+
+
+class AvatarBody(BaseModel):
+    avatar: str = Field(..., max_length=100)
 
 class ChangePasswordBody(BaseModel):
     current_password: str = Field(min_length=1, max_length=200)

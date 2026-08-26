@@ -9,6 +9,7 @@ import {
 } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { motion, AnimatePresence } from 'framer-motion'
 import { api } from './lib/api'
 import { useToast } from './lib/toastContext'
 import { ToastProvider } from './components/ToastProvider'
@@ -27,6 +28,7 @@ import './styles/base.css'
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })))
 const ChatPage = lazyNamed(() => import('./pages/ChatPage.jsx'), 'ChatPage')
 const ClassPage = lazyNamed(() => import('./pages/ClassPage.jsx'), 'ClassPage')
+const StandardsPage = lazyNamed(() => import('./pages/StandardsPage.jsx'), 'StandardsPage')
 const SettingsPage = lazyNamed(() => import('./pages/SettingsPage.jsx'), 'SettingsPage')
 const PlansPage = lazyNamed(() => import('./pages/PlansPage.jsx'), 'PlansPage')
 const HistoryPage = lazyNamed(() => import('./pages/HistoryPage.jsx'), 'HistoryPage')
@@ -192,7 +194,9 @@ function ClassRoutes() {
           <Route path="plans" element={<PlansPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="class" element={<ClassPage />} />
+          <Route path="standards" element={<StandardsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="admin" element={<AdminPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AppShell>
@@ -333,7 +337,7 @@ function Gate() {
       {/* Gated again server-side by every request the page makes — reaching
           this route with a non-admin session gets the page shell and then a
           403 from /api/admin/accounts, not real data. */}
-      <Route path="/admin" element={<AdminPage />} />
+      
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
@@ -382,6 +386,23 @@ const queryClient = new QueryClient({
   },
 })
 
+function BootMessage() {
+  const { status } = useAuth()
+  return (
+    <AnimatePresence>
+      {status === 'loading' && (
+        <motion.div 
+          className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none"
+          exit={{ opacity: 0 }}
+          transition={{ duration: 1.2 }}
+        >
+          <h1 className="text-4xl font-semibold tracking-tight text-ink/40">FlexEd Academy</h1>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 export default function App() {
   return (
     <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
@@ -394,10 +415,14 @@ export default function App() {
                   {/* Inside AuthProvider: the entitlement rides on the user. */}
                   <BillingProvider>
                     <VoiceProvider>
-                      <Suspense fallback={<BootScreen />}>
-                        <CommandPalette />
-                        <Gate />
-                      </Suspense>
+                      <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper-sunken font-sans text-ink relative">
+                        <div className="app-blob absolute inset-0 z-0" aria-hidden="true" />
+                        <BootMessage />
+                        <Suspense fallback={<BootScreen />}>
+                          <CommandPalette />
+                          <Gate />
+                        </Suspense>
+                      </div>
                     </VoiceProvider>
                   </BillingProvider>
                 </AuthProvider>

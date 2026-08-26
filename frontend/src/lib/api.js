@@ -145,6 +145,7 @@ export const api = {
   health: ({ signal } = {}) => request('/api/health', { signal }),
 
   me: ({ signal } = {}) => request('/api/auth/me', { signal }),
+  updateAvatar: (avatar) => request('/api/auth/avatar', { method: 'PUT', body: { avatar } }),
   signup: (name, email, password) =>
     request('/api/auth/signup', { method: 'POST', body: { name, email, password } }),
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
@@ -391,6 +392,15 @@ export const api = {
     const qs = new URLSearchParams({ codes: codes.join(',') })
     if (subject) qs.set('subject', subject)
     return request(`/api/standards/batch?${qs}`, { signal })
+  },
+  getStandardsCoverage: (classId, { signal } = {}) =>
+    request(`/api/standards/coverage?class_id=${encodeURIComponent(classId)}`, { signal }),
+  getStandardLessons: (code, classId, { signal } = {}) =>
+    request(`/api/standards/${encodeURIComponent(code)}/lessons?class_id=${encodeURIComponent(classId)}`, { signal }),
+  deconstructStandard: (code, subject, { signal } = {}) => {
+    const qs = new URLSearchParams()
+    if (subject) qs.set('subject', subject)
+    return request(`/api/standards/${encodeURIComponent(code)}/deconstruct${qs.toString() ? `?${qs}` : ''}`, { signal })
   },
   standardsStats: ({ signal, ...params } = {}) => {
     const qs = new URLSearchParams(

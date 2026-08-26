@@ -19,6 +19,7 @@ import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
+import { SplitLayout } from "../components/SplitLayout"
 import { useActiveClass } from '../hooks/useAppData'
 import { AccountMenu } from '../components/AccountMenu'
 
@@ -1378,8 +1379,7 @@ export function AdminPage() {
   const qc = useQueryClient()
   const { activeClass } = useActiveClass()
 
-  const [activeTab, setActiveTab] = useState('overview')
-  const scrollContainerRef = React.useRef(null)
+
 
   // -- Data fetching for Accounts --
   const [pending, setPending] = useState(null)
@@ -1523,8 +1523,8 @@ export function AdminPage() {
     }
   }
 
-  // -- Scroll Spy Logic --
-  const tabs = React.useMemo(() => [
+  // -- Tabs --
+  const TABS = React.useMemo(() => [
     { id: 'overview', label: 'Overview' },
     { id: 'users', label: 'User Management' },
     { id: 'standards', label: 'Standards Check' },
@@ -1533,122 +1533,15 @@ export function AdminPage() {
     { id: 'settings', label: 'Settings' },
   ], [])
 
-  useDocumentTitle(tabs.find((t) => t.id === activeTab)?.label || 'Admin')
-
-  React.useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let maxRatio = 0
-        let visibleId = null
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
-            maxRatio = entry.intersectionRatio
-            visibleId = entry.target.id
-          }
-        })
-        if (visibleId) {
-          setActiveTab(visibleId.replace('section-', ''))
-        }
-      },
-      {
-        root: scrollContainerRef.current,
-        threshold: [0.1, 0.5, 0.9],
-        rootMargin: '-10% 0px -40% 0px',
-      }
-    )
-
-    tabs.forEach((tab) => {
-      const el = document.getElementById(`section-${tab.id}`)
-      if (el) observer.observe(el)
-    })
-
-    return () => observer.disconnect()
-  }, [tabs])
-
-  const scrollToSection = (id) => {
-    setActiveTab(id)
-    const el = document.getElementById(`section-${id}`)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' })
-    }
-  }
-
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
-      
-      {/* Left Sidebar */}
-      <div className="hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
-        <header className="flex h-14 shrink-0 items-center gap-2 px-4">
-          <Link
-            to="/"
-            aria-label="Back"
-            className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-          </Link>
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck size={16} aria-hidden="true" className="text-ink-muted" />
-            <h1 className="text-sm font-semibold text-ink">Admin</h1>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto py-2">
-          <nav className="flex flex-col px-2 gap-0.5">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => scrollToSection(tab.id)}
-                className={`flex items-center justify-between min-h-touch rounded-lg px-2 text-sm transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-paper shadow-sm ring-1 ring-black/5 font-medium text-ink'
-                    : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
-                }`}
-              >
-                <span className="truncate">{tab.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        <div className="shrink-0 border-t border-edge">
-          {/* Every plan this class has ever built, placed at the bottom near account settings. */}
-          <NavLink
-            to={activeClass ? `/c/${activeClass.id}/plans` : '/c/default/plans'}
-            className={({ isActive }) =>
-              `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
-                isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <FileText
-                  size={15}
-                  aria-hidden="true"
-                  style={isActive ? { color: 'rgb(var(--rail-pop-rgb))' } : undefined}
-                />
-                Library
-              </>
-            )}
-          </NavLink>
-          <AccountMenu classPath={activeClass ? `/c/${activeClass.id}` : '/c/default'} />
-        </div>
-      </div>
-
-      {/* Right Content Area */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex md:hidden h-14 shrink-0 items-center border-b border-edge bg-paper px-4 z-10 gap-3">
-          <Link to="/" className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"><ArrowLeft size={16}/></Link>
-          <div className="text-sm font-semibold text-ink truncate">{tabs.find(t => t.id === activeTab)?.label}</div>
-        </header>
-        <header className="hidden md:flex h-14 shrink-0 items-center border-b border-edge bg-paper px-8 z-10">
-          <div className="text-sm font-medium text-ink-muted">
-            {tabs.find(t => t.id === activeTab)?.label}
-          </div>
-        </header>
-
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 py-8 scroll-smooth">
-          <div className="w-full max-w-6xl flex flex-col gap-16 pb-32">
+    <SplitLayout
+      title="Admin"
+      icon={ShieldCheck}
+      tabs={TABS}
+      backPath="/"
+      contentMaxWidth="max-w-6xl"
+    >
+      <div className="w-full max-w-6xl flex flex-col gap-16 pb-32">
             
             {/* Overview Section */}
             <div id="section-overview" className="scroll-mt-8">
@@ -1939,8 +1832,6 @@ export function AdminPage() {
             </div>
 
           </div>
-        </div>
-      </div>
-    </div>
+    </SplitLayout>
   )
 }

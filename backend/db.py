@@ -2924,6 +2924,10 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE chats ADD COLUMN IF NOT EXISTS is_pinned INTEGER NOT NULL DEFAULT 0;
     """,
+    # ── 33: user avatars ─────────────────────────────────────────────────────
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
+    """,
 ]
 
 
@@ -5206,3 +5210,25 @@ def insert_global_standards(user_id: str, state: str, subject: str, grade: str, 
             """,
             (state, subject, grade, std["code"], std["description"], user_id, now())
         )
+
+def get_standards_coverage(class_id: str) -> dict[str, int]:
+    """Returns a mapping of standard code to citation count for a given class."""
+    rows = _rows(
+        "SELECT code, COUNT(DISTINCT plan_id) as cnt FROM plan_standards WHERE class_id = ? AND status = 'grounded' GROUP BY code",
+        (class_id,)
+    )
+    return {r["code"]: r["cnt"] for r in rows}
+
+def get_standard_lessons(class_id: str, code: str) -> list[dict]:
+    """Returns the lesson plans in a class that successfully cite a specific standard."""
+    return _rows(
+        """
+        SELECT DISTINCT p.id, p.title, p.created_at 
+        FROM plan_standards ps
+        JOIN plans p ON p.id = ps.plan_id
+        WHERE ps.class_id = ? AND ps.code = ? AND ps.status = 'grounded'
+        ORDER BY p.created_at DESC
+        LIMIT 10
+        """,
+        (class_id, code)
+    )

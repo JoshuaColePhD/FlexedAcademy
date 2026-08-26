@@ -85,14 +85,14 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate }) {
              own :active state), so the active row reads as a permanent
              version of that same press instead of a third, unrelated
              signal. */
-          `flex min-h-touch items-center rounded-md px-2 pr-14 text-sm transition-all duration-300 ${
+          `flex min-h-[28px] py-1.5 items-center rounded-md px-2 pr-4 text-sm transition-all duration-300 ${
             isActive ? 'neo-inset bg-paper-sunken text-accent-text drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] font-medium' : 'text-ink-soft hover:bg-paper-inset/60 hover:text-ink'
           }`
         }
       >
         <span className="truncate">{chat.title}</span>
       </NavLink>
-      <span className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+      <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-paper p-0.5 shadow-sm border border-edge/50 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
         <button
           type="button"
           className={`btn-icon ${chat.is_pinned ? 'text-amber-500' : ''}`}
@@ -122,7 +122,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate }) {
   )
 }
 
-function Rail({ onNavigate, onClose }) {
+function Rail({ onNavigate, onClose, collapsed }) {
   const { entitlement } = useAuth()
   const { classId } = useParams()
   const location = useLocation()
@@ -177,10 +177,18 @@ function Rail({ onNavigate, onClose }) {
 
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center gap-2 px-3">
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-ink">
-          FlexEd Academy
-        </span>
+      <div className="flex h-14 shrink-0 items-center gap-2.5 px-3 mt-2">
+        <svg viewBox="0 0 64 64" className="w-7 h-7 text-[#7c3aed] drop-shadow-sm" aria-hidden="true">
+          <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
+          <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
+          <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" className="land-seal-ring" />
+          <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
+        </svg>
+        {collapsed ? null : (
+          <span className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-tight text-ink mt-0.5">
+            FlexEd Academy
+          </span>
+        )}
         {onClose ? (
           <button type="button" className="btn-icon" aria-label="Close menu" onClick={onClose}>
             <X size={16} aria-hidden="true" />
@@ -193,6 +201,8 @@ function Rail({ onNavigate, onClose }) {
           since that's the one control it always appears next to. Moving it out
           lets "New plan" — the one thing a teacher opens this app to do — sit
           right under the logo instead of one row down. */}
+      
+
       <div className="px-2 pb-1 pt-1">
 
 
@@ -204,107 +214,79 @@ function Rail({ onNavigate, onClose }) {
             rail instead — still the rarest warm note, just this world's
             warm note. Solid fill now, not a pastel tint — the one button in
             the rail that should read as unmistakably "press me." */}
-        <motion.div whileHover={{ scale: 1.02, y: -1 }}>
+        <motion.div whileHover={{ scale: 1.02, y: -1 }} className={collapsed ? 'flex justify-center' : ''}>
           <Link
             to={classPath}
             onClick={onNavigate}
-            className="fa-press neo-raised btn-blob flex min-h-touch items-center gap-2 rounded-lg px-3 text-sm font-medium text-ink"
+            title={collapsed ? 'New plan' : undefined}
+            className={`fa-press neo-raised btn-blob flex items-center rounded-md text-sm font-medium text-ink transition-all duration-300 overflow-hidden whitespace-nowrap ${
+              collapsed ? 'justify-center w-10 h-10 px-0' : 'gap-2 px-3 py-1.5 min-h-[32px] w-full'
+            }`}
           >
-            <Plus size={15} aria-hidden="true" />
-            <span className="flex-1">New plan</span>
-            <kbd className="font-mono text-2xs">⌘K</kbd>
+            <Plus size={15} aria-hidden="true" className="shrink-0" />
+            {collapsed ? null : (
+              <>
+                <span className="flex-1 overflow-hidden text-ellipsis">New plan</span>
+                <kbd className="font-mono text-2xs shrink-0">⌘K</kbd>
+              </>
+            )}
           </Link>
         </motion.div>
       </div>
 
+      {collapsed ? null : (
+        <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
+          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+            
+            {pinnedChats.length > 0 && (
+              <div className="mb-4">
+                <p className="eyebrow px-4 pb-1">Pinned</p>
+                <ul className="flex flex-col gap-0">
+                  <AnimatePresence initial={false}>
+                    {pinnedChats.map((c) => (
+                      <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} />
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              </div>
+            )}
 
-
-      <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
-        <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-          
-          {pinnedChats.length > 0 && (
-            <div className="mb-4">
-              <p className="eyebrow px-4 pb-1">Pinned</p>
-              <ul className="flex flex-col gap-0.5">
+            <div className="flex items-center justify-between px-4 pb-1 mt-2">
+              <p className="eyebrow">Recent</p>
+              <Link
+                to={`${classPath}/history`}
+                onClick={onNavigate}
+                className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-ink-muted hover:text-ink"
+                aria-label="Edit chat history"
+              >
+                <Pencil size={11} aria-hidden="true" />
+                Edit
+              </Link>
+            </div>
+            
+            {isLoading ? (
+              <div className="px-4 py-2">
+                <SkeletonText lines={4} />
+              </div>
+            ) : recentChats.length ? (
+              <ul className="flex flex-col gap-0">
                 <AnimatePresence initial={false}>
-                  {pinnedChats.map((c) => (
+                  {recentChats.map((c) => (
                     <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} />
                   ))}
                 </AnimatePresence>
               </ul>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between px-4 pb-1 mt-2">
-            <p className="eyebrow">Recent</p>
-            <Link
-              to={`${classPath}/history`}
-              onClick={onNavigate}
-              className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-ink-muted hover:text-ink"
-              aria-label="Edit chat history"
-            >
-              <Pencil size={11} aria-hidden="true" />
-              Edit
-            </Link>
+            ) : !pinnedChats.length && (
+              <p className="px-4 py-2 text-xs text-ink-muted">
+                Nothing yet. Describe a week to get started.
+              </p>
+            )}
           </div>
-          
-          {isLoading ? (
-            <div className="px-4 py-2">
-              <SkeletonText lines={4} />
-            </div>
-          ) : recentChats.length ? (
-            <ul className="flex flex-col gap-0.5">
-              <AnimatePresence initial={false}>
-                {recentChats.map((c) => (
-                  <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} />
-                ))}
-              </AnimatePresence>
-            </ul>
-          ) : !pinnedChats.length && (
-            <p className="px-4 py-2 text-xs text-ink-muted">
-              Nothing yet. Describe a week to get started.
-            </p>
-          )}
+        </nav>
+      )}
 
-          <div className="mt-6 border-t border-edge/50 pt-4">
-            <p className="eyebrow px-4 pb-2">Workspace Tools</p>
-            <ul className="flex flex-col gap-0.5 px-2">
-              <li>
-                <NavLink
-                  to="/settings/integrations"
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-all duration-300 ${
-                      isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
-                    }`
-                  }
-                >
-                  <Database size={15} aria-hidden="true" />
-                  Standards Browser
-                </NavLink>
-              </li>
-              <li>
-                <NavLink
-                  to="/settings"
-                  end
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-all duration-300 ${
-                      isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
-                    }`
-                  }
-                >
-                  <Users size={15} aria-hidden="true" />
-                  Classroom Profile
-                </NavLink>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </nav>
-
-      <div className="shrink-0 border-t border-edge pt-2">
-        {isFreeTier && (
+      <motion.div layout className={`pt-2 pb-1 flex flex-col ${collapsed ? 'flex-1' : 'shrink-0'}`}>
+        {isFreeTier && !collapsed && (
           <div className="px-4 pb-3">
             <div className="flex justify-between text-[10px] font-medium text-ink-muted mb-1.5 uppercase tracking-wider">
               <span>{freePlansUsed} Plans Used</span>
@@ -320,33 +302,67 @@ function Rail({ onNavigate, onClose }) {
         )}
         
         {/* Every plan this class has ever built, placed at the bottom near account settings. */}
-        <NavLink
-          to={`${classPath}/plans`}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            `flex min-h-touch items-center gap-2.5 px-4 rounded-md text-sm transition-all duration-300 ${
-              isActive ? 'neo-inset bg-paper-sunken text-accent-text drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] font-medium' : 'text-ink-soft hover:bg-paper-inset/60 hover:text-ink'
-            }`
-          }
-        >
-          {() => (
-            <>
-              {/* rail-pop, not --accent — this is the app's own established
-                  accent (the logo mark, the New plan CTA's idle glow), not
-                  the district blue tokens.css reserves for "something is
-                  waiting for you." The icon alone carries it so the label
-                  stays plain text. */}
-              <FileText
-                size={15}
-                aria-hidden="true"
-                /* Inherits text-accent-text from parent when active */
-              />
-              Library
-            </>
-          )}
-        </NavLink>
-        <AccountMenu classPath={classPath} />
-      </div>
+        <div className="mt-2 mb-2">
+          {collapsed ? null : <p className="eyebrow px-4 pb-2">Workspace Tools</p>}
+          <ul className={`flex flex-col gap-0 ${collapsed ? 'px-1 items-center' : 'px-2'}`}>
+            <li>
+              <NavLink
+                to={`${classPath}/standards`}
+                onClick={onNavigate}
+                title="Standards Browser"
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 py-1.5 rounded-md text-sm transition-all duration-300 ${
+                    collapsed ? 'justify-center w-10 h-10' : 'px-2'
+                  } ${
+                    isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
+                  }`
+                }
+              >
+                <Database size={17} aria-hidden="true" />
+                {collapsed ? null : <span>Standards Browser</span>}
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
+                to={`${classPath}/class`}
+                end
+                onClick={onNavigate}
+                title="Classroom Profile"
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 py-1.5 rounded-md text-sm transition-all duration-300 ${
+                    collapsed ? 'justify-center w-10 h-10' : 'px-2'
+                  } ${
+                    isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
+                  }`
+                }
+              >
+                <Users size={17} aria-hidden="true" />
+                {collapsed ? null : <span>Classroom Profile</span>}
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
+                to={`${classPath}/plans`}
+                onClick={onNavigate}
+                title="Library"
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 py-1.5 rounded-md text-sm transition-all duration-300 ${
+                    collapsed ? 'justify-center w-10 h-10' : 'px-2'
+                  } ${
+                    isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
+                  }`
+                }
+              >
+                <FileText size={17} aria-hidden="true" />
+                {collapsed ? null : <span>Library</span>}
+              </NavLink>
+            </li>
+          </ul>
+        </div>
+        <div className="mt-auto">
+          <AccountMenu classPath={classPath} collapsed={collapsed} />
+        </div>
+      </motion.div>
     </>
   )
 }
@@ -435,7 +451,7 @@ export function AppShell({ children }) {
      Persisted the same way chatWidthPx is (ChatPage.jsx), so it survives a
      reload instead of springing back open every visit. */
   const location = useLocation()
-  const isFocusMode = location.pathname.endsWith('/settings') || location.pathname.endsWith('/class')
+  const isFocusMode = false // We now want the sidebar to be permanent across all pages
 
   const [railCollapsed, setRailCollapsed] = useState(() => {
     try {
@@ -458,15 +474,7 @@ export function AppShell({ children }) {
 
   return (
     <ShellContext.Provider value={shell}>
-    {/* neo-world here, not per-surface: this is the one root every
-        authenticated screen (chat, class page, the rail, every dialog and
-        toast rendered inside them) already mounts under, and every one of
-        them already reads bg-paper/text-ink/etc. through Tailwind — the
-        whole complete-overhaul ask, from a single class. Public pages
-        (landing, login/signup) keep their own separate fixed world
-        (.auth-ground) — a different deliberate brand system, not this
-        one, and AppShell never wraps them anyway. */}
-    <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper-sunken font-sans text-ink p-2 gap-2">
+    <div className="flex h-full w-full overflow-hidden p-2 gap-2 relative z-10">
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
         href="#main"
@@ -476,19 +484,20 @@ export function AppShell({ children }) {
 
       {/* docked */}
       {!isNarrow && !isFocusMode ? (
-        <div
-          className="app-rail flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper rounded-2xl border border-edge shadow-sm"
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 30 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+          className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
-            width: railCollapsed ? '18px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
+            width: railCollapsed ? '68px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
             transitionTimingFunction: 'var(--ease-out)',
           }}
         >
-          {!railCollapsed ? (
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-              <Rail />
-            </div>
-          ) : null}
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <Rail collapsed={railCollapsed} />
+          </div>
           {/* Same seam-handle language as the artifact rail's own collapse
               control on the other side of the screen (ArtifactRail.jsx) —
               a groove found by hover/touch, not a labeled button competing
@@ -510,7 +519,7 @@ export function AppShell({ children }) {
               <ChevronLeft className="app-rail-handle-arrow" aria-hidden="true" />
             )}
           </button>
-        </div>
+        </motion.div>
       ) : null}
 
       {/* drawer */}
@@ -531,11 +540,13 @@ export function AppShell({ children }) {
         </>
       ) : null}
 
-      <div 
-        className={`relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden ${!location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) ? 'bg-paper rounded-2xl border border-edge shadow-sm' : ''}`} 
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.96, y: 30 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}
+        className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
         id="main"
       >
-        {!location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) && <div className="app-blob" aria-hidden="true" />}
         <TemplateBanner />
         <OnboardingWizardHost />
         {isNarrow && !location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) ? (
@@ -561,7 +572,7 @@ export function AppShell({ children }) {
         ) : (
           <div className="min-h-0 flex-1">{children}</div>
         )}
-      </div>
+      </motion.div>
     </div>
     </ShellContext.Provider>
   )
