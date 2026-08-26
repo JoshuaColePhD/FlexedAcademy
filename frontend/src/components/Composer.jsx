@@ -358,7 +358,23 @@ export function Composer({
         }
         if (failed.length) {
           triggerShake()
-          failed.forEach(({ file, err }) => toast.error(`Could not read ${file.name}`, err.hint || err.message))
+          // One toast per failed file used to mean a bad multi-file drop
+          // could stack 3-4 full-size error toasts at once, each one
+          // showing `hint` — which for a read failure is raw parser
+          // stderr (pdftotext's own "Syntax Warning: ... Syntax Error:
+          // ..." dump), not something a teacher can act on. `message` is
+          // always the clean, written-for-a-human line; prefer it, and
+          // only fall back to `hint` when there's truly nothing else (the
+          // still-useful case, e.g. "Install poppler: brew install
+          // poppler", is a message-less AppError). Multiple failures
+          // collapse into one toast, same as the success/skip paths
+          // already do, rather than piling one on top of another.
+          if (failed.length === 1) {
+            const { file, err } = failed[0]
+            toast.error(`Could not read ${file.name}`, err.message || err.hint)
+          } else {
+            toast.error(`Could not read ${failed.length} files`, failed.map(({ file }) => file.name).join(', '))
+          }
         }
         if (skipped > 0) {
           toast.error(
