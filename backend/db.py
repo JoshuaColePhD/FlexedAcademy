@@ -5399,6 +5399,16 @@ def update_user(user_id: str, **fields: Any) -> dict | None:
     return get_user_by_id(user_id)
 
 
+def update_user_avatar(user_id: str, avatar: str | None) -> dict | None:
+    """Not folded into update_user's generic **fields whitelist — that path
+    skips any field whose value is None (`if ... and v is not None`), which
+    is exactly the value the picker's own "Default" option needs to write to
+    clear a previous selection (frontend/src/pages/SettingsPage.jsx's
+    AvatarSelect calls handleSelect(null))."""
+    _write("UPDATE users SET avatar = ? WHERE id = ?", (avatar, user_id))
+    return get_user_by_id(user_id)
+
+
 def mark_onboarding_seen(user_id: str) -> dict | None:
     """Stamps NOW rather than a bare boolean — 'when' is worth having if this
     ever needs a one-time re-prompt for a redesigned wizard later (compare

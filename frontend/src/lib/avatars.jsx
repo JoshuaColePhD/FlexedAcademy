@@ -1,21 +1,25 @@
-import { Cat, Dog, Rocket, Ghost, Coffee, Star, Heart, Moon, Sun, Anchor, Bug, Sparkles, Smile, Flower2, Zap } from 'lucide-react'
-
+// Real emoji, not Lucide icon glyphs — that was the actual intent of the
+// "Profile Icon" picker (SettingsPage.jsx's AvatarSelect) from the start;
+// it shipped rendering these as monochrome SVG icons instead. `id` values
+// are unchanged so every teacher's already-stored `user.avatar` selection
+// (a plain id string) keeps meaning the same thing — this is a rendering
+// fix, not a re-pick.
 export const AVATAR_OPTIONS = [
-  { id: 'cat', icon: Cat, label: 'Cat', bg: 'bg-orange-500', color: 'text-white' },
-  { id: 'dog', icon: Dog, label: 'Dog', bg: 'bg-amber-600', color: 'text-white' },
-  { id: 'rocket', icon: Rocket, label: 'Rocket', bg: 'bg-blue-500', color: 'text-white' },
-  { id: 'ghost', icon: Ghost, label: 'Ghost', bg: 'bg-purple-500', color: 'text-white' },
-  { id: 'coffee', icon: Coffee, label: 'Coffee', bg: 'bg-amber-800', color: 'text-white' },
-  { id: 'star', icon: Star, label: 'Star', bg: 'bg-yellow-400', color: 'text-white' },
-  { id: 'heart', icon: Heart, label: 'Heart', bg: 'bg-pink-500', color: 'text-white' },
-  { id: 'moon', icon: Moon, label: 'Moon', bg: 'bg-indigo-600', color: 'text-white' },
-  { id: 'sun', icon: Sun, label: 'Sun', bg: 'bg-yellow-500', color: 'text-white' },
-  { id: 'anchor', icon: Anchor, label: 'Anchor', bg: 'bg-cyan-600', color: 'text-white' },
-  { id: 'bug', icon: Bug, label: 'Bug', bg: 'bg-emerald-500', color: 'text-white' },
-  { id: 'sparkles', icon: Sparkles, label: 'Sparkles', bg: 'bg-fuchsia-500', color: 'text-white' },
-  { id: 'smile', icon: Smile, label: 'Smile', bg: 'bg-yellow-400', color: 'text-ink' },
-  { id: 'flower2', icon: Flower2, label: 'Flower', bg: 'bg-rose-400', color: 'text-white' },
-  { id: 'zap', icon: Zap, label: 'Zap', bg: 'bg-yellow-500', color: 'text-white' }
+  { id: 'cat', emoji: '🐱', label: 'Cat', bg: 'bg-orange-500' },
+  { id: 'dog', emoji: '🐶', label: 'Dog', bg: 'bg-amber-600' },
+  { id: 'rocket', emoji: '🚀', label: 'Rocket', bg: 'bg-blue-500' },
+  { id: 'ghost', emoji: '👻', label: 'Ghost', bg: 'bg-purple-500' },
+  { id: 'coffee', emoji: '☕', label: 'Coffee', bg: 'bg-amber-800' },
+  { id: 'star', emoji: '⭐', label: 'Star', bg: 'bg-yellow-400' },
+  { id: 'heart', emoji: '❤️', label: 'Heart', bg: 'bg-pink-500' },
+  { id: 'moon', emoji: '🌙', label: 'Moon', bg: 'bg-indigo-600' },
+  { id: 'sun', emoji: '☀️', label: 'Sun', bg: 'bg-yellow-500' },
+  { id: 'anchor', emoji: '⚓', label: 'Anchor', bg: 'bg-cyan-600' },
+  { id: 'bug', emoji: '🐛', label: 'Bug', bg: 'bg-emerald-500' },
+  { id: 'sparkles', emoji: '✨', label: 'Sparkles', bg: 'bg-fuchsia-500' },
+  { id: 'smile', emoji: '😊', label: 'Smile', bg: 'bg-yellow-400' },
+  { id: 'flower2', emoji: '🌸', label: 'Flower', bg: 'bg-rose-400' },
+  { id: 'zap', emoji: '⚡', label: 'Zap', bg: 'bg-yellow-500' },
 ]
 
 export function getAvatar(id) {

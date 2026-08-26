@@ -351,7 +351,11 @@ class ResetPasswordBody(BaseModel):
 
 
 class AvatarBody(BaseModel):
-    avatar: str = Field(..., max_length=100)
+    # Nullable: the picker's own "Default" option clears back to no avatar
+    # (SettingsPage.jsx's AvatarSelect calls handleSelect(null)) — a
+    # required str here rejected that request outright before it ever
+    # reached db.update_user_avatar.
+    avatar: str | None = Field(default=None, max_length=100)
 
 class ChangePasswordBody(BaseModel):
     current_password: str = Field(min_length=1, max_length=200)

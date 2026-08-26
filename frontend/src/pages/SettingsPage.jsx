@@ -976,11 +976,13 @@ function AvatarSelect() {
             type="button"
             onClick={() => handleSelect(opt.id)}
             disabled={saving}
-            className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${opt.bg} ${opt.color} ${user?.avatar === opt.id ? 'border-[var(--accent)] shadow-[0_0_0_2px_var(--paper),0_0_0_4px_var(--accent)]' : 'border-transparent'}`}
+            className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${opt.bg} ${user?.avatar === opt.id ? 'border-[var(--accent)] shadow-[0_0_0_2px_var(--paper),0_0_0_4px_var(--accent)]' : 'border-transparent'}`}
             aria-label={opt.label}
             title={opt.label}
           >
-            <opt.icon size={20} />
+            <span className="text-2xl leading-none" aria-hidden="true">
+              {opt.emoji}
+            </span>
           </button>
         ))}
       </div>

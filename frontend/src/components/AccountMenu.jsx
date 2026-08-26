@@ -144,9 +144,9 @@ export function AccountMenu({ classPath, collapsed }) {
             return (
               <span
                 aria-hidden="true"
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${avatar.bg} ${avatar.color} border border-edge/30`}
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${avatar.bg} border border-edge/30`}
               >
-                <avatar.icon size={15} />
+                <span className="text-sm leading-none">{avatar.emoji}</span>
               </span>
             )
           }
