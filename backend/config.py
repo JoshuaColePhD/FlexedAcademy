@@ -185,6 +185,22 @@ class Settings(BaseSettings):
     # school marked active with nothing actually built for it yet" and raise
     # loudly for the latter instead of silently mis-rendering.
     default_builder_school_id: str = "florence-high-school"
+
+    # Automated builder codegen (backend/builder/codegen.py) — generates and
+    # visually verifies a declarative layout spec for a new school instead of
+    # requiring a hand-written {school_id}_builder.py. Off by default: this is
+    # new, unproven infrastructure (a new vision-model trust boundary, a new
+    # system dependency for rendering) meant for a staged, one-school-at-a-time
+    # pilot, not turned on for every school the moment it's deployed.
+    builder_codegen_enabled: bool = False
+    # A vision-capable model, distinct from openai_model (text-only) — used
+    # only by llm.judge_builder_render to compare a generated render against
+    # the real uploaded template.
+    vision_model: str = "gpt-5.6-luna"
+    # Generous enough for a real spec to converge after review feedback,
+    # small enough to bound cost — this runs once per school onboarding, not
+    # per document generation, so a few minutes of wall-clock is acceptable.
+    builder_codegen_max_attempts: int = 4
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
     school_profile_path: Path = Path(__file__).resolve().parent / "context" / "school_profile.md"
     # One calendar file per registered school (backend/db.py's `schools` table),

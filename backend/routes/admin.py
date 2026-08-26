@@ -365,6 +365,89 @@ def download_school_template_route(template_id: str, _admin: str = Depends(get_c
     return FileResponse(file_path, filename=template["filename"])
 
 
+@router.get("/builder-codegen/pending")
+def list_pending_builder_codegen_jobs_route(_admin: str = Depends(get_current_admin)):
+    """Jobs awaiting an admin decision: exhausted their retry budget, or
+    passed both vision judges but still need the explicit approval that
+    pipeline never grants itself — see backend/builder/codegen.py's module
+    docstring for why approval stays a human action during the pilot."""
+    return {"jobs": db.list_builder_codegen_jobs_pending_review()}
+
+
+@router.get("/builder-codegen/{job_id}")
+def get_builder_codegen_job_route(job_id: str, _admin: str = Depends(get_current_admin)):
+    """Full attempt history for one job: every spec tried, every rendered
+    sample, both vision-judge verdicts per attempt — so a failed job hands an
+    admin documented near-misses to finish from, not a bare failure. Mirrors
+    get_school_template_analysis_route's own "full detail behind one queue
+    row" shape."""
+    job = db.get_builder_codegen_job(job_id)
+    if not job:
+        raise AppError("not_found", "Builder codegen job not found.", status=404)
+    attempts = db.list_builder_codegen_attempts(job_id)
+    return {
+        "job": job,
+        "attempts": [
+            {
+                **a,
+                "layout_spec": json.loads(a["layout_spec_json"]) if a.get("layout_spec_json") else None,
+                "judge1": json.loads(a["judge1_json"]) if a.get("judge1_json") else None,
+                "judge2": json.loads(a["judge2_json"]) if a.get("judge2_json") else None,
+            }
+            for a in attempts
+        ],
+    }
+
+
+@router.get("/builder-codegen/{job_id}/attempts/{attempt_number}/render")
+def download_builder_codegen_attempt_render_route(
+    job_id: str, attempt_number: int, _admin: str = Depends(get_current_admin)
+):
+    """The rendered .docx sample for one attempt — lets an admin open the
+    actual file (not just the vision judge's read of it) before approving."""
+    from fastapi.responses import FileResponse
+
+    attempts = db.list_builder_codegen_attempts(job_id)
+    match = next((a for a in attempts if a["attempt_number"] == attempt_number), None)
+    if not match or not match.get("render_image_path"):
+        raise AppError("not_found", "No rendered sample for that attempt.", status=404)
+    file_path = Path(match["render_image_path"])
+    if not file_path.is_file():
+        raise AppError("not_found", "Rendered sample is missing from disk.", status=404)
+    return FileResponse(file_path, filename=f"{job_id}_attempt_{attempt_number}.docx")
+
+
+@router.post("/builder-codegen/{job_id}/approve")
+def approve_builder_codegen_job_route(job_id: str, _admin: str = Depends(get_current_admin)):
+    """The ONE place schools.builder_status is ever set to 'verified' —
+    always this explicit action, never automatic, even for a job whose
+    winning attempt already passed both vision judges. See
+    backend/builder/codegen.py's module docstring."""
+    job = db.get_builder_codegen_job(job_id)
+    if not job:
+        raise AppError("not_found", "Builder codegen job not found.", status=404)
+    if not job.get("layout_spec_json"):
+        raise AppError(
+            "no_winning_spec",
+            "This job has no passing spec to approve — it either failed every attempt or is still running.",
+            status=409,
+        )
+    school = db.approve_builder_codegen_job(job_id)
+    return {"school": school}
+
+
+@router.post("/builder-codegen/{job_id}/retry")
+def retry_builder_codegen_job_route(job_id: str, _admin: str = Depends(get_current_admin)):
+    """Re-enters the queue for another full attempt cycle, keeping its
+    existing attempt history — mirrors reanalyze_school_template_route's own
+    "re-run against what's already there" shape."""
+    job = db.get_builder_codegen_job(job_id)
+    if not job:
+        raise AppError("not_found", "Builder codegen job not found.", status=404)
+    db.requeue_builder_codegen_job(job_id)
+    return {"status": "queued"}
+
+
 class AppSettingsBody(BaseModel):
     # Both required — the row always carries a value for each, so a PUT is a
     # full replace, not a partial patch (unlike CompBody's single field).

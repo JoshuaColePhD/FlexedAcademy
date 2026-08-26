@@ -29,6 +29,8 @@ from .errors import AppError
 from .prompts import day_field_system_prompt, day_system_prompt, week_system_prompt
 from .retrieval import RetrievalResult
 from .schema import (
+    BUILDER_LAYOUT_JSON_SCHEMA,
+    BUILDER_RENDER_JUDGE_JSON_SCHEMA,
     CALENDAR_JSON_SCHEMA,
     DAY_JSON_SCHEMA,
     DAY_NAMES,
@@ -844,6 +846,113 @@ def verify_template_sections(user_id: str, structure_summary: str, sections: lis
         ],
     )
     return loads_lenient(content or "")
+
+
+_BUILDER_SPEC_PROMPT = """You are writing a declarative layout spec for a document-generation renderer, given a \
+lesson-plan template's already-verified structural analysis (sections a human/model pipeline has already \
+cross-checked against the real uploaded file). You are NOT writing code — you are filling in a fixed JSON \
+schema that one shared, already-tested renderer will interpret. Every `field` you reference must be one of \
+the app's real day-content fields (the schema enforces this), and every cell's `source_section_name` must \
+name one of the sections given to you below — never invent a section that wasn't given.
+
+The table has one label column plus one column per weekday (Monday-Friday, in that order, day_index 0-4). \
+Header rows carry static/identity text (teacher name, week, course, day names) using {teacher}/{course}/\
+{period}/{week_of} placeholders — nothing else is substitutable there. Body rows repeat per day: each maps \
+either a single day_field to a cell (control_type 'plain' for free text, 'dropdown' with \
+dropdown_options_ref='ENGAGEMENT_OPTIONS' only for the engagement_strategy field), or several fields into one \
+cell via multi_field_block (e.g. a combined Do Now / During / Assessment lesson block, each with its own bold \
+sub-label). Reuse shading colors and column proportions the analysis's evidence text suggests came from the \
+original template where you can tell; otherwise use reasonable defaults (a single accent color for header/label \
+cells, white for body cells, roughly equal day-column widths).
+
+If a review pass previously rejected an attempt, its feedback is given below — fix exactly what it flagged, \
+don't restart from scratch unless the feedback says the whole approach was wrong."""
+
+
+def generate_layout_spec(user_id: str, structure_summary: str, sections: list[dict], prior_feedback: str | None = None) -> dict:
+    """Turn already-verified analysis.sections into a BUILDER_LAYOUT_JSON_SCHEMA
+    spec for backend/builder/generic_renderer.py. Never generates code — the
+    spec is the only executable-adjacent artifact this call ever produces, and
+    validate_spec_against_analysis (backend/builder/spec_validate.py) checks
+    its section references before any render is attempted."""
+    sections_text = "\n".join(
+        f"- name: {s['name']!r}\n  description: {s['description']!r}\n  evidence: {s['source_evidence']!r}"
+        f"\n  repeats_per_entry: {s['repeats_per_entry']}"
+        for s in sections
+    )
+    user_content = f"Structural extraction:\n{structure_summary[:20000]}\n\nVerified sections:\n{sections_text[:8000]}"
+    if prior_feedback:
+        user_content += f"\n\nPrior attempt's review feedback (fix this):\n{prior_feedback[:4000]}"
+    content = _cached_completion(
+        user_id,
+        "generate_layout_spec",
+        model=settings.openai_model,
+        max_completion_tokens=6000,
+        response_format=_response_format("builder_layout", BUILDER_LAYOUT_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": _BUILDER_SPEC_PROMPT},
+            {"role": "user", "content": user_content},
+        ],
+    )
+    return loads_lenient(content or "")
+
+
+_BUILDER_JUDGE_PROMPT = """You are a strict quality reviewer comparing an automatically-generated lesson-plan \
+document render against the real template it is supposed to match. You will be shown two sets of page images: \
+the ORIGINAL uploaded template (blank or with its own sample content) and a GENERATED render, filled with \
+obvious placeholder test values (e.g. "MONDAY-STANDARDS-TEST") specifically so a wrong-row or wrong-column \
+placement is visually easy to catch — check each expected value landed in the cell a human would expect for it, \
+under the right day and the right row label.
+
+Default to failing when uncertain. This render will be used to generate real documents for real teachers if you \
+approve it — a false pass is far worse than a false fail, which just costs another generation attempt. Check \
+table shape (same rows/columns/order as the original), that every placeholder value is in its correct cell, and \
+for any visual defect: text overflow or truncation, missing/wrong shading, wrong page orientation, or a garbled/\
+corrupt-looking render. Set pass=true only if structural_match is true, every per_field_checks entry is \
+correct_cell=true, and visual_defects is empty."""
+
+
+def judge_builder_render(
+    user_id: str,
+    *,
+    original_images_b64: list[str],
+    generated_images_b64: list[str],
+    layout_spec: dict,
+    fixture_expectations: list[str],
+) -> dict:
+    """One independent vision-judge pass. Call this TWICE per attempt (see
+    backend/builder/codegen.py) and require both to pass — never cached,
+    never averaged, so two calls with identical inputs are two genuinely
+    independent samples, not one cached result returned twice."""
+    expectations_text = "\n".join(f"- {e}" for e in fixture_expectations)
+    content_parts: list[dict] = [
+        {
+            "type": "text",
+            "text": (
+                f"Layout spec used for the generated render:\n{json.dumps(layout_spec)[:6000]}\n\n"
+                f"Placeholder values that must appear in their correct cells:\n{expectations_text}\n\n"
+                "Below: ORIGINAL template page(s), then GENERATED render page(s)."
+            ),
+        },
+    ]
+    for img in original_images_b64:
+        content_parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img}"}})
+    for img in generated_images_b64:
+        content_parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img}"}})
+
+    resp = client().chat.completions.create(
+        model=settings.vision_model,
+        max_completion_tokens=2000,
+        response_format=_response_format("builder_render_judge", BUILDER_RENDER_JUDGE_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": _BUILDER_JUDGE_PROMPT},
+            {"role": "user", "content": content_parts},
+        ],
+    )
+    msg = resp.choices[0].message
+    _check_refusal(msg)
+    _record(user_id, "judge_builder_render", resp.usage)
+    return loads_lenient(msg.content or "")
 
 
 DECISIONS_SCHEMA = {

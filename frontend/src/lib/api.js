@@ -354,6 +354,16 @@ export const api = {
     request(`/api/admin/school-templates/${encodeURIComponent(templateId)}/analysis`, { signal }),
   reanalyzeTemplate: (templateId) =>
     request(`/api/admin/school-templates/${encodeURIComponent(templateId)}/reanalyze`, { method: 'POST' }),
+  listPendingBuilderCodegenJobs: ({ signal } = {}) =>
+    request('/api/admin/builder-codegen/pending', { signal }),
+  getBuilderCodegenJob: (jobId, { signal } = {}) =>
+    request(`/api/admin/builder-codegen/${encodeURIComponent(jobId)}`, { signal }),
+  builderCodegenAttemptRenderUrl: (jobId, attemptNumber) =>
+    `/api/admin/builder-codegen/${encodeURIComponent(jobId)}/attempts/${attemptNumber}/render`,
+  approveBuilderCodegenJob: (jobId) =>
+    request(`/api/admin/builder-codegen/${encodeURIComponent(jobId)}/approve`, { method: 'POST' }),
+  retryBuilderCodegenJob: (jobId) =>
+    request(`/api/admin/builder-codegen/${encodeURIComponent(jobId)}/retry`, { method: 'POST' }),
   adminGetSettings: ({ signal } = {}) => request('/api/admin/settings', { signal }),
   adminUpdateSettings: (freeWeeklyTokenCap, subscriberWeeklyTokenCap) =>
     request('/api/admin/settings', {

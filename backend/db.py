@@ -2946,6 +2946,55 @@ MIGRATIONS: list[str] = [
 
     ALTER TABLE schools ALTER COLUMN template_status SET DEFAULT 'pending';
     """,
+    # ── 52: automated builder-spec codegen ─────────────────────────────────────
+    #
+    # template_status ('pending'/'active') means "we understand this school's
+    # template structure" — it has never meant "we can generate documents in
+    # it" (see docx_build.builder()'s AppError("builder_missing_for_school")).
+    # builder_status is a deliberately SEPARATE axis tracking the new
+    # generate-a-declarative-spec-and-visually-verify-it pipeline
+    # (backend/builder/codegen.py), so template_status keeps meaning exactly
+    # what every existing consumer (TemplateBanner, SettingsPage's status
+    # pill, docx_build.builder()'s own gate) already assumes it means.
+    #
+    # builder_codegen_jobs is one row per (school, template) codegen attempt
+    # series; builder_codegen_attempts is the full history of every attempt
+    # within a job — layout spec, rendered sample, both vision-judge verdicts
+    # — so a job that exhausts its retry budget hands a human a documented
+    # set of near-misses to finish from, not a bare failure.
+    """
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS builder_status TEXT NOT NULL DEFAULT 'not_started';
+
+    CREATE TABLE IF NOT EXISTS builder_codegen_jobs (
+        id                TEXT PRIMARY KEY,
+        school_id         TEXT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+        template_id       TEXT NOT NULL REFERENCES school_templates(id) ON DELETE CASCADE,
+        status            TEXT NOT NULL DEFAULT 'queued',
+        attempt_count     INTEGER NOT NULL DEFAULT 0,
+        layout_spec_json  TEXT,
+        error_message     TEXT,
+        created_at        TEXT NOT NULL,
+        started_at        TEXT,
+        finished_at       TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_builder_codegen_jobs_status ON builder_codegen_jobs(status);
+    CREATE INDEX IF NOT EXISTS idx_builder_codegen_jobs_school ON builder_codegen_jobs(school_id);
+    ALTER TABLE builder_codegen_jobs ENABLE ROW LEVEL SECURITY;
+
+    CREATE TABLE IF NOT EXISTS builder_codegen_attempts (
+        id                 TEXT PRIMARY KEY,
+        job_id             TEXT NOT NULL REFERENCES builder_codegen_jobs(id) ON DELETE CASCADE,
+        attempt_number     INTEGER NOT NULL,
+        layout_spec_json   TEXT NOT NULL,
+        render_image_path  TEXT,
+        judge1_json        TEXT,
+        judge2_json        TEXT,
+        passed             BOOLEAN NOT NULL DEFAULT false,
+        created_at         TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_builder_codegen_attempts_job ON builder_codegen_attempts(job_id);
+    ALTER TABLE builder_codegen_attempts ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -3183,6 +3232,22 @@ def _row(sql: str, params: tuple = ()) -> dict | None:
     with borrow() as conn, conn.cursor() as cur:
         cur.execute(sql.replace("?", "%s"), params)
         r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def _write_returning(sql: str, params: tuple = ()) -> dict | None:
+    """Like _write, but for a write statement with a RETURNING clause whose
+    result the caller needs — e.g. an atomic
+    `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING *`
+    claim. _row/_rows never commit (read-only callers rely on that), so using
+    either of them here would leave the write uncommitted until the pooled
+    connection is reused for something else — this commits explicitly, same
+    as _write."""
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql.replace("?", "%s"), params)
+            r = cur.fetchone()
+        conn.commit()
         return dict(r) if r else None
 
 
@@ -3554,6 +3619,186 @@ def get_template_findings(template_id: str) -> list[dict]:
         """,
         (template_id,),
     )
+
+
+# ---------------------------------------------------------------------------
+# Builder codegen (migration 52) — declarative layout-spec generation +
+# visual verification for a school with no hand-written {school_id}_builder.py.
+# See backend/builder/codegen.py for the attempt loop that drives these.
+# ---------------------------------------------------------------------------
+
+
+def enqueue_builder_codegen_job(school_id: str, template_id: str) -> dict:
+    job_id = new_id()
+    _write(
+        """
+        INSERT INTO builder_codegen_jobs (id, school_id, template_id, status, created_at)
+        VALUES (?, ?, ?, 'queued', ?)
+        """,
+        (job_id, school_id, template_id, now()),
+    )
+    return get_builder_codegen_job(job_id)  # type: ignore[return-value]
+
+
+def claim_next_builder_codegen_job() -> dict | None:
+    """Atomically claims and marks 'running' the oldest 'queued' job, or
+    returns None if none is waiting. FOR UPDATE SKIP LOCKED means two worker
+    processes polling at once can never claim the same row — the second
+    simply skips it and sees nothing to claim this round, rather than
+    blocking on the first's lock."""
+    return _write_returning(
+        """
+        UPDATE builder_codegen_jobs
+        SET status = 'running', started_at = ?
+        WHERE id = (
+            SELECT id FROM builder_codegen_jobs
+            WHERE status = 'queued'
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING *
+        """,
+        (now(),),
+    )
+
+
+def reset_stale_running_builder_codegen_jobs(stale_after_seconds: int = 1800) -> int:
+    """Startup sweep: a job left 'running' by a process that died or was
+    restarted mid-job would otherwise sit invisible forever (never re-polled,
+    since claim_next_builder_codegen_job only looks at 'queued'). Reset it
+    back to 'queued' so it resumes instead of leaking a zombie row — its
+    attempt history in builder_codegen_attempts is untouched, so the next
+    run picks up with that context intact via generate_layout_spec's
+    prior_feedback, not from scratch."""
+    return _write(
+        """
+        UPDATE builder_codegen_jobs
+        SET status = 'queued'
+        WHERE status = 'running'
+          AND started_at < ?
+        """,
+        ((datetime.now(UTC) - timedelta(seconds=stale_after_seconds)).isoformat(timespec="seconds"),),
+    )
+
+
+def get_builder_codegen_job(job_id: str) -> dict | None:
+    return _row("SELECT * FROM builder_codegen_jobs WHERE id = ?", (job_id,))
+
+
+def get_builder_codegen_job_for_school(school_id: str) -> dict | None:
+    return _row(
+        "SELECT * FROM builder_codegen_jobs WHERE school_id = ? ORDER BY created_at DESC LIMIT 1",
+        (school_id,),
+    )
+
+
+def list_builder_codegen_jobs_pending_review() -> list[dict]:
+    """Jobs an admin still needs to act on: exhausted their retry budget, or
+    passed but haven't been explicitly approved yet (approval is mandatory
+    even on a pass — see backend/builder/codegen.py's module docstring on
+    why the vision judge isn't trusted to auto-verify during the pilot)."""
+    return _rows(
+        """
+        SELECT j.*, s.name AS school_name, s.builder_status AS school_builder_status
+        FROM builder_codegen_jobs j
+        JOIN schools s ON s.id = j.school_id
+        WHERE j.status IN ('failed_needs_human', 'succeeded')
+          AND s.builder_status != 'verified'
+        ORDER BY j.created_at DESC
+        """
+    )
+
+
+def record_builder_codegen_attempt(
+    job_id: str,
+    *,
+    attempt_number: int,
+    layout_spec_json: str,
+    render_image_path: str | None,
+    judge1_json: str | None,
+    judge2_json: str | None,
+    passed: bool,
+) -> dict:
+    attempt_id = new_id()
+    _write(
+        """
+        INSERT INTO builder_codegen_attempts
+            (id, job_id, attempt_number, layout_spec_json, render_image_path, judge1_json, judge2_json, passed, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (attempt_id, job_id, attempt_number, layout_spec_json, render_image_path, judge1_json, judge2_json, passed, now()),
+    )
+    _write("UPDATE builder_codegen_jobs SET attempt_count = ? WHERE id = ?", (attempt_number, job_id))
+    return _row("SELECT * FROM builder_codegen_attempts WHERE id = ?", (attempt_id,))  # type: ignore[return-value]
+
+
+def list_builder_codegen_attempts(job_id: str) -> list[dict]:
+    return _rows(
+        "SELECT * FROM builder_codegen_attempts WHERE job_id = ? ORDER BY attempt_number ASC",
+        (job_id,),
+    )
+
+
+def mark_builder_codegen_job_succeeded(job_id: str, layout_spec_json: str) -> None:
+    _write(
+        """
+        UPDATE builder_codegen_jobs
+        SET status = 'succeeded', layout_spec_json = ?, finished_at = ?
+        WHERE id = ?
+        """,
+        (layout_spec_json, now(), job_id),
+    )
+
+
+def mark_builder_codegen_job_failed(job_id: str, error_message: str) -> None:
+    _write(
+        """
+        UPDATE builder_codegen_jobs
+        SET status = 'failed_needs_human', error_message = ?, finished_at = ?
+        WHERE id = ?
+        """,
+        (error_message, now(), job_id),
+    )
+
+
+def requeue_builder_codegen_job(job_id: str) -> None:
+    """The admin 'retry' action — re-enters the queue with its attempt
+    history intact (nothing here touches builder_codegen_attempts), so a
+    fresh run's prior_feedback can still draw on what was already tried."""
+    _write(
+        """
+        UPDATE builder_codegen_jobs
+        SET status = 'queued', error_message = NULL, finished_at = NULL
+        WHERE id = ?
+        """,
+        (job_id,),
+    )
+
+
+def approve_builder_codegen_job(job_id: str) -> dict | None:
+    """The one place builder_status is ever set to 'verified' — always an
+    explicit admin action (POST /admin/builder-codegen/{job_id}/approve),
+    never automatic, even when every attempt inside the loop already passed
+    both vision judges. See backend/builder/codegen.py's module docstring."""
+    job = get_builder_codegen_job(job_id)
+    if not job or not job.get("layout_spec_json"):
+        return None
+    _write("UPDATE schools SET builder_status = 'verified' WHERE id = ?", (job["school_id"],))
+    return get_school(job["school_id"])
+
+
+def get_school_builder_spec(school_id: str) -> dict | None:
+    """The winning layout spec for a school whose builder_status is
+    'verified' — docx_build.builder() reads this directly rather than
+    materializing a generated .py file on disk."""
+    school = get_school(school_id)
+    if not school or school.get("builder_status") != "verified":
+        return None
+    job = get_builder_codegen_job_for_school(school_id)
+    if not job or not job.get("layout_spec_json"):
+        return None
+    return json.loads(job["layout_spec_json"])
 
 
 def count_users_with_school(school_id: str) -> int:

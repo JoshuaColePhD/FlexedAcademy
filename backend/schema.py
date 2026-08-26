@@ -334,6 +334,214 @@ TEMPLATE_VERIFICATION_JSON_SCHEMA = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Builder codegen — turning a template's already-verified `analysis.sections`
+# (TEMPLATE_ANALYSIS_JSON_SCHEMA above) into a declarative layout spec that
+# backend/builder/generic_renderer.py can render, plus the schema for the
+# vision judge that verifies a rendered sample against the real uploaded
+# template before any of this reaches a teacher. See backend/builder_gen.py's
+# module docstring (once built) for the full pipeline this feeds.
+#
+# `field` below is a closed JSON-Schema enum drawn from DAY_CONTENT_FIELDS —
+# not a free-text string — specifically so a hallucinated or misspelled field
+# reference is structurally impossible for Structured Outputs to emit, the
+# same way TEMPLATE_SECTION_JSON_SCHEMA's `source_evidence` is checked
+# against the extraction it must quote, just enforced one layer earlier here.
+# ---------------------------------------------------------------------------
+
+_BUILDER_DAY_FIELD_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "field": {
+            "type": "string",
+            "enum": list(DAY_CONTENT_FIELDS),
+            "description": "Which day-content field this cell renders. Must be one of the app's real fields — never invented.",
+        },
+        "source_section_name": {
+            "type": "string",
+            "description": "The `name` of the analysis section (from the template analysis you were given) that grounds this mapping.",
+        },
+    },
+    "required": ["field", "source_section_name"],
+}
+
+_BUILDER_MULTI_FIELD_BLOCK_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "fields": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "field": {"type": "string", "enum": list(DAY_CONTENT_FIELDS)},
+                    "label": {"type": "string", "description": "Bold sub-label shown before this field's text, e.g. 'Do Now:'."},
+                },
+                "required": ["field", "label"],
+            },
+        },
+        "source_section_name": {
+            "type": "string",
+            "description": "The `name` of the analysis section that groups these fields into one cell.",
+        },
+    },
+    "required": ["fields", "source_section_name"],
+}
+
+_BUILDER_HEADER_CELL_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "col_span": {"type": "integer", "description": "How many table columns this cell spans (merged). 1 if not merged."},
+        "text_template": {
+            "type": "string",
+            "description": (
+                "Literal text for this header cell. May reference {teacher}, {course}, {period}, or {week_of} "
+                "using exactly that Python str.format() syntax — no other placeholders are supported."
+            ),
+        },
+        "shade_hex": {"type": "string", "description": "6-digit hex fill color for this cell, no leading #, e.g. '6d9eeb'."},
+        "bold": {"type": "boolean"},
+        "align": {"type": "string", "enum": ["left", "center", "right"]},
+    },
+    "required": ["col_span", "text_template", "shade_hex", "bold", "align"],
+}
+
+_BUILDER_COLUMN_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "role": {"type": "string", "enum": ["label", "day"]},
+        "day_index": {
+            "type": ["integer", "null"],
+            "description": "0-4 (Monday-Friday, per schema.DAY_NAMES) for a role='day' column; null for role='label'.",
+        },
+        "width_dxa": {"type": "integer", "description": "Column width in twentieths of a point (DXA)."},
+    },
+    "required": ["role", "day_index", "width_dxa"],
+}
+
+_BUILDER_BODY_ROW_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "label": {"type": "string", "description": "Text shown in this row's label column, e.g. 'Standards:'."},
+        "shade_label_hex": {"type": "string"},
+        "shade_body_hex": {"type": "string"},
+        "control_type": {"type": "string", "enum": ["plain", "dropdown"]},
+        "cell_source": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "kind": {"type": "string", "enum": ["day_field", "multi_field_block"]},
+                "day_field": _BUILDER_DAY_FIELD_SCHEMA,
+                "multi_field_block": _BUILDER_MULTI_FIELD_BLOCK_SCHEMA,
+            },
+            "required": ["kind", "day_field", "multi_field_block"],
+            "description": (
+                "Exactly one of day_field/multi_field_block is meaningful, selected by `kind` — the other must "
+                "still be present per strict-mode requirements but is ignored at render time."
+            ),
+        },
+        "dropdown_options_ref": {
+            "type": ["string", "null"],
+            "enum": ["ENGAGEMENT_OPTIONS", None],
+            "description": "Required (non-null) only when control_type is 'dropdown'.",
+        },
+        "no_school_text": {
+            "type": ["string", "null"],
+            "description": "Text centered in this cell for a day marked no_school (e.g. 'No School'); null to leave it blank.",
+        },
+    },
+    "required": [
+        "label", "shade_label_hex", "shade_body_hex", "control_type",
+        "cell_source", "dropdown_options_ref", "no_school_text",
+    ],
+}
+
+BUILDER_LAYOUT_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "page": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "orientation": {"type": "string", "enum": ["landscape", "portrait"]},
+                "width_dxa": {"type": "integer"},
+                "height_dxa": {"type": "integer"},
+                "margin_dxa": {"type": "integer"},
+            },
+            "required": ["orientation", "width_dxa", "height_dxa", "margin_dxa"],
+        },
+        "table": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "columns": {"type": "array", "items": _BUILDER_COLUMN_SCHEMA},
+                "header_rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {"cells": {"type": "array", "items": _BUILDER_HEADER_CELL_SCHEMA}},
+                        "required": ["cells"],
+                    },
+                },
+                "body_rows": {"type": "array", "items": _BUILDER_BODY_ROW_SCHEMA},
+            },
+            "required": ["columns", "header_rows", "body_rows"],
+        },
+    },
+    "required": ["page", "table"],
+}
+
+
+# The vision judge comparing a rendered synthetic-fixture sample against the
+# real uploaded template's own rendering — see llm.judge_builder_render and
+# backend/builder/codegen.py's attempt loop. Run twice independently per
+# attempt (never averaged/cached) — mirrors verify_template_sections' own
+# "a second, independently-framed pass" philosophy, applied to a brand-new,
+# unproven trust boundary (no vision-judge track record exists yet).
+BUILDER_RENDER_JUDGE_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "structural_match": {
+            "type": "boolean",
+            "description": "True only if the rendered sample has the same table shape (row/column count and order, header labels) as the original template.",
+        },
+        "per_field_checks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "field": {"type": "string", "description": "Which fixture value this check is about, e.g. 'MONDAY-STANDARDS-TEST'."},
+                    "correct_cell": {"type": "boolean", "description": "True only if this value appears in the cell a human would expect for it."},
+                    "issue": {"type": ["string", "null"], "description": "What's wrong, if correct_cell is false; null otherwise."},
+                },
+                "required": ["field", "correct_cell", "issue"],
+            },
+        },
+        "visual_defects": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Any rendering defect: text overflow/truncation, missing shading, wrong orientation, garbled or corrupt render. Empty if none.",
+        },
+        "pass": {
+            "type": "boolean",
+            "description": "True only if structural_match is true, every per_field_checks entry has correct_cell true, and visual_defects is empty.",
+        },
+        "confidence": {"type": "number", "description": "0.0-1.0 self-rated confidence in this verdict."},
+        "reasoning": {"type": "string", "description": "Brief explanation of the verdict, referencing anything specific that failed."},
+    },
+    "required": ["structural_match", "per_field_checks", "visual_defects", "pass", "confidence", "reasoning"],
+}
+
+
 class QuizSchemaError(Exception):
     """A question the model wrote doesn't match what its own `type` needs —
     e.g. multiple_choice with an empty `choices`, or a correct_index outside

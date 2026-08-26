@@ -9,6 +9,7 @@ import {
   ChevronUp,
   FileText,
   Plus,
+  RotateCcw,
   Search,
   ShieldCheck,
   Trash2,
@@ -808,6 +809,7 @@ function SchoolsAdmin() {
       <PendingCalendarSubmissions />
       <PendingSchoolTemplates />
       <AutoActivatedTemplates />
+      <BuilderCodegenQueue />
     </div>
   )
 }
@@ -1126,6 +1128,220 @@ function AutoActivatedTemplates() {
             </a>
           </li>
         ))}
+      </ul>
+    </div>
+  )
+}
+
+const BUILDER_JOB_STATUS_STYLE = {
+  queued: { label: 'Queued', className: 'bg-surface-muted text-ink-muted' },
+  running: { label: 'Running', className: 'bg-sky-500/15 text-sky-600' },
+  succeeded: { label: 'Passed — needs approval', className: 'bg-emerald-500/15 text-emerald-600' },
+  failed_needs_human: { label: 'Failed — needs a human', className: 'bg-red-500/15 text-red-600' },
+}
+
+function BuilderJobStatusBadge({ status }) {
+  const style = BUILDER_JOB_STATUS_STYLE[status] || BUILDER_JOB_STATUS_STYLE.queued
+  return <span className={`rounded px-1.5 py-0.5 text-2xs font-medium ${style.className}`}>{style.label}</span>
+}
+
+/* One attempt's spec + both independent vision-judge verdicts — the
+   "documented near-miss" a failed job hands an admin to finish from, per
+   backend/builder/codegen.py's own reasoning for persisting every attempt
+   rather than just the last one. */
+function BuilderCodegenAttempt({ jobId, attempt }) {
+  const [expanded, setExpanded] = useState(false)
+  const judges = [attempt.judge1, attempt.judge2].filter(Boolean)
+
+  return (
+    <li className="rounded border border-edge p-2 text-2xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-ink">
+          Attempt {attempt.attempt_number} — {attempt.passed ? (
+            <span className="text-emerald-600">passed both judges</span>
+          ) : (
+            <span className="text-red-600">failed</span>
+          )}
+        </span>
+        <div className="flex items-center gap-2">
+          {attempt.render_image_path && (
+            <a
+              href={api.builderCodegenAttemptRenderUrl(jobId, attempt.attempt_number)}
+              download
+              className="btn text-2xs"
+            >
+              Download .docx
+            </a>
+          )}
+          <button type="button" onClick={() => setExpanded((v) => !v)} className="btn flex items-center gap-1 text-2xs">
+            Detail {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="mt-2 space-y-2">
+          {judges.length > 0 ? (
+            judges.map((j, i) => (
+              <div key={i} className="rounded bg-surface-muted/40 p-2">
+                <span className="font-semibold text-ink">Judge {i + 1}:</span>{' '}
+                <span className={j.pass ? 'text-emerald-600' : 'text-red-600'}>
+                  {j.pass ? 'pass' : 'fail'}
+                </span>{' '}
+                <span className="text-ink-muted">({Math.round((j.confidence || 0) * 100)}% confidence)</span>
+                <p className="mt-1 text-ink-muted">{j.reasoning}</p>
+                {(j.visual_defects || []).length > 0 && (
+                  <p className="mt-1 text-red-600">Defects: {j.visual_defects.join('; ')}</p>
+                )}
+                {(j.per_field_checks || []).filter((c) => !c.correct_cell).length > 0 && (
+                  <p className="mt-1 text-red-600">
+                    Misplaced: {j.per_field_checks.filter((c) => !c.correct_cell).map((c) => c.field).join(', ')}
+                  </p>
+                )}
+              </div>
+            ))
+          ) : (
+            <p className="text-ink-muted">This attempt was rejected before rendering — see the spec below.</p>
+          )}
+          {attempt.layout_spec && (
+            <pre className="max-h-48 overflow-auto rounded bg-surface-muted/40 p-2 text-2xs text-ink-muted">
+              {JSON.stringify(attempt.layout_spec, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function BuilderCodegenJobDetail({ jobId }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'builderCodegen', 'job', jobId],
+    queryFn: () => api.getBuilderCodegenJob(jobId),
+  })
+
+  if (isLoading) return <p className="py-2 text-2xs text-ink-muted">Loading attempt history…</p>
+  if (isError || !data) return <p className="py-2 text-2xs text-red-600">Could not load this job's attempts.</p>
+
+  const attempts = data.attempts || []
+  if (!attempts.length) return <p className="py-2 text-2xs text-ink-muted">No attempts recorded yet.</p>
+
+  return (
+    <ul className="mt-2 space-y-2">
+      {attempts.map((a) => (
+        <BuilderCodegenAttempt key={a.id} jobId={jobId} attempt={a} />
+      ))}
+    </ul>
+  )
+}
+
+/* Every job here has EITHER exhausted its retry budget (failed_needs_human)
+   OR passed both vision judges but not yet been explicitly approved
+   (succeeded) — approval is mandatory even on a clean pass, since the vision
+   judge is a new, unproven trust boundary with no production track record
+   yet. See backend/builder/codegen.py's module docstring. */
+function BuilderCodegenQueue() {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const [busyId, setBusyId] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'builderCodegen', 'pending'],
+    queryFn: () => api.listPendingBuilderCodegenJobs(),
+  })
+  const jobs = data?.jobs || []
+
+  const invalidate = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ['admin', 'builderCodegen', 'pending'] }),
+      qc.invalidateQueries({ queryKey: qk.schools }),
+    ])
+
+  const approve = async (job) => {
+    setBusyId(job.id)
+    try {
+      await api.approveBuilderCodegenJob(job.id)
+      toast.success(`${job.school_name} builder approved — it can generate real documents now`)
+      await invalidate()
+    } catch (err) {
+      toast.apiError('Could not approve that builder', err)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const retry = async (job) => {
+    setBusyId(job.id)
+    try {
+      await api.retryBuilderCodegenJob(job.id)
+      toast.success(`${job.school_name} builder queued for another attempt`)
+      await invalidate()
+    } catch (err) {
+      toast.apiError('Could not retry that builder', err)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (isLoading || isError || !jobs.length) return null
+
+  return (
+    <div className="mt-5 border-t border-edge pt-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        Builder Codegen Queue ({jobs.length})
+      </h3>
+      <p className="mt-1 text-2xs text-ink-muted">
+        Automated document-builder generation for schools without a hand-written builder script. A job here needs
+        your review either way: it ran out of attempts, or it passed but still needs your approval before it can
+        generate real documents for a teacher.
+      </p>
+      <ul className="mt-2 divide-y divide-edge">
+        {jobs.map((job) => {
+          const isExpanded = expandedId === job.id
+          const canApprove = job.status === 'succeeded'
+          return (
+            <li key={job.id} className="py-2 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="font-medium text-ink">{job.school_name}</span>{' '}
+                  <BuilderJobStatusBadge status={job.status} />{' '}
+                  <span className="text-2xs text-ink-muted">
+                    {job.attempt_count} attempt{job.attempt_count === 1 ? '' : 's'} · {new Date(job.created_at).toLocaleDateString()}
+                  </span>
+                  {job.error_message && <p className="text-2xs text-red-600">{job.error_message}</p>}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : job.id)}
+                    className="btn flex items-center gap-1 text-2xs"
+                  >
+                    Attempts {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === job.id}
+                    onClick={() => retry(job)}
+                    className="btn flex items-center gap-1 text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RotateCcw size={12} /> Retry
+                  </button>
+                  {canApprove && (
+                    <button
+                      type="button"
+                      disabled={busyId === job.id}
+                      onClick={() => approve(job)}
+                      className="btn flex items-center gap-1 text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <CheckCircle2 size={12} /> Approve
+                    </button>
+                  )}
+                </div>
+              </div>
+              {isExpanded && <BuilderCodegenJobDetail jobId={job.id} />}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

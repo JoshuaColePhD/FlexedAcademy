@@ -19,7 +19,7 @@ import logging
 import re
 from functools import lru_cache
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 from .config import settings
 from .errors import AppError
@@ -28,12 +28,28 @@ from .schema import ENGAGEMENT_OPTIONS
 log = logging.getLogger("aplang.docx")
 
 
+def _generated_spec_builder(school_id: str, layout_spec: dict) -> SimpleNamespace:
+    """A module-shaped wrapper (matches the same build(data, out_path)
+    contract assert_builder_contract() checks) around a school's verified,
+    automated-codegen layout spec, rendered through the one shared
+    backend.builder.generic_renderer — never a school-specific generated
+    Python file. See backend/builder/codegen.py for how a spec earns
+    'verified' status; only an explicit admin approval sets it, never the
+    codegen loop itself."""
+    from .builder.generic_renderer import render as _render
+
+    def build(data: dict, out_path: str) -> None:
+        _render(layout_spec, data, out_path)
+
+    return SimpleNamespace(build=build, __doc__=f"Generated builder spec for {school_id} (template unknown)")
+
+
 @lru_cache(maxsize=128)
-def builder(school_id: str | None = None) -> ModuleType:
+def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
     from . import db
-    
+
     path = Path(settings.builder_path)
-    
+
     if school_id and school_id != "generic" and school_id != settings.default_builder_school_id:
         school = db.get_school(school_id)
         if school and school.get("template_status") == "active":
@@ -50,6 +66,23 @@ def builder(school_id: str | None = None) -> ModuleType:
             custom_path = path.parent / f"{school_id}_builder.py"
             if custom_path.is_file():
                 path = custom_path
+            elif school.get("builder_status") == "verified":
+                # No hand-written file, but an admin has explicitly approved
+                # a generated layout spec for this school (see
+                # backend/builder/codegen.py + db.approve_builder_codegen_job
+                # — builder_status only ever reaches 'verified' through that
+                # one explicit action, never automatically). A hand-written
+                # file still wins if one exists, so replacing a generated
+                # spec later with a real hand-written builder just works.
+                layout_spec = db.get_school_builder_spec(school_id)
+                if layout_spec:
+                    return _generated_spec_builder(school_id, layout_spec)
+                raise AppError(
+                    "builder_missing_for_school",
+                    f"{school.get('name', school_id)} is marked builder_status='verified', "
+                    "but no layout spec could be loaded for it.",
+                    hint="This should not happen — check builder_codegen_jobs for this school.",
+                )
             else:
                 raise AppError(
                     "builder_missing_for_school",

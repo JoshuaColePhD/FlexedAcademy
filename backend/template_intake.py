@@ -920,4 +920,16 @@ def run_and_persist(*, user_id: str, template_id: str, school_id: str, dest_path
     auto_activated = _maybe_auto_activate(school_id, template_id, result)
     if auto_activated:
         row = db.get_school_template(template_id)  # re-fetch: auto_activated flag just changed
+
+    # Kept independent of _maybe_auto_activate above: a slow or failed
+    # codegen job (builder_status) must never block or delay the analysis
+    # result (template_status) an admin already sees in the pending queue —
+    # these are deliberately separate axes, see migration 52's comment.
+    # Anything short of a clean or warned analysis with real sections has
+    # nothing for a spec to be generated from, so there's no point enqueuing.
+    if settings.builder_codegen_enabled and result["status"] in ("analyzed", "analyzed_with_warnings"):
+        sections = (result["analysis"] or {}).get("sections") or []
+        if sections:
+            db.enqueue_builder_codegen_job(school_id, template_id)
+
     return {"template": row, "findings": result["findings"], "auto_activated": auto_activated}

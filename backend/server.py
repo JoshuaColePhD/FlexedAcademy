@@ -6,6 +6,7 @@ Run it with ./run.sh, or:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -44,6 +45,43 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-7s %(name)s  %(message)s",
 )
 log = logging.getLogger("aplang")
+
+_codegen_worker_task: asyncio.Task | None = None
+_CODEGEN_POLL_INTERVAL_S = 15
+
+
+async def _builder_codegen_worker_loop() -> None:
+    """Polls db.claim_next_builder_codegen_job (Postgres FOR UPDATE SKIP
+    LOCKED, so multiple app instances polling concurrently never double-claim
+    a row) and runs each claimed job to completion. Runs as a background
+    asyncio task rather than a separate process — this app is a single
+    container, and Postgres is already the coordination point of truth for
+    the pool/migrations, so a second broker/queue system would be new
+    infrastructure this doesn't need. Each blocking step (DB call, LLM call,
+    LibreOffice subprocess) is pushed to the default executor so it never
+    stalls the event loop other requests are running on."""
+    from .builder.codegen import run_codegen_job
+
+    loop = asyncio.get_running_loop()
+    try:
+        reset = await loop.run_in_executor(None, db.reset_stale_running_builder_codegen_jobs)
+        if reset:
+            log.warning("builder codegen: reset %d stale 'running' job(s) back to 'queued' at boot", reset)
+    except Exception:  # noqa: BLE001 — a failed sweep must not stop the worker loop from starting
+        log.exception("builder codegen: startup staleness sweep failed")
+
+    while True:
+        try:
+            job = await loop.run_in_executor(None, db.claim_next_builder_codegen_job)
+            if job:
+                log.info("builder codegen: claimed job %s (school %s)", job["id"], job["school_id"])
+                await loop.run_in_executor(None, run_codegen_job, job["id"])
+                continue  # a job just finished — check immediately for another, instead of sleeping first
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — one bad job must not kill the loop for every school after it
+            log.exception("builder codegen worker loop: unexpected error")
+        await asyncio.sleep(_CODEGEN_POLL_INTERVAL_S)
 
 if settings.sentry_dsn:
     import sentry_sdk
@@ -128,7 +166,18 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, retrieval.chunks_by_code)
     loop.run_in_executor(None, retrieval._chunks_by_course_and_code)
+
+    global _codegen_worker_task
+    if settings.builder_codegen_enabled:
+        _codegen_worker_task = asyncio.create_task(_builder_codegen_worker_loop())
+        log.info("builder codegen worker loop started")
+
     yield
+
+    if _codegen_worker_task:
+        _codegen_worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _codegen_worker_task
     db.close()
 
 
