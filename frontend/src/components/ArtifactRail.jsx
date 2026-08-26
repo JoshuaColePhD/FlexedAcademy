@@ -555,7 +555,15 @@ export function ArtifactRail({
  */
 export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps }) {
   return (
-    <div className={`artifact-drawer${open ? ' is-open' : ''}`}>
+    // glass-panel + rounded-2xl, same treatment as the left nav rail's own
+    // outer wrapper (AppShell.jsx's .app-rail) and the chat pane itself —
+    // this was the one docked panel still opaque (bg-paper-raised) instead
+    // of showing the drifting background orbs through it. Applied to the
+    // OUTER .artifact-drawer div, not just .artifact-drawer-body, so the
+    // collapsed 18px handle strip reads as the same glass panel narrowed,
+    // rather than a flat sliver in front of a glass panel that only exists
+    // once open.
+    <div className={`artifact-drawer glass-panel rounded-2xl shadow-sm overflow-hidden${open ? ' is-open' : ''}`}>
       <button
         type="button"
         /* No .fa-press here — that class's :active state applies
@@ -589,7 +597,7 @@ export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps
         )}
       </button>
       {open ? (
-        <div className="artifact-drawer-body bg-paper-raised h-full">
+        <div className="artifact-drawer-body h-full">
           <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
         </div>
       ) : null}
