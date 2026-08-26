@@ -1209,7 +1209,25 @@ CHAT_TOOLS = [
         "type": "function",
         "function": {
             "name": "generate_lesson_plan",
-            "description": "Trigger the generation or revision of the lesson plan artifact based on the conversation.",
+            # Used to carry no bar of its own at all — "based on the
+            # conversation" left "do I have enough" entirely to the model's
+            # own judgment, and it guessed inconsistently: the exact same
+            # request ("plan a week on Gatsby ch 3-4, rhetorical analysis
+            # focus") built immediately in one run and triggered a
+            # clarifying question in another. generate_quiz right below
+            # already names an explicit bar rather than leaving "enough
+            # info" to guesswork — this is that same treatment applied here,
+            # not a stricter policy invented from scratch.
+            "description": (
+                "Trigger the generation or revision of the lesson plan artifact — but only once the "
+                "conversation already has enough to build FROM, not merely a general idea. That means a "
+                "named text/topic AND a rough shape: what the week should focus on, roughly how long "
+                "(a day count, a duration, or an explicit scope like 'just Friday'), or which specific "
+                "change to make on a revision. A request that only gestures at a topic ('something about "
+                "Gatsby's symbolism', 'make it more engaging') is NOT enough — call ask_clarifying_questions "
+                "instead of guessing at the missing shape yourself. When the conversation already has enough, "
+                "call this immediately; don't ask a question just to double-check something already answered."
+            ),
         },
     },
     {
