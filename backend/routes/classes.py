@@ -104,12 +104,20 @@ def list_schools_route() -> list[dict]:
     loop — see its own comment: that was an N+1 query (two DB round-trips
     times ~300 seeded schools) slow enough to make this endpoint hang
     outright rather than merely feel slow.
+
+    `builder_readiness` rides along the same way, for the same reason:
+    `template_status` alone stopped being enough once builder-codegen split
+    "we understand this template" from "a real document builder exists for
+    it" into two separate facts (migration 52) — see
+    docx_build.bulk_builder_readiness's own docstring for what the three
+    values mean and why a naive per-school check would be another N+1.
     """
-    from .. import schoolcal
+    from .. import docx_build, schoolcal
 
     schools = db.list_schools()
     statuses = schoolcal.bulk_calendar_status([s["id"] for s in schools])
-    return [{**s, **statuses[s["id"]]} for s in schools]
+    readiness = docx_build.bulk_builder_readiness(schools)
+    return [{**s, **statuses[s["id"]], "builder_readiness": readiness[s["id"]]} for s in schools]
 
 
 @router.patch("/me")

@@ -44,6 +44,46 @@ def _generated_spec_builder(school_id: str, layout_spec: dict) -> SimpleNamespac
     return SimpleNamespace(build=build, __doc__=f"Generated builder spec for {school_id} (template unknown)")
 
 
+def _custom_builder_school_ids() -> set[str]:
+    """Every school_id with a hand-written {school_id}_builder.py file,
+    from one directory listing rather than a file-existence check per
+    school — GET /api/schools lists ~1,600 rows, and its own docstring
+    already flags avoiding exactly this N+1 shape (see
+    schoolcal.bulk_calendar_status)."""
+    path = Path(settings.builder_path)
+    suffix = "_builder.py"
+    return {p.name[: -len(suffix)] for p in path.parent.glob(f"*{suffix}")}
+
+
+def bulk_builder_readiness(school_rows: list[dict]) -> dict[str, str]:
+    """{school_id: "ready" | "pending" | "blocked"} for a batch of already-
+    fetched school rows — the signal frontend/ChatPage.jsx's TemplateBanner
+    uses to know whether downloads for this school will use its real
+    template, silently fall back to the generic one (still 'pending'), or
+    are currently BROKEN: `template_status` reached 'active' (analysis
+    auto-activation, which only ever judges analysis quality) before a real
+    builder — hand-written, or codegen-generated and admin-approved — exists
+    for it. `docx_build.builder()` raises exactly in that last case; this is
+    what lets the UI say so before a teacher hits it as a failed download.
+
+    template_status and builder_status are deliberately separate columns
+    (migration 52) — this function is where the two get reconciled into the
+    one fact a teacher-facing banner actually needs."""
+    custom_ids = _custom_builder_school_ids()
+    out: dict[str, str] = {}
+    for s in school_rows:
+        sid = s["id"]
+        if sid == settings.default_builder_school_id:
+            out[sid] = "ready"
+        elif s.get("template_status") != "active":
+            out[sid] = "pending"
+        elif sid in custom_ids or s.get("builder_status") == "verified":
+            out[sid] = "ready"
+        else:
+            out[sid] = "blocked"
+    return out
+
+
 @lru_cache(maxsize=128)
 def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
     from . import db

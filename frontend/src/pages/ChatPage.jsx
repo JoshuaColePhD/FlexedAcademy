@@ -99,6 +99,42 @@ function DaySeparator({ label }) {
  * would still read as a hard cut the instant it appears; growing open is
  * what makes it look like it's sliding out from behind the header bar
  * rather than just fading in beneath it. */
+// template_status ('pending'/'active') and builder_readiness ('pending'
+// /'ready'/'blocked', from docx_build.bulk_builder_readiness) are
+// deliberately different facts as of migration 52: template_status alone
+// used to be enough to know "will downloads use this school's real
+// template," but now a school can reach template_status='active' (analysis
+// auto-activation only ever judges analysis QUALITY) before a real document
+// builder — hand-written, or automatically generated and admin-approved —
+// actually exists for it. Keying this banner off builder_readiness instead
+// of template_status is what keeps it accurate through that whole window,
+// not just the first half of it.
+const TEMPLATE_BANNER_COPY = {
+  pending: {
+    tone: 'amber',
+    text: (name) => (
+      <>
+        🛠️ We are currently configuring the AI for <strong>{name}</strong>'s specific lesson plan format. In the
+        meantime, document downloads will use a generic fallback format.
+      </>
+    ),
+  },
+  blocked: {
+    tone: 'red',
+    text: (name) => (
+      <>
+        ⚠️ <strong>{name}</strong>'s lesson plan format is still being finalized — document downloads for this class
+        won't work until it's ready. This shouldn't take long; try again shortly.
+      </>
+    ),
+  },
+}
+
+const TEMPLATE_BANNER_TONE_CLASSES = {
+  amber: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  red: 'bg-red-500/10 text-red-600 border-red-500/20',
+}
+
 function TemplateBanner() {
   const { classId } = useParams()
   const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
@@ -110,7 +146,8 @@ function TemplateBanner() {
   if (!cls) return null
 
   const school = schools.find((s) => s.id === cls.school)
-  if (!school || school.template_status !== 'pending') return null
+  const copy = school && TEMPLATE_BANNER_COPY[school.builder_readiness]
+  if (!copy) return null
 
   return (
     <motion.div
@@ -119,12 +156,11 @@ function TemplateBanner() {
       transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
       className="shrink-0 overflow-hidden"
     >
-      <div className="flex items-center justify-center gap-2 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-600 border-b border-amber-500/20 shadow-sm">
+      <div
+        className={`flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}
+      >
         <TriangleAlert size={14} className="shrink-0" aria-hidden="true" />
-        <p>
-          🛠️ We are currently configuring the AI for <strong>{school.name}</strong>'s specific lesson plan format. In
-          the meantime, document downloads will use a generic fallback format.
-        </p>
+        <p>{copy.text(school.name)}</p>
       </div>
     </motion.div>
   )
