@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -436,10 +437,63 @@ export function ChatPage() {
      changed?" without anyone having to build a diff view. */
   const [openTweak, setOpenTweak] = useState(null)
   const [flashCells, setFlashCells] = useState(() => new Set())
-  /* The composer dock's own rendered height, live — see composerDockRef's
-     own comment near chatPane's return for what this is for. */
+  /* The composer dock is portaled to document.body — see composerAnchorRef's
+     own comment near chatPane's return for why — which needs two pieces of
+     plumbing: an invisible ANCHOR left in the dock's normal flow position
+     (composerAnchorRef, sized to composerDockH so the transcript above it
+     doesn't grow into the space the floating dock is covering) and a host
+     node the portaled content actually renders into (portalHost), kept
+     positioned over the anchor.
+
+     One detached DOM node, created once and never replaced — createPortal
+     needs a real node to target, and body.appendChild/removeChild below
+     handle its lifetime; nothing here re-creates it on re-render. */
+  const [portalHost] = useState(() => {
+    const el = document.createElement('div')
+    el.style.position = 'fixed'
+    el.style.zIndex = '200'
+    // The host's own box is only ever as large as the anchor's rect (kept in
+    // sync below) — this is a fallback for the first paint, before that sync
+    // has run once, so an unstyled 0x0-but-static div can't eat a click.
+    el.style.pointerEvents = 'none'
+    return el
+  })
+  useEffect(() => {
+    document.body.appendChild(portalHost)
+    return () => document.body.removeChild(portalHost)
+  }, [portalHost])
+
+  const composerAnchorRef = useRef(null)
   const composerDockRef = useRef(null)
   const [composerDockH, setComposerDockH] = useState(0)
+  // Keeps the host's left/top/width matched to the anchor's live rect — the
+  // anchor never moves for its OWN reasons (it's a plain shrink-0 flex
+  // child), but the chat column it lives in resizes when the plans rail
+  // toggles, the window resizes, or the composer's own content changes
+  // height (attachments, the autosizing textarea, a banner) — anything that
+  // changes the anchor's box needs the host to follow.
+  useEffect(() => {
+    const anchor = composerAnchorRef.current
+    if (!anchor) return
+    const sync = () => {
+      const r = anchor.getBoundingClientRect()
+      portalHost.style.left = `${r.left}px`
+      portalHost.style.top = `${r.top}px`
+      portalHost.style.width = `${r.width}px`
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(anchor)
+    window.addEventListener('resize', sync)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', sync)
+    }
+  }, [portalHost])
+  // The portaled dock's OWN rendered height, fed back to the anchor (below)
+  // so the anchor reserves exactly the space the floating dock actually
+  // needs — otherwise the transcript would sit a fixed guess-height short of
+  // (or under) wherever the dock currently is.
   useEffect(() => {
     const el = composerDockRef.current
     if (!el) return
@@ -2750,30 +2804,35 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* This dock's rendered height is measured live (composerDockRef +
-          composerDockH, declared near openTweak above) and fed to
-          .artifact-overlay / .panel-scrim as an inline `bottom` offset (see
-          their render below) — so while the document is expanded over the
-          chat, the overlay stops just short of this region instead of
-          covering it. That's what keeps the composer usable underneath an
-          expanded document: reserving the space it needs rather than trying
-          to float it ABOVE the overlay via z-index, which doesn't reach —
-          .artifact-overlay is a sibling of chatPane's own outer wrapper,
-          which is nested inside two separate backdrop-filter stacking
-          contexts (this file's own `saturate-[1.2]` transcript div, and
-          AppShell's `glass-panel` chat card); filter/backdrop-filter creates
-          a stacking context the same way transform does, and no z-index set
-          on a descendant of one can ever outrank a z-index set on an element
-          outside it, however high (confirmed empirically — bumping this
-          dock's own z-index past .artifact-overlay's did nothing, in either
-          of two different nesting attempts). Reserving space instead of
-          fighting stacking order sidesteps the whole problem: nothing ever
-          geometrically covers the composer, so there's no z-order to win.
-          Replies to a message sent from here while the transcript is
-          covered surface as a toast instead — see lastToastedReplyId's own
-          effect, declared next to overlayOpen above — rather than in a
-          second, hidden transcript. */}
-      <div ref={composerDockRef} className="relative shrink-0 z-10">
+      {/* An invisible spacer, not the dock itself — the dock is portaled to
+          document.body just below (see the createPortal call) so it can float
+          ABOVE the document overlay instead of being covered by it (or, as
+          a first attempt got only as far as, merely not-covered-but-still-
+          adjacent-to it). z-index alone can't reach: .artifact-overlay sits
+          inside two separate backdrop-filter stacking contexts (this file's
+          own `saturate-[1.2]` transcript wrapper, and AppShell's
+          `glass-panel` chat card) — filter/backdrop-filter creates a
+          stacking context the same way transform does, and no z-index set
+          on a descendant of one can ever outrank a z-index set on an
+          element outside it, however high (confirmed empirically — even
+          `position: fixed` with z-index 9999, left in place, still lost to
+          the document underneath). A portal to document.body is a genuine
+          escape from both.
+
+          This anchor is what keeps the floating dock's SCREEN POSITION
+          correct without duplicating this file's own layout math: it's a
+          plain shrink-0 flex child exactly where the dock used to render
+          in-flow, sized to composerDockH (the portaled dock's own measured
+          height, synced back — see that effect, declared near openTweak
+          above) so the transcript above it doesn't grow into space the
+          floating dock is visually covering. The sync effect up there
+          reads THIS element's getBoundingClientRect() and keeps the portal
+          host positioned over it, so the dock still tracks the chat
+          column's left edge and width (e.g. when the plans rail toggles)
+          exactly as if it had never left. */}
+      <div ref={composerAnchorRef} className="shrink-0" style={{ height: composerDockH || undefined }} aria-hidden="true" />
+      {createPortal(
+        <div ref={composerDockRef} className="relative shrink-0 z-10" style={{ pointerEvents: 'auto' }}>
         {latestPill.mounted ? (
           <div className="pointer-events-none absolute bottom-full left-0 right-0 mb-4 flex justify-center">
             <button
@@ -2974,7 +3033,9 @@ export function ChatPage() {
           />
         </div>
       </div>
-      </div>
+      </div>,
+        portalHost
+      )}
     </div>
   )
 
@@ -3065,7 +3126,10 @@ export function ChatPage() {
       {docOpen ? artifactEl : null}
 
       {/* Below --xl the document cannot sit beside the chat, so it overlays —
-          and here the dialog semantics ArtifactPanel claims are actually true. */}
+          and here the dialog semantics ArtifactPanel claims are actually true.
+          Goes edge-to-edge, composer included — the composer dock is now
+          portaled above this (see its own comment near chatPane's return),
+          so nothing needs to be carved out of the overlay's own bounds for it. */}
       {overlayExit.mounted ? (
         <>
           <button
@@ -3073,17 +3137,8 @@ export function ChatPage() {
             aria-label={`Close ${viewLabel}`}
             className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
             onClick={collapse}
-            /* Stops short of the composer dock — see its own comment above —
-               so the dock stays clickable instead of this scrim eating the
-               click. Phone keeps the scrim full-height: the bottom sheet
-               already covers the composer today and this change isn't
-               extending that to phone. */
-            style={!isPhone ? { bottom: composerDockH } : undefined}
           />
-          <div
-            className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}
-            style={!isPhone ? { bottom: composerDockH } : undefined}
-          >
+          <div className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}>
             {artifactEl}
           </div>
         </>
