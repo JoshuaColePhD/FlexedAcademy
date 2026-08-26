@@ -250,10 +250,19 @@ export function getContextualSuggestions(context = {}) {
 // line 157's straight "Let's" to line 174's curly "Let's") — not something a
 // teacher typing their own straight-quote apostrophe (what every keyboard
 // and most autocorrect produce by default) should have to match by luck.
-// 1:1 character substitution only, never collapsing/removing anything —
-// suggestionCompletion slices the ORIGINAL prompt at `prefix.length`, which
-// only stays a valid offset if normalizing can't change string length.
-const normalizeQuotes = (s) => s.replace(/[’‘]/g, "'").replace(/[“”]/g, '"')
+// Also covers the ONE suggestion whose `prompt` isn't a template at all —
+// ChatPage.jsx's groundableSuggestion swaps in an LLM-written `prompt`
+// (llm.py's generate_week_suggestion) with no punctuation-style constraint
+// at all, and this codebase's own prompt-writing style leans on em dashes
+// constantly (backend/prompts.py alone uses one 47 times) — exactly the
+// kind of house style a model primed by nearby examples tends to pick up,
+// and exactly what a teacher's own keyboard would never produce typing
+// toward it. 1:1 character substitution only, never collapsing/removing
+// anything (an ellipsis "…" → "..." would NOT be 1:1 and is deliberately
+// left alone) — suggestionCompletion slices the ORIGINAL prompt at
+// `prefix.length`, which only stays a valid offset if normalizing can't
+// change string length.
+const normalizeQuotes = (s) => s.replace(/[’‘]/g, "'").replace(/[“”]/g, '"').replace(/[—–]/g, '-')
 
 /** Return only the part of a suggestion that remains after a typed prefix.
  *  Matching is on a normalized (lowercase, straight-quoted) form so a minor
