@@ -436,6 +436,17 @@ export function ChatPage() {
      changed?" without anyone having to build a diff view. */
   const [openTweak, setOpenTweak] = useState(null)
   const [flashCells, setFlashCells] = useState(() => new Set())
+  /* The composer dock's own rendered height, live — see composerDockRef's
+     own comment near chatPane's return for what this is for. */
+  const composerDockRef = useRef(null)
+  const [composerDockH, setComposerDockH] = useState(0)
+  useEffect(() => {
+    const el = composerDockRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setComposerDockH(entry.contentRect.height))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const scrollRef = useRef(null)
   const endRef = useRef(null)
@@ -2058,6 +2069,25 @@ export function ChatPage() {
   const docOpen = expanded && hasArtifact && !isOverlay
   const overlayOpen = expanded && hasArtifact && isOverlay
   const overlayExit = useExitTransition(overlayOpen, 130)
+  /* While the document overlay covers the transcript, a reply has nowhere
+     visible to land — so it surfaces as a toast instead. Watches the last
+     message rather than hooking every place this file appends one (there
+     are a couple dozen, across streaming, tool calls, and voice); skips a
+     revision reply (`planId` set) since that one already shows up directly
+     in the document that's on screen, and skips while still streaming so
+     this fires once, when the reply actually finishes. */
+  const lastToastedReplyId = useRef(null)
+  useEffect(() => {
+    if (!overlayOpen) return
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || last.streaming || last.isError) return
+    if (last.id === lastToastedReplyId.current) return
+    lastToastedReplyId.current = last.id
+    if (last.planId) return
+    const text = last.content?.trim()
+    if (!text) return
+    toast.success('New reply', text.length > 160 ? `${text.slice(0, 160)}…` : text)
+  }, [messages, overlayOpen, toast])
   /* Voice mode used to be a full-screen/dialog takeover, mounted and
      unmounted outright with no exit of its own. Now it's a dock that grows
      out of the chat box itself, right above the composer — same
@@ -2720,7 +2750,30 @@ export function ChatPage() {
         </div>
       )}
 
-      <div className="relative shrink-0 z-10">
+      {/* This dock's rendered height is measured live (composerDockRef +
+          composerDockH, declared near openTweak above) and fed to
+          .artifact-overlay / .panel-scrim as an inline `bottom` offset (see
+          their render below) — so while the document is expanded over the
+          chat, the overlay stops just short of this region instead of
+          covering it. That's what keeps the composer usable underneath an
+          expanded document: reserving the space it needs rather than trying
+          to float it ABOVE the overlay via z-index, which doesn't reach —
+          .artifact-overlay is a sibling of chatPane's own outer wrapper,
+          which is nested inside two separate backdrop-filter stacking
+          contexts (this file's own `saturate-[1.2]` transcript div, and
+          AppShell's `glass-panel` chat card); filter/backdrop-filter creates
+          a stacking context the same way transform does, and no z-index set
+          on a descendant of one can ever outrank a z-index set on an element
+          outside it, however high (confirmed empirically — bumping this
+          dock's own z-index past .artifact-overlay's did nothing, in either
+          of two different nesting attempts). Reserving space instead of
+          fighting stacking order sidesteps the whole problem: nothing ever
+          geometrically covers the composer, so there's no z-order to win.
+          Replies to a message sent from here while the transcript is
+          covered surface as a toast instead — see lastToastedReplyId's own
+          effect, declared next to overlayOpen above — rather than in a
+          second, hidden transcript. */}
+      <div ref={composerDockRef} className="relative shrink-0 z-10">
         {latestPill.mounted ? (
           <div className="pointer-events-none absolute bottom-full left-0 right-0 mb-4 flex justify-center">
             <button
@@ -3020,8 +3073,17 @@ export function ChatPage() {
             aria-label={`Close ${viewLabel}`}
             className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
             onClick={collapse}
+            /* Stops short of the composer dock — see its own comment above —
+               so the dock stays clickable instead of this scrim eating the
+               click. Phone keeps the scrim full-height: the bottom sheet
+               already covers the composer today and this change isn't
+               extending that to phone. */
+            style={!isPhone ? { bottom: composerDockH } : undefined}
           />
-          <div className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}>
+          <div
+            className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}
+            style={!isPhone ? { bottom: composerDockH } : undefined}
+          >
             {artifactEl}
           </div>
         </>
