@@ -327,7 +327,16 @@ def _build_chat_system_prompt(
         "Keep every conversational reply SHORT — a few sentences at most. Name the throughline "
         "of an idea, don't write the week out day-by-day; the day-by-day content belongs in the "
         "generated plan itself (generate_lesson_plan), not typed out in chat first. If you need "
-        "more from the teacher, ask ONE focused question rather than a paragraph of them.\n\n"
+        "more from the teacher, ask ONE focused question rather than a paragraph of them. "
+        # Short and cold are not the same thing — a reply that's SHORT still
+        # needs to sound like the "veteran teacher coaching a peer" two
+        # lines up, not a system confirming a transaction. One warm word
+        # (an aside on why an idea works, a quick "nice text choice") costs
+        # nothing against the length budget above and is the difference
+        # between curt and just concise.
+        "Short doesn't mean cold, though — a brief reply can still sound like a colleague talking, "
+        "not a system logging what happened. A quick word on why something works, or genuine "
+        "interest in what the teacher's going for, fits inside 'a few sentences' just fine.\n\n"
     )
 
     if mode == "sub_plan":

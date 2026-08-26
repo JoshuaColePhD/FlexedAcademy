@@ -12,7 +12,7 @@ import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
 import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
-import { DAYS, FIELD_LABELS, SHORT_DAY, dayTitle } from '../lib/planShape'
+import { DAYS, FIELD_LABELS, SHORT_DAY, dayTitle, unitSuffix } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
@@ -806,7 +806,17 @@ export function ChatPage() {
         retrievedIds: done.retrieved_ids ?? done.grounding?.codes,
         unit: done.unit,
       })
-      const content = `Built ${done.plan?.week_of || 'the week'}. Tell me what to change and I'll revise it.`
+      // Was a flat "Built Week 12. Tell me what to change and I'll revise
+      // it." — identical every single time regardless of what was actually
+      // in it, at the one moment (a whole week just finished) that most
+      // deserved to sound like a person handing off finished work instead
+      // of a system toast. unitSuffix already knows not to repeat the week
+      // number back when there's no real unit name to add (see its own
+      // comment) — same guard SplitLayout and ArtifactRail lean on.
+      const content = `${done.plan?.week_of || 'The week'} is built${unitSuffix(
+        done.unit,
+        ', centered on '
+      )}. Take a look, and tell me what needs to change.`
       setMessages((prev) => [
         ...prev,
         {
@@ -1476,7 +1486,7 @@ export function ChatPage() {
       if (!chatResult.text?.trim()) {
         setMessages((prev) => [
           ...prev,
-          { id: nextId(), role: 'assistant', content: 'Updating the week now — one moment.' },
+          { id: nextId(), role: 'assistant', content: 'Reworking the week now — one moment.' },
         ])
       }
       setRevising(true)
@@ -1488,10 +1498,16 @@ export function ChatPage() {
           warnings: row.warnings,
           retrievedIds: row.retrieved_ids,
         }))
+        // Same "reference what's actually there" treatment as the fresh-
+        // build confirmation above, not the old flat "Updated the week and
+        // rebuilt the document." every revision produced verbatim.
         const reply = {
           id: nextId(),
           role: 'assistant',
-          content: 'Updated the week and rebuilt the document.',
+          content: `Done — ${row.week_label || 'the week'} is updated${unitSuffix(
+            row.unit,
+            ', still centered on '
+          )}. Let me know if anything else needs adjusting.`,
           planId: row.id,
           weekLabel: row.week_label,
           plan: row.plan_json,
