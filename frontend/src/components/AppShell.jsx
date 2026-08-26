@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, Trash2, TriangleAlert, Users, X, Database } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, Trash2, Users, X, Database } from 'lucide-react'
 
 import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { ShellContext } from '../lib/shellContext'
@@ -367,29 +367,6 @@ function Rail({ onNavigate, onClose, collapsed }) {
   )
 }
 
-function TemplateBanner() {
-  const { classId } = useParams()
-  const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
-  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
-  
-  if (!classId) return null
-  
-  const cls = classes.find(c => c.id === classId)
-  if (!cls) return null
-  
-  const school = schools.find(s => s.id === cls.school)
-  if (!school || school.template_status !== 'pending') return null
-  
-  return (
-    <div className="flex shrink-0 items-center justify-center gap-2 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-600 border-b border-amber-500/20 shadow-sm z-20">
-      <TriangleAlert size={14} className="shrink-0" aria-hidden="true" />
-      <p>
-        🛠️ We are currently configuring the AI for <strong>{school.name}</strong>'s specific lesson plan format. In the meantime, document downloads will use a generic fallback format.
-      </p>
-    </div>
-  )
-}
-
 /* Post-login guided setup (OnboardingWizard.jsx) — mounted here rather than
  * on a specific page since it's meant to greet the account, not one route.
  * Opens automatically once per account (gated on user.onboarding_seen_at,
@@ -548,7 +525,6 @@ export function AppShell({ children }) {
         className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
         id="main"
       >
-        <TemplateBanner />
         <OnboardingWizardHost />
         {isNarrow && !location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">

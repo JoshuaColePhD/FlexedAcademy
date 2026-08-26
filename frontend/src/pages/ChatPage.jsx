@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, Clock, Download, X } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { ArrowDown, CheckCircle2, Clock, Download, TriangleAlert, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -82,6 +83,49 @@ function DaySeparator({ label }) {
       <span className="eyebrow shrink-0 text-ink-faint">{label}</span>
       <span className="h-px flex-1 bg-edge" aria-hidden="true" />
     </div>
+  )
+}
+
+/* Was AppShell.jsx's own top-level child — first thing in #main, stacked
+ * ABOVE the chat header (the class-switcher/school-name row) rather than
+ * hanging under it. Moved here, right after that header's own closing tag,
+ * so it reads as something revealed FROM the header instead of a strip
+ * competing with it for the top of the screen. AppShell has no way to know
+ * where "under the header" even is — that row is drawn by this page, not
+ * the shell — so the banner has to live wherever the header does.
+ *
+ * height/opacity, not just opacity: animating in at full height instantly
+ * would still read as a hard cut the instant it appears; growing open is
+ * what makes it look like it's sliding out from behind the header bar
+ * rather than just fading in beneath it. */
+function TemplateBanner() {
+  const { classId } = useParams()
+  const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
+  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
+
+  if (!classId) return null
+
+  const cls = classes.find((c) => c.id === classId)
+  if (!cls) return null
+
+  const school = schools.find((s) => s.id === cls.school)
+  if (!school || school.template_status !== 'pending') return null
+
+  return (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+      className="shrink-0 overflow-hidden"
+    >
+      <div className="flex items-center justify-center gap-2 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-600 border-b border-amber-500/20 shadow-sm">
+        <TriangleAlert size={14} className="shrink-0" aria-hidden="true" />
+        <p>
+          🛠️ We are currently configuring the AI for <strong>{school.name}</strong>'s specific lesson plan format. In
+          the meantime, document downloads will use a generic fallback format.
+        </p>
+      </div>
+    </motion.div>
   )
 }
 
@@ -2406,6 +2450,8 @@ export function ChatPage() {
           ) : null}
         </div>
       </div>
+
+      <TemplateBanner />
 
       {isEmpty ? (
         <Greeting
