@@ -407,11 +407,22 @@ function SchoolPicker({ value, onSaved }) {
       />
       {selected ? (
         <div className="mt-2 flex items-center gap-2">
-          {selected.template_status === 'pending' ? (
+          {/* Keyed off builder_readiness (docx_build.bulk_builder_readiness),
+              not template_status alone — same reasoning as ChatPage.jsx's
+              TemplateBanner: template_status can reach 'active' (analysis
+              auto-activation only judges analysis quality) before a real
+              document builder — hand-written, or generated and
+              admin-approved — actually exists for this school. This pill
+              used to read "Active" straight through that gap. */}
+          {selected.builder_readiness === 'pending' ? (
             <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
               Template Status: Training AI...
             </span>
-          ) : selected.template_status === 'active' ? (
+          ) : selected.builder_readiness === 'blocked' ? (
+            <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
+              Template Status: Finishing up — downloads unavailable
+            </span>
+          ) : selected.builder_readiness === 'ready' ? (
             <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
               Template Status: Active
             </span>
