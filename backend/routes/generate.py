@@ -578,6 +578,56 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
                 user_id, req.chat_id, req.week_number, req.mode, last_user, class_id=req.class_id
             )
 
+            # How many ask_clarifying_questions rounds have happened since the
+            # last real commitment (a build/revision confirmation) — not a
+            # lifetime total, so an earlier plan build followed by a later
+            # quiz-config round doesn't get conflated with this. Real chat
+            # data showed this needed a hard backstop: 7 of 36 chats hit a
+            # second round or later before a plan was ever built, one hit 5
+            # rounds straight — the model has the full prior history to
+            # notice that itself (nothing here truncates `req.messages`),
+            # it's just never told to weigh it.
+            #
+            # A plain conversational nudge between two formal rounds (e.g.
+            # "could you answer with a specific text/topic?") must NOT reset
+            # this count — live-testing this exact fix found the model doing
+            # exactly that (round, nudge, round, round — 3 formal rounds with
+            # only a plain-text reply between two of them), and a naive
+            # "stop at the first non-matching assistant message" walk undercounts
+            # it: that in-between nudge isn't a round, but it also isn't a
+            # commitment, so scanning has to skip over it rather than
+            # stopping there. Only a real build/revision confirmation ends
+            # the count — everything else between rounds still counts
+            # against the same unbuilt stretch.
+            #
+            # Detected by the literal lead-in text the prompt below asks the
+            # model to use ("A couple of quick questions..." — every one of
+            # the real rounds in the data used exactly this phrasing) and the
+            # literal build/revision confirmations from ChatPage.jsx ("...is
+            # built...", "Done — ..."); no tool-call marker exists in the
+            # persisted message row to check instead, so a reworded intro or
+            # confirmation would silently drift this count.
+            prior_clarify_rounds = 0
+            for m in reversed(req.messages):
+                if m.role != "assistant":
+                    continue
+                text = m.content.strip().lower()
+                if text.startswith("a couple of quick questions"):
+                    prior_clarify_rounds += 1
+                    continue
+                if " is built" in text or " is updated" in text or text.startswith("done —") or text.startswith("done -"):
+                    break  # a real commitment — the unbuilt stretch ends here
+                # Anything else (a plain nudge, a brainstorm reply) is still
+                # part of the same unbuilt stretch — keep scanning past it.
+            if prior_clarify_rounds >= 2:
+                system_prompt += (
+                    f"\n\nThis conversation has already had {prior_clarify_rounds} rounds of "
+                    "clarifying questions in a row with nothing built yet. Do NOT call "
+                    "ask_clarifying_questions again this turn — call generate_lesson_plan (or "
+                    "generate_quiz, whichever applies) now, making a reasonable choice for anything "
+                    "still unspecified and saying what you assumed, rather than asking a third time.\n\n"
+                )
+
             # Mutually exclusive, not stacked — see prompts.voice_prompt's own
             # docstring for why appending both used to directly contradict
             # each other on every spoken turn.
