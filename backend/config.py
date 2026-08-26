@@ -176,6 +176,15 @@ class Settings(BaseSettings):
     chunks_path: Path = PROJECT_ROOT / "data" / "processed" / "chunks.json"
     known_gaps_path: Path = PROJECT_ROOT / "data" / "raw" / "KNOWN_GAPS.md"
     builder_path: Path = DEFAULT_BUILDER
+    # docx_build.builder() falls back to builder_path (Florence's own AP-Lang
+    # builder) when a school has no `{school_id}_builder.py` of its own —
+    # correct ONLY for the one school that IS Florence, since builder_path
+    # literally is Florence's builder. Naming it here (instead of assuming
+    # "no custom file found" always means "use Florence's") is what lets
+    # docx_build.py tell "Florence, intentionally" apart from "some other
+    # school marked active with nothing actually built for it yet" and raise
+    # loudly for the latter instead of silently mis-rendering.
+    default_builder_school_id: str = "florence-high-school"
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
     school_profile_path: Path = Path(__file__).resolve().parent / "context" / "school_profile.md"
     # One calendar file per registered school (backend/db.py's `schools` table),

@@ -34,16 +34,33 @@ def builder(school_id: str | None = None) -> ModuleType:
     
     path = Path(settings.builder_path)
     
-    if school_id and school_id != "generic":
+    if school_id and school_id != "generic" and school_id != settings.default_builder_school_id:
         school = db.get_school(school_id)
         if school and school.get("template_status") == "active":
-            # Assume custom builder exists at same directory as default builder, named {school_id}_builder.py
-            # For florence-high-school, it might still just use fcs_builder.py but we can make it dynamic
-            # if they share the same directory structure. Actually, since florence is currently the default,
-            # we can just use the default path if the custom one is not found, or construct it safely.
+            # A custom builder lives at the same directory as the default one,
+            # named {school_id}_builder.py. Falling through to the default
+            # (Florence's own AP-Lang builder) when this file is missing used
+            # to be silent — every school in `schools` that's 'active' but has
+            # no builder script yet (the column DEFAULTs to 'active', so any
+            # seeded row that doesn't set it explicitly qualifies) got
+            # Florence's layout, ACT-alignment row and all, with nothing
+            # anywhere saying so. A school marked active is a promise that
+            # generation is ready for real teachers there; a missing builder
+            # means that promise wasn't kept, and that has to be loud.
             custom_path = path.parent / f"{school_id}_builder.py"
             if custom_path.is_file():
                 path = custom_path
+            else:
+                raise AppError(
+                    "builder_missing_for_school",
+                    f"{school.get('name', school_id)} is marked as having an active "
+                    "template, but no document builder exists for it yet.",
+                    hint=(
+                        "Its uploaded template was approved, but nothing has generated "
+                        "a builder script for it — without this check, it would silently "
+                        "render using Florence High School's layout instead."
+                    ),
+                )
 
     if not path.is_file():
         raise AppError(
