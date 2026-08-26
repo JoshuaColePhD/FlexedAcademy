@@ -7,26 +7,28 @@ on a sleeping instance.
 
 Render's free web services sleep after 15 minutes idle and take ~50s to wake.
 Added to a ~10s generation, a colleague's first impression is a minute of
-nothing. This keeps the app up during the school day — Mon-Fri 7am-4pm US
-Central — when it's actually being used, rather than the evening planning
-window this originally targeted.
+nothing. This keeps the app up 6am-10pm US Central, every day including evenings and
+weekends — take-home lesson planning happens then too, not just the school
+day this originally targeted (see wrangler.jsonc's `triggers.crons` and
+src/index.js's own comment, which are the source of truth for the actual
+schedule).
 
 Not a 24/7 ping: Render's free tier grants ~750 instance-hours a month, and
 holding one service up around the clock would spend ~730 of them. The current
-schedule (9 hours × 5 days × ~4.3 weeks/month) costs ~195 — comfortably clear
-of the limit.
+schedule (~16 hours × 30 days) costs ~480 — comfortably clear of the limit.
 
 ## Deploy
 
-Both free — Workers free allows 100,000 requests/day; this schedule fires
-roughly 1,200 times a month.
+Both free — Workers free allows 100,000 requests/day; this schedule (every 10
+minutes, 16 hours/day) fires roughly 2,900 times a month.
 
 ```bash
 cd keepwarm
 npx wrangler deploy
 ```
 
-Set `APP_URL` in `wrangler.jsonc` to the real Render URL first.
+`APP_URL` in `wrangler.jsonc` is already set to the production domain — only
+touch it if that domain ever changes.
 
 ## Check it works
 
