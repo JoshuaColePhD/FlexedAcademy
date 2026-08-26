@@ -206,12 +206,20 @@ export function Composer({
     frozenRef.current = { key: suggestionKey, prompt: textSuggestion.prompt }
   }
 
+  // Whether the box is already at MAX_H and scrolling instead of still
+  // growing — the moment content FIRST crosses that line is the one point
+  // in typing (or pasting) a long prompt that's worth a signal; every
+  // keystroke after that is already scrolling and needs no repeat cue.
+  const wasCappedRef = useRef(false)
   const autosize = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
+    const capped = el.scrollHeight > MAX_H
     el.style.height = `${Math.min(el.scrollHeight, MAX_H)}px`
-  }, [])
+    if (capped && !wasCappedRef.current) pulseMotion('capped', 450)
+    wasCappedRef.current = capped
+  }, [pulseMotion])
 
   useLayoutEffect(autosize, [value, autosize])
 
@@ -370,6 +378,15 @@ export function Composer({
   // what Enter itself does — see onKeyDown below.
   const canSend = hasContent && !isRecording && !isTranscribing
 
+  // canSend's own false→true edge — a scale-pop the instant the send
+  // button actually becomes pressable, so "you can go now" isn't only a
+  // color change easy to miss while still looking at what you're typing.
+  const wasSendableRef = useRef(canSend)
+  useEffect(() => {
+    if (canSend && !wasSendableRef.current) pulseMotion('ready', 320)
+    wasSendableRef.current = canSend
+  }, [canSend, pulseMotion])
+
   const submit = () => {
     /* No voice.unlock() here any more.
      *
@@ -401,7 +418,11 @@ export function Composer({
     const remaining = typedPrefixMatches ? suggestionToAccept.prompt.slice(value.length) : ''
     if (value && !remaining) return
     const nextValue = value && remaining ? `${value}${remaining}` : suggestionToAccept.prompt
-    pulseMotion('accept', 300)
+    // 450ms, matching fa-input-flash's own duration below — pulseMotion
+    // clears the class at this timeout, so it has to outlast the CSS
+    // animation it's driving or the flash gets cut off mid-fade instead of
+    // completing it.
+    pulseMotion('accept', 450)
     onChange(nextValue)
     requestAnimationFrame(() => {
       const input = textareaRef.current
@@ -546,7 +567,11 @@ export function Composer({
             disabled={isAttaching}
           />
 
-          <div className="relative min-w-0 flex-1">
+          <div
+            className={`relative min-w-0 flex-1 rounded-md ${
+              motionState === 'accept' || motionState === 'capped' ? 'fa-input-flash' : ''
+            }`}
+          >
             {completion ? (
               <div
                 key={activeSuggestion?.id || 'none'}
@@ -656,12 +681,35 @@ export function Composer({
             {!hasContent && onOpenVoice && !voiceModeActive && !isStreaming ? (
               <button
                 type="button"
-                className="fa-press tap-target flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper-sunken md:h-9 md:w-9"
-                onClick={onOpenVoice}
+                className="fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper-sunken md:h-9 md:w-9"
+                onClick={() => {
+                  // The dock this opens animates in on its own slow
+                  // (--t-slow) grid transition — by the time it's visibly
+                  // moving, this button is already gone (voiceModeActive
+                  // stops rendering this branch). Without its own brief
+                  // acknowledgment the tap itself was the one moment in this
+                  // whole bar with zero feedback between "pressed" and "the
+                  // dock is now open."
+                  pulseMotion('voice', 260)
+                  onOpenVoice()
+                }}
                 aria-label="Start a voice conversation"
                 title="Talk instead of type"
               >
-                <AudioLines size={19} className="md:size-[18px]" aria-hidden="true" />
+                <AudioLines
+                  size={19}
+                  className={`absolute transition-all duration-300 md:size-[18px] ${
+                    motionState === 'voice' ? 'scale-50 rotate-90 opacity-0' : 'scale-100 rotate-0 opacity-100'
+                  }`}
+                  aria-hidden="true"
+                />
+                <Loader2
+                  size={19}
+                  className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${
+                    motionState === 'voice' ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
+                  }`}
+                  aria-hidden="true"
+                />
               </button>
             ) : (
               <button
@@ -671,7 +719,7 @@ export function Composer({
                   : isStreaming ? 'bg-transparent text-ink-muted'
                   : canSend ? 'bg-ink text-ink-inverse hover:opacity-90'
                   : 'cursor-not-allowed bg-paper-inset text-ink-faint'
-                } ${motionState === 'submit' ? 'fa-settle' : ''}`}
+                } ${motionState === 'submit' ? 'fa-settle' : motionState === 'ready' ? 'fa-ready-pop' : ''}`}
                 onClick={isStreaming && onStop ? onStop : isStreaming ? undefined : submit}
                 disabled={(!canSend && !isStreaming) || (isStreaming && !onStop)}
                 aria-label={isStreaming && onStop ? "Stop generating" : sendLabel}

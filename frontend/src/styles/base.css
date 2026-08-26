@@ -4919,6 +4919,12 @@
   .fa-composer-accept {
     animation: fa-composer-accept 260ms var(--ease-out) both;
   }
+  .fa-input-flash {
+    animation: fa-input-flash 450ms var(--ease-out) both;
+  }
+  .fa-ready-pop {
+    animation: fa-ready-pop 320ms var(--ease-spring) both;
+  }
   .fa-progress-sweep {
     animation: fa-progress-sweep 1.8s var(--ease) infinite;
   }
@@ -5126,6 +5132,38 @@
   }
   100% {
     box-shadow: inset 0 0 0 rgb(var(--accent-rgb) / 0);
+  }
+}
+/* A brief background wash on the composer's own text region — shared by
+   two moments that both mean "something just landed in the box": Tab
+   accepting a ghost suggestion, and typed content crossing the composer's
+   max-height into scroll. Neither can highlight the exact inserted
+   characters (a native textarea has no per-run styling), so this washes
+   the whole text area instead — close enough to "look, right here" without
+   pretending precision the element can't offer. */
+@keyframes fa-input-flash {
+  0% {
+    background: rgb(var(--accent-rgb) / 0.14);
+  }
+  100% {
+    background: transparent;
+  }
+}
+/* The send button's own "you can go now" — canSend flipping false→true
+   already crossfades the button's color (transition-all, its own class),
+   but a color swap alone is easy to miss in peripheral vision while still
+   typing. A quick scale bounce with NO opacity change (unlike fa-pop, built
+   for something actually entering) draws the eye without the button
+   flickering as if it had just been created. */
+@keyframes fa-ready-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 @keyframes fa-progress-sweep {
