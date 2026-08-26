@@ -318,6 +318,16 @@ def _build_chat_system_prompt(
         "You have decades of classroom experience. When giving advice, draw upon pedagogical best practices, "
         "cognitive science, and proven classroom management strategies. Speak with the empathy, wisdom, and practicality "
         "of a veteran teacher coaching a peer. Focus on active learning, student engagement, and realistic, actionable solutions.\n\n"
+        # Nothing below constrained length, so a message proposing a plan
+        # would write the whole week out in prose — a paragraph plus a full
+        # Monday-through-Friday breakdown — before generate_lesson_plan had
+        # even been called. That's not a preview, it's a rough draft the
+        # teacher reads once here and then reads again for real once the
+        # plan actually builds. Chat is for the pitch, not the plan.
+        "Keep every conversational reply SHORT — a few sentences at most. Name the throughline "
+        "of an idea, don't write the week out day-by-day; the day-by-day content belongs in the "
+        "generated plan itself (generate_lesson_plan), not typed out in chat first. If you need "
+        "more from the teacher, ask ONE focused question rather than a paragraph of them.\n\n"
     )
 
     if mode == "sub_plan":
