@@ -177,15 +177,21 @@ function Rail({ onNavigate, onClose, collapsed, onToggleCollapse }) {
 
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center gap-2.5 px-3 mt-2">
-        <svg viewBox="0 0 64 64" className="w-7 h-7 text-[#7c3aed] drop-shadow-sm" aria-hidden="true">
+      <div className="flex h-14 shrink-0 items-center gap-2 px-3 mt-2">
+        <svg viewBox="0 0 64 64" className="w-6 h-6 shrink-0 text-[#7c3aed] drop-shadow-sm" aria-hidden="true">
           <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
           <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
           <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" className="land-seal-ring" />
           <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
         </svg>
+        {/* text-[13.5px], not the old 15px: at the sidebar's 220px width,
+            15px bold "FlexEd Academy" only fit alongside the header icons
+            when this row had nothing after the wordmark. Adding the collapse
+            button (below) meant the two together no longer fit, and the
+            wordmark itself — not the button — is what should give, since
+            "FlexEd Aca…" reads worse truncated than it does simply smaller. */}
         {collapsed ? null : (
-          <span className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-tight text-ink mt-0.5">
+          <span className="min-w-0 flex-1 truncate text-[13.5px] font-bold tracking-tight text-ink">
             FlexEd Academy
           </span>
         )}
@@ -200,12 +206,12 @@ function Rail({ onNavigate, onClose, collapsed, onToggleCollapse }) {
         {!collapsed && onToggleCollapse ? (
           <button
             type="button"
-            className="btn-icon shrink-0"
+            className="btn-icon shrink-0 !h-6 !w-6"
             aria-label="Collapse the sidebar"
             title="Collapse the sidebar"
             onClick={onToggleCollapse}
           >
-            <PanelLeft size={16} aria-hidden="true" />
+            <PanelLeft size={14} aria-hidden="true" />
           </button>
         ) : null}
         {onClose ? (
