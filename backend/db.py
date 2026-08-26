@@ -2928,6 +2928,24 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
     """,
+    # ── 50: don't let a bulk-seeded school claim to be ready ──────────────────
+    #
+    # Migration 28 defaulted template_status to 'active' back when Florence
+    # was the only real row in this table. Migration 49's bulk insert of
+    # ~1,600 Alabama schools didn't set template_status explicitly, so every
+    # one of them silently inherited 'active' too — claiming a builder
+    # exists when none of them have one. docx_build.builder() used to paper
+    # over that by silently falling back to Florence's own builder for any
+    # of them; now that it raises instead (see docx_build.py), these schools
+    # need to actually BE 'pending' so OnboardingWizard's template-upload
+    # step shows up for them, same as it already does for a school created
+    # through create_school().
+    """
+    UPDATE schools SET template_status = 'pending'
+    WHERE id != 'florence-high-school' AND template_status = 'active';
+
+    ALTER TABLE schools ALTER COLUMN template_status SET DEFAULT 'pending';
+    """,
 ]
 
 
