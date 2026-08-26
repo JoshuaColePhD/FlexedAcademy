@@ -122,7 +122,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate }) {
   )
 }
 
-function Rail({ onNavigate, onClose, collapsed }) {
+function Rail({ onNavigate, onClose, collapsed, onToggleCollapse }) {
   const { entitlement } = useAuth()
   const { classId } = useParams()
   const location = useLocation()
@@ -189,6 +189,25 @@ function Rail({ onNavigate, onClose, collapsed }) {
             FlexEd Academy
           </span>
         )}
+        {/* Same collapse toggle as the app-rail-handle groove on the sidebar's
+            own edge (AppShell's docked wrapper below) — that one's easy to
+            miss since it's a hover/touch strip with no label of its own.
+            This copy lives right in the header, next to the wordmark it
+            collapses away, so the control is visible without having to find
+            the seam first. Collapsed state already has its own re-expand
+            affordance (the edge handle), so this only needs to render
+            expanded — same reasoning as the wordmark it sits beside. */}
+        {!collapsed && onToggleCollapse ? (
+          <button
+            type="button"
+            className="btn-icon shrink-0"
+            aria-label="Collapse the sidebar"
+            title="Collapse the sidebar"
+            onClick={onToggleCollapse}
+          >
+            <PanelLeft size={16} aria-hidden="true" />
+          </button>
+        ) : null}
         {onClose ? (
           <button type="button" className="btn-icon" aria-label="Close menu" onClick={onClose}>
             <X size={16} aria-hidden="true" />
@@ -474,7 +493,7 @@ export function AppShell({ children }) {
           }}
         >
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <Rail collapsed={railCollapsed} />
+            <Rail collapsed={railCollapsed} onToggleCollapse={toggleRailCollapsed} />
           </div>
           {/* Same seam-handle language as the artifact rail's own collapse
               control on the other side of the screen (ArtifactRail.jsx) —

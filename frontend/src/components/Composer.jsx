@@ -641,7 +641,19 @@ export function Composer({
               <div
                 key={activeSuggestion?.id || 'none'}
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-pre-wrap break-words px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed"
+                // whitespace-nowrap, not pre-wrap: this overlay is pinned to
+                // top-0/bottom-0 to match the (empty, one-line-tall)
+                // textarea behind it, with overflow-hidden on top of that —
+                // on a phone-width composer, a full untyped suggestion
+                // ("Let's review this plan.") routinely needs 2 lines,
+                // and the second one was getting silently clipped by the
+                // rounded pill's own bottom curve, right where "Tab ⇥"
+                // lives. A ghost preview is meant to be glanced at and
+                // accepted or ignored, not fully read multi-line — clip
+                // at the visible edge on one line (matching how VS Code's
+                // own inline completions behave) instead of wrapping into
+                // a line nothing can actually see.
+                className="pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-nowrap px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed"
               >
                 <span className="text-ink">{value}</span>
                 <span className="composer-ghost animate-slide-in-right text-ink-faint">
