@@ -147,7 +147,7 @@ const location = useLocation()
           <span className="doc-sub">
             {planId ? 'Saved' : busy ? 'Drafting…' : 'Preview'}
             {unitSuffix(artifact?.unit, ' · ')}
-            {planId && onReviseDay && view !== 'days' ? ' · click any cell to tweak' : ''}
+            {planId && onReviseDay ? (view === 'days' ? ' · tap any field to tweak' : ' · click any cell to tweak') : ''}
           </span>
         </span>
 

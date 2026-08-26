@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { ThumbsDown, ThumbsUp, X } from 'lucide-react'
+import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useLayoutMode } from '../hooks/useMediaQuery'
-import { FIELD_LABELS, LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
+import { LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
 import { CitedText } from './Citation'
 import { PlanDayCards } from './PlanDayCards'
 import { SkeletonText } from './Skeleton'
+import { cellKit } from './CellTweak'
 
 /* Mirrors template florence-docx-v2 — the table the district actually gets.
 
@@ -34,86 +35,6 @@ import { SkeletonText } from './Skeleton'
    the contract backend/service.py's merge-one-key path now honours. This is a
    relocation of an existing feature, not a new one; the submit handler and the
    guards are the same. */
-
-/** Suggested tweaks, per field. A chip fills the input rather than firing the
- *  revision outright: a stray click on a compliance document should not cost a
- *  model call and a rebuilt .docx. */
-const CHIPS = {
-  learning_targets: ['Shorter', 'Lower the DOK', 'Make the verb measurable'],
-  standards: ['Use a different standard', 'Add a second code'],
-  act_alignment: ['Use a different ACT code', 'Leave it empty'],
-  engagement_strategy: ['Something more active', 'Fewer strategies'],
-  do_now: ['Shorter', 'More rigorous', 'Make it a quickwrite'],
-  during: ['Shorter', 'More rigorous', 'Add a group activity'],
-  assessment: ['Shorter', 'More rigorous', 'Make it written'],
-}
-
-const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
-
-/** The editor, rendered where the text was. */
-function CellTweak({ field, current, draft, setDraft, onApply, onCancel, busy }) {
-  return (
-    // fa-card-drop, not a bare Fragment: this popover used to appear/
-    // disappear as a hard conditional render with zero animation — a
-    // small thing resolving into place is exactly what this animation
-    // already communicates elsewhere (voice mode's decision cards).
-    <div className="fa-card-drop">
-      <div className="cell-tweak-current">
-        <b className="cell-tweak-label">{FIELD_LABELS[field] || field} · tweaking</b>
-        {current}
-      </div>
-      <div className="cell-tweak-row">
-        <label className="visually-hidden" htmlFor="cell-tweak-input">
-          What should change about this {FIELD_LABELS[field] || field}?
-        </label>
-        <input
-          id="cell-tweak-input"
-          className="input"
-          autoFocus
-          placeholder="What should change?"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onApply()
-            if (e.key === 'Escape') {
-              /* Stops here. ArtifactPanel's focus trap also listens for Escape
-                 and collapses the whole document — so without this, cancelling
-                 a two-word tweak threw away the document you were working in. */
-              e.stopPropagation()
-              onCancel()
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="cell-tweak-apply"
-          disabled={busy || !draft.trim()}
-          onClick={onApply}
-        >
-          Apply
-        </button>
-        <button type="button" className="btn-icon" onClick={onCancel} aria-label="Cancel this tweak">
-          <X size={14} aria-hidden="true" />
-        </button>
-      </div>
-      <div className="cell-tweak-chips">
-        {(CHIPS[field] || []).map((chip) => (
-          <button
-            key={chip}
-            type="button"
-            className="cell-tweak-chip fa-press"
-            onClick={() => {
-              setDraft(chip)
-              document.getElementById('cell-tweak-input')?.focus()
-            }}
-          >
-            {chip}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 /* The plan document, in whichever form the screen can carry.
  *
@@ -188,14 +109,13 @@ export function LessonPlanTable({
 
   const ordered = orderedDays(plan, missingDays)
 
-  /* Authoring is desktop-only — decision 5. A phone is for reading the week and
-     downloading it, not for asking an LLM to rewrite it. */
-  /* Authoring is off on a PHONE — decision 5: a phone is for reading the week
-     and downloading it, not for asking an LLM to rewrite it. It used to be off
-     on tablets too, which meant in-cell editing silently disappeared at 1023px
-     with nothing saying why. From 768 up the real document is on screen, so the
-     cells are there to click. */
-  const canTweak = Boolean(onReviseDay) && mode !== 'phone'
+  /* Used to be desktop/tablet-only — decision 5 read "a phone is for reading
+     the week and downloading it, not for asking an LLM to rewrite it." That
+     drew the line at the wrong layer: a teacher fixing one word from her
+     phone between classes shouldn't have to find a laptop for it. The DAYS
+     deck (below) now carries the same tap-to-tweak affordance the table
+     already had from 768px up — see PlanDayCards' own Field component. */
+  const canTweak = Boolean(onReviseDay)
 
   const openCell = (dayIndex, field) => {
     if (!canTweak) return
@@ -291,7 +211,21 @@ export function LessonPlanTable({
           transition before. */}
       <div key={view} className="fa-rise">
         {view === 'days' ? (
-          <PlanDayCards plan={plan} subject={subject} groundedCodes={groundedCodes} missingDays={missingDays} />
+          <PlanDayCards
+            plan={plan}
+            subject={subject}
+            groundedCodes={groundedCodes}
+            missingDays={missingDays}
+            busy={busy}
+            flashCells={flashCells}
+            canTweak={canTweak}
+            openTweak={canTweak ? openTweak : null}
+            openCell={openCell}
+            closeCell={closeCell}
+            applyTweak={applyTweak}
+            draft={draft}
+            setDraft={setDraft}
+          />
         ) : (
           <PlanTable
             ordered={ordered}
@@ -312,72 +246,6 @@ export function LessonPlanTable({
     </div>
   )
 }
-
-/* One implementation of "what a clickable cell is", shared by both layouts.
- *
- * The district table and the fitted view show the same week in two shapes, and
- * every one of these behaviours — which cells open, what flashes, how a
- * keyboard reaches them — has to be identical in both or the two views quietly
- * become two different editors. */
-function cellKit({
-  busy,
-  flashCells,
-  canTweak,
-  openTweak,
-  openCell,
-  closeCell,
-  applyTweak,
-  draft,
-  setDraft,
-}) {
-  const isOpen = (dayIndex, field) =>
-    openTweak?.dayIndex === dayIndex && openTweak?.field === field
-  const flashed = (dayIndex, field) => flashCells?.has(cellKey(dayIndex, field))
-
-  /* Deliberately NOT role="button" + tabIndex on the cell. Two of these contain
-     <Cite> buttons, and a button inside a button is a real screen-reader
-     failure, not a lint nit. The pointer affordance is the cell; the keyboard
-     affordance is the Trigger, which is off-screen until focused. */
-  const editableProps = (dayIndex, field) =>
-    canTweak
-      ? {
-          className: `is-editable${flashed(dayIndex, field) ? ' fa-flash' : ''}`,
-          onClick: () => openCell(dayIndex, field),
-        }
-      : { className: flashed(dayIndex, field) ? 'fa-flash' : undefined }
-
-  /** The keyboard path into a cell tweak. Invisible until it has focus, at
-   *  which point it becomes a visible pill — so tabbing through the document
-   *  never lands on something a sighted keyboard user cannot see. */
-  const Trigger = ({ dayIndex, field, dayName }) =>
-    canTweak ? (
-      <button
-        type="button"
-        className="cell-tweak-trigger"
-        onClick={(e) => {
-          e.stopPropagation()
-          openCell(dayIndex, field)
-        }}
-      >
-        Tweak {dayName}’s {FIELD_LABELS[field] || field}
-      </button>
-    ) : null
-
-  const tweakBody = (field, current) => (
-    <CellTweak
-      field={field}
-      current={current}
-      draft={draft}
-      setDraft={setDraft}
-      onApply={applyTweak}
-      onCancel={closeCell}
-      busy={busy}
-    />
-  )
-
-  return { isOpen, flashed, editableProps, Trigger, tweakBody }
-}
-
 
 /* The district table itself. It mirrors the .docx and its faithfulness is the
    product, so the only thing in-cell editing is allowed to change is what

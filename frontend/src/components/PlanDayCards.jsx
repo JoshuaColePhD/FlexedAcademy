@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CitedText } from './Citation'
 import { SkeletonText } from './Skeleton'
+import { cellKit } from './CellTweak'
 import {
   CARD_SECONDARY,
   LESSON_PARTS,
@@ -26,16 +27,41 @@ import {
 
 const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' })
 
-function Field({ label, children }) {
+/* Same tap-to-tweak affordance as the district table's cells (CellTweak.jsx's
+ * cellKit) — `kit` is the SAME kit instance LessonPlanTable built from ITS
+ * OWN openTweak/draft state, not a second one, so the table and the deck can
+ * never disagree about which field is open. `current` is the plain-text
+ * value CellTweak shows in its "current" preview and is what gets sent as
+ * the revision's baseline — for a tags field (engagement_strategy) that's
+ * the joined string, not the array, matching what the district table's own
+ * tags branch already sends. */
+function Field({ label, field, dayIndex, dayName, current, kit, children }) {
+  if (kit?.isOpen(dayIndex, field)) {
+    return (
+      <div className="plan-field is-tweaking">
+        <span className="eyebrow">{label}</span>
+        {kit.tweakBody(field, current)}
+      </div>
+    )
+  }
+  const { className: editableClass, onClick } = kit
+    ? kit.editableProps(dayIndex, field)
+    : { className: undefined, onClick: undefined }
+  const valueClass = ['plan-field-value', 'text-sm', 'leading-relaxed', 'text-ink', editableClass]
+    .filter(Boolean)
+    .join(' ')
   return (
     <div className="plan-field">
       <span className="eyebrow">{label}</span>
-      <div className="text-sm leading-relaxed text-ink">{children}</div>
+      <div className={valueClass} onClick={onClick}>
+        {children}
+        {kit ? <kit.Trigger dayIndex={dayIndex} field={field} dayName={dayName} /> : null}
+      </div>
     </div>
   )
 }
 
-function PlanDayCard({ day, index, groundedCodes, subject }) {
+function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
   const state = dayState(day)
 
   if (state !== 'ok') {
@@ -68,21 +94,45 @@ function PlanDayCard({ day, index, groundedCodes, subject }) {
       </header>
 
       {day.learning_targets ? (
-        <Field label="Learning target">{day.learning_targets}</Field>
+        <Field
+          label="Learning target"
+          field="learning_targets"
+          dayIndex={index}
+          dayName={day.name}
+          current={day.learning_targets}
+          kit={kit}
+        >
+          {day.learning_targets}
+        </Field>
       ) : null}
 
       {/* The lesson leads. The table renders it fifth; that is the document's
           order, not a teacher's. See CARD_SECONDARY in lib/planShape.js. */}
       {LESSON_PARTS.map(([label, key]) =>
         day[key] ? (
-          <Field key={key} label={label}>
+          <Field
+            key={key}
+            label={label}
+            field={key}
+            dayIndex={index}
+            dayName={day.name}
+            current={day[key]}
+            kit={kit}
+          >
             {day[key]}
           </Field>
         ) : null
       )}
 
       {day.standards ? (
-        <Field label="Standards">
+        <Field
+          label="Standards"
+          field="standards"
+          dayIndex={index}
+          dayName={day.name}
+          current={day.standards}
+          kit={kit}
+        >
           <CitedText text={day.standards} groundedCodes={groundedCodes} subject={subject} />
         </Field>
       ) : null}
@@ -91,17 +141,32 @@ function PlanDayCard({ day, index, groundedCodes, subject }) {
         <details>
           <summary>ACT alignment &amp; engagement</summary>
           <div className="flex flex-col gap-3 pt-3">
-            {CARD_SECONDARY.map(({ label, key, cited }) =>
-              day[key] ? (
-                <Field key={key} label={label}>
+            {CARD_SECONDARY.map(({ label, key, cited, tags }) => {
+              if (!day[key]) return null
+              // Matches the district table's own tags branch: CellTweak needs
+              // a plain string for its "current" preview and as the
+              // revision's baseline, not the raw array.
+              const current = tags
+                ? (Array.isArray(day[key]) ? day[key] : []).join(', ')
+                : day[key]
+              return (
+                <Field
+                  key={key}
+                  label={label}
+                  field={key}
+                  dayIndex={index}
+                  dayName={day.name}
+                  current={current}
+                  kit={kit}
+                >
                   {cited ? (
                     <CitedText text={day[key]} groundedCodes={groundedCodes} subject={subject} />
                   ) : (
                     day[key]
                   )}
                 </Field>
-              ) : null
-            )}
+              )
+            })}
           </div>
         </details>
       ) : null}
@@ -109,11 +174,32 @@ function PlanDayCard({ day, index, groundedCodes, subject }) {
   )
 }
 
-export function PlanDayCards({ plan, subject, groundedCodes, missingDays }) {
+export function PlanDayCards({
+  plan,
+  subject,
+  groundedCodes,
+  missingDays,
+  busy,
+  flashCells,
+  canTweak,
+  openTweak,
+  openCell,
+  closeCell,
+  applyTweak,
+  draft,
+  setDraft,
+}) {
   const days = orderedDays(plan, missingDays)
   const [active, setActive] = useState(() => initialDayIndex(days, TODAY_NAME))
   const scrollerRef = useRef(null)
   const syncing = useRef(false)
+  // Built from the SAME state LessonPlanTable owns (openTweak/draft live one
+  // level up) — this is a second cellKit() call, not a second source of
+  // truth, so the table and the deck can never disagree about which field is
+  // open. Undefined props (canTweak/openCell/etc, when this is rendered from
+  // a context with no revise capability at all) fall through cellKit's own
+  // `Boolean(...)`-style guards the same way they do for the table.
+  const kit = cellKit({ busy, flashCells, canTweak, openTweak, openCell, closeCell, applyTweak, draft, setDraft })
 
   /* Read the card's ACTUAL offset instead of computing i * clientWidth.
      The scroller is a grid with `gap: var(--sp-3)`, so card i actually starts
@@ -199,7 +285,7 @@ export function PlanDayCards({ plan, subject, groundedCodes, missingDays }) {
         aria-label="The week, one day per card — scrolls sideways"
       >
         {days.map((d, i) => (
-          <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} subject={subject} />
+          <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} subject={subject} kit={kit} />
         ))}
       </div>
     </div>

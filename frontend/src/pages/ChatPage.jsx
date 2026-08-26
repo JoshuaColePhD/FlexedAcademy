@@ -2339,7 +2339,7 @@ export function ChatPage() {
         subject={activeClass?.subject}
         missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
         onCollapse={collapse}
-        onReviseDay={!isPhone && artifact?.planId ? reviseDay : undefined}
+        onReviseDay={artifact?.planId ? reviseDay : undefined}
         onPlanRevised={onPlanRevised}
         busy={busy}
         preparing={preparing}

@@ -3075,9 +3075,33 @@
      which cells are tappable. */
   @media (hover: none) and (pointer: coarse) {
     .plan-lesson-part.is-editable,
-    .plan-table td.is-editable {
+    .plan-table td.is-editable,
+    .plan-field-value.is-editable {
       background: rgb(var(--accent-rgb) / 0.05);
     }
+  }
+  /* The phone day-card's own version of .plan-table td.is-editable — same
+     tap-to-tweak affordance, own selector because a card's field value is a
+     free div, not a table cell, and reads better with real padding + a
+     rounded corner than the table's flush background. Authoring used to be
+     desktop/tablet-only ("a phone is for reading the week"); it moved onto
+     the phone deck too because a teacher fixing one word from her phone
+     should not have to open a laptop for it. */
+  .plan-field-value.is-editable {
+    margin: calc(var(--sp-1) * -1) calc(var(--sp-2) * -1);
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--r-sm);
+    cursor: text;
+    transition: background var(--t-fast) var(--ease);
+  }
+  .plan-field-value.is-editable:hover {
+    background: rgb(var(--accent-rgb) / 0.05);
+  }
+  .plan-field-value.is-editable:active {
+    background: rgb(var(--accent-rgb) / 0.1);
+  }
+  .plan-field.is-tweaking .eyebrow {
+    color: var(--accent);
   }
   /* No permanent per-cell chrome — the affordance is the hover tint and the
      cursor. A pencil in every cell would put 35 icons on the district table. */
