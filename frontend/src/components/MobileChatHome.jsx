@@ -22,7 +22,12 @@ export function MobileChatHome({ onNavigate }) {
   const { classId, classes, activeClass } = useActiveClass()
 
   return (
-    <div className="flex h-full w-full flex-col bg-paper">
+    // fa-rise: mounts fresh every time ChatPage swaps in this early return
+    // (see ChatPage's own comment by mobileShowHome) — this is a real
+    // unmount/remount of a whole screen, not a prop change on one already
+    // on screen, so the same entrance motion Greeting.jsx uses for its own
+    // arrival plays here too instead of the screen just appearing.
+    <div className="flex h-full w-full flex-col bg-paper fa-rise">
       <Rail
         onNavigate={onNavigate}
         // ClassSwitcher already knows how to present zero/one/many classes
@@ -30,6 +35,11 @@ export function MobileChatHome({ onNavigate }) {
         // convention as its inline use in ChatPage's own header, not
         // re-decided here.
         headerExtra={<ClassSwitcher classes={classes} activeClass={activeClass} classPath={`/c/${classId}`} />}
+        // Nothing else is competing for room on this screen the way the
+        // desktop dock and phone drawer have to share space with a chat
+        // pane right next to them — grow the rows themselves, not just
+        // their invisible .tap-target hitbox.
+        spacious
       />
     </div>
   )

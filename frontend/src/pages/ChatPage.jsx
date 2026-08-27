@@ -3187,7 +3187,14 @@ export function ChatPage() {
      and the Composer owns a MediaRecorder and a ResizeObserver that do not
      survive that. */
   return (
-    <div className="flex h-full w-full min-w-0 gap-2" ref={splitRef}>
+    // fa-rise, isPhone-only: this tree mounts fresh the moment mobileShowHome
+    // flips false (a real unmount of MobileChatHome, not a prop change on a
+    // tree already on screen — see the early return above), so the same
+    // entrance motion MobileChatHome plays on ITS own mount plays here too.
+    // Chat-to-chat navigation while already here doesn't remount this node
+    // (same route pattern, same position in the tree), so it won't replay on
+    // every chat switch — only on the one transition this is meant to soften.
+    <div className={`flex h-full w-full min-w-0 gap-2${isPhone ? ' fa-rise' : ''}`} ref={splitRef}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document

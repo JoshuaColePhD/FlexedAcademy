@@ -93,7 +93,7 @@ function UsageMeter({ entitlement }) {
   )
 }
 
-export function AccountMenu({ classPath, collapsed }) {
+export function AccountMenu({ classPath, collapsed, spacious }) {
   const { user, logout } = useAuth()
   const { entitlement } = useBilling()
   const [open, setOpen] = useState(false)
@@ -133,36 +133,39 @@ export function AccountMenu({ classPath, collapsed }) {
     <div className={`relative flex items-center gap-1 py-2 ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
       <button
         type="button"
-        className={`flex items-center rounded-md text-left transition-colors hover:bg-paper-inset ${collapsed ? 'justify-center p-2' : 'min-w-0 flex-1 gap-2 px-2 py-1.5'}`}
+        className={`flex items-center rounded-md text-left transition-colors hover:bg-paper-inset ${
+          collapsed ? 'justify-center p-2' : spacious ? 'min-w-0 min-h-[48px] flex-1 gap-2.5 px-2.5 py-2.5' : 'min-w-0 flex-1 gap-2 px-2 py-1.5'
+        }`}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         title={collapsed ? name : undefined}
       >
         {(() => {
           const avatar = getAvatar(user?.avatar)
+          const sizeCls = spacious ? 'h-9 w-9' : 'h-7 w-7'
           if (avatar) {
             return (
               <span
                 aria-hidden="true"
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${avatar.bg} border border-edge/30`}
+                className={`grid ${sizeCls} shrink-0 place-items-center rounded-full ${avatar.bg} border border-edge/30`}
               >
-                <span className="text-sm leading-none">{avatar.emoji}</span>
+                <span className={spacious ? 'text-base leading-none' : 'text-sm leading-none'}>{avatar.emoji}</span>
               </span>
             )
           }
           return (
             <span
               aria-hidden="true"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted border border-edge/30"
+              className={`grid ${sizeCls} shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted border border-edge/30`}
             >
-              <User size={15} />
+              <User size={spacious ? 18 : 15} />
             </span>
           )
         })()}
         {collapsed ? null : (
           <>
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">{name}</span>
-            <ChevronUp size={13} aria-hidden="true" className="shrink-0 text-ink-faint" />
+            <span className={`min-w-0 flex-1 truncate font-medium text-ink-soft ${spacious ? 'text-sm' : 'text-xs'}`}>{name}</span>
+            <ChevronUp size={spacious ? 15 : 13} aria-hidden="true" className="shrink-0 text-ink-faint" />
           </>
         )}
       </button>

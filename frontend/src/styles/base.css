@@ -5431,6 +5431,28 @@
     }
   }
 
+  /* ── ChatRow's pin/rename/delete cluster ─────────────────────────────────
+     Was plain Tailwind opacity-0 + group-hover:opacity-100 — a bare, ungated
+     :hover rule. That's invisible to touch anyway (there's no persistent
+     hover to reveal it), but worse: on iOS Safari, the mere PRESENCE of a
+     :hover rule tied to this row makes the first tap simulate :hover instead
+     of firing the click — a real chat needed two taps to open from
+     MobileChatHome, the one screen this app now lands a phone on. Wrapping
+     the rule in (hover: hover) removes it from touch's stylesheet entirely,
+     so there is nothing left for Safari to hover-simulate on tap 1, and the
+     cluster shows unconditionally on touch instead (it was unreachable there
+     before this anyway, same fix either way). */
+  @media (hover: hover) {
+    .chat-row-actions {
+      opacity: 0;
+      transition: opacity var(--t-fast) var(--ease);
+    }
+    .group:hover .chat-row-actions,
+    .chat-row-actions:focus-within {
+      opacity: 1;
+    }
+  }
+
   /* ── touch targets ────────────────────────────────────────────────────────
      A 36px control with a 44px target. The pseudo-element is transparent and
      absolutely positioned, so it costs no layout: the icon stays the size the

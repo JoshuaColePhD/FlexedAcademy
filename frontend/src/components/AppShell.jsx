@@ -26,7 +26,7 @@ import { qk } from '../lib/queryKeys'
  * 264px nav. The one PanelGroup left splits the chat from the plan.
  */
 
-function ChatRow({ chat, classId, onDelete, onPin, onNavigate }) {
+function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious }) {
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(chat.title)
@@ -84,15 +84,23 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate }) {
              means "selected" in this world (see every neo-raised button's
              own :active state), so the active row reads as a permanent
              version of that same press instead of a third, unrelated
-             signal. */
-          `flex min-h-[28px] py-1.5 items-center rounded-md px-2 pr-4 text-sm transition-all duration-300 ${
+             signal.
+
+             spacious (MobileChatHome only — the one place a chat row is a
+             thumb target on a screen with nothing else fighting it for
+             room): taller rows and larger type instead of just a bigger
+             invisible .tap-target hit area, since there's space here to
+             actually grow the control, not just its hitbox. */
+          `flex items-center rounded-md transition-all duration-300 ${
+            spacious ? 'min-h-[44px] py-2.5 px-3 pr-4 text-base' : 'min-h-[28px] py-1.5 px-2 pr-4 text-sm'
+          } ${
             isActive ? 'neo-inset bg-paper-sunken text-accent-text drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] font-medium' : 'text-ink-soft hover:bg-paper-inset/60 hover:text-ink'
           }`
         }
       >
         <span className="truncate">{chat.title}</span>
       </NavLink>
-      <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-paper p-0.5 shadow-sm border border-edge/50 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+      <span className="chat-row-actions absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-paper p-0.5 shadow-sm border border-edge/50">
         <button
           type="button"
           className={`btn-icon ${chat.is_pinned ? 'text-amber-500' : ''}`}
@@ -126,7 +134,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate }) {
    chats list + Workspace Tools + Settings, the same content as the desktop
    sidebar, landing where a teacher currently gets dropped straight into an
    empty chat instead. See MobileChatHome.jsx. */
-export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra }) {
+export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious }) {
   const { entitlement } = useAuth()
   const { classId } = useParams()
   const location = useLocation()
@@ -251,11 +259,15 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
             to={classPath}
             onClick={onNavigate}
             title={collapsed ? 'New plan' : undefined}
-            className={`fa-press neo-raised btn-blob flex items-center rounded-md text-sm font-medium text-ink transition-all duration-300 overflow-hidden whitespace-nowrap ${
-              collapsed ? 'justify-center w-10 h-10 px-0' : 'gap-2 px-3 py-1.5 min-h-[32px] w-full'
+            className={`fa-press neo-raised btn-blob flex items-center rounded-md font-medium text-ink transition-all duration-300 overflow-hidden whitespace-nowrap ${
+              collapsed
+                ? 'justify-center w-10 h-10 px-0 text-sm'
+                : spacious
+                  ? 'gap-2 px-3.5 py-3 min-h-[52px] w-full text-base'
+                  : 'gap-2 px-3 py-1.5 min-h-[32px] w-full text-sm'
             }`}
           >
-            <Plus size={15} aria-hidden="true" className="shrink-0" />
+            <Plus size={spacious ? 18 : 15} aria-hidden="true" className="shrink-0" />
             {collapsed ? null : (
               <>
                 <span className="flex-1 overflow-hidden text-ellipsis">New plan</span>
@@ -276,7 +288,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 <ul className="flex flex-col gap-0">
                   <AnimatePresence initial={false}>
                     {pinnedChats.map((c) => (
-                      <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} />
+                      <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} />
                     ))}
                   </AnimatePresence>
                 </ul>
@@ -304,7 +316,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
               <ul className="flex flex-col gap-0">
                 <AnimatePresence initial={false}>
                   {recentChats.map((c) => (
-                    <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} />
+                    <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} />
                   ))}
                 </AnimatePresence>
               </ul>
@@ -343,14 +355,14 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 onClick={onNavigate}
                 title="Standards Browser"
                 className={({ isActive }) =>
-                  `flex items-center gap-2.5 py-1.5 rounded-md text-sm transition-all duration-300 ${
-                    collapsed ? 'justify-center w-10 h-10' : 'px-2'
+                  `flex items-center gap-2.5 rounded-md transition-all duration-300 ${
+                    collapsed ? 'justify-center w-10 h-10 text-sm' : spacious ? 'px-3 py-3 min-h-[48px] text-base' : 'px-2 py-1.5 text-sm'
                   } ${
                     isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
                   }`
                 }
               >
-                <Database size={17} aria-hidden="true" />
+                <Database size={spacious ? 19 : 17} aria-hidden="true" />
                 {collapsed ? null : <span>Standards Browser</span>}
               </NavLink>
             </li>
@@ -361,14 +373,14 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 onClick={onNavigate}
                 title="Classroom Profile"
                 className={({ isActive }) =>
-                  `flex items-center gap-2.5 py-1.5 rounded-md text-sm transition-all duration-300 ${
-                    collapsed ? 'justify-center w-10 h-10' : 'px-2'
+                  `flex items-center gap-2.5 rounded-md transition-all duration-300 ${
+                    collapsed ? 'justify-center w-10 h-10 text-sm' : spacious ? 'px-3 py-3 min-h-[48px] text-base' : 'px-2 py-1.5 text-sm'
                   } ${
                     isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
                   }`
                 }
               >
-                <Users size={17} aria-hidden="true" />
+                <Users size={spacious ? 19 : 17} aria-hidden="true" />
                 {collapsed ? null : <span>Classroom Profile</span>}
               </NavLink>
             </li>
@@ -378,21 +390,21 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 onClick={onNavigate}
                 title="Library"
                 className={({ isActive }) =>
-                  `flex items-center gap-2.5 py-1.5 rounded-md text-sm transition-all duration-300 ${
-                    collapsed ? 'justify-center w-10 h-10' : 'px-2'
+                  `flex items-center gap-2.5 rounded-md transition-all duration-300 ${
+                    collapsed ? 'justify-center w-10 h-10 text-sm' : spacious ? 'px-3 py-3 min-h-[48px] text-base' : 'px-2 py-1.5 text-sm'
                   } ${
                     isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
                   }`
                 }
               >
-                <FileText size={17} aria-hidden="true" />
+                <FileText size={spacious ? 19 : 17} aria-hidden="true" />
                 {collapsed ? null : <span>Library</span>}
               </NavLink>
             </li>
           </ul>
         </div>
         <div className="mt-auto">
-          <AccountMenu classPath={classPath} collapsed={collapsed} />
+          <AccountMenu classPath={classPath} collapsed={collapsed} spacious={spacious} />
         </div>
       </motion.div>
     </>
