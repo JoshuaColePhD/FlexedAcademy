@@ -617,22 +617,30 @@ export function ArtifactDetailPanel({
                 </button>
 
                 <div className="doc-download-group flex items-stretch">
-                  <button
-                    type="button"
+                  {/* A real direct download now, not a second click through
+                     the dialog — same reasoning as ArtifactPanel's own
+                     Download button. Also fixed the label while touching
+                     this: a quiz downloads as a QTI .zip (for Canvas
+                     import), never a .docx — ShareDialog's own copy right
+                     below already says so ("Download the quiz as a QTI
+                     .zip file"), this button just never matched it. */}
+                  <a
+                    href={planId && quiz?.id ? api.quizDownloadUrl(planId, quiz.id) : undefined}
+                    download
                     className="doc-download-main fa-press flex items-center gap-1.5"
-                    onClick={() => setShareOpen(true)}
-                    aria-label="Download or Share this quiz"
-                    title="Download or Share"
+                    aria-label="Download QTI .zip"
+                    title="Download QTI .zip"
                   >
                     <Download size={14} aria-hidden="true" className="text-ink-muted" />
-                    <span className="font-medium">Download as DOCX</span>
-                  </button>
+                    <span className="font-medium">Download QTI</span>
+                  </a>
                   <div className="doc-download-divider" />
                   <button
                     type="button"
                     className="doc-download-drop fa-press flex items-center justify-center"
                     onClick={() => setShareOpen(true)}
-                    aria-label="More download options"
+                    aria-label="More export options — push to Canvas"
+                    title="More export options"
                   >
                     <ChevronDown size={14} aria-hidden="true" className="text-ink-muted" />
                   </button>

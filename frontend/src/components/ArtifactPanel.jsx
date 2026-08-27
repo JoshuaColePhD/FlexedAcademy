@@ -178,10 +178,19 @@ const location = useLocation()
               </button>
 
               <div className="doc-download-group flex items-stretch">
-                <button
-                  type="button"
+                {/* A real direct download now, not a second click through the
+                    dialog — Josh's own question, prompted by seeing the
+                    dialog's Drive section appear from a button that just
+                    says "Download as DOCX": now that the cloud icon is its
+                    own dedicated entry into that dialog (previous commit),
+                    this one can just do the one thing its label promises.
+                    The dropdown chevron beside it still opens the full
+                    dialog, for the share-link/Drive options this button no
+                    longer surfaces on its own. */}
+                <a
+                  href={planId ? api.planDownloadUrl(planId) : undefined}
+                  download
                   className="doc-download-main fa-press flex items-center gap-1.5"
-                  onClick={() => setShareOpen(true)}
                   aria-label="Download as DOCX"
                   title="Download as DOCX"
                 >
@@ -192,13 +201,14 @@ const location = useLocation()
                   ) : null}
                   <Download size={14} aria-hidden="true" className="text-ink-muted" />
                   <span className="font-medium">Download as DOCX</span>
-                </button>
+                </a>
                 <div className="doc-download-divider" />
                 <button
                   type="button"
                   className="doc-download-drop fa-press flex items-center justify-center"
                   onClick={() => setShareOpen(true)}
-                  aria-label="More download options"
+                  aria-label="More export options — share link or save to Drive"
+                  title="More export options"
                 >
                   <ChevronDown size={14} aria-hidden="true" className="text-ink-muted" />
                 </button>
