@@ -25,6 +25,11 @@ export const CHIPS = {
 
 export const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
 
+// The two fields a real standard code can live in — matches backend/schema.py's
+// CODE_BEARING_FIELDS. Only these get the picker; every other field has
+// nothing in retrieval's retrieved set that could ever belong in it.
+const CODE_FIELDS = new Set(['standards', 'act_alignment'])
+
 /** The editor, rendered where the text was. */
 export function CellTweak({
   field,
@@ -37,6 +42,14 @@ export function CellTweak({
   scope,
   setScope,
   weekDayCount,
+  // The standard picker: `options` is this week's own retrieved standards
+  // for this field (full records, so a description shows, not a bare
+  // code) — null when this field can't carry a code, or onPick is absent
+  // (no plan to write into yet). `onPick` sets the cell directly, no model
+  // call — see service.set_day_field's own docstring for why that's a
+  // real, separate write and not just a shortcut into the free-text box.
+  options,
+  onPick,
 }) {
   return (
     // fa-card-drop, not a bare Fragment: this popover used to appear/
@@ -48,6 +61,38 @@ export function CellTweak({
         <b className="cell-tweak-label">{FIELD_LABELS[field] || field} · tweaking</b>
         {current}
       </div>
+      {/* The direct pick: every standard THIS WEEK actually retrieved for
+          this field, already grounded by construction — clicking one skips
+          the free-text box and the model call entirely. Only offered when
+          there's something to pick from; a thin week with nothing retrieved
+          for this field still has the free-text path below as its only
+          option, same as before this existed. */}
+      {onPick && options?.length ? (
+        <div className="cell-tweak-picker" role="listbox" aria-label={`Retrieved ${FIELD_LABELS[field] || field} options`}>
+          {options.map((opt) => (
+            <button
+              key={opt.code}
+              type="button"
+              role="option"
+              className="cell-tweak-picker-option fa-press"
+              // Matches the model's own "CODE -- description" convention for
+              // this field (see any generated cell) — not just the bare
+              // code, or the cell would visibly lose its description
+              // compared to every other week's.
+              onClick={() => onPick(opt.description ? `${opt.code} -- ${opt.description}` : opt.code)}
+              disabled={busy}
+            >
+              <span className="cell-tweak-picker-code">{opt.code}</span>
+              <span className="cell-tweak-picker-desc">{opt.description}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {onPick && options?.length ? (
+        <div className="cell-tweak-picker-sep">
+          <span>or describe a different change</span>
+        </div>
+      ) : null}
       {/* Only worth asking when there's more than one day to spread the
           instruction across — a single-teaching-day week has nothing for
           "All N days" to mean. */}
@@ -138,6 +183,8 @@ export function cellKit({
   openCell,
   closeCell,
   applyTweak,
+  pickStandard,
+  standardsByCode,
   draft,
   setDraft,
   scope,
@@ -178,7 +225,7 @@ export function cellKit({
       </button>
     ) : null
 
-  const tweakBody = (field, current) => (
+  const tweakBody = (dayIndex, field, current) => (
     <CellTweak
       field={field}
       current={current}
@@ -190,6 +237,8 @@ export function cellKit({
       scope={scope}
       setScope={setScope}
       weekDayCount={weekDayCount}
+      options={CODE_FIELDS.has(field) ? Object.values(standardsByCode || {}).filter(Boolean) : null}
+      onPick={pickStandard ? (code) => pickStandard(dayIndex, field, code) : null}
     />
   )
 

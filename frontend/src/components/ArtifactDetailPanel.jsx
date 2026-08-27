@@ -538,6 +538,7 @@ export function ArtifactDetailPanel({
   ungrounded = [],
   weeks = [],
   currentWeek,
+  onFullscreenChange,
 }) {
   const panelRef = useRef(null)
   const titleRef = useRef(null)
@@ -554,6 +555,22 @@ export function ArtifactDetailPanel({
   // from here too now.
   const [shareOpen, setShareOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  // .artifact-overlay (ChatPage.jsx) is what actually needs to grow: it sits
+  // inset from the left rail with backdrop-filter + will-change: transform,
+  // both of which make it the real containing block for ANY position:fixed
+  // descendant (this .doc-shell's own "fullscreen" rule included) — CSS has
+  // no way for a child to opt out of an ancestor's filter/will-change once
+  // it's there. Confirmed live: maximizing did nothing visible, because
+  // .doc-shell's inset:0 was already resolving against .artifact-overlay's
+  // own box, which is exactly the box it was already filling. Growing the
+  // OVERLAY itself past that fixed left inset, rather than fighting the
+  // browser to have doc-shell escape a containing block it can't escape, is
+  // what ArtifactPanel's own twin of this effect does too.
+  useEffect(() => {
+    onFullscreenChange?.(isFullscreen)
+    return () => onFullscreenChange?.(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen])
 
   useFocusTrap(panelRef, {
     active: true,

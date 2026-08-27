@@ -62,7 +62,9 @@ export function ArtifactPanel({
   onCollapse,
   onReviseDay,
   onReviseDays,
+  onPickStandard,
   onPlanRevised,
+  onFullscreenChange,
   busy,
   preparing,
   streamingText,
@@ -74,6 +76,15 @@ export function ArtifactPanel({
   const [shareOpen, setShareOpen] = useState(false)
   const [completionPulse, setCompletionPulse] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  // .artifact-overlay (ChatPage.jsx) is the box that actually needs to grow —
+  // see this effect's twin in ArtifactDetailPanel.jsx for why. Fires on both
+  // ways isFullscreen can change (the button below, and the Escape handler
+  // just past it), so the parent never has to know about either path itself.
+  useEffect(() => {
+    onFullscreenChange?.(isFullscreen)
+    return () => onFullscreenChange?.(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen])
     const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: api.listSchools })
   const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: api.listClasses })
   
@@ -236,6 +247,7 @@ const location = useLocation()
               groundedCodes={grounded}
               onReviseDay={planId ? onReviseDay : undefined}
               onReviseDays={planId ? onReviseDays : undefined}
+              onPickStandard={planId ? onPickStandard : undefined}
               onPlanRevised={onPlanRevised}
               busy={busy}
               missingDays={missingDays}

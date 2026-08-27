@@ -561,6 +561,102 @@ def revise_day(
     return updated_row  # type: ignore[return-value]
 
 
+def set_day_field(
+    user_id: str,
+    plan_id: str,
+    day_index: int,
+    field: str,
+    value: str,
+    bg_tasks: BackgroundTasks | None = None,
+) -> dict:
+    """Set one day's field to an exact value the teacher already chose — no
+    LLM call at all.
+
+    revise_day exists for "make this better, however the model sees fit."
+    This is the other case: the teacher picked a specific standard, verbatim,
+    off the list of what this week actually retrieved (LessonPlanTable's
+    standard picker) and knows exactly what the cell should say. Routing
+    that through revise_day's "rewrite this field: <feedback>" would ask a
+    model to reproduce a string it was just handed — pure downside, since
+    the one thing that could happen is it reword the code or the standard's
+    own text on the way through, the exact paraphrase risk this app's whole
+    grounding apparatus exists to prevent, self-inflicted for no reason.
+
+    Only CODE_BEARING_FIELDS may be set this way — the picker only ever
+    offers a real standard, and only those two cells display one.
+
+    Same validate -> audit -> persist -> rebuild tail as revise_day's
+    single-field path (lines above), just with retrieval and the LLM call
+    removed: the value is already grounded by construction, since the
+    picker's own options came from retrieved_ids.
+    """
+    if field not in schema.CODE_BEARING_FIELDS:
+        raise AppError(
+            "bad_field",
+            f"{field!r} cannot be set directly.",
+            status=400,
+            hint=f"Expected one of: {', '.join(schema.CODE_BEARING_FIELDS)}.",
+        )
+
+    row = db.get_plan(user_id, plan_id)
+    if not row:
+        raise AppError("plan_not_found", "No such plan.", status=404)
+
+    plan = row["plan_json"]
+    days = plan.get("days", [])
+    if not 0 <= day_index < len(days):
+        raise AppError(
+            "day_out_of_range",
+            f"Day index {day_index} is outside this plan's {len(days)} days.",
+            status=400,
+        )
+
+    original = days[day_index]
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    subject_code, grade = _resolve_subject_grade(user_id, cls)
+
+    merged = {**original, field: value}
+    updated, warnings = schema.validate_day(merged, path=f"days[{day_index}]")
+    for key, was in original.items():
+        if key != field and key in updated:
+            updated[key] = was
+
+    new_days = list(days)
+    new_days[day_index] = updated
+    new_plan = {**plan, "days": new_days}
+
+    allowed = set(row.get("retrieved_ids") or [])
+    warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
+    cited = retrieval.cited_standards(new_plan, allowed, subject_code=subject_code)
+
+    out_path = docx_build.plan_output_path(new_plan, plan_id)
+
+    if bg_tasks is not None:
+        bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
+        docx_path_val = None
+    else:
+        docx_build.build_docx(new_plan, out_path)
+        storage.mirror_file(out_path)
+        docx_path_val = str(out_path)
+
+    updated_row = db.update_plan(
+        user_id,
+        plan_id,
+        plan_json=new_plan,
+        docx_path=docx_path_val,
+        warnings=(row.get("warnings") or []) + warnings,
+    )
+    db.replace_plan_standards(
+        plan_id,
+        user_id,
+        class_id=row.get("class_id"),
+        subject=subject_code,
+        grade=str(grade),
+        entries=cited,
+    )
+    return updated_row  # type: ignore[return-value]
+
+
 def revise_days(
     user_id: str,
     plan_id: str,

@@ -378,6 +378,32 @@ function SchoolPicker({ value, onSaved }) {
     }
   }
 
+  // The wizard's own upload (api.uploadSchoolTemplate, OnboardingWizard.jsx)
+  // was the ONLY place a district's lesson-plan format could be submitted —
+  // shown once per account, or by hunting down "Take the tour again." A
+  // school picked here with no template yet had no path to fix that short
+  // of reopening a tour built for a different moment. Same trigger the
+  // wizard itself uses (template_status !== 'active'), same endpoint, so a
+  // template submitted from either place goes through identical processing.
+  const templateFileRef = useRef(null)
+  const [uploadingTemplate, setUploadingTemplate] = useState(false)
+
+  const uploadTemplate = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !selected) return
+    setUploadingTemplate(true)
+    try {
+      await api.uploadSchoolTemplate(selected.id, { file })
+      toast.success('Template submitted', 'We’ll have it ready shortly.')
+      schoolsState.refetch()
+    } catch (err) {
+      toast.apiError('Could not upload the template', err)
+    } finally {
+      setUploadingTemplate(false)
+      if (templateFileRef.current) templateFileRef.current.value = ''
+    }
+  }
+
   return (
     <div id="section-school-calendar" className="mt-5 scroll-mt-8">
       <h2 className="text-sm font-semibold text-ink">School</h2>
@@ -427,6 +453,39 @@ function SchoolPicker({ value, onSaved }) {
               Template Status: Active
             </span>
           ) : null}
+        </div>
+      ) : null}
+      {/* The wizard (OnboardingWizard.jsx) was the only place a district's own
+          lesson-plan format could ever be submitted — shown once per account,
+          or by hunting down "Take the tour again" below. A school picked here
+          with no template on file had no path to fix that. Same trigger the
+          wizard itself uses (template_status !== 'active'), same endpoint —
+          a template submitted from either place is processed identically. */}
+      {selected && selected.template_status !== 'active' ? (
+        <div className="mt-2 max-w-sm rounded-lg border border-edge bg-paper-sunken p-3">
+          <p className="text-xs text-ink-soft">
+            {selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
+              ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
+              : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
+          </p>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => templateFileRef.current?.click()}
+              disabled={uploadingTemplate}
+              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset disabled:opacity-50"
+            >
+              {uploadingTemplate ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploadingTemplate ? 'Reading…' : 'Upload Template'}
+            </button>
+            <input
+              ref={templateFileRef}
+              type="file"
+              accept=".pdf,.docx"
+              className="hidden"
+              onChange={uploadTemplate}
+            />
+          </div>
         </div>
       ) : null}
       {/* A school's row and its calendar are added in different places on

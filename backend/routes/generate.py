@@ -152,6 +152,17 @@ class ReviseDayRequest(BaseModel):
     field: str | None = None
 
 
+class SetDayFieldRequest(BaseModel):
+    """The picker's request: an exact, teacher-chosen value for one cell —
+    see service.set_day_field's own docstring for why this is a separate,
+    LLM-free path rather than another ReviseDayRequest.field case."""
+
+    plan_id: str = Field(min_length=1, max_length=64)
+    day_index: int = Field(ge=0, le=4)
+    field: str
+    value: str = Field(min_length=1, max_length=2000)
+
+
 class ReviseDaysRequest(BaseModel):
     """The batch counterpart to ReviseDayRequest: one instruction, one field,
     applied across several days at once. `field` is required here — batching
@@ -835,6 +846,15 @@ def revise_day(req: ReviseDayRequest, request: Request, user_id: str = Depends(g
     matches what's on screen."""
     require_entitlement(user_id)
     return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback, req.field)
+
+
+@router.post("/set_day_field")
+@limiter.limit("100/minute")
+def set_day_field(req: SetDayFieldRequest, request: Request, user_id: str = Depends(get_current_user)):
+    """The standard-picker's endpoint: set one cell to an exact value with no
+    model call, then rebuild the .docx. See service.set_day_field."""
+    require_entitlement(user_id)
+    return service.set_day_field(user_id, req.plan_id, req.day_index, req.field, req.value)
 
 
 @router.post("/revise_days")

@@ -40,7 +40,7 @@ function Field({ label, field, dayIndex, dayName, current, kit, children }) {
     return (
       <div className="plan-field is-tweaking">
         <span className="eyebrow">{label}</span>
-        {kit.tweakBody(field, current)}
+        {kit.tweakBody(dayIndex, field, current)}
       </div>
     )
   }
@@ -186,6 +186,8 @@ export function PlanDayCards({
   openCell,
   closeCell,
   applyTweak,
+  pickStandard,
+  standardsByCode,
   draft,
   setDraft,
   scope,
@@ -210,6 +212,8 @@ export function PlanDayCards({
     openCell,
     closeCell,
     applyTweak,
+    pickStandard,
+    standardsByCode,
     draft,
     setDraft,
     scope,

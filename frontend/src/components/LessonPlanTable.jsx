@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
@@ -50,6 +50,7 @@ export function LessonPlanTable({
   groundedCodes,
   onReviseDay,
   onReviseDays,
+  onPickStandard,
   onPlanRevised,
   busy,
   missingDays = 'no_school',
@@ -71,8 +72,42 @@ export function LessonPlanTable({
   // trace of which one you'd picked, only a toast that had already faded.
   const [feedbackSent, setFeedbackSent] = useState(null)
   const [revisingWholePlan, setRevisingWholePlan] = useState(false)
+  // code -> full standard record (description, source, verbatim_ok), for the
+  // Standards/ACT Alignment picker below — CitedText only ever needed the
+  // codes themselves (groundedCodes), not what they say, so this is new.
+  // Refetched whenever the retrieved set actually changes (a revision can
+  // widen it), not on every render.
+  const [standardsByCode, setStandardsByCode] = useState({})
   const mode = useLayoutMode()
   const toast = useToast()
+
+  useEffect(() => {
+    const codes = [...(groundedCodes || [])]
+    if (!codes.length) {
+      setStandardsByCode({})
+      return
+    }
+    let cancelled = false
+    const controller = new AbortController()
+    api
+      .getStandardsBatch(codes, { subject, signal: controller.signal })
+      .then((byCode) => {
+        if (!cancelled) setStandardsByCode(byCode || {})
+      })
+      .catch(() => {
+        // Best-effort: the picker just falls back to bare codes with no
+        // description if this fails, same as CitedText already does for an
+        // unresolved code. Not worth a toast — nothing the teacher did failed.
+      })
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+    // groundedCodes is a fresh Set every render (ArtifactPanel builds it
+    // inline) — join() gives this effect a stable string to depend on
+    // instead of re-fetching every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [[...(groundedCodes || [])].sort().join(','), subject])
 
   /* Both of these used to be bare fetch() calls gated on `plan.id`. `plan` is
      plan_json, which has no id — the DB id arrives as `planId` — so the toolbar
@@ -133,6 +168,14 @@ export function LessonPlanTable({
     setDraft('')
     setScope('day')
     setOpenTweak(null)
+  }
+
+  /** The picker's own apply: an exact code, not typed feedback — see
+   *  ChatPage's pickStandard for why this is a sibling of applyTweak
+   *  rather than a call to it. */
+  const pickStandard = (dayIndex, field, code) => {
+    onPickStandard?.(dayIndex, ordered[dayIndex], field, code)
+    closeCell()
   }
 
   // Every day actually taught this week — no_school/pending/incomplete days
@@ -242,6 +285,8 @@ export function LessonPlanTable({
             openCell={openCell}
             closeCell={closeCell}
             applyTweak={applyTweak}
+            pickStandard={onPickStandard ? pickStandard : null}
+            standardsByCode={standardsByCode}
             draft={draft}
             setDraft={setDraft}
             scope={scope}
@@ -260,6 +305,8 @@ export function LessonPlanTable({
             openCell={openCell}
             closeCell={closeCell}
             applyTweak={applyTweak}
+            pickStandard={onPickStandard ? pickStandard : null}
+            standardsByCode={standardsByCode}
             draft={draft}
             setDraft={setDraft}
             scope={scope}
@@ -286,6 +333,8 @@ function PlanTable({
   openCell,
   closeCell,
   applyTweak,
+  pickStandard,
+  standardsByCode,
   draft,
   setDraft,
   scope,
@@ -300,6 +349,8 @@ function PlanTable({
     openCell,
     closeCell,
     applyTweak,
+    pickStandard,
+    standardsByCode,
     draft,
     setDraft,
     scope,
@@ -390,7 +441,7 @@ function PlanTable({
                       <td key={day.name} className={openPart ? 'is-tweaking' : undefined}>
                         {LESSON_PARTS.map(([label, key]) =>
                           isOpen(dayIndex, key) ? (
-                            <div key={key}>{tweakBody(key, day[key])}</div>
+                            <div key={key}>{tweakBody(dayIndex, key, day[key])}</div>
                           ) : day[key] ? (
                             <div
                               className={`plan-lesson-part${
@@ -415,7 +466,7 @@ function PlanTable({
                       : day[row.key]
                     return (
                       <td key={day.name} className="is-tweaking">
-                        {tweakBody(row.key, current)}
+                        {tweakBody(dayIndex, row.key, current)}
                       </td>
                     )
                   }

@@ -303,6 +303,12 @@ export const api = {
 
   reviseDays: (payload) => request('/api/revise_days', { method: 'POST', body: payload }),
 
+  // The standard picker's own write: an exact, already-grounded value the
+  // teacher chose from what this week retrieved — no model call, unlike
+  // reviseDay. See backend/service.py's set_day_field docstring for why
+  // this is a separate endpoint rather than another reviseDay `field` case.
+  setDayField: (payload) => request('/api/set_day_field', { method: 'POST', body: payload }),
+
   /* ── billing ──────────────────────────────────────────────────────────────
      `billing` carries the entitlement AND the price, read from Stripe at
      request time — the price is never a number typed into this codebase.

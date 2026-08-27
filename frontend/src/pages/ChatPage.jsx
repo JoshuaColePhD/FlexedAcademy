@@ -459,6 +459,11 @@ export function ChatPage() {
      changed?" without anyone having to build a diff view. */
   const [openTweak, setOpenTweak] = useState(null)
   const [flashCells, setFlashCells] = useState(() => new Set())
+  // Whichever viewer is open (ArtifactPanel or ArtifactDetailPanel) reports
+  // its own "maximize" click here — see either one's onFullscreenChange
+  // effect for why the class actually has to land on .artifact-overlay
+  // (below) rather than the doc-shell div inside it that clicked the button.
+  const [artifactFullscreen, setArtifactFullscreen] = useState(false)
   /* The composer dock is portaled to document.body — see composerAnchorRef's
      own comment near chatPane's return for why — which needs two pieces of
      plumbing: an invisible ANCHOR left in the dock's normal flow position
@@ -1982,6 +1987,69 @@ export function ChatPage() {
     [artifact, toast, flash, persistMessage]
   )
 
+  /* The standard picker's own write, from clicking one of the retrieved
+   * options in a Standards/ACT Alignment cell (LessonPlanTable's picker).
+   * Sibling to reviseDay, not a case of it: api.setDayField sets the exact
+   * chosen value with no model call, so there's no "feedback" to describe —
+   * only which code was picked. Still logged to the transcript and flashed
+   * the same way a tweak is, because it is just as real an edit to the week.
+   */
+  const pickStandard = useCallback(
+    async (dayIndex, day, field, code) => {
+      if (!artifact?.planId) return
+      const label = `${day.name}’s ${FIELD_LABELS[field] || field}`
+      const ask = `Set ${label} to ${code}.`
+      const askId = nextId()
+      pinToTopIdRef.current = askId
+      setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
+      const saveTo = localFor.current
+      if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
+      setRevising(true)
+      try {
+        const row = await api.setDayField({
+          plan_id: artifact.planId,
+          day_index: dayIndex,
+          field,
+          value: code,
+        })
+        setArtifact((a) => ({
+          ...a,
+          plan: row.plan_json,
+          warnings: row.warnings,
+          retrievedIds: row.retrieved_ids,
+        }))
+        flash([cellKey(dayIndex, field)])
+        const reply = `Updated ${label} and rebuilt the document.`
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: 'assistant',
+            content: reply, created_at: new Date().toISOString(),
+            planId: row.id,
+            weekLabel: row.week_label,
+            plan: row.plan_json,
+            retrievedCodes: row.retrieved_ids,
+          },
+        ])
+        if (saveTo) {
+          void persistMessage(saveTo, { role: 'assistant', content: reply, created_at: new Date().toISOString(), plan_id: row.id })
+        }
+      } catch (err) {
+        const failed = `Couldn’t update ${label}. ${err.message}`
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: 'assistant', isError: true, content: failed, hint: err.hint },
+        ])
+        if (saveTo) void persistMessage(saveTo, { role: 'assistant', content: failed })
+        toast.apiError(`Could not update ${label}`, err)
+      } finally {
+        setRevising(false)
+      }
+    },
+    [artifact, toast, flash, persistMessage]
+  )
+
   /* Stopping used to say nothing at all: useLessonStream returns null on an
      AbortError and fires no callback, so the transcript kept the question and
      never acquired a reply. The teacher was left looking at their own message
@@ -2550,6 +2618,7 @@ export function ChatPage() {
         onCollapse={collapse}
         onReviseDay={artifact?.planId ? reviseDay : undefined}
         onReviseDays={artifact?.planId ? reviseDays : undefined}
+        onPickStandard={artifact?.planId ? pickStandard : undefined}
         onPlanRevised={onPlanRevised}
         busy={busy}
         preparing={preparing}
@@ -2557,12 +2626,14 @@ export function ChatPage() {
         openTweak={openTweak}
         setOpenTweak={setOpenTweak}
         flashCells={flashCells}
+        onFullscreenChange={setArtifactFullscreen}
       />
     ) : (
       <ArtifactDetailPanel
         kind={viewKind}
         classId={classId}
         planId={artifact?.planId}
+        onFullscreenChange={setArtifactFullscreen}
         plan={livePlan}
         subject={activeClass?.subject}
         quiz={viewingQuiz}
@@ -3289,33 +3360,55 @@ export function ChatPage() {
           already tracked for the anchor above) into the sheet's bottom
           media query in base.css, so the sheet's own bottom edge stops
           short of the composer instead of running underneath it. */}
-      {overlayExit.mounted ? (
-        <>
-          <button
-            type="button"
-            aria-label={`Close ${viewLabel}`}
-            className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
-            onClick={collapse}
-          />
-          <div
-            className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}
-            style={{ '--composer-h': `${composerDockH}px` }}
-          >
-            {/* artifactContentReady: see its own comment near overlayOpen —
-                the real content (the district table, potentially dozens of
-                cells) mounts a couple of frames late on purpose, so laying
-                it out doesn't compete with the slide-in's own opening
-                frames. Empty glass for a ~30ms blink, not a spinner: at
-                this duration a loading indicator would just be visual
-                noise flashing in and out, and the panel's own background
-                already reads as "something is here." Skipped entirely
-                while closing — the exit is fast (130ms) and this has
-                already been showing real content the whole time it was
-                open, so there is nothing to stagger on the way out. */}
-            {artifactContentReady || overlayExit.closing ? artifactEl : null}
-          </div>
-        </>
-      ) : null}
+      {/* Fullscreen is portaled to document.body; docked is rendered here in
+          place. #main (AppShell's motion.div wrapping the whole chat pane)
+          applies its own inline `transform` for its mount animation and
+          declares overflow-hidden, and EITHER ONE alone makes an ancestor
+          the real containing block for a position:fixed descendant, clipped
+          to that ancestor's own box besides. Confirmed live chasing
+          "maximize doesn't reach the sidebar": .artifact-overlay's inset:0
+          was resolving — and being clipped — against #main's own bounds the
+          whole time, which starts to the right of the sidebar, so no CSS
+          value on .artifact-overlay itself could ever have reached past
+          that. Docked stays in place on purpose: its own `left: 64px` is a
+          deliberate offset from #main's edge (see artifact-slide-in's own
+          comment — "the chat peeking through on the left"), and portaling
+          it unconditionally would turn that into 64px from the TRUE
+          viewport edge instead, covering the sidebar even when nobody
+          asked to maximize. Only escape the DOM subtree for the one state
+          that actually needs the real viewport. */}
+      {overlayExit.mounted
+        ? (() => {
+            const overlay = (
+              <>
+                <button
+                  type="button"
+                  aria-label={`Close ${viewLabel}`}
+                  className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
+                  onClick={collapse}
+                />
+                <div
+                  className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}`}
+                  style={{ '--composer-h': `${composerDockH}px` }}
+                >
+                  {/* artifactContentReady: see its own comment near overlayOpen —
+                      the real content (the district table, potentially dozens of
+                      cells) mounts a couple of frames late on purpose, so laying
+                      it out doesn't compete with the slide-in's own opening
+                      frames. Empty glass for a ~30ms blink, not a spinner: at
+                      this duration a loading indicator would just be visual
+                      noise flashing in and out, and the panel's own background
+                      already reads as "something is here." Skipped entirely
+                      while closing — the exit is fast (130ms) and this has
+                      already been showing real content the whole time it was
+                      open, so there is nothing to stagger on the way out. */}
+                  {artifactContentReady || overlayExit.closing ? artifactEl : null}
+                </div>
+              </>
+            )
+            return artifactFullscreen ? createPortal(overlay, document.body) : overlay
+          })()
+        : null}
 
       <AddDocumentDialog
         open={documentDialogOpen}
