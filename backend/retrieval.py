@@ -94,19 +94,72 @@ _CODE_RE = re.compile(
     r"|R\d{1,2}"  # Alabama ELA recurring, e.g. R4
     # Bare dotted AP topic codes, e.g. 2.2.B.1, 5.5.A.1.i, 3.8.A.1, 1.2
     r"|\d+\.\d+(?:\.[A-Za-z0-9]+)*"
-    r"|\d\.[A-C]"  # AP Lang skill, e.g. 2.A
+    # Widened from \d\.[A-C] (was "AP Lang skill, e.g. 2.A") after auditing
+    # every distinct code in the corpus against this whole regex (2026-08-27,
+    # prompted by the Skill-Category fix below): 429 distinct codes across
+    # dozens of AP/Pre-AP courses didn't match ANYTHING here, and this exact
+    # shape — one digit, a dot, one letter — turned out not to be an AP-Lang-
+    # only pattern at all. AP Biology's own "4.D," "6.D"; AP Chemistry's
+    # "5.E," "6.E"; AP US History's "6.A" all use it with letters past C,
+    # which the old A-C ceiling silently rejected. Nothing about restricting
+    # to A-C was ever a deliberate safety choice — it was just written
+    # narrowly around the one example on hand at the time.
+    r"|\d\.[A-Z]"
+    # digit.LETTER.digit or digit.LETTER.roman-numeral — a shape the two
+    # bare-numeric patterns above both miss, because each requires the
+    # segment right after the first dot to be numeric. e.g. AP courses'
+    # own "2.C.4," "1.B.1" (letter then digit) and "1.A.i," "2.C.vi"
+    # (letter then lowercase roman numeral) — both found in the same
+    # 2026-08-27 audit, both completely unmatched before this.
+    r"|\d+\.[A-Z]\.(?:\d+|[ivx]+)"
+    # "Skill N.X" — AP Spanish/Chemistry/Calculus/Music Theory/Latin/
+    # Japanese/French/German/Italian/US-History/Macroeconomics all cite
+    # their own numbered skills this way (e.g. "Skill 2.C," "Skill 6.A"),
+    # distinct from AP Lang's own "Skill Category N" (below) — a Category
+    # is one of the seven top-level groupings; a bare "Skill N.X" is a
+    # specific sub-skill under one. [Ss] covers both cases actually found
+    # in the corpus ("Skill 1.C" and "SKILL 1.C" — chunks.metadata isn't
+    # consistently cased, so a plan quoting either verbatim needs both).
+    # (?:Skill|SKILL), not [Ss]kill — that only toggles the leading letter,
+    # so it still rejected "SKILL 1.C" (chunks.metadata has both casings;
+    # caught by re-running the corpus audit after the first version of this
+    # line shipped, which is exactly why that audit script is worth keeping
+    # around for the next course that ships oddly-cased metadata).
+    r"|(?:Skill|SKILL) \d+\.?[A-Z]"  # the dot is optional — "Skill 3B" exists alongside "Skill 3.B"
     # College Board's own AP-course "Skill Category N" headers (as opposed
     # to a lettered/numbered sub-code under one) — e.g. AP Lang's own
     # "Skill Category 7," which the corpus stores with this exact code in
-    # chunks.metadata (source_type='college_board'). Every other pattern in
-    # this regex is a short alphanumeric code; this is the one legitimate
+    # chunks.metadata (source_type='college_board'). Every pattern above
+    # this one is a short alphanumeric code; this is the one legitimate
     # citation that's plain English instead, and it had no pattern to match
     # it at all — a plan citing it rendered as unhighlighted plain text and
     # the grounding audit could not see it, reading as "no standard was
     # cited" for a day that cited a real, verbatim-sourced one. Found live:
     # a plan's own Tuesday standard was retrieved_ids-confirmed
-    # ("SKILL CATEGORY 7") but showed no citation styling at all.
-    r"|Skill Category \d+"
+    # ("SKILL CATEGORY 7") but showed no citation styling at all. [Ss]/[Cc],
+    # not a bare literal — the corpus has both "Skill Category N" and
+    # "SKILL CATEGORY N" for the same standard depending on the row.
+    # (?:Skill Category|SKILL CATEGORY), not [Ss]kill [Cc]ategory — the
+    # bracket form only toggles each word's LEADING letter, so it still
+    # rejected "SKILL CATEGORY 1" (all-caps throughout, not just S/C).
+    r"|(?:Skill Category|SKILL CATEGORY) \d+"
+    # College Board Pre-AP "Essential Knowledge" codes with a subject-area
+    # suffix — a shape EK's own alternative above (LO|EK|EU|SP|KC) doesn't
+    # reach, because that one has no trailing dash-suffix at all. Two
+    # distinct sub-shapes found in the audit: a numbered EK ("EK 3.2A-M,"
+    # subject suffixes like -M/-D/-T/-VA for Music/Dance/Theatre/Visual
+    # Arts) and a "G"-lettered one specific to Pre-AP World History
+    # ("EK G.1.C" — G for "Geography" or similar, not a course-numbering
+    # coincidence worth over-thinking).
+    r"|EK\s?\d+\.\d+[A-Z]?-[A-Z]{1,2}"
+    r"|EK\s?G\.\d+\.[A-Z]"
+    # A short course/unit-name prefix (2-6 letters) followed by a dotted
+    # number, optionally with a third segment or a parenthesized sub-letter
+    # — e.g. Pre-AP Biology's own "ECO 3.1(b)," "EVO 1.1.1," "CELLS 1.4(b)."
+    # Structurally the same shape this regex already accepts elsewhere
+    # (Alabama CASE's own [A-Z]{2,5}\d{2}...), just with a space instead of
+    # running the letters and digits together.
+    r"|[A-Z]{2,6}\s\d+\.\d+(?:\.\d+)?(?:\([a-z]\))?"
     r")(?!\.?\w)"
 )
 
