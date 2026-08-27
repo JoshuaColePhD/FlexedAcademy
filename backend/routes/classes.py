@@ -48,6 +48,35 @@ class ClassPatch(BaseModel):
     custom_instructions: str | None = Field(default=None, max_length=2000)
 
 
+def _validate_subject(subject: str) -> None:
+    """Reject a subject that would never ground a plan.
+
+    ClassBody.subject/ClassPatch.subject are plain strings — nothing at the
+    DB or Pydantic layer stops a class being created with a subject that
+    doesn't correspond to any ingested course. Today that's only prevented
+    by FrameworkPicker.jsx offering nothing but real course codes, which is
+    a frontend convention, not a backend invariant: any other client (or a
+    picker bug) can create a class that silently can never generate a plan,
+    failing only later with a no_grounded_standards_error the teacher has no
+    way to trace back to "this class's subject was never real."
+
+    Checked through the exact same resolution retrieval itself uses
+    (service.subject_code) against the exact same course set the Subject
+    Framework dropdown is built from (misc.known_course_ids) — so a class
+    can never exist with a subject the generator can't ground.
+    """
+    from . import misc
+    from .. import service
+
+    code = service.subject_code(subject)
+    if code not in misc.known_course_ids():
+        raise AppError(
+            "unknown_subject",
+            f"'{subject}' isn't a subject with any standards loaded.",
+            status=400,
+        )
+
+
 def _auto_name(subject: str, grade: str) -> str:
     """"AP_Lang" + "11" -> "AP Lang · 11th".
 
@@ -166,6 +195,7 @@ def list_classes_route(include_archived: bool = False, user_id: str = Depends(ge
 
 @router.post("/classes", status_code=201)
 def create_class_route(body: ClassBody, user_id: str = Depends(get_current_user)) -> dict:
+    _validate_subject(body.subject)
     name = (body.name or "").strip() or _auto_name(body.subject, body.grade)
     return db.create_class(user_id, name=name, subject=body.subject, grade=body.grade, state=body.state)
 
@@ -182,6 +212,8 @@ def update_class_route(
     # exemption as that check too — see its comment.
     if body.school is not None and body.school != NO_CALENDAR_SCHOOL_ID and not db.get_school(body.school):
         raise AppError("unknown_school", "Unknown school.", status=400)
+    if body.subject is not None:
+        _validate_subject(body.subject)
     fields = body.model_dump(exclude_none=True)
     if "subject" in fields or "grade" in fields:
         cls = db.get_class(user_id, class_id)

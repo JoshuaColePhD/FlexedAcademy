@@ -144,6 +144,25 @@ SUBJECT_LABELS = {
 _FRAMEWORK_PRIORITY = ("AP_Lang", "ELA")
 
 
+def known_course_ids() -> set[str]:
+    """Every course code a class's `subject` (post service.subject_code)
+    can resolve to without breaking retrieval — the same set /api/frameworks
+    itself is built from, plus the synthetic "Special_Education" aggregate
+    that route always offers regardless of chunk counts (see get_frameworks
+    below).
+
+    Shared with routes/classes.py's create/update validation: without this
+    check, ClassBody.subject/ClassPatch.subject accept any string, and the
+    only thing that ever kept garbage out was FrameworkPicker.jsx offering
+    nothing but real course codes — a frontend convention, not a backend
+    guarantee. A class created with an unresolvable subject doesn't fail
+    loud until the teacher tries to generate a plan for it.
+    """
+    ids = {c.get("course") for c in retrieval.load_chunks() if c.get("course")}
+    ids.add("Special_Education")
+    return ids
+
+
 @router.get("/frameworks")
 def get_frameworks():
     """What the Subject Framework and Grade Level dropdowns are built from.
