@@ -804,7 +804,17 @@
     box-shadow:
       inset 0 1px 1px rgba(255, 255, 255, 0.7),
       var(--shadow-panel);
-    animation: artifact-slide-in var(--t-base) var(--ease-out) both;
+    /* --t-slow (420ms), not --t-base (220ms) — Josh's own ask, 2026-08-27
+       ("animate it in better so it's smoother"). --t-base is tuned for
+       small UI feedback (a button, a tooltip); this is a full panel
+       covering most of the screen, travelling 48px (see
+       artifact-slide-in's own comment on that distance), and .doc-shell's
+       own now-unused docked-mode entrance (fa-slide, below) already used
+       --t-slow for exactly that reason — a bigger, heavier element reads
+       as smoother with more time to cover the same ground, not less.
+       220ms was fine for the old 12px nudge; covering 4x the distance in
+       the same window is what made it read as a snap instead of a glide. */
+    animation: artifact-slide-in var(--t-slow) var(--ease-out) both;
     /* All four corners (Josh's own ask, 2026-08-27 — the right two read as
        harsh, square-cut against the rest of this app's rounded-corner
        language everywhere else). The right/top/bottom edges sit flush
