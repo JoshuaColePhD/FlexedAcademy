@@ -450,27 +450,25 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 the one native list gesture a phone landing screen was
                 missing. The indicator grows with the pull itself rather
                 than overlaying the list, so it reads as pushing the chats
-                down instead of floating over them. */}
+                down instead of floating over them.
+
+                No pullDistance-driven inline style here — usePullToRefresh
+                writes height/opacity/transform straight to indicatorRef/
+                iconRef during the drag itself (see its own comment on why:
+                a React state update on every touchmove event was the
+                actual cause of this feeling janky). `refreshing` alone is
+                still plain React state — it changes once per gesture, not
+                once per pixel, so a re-render here costs nothing. */}
             {spacious ? (
               <div
-                className="flex items-center justify-center overflow-hidden text-ink-muted"
-                style={{
-                  height: pullToRefresh.refreshing ? 36 : pullToRefresh.pullDistance,
-                  transition: pullToRefresh.refreshing ? 'none' : 'height 200ms var(--ease-out, ease-out)',
-                }}
+                ref={pullToRefresh.indicatorRef}
+                className="pull-refresh-indicator flex items-center justify-center text-ink-muted"
                 aria-hidden="true"
               >
                 <RefreshCw
+                  ref={pullToRefresh.iconRef}
                   size={16}
                   className={pullToRefresh.refreshing ? 'animate-spin' : ''}
-                  style={
-                    pullToRefresh.refreshing
-                      ? undefined
-                      : {
-                          opacity: Math.min(1, pullToRefresh.pullDistance / pullToRefresh.threshold),
-                          transform: `rotate(${pullToRefresh.pullDistance * 3}deg)`,
-                        }
-                  }
                 />
               </div>
             ) : null}

@@ -22,12 +22,16 @@ export function MobileChatHome({ onNavigate }) {
   const { classId, classes, activeClass } = useActiveClass()
 
   return (
-    // fa-rise: mounts fresh every time ChatPage swaps in this early return
-    // (see ChatPage's own comment by mobileShowHome) — this is a real
-    // unmount/remount of a whole screen, not a prop change on one already
-    // on screen, so the same entrance motion Greeting.jsx uses for its own
-    // arrival plays here too instead of the screen just appearing.
-    <div className="flex h-full w-full flex-col bg-paper fa-rise">
+    // fa-rise-panel: mounts fresh every time ChatPage swaps in this early
+    // return (see ChatPage's own comment by mobileShowHome) — this is a
+    // real unmount/remount of a whole screen, not a prop change on one
+    // already on screen, so the same rise motion Greeting.jsx uses for its
+    // own arrival plays here too instead of the screen just appearing.
+    // The -panel variant, not plain fa-rise: this is a full-viewport
+    // container sitting directly inside AppShell's blurred/translucent
+    // "main" panel, where fading opacity is expensive — see fa-rise-panel's
+    // own comment in base.css.
+    <div className="flex h-full w-full flex-col bg-paper fa-rise-panel">
       <Rail
         onNavigate={onNavigate}
         // ClassSwitcher already knows how to present zero/one/many classes

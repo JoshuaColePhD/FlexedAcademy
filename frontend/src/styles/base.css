@@ -802,13 +802,25 @@
     }
   }
 
+  /* transform only, deliberately no opacity — .artifact-overlay's own
+     background (--paper-raised) is fully opaque, so fading it in from
+     opacity:0 was pure polish, not load-bearing. That polish had a real
+     cost: this overlay's ancestor (AppShell's "main" panel) is
+     `bg-paper/40 backdrop-blur-3xl` — genuinely semi-transparent AND
+     blurred — so every intermediate frame of an opacity fade here forced
+     the browser to recomposite that blur underneath a moving,
+     partially-transparent layer on top of it. That's one of the most
+     expensive things a mobile GPU can be asked to do every frame, and is
+     what "viewing the lesson plan is jaggy" (reported 2026-08-26) actually
+     was. A pure transform slide costs nothing extra against a blurred
+     ancestor — the compositor just moves an already-painted layer. */
   @keyframes artifact-slide-in {
-    from { transform: translateX(12px); opacity: 0; }
-    to { transform: none; opacity: 1; }
+    from { transform: translateX(12px); }
+    to { transform: none; }
   }
   @keyframes artifact-sheet-in {
-    from { transform: translateY(16px); opacity: 0; }
-    to { transform: none; opacity: 1; }
+    from { transform: translateY(16px); }
+    to { transform: none; }
   }
 
   /* The mirror of the two entrances above — every overlay in this app
@@ -818,15 +830,15 @@
      more tick specifically so `.is-closing` gets to run. Faster than the
      entrance (`--t-fast`, not `--t-base`) — a closing gesture reads as
      confirmed the moment it starts; lingering on the way out just delays the
-     next thing. */
+     next thing. Also transform-only, same reasoning as the entrances. */
   .artifact-overlay.is-closing {
     animation-name: artifact-slide-out;
     animation-duration: var(--t-fast);
     animation-timing-function: var(--ease);
   }
   @keyframes artifact-slide-out {
-    from { transform: none; opacity: 1; }
-    to { transform: translateX(12px); opacity: 0; }
+    from { transform: none; }
+    to { transform: translateX(12px); }
   }
   @media (max-width: 767.98px) {
     .artifact-overlay.is-closing {
@@ -834,8 +846,8 @@
     }
   }
   @keyframes artifact-sheet-out {
-    from { transform: none; opacity: 1; }
-    to { transform: translateY(16px); opacity: 0; }
+    from { transform: none; }
+    to { transform: translateY(16px); }
   }
 
   /* Keeps its border where cards lost theirs: this table mirrors the printed
@@ -1272,6 +1284,17 @@
     box-shadow:
       inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
       inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
+  }
+  /* Pull-to-refresh's own indicator (MobileChatHome only — see
+     usePullToRefresh.js). Deliberately no `transition` declared here: the
+     hook toggles it directly on the node (`none` while a finger is
+     actively dragging, a real transition only for the moment of release),
+     since a CSS class alone can't distinguish "mid-drag" from "just
+     released" without routing that distinction back through React state —
+     exactly the per-frame re-render cost this hook exists to avoid. */
+  .pull-refresh-indicator {
+    height: 0;
+    overflow: hidden;
   }
   /* ChatRow's swipe-action strip (MobileChatHome only) — .btn-icon's own
      30px is a hover-era size tuned for a mouse pointer with room to spare;
@@ -5013,6 +5036,23 @@
   .fa-rise {
     animation: fa-rise 500ms var(--ease-out) both;
   }
+  /* fa-rise's transform-only sibling, for the two full-viewport containers
+     that swap places on MobileChatHome<->the phone chat view (see
+     MobileChatHome.jsx and ChatPage.jsx's own comments on this class) —
+     NOT a blanket replacement for fa-rise itself, which stays fine for the
+     small elements it's used on everywhere else (a chip, a card, a line of
+     text: cheap to recomposite regardless of what's behind them). These
+     two are different: full-screen, and sitting directly inside AppShell's
+     `bg-paper/40 backdrop-blur-3xl` "main" panel — genuinely
+     semi-transparent AND blurred. Fading THEIR opacity from 0 forced a
+     full blur recomposite on every animation frame, which is what made
+     that one specific transition read as jaggy on real hardware (the same
+     root cause artifact-slide-in/artifact-sheet-in had — see their own
+     comment). Same rise motion, same duration, just transform instead of
+     opacity+transform. */
+  .fa-rise-panel {
+    animation: fa-rise-panel 500ms var(--ease-out) both;
+  }
   .fa-lift {
     transition: transform var(--t-base) var(--ease);
   }
@@ -5192,6 +5232,14 @@
   }
   to {
     opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fa-rise-panel {
+  from {
+    transform: translateY(var(--motion-reveal));
+  }
+  to {
     transform: none;
   }
 }
