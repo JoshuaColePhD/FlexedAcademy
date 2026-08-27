@@ -5356,6 +5356,55 @@
     border: 0;
   }
 
+  /* ── no involuntary zoom on focus ────────────────────────────────────────
+     iOS Safari zooms the whole page in when a focused text input's
+     font-size is under 16px — and does not reliably zoom back out on
+     blur, which is what read as "a massive zoom issue" tapping the
+     composer on a phone. Global and blunt on purpose: this app's text
+     inputs are text-sm (13px) or smaller nearly everywhere (.input,
+     .composer-input, and a long tail of one-off classes on auth forms,
+     settings fields, share/rename dialogs, the cell-tweak input), so
+     fixing .composer-input alone would leave the same zoom waiting on the
+     next input a teacher happens to tap. This is NOT the deliberate
+     pinch-zoom the viewport meta tag stays open for (teachers zooming into
+     standards text) — it only touches the browser's own automatic
+     jump-on-focus, and only below the tablet breakpoint, where a physical
+     keyboard was never in the picture anyway. */
+  @media (max-width: 767.98px) {
+    /* !important, deliberately: a bare element selector loses to every one
+       of the class-based rules actually setting these font-sizes (.input,
+       .composer-input, any component's own text-sm/text-xs) on specificity
+       alone, which would make this override silently do nothing for the
+       exact elements it exists to fix. Scoped narrowly enough (phone width,
+       font-size only) that overriding everything unconditionally is the
+       point, not a smell.
+
+       NOT select: a native <select> opens the OS's own picker wheel on tap
+       — it was never part of the zoom-on-focus bug, and WeekPicker's own
+       fixed max-width truncated its date range down to "Week …" the one
+       time this rule briefly included it. */
+    input,
+    textarea {
+      font-size: 16px !important;
+    }
+    /* .composer-input's height is set inline by Composer.jsx's own autosize
+       (measuring scrollHeight against the CURRENT VALUE), which never
+       counted the placeholder: an empty textarea's scrollHeight reflects
+       one blank line regardless of how long the placeholder is or whether
+       it wraps. At 16px, "What are you planning?" wraps to two lines in
+       the composer's own width (already shared with the attach/mic/voice
+       buttons) — invisible at the smaller pre-fix font, where it fit on
+       one line, but clipped to a sliver of its second line once the zoom
+       fix above raised the font size. A CSS floor, not a JS fix: min-height
+       always wins over a smaller inline height per spec, so this needs no
+       changes to the autosize logic itself and no risk of fighting it once
+       real text is typed (autosize already sizes correctly for that case —
+       only the placeholder-only state was ever wrong). */
+    .composer-input {
+      min-height: 54px;
+    }
+  }
+
   /* ── touch targets ────────────────────────────────────────────────────────
      A 36px control with a 44px target. The pseudo-element is transparent and
      absolutely positioned, so it costs no layout: the icon stays the size the
