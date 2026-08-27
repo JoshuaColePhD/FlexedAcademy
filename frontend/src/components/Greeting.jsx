@@ -49,7 +49,14 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
     : null
 
   return (
-    <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-gutter py-4">
+    // Phone got the same vertical centering as desktop, in a column with far
+    // less content (no Voice Mode button on desktop) — the result was the
+    // greeting and CTA marooned in the middle of a mostly-empty screen,
+    // below a header a teacher had to scroll past to reach anything.
+    // items-start (not place-items-center) on phone puts it near the top
+    // instead; md:items-center restores the original centered layout once
+    // there's enough height for it to read as intentional rather than lost.
+    <div className="grid min-h-0 flex-1 items-start justify-items-center overflow-y-auto px-gutter pb-4 pt-10 md:items-center md:pt-4">
       <div className="w-full max-w-measure flex flex-col items-center justify-center text-center fa-rise">
         
         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-ink mb-2">

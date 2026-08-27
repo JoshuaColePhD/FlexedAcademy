@@ -2566,7 +2566,19 @@ export function ChatPage() {
                     </span>
                   }
                 >
-                  <div className="h-2 w-2 shrink-0 cursor-default rounded-full bg-red-500" aria-hidden="true" />
+                  {/* A hover-only Tooltip has no touch equivalent — on phone
+                      this dot used to sit there permanently unreadable and
+                      untappable, since a tap has no "hover" step to open it
+                      first. Making the dot itself a real Link means a tap
+                      just does the tooltip's one action directly, and the
+                      Tooltip still opens first on desktop hover the same as
+                      before. tap-target widens the actual hit area to the
+                      touch minimum without enlarging the 8px dot itself. */}
+                  <Link
+                    to={`/c/${classId}/class#section-docs`}
+                    className="tap-target block h-2 w-2 shrink-0 rounded-full bg-red-500"
+                    aria-label="No pacing guide on file — tap to upload one"
+                  />
                 </Tooltip>
               ) : null}
             </div>
