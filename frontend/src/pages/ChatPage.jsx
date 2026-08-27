@@ -1237,10 +1237,37 @@ export function ChatPage() {
      just the panel's own local state. */
   const closeVoice = useCallback(() => {
     voice.stopSession()
-    
+
     setVoiceOpen(false)
     setDecisions([])
   }, [voice])
+
+  /* VoiceProvider is mounted once at the app root (App.jsx), above the
+     router — it never unmounts on navigation, so nothing was ever stopping
+     an open mic and a live WebRTC session from just staying connected in
+     the background after a teacher switched chats or classes without
+     clicking Voice Mode's own Close button first. React Router also
+     doesn't remount ChatPage on a chatId-only change (:chatId is a param
+     on the same route element), so this can't rely on unmount either — it
+     has to watch the params directly.
+
+     A ref, not `closeVoice` itself in the dependency array: `voice` (from
+     useVoice()) is a useMemo'd object that gets a new reference on nearly
+     every VoiceProvider state change — caption deltas, speaking toggling,
+     connecting -> live — so closeVoice, which depends on [voice], is
+     exactly as unstable. With closeVoice as a dependency here, opening
+     Voice Mode triggered this same effect's OWN cleanup on the very next
+     state change (e.g. status flipping to 'connecting'), which closed the
+     session it had just opened — voiceOpen never had a chance to stay
+     true. Keying only on [classId, chatId] and reading the latest
+     closeVoice through a ref fixes that: this effect's cleanup now fires
+     exactly when the route params actually change (or on unmount), not on
+     every unrelated voice state update. */
+  const closeVoiceRef = useRef(closeVoice)
+  closeVoiceRef.current = closeVoice
+  useEffect(() => {
+    return () => closeVoiceRef.current()
+  }, [classId, chatId])
 
   /* ⌘/Ctrl+Shift+V toggles voice mode from anywhere on the page — the same
      "reach for it without touching the mouse" convenience CommandK (App.jsx)
@@ -1373,7 +1400,15 @@ export function ChatPage() {
 
       const shown = typed || `Sent ${atts.length} file(s)`
       if (activeChatId) {
-        const saved = await persistMessage(activeChatId, { role: 'user', content: shown })
+        // See db.add_message's own docstring for what this is for — a
+        // spoken turn is plausibly less edited/considered than something
+        // typed and reread, so it's worth being able to tell the two apart
+        // later without having to guess after the fact.
+        const saved = await persistMessage(activeChatId, {
+          role: 'user',
+          content: shown,
+          ...(options.voiceTurn ? { source: 'voice' } : {}),
+        })
         if (!saved) {
           setPreparing(false)
           return

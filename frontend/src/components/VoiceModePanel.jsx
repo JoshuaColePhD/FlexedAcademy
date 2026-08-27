@@ -216,13 +216,22 @@ export function VoiceModePanel({
       </div>
 
       <div className={`caption-line shrink-0${caption || showHeard || isSpeaking ? ' is-visible' : ''}${voice.interrupted ? ' fa-settle' : ''}`}>
-        <div className="caption-line-inner">
+        {/* The status pill above already carries aria-live, but that only
+            ever says "Listening"/"Speaking" — a screen-reader user got no
+            announcement of the words actually streaming through here,
+            spoken or heard. */}
+        <div className="caption-line-inner" aria-live="polite">
           {caption ? <p className="text-sm leading-relaxed text-ink-soft">{caption}</p> : showHeard ? <HeardEcho text={heardText} onCorrect={(fixed) => { const next = fixed.trim(); if (next) onUtterance(`Sorry, I actually said: "${next}"`); setHeardText('') }} /> : voice.interrupted ? <p className="text-sm font-medium text-accent-text">Stopped — listening to you.</p> : isSpeaking ? <p className="text-sm text-ink-faint">Talk any time to cut in.</p> : null}
         </div>
       </div>
 
       {voice.status === 'connecting' ? <div role="status" className="flex items-center justify-between gap-3 rounded-2xl bg-paper-sunken px-3 py-2 text-xs text-ink-soft"><span>{connectingSeconds < 4 ? 'Opening your microphone…' : 'Still connecting — Chrome may be waiting for permission.'}</span><button type="button" onClick={onClose} className="font-semibold text-ink hover:underline">Cancel</button></div> : null}
       {voice.status === 'error' ? <div role="status" className="flex flex-wrap items-center gap-2 rounded-2xl bg-mark-tint px-3 py-2 text-xs text-mark"><span className="min-w-0 flex-1">{voice.errorMessage || 'Microphone access failed.'}</span><button type="button" onClick={retry} className="neo-raised inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-2xs font-medium text-ink"><RotateCcw size={11} />Try again</button><button type="button" onClick={onClose} className="px-1 text-2xs font-semibold text-mark hover:underline">Close</button></div> : null}
+      {/* iOS Safari (mainly) can refuse to autoplay the reply audio until a
+          real tap gives it a user gesture to hang the .play() call off of —
+          see VoiceProvider's resumeAudio. Without this the session just
+          looked live and silent, with nothing telling the teacher why. */}
+      {voice.audioBlocked ? <div role="status" className="flex flex-wrap items-center gap-2 rounded-2xl bg-paper-sunken px-3 py-2 text-xs text-ink-soft"><span className="min-w-0 flex-1">Tap to hear the reply — your browser blocked audio from starting on its own.</span><button type="button" onClick={voice.resumeAudio} className="neo-raised inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-2xs font-medium text-ink"><Play size={11} />Enable audio</button></div> : null}
 
       <SmoothHeight>
         {questions?.length ? <QuestionCards questions={questions} onAnswer={onAnswer} muted={voice.muted} /> : building ? <BuildProgress days={buildDays} /> : builtPlan ? <BuiltPlanCard builtPlan={builtPlan} onClose={onClose} /> : <div className="flex flex-col gap-3">
