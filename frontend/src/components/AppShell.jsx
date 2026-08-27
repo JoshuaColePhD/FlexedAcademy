@@ -444,7 +444,13 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
           ) : null}
           <div
             ref={spacious ? pullToRefresh.containerRef : undefined}
-            className="min-h-0 flex-1 overflow-y-auto pb-4"
+            // .scroll-y, not plain overflow-y-auto: without its
+            // overscroll-behavior-y: contain, scrolling past the end of
+            // this list rubber-bands the whole app on iOS — and on the
+            // spacious (MobileChatHome) path, that chained rubber-band was
+            // fighting pull-to-refresh's own touch handling for the same
+            // gesture at the top of the list.
+            className="min-h-0 flex-1 scroll-y pb-4"
           >
             {/* Pull-to-refresh (MobileChatHome only — see usePullToRefresh):
                 the one native list gesture a phone landing screen was
