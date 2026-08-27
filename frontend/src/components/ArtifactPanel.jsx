@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { Tooltip } from './Tooltip'
-import { Download, Loader2, TriangleAlert, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
+import { Download, Loader2, TriangleAlert, X, Maximize2, Minimize2, Cloud } from 'lucide-react'
 import { api } from '../lib/api'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useLayoutMode } from '../hooks/useMediaQuery'
@@ -158,61 +158,42 @@ const location = useLocation()
         <div className="flex items-center gap-2">
           {planId ? (
             <>
-              {/* Never actually did anything — ShareDialog (below) already
-                  has a full "Save to My Drive" flow, opened from the
-                  Download button's own dropdown a few lines down, but this
-                  icon's onClick was never added when that dialog was built.
-                  Looked clickable (real neo-raised styling, a real
-                  aria-label) and silently no-opped — confirmed live via
-                  React devtools before this fix (no onClick attached at
-                  all). Same dialog, same trigger the Download button
-                  already uses. */}
+              {/* The one "more options" entry now — share link and Drive
+                  both moved into the dialog THIS opens (Josh's own ask:
+                  "the share link and drive should be in the cloud
+                  button"). The dropdown chevron that used to sit beside
+                  Download is gone; it had nothing left to do once Download
+                  became a direct link and Share/Drive moved here. */}
               <button
                 type="button"
                 className="btn-icon fa-press"
-                aria-label="Save to Google Drive"
-                title="Save to Google Drive"
+                aria-label="Share or save to Google Drive"
+                title="Share or save to Google Drive"
                 onClick={() => setShareOpen(true)}
               >
                 <Cloud size={16} className="text-ink-muted" />
               </button>
 
-              <div className="doc-download-group flex items-stretch">
-                {/* A real direct download now, not a second click through the
-                    dialog — Josh's own question, prompted by seeing the
-                    dialog's Drive section appear from a button that just
-                    says "Download as DOCX": now that the cloud icon is its
-                    own dedicated entry into that dialog (previous commit),
-                    this one can just do the one thing its label promises.
-                    The dropdown chevron beside it still opens the full
-                    dialog, for the share-link/Drive options this button no
-                    longer surfaces on its own. */}
-                <a
-                  href={planId ? api.planDownloadUrl(planId) : undefined}
-                  download
-                  className="doc-download-main fa-press flex items-center gap-1.5"
-                  aria-label="Download as DOCX"
-                  title="Download as DOCX"
-                >
-                  {isPendingTemplate ? (
-                    <Tooltip content="We are currently training our AI on your district's specific format. In the meantime, this plan will download in a generic format." position="bottom-right">
-                      <TriangleAlert size={14} className="text-amber-500" aria-hidden="true" />
-                    </Tooltip>
-                  ) : null}
-                  <Download size={14} aria-hidden="true" className="text-ink-muted" />
-                  <span className="font-medium">Download as DOCX</span>
-                </a>
-                <div className="doc-download-divider" />
-                <button
-                  type="button"
-                  className="doc-download-drop fa-press flex items-center justify-center"
-                  onClick={() => setShareOpen(true)}
-                  aria-label="More export options — share link or save to Drive"
-                  title="More export options"
-                >
-                  <ChevronDown size={14} aria-hidden="true" className="text-ink-muted" />
-                </button>
-              </div>
+              {/* .doc-download, not .doc-download-group/-main — that pairing
+                  only makes sense with the dropdown it used to sit beside
+                  (one half-rounded pill needs its other half); a single
+                  control gets the plain, fully-rounded pill the failed-
+                  build state already uses (ArtifactDetailPanel.jsx). */}
+              <a
+                href={planId ? api.planDownloadUrl(planId) : undefined}
+                download
+                className="doc-download fa-press flex items-center gap-1.5"
+                aria-label="Download as DOCX"
+                title="Download as DOCX"
+              >
+                {isPendingTemplate ? (
+                  <Tooltip content="We are currently training our AI on your district's specific format. In the meantime, this plan will download in a generic format." position="bottom-right">
+                    <TriangleAlert size={14} className="text-amber-500" aria-hidden="true" />
+                  </Tooltip>
+                ) : null}
+                <Download size={14} aria-hidden="true" className="text-ink-muted" />
+                <span className="font-medium">Download as DOCX</span>
+              </a>
             </>
           ) : (
             <span className="doc-download opacity-45 flex items-center gap-1.5" aria-disabled="true">
@@ -295,7 +276,6 @@ const location = useLocation()
         // instead of naming the week, unlike the same dialog opened from
         // ArtifactRail.
         documentName={plan?.week_of}
-        downloadUrl={planId ? api.planDownloadUrl(planId) : undefined}
         returnTo={`${location.pathname}${location.search}`}
       />
     </section>

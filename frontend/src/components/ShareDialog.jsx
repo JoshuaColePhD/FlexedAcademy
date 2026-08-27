@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Download, ExternalLink, Loader2, Upload } from 'lucide-react'
+import { Check, ExternalLink, Loader2, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyPlanShareLink, stopSharingPlan } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
@@ -22,7 +22,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
  *   connected    — the actual share form: an email, a role, a Share button,
  *                  and whoever this plan has already been shared with.
  */
-export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentName, downloadUrl, returnTo }) {
+export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentName, returnTo }) {
   const toast = useToast()
   const { mounted, closing } = useExitTransition(open, 200)
   const dialogRef = useRef(null)
@@ -169,21 +169,15 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
         aria-modal="true"
         aria-labelledby="share-title"
       >
-        <h2 id="share-title">Export {documentName ? `“${documentName}”` : 'this file'}</h2>
-
-        <div className="mb-6 rounded-lg bg-paper-sunken p-4 border border-edge">
-          <h3 className="text-sm font-medium">Download to your computer</h3>
-          <p className="mt-1 text-sm text-ink-soft">
-            {isQuiz 
-              ? 'Download the quiz as a QTI .zip file, which you can import directly into Canvas.'
-              : 'Download the lesson plan as a Microsoft Word (.docx) file.'}
-          </p>
-          <div className="mt-4">
-            <a href={downloadUrl} className="btn w-full justify-center" download onClick={onClose}>
-              <Download size={14} className="mr-1.5" aria-hidden="true" /> Download {isQuiz ? 'Quiz' : 'Plan'}
-            </a>
-          </div>
-        </div>
+        {/* Was "Export ..." with a "Download to your computer" section right
+            below this heading — the header's own Download button (a real
+            <a download>, not a click into this dialog any more) covers
+            that directly now, and this dialog is the Cloud/Export
+            button's own dedicated "more options" surface, Josh's own ask:
+            "the share link and drive should be in the cloud button." What's
+            left here is exactly the two things that only ever lived here —
+            the public link, and Drive/Canvas. */}
+        <h2 id="share-title">Share {documentName ? `“${documentName}”` : 'this file'}</h2>
 
         {!isQuiz && (
           <div className="mb-6 rounded-lg bg-paper-sunken p-4 border border-edge">

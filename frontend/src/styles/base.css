@@ -2782,10 +2782,10 @@
     padding: 0 18px;
     /* Opaque, not inherited from .doc-shell's own transparency (Josh's own
        ask, 2026-08-27 — "the whole header can be neomorphic and white").
-       .doc-download-group/.doc-download-main/.doc-download-drop and the
-       .btn-icon expand/close/cloud buttons already carry real neo-raised
-       shadows (see their own rules, below/in the shared .btn-icon block) —
-       those were never actually broken, they just lost all their contrast
+       .doc-download and the .btn-icon expand/close/cloud buttons already
+       carry real neo-raised shadows (see their own rules, below/in the
+       shared .btn-icon block) — those were never actually broken, they
+       just lost all their contrast
        once the header they sit on went translucent-glass along with the
        rest of .doc-shell: a neo-raised shadow reads as "raised" against a
        flat surface it can contrast with, not against a blurred, mostly-
@@ -2891,42 +2891,6 @@
     transition: box-shadow var(--t-fast) var(--ease);
   }
   .doc-download:active {
-    box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
-  }
-  .doc-download-group {
-    display: flex;
-    align-items: stretch;
-    height: 34px;
-    background: var(--paper-raised);
-    border-radius: var(--r-md);
-    box-shadow: 2px 2px 5px rgb(var(--neo-dark-rgb) / 0.4), -2px -2px 5px rgb(var(--neo-light-rgb) / 0.75);
-    transition: box-shadow var(--t-fast) var(--ease);
-  }
-  .doc-download-main {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 0 10px 0 13px;
-    font-size: var(--fs-sm);
-    font-weight: var(--fw-semibold);
-    color: var(--ink);
-    border-radius: var(--r-md) 0 0 var(--r-md);
-  }
-  .doc-download-divider {
-    width: 1px;
-    background: var(--edge);
-    margin: 6px 0;
-  }
-  .doc-download-drop {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    color: var(--ink);
-    border-radius: 0 var(--r-md) var(--r-md) 0;
-  }
-  .doc-download-main:active,
-  .doc-download-drop:active {
     box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
   }
   .doc-body {

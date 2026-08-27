@@ -524,7 +524,6 @@ export function ArtifactRail({
         isQuiz={shareTarget?.type === 'quiz'}
         quizId={shareTarget?.quiz?.id}
         documentName={shareTarget?.type === 'quiz' ? shareTarget.quiz.title : plan?.week_of}
-        downloadUrl={shareTarget?.type === 'quiz' ? api.quizDownloadUrl(shareTarget.quiz.id) : api.planDownloadUrl(planId)}
       />
     </aside>
   )

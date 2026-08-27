@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload, ChevronDown } from 'lucide-react'
+import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { fetchStandardsBatch } from '../lib/standardsCache'
 import { useToast } from '../lib/toastContext'
@@ -596,16 +596,13 @@ export function ArtifactDetailPanel({
           {kind === 'quiz' && planId ? (
             quiz?.has_qti ? (
               <>
-                {/* Never actually did anything (no onClick at all, confirmed
-                    live) — a real dialog for this already exists
-                    (ShareDialog, below), opened correctly from the Download
-                    button's own dropdown, just never wired to this icon.
-                    "Save to Google Drive"/Cloud was also the wrong label
-                    for a quiz specifically: ShareDialog's own isQuiz branch
-                    pushes to Canvas, not Drive (a quiz never gets a
-                    drive_file_id — there's no backend route for it, only
-                    routes/plans.py's /share). Upload/"Export" here actually
-                    describes what opening this dialog does. */}
+                {/* The one "more options" entry now — Canvas push moved
+                    into the dialog THIS opens (Josh's own ask: "the share
+                    link and drive should be in the cloud button" — same
+                    reasoning here even though a quiz's own version pushes
+                    to Canvas, not Drive). The dropdown chevron that used to
+                    sit beside Download is gone; nothing left for it once
+                    Download became a direct link and Canvas moved here. */}
                 <button
                   type="button"
                   className="btn-icon fa-press"
@@ -616,35 +613,20 @@ export function ArtifactDetailPanel({
                   <Upload size={16} className="text-ink-muted" />
                 </button>
 
-                <div className="doc-download-group flex items-stretch">
-                  {/* A real direct download now, not a second click through
-                     the dialog — same reasoning as ArtifactPanel's own
-                     Download button. Also fixed the label while touching
-                     this: a quiz downloads as a QTI .zip (for Canvas
-                     import), never a .docx — ShareDialog's own copy right
-                     below already says so ("Download the quiz as a QTI
-                     .zip file"), this button just never matched it. */}
-                  <a
-                    href={planId && quiz?.id ? api.quizDownloadUrl(planId, quiz.id) : undefined}
-                    download
-                    className="doc-download-main fa-press flex items-center gap-1.5"
-                    aria-label="Download QTI .zip"
-                    title="Download QTI .zip"
-                  >
-                    <Download size={14} aria-hidden="true" className="text-ink-muted" />
-                    <span className="font-medium">Download QTI</span>
-                  </a>
-                  <div className="doc-download-divider" />
-                  <button
-                    type="button"
-                    className="doc-download-drop fa-press flex items-center justify-center"
-                    onClick={() => setShareOpen(true)}
-                    aria-label="More export options — push to Canvas"
-                    title="More export options"
-                  >
-                    <ChevronDown size={14} aria-hidden="true" className="text-ink-muted" />
-                  </button>
-                </div>
+                {/* .doc-download, not .doc-download-group/-main — see
+                    ArtifactPanel's own comment on the same change: that
+                    pairing only makes sense next to the dropdown it used
+                    to sit beside. */}
+                <a
+                  href={planId && quiz?.id ? api.quizDownloadUrl(planId, quiz.id) : undefined}
+                  download
+                  className="doc-download fa-press flex items-center gap-1.5"
+                  aria-label="Download QTI .zip"
+                  title="Download QTI .zip"
+                >
+                  <Download size={14} aria-hidden="true" className="text-ink-muted" />
+                  <span className="font-medium">Download QTI</span>
+                </a>
               </>
             ) : (
               /* Was a <span aria-disabled="true"> with a real onClick — a
@@ -715,7 +697,6 @@ export function ArtifactDetailPanel({
         isQuiz={kind === 'quiz'}
         quizId={quiz?.id}
         documentName={title}
-        downloadUrl={kind === 'quiz' ? api.quizDownloadUrl(planId, quiz?.id) : undefined}
       />
     </section>
   )
