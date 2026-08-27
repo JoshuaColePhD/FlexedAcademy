@@ -24,6 +24,7 @@ import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -236,6 +237,7 @@ export function ChatPage() {
     [toast]
   )
   const qc = useQueryClient()
+  const isOnline = useOnlineStatus()
   const { refresh: refreshAuth } = useAuth()
   const { mayGenerate, openPaywall } = useBilling()
   const voice = useVoice()
@@ -1365,12 +1367,28 @@ export function ChatPage() {
           // effectiveWeek is pinned onto the chat here, at creation, and is
           // what every later turn reads back (conversationWeek) instead of
           // recomputing — see db.py migration 23.
-          const created = await api.createChat(
-            (typed || atts[0]?.filename || 'New plan').slice(0, 80),
-            classId,
-            effectiveWeek,
-            location.state?.mode
-          )
+          //
+          // Retried the same way persistMessage retries a save — this is
+          // the one request in this whole path that used to fail outright
+          // on a single dropped packet (a flaky school wifi's specialty)
+          // with no second attempt, unlike everything downstream of it.
+          let created
+          let lastCreateErr
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              created = await api.createChat(
+                (typed || atts[0]?.filename || 'New plan').slice(0, 80),
+                classId,
+                effectiveWeek,
+                location.state?.mode
+              )
+              break
+            } catch (err) {
+              lastCreateErr = err
+              if (attempt < 2) await waitBeforeRetry(250 * (attempt + 1))
+            }
+          }
+          if (!created) throw lastCreateErr
           activeChatId = created.id
           localFor.current = created.id
           qc.invalidateQueries({ queryKey: ['chats'] })
@@ -1400,6 +1418,12 @@ export function ChatPage() {
           // Silently continuing here used to mean a failed chat creation left
           // the message sitting on screen with no reply and no explanation —
           // indistinguishable from the app having simply not heard the teacher.
+          //
+          // navigator.onLine at the moment of the failure, not a live
+          // isOnline value from a hook — this catch runs after 3 retries
+          // already spent ~1s, and by then the device may have reconnected
+          // on its own; what matters for THIS message is whether it was
+          // actually offline when the attempt was made.
           setPreparing(false)
           setMessages((prev) => [
             ...prev,
@@ -1408,7 +1432,10 @@ export function ChatPage() {
               role: 'assistant',
               isError: true,
               content: "Couldn't reach the server to start that.",
-              hint: err?.hint || 'Check your connection and try again.',
+              hint:
+                typeof navigator !== 'undefined' && !navigator.onLine
+                  ? "You're offline — this will retry once you're back on wifi or cell data."
+                  : err?.hint || 'Check your connection and try again.',
             },
           ])
           toast.apiError("Couldn't send that", err)
@@ -1980,6 +2007,33 @@ export function ChatPage() {
     const lastAsk = [...messages].reverse().find((m) => m.role === 'user')
     if (lastAsk) submit(lastAsk.content)
   }, [messages, submit])
+
+  // Auto-retry once on reconnect: a message that failed while the device
+  // was genuinely offline (see the offline-aware hint above) shouldn't need
+  // a teacher to notice wifi came back AND remember to tap Retry — the
+  // browser already tells us the instant it does. Guarded on wasOfflineRef
+  // so this only fires on a real offline->online transition (not on every
+  // render where isOnline happens to be true), and read through refs
+  // rather than closed over directly so this effect's own deps can stay on
+  // just [isOnline] — the same "ref, not a stale closure" shape ChatPage
+  // already uses for closeVoiceRef.
+  const wasOfflineRef = useRef(false)
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+  const retryLastRef = useRef(retryLast)
+  retryLastRef.current = retryLast
+  useEffect(() => {
+    if (!isOnline) {
+      wasOfflineRef.current = true
+      return
+    }
+    if (!wasOfflineRef.current) return
+    wasOfflineRef.current = false
+    const last = messagesRef.current[messagesRef.current.length - 1]
+    if (last?.isError && !busyRef.current) retryLastRef.current()
+  }, [isOnline])
 
   /* LessonQuestions' own Continue button, once every question has an answer.
      Clears `questions` off the message it came from (so the cards can't be
@@ -3011,6 +3065,20 @@ export function ChatPage() {
         <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
           voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
         }`}>
+          {/* navigator.onLine, not a failed request — this is proactive
+              (shown the instant a device loses its link, before a teacher
+              even tries to send anything) rather than reactive to one
+              already-failed send. Same visual language as the queued-follow-
+              up pill below it: a fact about the composer's current state,
+              not an error to dismiss. */}
+          {!isOnline ? (
+            <div className="neo-inset mb-2 flex items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-soft">
+              <TriangleAlert size={13} className="shrink-0 text-flag" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                You’re offline. Anything you send will retry automatically once you’re back on wifi or cell data.
+              </span>
+            </div>
+          ) : null}
           {/* A build finishing already gets its own message in the transcript
               ("Built ... Tell me what to change") — this is for the teacher
               who scrolled up to reread something, or alt-tabbed away, and

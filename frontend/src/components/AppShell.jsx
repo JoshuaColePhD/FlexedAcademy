@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, Trash2, Users, X, Database } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X, Database } from 'lucide-react'
 
 import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
+import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { ShellContext } from '../lib/shellContext'
 import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -26,7 +27,11 @@ import { qk } from '../lib/queryKeys'
  * 264px nav. The one PanelGroup left splits the chat from the plan.
  */
 
-function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious }) {
+// Width of the revealed pin/rename/delete strip on a spacious (mobile) swipe —
+// three .btn-icon-lg targets plus the row's own internal gaps/padding.
+const SWIPE_ACTIONS_WIDTH = 132
+
+function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOpen, onSwipeOpenChange }) {
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(chat.title)
@@ -40,7 +45,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious }) {
 
   if (editing) {
     return (
-      <motion.li 
+      <motion.li
         className="px-2"
         initial={{ opacity: 0, height: 0 }}
         animate={{ opacity: 1, height: 'auto' }}
@@ -65,41 +70,138 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious }) {
     )
   }
 
+  const rowInner = (
+    <NavLink
+      to={`/c/${classId}/chat/${chat.id}`}
+      // Every other row in this rail (New plan, History, Plans) already
+      // closes the phone drawer on navigate — this one was the one
+      // link left out, so opening a chat from the drawer left the drawer
+      // sitting open over it instead of getting out of the way.
+      onClick={(e) => {
+        // A tap while the swipe strip is open closes it instead of
+        // navigating — the same "tap the row to dismiss" behavior every
+        // native swipe-action list uses, so a stray tap can't fire off
+        // into a chat mid-gesture.
+        if (spacious && swipeOpen) {
+          e.preventDefault()
+          onSwipeOpenChange(false)
+          return
+        }
+        onNavigate?.(e)
+      }}
+      className={({ isActive }) =>
+        /* neo-inset, not a background tint — "pressed in" is what already
+           means "selected" in this world (see every neo-raised button's
+           own :active state), so the active row reads as a permanent
+           version of that same press instead of a third, unrelated
+           signal.
+
+           spacious (MobileChatHome only — the one place a chat row is a
+           thumb target on a screen with nothing else fighting it for
+           room): taller rows and larger type instead of just a bigger
+           invisible .tap-target hit area, since there's space here to
+           actually grow the control, not just its hitbox. */
+        `flex items-center rounded-md transition-all duration-300 ${spacious ? 'bg-paper' : ''} ${
+          spacious ? 'min-h-[44px] py-2.5 px-3 pr-4 text-base' : 'min-h-[28px] py-1.5 px-2 pr-4 text-sm'
+        } ${
+          isActive ? 'neo-inset bg-paper-sunken text-accent-text drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] font-medium' : 'text-ink-soft hover:bg-paper-inset/60 hover:text-ink'
+        }`
+      }
+    >
+      <span className="truncate">{chat.title}</span>
+    </NavLink>
+  )
+
+  if (spacious) {
+    // Swipe-to-reveal, the native iOS list pattern, instead of the
+    // desktop/tablet hover-reveal cluster: on a screen with no hover at
+    // all, a row permanently showing three icons read as cluttered (see
+    // .chat-row-actions's own history — that CSS fix made the icons
+    // reachable on touch for the first time, but "always visible" and
+    // "phone-native" are different bars). Pin/rename/delete sit on a
+    // layer BEHIND the row; dragging the row left uncovers them, same as
+    // Mail.app or Messages.
+    return (
+      <motion.li
+        className="relative touch-pan-y overflow-hidden px-2"
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0, x: -20, transition: { duration: 0.2 } }}
+      >
+        <div
+          className="absolute inset-y-0 right-2 flex items-center gap-1.5 pr-1"
+          style={{ width: SWIPE_ACTIONS_WIDTH }}
+          aria-hidden={!swipeOpen}
+        >
+          <button
+            type="button"
+            tabIndex={swipeOpen ? 0 : -1}
+            className={`btn-icon-lg tap-target ${chat.is_pinned ? 'text-amber-500' : ''}`}
+            aria-label={chat.is_pinned ? `Unpin ${chat.title}` : `Pin ${chat.title}`}
+            onClick={() => {
+              onPin(chat)
+              onSwipeOpenChange(false)
+            }}
+          >
+            <Pin size={16} aria-hidden="true" className={chat.is_pinned ? 'fill-amber-500' : ''} />
+          </button>
+          <button
+            type="button"
+            tabIndex={swipeOpen ? 0 : -1}
+            className="btn-icon-lg tap-target"
+            aria-label={`Rename ${chat.title}`}
+            onClick={() => {
+              setEditing(true)
+              onSwipeOpenChange(false)
+            }}
+          >
+            <Pencil size={16} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            tabIndex={swipeOpen ? 0 : -1}
+            className="btn-icon-lg tap-target text-mark"
+            aria-label={`Delete ${chat.title}`}
+            onClick={() => {
+              onDelete(chat)
+              onSwipeOpenChange(false)
+            }}
+          >
+            <Trash2 size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <motion.div
+          drag="x"
+          dragConstraints={{ left: -SWIPE_ACTIONS_WIDTH, right: 0 }}
+          dragElastic={0.04}
+          dragMomentum={false}
+          animate={{ x: swipeOpen ? -SWIPE_ACTIONS_WIDTH : 0 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+          onDragEnd={(_e, info) => {
+            // Past the halfway point, or flicked with real velocity —
+            // either commits to fully open/closed rather than resting
+            // wherever the finger happened to lift.
+            const pastHalfway = info.offset.x < -SWIPE_ACTIONS_WIDTH / 2
+            const flickedOpen = info.velocity.x < -300
+            const flickedClosed = info.velocity.x > 300
+            onSwipeOpenChange(flickedClosed ? false : flickedOpen || pastHalfway)
+          }}
+          className="relative z-10"
+        >
+          {rowInner}
+        </motion.div>
+      </motion.li>
+    )
+  }
+
   return (
-    <motion.li 
+    <motion.li
       className="group relative px-2"
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0, x: -20, transition: { duration: 0.2 } }}
     >
-      <NavLink
-        to={`/c/${classId}/chat/${chat.id}`}
-        // Every other row in this rail (New plan, History, Plans) already
-        // closes the phone drawer on navigate — this one was the one
-        // link left out, so opening a chat from the drawer left the drawer
-        // sitting open over it instead of getting out of the way.
-        onClick={onNavigate}
-        className={({ isActive }) =>
-          /* neo-inset, not a background tint — "pressed in" is what already
-             means "selected" in this world (see every neo-raised button's
-             own :active state), so the active row reads as a permanent
-             version of that same press instead of a third, unrelated
-             signal.
-
-             spacious (MobileChatHome only — the one place a chat row is a
-             thumb target on a screen with nothing else fighting it for
-             room): taller rows and larger type instead of just a bigger
-             invisible .tap-target hit area, since there's space here to
-             actually grow the control, not just its hitbox. */
-          `flex items-center rounded-md transition-all duration-300 ${
-            spacious ? 'min-h-[44px] py-2.5 px-3 pr-4 text-base' : 'min-h-[28px] py-1.5 px-2 pr-4 text-sm'
-          } ${
-            isActive ? 'neo-inset bg-paper-sunken text-accent-text drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] font-medium' : 'text-ink-soft hover:bg-paper-inset/60 hover:text-ink'
-          }`
-        }
-      >
-        <span className="truncate">{chat.title}</span>
-      </NavLink>
+      {rowInner}
       <span className="chat-row-actions absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-paper p-0.5 shadow-sm border border-edge/50">
         <button
           type="button"
@@ -144,6 +246,13 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   const toast = useToast()
   const navigate = useNavigate()
   const classPath = `/c/${classId}`
+  // Only one row's swipe strip open at a time — opening a second one closes
+  // whichever was already open, same as every native swipe-action list.
+  const [swipeOpenId, setSwipeOpenId] = useState(null)
+  // Always called (Rules of Hooks) but only wired up when spacious — see the
+  // scroller div below. Harmless unused otherwise: the hook no-ops until its
+  // containerRef is actually attached to an element.
+  const pullToRefresh = usePullToRefresh(refetch)
   const togglePin = async (chat) => {
     try {
       await api.togglePin(chat.id, !chat.is_pinned)
@@ -153,9 +262,21 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
     }
   }
 
-  const pinnedChats = chats?.filter(c => c.is_pinned) || []
-  const recentChats = chats?.filter(c => !c.is_pinned) || []
-  
+  // Local, spacious-only filter — HistoryPage.jsx already has a full search
+  // page (reachable from the "Edit" link below), but that's a navigation
+  // away from the one screen a phone actually lands on. Once a teacher has
+  // 50+ chats (already true in testing), scrolling past all of them to
+  // find one by eye doesn't scale — this is the same match-on-title logic
+  // HistoryPage uses, kept local rather than importing across pages since
+  // it's one line and the two lists (chats here vs. history's own query)
+  // aren't guaranteed to be the exact same shape.
+  const [chatSearch, setChatSearch] = useState('')
+  const chatSearchQuery = spacious ? chatSearch.trim().toLowerCase() : ''
+  const searchFilter = (c) => !chatSearchQuery || c.title?.toLowerCase().includes(chatSearchQuery)
+
+  const pinnedChats = (chats?.filter((c) => c.is_pinned) || []).filter(searchFilter)
+  const recentChats = (chats?.filter((c) => !c.is_pinned) || []).filter(searchFilter)
+
   const isFreeTier = entitlement && (!entitlement.subscribed || entitlement.status !== 'active')
   const freePlansUsed = entitlement ? entitlement.tokens_used : 0
   const freePlansTotal = entitlement ? entitlement.token_cap : 10
@@ -280,15 +401,66 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
 
       {collapsed ? null : (
         <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-            
+          {/* Spacious-only: a full search page already exists (History,
+              reached via "Edit" below), but that's a navigation away from
+              the one screen a phone actually lands on — this filters the
+              list already on screen, in place, as you type. */}
+          {spacious ? (
+            <div className="relative px-4 pb-2">
+              <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 text-ink-faint" />
+              <input
+                type="search"
+                value={chatSearch}
+                onChange={(e) => setChatSearch(e.target.value)}
+                placeholder="Search your chats"
+                aria-label="Search your chats"
+                className="input w-full py-2.5 pl-8 text-base"
+              />
+            </div>
+          ) : null}
+          <div
+            ref={spacious ? pullToRefresh.containerRef : undefined}
+            className="min-h-0 flex-1 overflow-y-auto pb-4"
+          >
+            {/* Pull-to-refresh (MobileChatHome only — see usePullToRefresh):
+                the one native list gesture a phone landing screen was
+                missing. The indicator grows with the pull itself rather
+                than overlaying the list, so it reads as pushing the chats
+                down instead of floating over them. */}
+            {spacious ? (
+              <div
+                className="flex items-center justify-center overflow-hidden text-ink-muted"
+                style={{
+                  height: pullToRefresh.refreshing ? 36 : pullToRefresh.pullDistance,
+                  transition: pullToRefresh.refreshing ? 'none' : 'height 200ms var(--ease-out, ease-out)',
+                }}
+                aria-hidden="true"
+              >
+                <RefreshCw
+                  size={16}
+                  className={pullToRefresh.refreshing ? 'animate-spin' : ''}
+                  style={
+                    pullToRefresh.refreshing
+                      ? undefined
+                      : {
+                          opacity: Math.min(1, pullToRefresh.pullDistance / pullToRefresh.threshold),
+                          transform: `rotate(${pullToRefresh.pullDistance * 3}deg)`,
+                        }
+                  }
+                />
+              </div>
+            ) : null}
+            {spacious && pullToRefresh.refreshing ? (
+              <p className="visually-hidden" role="status">Refreshing your chats.</p>
+            ) : null}
+
             {pinnedChats.length > 0 && (
               <div className="mb-4">
                 <p className="eyebrow px-4 pb-1">Pinned</p>
                 <ul className="flex flex-col gap-0">
                   <AnimatePresence initial={false}>
                     {pinnedChats.map((c) => (
-                      <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} />
+                      <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} swipeOpen={swipeOpenId === c.id} onSwipeOpenChange={(open) => setSwipeOpenId(open ? c.id : null)} />
                     ))}
                   </AnimatePresence>
                 </ul>
@@ -316,13 +488,13 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
               <ul className="flex flex-col gap-0">
                 <AnimatePresence initial={false}>
                   {recentChats.map((c) => (
-                    <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} />
+                    <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} swipeOpen={swipeOpenId === c.id} onSwipeOpenChange={(open) => setSwipeOpenId(open ? c.id : null)} />
                   ))}
                 </AnimatePresence>
               </ul>
             ) : !pinnedChats.length && (
               <p className="px-4 py-2 text-xs text-ink-muted">
-                Nothing yet. Describe a week to get started.
+                {chatSearchQuery ? `No chats match "${chatSearch.trim()}".` : 'Nothing yet. Describe a week to get started.'}
               </p>
             )}
           </div>
