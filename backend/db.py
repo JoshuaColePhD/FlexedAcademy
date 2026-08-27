@@ -2995,6 +2995,16 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_builder_codegen_attempts_job ON builder_codegen_attempts(job_id);
     ALTER TABLE builder_codegen_attempts ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 53: per-user beta features opt-in ──────────────────────────────────────
+    #
+    # Voice Mode is being gated behind this — SettingsPage.jsx's "Enable Beta
+    # Features" toggle already existed but wrote to local React state only
+    # (never persisted, reset on every reload). Same shape as avatar
+    # (migration 33): a plain column, defaulting to off for every existing
+    # account.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS beta_features BOOLEAN NOT NULL DEFAULT false;
+    """,
 ]
 
 
@@ -5405,7 +5415,7 @@ def end_beta_account(user_id: str) -> None:
     )
 
 
-_USER_FIELDS = {"name", "custom_instructions", "school"}
+_USER_FIELDS = {"name", "custom_instructions", "school", "beta_features"}
 
 
 def update_user(user_id: str, **fields: Any) -> dict | None:

@@ -79,6 +79,10 @@ def _public_user(user: dict) -> dict:
         # frontend refetches the account from after any settings change.
         "custom_instructions": user.get("custom_instructions"),
         "school": user.get("school"),
+        # SettingsPage.jsx's "Enable Beta Features" toggle — gates Voice Mode
+        # (ChatPage.jsx's openVoice) so a rollout-in-progress feature isn't on
+        # by default for every account.
+        "beta_features": bool(user.get("beta_features")),
         # NULL means the post-login onboarding wizard (OnboardingWizard.jsx)
         # hasn't run for this account yet — AppShell reads this, not a
         # separate GET, to decide whether to mount it.

@@ -241,6 +241,11 @@ export function ChatPage() {
   const isPhone = mode === 'phone'
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
   const { classes, activeClass } = useActiveClass()
+  // useAuth().user is deliberately the small {id,email,name} shape (see
+  // authContext.js) — beta_features lives on the fuller /api/auth/me payload,
+  // so Voice Mode's gate reads that instead of widening the auth context.
+  const { data: meAccount } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
+  const betaFeaturesEnabled = Boolean(meAccount?.beta_features)
   const { data: chats = [] } = useChats()
   const { data: calendar } = useCalendar(classId)
   const { setDocOpen } = useShell()
@@ -1208,12 +1213,23 @@ export function ChatPage() {
      same creation block; kept separate rather than shared so neither
      path's error handling has to account for the other's caller. */
   const openVoice = useCallback(() => {
+    // Voice Mode is beta-gated (SettingsPage.jsx's "Enable Beta Features")
+    // — the visible entry points (Greeting, Composer) already hide
+    // themselves when it's off, but this also covers the ⌘⇧V shortcut
+    // below, which has no button to hide.
+    if (!betaFeaturesEnabled) {
+      toast.info('Voice Mode is a beta feature', 'Turn on Beta Features in Settings to try it.', {
+        label: 'Open Settings',
+        onClick: () => navigate(`/c/${classId}/settings#section-advanced`),
+      })
+      return
+    }
     // This is the deliberate user gesture that creates the one Realtime
     // session. Speech queued immediately afterward waits for the data channel.
     voice.startSession({ chatId: chatId ?? null, classId: classId ?? null, weekNumber: conversationWeek ?? null, mode: 'brainstorm' })
     setVoiceOpen(true)
     if (messages.length === 0) voice.speak(VOICE_GREETING)
-  }, [voice, messages, chatId, conversationWeek])
+  }, [voice, messages, chatId, classId, conversationWeek, betaFeaturesEnabled, toast, navigate])
 
   /* Factored out of the docked panel's own onClose so the ⌘⇧V hotkey below
      can end the conversation exactly the same way a click on Close does —
@@ -2662,7 +2678,7 @@ export function ChatPage() {
       {isEmpty ? (
         <Greeting
           className={activeClass?.name}
-          onOpenVoice={openVoice}
+          onOpenVoice={betaFeaturesEnabled ? openVoice : undefined}
           week={displayWeek}
           hint={emptyStateHint}
           onOpenSettings={handleOpenSettings}
@@ -2947,7 +2963,7 @@ export function ChatPage() {
             attachments={attachments}
             setAttachments={setAttachments}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
-            onOpenVoice={openVoice}
+            onOpenVoice={betaFeaturesEnabled ? openVoice : undefined}
             voiceModeActive={voiceOpen}
             suggestions={composerSuggestions}
             questionsPanel={

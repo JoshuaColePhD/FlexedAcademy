@@ -1010,7 +1010,6 @@ export function SettingsPage() {
   const { mode, setMode } = useTheme()
   const [fontSize, setFontSize] = useState('normal')
   const [highContrast, setHighContrast] = useState(false)
-  const [betaFeatures, setBetaFeatures] = useState(false)
 
   const scrollContainerRef = useRef(null)
 
@@ -1031,6 +1030,19 @@ export function SettingsPage() {
     } catch (err) {
       toast.apiError('Could not save your name', err)
       setTeacher(savedName)
+    }
+  }
+
+  // Real, persisted account state now (backend/db.py migration 53) — this
+  // used to be local-only React state that reset every reload, which meant
+  // the toggle looked saved but never actually gated anything.
+  const betaFeatures = Boolean(meState.data?.beta_features)
+  const toggleBetaFeatures = async (next) => {
+    try {
+      await api.updateMe({ betaFeatures: next })
+      qc.invalidateQueries({ queryKey: qk.me })
+    } catch (err) {
+      toast.apiError('Could not save that', err)
     }
   }
 
@@ -1385,11 +1397,11 @@ export function SettingsPage() {
                 </div>
                 
                 <div className="max-w-xl border border-edge rounded-xl p-4">
-                  <Toggle 
-                    label="Enable Beta Features" 
-                    description="Opt-in to use experimental AI models and cutting-edge features."
+                  <Toggle
+                    label="Enable Beta Features"
+                    description="Opt-in to use experimental AI models and cutting-edge features — for example, Voice Mode."
                     checked={betaFeatures}
-                    onChange={setBetaFeatures}
+                    onChange={toggleBetaFeatures}
                   />
                 </div>
 

@@ -770,8 +770,8 @@ export function Composer({
                   pulseMotion('voice', 260)
                   onOpenVoice()
                 }}
-                aria-label="Start a voice conversation"
-                title="Talk instead of type"
+                aria-label="Start a voice conversation (beta)"
+                title="Talk instead of type — beta"
               >
                 <AudioLines
                   size={19}

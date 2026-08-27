@@ -101,6 +101,9 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
           >
             <AudioLines size={18} aria-hidden="true" />
             Voice Mode
+            <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide text-accent-text">
+              Beta
+            </span>
           </button>
         ) : null}
       </div>

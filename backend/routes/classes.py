@@ -79,6 +79,10 @@ class MeBody(BaseModel):
     # generation and chat (backend/prompts.py), not per class.
     custom_instructions: str | None = Field(default=None, max_length=2000)
     school: str | None = Field(default=None)
+    # SettingsPage.jsx's "Enable Beta Features" toggle — gates Voice Mode
+    # today (ChatPage.jsx's openVoice). `bool | None` rather than `bool`
+    # so an unrelated PATCH (e.g. just `name`) doesn't have to resend it.
+    beta_features: bool | None = Field(default=None)
 
 
 @router.get("/schools")
@@ -151,6 +155,7 @@ def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> d
         "email": user["email"],
         "custom_instructions": user.get("custom_instructions"),
         "school": user.get("school"),
+        "beta_features": bool(user.get("beta_features")),
     }
 
 
