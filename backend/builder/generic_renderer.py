@@ -90,8 +90,17 @@ def _render_body_cell_content(cell, row_spec: dict, day: dict, day_index: int, d
     source = row_spec["cell_source"]
     kind = source["kind"]
 
+    # Nested under kind's own key, not flat on `source` — matches
+    # BUILDER_LAYOUT_JSON_SCHEMA in schema.py (day_field/multi_field_block
+    # each carry their own source_section_name, required by strict-mode
+    # Structured Outputs even on the branch `kind` doesn't select) and
+    # spec_validate.validate_spec_against_analysis, which already reads this
+    # same nested shape. A flat `source["field"]` here would KeyError on
+    # every real generated spec, since neither producer of a spec — the LLM
+    # (schema-constrained) nor the validator gating it — ever emits or
+    # expects that shape.
     if kind == "day_field":
-        field = source["field"]
+        field = source["day_field"]["field"]
         value = _day_value(day, field)
         if row_spec.get("control_type") == "dropdown":
             options = dropdown_options or []
@@ -106,7 +115,7 @@ def _render_body_cell_content(cell, row_spec: dict, day: dict, day_index: int, d
 
     elif kind == "multi_field_block":
         lines: list[tuple[str, bool]] = []
-        for i, block in enumerate(source["fields"]):
+        for i, block in enumerate(source["multi_field_block"]["fields"]):
             if i > 0:
                 lines.append(("", False))
             lines.append((block["label"], True))

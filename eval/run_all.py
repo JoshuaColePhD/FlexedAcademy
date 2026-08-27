@@ -24,6 +24,13 @@ SUITES: list[tuple[str, bool]] = [
     ("test_grounding_audit.py", False),
     ("test_field_scoped_revise.py", False),
     ("test_entitlement.py", False),
+    # Lives in backend/builder/ (it's a regression test on generic_renderer.py,
+    # not an eval), not eval/ — this SUITES list is where every no-DB/no-API
+    # backend check gets one shared runner and one CI step, so it's referenced
+    # here by relative path rather than duplicated or moved. No DB, no API:
+    # it's pure python-docx rendering compared against build_lesson_plan.py's
+    # own output.
+    ("../backend/builder/test_generic_renderer.py", False),
     # Needs the live DB (no test double exists for it), so --fast skips it.
     ("test_security_contracts.py", True),
     # These four each stub SOME of the db.* calls their own code path makes
