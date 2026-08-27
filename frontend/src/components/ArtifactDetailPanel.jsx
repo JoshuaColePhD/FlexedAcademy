@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
+import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload, ChevronDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { fetchStandardsBatch } from '../lib/standardsCache'
 import { useToast } from '../lib/toastContext'
@@ -596,13 +596,24 @@ export function ArtifactDetailPanel({
           {kind === 'quiz' && planId ? (
             quiz?.has_qti ? (
               <>
+                {/* Never actually did anything (no onClick at all, confirmed
+                    live) — a real dialog for this already exists
+                    (ShareDialog, below), opened correctly from the Download
+                    button's own dropdown, just never wired to this icon.
+                    "Save to Google Drive"/Cloud was also the wrong label
+                    for a quiz specifically: ShareDialog's own isQuiz branch
+                    pushes to Canvas, not Drive (a quiz never gets a
+                    drive_file_id — there's no backend route for it, only
+                    routes/plans.py's /share). Upload/"Export" here actually
+                    describes what opening this dialog does. */}
                 <button
                   type="button"
                   className="btn-icon fa-press"
-                  aria-label="Save to Google Drive"
-                  title="Save to Google Drive"
+                  aria-label="Export this quiz"
+                  title="Export this quiz"
+                  onClick={() => setShareOpen(true)}
                 >
-                  <Cloud size={16} className="text-ink-muted" />
+                  <Upload size={16} className="text-ink-muted" />
                 </button>
 
                 <div className="doc-download-group flex items-stretch">

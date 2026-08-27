@@ -158,11 +158,21 @@ const location = useLocation()
         <div className="flex items-center gap-2">
           {planId ? (
             <>
+              {/* Never actually did anything — ShareDialog (below) already
+                  has a full "Save to My Drive" flow, opened from the
+                  Download button's own dropdown a few lines down, but this
+                  icon's onClick was never added when that dialog was built.
+                  Looked clickable (real neo-raised styling, a real
+                  aria-label) and silently no-opped — confirmed live via
+                  React devtools before this fix (no onClick attached at
+                  all). Same dialog, same trigger the Download button
+                  already uses. */}
               <button
                 type="button"
                 className="btn-icon fa-press"
                 aria-label="Save to Google Drive"
                 title="Save to Google Drive"
+                onClick={() => setShareOpen(true)}
               >
                 <Cloud size={16} className="text-ink-muted" />
               </button>

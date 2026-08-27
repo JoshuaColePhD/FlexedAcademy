@@ -242,8 +242,12 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
           </div>
         )}
 
-        <h3 className="text-sm font-medium mb-3">Save to Google Drive</h3>
-        
+        {/* Was a static "Save to Google Drive" regardless of isQuiz — right
+            for the plan branch below, wrong for this one: a quiz never
+            gets a drive_file_id (no backend route for it), and the section
+            underneath this heading has always shown a Canvas push instead. */}
+        <h3 className="text-sm font-medium mb-3">{isQuiz ? 'Push to Canvas' : 'Save to Google Drive'}</h3>
+
         {isQuiz ? (
           <>
             <p className="text-sm text-ink-soft mb-4">
