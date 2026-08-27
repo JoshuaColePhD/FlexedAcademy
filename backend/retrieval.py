@@ -704,6 +704,32 @@ class RetrievalResult:
         return 0 < len(self.chunks) < settings.retrieval_thin_threshold
 
     @property
+    def only_act(self) -> bool:
+        """True when every chunk that grounded this request is ACT companion
+        material (act_standards/act_recurring) and nothing is a real course
+        standard (state_course_of_study/college_board/ap_skills).
+
+        ACT content deliberately skips grade filtering — see retrieve_raw's
+        source_type branch, and act_sections_for's own comment on why an ACT
+        block applies across every grade a course teaches. That is correct
+        for ACT alignment itself, but it means `empty` alone (`not chunks`)
+        can miss a real failure: a course/grade with genuinely zero state
+        standards on file for that grade still comes back non-empty here,
+        because the ACT stratum alone is enough to populate `chunks`. Without
+        this check, that request would silently proceed and ground the
+        `standards` row on nothing at all while `act_alignment` looked fully
+        populated — the exact "confidently wrong" failure prepare()'s own
+        docstring says the grade-scope check exists to prevent, just from
+        the other stratum.
+        """
+        if not self.chunks:
+            return False
+        return all(
+            (c.get("metadata") or {}).get("source_type") in ("act_standards", "act_recurring")
+            for c in self.chunks
+        )
+
+    @property
     def codes(self) -> set[str]:
         """The citable standard codes retrieved — what audit_grounding checks against.
 
@@ -1155,6 +1181,19 @@ def no_grounded_standards_error(query: str, result: RetrievalResult) -> AppError
     )
 
 
+def act_only_grounding_error(query: str, result: RetrievalResult, grade: int) -> AppError:
+    """Same shape and same refusal-not-guess spirit as no_grounded_standards_error,
+    for the failure that check alone can't see: see RetrievalResult.only_act."""
+    return AppError(
+        "no_grounded_standards",
+        f"No course standard is on file for grade {grade} — only ACT companion "
+        f"material matched, which cannot stand in for one.",
+        status=422,
+        hint="Check whether this grade has been ingested for this subject yet.",
+        extra={"rejected": result.rejected, "floor": result.floor},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Layer 3 — post-generation grounding audit
 # ---------------------------------------------------------------------------
@@ -1268,14 +1307,28 @@ def audit_grounding(plan: dict, allowed: set[str], subject_code: str | None = No
     # is expected to cite one on every teaching day — see the mandatory-fill
     # instruction in prompts.py. A course with no ACT companion at all is not
     # held to this; act_alignment is correctly empty there on every day.
+    #
+    # This is a hard failure, not a warning: a blank act_alignment used to
+    # just get logged and shipped anyway (the plan built and persisted with
+    # a genuinely empty template cell). schema.validate_day can't make this
+    # check itself — it has no course context, and a course-blind check
+    # would wrongly reject the many courses with no ACT companion at all —
+    # so it lives here, the one place that already knows both the day's
+    # content and the course it belongs to. Raises the same SchemaError
+    # shape (and default retryable=True) schema.py's own empty-field checks
+    # use, so the client gets the identical "safe to just try again" signal.
     act_expected = bool(act_sections_for(subject_code)) if subject_code else False
     if act_expected:
         for day in plan.get("days", []):
             if day.get("no_school"):
                 continue
             if not str(day.get("act_alignment", "")).strip():
-                warnings.append(
+                from .schema import SchemaError
+
+                raise SchemaError(
+                    "day_empty_field",
                     f"{day.get('name', '?')} has no ACT alignment, even though this course has a "
-                    f"companion ACT section. Ask for a revision, or add one by hand."
+                    f"companion ACT section.",
+                    path=f"days.{day.get('name', '?')}.act_alignment",
                 )
     return warnings

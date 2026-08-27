@@ -368,6 +368,18 @@ export function Message({
                 ) : null}
               </div>
             ) : null}
+            {/* message.thin is only ever set on the assistant message ChatPage
+                pushes right after onDone (see its own comment) — a plan
+                loaded from storage never carries it, so this is silent for
+                every plan generated before this existed rather than
+                guessing retroactively. */}
+            {message.thin ? (
+              <div className="grounding-line grounding-line-thin">
+                <span>
+                  Limited standards on file for this grade/subject — worth a second look before you teach it.
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

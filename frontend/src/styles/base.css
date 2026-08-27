@@ -3709,6 +3709,13 @@
     align-items: center;
     gap: 7px;
   }
+  /* Same --mark warning color as an ungrounded citation (grounding-line-miss
+     above) — both are "this week deserves a second look," just for a
+     different reason: a bad citation vs. too little source material to draw
+     from at all. */
+  .grounding-line-thin {
+    color: var(--mark);
+  }
 
   /* The file, as a file. Same component in the rail and in the transcript. */
   .artifact-card {

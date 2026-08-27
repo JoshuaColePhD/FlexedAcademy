@@ -1008,6 +1008,15 @@ export function ChatPage() {
           weekLabel: done.plan?.week_of,
           plan: done.plan,
           retrievedCodes: done.retrieved_ids ?? done.grounding?.codes,
+          // Backend-computed (RetrievalResult.thin, retrieval.py) — fewer
+          // than a handful of chunks matched this grade/subject. It has been
+          // reaching the client in the SSE `grounding` event this whole
+          // time and going nowhere: no message field read it, so a thin
+          // week looked identical to a well-covered one. Grade 3 Science,
+          // for instance, has only 15 chunks in the whole corpus — real,
+          // groundable, but thin enough a teacher should know to double-
+          // check it rather than assume the same depth AP Lang gets.
+          thin: done.grounding?.thin,
         },
       ])
       /* SAVE IT. This was missing, and it did not merely lose a line of chat.

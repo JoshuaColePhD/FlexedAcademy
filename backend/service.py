@@ -160,6 +160,8 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
     )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
+    if result.only_act:
+        raise retrieval.act_only_grounding_error(query, result, grade)
     return result
 
 
