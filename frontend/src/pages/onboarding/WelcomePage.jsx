@@ -79,12 +79,13 @@ export function WelcomePage() {
         qc.invalidateQueries({ queryKey: qk.classes }),
         refresh(),
       ])
-      /* The class root, which is the index route — a new plan, the thing the
-         app is for. This said `/calendar`, a route deleted with the week board
-         (see the comment on ClassRoutes in App.jsx), so EVERY new account
-         finished onboarding on "That address doesn't exist in this app." — and
-         `replace: true` meant the back button could not rescue them. */
-      navigate(`/c/${created.id}`, { replace: true })
+      /* The dedicated onboarding page (App.jsx, OnboardingSetupPage.jsx), not
+         the class itself — a brand-new account still has the school/course/
+         materials wizard ahead of it, and that page's own job is to keep the
+         app shell off screen until that's done. (App.jsx's ClassRoutes guard
+         would bounce here anyway if this went straight to `/c/:classId`, but
+         landing directly skips that extra redirect.) */
+      navigate(`/c/${created.id}/onboarding`, { replace: true })
     } catch (err) {
       toast.apiError('Could not set that up', err)
       setSaving(false)
