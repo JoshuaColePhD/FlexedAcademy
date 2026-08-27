@@ -889,7 +889,13 @@
          suspenders against iOS Safari's looser handling of that spec. */
       overflow: hidden;
       padding-bottom: var(--safe-b);
-      border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
+      /* All four corners, not just the top two (Josh's own ask, 2026-08-27)
+         — top-only rounding was right when this sheet was flush against
+         the screen's true bottom edge (no bottom corners to see), but the
+         --composer-h offset above means it now floats short of that edge
+         with real space beneath it, so the bottom two corners are visible
+         now too, and were still square until this. */
+      border-radius: var(--sheet-radius);
       box-shadow: var(--shadow-pop);
       animation-name: artifact-sheet-in;
       /* Its own duration, not the 520ms inherited from the base rule above

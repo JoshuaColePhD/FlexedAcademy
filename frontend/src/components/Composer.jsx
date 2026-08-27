@@ -676,7 +676,23 @@ export function Composer({
                * top of each other. */
               placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
-              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-2.5 text-sm leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+              /* py-[0.9375rem]/text-[0.9375rem], not py-2.5/text-sm — those
+                 didn't match the ghost-completion overlay right above
+                 (py-[0.9375rem] text-[0.9375rem], a few lines up), so a
+                 suggested prompt sat at a different size and vertical
+                 position than the real text that replaces it the instant
+                 you start typing — the "text is not centered when you
+                 type" Josh flagged 2026-08-27. On a phone this also fixed
+                 a second thing: .composer-input's own min-height: 54px
+                 (base.css, the iOS zoom fix) was taller than one line's
+                 worth of the old 10px/10px padding + line-height, so the
+                 leftover space collected entirely below the text instead
+                 of splitting evenly — confirmed live (10px padding, 26px
+                 line-height, inside a forced 54px box, textarea content
+                 doesn't self-center). 15px top and bottom now covers that
+                 slack itself (15+15+26 = 56, past the 54px floor), so
+                 there's nothing left for min-height to unevenly pad out. */
+              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}
