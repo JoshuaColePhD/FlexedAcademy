@@ -794,6 +794,11 @@
     z-index: 50;
     display: flex;
     flex-direction: column;
+    /* .doc-head (below) is opaque, sitting flush against this panel's own
+       top edge — without this, its square top corners would poke past
+       .artifact-overlay's own rounded ones (border-radius alone doesn't
+       clip children; it just draws the outer edge). */
+    overflow: hidden;
     background-color: rgba(255, 255, 255, 0.22);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
     background-repeat: repeat;
@@ -2726,6 +2731,22 @@
     align-items: center;
     gap: var(--sp-2);
     padding: 0 18px;
+    /* Opaque, not inherited from .doc-shell's own transparency (Josh's own
+       ask, 2026-08-27 — "the whole header can be neomorphic and white").
+       .doc-download-group/.doc-download-main/.doc-download-drop and the
+       .btn-icon expand/close/cloud buttons already carry real neo-raised
+       shadows (see their own rules, below/in the shared .btn-icon block) —
+       those were never actually broken, they just lost all their contrast
+       once the header they sit on went translucent-glass along with the
+       rest of .doc-shell: a neo-raised shadow reads as "raised" against a
+       flat surface it can contrast with, not against a blurred, mostly-
+       white backdrop that's nearly the same tone as the button itself. A
+       solid --paper-raised fill restores that contrast; the shadow below
+       is what separates this bar from the glass .doc-body scrolling
+       underneath it, the same "one layer up" cue .doc-collapse's own
+       shadow gives a single button. */
+    background: var(--paper-raised);
+    box-shadow: 0 2px 8px rgb(var(--neo-dark-rgb) / 0.18);
   }
   .doc-head::before {
     content: '';
