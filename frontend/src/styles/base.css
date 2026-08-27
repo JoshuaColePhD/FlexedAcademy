@@ -762,16 +762,33 @@
      a 480px drawer was a modal wearing a panel's clothes — and it was holding
      an 860px district table, ~44% of it off-canvas. Covering the surface makes
      the semantics true and gives the fitted layout a canvas worth having. From
-     --lg the docked sidebar stays visible beside it. */
+     --lg the docked sidebar stays visible beside it.
+
+     A 64px gap on the left, not a flush edge (Josh's own ask, 2026-08-27) —
+     the slide-in leaves that sliver of the chat transcript visible behind
+     the glass panel the whole time, the same "the conversation is still
+     right there" spatial cue a native card-stack push transition gives
+     (Notes, Messages) instead of a flat cut to a new screen. Phone's own
+     bottom sheet, below, resets this to full width — there's no leftward
+     motion to peek behind there, it comes up from the bottom instead. */
   .artifact-overlay {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 64px;
     z-index: 50;
     display: flex;
     flex-direction: column;
     background: var(--paper-raised);
     box-shadow: var(--shadow-panel);
     animation: artifact-slide-in var(--t-base) var(--ease-out) both;
+    /* Left corners only — the right/top/bottom edges are flush against
+       #main's own bounds (unchanged, pre-existing), but the left edge is
+       now a real floating edge with the chat peeking past it, and a square
+       corner there read as an unfinished cut rather than a panel resting
+       in front of something. */
+    border-radius: var(--r-xl) 0 0 var(--r-xl);
   }
   @media (min-width: 1024px) {
     /* NOT `left: var(--sidebar-w)` (removed 2026-08-27) — this element's
@@ -825,7 +842,12 @@
      was. A pure transform slide costs nothing extra against a blurred
      ancestor — the compositor just moves an already-painted layer. */
   @keyframes artifact-slide-in {
-    from { transform: translateX(12px); }
+    /* 48px, not the old 12px — that was tuned for a flush-edge panel with
+       nothing behind it to reveal; now that the panel rests 64px short of
+       the left edge (see .artifact-overlay's own comment), a bigger slide
+       is what makes the chat peeking through on the left actually read as
+       a reveal in motion, not just a barely-there settle. */
+    from { transform: translateX(48px); }
     to { transform: none; }
   }
   @keyframes artifact-sheet-in {
@@ -848,7 +870,7 @@
   }
   @keyframes artifact-slide-out {
     from { transform: none; }
-    to { transform: translateX(12px); }
+    to { transform: translateX(48px); }
   }
   @media (max-width: 767.98px) {
     .artifact-overlay.is-closing {
