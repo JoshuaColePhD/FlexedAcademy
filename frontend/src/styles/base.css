@@ -774,9 +774,19 @@
     animation: artifact-slide-in var(--t-base) var(--ease-out) both;
   }
   @media (min-width: 1024px) {
-    .artifact-overlay {
-      left: var(--sidebar-w);
-    }
+    /* NOT `left: var(--sidebar-w)` (removed 2026-08-27) — this element's
+       ancestor (AppShell's #main) has `backdrop-filter`, which makes IT the
+       containing block for this `position: fixed` overlay instead of the
+       true viewport (backdrop-filter creates one, same as transform —
+       classic CSS gotcha). #main's own box already starts to the right of
+       the docked rail, since it's a plain flex sibling of the rail, not an
+       overlap — so `inset: 0` above already lands this flush against the
+       rail's own right edge with no extra offset needed. Adding
+       `left: var(--sidebar-w)` on top of that double-counted the rail's
+       width, leaving a ~220px gap between the rail and the overlay with the
+       stale chat transcript still visible through it — confirmed live via
+       getBoundingClientRect: #main.left was 236 and this element's own
+       left was 457 (236 + 220), not 236. */
     .artifact-overlay .doc-shell {
       border-left: 1px solid var(--edge);
     }

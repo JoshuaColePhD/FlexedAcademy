@@ -3311,8 +3311,22 @@ export function ChatPage() {
           768–1279 with NO rail at all — no Download, no "Built from", no
           grounding count — even though 240px fits easily there (chat is 528px
           at 768 and 520px at 1024, both above the ~460px column this redesign
-          was correcting). Below 768 it is the bar inside chatPane instead. */}
-      {!isPhone && !docOpen ? (
+          was correcting). Below 768 it is the bar inside chatPane instead.
+
+          Also excluded once overlayOpen: this drawer reserves real flex
+          width in the SAME row as chatPaneWrapRef, which is what the
+          composer's portal anchor measures (see composerAnchorRef's own
+          comment) — leaving it mounted while the full-screen
+          .artifact-overlay is open shrank that anchor to
+          `row width - drawer width`, so the "edge-to-edge, composer
+          included" overlay described just below never actually reached the
+          left edge, and the composer it was supposed to float above sat at
+          the shrunk width instead of the full one. The overlay already
+          shows everything this drawer shows (Download, "Built from",
+          grounding) at full size, so there is nothing this adds once it is
+          open — it should get out of the way, not sit underneath eating
+          width nobody can see it use. */}
+      {!isPhone && !docOpen && !overlayOpen ? (
         <ArtifactDrawer
           open={railOpen}
           onToggle={() => setRailOpen((o) => !o)}
