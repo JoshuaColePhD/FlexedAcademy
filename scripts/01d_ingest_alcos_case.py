@@ -221,18 +221,77 @@ def grade_from_level(level: str) -> int | None:
     return None
 
 
+def _render_table(rows: list[list[str | None]]) -> str:
+    """One pdfplumber table -> plain text, ' | '-separated per cell — see
+    pdftotext()'s own docstring for why a table has to be rendered this way
+    at all."""
+    lines = []
+    for row in rows:
+        cells = [re.sub(r"\s+", " ", (c or "")).strip() for c in row]
+        if any(cells):
+            lines.append(" | ".join(cells))
+    return "\n".join(lines)
+
+
+def _page_text(page) -> str:
+    tables = page.find_tables()
+    if not tables:
+        return page.extract_text() or ""
+    try:
+        non_table = page
+        for t in tables:
+            non_table = non_table.outside_bbox(t.bbox)
+        prose = non_table.extract_text() or ""
+    except ValueError:
+        # A detected table's bbox can extend past the page edge (seen on a
+        # decorative callout box misread as a table) — outside_bbox() raises
+        # on that rather than clamping. Falling back to the whole page's
+        # plain text loses nothing real: a misdetected "table" was never
+        # going to render usefully as one anyway.
+        prose = page.extract_text() or ""
+    parts = [prose] if prose.strip() else []
+    for t in tables:
+        try:
+            parts.append(_render_table(t.extract()))
+        except ValueError:
+            continue
+    return "\n\n".join(parts)
+
+
 def pdftotext(pdf: Path) -> str:
+    """pdfplumber's table detection, not plain pdftotext -enc UTF-8.
+
+    Found live, diagnosing PE's 51% verbatim rate (Feb 2026): PE's standards
+    are full of multi-column bulleted lists — "Demonstrate kicking skills
+    by: [col A] ... [col B] ..." — that a plain linear text extractor reads
+    left-to-right ACROSS the whole page width, fusing unrelated bullets from
+    different columns onto one line ("...and • Using a running kick it
+    forward. approach towards a stationary ball..." — two different bullets,
+    two different columns, one garbled sentence). The CASE feed's statement
+    was correct the whole time; the plain-text baseline this function used
+    to build had already scrambled the very words being checked against it
+    — the same false-rejection bug the Pre-AP arts courses had, just via
+    bulleted columns instead of a proficiency-level table. pdfplumber's
+    table detection finds the real column boundaries, so a bullet from
+    column A is never spliced onto column B's bullet regardless of how many
+    columns share a row.
+
+    A genuine wording difference between the CASE feed and a newer PDF
+    revision (this function's own module docstring gives a real example)
+    still correctly fails after this change — this fixes an extraction
+    artifact, not the standard of comparison.
+    """
     if not pdf.is_file():
         log.warning("  PDF not found, verbatim check skipped: %s", pdf.name)
         return ""
     try:
-        res = subprocess.run(
-            ["pdftotext", "-enc", "UTF-8", str(pdf), "-"],
-            check=True, capture_output=True, text=True,
-        )
-        return normalize(res.stdout)
-    except subprocess.CalledProcessError as exc:
-        log.warning("  pdftotext failed on %s: %s", pdf.name, exc.stderr.strip()[:200])
+        import pdfplumber
+
+        with pdfplumber.open(pdf) as doc:
+            text = "\n\n".join(_page_text(p) for p in doc.pages)
+        return normalize(text)
+    except Exception as exc:
+        log.warning("  pdfplumber failed on %s: %s", pdf.name, exc)
         return ""
 
 
