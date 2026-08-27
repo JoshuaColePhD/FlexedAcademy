@@ -40,6 +40,14 @@ const SOURCE =
     'R\\d{1,2}', // ACT recurring, e.g. R4
     '\\d+\\.\\d+(?:\\.[A-Za-z0-9]+)*', // numeric, e.g. 1.2.3
     '\\d\\.[A-C]', // AP Lang skill, e.g. 2.A
+    // College Board's own AP-course "Skill Category N" headers — plain
+    // English, not a short code, the one legitimate citation shape every
+    // other alternative above misses. Mirrors backend/retrieval.py's own
+    // addition, same reasoning: a plan citing "Skill Category 7" (a real,
+    // verbatim-sourced College Board standard, confirmed in
+    // chunks.metadata) rendered with no citation styling at all, reading
+    // as "no standard was cited" for a day that cited a real one.
+    'Skill Category \\d+',
   ].join('|') +
   ')(?!\\.?\\w)'
 

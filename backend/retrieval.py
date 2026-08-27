@@ -95,6 +95,18 @@ _CODE_RE = re.compile(
     # Bare dotted AP topic codes, e.g. 2.2.B.1, 5.5.A.1.i, 3.8.A.1, 1.2
     r"|\d+\.\d+(?:\.[A-Za-z0-9]+)*"
     r"|\d\.[A-C]"  # AP Lang skill, e.g. 2.A
+    # College Board's own AP-course "Skill Category N" headers (as opposed
+    # to a lettered/numbered sub-code under one) — e.g. AP Lang's own
+    # "Skill Category 7," which the corpus stores with this exact code in
+    # chunks.metadata (source_type='college_board'). Every other pattern in
+    # this regex is a short alphanumeric code; this is the one legitimate
+    # citation that's plain English instead, and it had no pattern to match
+    # it at all — a plan citing it rendered as unhighlighted plain text and
+    # the grounding audit could not see it, reading as "no standard was
+    # cited" for a day that cited a real, verbatim-sourced one. Found live:
+    # a plan's own Tuesday standard was retrieved_ids-confirmed
+    # ("SKILL CATEGORY 7") but showed no citation styling at all.
+    r"|Skill Category \d+"
     r")(?!\.?\w)"
 )
 
