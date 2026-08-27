@@ -679,7 +679,7 @@ function DoneStep({ finishing, onFinish }) {
   )
 }
 
-function ConfirmedCalendarReview({ schoolId }) {
+export function ConfirmedCalendarReview({ schoolId }) {
   const { data: submission, isLoading } = useQuery({
     queryKey: ['schoolCalendarConfirmed', schoolId],
     queryFn: () => api.getConfirmedSchoolCalendar(schoolId),
