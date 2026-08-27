@@ -23,7 +23,13 @@ import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
 import { CalendarPreview } from './CalendarPreview'
-const ClassDocuments = lazy(() => import('../pages/ClassPage.jsx').then((module) => ({ default: module.ClassDocuments })))
+// ClassDocuments used to live inside ClassPage.jsx and was re-exported from
+// there; it later moved out to its own file (components/ClassDocuments.jsx)
+// with nothing left behind at the old path, so this lazy import silently
+// resolved to `{ default: undefined }` and crashed the DocumentsStep below
+// with "Element type is invalid" the moment a teacher reached it — every
+// first-run account, since /welcome always leaves `documents` in the plan.
+const ClassDocuments = lazy(() => import('./ClassDocuments.jsx').then((module) => ({ default: module.ClassDocuments })))
 
 
 const TIPS = [
