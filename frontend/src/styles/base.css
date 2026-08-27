@@ -277,8 +277,14 @@
      its own at all: it appeared and vanished with the conditional render
      that mounted/unmounted it, a hard cut in both directions. A drawer
      without a slide reads as a bug the first time someone watches for it. */
+  /* --ease-glide/380ms, not --t-base(220ms)/--ease-out — same reasoning as
+     the plan overlay's own entrance (Josh's own "make all the animations
+     smoother" ask, 2026-08-27): this travels its own full width
+     (translateX(-100%), below) in one motion, and --ease-out's near-
+     vertical slope at t=0 read as a snap rather than a glide at that
+     distance, same as it did there. */
   .app-rail.rail-drawer {
-    animation: rail-drawer-in var(--t-base) var(--ease-out) both;
+    animation: rail-drawer-in 380ms var(--ease-glide) both;
   }
   .app-rail.rail-drawer.is-closing {
     animation: rail-drawer-out var(--t-fast) var(--ease) both;
@@ -1167,7 +1173,14 @@
     border-top: 3px solid var(--accent);
     border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
     box-shadow: var(--shadow-pop);
-    animation: artifact-sheet-in var(--t-base) var(--ease-out) both;
+    /* --ease-glide/380ms, matching the tuning .artifact-overlay's own
+       phone sheet got (Josh's own "make all the animations smoother" ask,
+       2026-08-27) — this reuses the SAME artifact-sheet-in keyframe (see
+       that class's own comment for why --ease-glide reads smoother than
+       --ease-out at any size: a gentle ramp-up, not just a gentle
+       ramp-down), so every bottom sheet in the app now shares one motion
+       language instead of three copies quietly drifting apart. */
+    animation: artifact-sheet-in 380ms var(--ease-glide) both;
   }
   /* ChatHeaderSheet.jsx — phone-only. Same bottom-sheet recipe as
      .cite-sheet just above (this app doesn't share the recipe as one
@@ -1187,7 +1200,14 @@
     border-top: 3px solid var(--accent);
     border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
     box-shadow: var(--shadow-pop);
-    animation: artifact-sheet-in var(--t-base) var(--ease-out) both;
+    /* --ease-glide/380ms, matching the tuning .artifact-overlay's own
+       phone sheet got (Josh's own "make all the animations smoother" ask,
+       2026-08-27) — this reuses the SAME artifact-sheet-in keyframe (see
+       that class's own comment for why --ease-glide reads smoother than
+       --ease-out at any size: a gentle ramp-up, not just a gentle
+       ramp-down), so every bottom sheet in the app now shares one motion
+       language instead of three copies quietly drifting apart. */
+    animation: artifact-sheet-in 380ms var(--ease-glide) both;
   }
   .chat-header-sheet.is-closing {
     animation-name: artifact-sheet-out;
@@ -1775,7 +1795,11 @@
     border-radius: var(--r-md);
     box-shadow: var(--shadow-lg);
     pointer-events: auto;
-    animation: toast-in var(--t-base) var(--ease-out) both;
+    /* --ease-glide, not --ease-out — same gentler-ramp curve as every
+       other entrance touched by Josh's "make all the animations smoother"
+       ask (2026-08-27); duration unchanged, this one was never mismatched
+       to its own travel distance the way the bigger panels were. */
+    animation: toast-in var(--t-base) var(--ease-glide) both;
   }
   /* Entrance played; dismiss used to just vanish — see ToastProvider's own
      comment on why the removal from state is now delayed to let this play.
@@ -1945,7 +1969,8 @@
     /* tabIndex={-1} exists only as a focus-trap fallback; it should never draw
        a ring. The trap focuses Cancel. */
     outline: none;
-    animation: dialog-in var(--t-base) var(--ease-out) both;
+    /* --ease-glide, not --ease-out — same curve swap as toast-in, above. */
+    animation: dialog-in var(--t-base) var(--ease-glide) both;
   }
   .dialog.is-closing {
     animation: dialog-out var(--t-fast) var(--ease) both;
@@ -2041,7 +2066,8 @@
     max-height: min(70vh, 560px);
     overflow-y: auto;
     overflow-x: hidden;
-    animation: voice-dock-body-in var(--t-base) var(--ease-out) both;
+    /* --ease-glide, not --ease-out — same curve swap as toast-in/dialog-in. */
+    animation: voice-dock-body-in var(--t-base) var(--ease-glide) both;
   }
   .voice-dock-body.is-closing {
     animation: voice-dock-body-out var(--t-fast) var(--ease) both;
@@ -2093,7 +2119,8 @@
     max-height: min(70vh, 560px);
     overflow-y: auto;
     overflow-x: hidden;
-    animation: voice-dock-body-in var(--t-base) var(--ease-out) both;
+    /* --ease-glide, not --ease-out — same curve swap as toast-in/dialog-in. */
+    animation: voice-dock-body-in var(--t-base) var(--ease-glide) both;
   }
   .questions-dock-body.is-closing {
     animation: voice-dock-body-out var(--t-fast) var(--ease) both;
