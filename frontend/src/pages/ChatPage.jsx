@@ -3264,10 +3264,22 @@ export function ChatPage() {
 
       {/* The document always opens as a full glass overlay (2026-08-27) —
           there is no more docked side-by-side mode at any width, so this is
-          the only way `artifactEl` ever renders. Goes edge-to-edge, composer
-          included — the composer dock is portaled above this (see its own
-          comment near chatPane's return), so nothing needs to be carved out
-          of the overlay's own bounds for it. */}
+          the only way `artifactEl` ever renders. On desktop it goes
+          edge-to-edge, composer included — the composer dock is portaled
+          above this (see its own comment near chatPane's return), floating
+          on TOP of the panel rather than being carved out of its bounds.
+          On phone, that same "floats on top" composer would otherwise sit
+          directly over the bottom ~130px of the sheet (both anchor to the
+          screen's own bottom edge), which doesn't just look wrong — a
+          touch landing in that band hits the composer's textarea instead
+          of the sheet underneath it, and "I cannot scroll down to view
+          more" (reported 2026-08-27) was exactly that: the last stretch of
+          the sheet's own scrollable content was there, just underneath an
+          invisible composer sitting on top of it. --composer-h feeds
+          composerDockH (the portal dock's own live-measured height,
+          already tracked for the anchor above) into the sheet's bottom
+          media query in base.css, so the sheet's own bottom edge stops
+          short of the composer instead of running underneath it. */}
       {overlayExit.mounted ? (
         <>
           <button
@@ -3276,7 +3288,10 @@ export function ChatPage() {
             className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
             onClick={collapse}
           />
-          <div className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}>
+          <div
+            className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}
+            style={{ '--composer-h': `${composerDockH}px` }}
+          >
             {/* artifactContentReady: see its own comment near overlayOpen —
                 the real content (the district table, potentially dozens of
                 cells) mounts a couple of frames late on purpose, so laying
