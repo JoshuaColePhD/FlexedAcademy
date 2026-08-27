@@ -1,0 +1,16 @@
+{
+  "name": "FlexEd Academy",
+  "short_name": "FlexEd",
+  "description": "Build a week of lesson plans, grounded in your district's standards and delivered in your school's own template.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f4ec",
+  "theme_color": "#f6f4ec",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
