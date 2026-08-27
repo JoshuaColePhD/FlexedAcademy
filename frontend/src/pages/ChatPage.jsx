@@ -2256,6 +2256,36 @@ export function ChatPage() {
      had to be kept in sync. */
   const overlayOpen = expanded && hasArtifact
   const overlayExit = useExitTransition(overlayOpen, 130)
+  /* Measured live (rAF timestamps during the slide-in): the animation
+     itself was a rock-solid ~13ms/frame for its whole duration, EXCEPT the
+     first two frames (26.7ms, then 39.9ms) — that's not the CSS transform
+     struggling, it's React mounting artifactEl's real DOM (the district
+     table, potentially dozens of cells) in the exact same commit the slide
+     starts in, which the browser has to lay out and paint before the very
+     first frame of the animation can even begin compositing. Rendering
+     nothing (just the empty glass panel — see .artifact-overlay's own
+     background) for the first couple of frames, THEN mounting the real
+     content, moves that cost off the animation's own opening beat instead
+     of trying to make the mount itself cheaper. Two rAFs, not one: the
+     first is "the browser has now painted whatever we rendered this tick";
+     the second is where the CSS animation has actually started running on
+     its own, so the table mount lands once the compositor is already
+     carrying the motion rather than fighting it for the same frame. */
+  const [artifactContentReady, setArtifactContentReady] = useState(false)
+  useEffect(() => {
+    if (!overlayOpen) {
+      setArtifactContentReady(false)
+      return undefined
+    }
+    let raf2 = null
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setArtifactContentReady(true))
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      if (raf2 != null) cancelAnimationFrame(raf2)
+    }
+  }, [overlayOpen])
   /* While the document overlay covers the transcript, a reply has nowhere
      visible to land — so it surfaces as a toast instead. Watches the last
      message rather than hooking every place this file appends one (there
@@ -3247,7 +3277,18 @@ export function ChatPage() {
             onClick={collapse}
           />
           <div className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}`}>
-            {artifactEl}
+            {/* artifactContentReady: see its own comment near overlayOpen —
+                the real content (the district table, potentially dozens of
+                cells) mounts a couple of frames late on purpose, so laying
+                it out doesn't compete with the slide-in's own opening
+                frames. Empty glass for a ~30ms blink, not a spinner: at
+                this duration a loading indicator would just be visual
+                noise flashing in and out, and the panel's own background
+                already reads as "something is here." Skipped entirely
+                while closing — the exit is fast (130ms) and this has
+                already been showing real content the whole time it was
+                open, so there is nothing to stagger on the way out. */}
+            {artifactContentReady || overlayExit.closing ? artifactEl : null}
           </div>
         </>
       ) : null}
