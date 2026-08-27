@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -6,7 +6,6 @@ import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, Refr
 
 import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { ShellContext } from '../lib/shellContext'
 import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
@@ -657,10 +656,6 @@ function OnboardingWizardHost() {
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  /* Owned here, set by ChatPage — see lib/shellContext.js. The rail is the one
-     column with slack in it, so it gives up 48px while the document is open. */
-  const [docOpen, setDocOpen] = useState(false)
-  const shell = useMemo(() => ({ docOpen, setDocOpen }), [docOpen])
   const drawerRef = useRef(null)
   const drawerExit = useExitTransition(drawerOpen, 130)
   useFocusTrap(drawerRef, { active: drawerOpen, trap: drawerOpen, onEscape: () => setDrawerOpen(false) })
@@ -694,7 +689,6 @@ export function AppShell({ children }) {
   }
 
   return (
-    <ShellContext.Provider value={shell}>
     <div className="flex h-full w-full overflow-hidden p-2 gap-2 relative z-10">
       <div className="app-blob" aria-hidden="true" />
       <a
@@ -712,7 +706,7 @@ export function AppShell({ children }) {
           transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
-            width: railCollapsed ? '68px' : docOpen ? 'var(--sidebar-w-tight)' : 'var(--sidebar-w)',
+            width: railCollapsed ? '68px' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
             transitionTimingFunction: 'var(--ease-out)',
           }}
@@ -795,6 +789,5 @@ export function AppShell({ children }) {
         )}
       </motion.div>
     </div>
-    </ShellContext.Provider>
   )
 }

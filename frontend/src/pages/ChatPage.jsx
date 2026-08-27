@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -9,10 +9,9 @@ import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useVoice } from '../lib/voiceContext'
-import { useShell } from '../lib/shellContext'
 import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
-import { useLayoutMode, PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
+import { useLayoutMode } from '../hooks/useMediaQuery'
 import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
 import { DAYS, FIELD_LABELS, SHORT_DAY, dayTitle, unitSuffix } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
@@ -243,7 +242,6 @@ export function ChatPage() {
   const voice = useVoice()
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
-  const isOverlay = useMediaQuery(PANEL_OVERLAY)
   /* Phone landing screen (MobileChatHome — chats list, Workspace Tools,
      Settings) instead of this page's own empty-chat Greeting, whenever
      there's no chat open. "New plan" from that screen has nowhere to
@@ -268,7 +266,6 @@ export function ChatPage() {
   const betaFeaturesEnabled = Boolean(meAccount?.beta_features)
   const { data: chats = [] } = useChats()
   const { data: calendar } = useCalendar(classId)
-  const { setDocOpen } = useShell()
   // Same check ClassPage runs to gate its own "Add a pacing guide" suggestion —
   // without it, getContextualSuggestions defaults to assuming one exists and
   // the composer's "using my pacing guide" wording goes out regardless of
@@ -640,13 +637,6 @@ export function ChatPage() {
     },
     [chatId, classId, conversationWeek, artifact?.planId, navigate, qc, toast]
   )
-
-  /* The nav rail tightens while the document is open — see lib/shellContext.js.
-     Reported rather than reached for: AppShell owns its own width. */
-  useEffect(() => {
-    setDocOpen(expanded && !isOverlay)
-    return () => setDocOpen(false)
-  }, [expanded, isOverlay, setDocOpen])
 
   /* Which chat the in-memory transcript currently belongs to.
    *
@@ -2241,10 +2231,16 @@ export function ChatPage() {
 
   const isEmpty = messages.length === 0
   const hasArtifact = Boolean(liveArtifact && livePlan?.days?.length)
-  /* Declared before chatPane, which reads it — the three-column layout at the
-     bottom of this component consumes it too. */
-  const docOpen = expanded && hasArtifact && !isOverlay
-  const overlayOpen = expanded && hasArtifact && isOverlay
+  /* Declared before chatPane, which reads it. The document always opens as a
+     full glass overlay now (2026-08-27) — there is no more docked
+     side-by-side mode, at any width. There used to be a `docOpen` sibling
+     to this (below --xl was overlay, --xl and up docked chat+document as a
+     three-column layout), removed because a docked document narrowed the
+     chat pane's own composer anchor and its width math never actually
+     matched the overlay's, which is what produced the "glass panel doesn't
+     reach the rail" bug this replaced. One code path instead of two that
+     had to be kept in sync. */
+  const overlayOpen = expanded && hasArtifact
   const overlayExit = useExitTransition(overlayOpen, 130)
   /* While the document overlay covers the transcript, a reply has nowhere
      visible to land — so it surfaces as a toast instead. Watches the last
@@ -2292,113 +2288,6 @@ export function ChatPage() {
      matched exit. 150ms, same as the attachment chip's own removal: both
      are a small pill leaving the page, not a panel. */
   const latestPill = useExitTransition(!atBottom && !isEmpty, 150)
-
-  /* The docked split's own width, draggable via the handle rendered between
-     the two panes below. null means "use --chat-w-narrow, the CSS default";
-     a teacher who drags it gets a number instead, kept in localStorage so it
-     survives a reload rather than snapping back to 322px every time. Only
-     meaningful while docOpen — the overlay and phone layouts don't split. */
-  const [chatWidthPx, setChatWidthPx] = useState(() => {
-    try {
-      const saved = Number(localStorage.getItem('aplang.chatWidthPx'))
-      return Number.isFinite(saved) && saved > 0 ? saved : null
-    } catch {
-      return null
-    }
-  })
-  const splitRef = useRef(null)
-  const chatPaneWrapRef = useRef(null)
-
-  // Floors on both sides, not just the chat's: dragging the document down to
-  // a sliver would leave a lesson plan's own table unreadable, which is a
-  // worse failure than the drag simply stopping short of where the pointer is.
-  const clampChatWidth = useCallback((w) => {
-    const containerWidth = splitRef.current?.clientWidth ?? Infinity
-    const max = Math.max(containerWidth - 420, 320)
-    return Math.min(Math.max(w, 320), max)
-  }, [])
-
-  const persistChatWidth = useCallback((w) => {
-    try {
-      localStorage.setItem('aplang.chatWidthPx', String(w))
-    } catch {
-      /* not persisted */
-    }
-  }, [])
-
-  /* clampChatWidth only ever ran from the drag/keyboard handlers — so a width
-     dragged wide on one screen (a big external monitor, say) and persisted to
-     localStorage came back UNCLAMPED on a narrower one, and with
-     flex-shrink:0 on the chat pane (below), the artifact panel simply lost the
-     fight for space: squeezed to a sliver, or pushed off past the edge of the
-     viewport entirely, reading as "the document panel is just gone." Docked
-     mode is the only one this can happen in — the overlay/phone layouts never
-     read chatWidthPx at all — so this only needs to run when docOpen flips on
-     (a fresh mount into a narrower window than last time) and again on a live
-     resize of the SAME window while it's open. */
-  useLayoutEffect(() => {
-    if (!docOpen || chatWidthPx == null) return undefined
-    const reclamp = () => {
-      const clamped = clampChatWidth(chatWidthPx)
-      if (clamped !== chatWidthPx) {
-        setChatWidthPx(clamped)
-        persistChatWidth(clamped)
-      }
-    }
-    reclamp()
-    window.addEventListener('resize', reclamp)
-    return () => window.removeEventListener('resize', reclamp)
-  }, [docOpen, chatWidthPx, clampChatWidth, persistChatWidth])
-
-  const onResizePointerDown = useCallback(
-    (e) => {
-      e.preventDefault()
-      const el = chatPaneWrapRef.current
-      if (!el) return
-      const startX = e.clientX
-      const startWidth = el.getBoundingClientRect().width
-      let latest = startWidth
-      // Written straight to the DOM, not through setChatWidthPx, for the
-      // whole drag — every pixel of pointermove was re-rendering all of
-      // ChatPage (the message list, the full document table, everything),
-      // which is what made this feel jittery instead of smooth. The
-      // longhand, not the `transition` shorthand — React's own style object
-      // sets transitionDuration/transitionTimingFunction directly (see the
-      // JSX below), and setChatWidthPx's re-render at drop reasserts both,
-      // so this only ever needs to win for the drag itself.
-      el.style.transitionDuration = '0s'
-      const onMove = (ev) => {
-        latest = clampChatWidth(startWidth + (ev.clientX - startX))
-        el.style.flexBasis = `${latest}px`
-      }
-      const onUp = () => {
-        window.removeEventListener('pointermove', onMove)
-        window.removeEventListener('pointerup', onUp)
-        el.style.transitionDuration = ''
-        setChatWidthPx(latest)
-        persistChatWidth(latest)
-      }
-      window.addEventListener('pointermove', onMove)
-      window.addEventListener('pointerup', onUp)
-    },
-    [clampChatWidth, persistChatWidth]
-  )
-
-  // Keyboard equivalent — a drag handle with no keyboard path is a mouse-only
-  // control wearing role="separator", which WAI-ARIA's own separator pattern
-  // says must respond to the arrow keys.
-  const onResizeKeyDown = useCallback(
-    (e) => {
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-      e.preventDefault()
-      const step = e.key === 'ArrowLeft' ? -24 : 24
-      const current = chatWidthPx ?? chatPaneWrapRef.current?.getBoundingClientRect().width ?? 322
-      const next = clampChatWidth(current + step)
-      setChatWidthPx(next)
-      persistChatWidth(next)
-    },
-    [chatWidthPx, clampChatWidth, persistChatWidth]
-  )
 
   /* Auto-opens the drawer the moment a build starts or a plan exists; after
      that it is the teacher's to open or close. Fires at most ONCE per chat
@@ -2663,35 +2552,33 @@ export function ChatPage() {
              mobileShowHome's own comment) plus a single tappable title
              that opens ChatHeaderSheet, which carries the SAME controls
              the desktop row has, just given a full sheet to breathe in. */
-          !docOpen ? (
-            <>
-              <button
-                type="button"
-                className="btn-icon tap-target shrink-0"
-                aria-label="Back to your chats"
-                onClick={() => (chatId ? navigate(`/c/${classId}`) : setMobileShowHome(true))}
-              >
-                <ChevronLeft size={20} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="tap-target flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left"
-                onClick={() => setHeaderSheetOpen(true)}
-                aria-haspopup="dialog"
-                aria-expanded={headerSheetOpen}
-              >
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-                  {activeClass?.name || 'Choose a class'}
-                  {displayWeek ? ` · Week ${String(displayWeek.week).padStart(2, '0')}` : ''}
-                </span>
-                {!hasPacingGuide ? (
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden="true" />
-                ) : null}
-                <ChevronDown size={14} aria-hidden="true" className="shrink-0 text-ink-faint" />
-              </button>
-            </>
-          ) : null
-        ) : !docOpen ? (
+          <>
+            <button
+              type="button"
+              className="btn-icon tap-target shrink-0"
+              aria-label="Back to your chats"
+              onClick={() => (chatId ? navigate(`/c/${classId}`) : setMobileShowHome(true))}
+            >
+              <ChevronLeft size={20} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="tap-target flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left"
+              onClick={() => setHeaderSheetOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={headerSheetOpen}
+            >
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+                {activeClass?.name || 'Choose a class'}
+                {displayWeek ? ` · Week ${String(displayWeek.week).padStart(2, '0')}` : ''}
+              </span>
+              {!hasPacingGuide ? (
+                <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden="true" />
+              ) : null}
+              <ChevronDown size={14} aria-hidden="true" className="shrink-0 text-ink-faint" />
+            </button>
+          </>
+        ) : (
           <div className="chat-head pointer-events-auto flex min-w-0 max-w-[70%] flex-nowrap items-center">
             {/* Which prep, then which week — the two questions that together
                 answer "what is this conversation about," read as one row
@@ -2743,7 +2630,7 @@ export function ChatPage() {
               ) : null}
             </div>
           </div>
-        ) : null}
+        )}
         <div className="ml-auto flex min-w-0 items-center gap-3">
           {!isPhone && classId && classId !== 'default' && classes.length > 0 ? (
             <div className="min-w-0 shrink">
@@ -2806,7 +2693,7 @@ export function ChatPage() {
               onClick={() => (isPhone ? openDocument() : setRailOpen(true))}
             >
               <Download size={18} aria-hidden="true" />
-              {!docOpen && !railOpen ? (
+              {!railOpen ? (
                 <span
                   className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
                   aria-hidden="true"
@@ -3266,7 +3153,7 @@ export function ChatPage() {
     // fa-rise — see fa-rise-panel's own comment in base.css for why a
     // full-viewport container inside AppShell's blurred "main" panel
     // shouldn't animate opacity.
-    <div className={`flex h-full w-full min-w-0 gap-2${isPhone ? ' fa-rise-panel' : ''}`} ref={splitRef}>
+    <div className={`flex h-full w-full min-w-0 gap-2${isPhone ? ' fa-rise-panel' : ''}`}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document
@@ -3291,42 +3178,27 @@ export function ChatPage() {
                   : ''}
       </div>
 
-      <div
-        ref={chatPaneWrapRef}
-        className="flex min-w-0 flex-col transition-[flex-basis] glass-panel rounded-2xl shadow-sm overflow-hidden"
-        style={
-          docOpen
-            ? {
-                flex: `0 0 ${chatWidthPx ? `${chatWidthPx}px` : 'var(--chat-w-narrow)'}`,
-                transitionDuration: 'var(--t-base)',
-                transitionTimingFunction: 'var(--ease-out)',
-              }
-            : { flex: '1 1 0%', transitionDuration: 'var(--t-base)', transitionTimingFunction: 'var(--ease-out)' }
-        }
-      >
+      <div className="flex min-w-0 flex-1 flex-col glass-panel rounded-2xl shadow-sm overflow-hidden">
         {chatPane}
       </div>
 
-      {/* The rail docks from 768 up, not 1280. Gating it on `!isOverlay` left
-          768–1279 with NO rail at all — no Download, no "Built from", no
-          grounding count — even though 240px fits easily there (chat is 528px
-          at 768 and 520px at 1024, both above the ~460px column this redesign
-          was correcting). Below 768 it is the bar inside chatPane instead.
+      {/* The rail docks from 768 up. Below 768 it is the bar inside chatPane
+          instead (the isPhone-only ArtifactRail "bar" variant above the
+          composer).
 
-          Also excluded once overlayOpen: this drawer reserves real flex
-          width in the SAME row as chatPaneWrapRef, which is what the
-          composer's portal anchor measures (see composerAnchorRef's own
-          comment) — leaving it mounted while the full-screen
-          .artifact-overlay is open shrank that anchor to
-          `row width - drawer width`, so the "edge-to-edge, composer
-          included" overlay described just below never actually reached the
-          left edge, and the composer it was supposed to float above sat at
-          the shrunk width instead of the full one. The overlay already
-          shows everything this drawer shows (Download, "Built from",
-          grounding) at full size, so there is nothing this adds once it is
-          open — it should get out of the way, not sit underneath eating
-          width nobody can see it use. */}
-      {!isPhone && !docOpen && !overlayOpen ? (
+          Excluded once overlayOpen: this drawer reserves real flex width in
+          the SAME row as the chat pane, which is what the composer's
+          portal anchor measures (see composerAnchorRef's own comment) —
+          leaving it mounted while the full-screen .artifact-overlay is open
+          shrank that anchor to `row width - drawer width`, so the
+          "edge-to-edge, composer included" overlay described just below
+          never actually reached the left edge, and the composer it was
+          supposed to float above sat at the shrunk width instead of the
+          full one. The overlay already shows everything this drawer shows
+          (Download, "Built from", grounding) at full size, so there is
+          nothing this adds once it is open — it should get out of the way,
+          not sit underneath eating width nobody can see it use. */}
+      {!isPhone && !overlayOpen ? (
         <ArtifactDrawer
           open={railOpen}
           onToggle={() => setRailOpen((o) => !o)}
@@ -3346,26 +3218,12 @@ export function ChatPage() {
         />
       ) : null}
 
-      {docOpen ? (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize the chat and document panels"
-          aria-valuenow={Math.round(chatWidthPx ?? 322)}
-          tabIndex={0}
-          className="panel-resize-handle"
-          onPointerDown={onResizePointerDown}
-          onKeyDown={onResizeKeyDown}
-        />
-      ) : null}
-
-      {docOpen ? artifactEl : null}
-
-      {/* Below --xl the document cannot sit beside the chat, so it overlays —
-          and here the dialog semantics ArtifactPanel claims are actually true.
-          Goes edge-to-edge, composer included — the composer dock is now
-          portaled above this (see its own comment near chatPane's return),
-          so nothing needs to be carved out of the overlay's own bounds for it. */}
+      {/* The document always opens as a full glass overlay (2026-08-27) —
+          there is no more docked side-by-side mode at any width, so this is
+          the only way `artifactEl` ever renders. Goes edge-to-edge, composer
+          included — the composer dock is portaled above this (see its own
+          comment near chatPane's return), so nothing needs to be carved out
+          of the overlay's own bounds for it. */}
       {overlayExit.mounted ? (
         <>
           <button

@@ -123,17 +123,10 @@
 
   /* ── layout ────────────────────────────────────────────────────────────── */
   --sidebar-w: 220px;
-  /* The nav tightens when the document is open. Three columns plus a document
-     at 220px of chrome leaves the sheet too narrow to hold the district table
-     at a readable size, and a nav rail is the one column with slack in it. */
-  --sidebar-w-tight: 220px;
   --artifact-w: 900px;
   /* The collapsed artifact rail. Wide enough for a file name and a Download
      button, narrow enough that the chat keeps a real reading column. */
   --rail-w: 240px;
-  /* The chat, once the document is open. It stays live — you revise by talking
-     to it — but it stops being the thing you are looking at. */
-  --chat-w-narrow: 322px;
   /* The single column width the whole chat surface shares — greeting, composer,
      starter pills and message list all sit inside it, so the composer never
      changes width when it moves from the centre of an empty screen down to the

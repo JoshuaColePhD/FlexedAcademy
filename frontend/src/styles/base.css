@@ -2593,51 +2593,6 @@
     color: var(--accent-hover);
   }
 
-  /* The docked split's own divider — role="separator", not a button, so a
-     screen reader gets the WAI-ARIA separator pattern (which is also why
-     ChatPage answers its arrow-key events: a separator with no keyboard path
-     is a mouse-only control wearing the wrong role). A thin hit target
-     (10px) with a short raised nub drawn in its middle rather than a full-
-     height bar — the seam already reads as two surfaces meeting (.app-rail
-     and .doc-shell each cast their own step-down shadow into this same
-     gap); this only needs to say "and this part drags." */
-  .panel-resize-handle {
-    position: relative;
-    flex-shrink: 0;
-    width: 10px;
-    /* Was transparent — the "seam" this was meant to read as (see comment
-       above) assumed a neutral page background falling through it. Against
-       this app's own colorful gradient backdrop it read as a stray pink
-       stripe between two solid panels instead of a shadowed recess. */
-    background: var(--paper-sunken);
-    cursor: col-resize;
-    touch-action: none;
-    outline: none;
-  }
-  .panel-resize-handle::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    height: 44px;
-    width: 4px;
-    transform: translate(-50%, -50%);
-    border-radius: var(--r-full);
-    background: var(--paper-inset);
-    box-shadow:
-      inset 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.55),
-      inset -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.75);
-    transition:
-      height var(--t-fast) var(--ease),
-      background-color var(--t-fast) var(--ease);
-  }
-  .panel-resize-handle:hover::before,
-  .panel-resize-handle:focus-visible::before,
-  .panel-resize-handle:active::before {
-    height: 72px;
-    background: rgb(var(--accent-rgb) / 0.4);
-  }
-
   /* ══ THE EXPANDED DOCUMENT ════════════════════════════════════════════════
      Deliberately absent from the header: Present (nobody projects a lesson
      plan) and Edit (an edit mode is a second writer of the same artifact and
