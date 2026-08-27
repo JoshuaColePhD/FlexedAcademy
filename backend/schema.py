@@ -750,7 +750,13 @@ def validate_day(day: object, *, path: str = "day") -> tuple[dict, list[str]]:
                 path=f"{path}.{field}",
             )
 
-    for field in ("learning_targets", "during"):
+    # act_alignment is deliberately excluded: a course with no companion ACT
+    # standards block is CORRECTLY blank there on every day (see
+    # retrieval.act_sections_for's own comment) — a course-blind hard check
+    # here would reject valid plans. Its narrower, course-aware version of
+    # this same check lives in retrieval.audit_grounding instead, which knows
+    # whether ACT alignment was expected for this specific subject.
+    for field in ("learning_targets", "standards", "do_now", "during", "assessment"):
         if not str(d.get(field, "")).strip():
             raise SchemaError(
                 "day_empty_field",
