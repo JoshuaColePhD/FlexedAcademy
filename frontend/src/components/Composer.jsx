@@ -15,6 +15,16 @@ const MAX_H = 220
 // one drop/pick can fire at once. See attachFiles' own comment for why the
 // overflow gets its own toast instead of just being quietly ignored.
 const MAX_ATTACH_BATCH = 5
+// The ghost-completion overlay and the real textarea underneath it render
+// the SAME text at two different moments (an unaccepted suggestion, then
+// whatever replaces it the instant a key is pressed) — they used to each
+// hardcode their own copy of this (py-2.5/text-sm on the textarea,
+// py-[0.9375rem]/text-[0.9375rem] on the overlay), and drifted apart:
+// real typed text sat at a visibly different size and vertical position
+// than the suggestion it replaced (Josh's own "the text is not centered
+// when you type," 2026-08-27). One shared string both className templates
+// below pull from, so there's no second copy left to silently diverge.
+const COMPOSER_TEXT_METRICS = 'px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed'
 
 /* An attachment chip's own mount lifecycle — entrance was already implicit
  * (a plain array render, no fade), removal was a hard splice. This is
@@ -653,7 +663,7 @@ export function Composer({
                 // at the visible edge on one line (matching how VS Code's
                 // own inline completions behave) instead of wrapping into
                 // a line nothing can actually see.
-                className="pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-nowrap px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed"
+                className={`pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-nowrap ${COMPOSER_TEXT_METRICS}`}
               >
                 <span className="text-ink">{value}</span>
                 <span className="composer-ghost animate-slide-in-right text-ink-faint">
@@ -676,23 +686,27 @@ export function Composer({
                * top of each other. */
               placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
-              /* py-[0.9375rem]/text-[0.9375rem], not py-2.5/text-sm — those
-                 didn't match the ghost-completion overlay right above
-                 (py-[0.9375rem] text-[0.9375rem], a few lines up), so a
-                 suggested prompt sat at a different size and vertical
-                 position than the real text that replaces it the instant
-                 you start typing — the "text is not centered when you
-                 type" Josh flagged 2026-08-27. On a phone this also fixed
-                 a second thing: .composer-input's own min-height: 54px
-                 (base.css, the iOS zoom fix) was taller than one line's
-                 worth of the old 10px/10px padding + line-height, so the
-                 leftover space collected entirely below the text instead
-                 of splitting evenly — confirmed live (10px padding, 26px
-                 line-height, inside a forced 54px box, textarea content
-                 doesn't self-center). 15px top and bottom now covers that
-                 slack itself (15+15+26 = 56, past the 54px floor), so
-                 there's nothing left for min-height to unevenly pad out. */
-              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+              /* COMPOSER_TEXT_METRICS (module scope, top of file), not each
+                 side hardcoding its own copy — that's what let the real
+                 textarea (py-2.5/text-sm) and the ghost-completion overlay
+                 above it (py-[0.9375rem]/text-[0.9375rem]) drift apart in
+                 the first place: a suggested prompt sat at a different
+                 size and vertical position than the real text that
+                 replaces it the instant you start typing (Josh's own "the
+                 text is not centered when you type," 2026-08-27). One
+                 constant now, so there's no second copy left to diverge.
+                 On a phone this also fixed a second thing:
+                 .composer-input's own min-height: 54px (base.css, the iOS
+                 zoom fix) was taller than one line's worth of the old
+                 10px/10px padding + line-height, so the leftover space
+                 collected entirely below the text instead of splitting
+                 evenly — confirmed live (10px padding, 26px line-height,
+                 inside a forced 54px box, textarea content doesn't
+                 self-center). COMPOSER_TEXT_METRICS's 15px top/bottom
+                 covers that slack itself (15+15+26 = 56, past the 54px
+                 floor), so there's nothing left for min-height to
+                 unevenly pad out. */
+              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}

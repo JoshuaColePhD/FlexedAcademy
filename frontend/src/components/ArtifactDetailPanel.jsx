@@ -647,15 +647,27 @@ export function ArtifactDetailPanel({
                 </div>
               </>
             ) : (
-              <span 
-                className="doc-download opacity-45 flex items-center gap-1.5" 
-                aria-disabled="true"
+              /* Was a <span aria-disabled="true"> with a real onClick — a
+                 genuine contradiction: aria-disabled tells assistive tech
+                 "present but inoperable," while the click handler right
+                 next to it does something (explains the failure via a
+                 toast). A span also isn't in the tab order at all and
+                 has no keyboard activation, so that explanation was
+                 mouse-only. A real <button>, muted only visually
+                 (opacity-45, unchanged), is focusable and Enter/Space-
+                 activates like every other control in this row. Also
+                 fixed the label — a quiz never downloads as .docx, only
+                 QTI, same mislabel fixed on the working button above. */
+              <button
+                type="button"
+                className="doc-download opacity-45 flex items-center gap-1.5"
                 onClick={() => toast.apiError('Quiz file failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Canvas QTI file.'))}
+                aria-label="Quiz file failed to build — ask again in chat to rebuild it"
                 title="The file failed to build — ask again in chat to rebuild it"
               >
                 <Download size={14} aria-hidden="true" className="text-ink-muted" />
-                <span className="font-medium">Download as DOCX</span>
-              </span>
+                <span className="font-medium">Download QTI</span>
+              </button>
             )
           ) : null}
 
