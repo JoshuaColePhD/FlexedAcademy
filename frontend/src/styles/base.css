@@ -770,7 +770,21 @@
      right there" spatial cue a native card-stack push transition gives
      (Notes, Messages) instead of a flat cut to a new screen. Phone's own
      bottom sheet, below, resets this to full width — there's no leftward
-     motion to peek behind there, it comes up from the bottom instead. */
+     motion to peek behind there, it comes up from the bottom instead.
+
+     background/backdrop-filter below match .glass-panel's own recipe
+     exactly (same frosted look as the rail and the main panel — "the
+     white space around the lesson plan should look like the matte glass,"
+     Josh's own ask, 2026-08-27) rather than adding that class outright:
+     .glass-panel's rules are !important, and this element already has its
+     own animation/z-index/shape to keep in one place rather than split
+     across a class and an override. Deliberately still transform-only for
+     the slide itself (no opacity in the keyframes below) — a backdrop-
+     filter recomputes every frame it's translated regardless, but pairing
+     it with an opacity fade on TOP of that is what actually made the old
+     version of this panel read as jaggy (see artifact-slide-in's own
+     comment); this keeps that fix and layers the glass look on top of it,
+     not instead of it. */
   .artifact-overlay {
     position: fixed;
     top: 0;
@@ -780,15 +794,33 @@
     z-index: 50;
     display: flex;
     flex-direction: column;
-    background: var(--paper-raised);
-    box-shadow: var(--shadow-panel);
+    background-color: rgba(255, 255, 255, 0.22);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 120px 120px, auto;
+    backdrop-filter: blur(26px) saturate(160%);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.7),
+      var(--shadow-panel);
     animation: artifact-slide-in var(--t-base) var(--ease-out) both;
-    /* Left corners only — the right/top/bottom edges are flush against
-       #main's own bounds (unchanged, pre-existing), but the left edge is
-       now a real floating edge with the chat peeking past it, and a square
-       corner there read as an unfinished cut rather than a panel resting
-       in front of something. */
-    border-radius: var(--r-xl) 0 0 var(--r-xl);
+    /* All four corners (Josh's own ask, 2026-08-27 — the right two read as
+       harsh, square-cut against the rest of this app's rounded-corner
+       language everywhere else). The right/top/bottom edges sit flush
+       against #main's own bounds, and #main itself is rounded-2xl with
+       overflow-hidden, so those three corners were already being clipped
+       to a rounded silhouette by their ancestor even before this — this
+       makes the panel's own declared radius agree with that clip instead
+       of leaving it to an accident of the ancestor's own styling. */
+    border-radius: var(--r-xl);
+  }
+  :root[data-theme='dark'] .artifact-overlay {
+    background-color: rgba(15, 23, 42, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.1),
+      var(--shadow-panel);
   }
   @media (min-width: 1024px) {
     /* NOT `left: var(--sidebar-w)` (removed 2026-08-27) — this element's
@@ -829,18 +861,21 @@
     }
   }
 
-  /* transform only, deliberately no opacity — .artifact-overlay's own
-     background (--paper-raised) is fully opaque, so fading it in from
-     opacity:0 was pure polish, not load-bearing. That polish had a real
-     cost: this overlay's ancestor (AppShell's "main" panel) is
-     `bg-paper/40 backdrop-blur-3xl` — genuinely semi-transparent AND
-     blurred — so every intermediate frame of an opacity fade here forced
-     the browser to recomposite that blur underneath a moving,
-     partially-transparent layer on top of it. That's one of the most
-     expensive things a mobile GPU can be asked to do every frame, and is
-     what "viewing the lesson plan is jaggy" (reported 2026-08-26) actually
-     was. A pure transform slide costs nothing extra against a blurred
-     ancestor — the compositor just moves an already-painted layer. */
+  /* transform only, deliberately no opacity — even now that
+     .artifact-overlay's own background is the same translucent glass
+     recipe as everywhere else (see its own comment above), fading it in
+     from opacity:0 on top of that would still be pure polish, not load-
+     bearing, and it's exactly the polish that was NOT free: this overlay's
+     ancestor (AppShell's "main" panel) is `bg-paper/40 backdrop-blur-3xl`
+     — genuinely semi-transparent AND blurred — so every intermediate frame
+     of an opacity fade here forced the browser to recomposite that blur
+     underneath a moving, partially-transparent layer on top of it. That's
+     one of the most expensive things a mobile GPU can be asked to do every
+     frame, and is what "viewing the lesson plan is jaggy" (reported
+     2026-08-26) actually was. A pure transform slide costs far less
+     against a blurred ancestor — the compositor is translating an
+     already-painted layer, not re-blending its opacity into what's behind
+     it on every frame. */
   @keyframes artifact-slide-in {
     /* 48px, not the old 12px — that was tuned for a flush-edge panel with
        nothing behind it to reveal; now that the panel rests 64px short of
@@ -2643,10 +2678,21 @@
   }
   /* In the overlay form it IS the panel, so it fills it and drops the rule
      AND the shadow — there's no adjacent chat pane for the step-down to
-     read against, only the scrim behind it. */
+     read against, only the scrim behind it.
+
+     Transparent, not its own opaque --paper-sunken fill: .artifact-overlay
+     itself now carries the frosted-glass background (see its own comment,
+     below) — "the white space around the lesson plan should look like the
+     matte glass" (Josh's own ask, 2026-08-27) means THAT surface showing
+     through, not a second, flatter one painted over it. .doc-sheet (the
+     actual printed page inside, with the table and its blue header row) is
+     untouched — it keeps its own opaque --district-cell background, which
+     is what makes it read as paper resting on the glass rather than
+     dissolving into it. */
   .artifact-overlay .doc-shell {
     border-left: none;
     box-shadow: none;
+    background: transparent;
   }
   /* The one thread that carries a document's class-colour up from the
      collapsed rail's tinted file tile (see ArtifactRail.jsx) into the expanded

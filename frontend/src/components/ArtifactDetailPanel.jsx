@@ -5,7 +5,6 @@ import { api } from '../lib/api'
 import { fetchStandardsBatch } from '../lib/standardsCache'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-import { PANEL_OVERLAY, useMediaQuery } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
 import { longDay, monthKey, monthLabel, parseISO, todayISO } from '../lib/dates'
 import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
@@ -543,7 +542,10 @@ export function ArtifactDetailPanel({
   const panelRef = useRef(null)
   const titleRef = useRef(null)
   const color = classColor(classId)
-  const isOverlay = useMediaQuery(PANEL_OVERLAY)
+  // The document always covers the chat now (2026-08-27) — there is no more
+  // docked-beside-it mode at any width, so this panel is always the overlay
+  // dialog. See ArtifactPanel's own comment on the same change.
+  const isOverlay = true
   const toast = useToast()
   // Was rail-card-only — sharing a quiz meant collapsing back out of the
   // very view you were reading it in, unlike the plan viewer (ArtifactPanel),

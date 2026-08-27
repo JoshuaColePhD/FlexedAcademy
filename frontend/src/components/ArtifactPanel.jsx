@@ -6,7 +6,7 @@ import { Tooltip } from './Tooltip'
 import { Download, Loader2, TriangleAlert, X, Maximize2, Minimize2, Cloud, ChevronDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-import { PANEL_OVERLAY, useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
+import { useLayoutMode } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
 import { unitSuffix } from '../lib/planShape'
 import { LessonPlanTable } from './LessonPlanTable'
@@ -98,11 +98,12 @@ const location = useLocation()
     return () => clearTimeout(timer)
   }, [busy, artifact?.planId])
 
-  /* Two questions, two answers. `isOverlay` decides whether the document
-     COVERS the chat or docks beside it. `isPhone` decides what SHAPE the
-     document takes. They used to be the same flag, which is how the 480px
-     drawer ended up holding an 860px table. */
-  const isOverlay = useMediaQuery(PANEL_OVERLAY)
+  /* The document always covers the chat now (2026-08-27) — there is no more
+     docked-beside-it mode at any width, so this panel is always the overlay
+     dialog. `isPhone` still decides what SHAPE the document takes (days vs.
+     the district table) — that's a real, ongoing distinction; whether the
+     panel COVERS the chat stopped being one. */
+  const isOverlay = true
   const isPhone = useLayoutMode() === 'phone'
 
   // Days is the phone shape — the district table has a min-width and a
