@@ -33,6 +33,7 @@ const SettingsPage = lazyNamed(() => import('./pages/SettingsPage.jsx'), 'Settin
 const PlansPage = lazyNamed(() => import('./pages/PlansPage.jsx'), 'PlansPage')
 const HistoryPage = lazyNamed(() => import('./pages/HistoryPage.jsx'), 'HistoryPage')
 const WelcomePage = lazyNamed(() => import('./pages/onboarding/WelcomePage.jsx'), 'WelcomePage')
+const OnboardingSetupPage = lazyNamed(() => import('./pages/onboarding/OnboardingSetupPage.jsx'), 'OnboardingSetupPage')
 const AdminPage = lazyNamed(() => import('./pages/AdminPage.jsx'), 'AdminPage')
 const LandingPage = lazyNamed(() => import('./pages/LandingPage.jsx'), 'LandingPage')
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'))
@@ -181,6 +182,19 @@ function RememberClass() {
  *  "drill in, then come back" feel as a mobile settings screen, not a
  *  popover or an overlay. */
 function ClassRoutes() {
+  const { user } = useAuth()
+  const { classId } = useParams()
+  // First run, enforced here rather than trusted to whichever page linked in:
+  // WelcomePage sends a brand-new account straight to .../onboarding, but
+  // RootRedirect and AfterAuthRedirect both land on plain `/c/:classId` for
+  // an *existing* account with classes — including one that dismissed the
+  // wizard mid-flow last time and still has onboarding_seen_at unset. This
+  // is the one place every path into a class passes through, so it's the one
+  // place that has to hold the line: no account with onboarding still
+  // outstanding ever sees the app shell behind it.
+  if (user && !user.onboarding_seen_at) {
+    return <Navigate to={`/c/${classId}/onboarding`} replace />
+  }
   return (
     <>
       <RememberClass />
@@ -333,6 +347,10 @@ function Gate() {
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/shared/:id" element={<SharedPlanPage />} />
+      {/* Outside ClassRoutes/AppShell on purpose — see the guard in
+          ClassRoutes above. A first-run account must never see the sidebar
+          rail behind this, even for a frame. */}
+      <Route path="/c/:classId/onboarding" element={<OnboardingSetupPage />} />
       <Route path="/c/:classId/*" element={<ClassRoutes />} />
       {/* Gated again server-side by every request the page makes — reaching
           this route with a non-admin session gets the page shell and then a

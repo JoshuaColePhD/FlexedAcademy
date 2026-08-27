@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Loader2, Settings, Sparkles, Upload, User } from 'lucide-react'
+import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Link as LinkIcon, Loader2, Settings, Sparkles, Upload, User } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -12,6 +12,7 @@ import { errorParts } from '../lib/apiError'
 import { useTheme } from '../hooks/useTheme'
 import { useDesignSkin } from '../hooks/useDesignSkin'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
+import { ConfirmedCalendarReview } from '../components/OnboardingWizard'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { Tooltip } from '../components/Tooltip'
 import { AccountMenu } from '../components/AccountMenu'
@@ -361,48 +362,59 @@ function SchoolPicker({ value, onSaved }) {
 
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
+  const [calendarUrl, setCalendarUrl] = useState('')
 
-  const uploadCalendar = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file || !selected) return
+  const submitCalendar = async ({ file, url }) => {
+    if ((!file && !url) || !selected) return
     setUploading(true)
     try {
-      await api.uploadSchoolCalendar(selected.name, { file })
+      await api.uploadSchoolCalendar(selected.name, { file, sourceUrl: file ? undefined : url })
       toast.success('Calendar submitted', 'It is now applied to this school.')
       schoolsState.refetch()
     } catch (err) {
       toast.apiError('Could not upload the calendar', err)
     } finally {
       setUploading(false)
+      setCalendarUrl('')
       if (fileRef.current) fileRef.current.value = ''
     }
   }
+  const uploadCalendar = (e) => submitCalendar({ file: e.target.files?.[0] })
+  const submitCalendarUrl = () => submitCalendar({ url: calendarUrl.trim() })
 
-  // The wizard's own upload (api.uploadSchoolTemplate, OnboardingWizard.jsx)
-  // was the ONLY place a district's lesson-plan format could be submitted —
-  // shown once per account, or by hunting down "Take the tour again." A
-  // school picked here with no template yet had no path to fix that short
-  // of reopening a tour built for a different moment. Same trigger the
-  // wizard itself uses (template_status !== 'active'), same endpoint, so a
-  // template submitted from either place goes through identical processing.
+  // Was the ONLY place a district's lesson-plan format or calendar could be
+  // submitted after the very first upload — the moment either one reached
+  // 'active'/has_calendar, this whole block (template pill, upload button,
+  // the lot) simply stopped rendering, same gate the wizard's own SchoolStep
+  // uses (template_status !== 'active' / has_calendar === false). A district
+  // that changes its format, or a school whose calendar needs a correction
+  // months in, had no page in the app that could take a new file — short of
+  // reopening a first-run tour that assumes nothing is on file yet. Both
+  // uploads now render unconditionally once a school is selected; the label
+  // and copy just switch from "Upload" to "Replace" once something's already
+  // there. Same endpoints as the wizard either way, so a file submitted from
+  // either place is processed identically.
   const templateFileRef = useRef(null)
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
+  const [templateUrl, setTemplateUrl] = useState('')
 
-  const uploadTemplate = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file || !selected) return
+  const submitTemplate = async ({ file, url }) => {
+    if ((!file && !url) || !selected) return
     setUploadingTemplate(true)
     try {
-      await api.uploadSchoolTemplate(selected.id, { file })
+      await api.uploadSchoolTemplate(selected.id, { file, sourceUrl: file ? undefined : url })
       toast.success('Template submitted', 'We’ll have it ready shortly.')
       schoolsState.refetch()
     } catch (err) {
       toast.apiError('Could not upload the template', err)
     } finally {
       setUploadingTemplate(false)
+      setTemplateUrl('')
       if (templateFileRef.current) templateFileRef.current.value = ''
     }
   }
+  const uploadTemplate = (e) => submitTemplate({ file: e.target.files?.[0] })
+  const submitTemplateUrl = () => submitTemplate({ url: templateUrl.trim() })
 
   return (
     <div id="section-school-calendar" className="mt-5 scroll-mt-8">
@@ -455,37 +467,28 @@ function SchoolPicker({ value, onSaved }) {
           ) : null}
         </div>
       ) : null}
-      {/* The wizard (OnboardingWizard.jsx) was the only place a district's own
-          lesson-plan format could ever be submitted — shown once per account,
-          or by hunting down "Take the tour again" below. A school picked here
-          with no template on file had no path to fix that. Same trigger the
-          wizard itself uses (template_status !== 'active'), same endpoint —
-          a template submitted from either place is processed identically. */}
-      {selected && selected.template_status !== 'active' ? (
+      {/* Always rendered once a school is selected — see the comment above
+          `templateFileRef`. Copy and button label switch on whether
+          something's already on file; the upload itself is the same either
+          way. */}
+      {selected ? (
         <div className="mt-2 max-w-sm rounded-lg border border-edge bg-paper-sunken p-3">
           <p className="text-xs text-ink-soft">
-            {selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
-              ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
-              : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
+            {selected.template_status === 'active'
+              ? `${selected.name}'s lesson-plan format is on file. Upload a new one below to replace it.`
+              : selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
+                ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
+                : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
           </p>
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => templateFileRef.current?.click()}
-              disabled={uploadingTemplate}
-              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset disabled:opacity-50"
-            >
-              {uploadingTemplate ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {uploadingTemplate ? 'Reading…' : 'Upload Template'}
-            </button>
-            <input
-              ref={templateFileRef}
-              type="file"
-              accept=".pdf,.docx"
-              className="hidden"
-              onChange={uploadTemplate}
-            />
-          </div>
+          <UploadOrLink
+            uploading={uploadingTemplate}
+            label={selected.template_status === 'active' ? 'Replace Template' : 'Upload Template'}
+            fileRef={templateFileRef}
+            onFile={uploadTemplate}
+            url={templateUrl}
+            onUrlChange={setTemplateUrl}
+            onUrlSubmit={submitTemplateUrl}
+          />
         </div>
       ) : null}
       {/* A school's row and its calendar are added in different places on
@@ -507,25 +510,98 @@ function SchoolPicker({ value, onSaved }) {
             No calendar is on file for {selected.name} yet, so weeks can’t be scheduled — plans
             will build without a week or a closure to work from until one is added.
           </p>
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset disabled:opacity-50"
-            >
-              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {uploading ? 'Reading…' : 'Upload Calendar'}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.docx"
-              className="hidden"
-              onChange={uploadCalendar}
+          <UploadOrLink
+            uploading={uploading}
+            label="Upload Calendar"
+            fileRef={fileRef}
+            onFile={uploadCalendar}
+            url={calendarUrl}
+            onUrlChange={setCalendarUrl}
+            onUrlSubmit={submitCalendarUrl}
+          />
+        </div>
+      ) : selected ? (
+        /* Confirmed and on file — previously the calendar section rendered
+           nothing at all here, so once a school's first calendar was
+           confirmed there was no page left in the app that could take a
+           correction (a new school year, a snow day added after the fact)
+           short of the onboarding tour. */
+        <div className="mt-2 max-w-sm">
+          <h3 className="text-sm font-medium text-ink mb-2">School Calendar</h3>
+          <ConfirmedCalendarReview schoolId={selected.id} />
+          <div className="mt-3 rounded-lg border border-edge bg-paper-sunken p-3">
+            <p className="text-xs text-ink-soft">
+              Starting a new school year, or need to fix a date? Upload a new calendar to replace this one.
+            </p>
+            <UploadOrLink
+              uploading={uploading}
+              label="Replace Calendar"
+              fileRef={fileRef}
+              onFile={uploadCalendar}
+              url={calendarUrl}
+              onUrlChange={setCalendarUrl}
+              onUrlSubmit={submitCalendarUrl}
             />
           </div>
         </div>
+      ) : null}
+    </div>
+  )
+}
+
+/* File button OR a pasted link — same either/or contract every upload
+ * endpoint here takes (uploadSchoolCalendar/uploadSchoolTemplate, api.js),
+ * and the same split OnboardingWizard's SchoolStep already offers. Factored
+ * out once SchoolPicker needed it twice (template and calendar) rather than
+ * copy-pasted a second time. */
+function UploadOrLink({ uploading, label, fileRef, onFile, url, onUrlChange, onUrlSubmit }) {
+  return (
+    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className="neo-raised inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset disabled:opacity-50"
+      >
+        {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+        {uploading ? 'Reading…' : label}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf,.docx"
+        className="hidden"
+        onChange={onFile}
+      />
+      <span className="text-xs text-ink-subtle font-medium text-center sm:text-left">OR</span>
+      <div className="relative flex-1">
+        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
+          <LinkIcon size={13} className="text-ink-subtle" aria-hidden="true" />
+        </div>
+        <input
+          type="url"
+          placeholder="Paste Google Doc link"
+          value={url}
+          onChange={(e) => onUrlChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && url.trim()) {
+              e.preventDefault()
+              onUrlSubmit()
+            }
+          }}
+          disabled={uploading}
+          className="w-full rounded-lg border border-edge bg-paper py-2 pl-7 pr-3 text-sm text-ink outline-none transition-colors focus:border-accent placeholder:text-ink-subtle disabled:opacity-50"
+        />
+      </div>
+      {url.trim() ? (
+        <button
+          type="button"
+          onClick={onUrlSubmit}
+          disabled={uploading}
+          className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Use link
+        </button>
       ) : null}
     </div>
   )

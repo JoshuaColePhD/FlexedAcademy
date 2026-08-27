@@ -23,7 +23,13 @@ import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
 import { CalendarPreview } from './CalendarPreview'
-const ClassDocuments = lazy(() => import('../pages/ClassPage.jsx').then((module) => ({ default: module.ClassDocuments })))
+// ClassDocuments used to live inside ClassPage.jsx and was re-exported from
+// there; it later moved out to its own file (components/ClassDocuments.jsx)
+// with nothing left behind at the old path, so this lazy import silently
+// resolved to `{ default: undefined }` and crashed the DocumentsStep below
+// with "Element type is invalid" the moment a teacher reached it — every
+// first-run account, since /welcome always leaves `documents` in the plan.
+const ClassDocuments = lazy(() => import('./ClassDocuments.jsx').then((module) => ({ default: module.ClassDocuments })))
 
 
 const TIPS = [
@@ -96,12 +102,17 @@ export function SmoothHeight({ children }) {
  * (ClassPage.jsx's own ClassDetail edit form), and ClassDocuments itself
  * (also ClassPage.jsx, exported for exactly this reuse).
  *
- * Gating (who sees this, and when) lives in the caller (AppShell.jsx) — this
- * component only renders what `open` and `cls` say to. `cls` is the account's
- * current/first class; there is nothing to confirm or upload against without
- * one, so AppShell never opens this before a class exists.
+ * Gating (who sees this, and when) lives in the caller — this component only
+ * renders what `open` and `cls` say to. `cls` is the account's current/first
+ * class; there is nothing to confirm or upload against without one.
+ *
+ * `variant`: 'modal' (default) is AppShell's "take the tour again" — a dialog
+ * layered over the app the account has already been using. 'page' is the
+ * first-run case (OnboardingSetupPage.jsx): a brand-new account has no app
+ * underneath to layer over, so it renders as the page itself — no scrim, no
+ * dialog role, nothing to click past to reach a half-set-up class.
  */
-export function OnboardingWizard({ open, onClose, cls }) {
+export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const toast = useToast()
   const qc = useQueryClient()
   const { refresh } = useAuth()
@@ -273,6 +284,96 @@ export function OnboardingWizard({ open, onClose, cls }) {
 
   if (!mounted || !cls) return null
 
+  const steps = (
+    <>
+      <button
+        type="button"
+        className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
+        onClick={finish}
+        aria-label="Close"
+        title="Skip for now"
+      >
+        <X size={20} aria-hidden="true" />
+      </button>
+
+      {/* SmoothHeight was written in this file, exported from this file,
+          and then only ever used by VoiceModePanel — so the one panel it
+          was named for snapped between step heights while the panel that
+          borrowed it animated. The steps differ by a lot (a two-line
+          welcome vs. the documents list), and that snap is the single
+          most visible rough edge in the flow. */}
+      <SmoothHeight>
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div key={stepKey} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
+            {stepKey === 'welcome' ? (
+              <WelcomeStep steps={formSteps.length} onNext={goNext} />
+            ) : stepKey === 'school' ? (
+              <SchoolStep
+                eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
+                school={school}
+                setSchool={setSchool}
+                schools={schools}
+                schoolNeedsTemplate={schoolNeedsTemplate}
+                templateFile={templateFile}
+                setTemplateFile={setTemplateFile}
+                templateUrl={templateUrl}
+                setTemplateUrl={setTemplateUrl}
+                templateFileRef={templateFileRef}
+                saving={savingSchool}
+                onBack={goBack}
+                onNext={saveSchool}
+              />
+            ) : stepKey === 'class' ? (
+              <ClassStep
+                eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
+                cls={cls}
+                subject={subject}
+                setSubject={setSubject}
+                frameworks={frameworks}
+                saving={savingClass}
+                error={classError}
+                onBack={goBack}
+                onNext={saveClass}
+              />
+            ) : stepKey === 'documents' ? (
+              <DocumentsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} cls={cls} onBack={goBack} onNext={goNext} />
+            ) : stepKey === 'tips' ? (
+              <TipsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} onBack={goBack} onNext={goNext} />
+            ) : (
+              <DoneStep finishing={finishing} onFinish={finish} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </SmoothHeight>
+
+      {/* Where am I, and how much is left — the flow had no answer to
+          either beyond a line of text that was counting wrong. */}
+      {formSteps.length > 1 && formIndex >= 0 ? (
+        <div className="onboarding-progress" aria-hidden="true">
+          {formSteps.map((s, i) => (
+            <span key={s} className={i <= formIndex ? 'is-done' : undefined} />
+          ))}
+        </div>
+      ) : null}
+    </>
+  )
+
+  if (variant === 'page') {
+    /* No scrim, no dialog role: there is no app underneath to layer over yet
+       (see the comment on `variant` above) and nothing here should read as
+       dismissible-by-clicking-past, since there's nothing behind it to reach. */
+    return (
+      <div className="flex h-app w-full items-center justify-center bg-paper p-gutter">
+        <div className="onboarding-blob" aria-hidden="true" />
+        <div
+          className="relative flex max-h-full w-full max-w-2xl flex-col overflow-y-auto rounded-3xl border border-edge bg-paper-raised p-10 shadow-2xl"
+        >
+          {steps}
+        </div>
+      </div>
+    )
+  }
+
   return (
     /* No `position: absolute` override. .dialog-scrim is fixed/inset-0 for a
        reason and every other dialog in the app uses it as written — this one
@@ -297,75 +398,7 @@ export function OnboardingWizard({ open, onClose, cls }) {
         <div
           className="relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto border border-white/10 bg-paper/60 p-10 backdrop-blur-3xl"
         >
-        <button
-          type="button"
-            className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
-            onClick={finish}
-            aria-label="Close"
-            title="Skip for now"
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
-          
-          {/* SmoothHeight was written in this file, exported from this file,
-              and then only ever used by VoiceModePanel — so the one panel it
-              was named for snapped between step heights while the panel that
-              borrowed it animated. The steps differ by a lot (a two-line
-              welcome vs. the documents list), and that snap is the single
-              most visible rough edge in the flow. */}
-          <SmoothHeight>
-            <AnimatePresence mode="wait" custom={direction}>
-              <motion.div key={stepKey} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
-                {stepKey === 'welcome' ? (
-                  <WelcomeStep steps={formSteps.length} onNext={goNext} />
-                ) : stepKey === 'school' ? (
-                  <SchoolStep
-                    eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
-                    school={school}
-                    setSchool={setSchool}
-                    schools={schools}
-                    schoolNeedsTemplate={schoolNeedsTemplate}
-                    templateFile={templateFile}
-                    setTemplateFile={setTemplateFile}
-                    templateUrl={templateUrl}
-                    setTemplateUrl={setTemplateUrl}
-                    templateFileRef={templateFileRef}
-                    saving={savingSchool}
-                    onBack={goBack}
-                    onNext={saveSchool}
-                  />
-                ) : stepKey === 'class' ? (
-                  <ClassStep
-                    eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
-                    cls={cls}
-                    subject={subject}
-                    setSubject={setSubject}
-                    frameworks={frameworks}
-                    saving={savingClass}
-                    error={classError}
-                    onBack={goBack}
-                    onNext={saveClass}
-                  />
-                ) : stepKey === 'documents' ? (
-                  <DocumentsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} cls={cls} onBack={goBack} onNext={goNext} />
-                ) : stepKey === 'tips' ? (
-                  <TipsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} onBack={goBack} onNext={goNext} />
-                ) : (
-                  <DoneStep finishing={finishing} onFinish={finish} />
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </SmoothHeight>
-
-          {/* Where am I, and how much is left — the flow had no answer to
-              either beyond a line of text that was counting wrong. */}
-          {formSteps.length > 1 && formIndex >= 0 ? (
-            <div className="onboarding-progress" aria-hidden="true">
-              {formSteps.map((s, i) => (
-                <span key={s} className={i <= formIndex ? 'is-done' : undefined} />
-              ))}
-            </div>
-          ) : null}
+          {steps}
         </div>
       </div>
     </div>
@@ -652,7 +685,7 @@ function DoneStep({ finishing, onFinish }) {
   )
 }
 
-function ConfirmedCalendarReview({ schoolId }) {
+export function ConfirmedCalendarReview({ schoolId }) {
   const { data: submission, isLoading } = useQuery({
     queryKey: ['schoolCalendarConfirmed', schoolId],
     queryFn: () => api.getConfirmedSchoolCalendar(schoolId),

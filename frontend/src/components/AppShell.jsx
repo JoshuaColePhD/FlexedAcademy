@@ -610,45 +610,34 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   )
 }
 
-/* Post-login guided setup (OnboardingWizard.jsx) — mounted here rather than
- * on a specific page since it's meant to greet the account, not one route.
- * Opens automatically once per account (gated on user.onboarding_seen_at,
- * NULL meaning "never"), and again on demand via the event
- * SettingsPage's "Take the tour again" link fires (onboardingWizardBus.js).
+/* Guided setup (OnboardingWizard.jsx), reopened on demand — mounted here
+ * rather than on a specific page since it's meant to greet the account, not
+ * one route. First run itself no longer opens this as a modal over the app
+ * shell: App.jsx's ClassRoutes guard routes any account with
+ * `onboarding_seen_at` unset to the dedicated /c/:classId/onboarding page
+ * (OnboardingSetupPage.jsx, same OnboardingWizard, `variant="page"`) before
+ * AppShell — and this component — ever mounts. What's left here is only
+ * SettingsPage's "Take the tour again" link, fired via onboardingWizardBus.js.
  *
  * `cls` picks the same class TemplateBanner does when there's a classId in
- * the URL, falling back to the account's first class otherwise (e.g. a
- * forced reopen from /settings, which has no classId) — there is nothing
- * to confirm or upload against without one, so this renders nothing until a
- * class exists.
+ * the URL, falling back to the account's first class otherwise (a reopen
+ * from /settings has no classId) — there is nothing to confirm or upload
+ * against without one, so this renders nothing until a class exists.
  */
 function OnboardingWizardHost() {
-  const { user } = useAuth()
   const { classId } = useParams()
   const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
-  const [forcedOpen, setForcedOpen] = useState(false)
-  // Closing only ever flipped forcedOpen to false, which was already false
-  // for the auto-open path — autoOpen stayed true (server write hadn't been
-  // reflected in `user` yet, or failed outright) and the wizard reappeared
-  // immediately, looking like the close button did nothing. This tracks an
-  // explicit "the user is done with this" for the session, independent of
-  // whether the server-side mark-seen call ever lands.
-  const [dismissed, setDismissed] = useState(false)
+  const [open, setOpen] = useState(false)
 
-  useEffect(() => onOpenOnboardingWizard(() => { setForcedOpen(true); setDismissed(false) }), [])
+  useEffect(() => onOpenOnboardingWizard(() => setOpen(true)), [])
 
   const cls = classes.find((c) => c.id === classId) || classes[0]
-  const autoOpen = !!user && !user.onboarding_seen_at && !!cls
-  const open = !dismissed && (forcedOpen || autoOpen)
 
   return (
     <OnboardingWizard
       open={open}
       cls={cls}
-      onClose={() => {
-        setForcedOpen(false)
-        setDismissed(true)
-      }}
+      onClose={() => setOpen(false)}
     />
   )
 }
