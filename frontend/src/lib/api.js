@@ -474,6 +474,18 @@ export const api = {
       signal,
     }),
 
+  /** Self-reported token usage off a just-ended voice session's own
+   *  response.done events — see backend/routes/generate.py's voice_usage
+   *  for why this is sanity-capped rather than trusted outright. Fire-and-
+   *  forget from VoiceProvider.stopSession(); the app's own entitlement cap
+   *  is the only thing that reads this back, so a dropped report costs
+   *  nothing else. */
+  reportVoiceUsage: ({ input_tokens, output_tokens }) =>
+    request('/api/voice/usage', {
+      method: 'POST',
+      body: { input_tokens, output_tokens },
+    }),
+
   transcribe: (blob, { signal } = {}) => {
     // The filename's extension is the ONLY thing the backend uses to decide
     // the container format it hands to Whisper (see /api/transcribe: it reads

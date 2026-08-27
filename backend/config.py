@@ -63,6 +63,17 @@ class Settings(BaseSettings):
     # not a real limit anything should ever hit.
     max_tts_chars: int = 2000
 
+    # ── live voice mode (WebRTC realtime session) ───────────────────────────
+    # Was two hardcoded module constants in routes/generate.py — a model bump
+    # needed a code deploy like nowhere else in this app configures an OpenAI
+    # model. Both the ephemeral-key mint and the browser's own SDP POST have
+    # to agree on the model; generate.py's voice_session hands this value
+    # back in its response so there's still one source of truth, just a
+    # configurable one now.
+    realtime_model: str = "gpt-realtime-2.1"
+    realtime_voice: str = "alloy"
+    realtime_session_timeout_s: float = 10.0
+
     # ── email (password reset) ────────────────────────────────────────────────
     # Resend's HTTP API — no SDK, just a POST via `requests`, which is already
     # a dependency. Inert until the key is set: forgot-password degrades to

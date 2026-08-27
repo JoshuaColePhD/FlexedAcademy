@@ -420,13 +420,6 @@ def _build_chat_system_prompt(
     # prefix, which is friendlier to prompt-prefix caching.
     return system_prompt
 
-# The realtime model and voice, named once. Both the ephemeral-key request and
-# the browser's own SDP POST have to agree on the model, so the client reads
-# this value back off the session response rather than repeating the literal.
-REALTIME_MODEL = "gpt-realtime-2.1"
-REALTIME_VOICE = "alloy"
-
-
 class VoiceSessionRequest(BaseModel):
     """The body of POST /api/voice/session.
 
@@ -464,8 +457,14 @@ class VoiceSessionRequest(BaseModel):
 
 
 @router.post("/voice/session")
-def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_user)):
-    """Provisions an ephemeral WebRTC token for OpenAI's Realtime API."""
+@limiter.limit("10/minute")
+def voice_session(req: VoiceSessionRequest, request: Request, user_id: str = Depends(get_current_user)):
+    """Provisions an ephemeral WebRTC token for OpenAI's Realtime API.
+
+    Rate-limited like every other cost-relevant route here — this one had
+    been missed, and unlike a chat_stream call, each one of these is a real
+    outbound request to OpenAI before a teacher has said a word.
+    """
     require_entitlement(user_id)
     import requests
 
@@ -484,7 +483,7 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
         json={
             "session": {
                 "type": "realtime",
-                "model": REALTIME_MODEL,
+                "model": settings.realtime_model,
                 # No `instructions` here on purpose. This used to be a full
                 # _build_chat_system_prompt() call — a class lookup, a
                 # calendar walk, a custom-instructions read, a unit
@@ -537,11 +536,11 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
                             "create_response": False,
                         },
                     },
-                    "output": {"voice": REALTIME_VOICE},
+                    "output": {"voice": settings.realtime_voice},
                 },
             }
         },
-        timeout=10,
+        timeout=settings.realtime_session_timeout_s,
     )
 
     if resp.status_code != 200:
@@ -567,9 +566,40 @@ def voice_session(req: VoiceSessionRequest, user_id: str = Depends(get_current_u
         )
     return {
         "token": token,
-        "model": REALTIME_MODEL,
+        "model": settings.realtime_model,
         "expires_at": data.get("expires_at"),
     }
+
+
+class VoiceUsageRequest(BaseModel):
+    """Client-reported usage off a session's response.done events.
+
+    Everywhere else in this app, db.record_usage runs on the SAME machine
+    that made the OpenAI call, so there's nothing to trust — the number IS
+    what was spent. A voice session is different: the browser talks to
+    OpenAI directly over WebRTC, so this backend never sees the response
+    objects those calls produce, and the token counts below are only as
+    honest as the client reporting them. Sanity-capped, not verified — a
+    teacher's own browser under-reporting its own usage cap isn't a threat
+    model this app defends against anywhere else either, but an endpoint
+    that writes to the usage table without SOME ceiling is worth avoiding
+    regardless.
+    """
+
+    input_tokens: int = Field(ge=0, le=200_000)
+    output_tokens: int = Field(ge=0, le=200_000)
+
+
+@router.post("/voice/usage")
+@limiter.limit("60/minute")
+def voice_usage(req: VoiceUsageRequest, request: Request, user_id: str = Depends(get_current_user)):
+    """Records what a just-ended voice session cost, so it counts against
+    the same rolling entitlement cap chat_stream and every generation call
+    already feed (db.tokens_used_since sums across every `kind`) — before
+    this, the audio-transport half of a voice session was invisible to the
+    app's own cost accounting entirely."""
+    db.record_usage(user_id, "realtime_voice", req.input_tokens, req.output_tokens)
+    return {"ok": True}
 
 
 @router.post("/chat_stream")
@@ -826,10 +856,14 @@ def add_message(chat_id: str, body: dict, user_id: str = Depends(get_current_use
     client_id = body.get("client_id")
     if client_id is not None and not isinstance(client_id, str):
         raise AppError("bad_client_id", "client_id must be a string.", status=400)
+    source = body.get("source")
+    if source is not None and source not in ("voice",):
+        raise AppError("bad_source", f"Unknown message source {source!r}.", status=400)
     return db.add_message(
         chat_id,
         role,
         str(body.get("content") or ""),
         body.get("plan_id"),
         client_id=client_id,
+        source=source,
     )

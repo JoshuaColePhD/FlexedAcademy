@@ -3005,6 +3005,15 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS beta_features BOOLEAN NOT NULL DEFAULT false;
     """,
+    # ── 54: which messages came from Voice Mode ─────────────────────────────────
+    #
+    # NULL for every message typed as text (which is all of them until now);
+    # 'voice' for one whose content is Voice Mode's speech-to-text output —
+    # see add_message's own docstring for why this is worth tracking
+    # separately rather than storing spoken and typed content identically.
+    """
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS source TEXT;
+    """,
 ]
 
 
@@ -4793,37 +4802,45 @@ def add_message(
     content: str,
     plan_id: str | None = None,
     client_id: str | None = None,
+    source: str | None = None,
 ) -> dict:
     """Not user-scoped: callers must already have verified (via get_chat) that
     this chat belongs to the requesting user. Messages have no user_id column
-    of their own — ownership lives entirely on the parent chat."""
+    of their own — ownership lives entirely on the parent chat.
+
+    `source` is NULL for ordinary typed messages, 'voice' for one whose
+    content came from Voice Mode's speech-to-text (see ChatPage.jsx's
+    submit(), which sets it from options.voiceTurn) — a spoken aside is
+    plausibly less edited/considered than something a teacher typed and
+    reread, so this exists to let retention or export policy treat the two
+    differently later, without having to guess after the fact."""
     with borrow() as conn:
         with conn.cursor() as cur:
             if client_id:
                 cur.execute(
                     """
-                    INSERT INTO messages (chat_id, role, content, plan_id, client_id, created_at)
-                    VALUES (%s,%s,%s,%s,%s,%s)
+                    INSERT INTO messages (chat_id, role, content, plan_id, client_id, source, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (chat_id, client_id) WHERE client_id IS NOT NULL DO NOTHING
-                    RETURNING id, chat_id, role, content, plan_id, client_id, created_at
+                    RETURNING id, chat_id, role, content, plan_id, client_id, source, created_at
                     """,
-                    (chat_id, role, content, plan_id, client_id[:128], now()),
+                    (chat_id, role, content, plan_id, client_id[:128], source, now()),
                 )
                 row = cur.fetchone()
                 if row is None:
                     cur.execute(
-                        "SELECT id, chat_id, role, content, plan_id, client_id, created_at FROM messages WHERE chat_id = %s AND client_id = %s",
+                        "SELECT id, chat_id, role, content, plan_id, client_id, source, created_at FROM messages WHERE chat_id = %s AND client_id = %s",
                         (chat_id, client_id[:128]),
                     )
                     row = cur.fetchone()
             else:
                 cur.execute(
                     """
-                    INSERT INTO messages (chat_id, role, content, plan_id, created_at)
-                    VALUES (%s,%s,%s,%s,%s)
-                    RETURNING id, chat_id, role, content, plan_id, client_id, created_at
+                    INSERT INTO messages (chat_id, role, content, plan_id, source, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    RETURNING id, chat_id, role, content, plan_id, client_id, source, created_at
                     """,
-                    (chat_id, role, content, plan_id, now()),
+                    (chat_id, role, content, plan_id, source, now()),
                 )
                 row = cur.fetchone()
             cur.execute("UPDATE chats SET updated_at = %s WHERE id = %s", (now(), chat_id))
