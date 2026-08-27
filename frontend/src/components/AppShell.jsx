@@ -35,6 +35,12 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(chat.title)
+  // Tracks which side of the reveal threshold the CURRENT drag gesture is
+  // on, so the haptic tick below fires once per crossing instead of once
+  // per pixel of drag. Seeded from swipeOpen (not always false) so a drag
+  // that starts already-open and never crosses back doesn't fire a tick on
+  // release for a threshold it never actually re-crossed.
+  const crossedRef = useRef(false)
 
   const commit = () => {
     const next = draft.trim()
@@ -177,6 +183,24 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
           dragMomentum={false}
           animate={{ x: swipeOpen ? -SWIPE_ACTIONS_WIDTH : 0 }}
           transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+          onDragStart={() => {
+            crossedRef.current = swipeOpen
+          }}
+          onDrag={(_e, info) => {
+            // A short tick right as the drag crosses into "will reveal"
+            // territory — the same real-time feedback iOS's own swipe
+            // actions give, rather than only confirming the choice after
+            // the finger's already lifted (onDragEnd, below). Guarded on
+            // vibrate existing at all: iOS Safari has never implemented the
+            // Vibration API (desktop Safari and iOS both lack it), so this
+            // silently no-ops there instead of throwing — Android Chrome and
+            // most other touch browsers do support it.
+            const past = info.offset.x < -SWIPE_ACTIONS_WIDTH / 2
+            if (past !== crossedRef.current) {
+              crossedRef.current = past
+              if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10)
+            }
+          }}
           onDragEnd={(_e, info) => {
             // Past the halfway point, or flicked with real velocity —
             // either commits to fully open/closed rather than resting

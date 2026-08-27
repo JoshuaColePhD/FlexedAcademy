@@ -199,11 +199,22 @@ class Settings(BaseSettings):
 
     # Automated builder codegen (backend/builder/codegen.py) — generates and
     # visually verifies a declarative layout spec for a new school instead of
-    # requiring a hand-written {school_id}_builder.py. Off by default: this is
-    # new, unproven infrastructure (a new vision-model trust boundary, a new
-    # system dependency for rendering) meant for a staged, one-school-at-a-time
-    # pilot, not turned on for every school the moment it's deployed.
-    builder_codegen_enabled: bool = False
+    # requiring a hand-written {school_id}_builder.py. Turned on 2026-08-26
+    # for the staged, one-school-at-a-time pilot the comment above always
+    # described — generic_renderer.py's cell_source shape bug (the one that
+    # would have KeyError'd on the first real generated spec) is fixed and
+    # covered by backend/builder/test_generic_renderer.py now, so this is
+    # safe to leave live: turning it on only starts an idle worker loop
+    # (backend/server.py's _builder_codegen_worker_loop) that polls for
+    # queued jobs and does nothing until a real template upload's analysis
+    # succeeds (template_intake.run_and_persist is the only enqueue point).
+    # No school currently in `schools` has gotten that far yet (all
+    # template_status='pending'), so this has zero cost or behavior change
+    # today — it just means the NEXT real school template upload actually
+    # gets carried through instead of silently doing nothing. Still gated
+    # behind mandatory admin approval before any generated spec reaches a
+    # teacher (routes/admin.py's /builder-codegen/{job_id}/approve).
+    builder_codegen_enabled: bool = True
     # A vision-capable model, distinct from openai_model (text-only) — used
     # only by llm.judge_builder_render to compare a generated render against
     # the real uploaded template.
