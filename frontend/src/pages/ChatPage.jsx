@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ArrowDown, CheckCircle2, Clock, Download, TriangleAlert, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, TriangleAlert, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -39,6 +39,8 @@ import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
+import { MobileChatHome } from '../components/MobileChatHome'
+import { ChatHeaderSheet } from '../components/ChatHeaderSheet'
 
 /* One chat, one plan.
  *
@@ -240,6 +242,22 @@ export function ChatPage() {
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
   const isOverlay = useMediaQuery(PANEL_OVERLAY)
+  /* Phone landing screen (MobileChatHome — chats list, Workspace Tools,
+     Settings) instead of this page's own empty-chat Greeting, whenever
+     there's no chat open. "New plan" from that screen has nowhere to
+     NAVIGATE to (it's already sitting on this exact URL — chatId is
+     undefined either way), so it flips this instead; the header's back
+     button flips it back. Reset to true whenever chatId clears (including
+     on mount) — chatId-only changes don't remount ChatPage, so without
+     this, navigating from a chat back to the index route would leave
+     whatever this was mid-conversation, not necessarily the list. */
+  const [mobileShowHome, setMobileShowHome] = useState(true)
+  useEffect(() => {
+    if (!chatId) setMobileShowHome(true)
+  }, [chatId])
+  // ChatHeaderSheet — phone's stand-in for the header row's own
+  // ClassSwitcher/WeekPicker/status, given room to breathe there instead.
+  const [headerSheetOpen, setHeaderSheetOpen] = useState(false)
   const { classes, activeClass } = useActiveClass()
   // useAuth().user is deliberately the small {id,email,name} shape (see
   // authContext.js) — beta_features lives on the fuller /api/auth/me payload,
@@ -2582,7 +2600,44 @@ export function ChatPage() {
           it, not floating apart from the rest of the pane's own left
           margin. */}
       <div className="flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10">
-        {!docOpen ? (
+        {isPhone ? (
+          /* The old dense row (ClassSwitcher + a pacing dot + WeekPicker + a
+             calendar dot, all inline) doesn't fit a phone width without
+             everything shrinking past readable — this is a back button (to
+             MobileChatHome, the phone-only chats list ChatPage renders
+             instead of this view when there's no chat open — see
+             mobileShowHome's own comment) plus a single tappable title
+             that opens ChatHeaderSheet, which carries the SAME controls
+             the desktop row has, just given a full sheet to breathe in. */
+          !docOpen ? (
+            <>
+              <button
+                type="button"
+                className="btn-icon tap-target shrink-0"
+                aria-label="Back to your chats"
+                onClick={() => (chatId ? navigate(`/c/${classId}`) : setMobileShowHome(true))}
+              >
+                <ChevronLeft size={20} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="tap-target flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left"
+                onClick={() => setHeaderSheetOpen(true)}
+                aria-haspopup="dialog"
+                aria-expanded={headerSheetOpen}
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+                  {activeClass?.name || 'Choose a class'}
+                  {displayWeek ? ` · Week ${String(displayWeek.week).padStart(2, '0')}` : ''}
+                </span>
+                {!hasPacingGuide ? (
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden="true" />
+                ) : null}
+                <ChevronDown size={14} aria-hidden="true" className="shrink-0 text-ink-faint" />
+              </button>
+            </>
+          ) : null
+        ) : !docOpen ? (
           <div className="chat-head pointer-events-auto flex min-w-0 max-w-[70%] flex-nowrap items-center">
             {/* Which prep, then which week — the two questions that together
                 answer "what is this conversation about," read as one row
@@ -2636,7 +2691,7 @@ export function ChatPage() {
           </div>
         ) : null}
         <div className="ml-auto flex min-w-0 items-center gap-3">
-          {classId && classId !== 'default' && classes.length > 0 ? (
+          {!isPhone && classId && classId !== 'default' && classes.length > 0 ? (
             <div className="min-w-0 shrink">
               <WeekPicker
                 options={weekOptions}
@@ -2647,7 +2702,7 @@ export function ChatPage() {
               />
             </div>
           ) : null}
-          {calendar?.school?.name ? (
+          {!isPhone && calendar?.school?.name ? (
             !calendar.school.has_calendar ? (
               <Tooltip
                 interactive
@@ -2668,7 +2723,7 @@ export function ChatPage() {
                   <span className="truncate text-xs font-medium text-ink-muted">
                     {calendar.school.name}
                   </span>
-                  <div 
+                  <div
                     className="h-2 w-2 shrink-0 rounded-full bg-red-500"
                     aria-hidden="true"
                   />
@@ -2707,6 +2762,22 @@ export function ChatPage() {
           ) : null}
         </div>
       </div>
+
+      {isPhone ? (
+        <ChatHeaderSheet
+          open={headerSheetOpen}
+          onClose={() => setHeaderSheetOpen(false)}
+          classes={classes}
+          activeClass={activeClass}
+          classId={classId}
+          hasPacingGuide={hasPacingGuide}
+          calendar={calendar}
+          weekOptions={weekOptions}
+          conversationWeek={conversationWeek}
+          changeWeek={changeWeek}
+          busy={busy}
+        />
+      ) : null}
 
       <TemplateBanner />
 
@@ -3101,6 +3172,15 @@ export function ChatPage() {
       )}
     </div>
   )
+
+  /* The phone landing screen — see mobileShowHome's own comment above. After
+     every hook (Rules of Hooks), before the real return; chatPane above
+     still gets computed even though it's discarded here, which costs a
+     render nobody sees rather than risk moving hook-bearing code around
+     this file to avoid it. */
+  if (isPhone && !chatId && mobileShowHome) {
+    return <MobileChatHome onNavigate={() => setMobileShowHome(false)} />
+  }
 
   /* The chat pane keeps the SAME slot in the SAME parent in every state — only
      its width changes. Moving it between containers would remount the Composer,

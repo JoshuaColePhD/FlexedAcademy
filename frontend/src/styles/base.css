@@ -1044,6 +1044,32 @@
     box-shadow: var(--shadow-pop);
     animation: artifact-sheet-in var(--t-base) var(--ease-out) both;
   }
+  /* ChatHeaderSheet.jsx — phone-only. Same bottom-sheet recipe as
+     .cite-sheet just above (this app doesn't share the recipe as one
+     class; each caller's z-index/padding/content needs differ enough
+     that copying it has stayed simpler than abstracting it), sized for
+     form controls (ClassSwitcher, WeekPicker) rather than read-only
+     standard text. */
+  .chat-header-sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 60;
+    max-height: var(--sheet-max-h);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--sp-5) var(--gutter) calc(var(--sp-5) + var(--safe-b));
+    background: var(--paper-raised);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
+    box-shadow: var(--shadow-pop);
+    animation: artifact-sheet-in var(--t-base) var(--ease-out) both;
+  }
+  .chat-header-sheet.is-closing {
+    animation-name: artifact-sheet-out;
+    animation-duration: var(--t-fast);
+    animation-timing-function: var(--ease);
+  }
+
   .cite-sheet .cite-pop-code {
     display: block;
     margin-bottom: var(--sp-2);

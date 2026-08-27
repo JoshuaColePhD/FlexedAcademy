@@ -122,7 +122,11 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate }) {
   )
 }
 
-function Rail({ onNavigate, onClose, collapsed, onToggleCollapse }) {
+/* Exported so ChatPage.jsx can reuse it as the phone-only "home" screen —
+   chats list + Workspace Tools + Settings, the same content as the desktop
+   sidebar, landing where a teacher currently gets dropped straight into an
+   empty chat instead. See MobileChatHome.jsx. */
+export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra }) {
   const { entitlement } = useAuth()
   const { classId } = useParams()
   const location = useLocation()
@@ -220,8 +224,16 @@ function Rail({ onNavigate, onClose, collapsed, onToggleCollapse }) {
           sits inline beside WeekPicker in the chat's own top bar (ChatPage.jsx),
           since that's the one control it always appears next to. Moving it out
           lets "New plan" — the one thing a teacher opens this app to do — sit
-          right under the logo instead of one row down. */}
-      
+          right under the logo instead of one row down.
+
+          headerExtra puts it back, ONLY for MobileChatHome: that screen IS
+          the one place left with no chat top bar of its own to carry a
+          class switcher, since it's what a teacher sees BEFORE opening any
+          chat. Undefined everywhere else (the desktop dock, the tablet
+          drawer), so neither gets a second switcher next to the one already
+          inline in ChatPage's header. */}
+      {headerExtra ? <div className="px-2 pb-2">{headerExtra}</div> : null}
+
 
       <div className="px-2 pb-1 pt-1">
 
