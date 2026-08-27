@@ -65,8 +65,8 @@ def _validate_subject(subject: str) -> None:
     Framework dropdown is built from (misc.known_course_ids) — so a class
     can never exist with a subject the generator can't ground.
     """
-    from . import misc
     from .. import service
+    from . import misc
 
     code = service.subject_code(subject)
     if code not in misc.known_course_ids():
