@@ -120,6 +120,16 @@
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  /* --ease-out's own slope is already near-vertical at t=0 — full speed
+     from the first frame, all the deceleration loaded at the end. Fine for
+     a small element, but a full-panel slide starting at full speed with no
+     ramp-up is what reads as a snap instead of a glide no matter how long
+     the duration is. This ramps up gently at the start too, unlike
+     --ease-spring's overshoot (>1 partway through, meaning the panel would
+     travel past its resting position before settling back) — right for a
+     bouncy pop-in, an odd fit for a full-panel slide meant to read as
+     calm, not springy. */
+  --ease-glide: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* ── layout ────────────────────────────────────────────────────────────── */
   --sidebar-w: 220px;

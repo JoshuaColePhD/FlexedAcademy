@@ -478,6 +478,20 @@ export function ChatPage() {
     // sync below) — this is a fallback for the first paint, before that sync
     // has run once, so an unstyled 0x0-but-static div can't eat a click.
     el.style.pointerEvents = 'none'
+    // left/width, not top: opening the document unmounts ArtifactDrawer
+    // (see its own comment near chatPane's return), which widens the chat
+    // pane — and this anchor along with it — in the SAME instant the
+    // overlay starts its own slide. Without a transition here that read as
+    // the composer visibly changing shape a beat before the glass panel
+    // caught up to explain why, instead of the "floating, unmoved" feel a
+    // portaled dock is supposed to give (Josh's own ask, 2026-08-27). Same
+    // 520ms/--ease-glide as .artifact-overlay's own entrance (base.css) —
+    // matching curves is what makes these read as one motion instead of
+    // two unrelated things that happen to start at the same time. top is
+    // left alone on purpose — that one only changes from the composer's
+    // OWN content growing (an attachment chip, the textarea autosizing),
+    // where instant is what typing should feel like.
+    el.style.transition = `left 520ms var(--ease-glide), width 520ms var(--ease-glide)`
     return el
   })
   useEffect(() => {
