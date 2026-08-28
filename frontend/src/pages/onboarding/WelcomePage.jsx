@@ -8,7 +8,7 @@ import { qk } from '../../lib/queryKeys'
 import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
-import { GRADES, DEFAULT_GRADE, gradeLabel } from '../../lib/grades'
+import { GRADES, gradeLabel } from '../../lib/grades'
 /* The one grade vocabulary. This file used to declare its own copy, with a
    comment explaining that the VALUE and the LABEL must stay apart because
    sending '11th' where '11' belongs made the first class a teacher ever
@@ -43,6 +43,14 @@ import { GRADES, DEFAULT_GRADE, gradeLabel } from '../../lib/grades'
  * replace this placeholder the same way the one curated school was added. */
 const GENERIC_SCHOOL = 'generic'
 
+// Not a real grade — GRADES/DEFAULT_GRADE (lib/grades.js) stay the single
+// canonical vocabulary for what actually gets SAVED; this is a browse-only
+// sentinel so a teacher isn't forced to guess a grade just to start
+// looking. Never sent to the backend: submit() below blocks on it exactly
+// like it already blocks on no subject chosen, so the grade-11-default
+// correctness bug this session fixed can't sneak back in through here.
+const ALL_GRADES = 'all'
+
 /* First run.
  *
  * Everything here already existed as an endpoint and as a field somewhere on My
@@ -64,7 +72,7 @@ export function WelcomePage() {
   const toast = useToast()
 
   const [subject, setSubject] = useState('')
-  const [grade, setGrade] = useState(DEFAULT_GRADE)
+  const [grade, setGrade] = useState(ALL_GRADES)
   const [saving, setSaving] = useState(false)
 
   const { data: frameworks = [] } = useQuery({
@@ -80,7 +88,7 @@ export function WelcomePage() {
   // "middle"/"high" search synonyms in lib/frameworks.js), so filtering the
   // list the picker sees is a plain narrow, not a new capability.
   const gradeFilteredFrameworks = useMemo(
-    () => frameworks.filter((f) => (f.grades || []).includes(Number(grade))),
+    () => (grade === ALL_GRADES ? frameworks : frameworks.filter((f) => (f.grades || []).includes(Number(grade)))),
     [frameworks, grade],
   )
 
@@ -98,6 +106,10 @@ export function WelcomePage() {
     e.preventDefault()
     if (!subject) {
       toast.error('Pick a course first', 'It decides which standards your plans are grounded in.')
+      return
+    }
+    if (grade === ALL_GRADES) {
+      toast.error('Pick a grade', 'It decides which standards and language fit your students.')
       return
     }
     setSaving(true)
@@ -186,8 +198,15 @@ export function WelcomePage() {
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4 md:px-10">
               <p className="mb-2 shrink-0 text-xs text-ink-muted">
-                Showing {gradeFilteredFrameworks.length} course{gradeFilteredFrameworks.length === 1 ? '' : 's'} for{' '}
-                <span className="font-medium text-ink">{gradeLabel(grade) || grade}</span>.
+                Showing {gradeFilteredFrameworks.length} course{gradeFilteredFrameworks.length === 1 ? '' : 's'}
+                {grade === ALL_GRADES ? (
+                  '.'
+                ) : (
+                  <>
+                    {' '}
+                    for <span className="font-medium text-ink">{gradeLabel(grade) || grade}</span>.
+                  </>
+                )}
               </p>
               <FrameworkPicker
                 frameworks={gradeFilteredFrameworks}
@@ -204,6 +223,7 @@ export function WelcomePage() {
                       onChange={(e) => setGrade(e.target.value)}
                       className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-3 pr-7 text-sm font-medium text-ink outline-none focus:border-accent"
                     >
+                      <option value={ALL_GRADES}>All grades</option>
                       {GRADES.map((g) => (
                         <option key={g.value} value={g.value}>
                           {g.label}
@@ -217,11 +237,15 @@ export function WelcomePage() {
 
             <div className="flex shrink-0 items-center justify-between gap-4 border-t border-edge bg-paper-raised px-6 py-4 md:px-10">
               <span className="min-w-0 truncate text-sm text-ink-muted">
-                {selectedFramework ? `Selected: ${selectedFramework.label}` : 'Choose a course above to continue.'}
+                {!selectedFramework
+                  ? 'Choose a course above to continue.'
+                  : grade === ALL_GRADES
+                    ? `Selected: ${selectedFramework.label} — pick a grade too.`
+                    : `Selected: ${selectedFramework.label}`}
               </span>
               <button
                 type="submit"
-                disabled={!subject}
+                disabled={!subject || grade === ALL_GRADES}
                 className="flex shrink-0 min-h-touch-lg items-center justify-center gap-2 rounded-lg bg-ink px-6 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Open my year

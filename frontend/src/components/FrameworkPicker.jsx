@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Check, ChevronsUpDown } from 'lucide-react'
-import { findFramework, groupFrameworks, matchesFramework, verifiedPct } from '../lib/frameworks'
+import { findFramework, groupFrameworks, matchesFramework } from '../lib/frameworks'
 import { useExitTransition } from '../hooks/useExitTransition'
 
 export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover', beforeInput }) {
@@ -243,9 +243,6 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
                               <span className="block truncate text-sm text-ink font-medium">{fw.label}</span>
                               <span className="block text-[11px] text-ink-muted">
                                 {fw.chunks.toLocaleString()} standards
-                                {verifiedPct(fw) !== null && verifiedPct(fw) < 100
-                                  ? ` · ${verifiedPct(fw)}% verified`
-                                  : ''}
                               </span>
                             </span>
                             {isSelected ? (
