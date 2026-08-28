@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -190,20 +190,36 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
    * their own materials, and the tips — and someone re-running this from
    * Settings sees only what is genuinely still blank.
    */
-  const [plan, setPlan] = useState(['welcome', 'documents', 'tips', 'done'])
-  useEffect(() => {
-    /* Recomputed only while still on the welcome screen. `schools` is an async
-     * query, so schoolNeedsTemplate can flip from false to true a beat after
-     * this opens, and the plan has to be allowed to pick that up — but once
-     * the teacher has started moving, the shape of the flow is settled and
-     * must not shift under them. */
-    if (!open || stepKey !== 'welcome') return
+  /* Live, not stateful — computed fresh every render from the current
+   * school/schoolNeedsTemplate/subject rather than committed via an effect.
+   * `schools` is an async query, so schoolNeedsTemplate can flip from false
+   * to true partway through a render (the same render that flips
+   * schoolsLoading to false) — a version of this that stored the plan in
+   * state and recomputed it from a useEffect showed the OLD count for one
+   * extra render after `ready` had already gone true (effects commit a
+   * render behind the state change that triggered them), which is exactly
+   * the "says Two, then jumps to Three" bug this replaced. Computing it
+   * inline instead means the count and the flag that gates showing it
+   * always agree on the very first render where the school data is known. */
+  const livePlan = useMemo(() => {
     const next = ['welcome']
     if (!school || schoolNeedsTemplate) next.push('school')
     if (!subject) next.push('class')
     next.push('documents', 'tips', 'done')
-    setPlan((prev) => (prev.length === next.length && prev.every((s, i) => s === next[i]) ? prev : next))
-  }, [open, stepKey, school, schoolNeedsTemplate, subject])
+    return next
+  }, [school, schoolNeedsTemplate, subject])
+
+  /* Frozen the moment the teacher leaves welcome — once they've started
+   * moving through the flow, the shape must not shift under them even if
+   * school/subject change later (e.g. the SchoolStep itself edits `school`). */
+  const [frozenPlan, setFrozenPlan] = useState(null)
+  useEffect(() => {
+    if (!open) { setFrozenPlan(null); return }
+    if (stepKey === 'welcome') { setFrozenPlan(null); return }
+    setFrozenPlan((prev) => prev || livePlan)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, stepKey])
+  const plan = frozenPlan || livePlan
 
   const goTo = (next) => {
     setDirection(plan.indexOf(next) > plan.indexOf(stepKey) ? 1 : -1)
