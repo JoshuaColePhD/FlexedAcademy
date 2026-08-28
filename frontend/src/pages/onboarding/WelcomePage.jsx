@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
 import { qk } from '../../lib/queryKeys'
@@ -183,6 +183,10 @@ export function WelcomePage() {
   }
 
   const selectedFramework = gradeFilteredFrameworks.find((f) => f.id === subject)
+  // First name only — "Let's set up your year, Joshua Cole" reads like a
+  // mail-merge, not a greeting. Falls back to no name at all rather than
+  // "there" or similar filler when a Google account has no name on file.
+  const firstName = user?.name?.trim().split(/\s+/)[0] || ''
 
   /* h-app, not min-h-app: index.html's <body> is overflow-hidden — every
      page has to make its OWN content scrollable rather than relying on
@@ -223,11 +227,13 @@ export function WelcomePage() {
             onSubmit={submit}
             className="flex h-full w-full flex-col overflow-hidden"
           >
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-edge bg-paper-raised px-6 py-4 md:px-10">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-edge bg-paper-raised px-6 py-5 md:px-10 md:py-6">
               <div>
-                <h1 className="text-xl font-semibold tracking-display text-ink">Let’s set up your year</h1>
+                <h1 className="text-xl font-semibold tracking-display text-ink">
+                  Let’s set up your year{firstName ? `, ${firstName}` : ''}
+                </h1>
                 <p className="text-xs text-ink-muted">
-                  Pick a grade, then the course you teach — together they decide which standards ground every plan.
+                  Tell us who and what you teach, and we’ll ground every plan in the right standards.
                 </p>
               </div>
               {/* Same mark as the app's own sidebar (AppShell.jsx) — this
@@ -245,7 +251,12 @@ export function WelcomePage() {
 
             <span className="sr-only" role="status" aria-live="polite">{gradeAnnouncement}</span>
 
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4 md:px-10">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.08 }}
+              className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-5 md:px-10 md:py-6"
+            >
               <p className="mb-2 shrink-0 text-xs text-ink-muted">
                 Showing {gradeFilteredFrameworks.length} course{gradeFilteredFrameworks.length === 1 ? '' : 's'}
                 {grade === ALL_GRADES ? (
@@ -284,16 +295,37 @@ export function WelcomePage() {
                   </label>
                 }
               />
-            </div>
+            </motion.div>
 
-            <div className="flex shrink-0 items-center justify-between gap-4 border-t border-edge bg-paper-raised px-6 py-4 md:px-10">
-              <span className="min-w-0 truncate text-sm text-ink-muted">
-                {!selectedFramework
-                  ? 'Choose a course above to continue.'
-                  : grade === ALL_GRADES
-                    ? `Selected: ${selectedFramework.label} — pick a grade too.`
-                    : `Selected: ${selectedFramework.label}`}
-              </span>
+            <div className="flex shrink-0 items-center justify-between gap-4 border-t border-edge bg-paper-raised px-6 py-5 md:px-10 md:py-6">
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={selectedFramework ? selectedFramework.id : 'none'}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18 }}
+                  className="flex min-w-0 items-center gap-1.5"
+                >
+                  {selectedFramework ? (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+                      className="shrink-0"
+                    >
+                      <CheckCircle2 size={15} className="text-ok" aria-hidden="true" />
+                    </motion.span>
+                  ) : null}
+                  <span className="min-w-0 truncate text-sm text-ink-muted">
+                    {!selectedFramework
+                      ? 'Choose a course above to continue.'
+                      : grade === ALL_GRADES
+                        ? `Nice pick — ${selectedFramework.label}. Now grab a grade too.`
+                        : `Nice pick — ${selectedFramework.label} is ready to go.`}
+                  </span>
+                </motion.span>
+              </AnimatePresence>
               <button
                 type="submit"
                 disabled={!subject || grade === ALL_GRADES}
