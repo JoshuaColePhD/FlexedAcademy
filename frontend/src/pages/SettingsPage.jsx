@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Settings, Sparkles, User } from 'lucide-react'
+import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Loader2, Settings, Sparkles, User } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -456,6 +456,11 @@ function SchoolPicker({ value, onSaved }) {
             <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
               Template Status: Training AI...
             </span>
+          ) : selected.builder_readiness === 'in_progress' ? (
+            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20">
+              <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+              Template Status: Drafting now...
+            </span>
           ) : selected.builder_readiness === 'ready_unverified' ? (
             <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
               Template Status: AI Draft (in review)
@@ -480,11 +485,13 @@ function SchoolPicker({ value, onSaved }) {
           <p className="text-xs text-ink-soft">
             {selected.template_status === 'active'
               ? `${selected.name}'s lesson-plan format is on file. Upload a new one below to replace it.`
-              : selected.builder_readiness === 'ready_unverified'
-                ? `${selected.name}'s AI-drafted format is already in use while we finish reviewing it — upload a corrected one below if something looks off.`
-                : selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
-                  ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
-                  : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
+              : selected.builder_readiness === 'in_progress'
+                ? `We're drafting an AI version of ${selected.name}'s format right now — usually just a few minutes. No need to upload again.`
+                : selected.builder_readiness === 'ready_unverified'
+                  ? `${selected.name}'s AI-drafted format is already in use while we finish reviewing it — upload a corrected one below if something looks off.`
+                  : selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
+                    ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
+                    : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
           </p>
           <UploadDropzone
             uploading={uploadingTemplate}

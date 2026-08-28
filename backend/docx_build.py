@@ -58,15 +58,17 @@ def _custom_builder_school_ids() -> set[str]:
 
 
 def bulk_builder_readiness(school_rows: list[dict]) -> dict[str, str]:
-    """{school_id: "ready" | "ready_unverified" | "pending" | "blocked"} for
-    a batch of already-fetched school rows — the signal
+    """{school_id: "ready" | "ready_unverified" | "in_progress" | "pending"
+    | "blocked"} for a batch of already-fetched school rows — the signal
     frontend/ChatPage.jsx's TemplateBanner uses to know whether downloads
     for this school will use its real template, its real template but not
-    yet content-reviewed ('ready_unverified' — see below), silently fall
-    back to the generic one (still 'pending'), or are currently BROKEN:
-    `template_status` reached 'active' (analysis auto-activation, which
-    only ever judges analysis quality) before a real builder — hand-written,
-    or codegen-generated — exists for it. `docx_build.builder()` raises
+    yet content-reviewed ('ready_unverified' — see below), a codegen job is
+    actively drafting one right now ('in_progress' — see below), silently
+    fall back to the generic one (still 'pending', no job has ever run or
+    produced anything usable), or are currently BROKEN: `template_status`
+    reached 'active' (analysis auto-activation, which only ever judges
+    analysis quality) before a real builder — hand-written, or
+    codegen-generated — exists for it. `docx_build.builder()` raises
     exactly in that last case; this is what lets the UI say so before a
     teacher hits it as a failed download.
 
@@ -81,8 +83,21 @@ def bulk_builder_readiness(school_rows: list[dict]) -> dict[str, str]:
     used for real generation, the separate content review just hasn't
     caught up. Reported distinctly from 'ready' so the UI keeps saying that
     review is still in flight, rather than silently going quiet about it
-    the moment generation itself starts working."""
+    the moment generation itself starts working.
+
+    'in_progress': no usable builder YET, but db.builder_codegen_jobs has a
+    'queued' or 'running' row for this school — a teacher who just uploaded
+    a template used to see the exact same flat 'pending' the whole time,
+    with nothing distinguishing "nobody's looked at this yet" from "the AI
+    is actively drafting your format right now." Checked ahead of the
+    plain 'pending'/'blocked' fallbacks, but never overrides an
+    already-usable builder — a stray queued/running row (e.g. a re-upload
+    kicking off a second job while the first result is still live) should
+    never mask a working banner."""
+    from . import db
+
     custom_ids = _custom_builder_school_ids()
+    in_progress_ids = db.active_builder_codegen_school_ids()
     out: dict[str, str] = {}
     for s in school_rows:
         sid = s["id"]
@@ -91,6 +106,8 @@ def bulk_builder_readiness(school_rows: list[dict]) -> dict[str, str]:
             out[sid] = "ready"
         elif has_builder:
             out[sid] = "ready" if s.get("template_status") == "active" else "ready_unverified"
+        elif sid in in_progress_ids:
+            out[sid] = "in_progress"
         elif s.get("template_status") != "active":
             out[sid] = "pending"
         else:

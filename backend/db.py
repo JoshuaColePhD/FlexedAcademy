@@ -3747,6 +3747,21 @@ def get_builder_codegen_job_for_school(school_id: str) -> dict | None:
     )
 
 
+def active_builder_codegen_school_ids() -> set[str]:
+    """Every school with a codegen job actively queued or running right
+    now — ONE query total, not one per school (same reasoning as
+    schoolcal.bulk_calendar_status: GET /api/schools lists ~1,600 rows, and
+    a per-school SELECT here would be that same slow-hang mistake again;
+    matches bulk_calendar_status's own shape of fetching the whole active
+    set unfiltered rather than building a dynamic IN (...) list). Used to
+    show a genuine "drafting your school's format now" loading state
+    (TemplateBanner) instead of the flatter 'pending' — a teacher watching
+    an upload sit at "pending" with no sense that anything is actually
+    happening reads as broken, not as busy."""
+    rows = _rows("SELECT DISTINCT school_id FROM builder_codegen_jobs WHERE status IN ('queued', 'running')")
+    return {r["school_id"] for r in rows}
+
+
 def list_builder_codegen_jobs_pending_review() -> list[dict]:
     """Jobs an admin still needs to act on: exhausted their retry budget, or
     passed but haven't been auto-verified or explicitly approved yet. A job
