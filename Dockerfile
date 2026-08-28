@@ -85,7 +85,14 @@ USER app
 ENV PORT=8080
 EXPOSE 8080
 
-# Two workers, each with its own connection pool. The work is I/O-bound —
-# waiting on OpenAI, then on Postgres — so this is about not letting one slow
-# generation block another teacher's request, not about CPU.
-CMD ["sh", "-c", "uvicorn backend.server:app --host 0.0.0.0 --port ${PORT:-8080} --workers 2 --timeout-keep-alive 75"]
+# One worker, not two — was 2 (each with its own connection pool, so one
+# slow generation couldn't block another teacher's request), but each worker
+# is a full separate process holding its OWN copy of the ~75MB standards
+# corpus in memory (retrieval.py's load_chunks cache) plus its own Postgres
+# pool, and on the free plan's 512MB that combination genuinely OOM'd the
+# instance in production within minutes of this image going live — see the
+# Render "exceeded its memory limit" alert. Single-worker trades some
+# request-level isolation for actually staying up; revisit if/when this
+# service is on a plan with real headroom (render.yaml's own comment tracks
+# that decision).
+CMD ["sh", "-c", "uvicorn backend.server:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 75"]
