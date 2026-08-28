@@ -149,8 +149,19 @@ class Entitlement:
         }
 
 
-def entitlement(user_id: str) -> Entitlement:
-    user = db.get_user_by_id(user_id) or {}
+def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
+    """`user` is an optional already-fetched users row for `user_id`.
+
+    Every caller of this function had just loaded that row — deps.py's
+    get_current_user fetches it to authenticate the request at all, and
+    routes/auth.py's _public_user is holding it while it builds the response —
+    and this then went and fetched it a THIRD time. Each of those is a pooled
+    connection plus its own `SET LOCAL app.user_id` round trip (db.borrow), so
+    the redundant reads cost real latency on the app's single hottest
+    endpoint, not just a wasted query. Passing it in is optional so nothing
+    breaks if a caller genuinely doesn't have it."""
+    if user is None:
+        user = db.get_user_by_id(user_id) or {}
     status = user.get("subscription_status")
     subscribed = status in ENTITLED_STATUSES
 
@@ -178,8 +189,16 @@ def entitlement(user_id: str) -> Entitlement:
     # was never actually a distinct case, not that the cap was too small.
     unlimited = custom_cap is None and status == "comped"
 
-    since = (datetime.now(UTC) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
-    tokens_used = db.tokens_used_since(user_id, since)
+    # Both usage windows in ONE query (db.tokens_used_two_windows) — the burst
+    # window is a strict subset of the trailing week, so it comes off the same
+    # scan via a FILTER rather than a second aggregate and a second pooler
+    # round trip. Computed up front even though the two early returns below
+    # don't read `tokens_used_recent`: it costs nothing extra now that it
+    # shares the week's query.
+    now_utc = datetime.now(UTC)
+    since = (now_utc - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
+    burst_since = (now_utc - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")
+    tokens_used, tokens_used_recent = db.tokens_used_two_windows(user_id, since, burst_since)
 
     # Only ever applies to unsubscribed accounts created on or after
     # TRIAL_ENFORCEMENT_START — see that constant's own comment for why
@@ -194,11 +213,10 @@ def entitlement(user_id: str) -> Entitlement:
             signed_up = signed_up.replace(tzinfo=UTC)
         if signed_up >= TRIAL_ENFORCEMENT_START:
             trial_ends = signed_up + timedelta(days=settings.trial_period_days)
-            now = datetime.now(UTC)
-            if now >= trial_ends:
+            if now_utc >= trial_ends:
                 trial_expired = True
             else:
-                trial_days_remaining = max(0, (trial_ends - now).days)
+                trial_days_remaining = max(0, (trial_ends - now_utc).days)
 
     if trial_expired:
         return Entitlement(
@@ -253,8 +271,6 @@ def entitlement(user_id: str) -> Entitlement:
         caps["subscriber_weekly_token_cap"] if subscribed else caps["free_weekly_token_cap"]
     )
 
-    burst_since = (datetime.now(UTC) - timedelta(hours=BURST_WINDOW_HOURS)).isoformat(timespec="seconds")
-    tokens_used_recent = db.tokens_used_since(user_id, burst_since)
     burst_cap = int(cap * BURST_FRACTION)
 
     may_generate = not settings.billing_enabled or (tokens_used < cap and tokens_used_recent < burst_cap)

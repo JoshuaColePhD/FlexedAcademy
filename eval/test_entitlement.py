@@ -56,20 +56,25 @@ def scenario(
     # Still called (Entitlement.plans_used rides along for the account menu),
     # just no longer what gates — see promise 6.
     db.count_plans = lambda _uid: plans
-    # entitlement() calls tokens_used_since TWICE, in a fixed order — the
-    # trailing-week total first, then the 24h burst window. A single stubbed
-    # value for both conflates them: a teacher who used `tokens_used` tokens
-    # over a WEEK did not necessarily use that many in the last DAY, so a
-    # case meant to isolate the weekly cap needs `recent` to say so
-    # explicitly rather than defaulting to the same number every time.
+    # entitlement() needs two figures — the trailing-week total and the much
+    # shorter burst window — and gets both from ONE query now
+    # (db.tokens_used_two_windows). It used to call tokens_used_since twice in
+    # a fixed order, which this stub had to imitate by counting calls and
+    # returning a different number the second time; a stub that depends on
+    # call ORDER is a stub that breaks silently the moment the callee is
+    # reordered, so returning the pair directly is both simpler and sturdier.
+    #
+    # The distinction it exists to preserve is unchanged: a teacher who spent
+    # `tokens_used` over a WEEK did not necessarily spend that much in the
+    # last few hours, so a case isolating the weekly cap passes `recent`
+    # explicitly rather than defaulting to the same number twice.
     recent_tokens = tokens_used if recent is None else recent
-    calls = {"n": 0}
-
-    def fake_tokens_used_since(_uid, _since):
-        calls["n"] += 1
-        return tokens_used if calls["n"] == 1 else recent_tokens
-
-    db.tokens_used_since = fake_tokens_used_since
+    db.tokens_used_two_windows = lambda _uid, _since, _burst_since: (tokens_used, recent_tokens)
+    # Still stubbed even though entitlement() no longer calls it: it remains
+    # part of db's surface, and leaving a real DB call reachable from a suite
+    # that promises "no database" is how the get_app_settings hole below
+    # happened.
+    db.tokens_used_since = lambda _uid, _since: tokens_used
     # entitlement() reads the two caps from db.get_app_settings() — an
     # admin-editable DB row (Settings tab, migration 46) that only FALLS
     # BACK to these settings.* values if the row is missing — not from

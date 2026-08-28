@@ -21,6 +21,7 @@ import json
 import logging
 import re
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -5272,6 +5273,30 @@ def tokens_used_since(user_id: str, since_iso: str) -> int:
     return int(row["n"]) if row else 0
 
 
+def tokens_used_two_windows(user_id: str, since_iso: str, burst_since_iso: str) -> tuple[int, int]:
+    """(total since `since_iso`, total since `burst_since_iso`) in ONE query.
+
+    entitlement() needs both the trailing-week total and the much shorter
+    burst window, and used to call tokens_used_since twice for it. Every call
+    into this module borrows a pooled connection and issues its own
+    `SET LOCAL app.user_id` first (see borrow()), so a second aggregate here
+    was two extra network round trips to the pooler for a strictly narrower
+    slice of rows the first one already scanned. The burst window is a subset
+    of the week, so a FILTER clause gets it off the same scan.
+
+    Callers pass burst_since_iso >= since_iso; nothing checks it, but the
+    burst number is meaningless otherwise."""
+    row = _row(
+        "SELECT COALESCE(SUM(tokens_in + tokens_out), 0) AS n, "
+        "       COALESCE(SUM(tokens_in + tokens_out) FILTER (WHERE created_at >= ?), 0) AS recent "
+        "FROM usage_events WHERE user_id = ? AND created_at >= ?",
+        (burst_since_iso, user_id, since_iso),
+    )
+    if not row:
+        return 0, 0
+    return int(row["n"]), int(row["recent"])
+
+
 def set_subscription(user_id: str, *, customer_id: str | None = None, status: str | None = None,
                      period_end: str | None = None) -> None:
     """Write back whatever Stripe just told us. Only the fields provided, so a
@@ -5470,20 +5495,46 @@ def set_custom_token_cap(user_id: str, cap: int | None) -> None:
     _write("UPDATE users SET custom_weekly_token_cap = ? WHERE id = ?", (cap, user_id))
 
 
+# get_app_settings' singleton row, and when it was read. One row, changed by
+# hand from the admin Settings tab maybe a handful of times ever, but read on
+# EVERY entitlement check — i.e. on every /api/auth/me and every generate.
+# A few seconds of staleness on a cap change is unnoticeable; a pooler round
+# trip per request for a row that essentially never changes is not.
+_APP_SETTINGS_TTL_SECONDS = 30
+_app_settings_cache: tuple[float, dict] | None = None
+_app_settings_lock = threading.Lock()
+
+
 def get_app_settings() -> dict:
     """The two admin-editable weekly token caps. Falls back to config.py's
     defaults if the singleton row is somehow missing (never happens after
     migration 28 runs, but a missing row should degrade to the pre-Settings-
-    tab behavior rather than a 500)."""
+    tab behavior rather than a 500).
+
+    Cached for _APP_SETTINGS_TTL_SECONDS — see that constant. Invalidated
+    outright by set_app_settings so an admin's own change is visible to them
+    immediately rather than up to the TTL later, which would read as the save
+    having silently failed."""
+    global _app_settings_cache
+    cached = _app_settings_cache
+    if cached and (time.monotonic() - cached[0]) < _APP_SETTINGS_TTL_SECONDS:
+        return cached[1]
     row = _row("SELECT * FROM app_settings WHERE id = true")
-    if row:
-        return row
-    return {
+    value = row if row else {
         "free_weekly_token_cap": settings.free_weekly_token_cap,
         "subscriber_weekly_token_cap": settings.subscriber_weekly_token_cap,
         "updated_at": None,
         "updated_by": None,
     }
+    with _app_settings_lock:
+        _app_settings_cache = (time.monotonic(), value)
+    return value
+
+
+def _invalidate_app_settings_cache() -> None:
+    global _app_settings_cache
+    with _app_settings_lock:
+        _app_settings_cache = None
 
 
 def update_app_settings(*, free_weekly_token_cap: int, subscriber_weekly_token_cap: int, actor_id: str) -> dict:
@@ -5495,6 +5546,10 @@ def update_app_settings(*, free_weekly_token_cap: int, subscriber_weekly_token_c
         """,
         (free_weekly_token_cap, subscriber_weekly_token_cap, now(), actor_id),
     )
+    # Before the re-read, so the admin who just saved sees their own new value
+    # rather than up to _APP_SETTINGS_TTL_SECONDS of the old one — which would
+    # read as the save having silently failed.
+    _invalidate_app_settings_cache()
     return get_app_settings()
 
 

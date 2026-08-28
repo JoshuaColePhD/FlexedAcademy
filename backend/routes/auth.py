@@ -64,6 +64,7 @@ def _public_user(user: dict) -> dict:
     button will work — one server-side answer, read by the paywall, the
     composer and the account menu alike.
     """
+    ent = entitlement(user["id"], user)
     return {
         "id": user["id"],
         "email": user["email"],
@@ -87,8 +88,16 @@ def _public_user(user: dict) -> dict:
         # hasn't run for this account yet — AppShell reads this, not a
         # separate GET, to decide whether to mount it.
         "onboarding_seen_at": user.get("onboarding_seen_at"),
-        "entitlement": entitlement(user["id"]).as_dict(),
-        "generated_plan_count": db.get_plan_count(user["id"]),
+        # `user` passed through so entitlement() doesn't re-SELECT the row this
+        # function is already holding (and that deps.get_current_user fetched
+        # before that) — three reads of one row per request, each its own
+        # pooled connection and SET LOCAL round trip.
+        "entitlement": ent.as_dict(),
+        # Reuses entitlement's own count instead of db.get_plan_count, which is
+        # character-for-character the same query (SELECT COUNT(*) FROM plans
+        # WHERE user_id = ?) as db.count_plans that entitlement() already ran.
+        # It was genuinely being executed twice on every single /api/auth/me.
+        "generated_plan_count": ent.plans_used,
     }
 
 
