@@ -174,7 +174,7 @@ def _run_one_attempt(
     return False, {**attempt, "_feedback": feedback}
 
 
-def _meets_auto_verify_bar(template: dict) -> bool:  # noqa: ARG001
+def _meets_auto_verify_bar(template: dict) -> bool:
     """True whenever this job's own quality bar was cleared — an attempt
     that passed BOTH independent vision judges (_judge_verdict_passed on
     judge1 and judge2, above; this is only ever checked after

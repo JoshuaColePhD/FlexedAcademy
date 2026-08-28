@@ -141,8 +141,14 @@ def install_stubs(calls: Calls, new_value):
         def plan_output_path(plan, plan_id):
             return Path("/dev/null")
 
+        # Mirrors docx_build.build_docx's real signature — school_id (added
+        # when per-school templates landed) is optional there, but every
+        # service.py caller passes it positionally, so a two-parameter stub
+        # raises TypeError before the assertions below ever run. Stale in
+        # exactly the way eb1d81b ("Fix stale eval stubs so the suite
+        # actually verifies chat/revise/quiz generation") fixed the others.
         @staticmethod
-        def build_docx(plan, out_path):
+        def build_docx(plan, out_path, school_id=None):
             return None
 
     service.db = FakeDb

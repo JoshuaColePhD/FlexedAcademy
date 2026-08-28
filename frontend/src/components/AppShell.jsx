@@ -15,9 +15,6 @@ import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
 import { OnboardingWizard } from './OnboardingWizard'
 import { onOpenOnboardingWizard } from '../lib/onboardingWizardBus'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../lib/api'
-import { qk } from '../lib/queryKeys'
 
 /* The frame. A chat client's shape, which is what this is now.
  *
