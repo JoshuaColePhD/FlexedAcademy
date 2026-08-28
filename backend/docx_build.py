@@ -101,10 +101,21 @@ def bulk_builder_readiness(school_rows: list[dict]) -> dict[str, str]:
     out: dict[str, str] = {}
     for s in school_rows:
         sid = s["id"]
-        has_builder = sid in custom_ids or s.get("builder_status") == "verified"
-        if sid == settings.default_builder_school_id:
-            out[sid] = "ready"
-        elif has_builder:
+        # The default school always has a usable builder — its own
+        # hand-written build_lesson_plan.py, used as the literal fallback in
+        # builder() below — so it's never "pending"/"blocked" on that count
+        # alone. It used to short-circuit straight to "ready" regardless of
+        # template_status, which kept claiming "ready" even once a NEWER
+        # template had been uploaded and was still mid-review — folded into
+        # has_builder instead so it gets the same ready/ready_unverified
+        # split as every other school once builder() (below) actually
+        # started honoring an uploaded replacement for it too.
+        has_builder = (
+            sid == settings.default_builder_school_id
+            or sid in custom_ids
+            or s.get("builder_status") == "verified"
+        )
+        if has_builder:
             out[sid] = "ready" if s.get("template_status") == "active" else "ready_unverified"
         elif sid in in_progress_ids:
             out[sid] = "in_progress"
@@ -120,8 +131,20 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
     from . import db
 
     path = Path(settings.builder_path)
+    # True for Florence, and Florence only — see default_builder_school_id's
+    # own comment (config.py). It's the one school_id allowed to fall all
+    # the way through to `path` (the hand-written build_lesson_plan.py)
+    # below with no builder of its own on file, because that default IS its
+    # builder. It used to be excluded from this whole check outright, which
+    # meant a NEW template uploaded and verified for Florence itself (the
+    # same self-serve flow every other school uses) was silently ignored
+    # forever — generation kept using the original hand-written layout no
+    # matter what replaced it. Included in the check now like anyone else;
+    # only the final "nothing newer, and that's fine" fallback below still
+    # treats it specially.
+    is_default_school = school_id == settings.default_builder_school_id
 
-    if school_id and school_id != "generic" and school_id != settings.default_builder_school_id:
+    if school_id and school_id != "generic":
         school = db.get_school(school_id)
         # template_status == 'active' is the normal, fully-reviewed case.
         # builder_status == 'verified' is included on its own too — a job
@@ -157,13 +180,18 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
                 layout_spec = db.get_school_builder_spec(school_id)
                 if layout_spec:
                     return _generated_spec_builder(school_id, layout_spec)
-                raise AppError(
-                    "builder_missing_for_school",
-                    f"{school.get('name', school_id)} is marked builder_status='verified', "
-                    "but no layout spec could be loaded for it.",
-                    hint="This should not happen — check builder_codegen_jobs for this school.",
-                )
-            else:
+                if not is_default_school:
+                    raise AppError(
+                        "builder_missing_for_school",
+                        f"{school.get('name', school_id)} is marked builder_status='verified', "
+                        "but no layout spec could be loaded for it.",
+                        hint="This should not happen — check builder_codegen_jobs for this school.",
+                    )
+                # Florence, verified but with no loadable spec (shouldn't
+                # happen, but isn't "broken" for Florence the way it would
+                # be for anyone else) — fall through to its own built-in
+                # builder below rather than raising.
+            elif not is_default_school:
                 raise AppError(
                     "builder_missing_for_school",
                     f"{school.get('name', school_id)} is marked as having an active "
@@ -174,6 +202,10 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
                         "render using Florence High School's layout instead."
                     ),
                 )
+            # else: Florence, active/verified but no custom file or generated
+            # spec on hand yet — its normal, permanent state until it
+            # uploads and gets a replacement approved. Falls through to
+            # `path` (build_lesson_plan.py) below, same as always.
 
     if not path.is_file():
         raise AppError(
