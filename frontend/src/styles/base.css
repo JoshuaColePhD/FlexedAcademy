@@ -3717,6 +3717,38 @@
     }
   }
 
+  /* FrameworkPicker.jsx's dropdown sizes itself against the VIEWPORT
+     (min(34rem, calc(100vw - 2rem))) so it can be roomy inside the wide
+     onboarding wizard modal — but the same component also renders inside
+     WelcomePage's narrow 440px "Let's set up your year" card, where a
+     desktop-width viewport let it compute the full 34rem regardless, wider
+     than the card itself. Setting overflow-y-auto on WelcomePage's own
+     scrollable form (a completely unrelated fix, months earlier) had the
+     side effect of coercing its overflow-x to 'auto' too per the CSS
+     Overflow spec (a non-'visible' axis forces the other from 'visible' to
+     'auto') — so instead of the dropdown simply spilling into the empty
+     page beside the card, the card itself grew a horizontal scrollbar and
+     clipped "AP English Language and Composition" and the placeholder's
+     "Pre-AP" at its own right edge.
+     A CONTAINER query, not a viewport one — same reasoning as .chat-column
+     above: it's the picker's own available width that's narrow, not
+     necessarily the screen. Below it, collapse back to the plain
+     single-column list (matching pre-rail behavior) rather than a width
+     no container this narrow can actually afford. !important because the
+     width above is set as an inline style (JSX `style=`), which otherwise
+     wins over an ordinary class rule regardless of source order. */
+  .fw-picker {
+    container-type: inline-size;
+  }
+  @container (max-width: 26rem) {
+    .fw-picker-panel {
+      width: 100% !important;
+    }
+    .fw-picker-rail {
+      display: none !important;
+    }
+  }
+
   /* A reply that is a failure, marked as one. Same apparatus as .marginalia:
      a coloured left edge and a tinted ground, so it reads as an annotation on
      the conversation rather than as the app's own voice. */

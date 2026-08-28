@@ -109,7 +109,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
   }
 
   return (
-    <div className="relative w-full" ref={rootRef}>
+    <div className="fw-picker relative w-full" ref={rootRef}>
       <div className="relative">
         <input
           ref={inputRef}
@@ -148,7 +148,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
 
       {mounted ? (
         <div
-          className={`neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`}
+          className={`fw-picker-panel neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`}
           style={{ width: 'min(34rem, calc(100vw - 2rem))', maxWidth: 'calc(100vw - 2rem)' }}
         >
           {/* Category rail — desktop only. A phone-width dropdown has no room
@@ -156,7 +156,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
               list (still grouped, just without the jump-to-category rail). */}
           {groups.length > 1 ? (
             <div
-              className="hidden w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-2 sm:flex"
+              className="fw-picker-rail hidden w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-2 sm:flex"
               style={{ maxHeight: 'min(28rem, 70vh)' }}
             >
               {groups.map((g) => (
