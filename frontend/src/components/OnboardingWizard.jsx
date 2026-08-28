@@ -17,6 +17,7 @@ import { useAuth } from '../lib/authContext'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
+import { GRADES, gradeSelectValue } from '../lib/grades'
 import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
@@ -138,6 +139,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   // Confirm-class step
   const [subject, setSubject] = useState(cls?.subject || '')
+  const [grade, setGrade] = useState(gradeSelectValue(cls?.grade))
   const [savingClass, setSavingClass] = useState(false)
   const [classError, setClassError] = useState(false)
 
@@ -165,6 +167,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setSchool(cls?.school || '')
     setTemplateFile(null)
     setSubject(cls?.subject || '')
+    setGrade(gradeSelectValue(cls?.grade))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cls?.id])
 
@@ -251,8 +254,11 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setClassError(false)
     setSavingClass(true)
     try {
-      if (subject !== cls?.subject) {
-        await api.updateClass(cls.id, { subject })
+      const patch = {}
+      if (subject !== cls?.subject) patch.subject = subject
+      if (grade !== gradeSelectValue(cls?.grade)) patch.grade = grade
+      if (Object.keys(patch).length) {
+        await api.updateClass(cls.id, patch)
         qc.invalidateQueries({ queryKey: qk.classes })
       }
       goNext()
@@ -326,6 +332,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 cls={cls}
                 subject={subject}
                 setSubject={setSubject}
+                grade={grade}
+                setGrade={setGrade}
                 frameworks={frameworks}
                 saving={savingClass}
                 error={classError}
@@ -528,7 +536,7 @@ function SchoolStep({
     </div>
   )
 }
-function ClassStep({ eyebrow, cls, subject, setSubject, frameworks, saving, error, onBack, onNext }) {
+function ClassStep({ eyebrow, currentStep, totalSteps, cls, subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
   return (
     <div>
       <StepHeader
@@ -541,6 +549,24 @@ function ClassStep({ eyebrow, cls, subject, setSubject, frameworks, saving, erro
           <FrameworkPicker frameworks={frameworks} value={subject} onChange={(v) => { setSubject(v); if (error) onNext(); }} id="onboarding-framework" />
           {error && <p className="mt-1.5 text-xs text-mark font-medium px-1">Please select a course to continue</p>}
         </motion.div>
+        <div className="mt-2">
+          <label htmlFor="onboarding-grade" className="mb-1.5 block text-sm font-medium text-ink">
+            Grade level
+          </label>
+          <p className="mb-1.5 text-xs text-ink-muted">Used to pick grade-appropriate standards and language.</p>
+          <select
+            id="onboarding-grade"
+            value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            className="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
+          >
+            {GRADES.map((g) => (
+              <option key={g.value} value={g.value}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="dialog-actions mt-6">
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>

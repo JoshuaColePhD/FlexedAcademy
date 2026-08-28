@@ -8,12 +8,21 @@ import { qk } from '../../lib/queryKeys'
 import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
+import { GRADES, DEFAULT_GRADE } from '../../lib/grades'
 /* The one grade vocabulary. This file used to declare its own copy, with a
    comment explaining that the VALUE and the LABEL must stay apart because
    sending '11th' where '11' belongs made the first class a teacher ever
    created render as 'AP Language & Composition · NaNth'. The comment was
    right and the duplication is what let the same mistake survive in two
-   other copies — see lib/grades.js and migration 38. */
+   other copies — see lib/grades.js and migration 38.
+
+   Grade itself was dropped from this form at some point (a simplification
+   pass) but the backend never stopped defaulting every new class to grade
+   11 (routes/classes.py's ClassBody.grade) and using it directly to decide
+   which standards are even eligible to ground a plan in (prompts.py's
+   grounding_constraints) — so a K-8 teacher's very first class was silently
+   mis-grounded to grade 11 language until they noticed and fixed it in My
+   Classes. Restored here, one field, no new step. */
 
 /* A REAL, working school id with NO real calendar behind it on purpose —
  * backend/schoolcal.py's own NO_CALENDAR_SCHOOL_ID returns week NUMBERS
@@ -55,6 +64,7 @@ export function WelcomePage() {
   const toast = useToast()
 
   const [subject, setSubject] = useState('')
+  const [grade, setGrade] = useState(DEFAULT_GRADE)
   const [saving, setSaving] = useState(false)
 
   const { data: frameworks = [] } = useQuery({
@@ -74,7 +84,7 @@ export function WelcomePage() {
       const patch = {}
       if (!user?.school) patch.school = GENERIC_SCHOOL
       if (Object.keys(patch).length) await api.updateMe(patch)
-      const created = await api.createClass({ subject })
+      const created = await api.createClass({ subject, grade })
       await Promise.all([
         qc.invalidateQueries({ queryKey: qk.classes }),
         refresh(),
@@ -145,6 +155,27 @@ export function WelcomePage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="welcome-grade" className="text-sm font-medium text-ink">
+                Grade level
+              </label>
+              <span className="text-xs text-ink-muted">
+                Used to pick grade-appropriate standards and language.
+              </span>
+              <select
+                id="welcome-grade"
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+                className="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
+              >
+                {GRADES.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <button
