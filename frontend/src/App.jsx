@@ -41,6 +41,7 @@ const SignupPage = lazy(() => import('./pages/auth/SignupPage.jsx'))
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage.jsx'))
 const PrivacyPolicyPage = lazyNamed(() => import('./pages/legal/PrivacyPolicyPage.jsx'), 'PrivacyPolicyPage')
 const TermsPage = lazyNamed(() => import('./pages/legal/TermsPage.jsx'), 'TermsPage')
+const BetaPage = lazyNamed(() => import('./pages/legal/BetaPage.jsx'), 'BetaPage')
 const SharedPlanPage = lazyNamed(() => import('./pages/SharedPlanPage.jsx'), 'SharedPlanPage')
 const NotFoundPage = lazyNamed(() => import('./pages/NotFoundPage.jsx'), 'NotFoundPage')
 
@@ -302,6 +303,7 @@ function Gate() {
             rather than gated like /login et al. */}
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/beta" element={<BetaPage />} />
         <Route path="/shared/:id" element={<SharedPlanPage />} />
         {/* A deep link still round-trips through sign-in and comes back. */}
         <Route
@@ -346,6 +348,7 @@ function Gate() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/terms" element={<TermsPage />} />
+      <Route path="/beta" element={<BetaPage />} />
       <Route path="/shared/:id" element={<SharedPlanPage />} />
       {/* Outside ClassRoutes/AppShell on purpose — see the guard in
           ClassRoutes above. A first-run account must never see the sidebar

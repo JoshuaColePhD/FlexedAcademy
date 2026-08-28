@@ -544,6 +544,7 @@ export function LandingPage() {
           <div className="flex gap-4 justify-center">
             <Link to="/privacy">Privacy Policy</Link>
             <Link to="/terms">Terms of Service</Link>
+            <Link to="/beta">Beta</Link>
           </div>
           <span className="text-[10px] text-ink-muted/50 max-w-lg text-center mt-2 leading-relaxed">
             AP®, Pre-AP®, and College Board® are trademarks registered by the College Board, which is not affiliated with, and does not endorse, this product. ACT® is a registered trademark of ACT, Inc.
