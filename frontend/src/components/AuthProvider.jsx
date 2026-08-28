@@ -114,13 +114,33 @@ export function AuthProvider({ children }) {
     [queryClient]
   )
 
-  /* Every identity transition below funnels through here: wipe the previous
-     account's cache, then seed qk.me with who we now are. Order matters —
-     clear() would drop a freshly-set account too if it ran second. */
+  /* Every identity transition funnels through here: seed qk.me with who we
+     now are, then drop every OTHER account-scoped query.
+
+     It must never be queryClient.clear(). clear() removes *every* query,
+     including qk.me — which this provider is actively subscribed to via
+     useQuery above. That leaves the observer holding a query object that is
+     no longer in the cache, reporting `data: undefined`, and `undefined` is
+     precisely the value `status` reads as 'loading'. Nothing re-attaches it,
+     so the app hangs on the boot screen forever.
+
+     That is not theoretical: it shipped. A logged-out visitor loads the site,
+     some account-scoped request 401s, api.js dispatches aplang:unauthorized,
+     this runs, clear() orphans the observer, and the landing page never
+     renders — no sign-in, no marketing page, nothing. Every new visitor and
+     everyone whose session had expired got a permanent blank boot screen.
+     The old useState-backed version was immune by construction, because
+     `status` did not live in the cache it was clearing.
+
+     removeQueries with a predicate keeps the privacy guarantee that motivated
+     the clear() in the first place — signing out of one account must not
+     leave the next person looking at its classes — while leaving the one
+     query that has a live observer alone. Seeding qk.me first also means
+     there is no frame where it is momentarily absent. */
   const applyIdentity = useCallback(
     (u) => {
-      queryClient.clear()
       queryClient.setQueryData(qk.me, u ?? null)
+      queryClient.removeQueries({ predicate: (query) => query.queryKey?.[0] !== qk.me[0] })
       setAuthedState(Boolean(u))
       return u
     },
