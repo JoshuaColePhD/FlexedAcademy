@@ -9,8 +9,6 @@ import {
   PartyPopper,
   School as SchoolIcon,
   Sparkles,
-  Upload,
-  Link,
   X,
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -23,6 +21,7 @@ import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
 import { CalendarPreview } from './CalendarPreview'
+import { UploadDropzone } from './UploadDropzone'
 // ClassDocuments used to live inside ClassPage.jsx and was re-exported from
 // there; it later moved out to its own file (components/ClassDocuments.jsx)
 // with nothing left behind at the old path, so this lazy import silently
@@ -135,7 +134,6 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const [school, setSchool] = useState(cls?.school || '')
   const [templateFile, setTemplateFile] = useState(null)
   const [templateUrl, setTemplateUrl] = useState('')
-  const templateFileRef = useRef(null)
   const [savingSchool, setSavingSchool] = useState(false)
 
   // Confirm-class step
@@ -318,7 +316,6 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 setTemplateFile={setTemplateFile}
                 templateUrl={templateUrl}
                 setTemplateUrl={setTemplateUrl}
-                templateFileRef={templateFileRef}
                 saving={savingSchool}
                 onBack={goBack}
                 onNext={saveSchool}
@@ -460,7 +457,6 @@ function SchoolStep({
   setTemplateFile,
   templateUrl,
   setTemplateUrl,
-  templateFileRef,
   saving,
   onBack,
   onNext,
@@ -493,42 +489,19 @@ function SchoolStep({
               school. You will automatically use this standard template, but you can upload your own below to override it for your classes.
             </p>
           )}
-          <input
-            ref={templateFileRef}
-            type="file"
-            accept=".docx,.pdf"
-            hidden
-            onChange={(e) => {
-              setTemplateFile(e.target.files?.[0] || null)
-              if (e.target.files?.[0]) setTemplateUrl('')
+          <UploadDropzone
+            label="Upload file"
+            selectedFileName={templateFile?.name}
+            onFile={(file) => {
+              setTemplateFile(file)
+              setTemplateUrl('')
+            }}
+            url={templateUrl}
+            onUrlChange={(v) => {
+              setTemplateUrl(v)
+              if (v) setTemplateFile(null)
             }}
           />
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              onClick={() => templateFileRef.current?.click()}
-              className="neo-raised inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:text-ink"
-            >
-              <Upload size={14} aria-hidden="true" />
-              {templateFile ? templateFile.name : 'Upload file'}
-            </button>
-            <span className="text-xs text-ink-soft font-medium text-center sm:text-left">OR</span>
-            <div className="relative flex-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
-                <Link size={13} className="text-ink-subtle" aria-hidden="true" />
-              </div>
-              <input
-                type="url"
-                placeholder="Paste Google Doc link"
-                value={templateUrl}
-                onChange={(e) => {
-                  setTemplateUrl(e.target.value)
-                  if (e.target.value) setTemplateFile(null)
-                }}
-                className="w-full rounded-lg border border-edge bg-paper py-2 pl-7 pr-3 text-sm text-ink outline-none transition-colors focus:border-accent placeholder:text-ink-subtle"
-              />
-            </div>
-          </div>
         </motion.div>
       ) : null}
       
