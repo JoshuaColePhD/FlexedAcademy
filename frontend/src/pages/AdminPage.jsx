@@ -805,6 +805,7 @@ function SchoolsAdmin() {
       <PendingSchoolTemplates />
       <AutoActivatedTemplates />
       <BuilderCodegenQueue />
+      <AutoVerifiedBuilders />
     </div>
   )
 }
@@ -1230,10 +1231,10 @@ function BuilderCodegenJobDetail({ jobId }) {
 }
 
 /* Every job here has EITHER exhausted its retry budget (failed_needs_human)
-   OR passed both vision judges but not yet been explicitly approved
-   (succeeded) — approval is mandatory even on a clean pass, since the vision
-   judge is a new, unproven trust boundary with no production track record
-   yet. See backend/builder/codegen.py's module docstring. */
+   OR passed both vision judges but wasn't clean enough on the template side
+   to qualify for auto-verify (AutoVerifiedBuilders, below) — a manual
+   approve is still required. See backend/builder/codegen.py's module
+   docstring for the exact bar. */
 function BuilderCodegenQueue() {
   const toast = useToast()
   const qc = useQueryClient()
@@ -1332,6 +1333,62 @@ function BuilderCodegenQueue() {
                     </button>
                   )}
                 </div>
+              </div>
+              {isExpanded && <BuilderCodegenJobDetail jobId={job.id} />}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/* The audit trail for the auto-verify fast path (migration 55,
+   backend/builder/codegen.py's _meets_auto_verify_bar) — every builder that
+   went live with no admin ever clicking approve, most recent first. Mirrors
+   AutoActivatedTemplates' own shape one stage further down the pipeline: a
+   verified document BUILDER, not just an analyzed template format. */
+function AutoVerifiedBuilders() {
+  const [expandedId, setExpandedId] = useState(null)
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'builderCodegen', 'autoVerified'],
+    queryFn: () => api.listAutoVerifiedBuilderCodegenJobs(),
+  })
+  const jobs = data?.jobs || []
+
+  if (isLoading || isError || !jobs.length) return null
+
+  return (
+    <div className="mt-5 border-t border-edge pt-4">
+      <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        <ShieldCheck size={14} className="text-emerald-600" />
+        Auto-Verified Builders ({jobs.length})
+      </h3>
+      <p className="mt-1 text-2xs text-ink-muted">
+        These went live automatically — the template's own analysis was clean enough to auto-activate AND this
+        builder passed both vision judges, so no admin approval was needed. Expand any of these for the full attempt
+        history if you want a second opinion.
+      </p>
+      <ul className="mt-2 divide-y divide-edge">
+        {jobs.map((job) => {
+          const isExpanded = expandedId === job.id
+          return (
+            <li key={job.id} className="py-2 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="font-medium text-ink">{job.school_name}</span>{' '}
+                  <span className="text-2xs text-ink-muted">
+                    uploaded by {job.uploader_name || job.uploader_email || 'unknown'} · verified{' '}
+                    {new Date(job.verified_at || job.finished_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isExpanded ? null : job.id)}
+                  className="btn flex items-center gap-1 text-2xs"
+                >
+                  Attempts {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </button>
               </div>
               {isExpanded && <BuilderCodegenJobDetail jobId={job.id} />}
             </li>

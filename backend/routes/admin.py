@@ -368,10 +368,19 @@ def download_school_template_route(template_id: str, _admin: str = Depends(get_c
 @router.get("/builder-codegen/pending")
 def list_pending_builder_codegen_jobs_route(_admin: str = Depends(get_current_admin)):
     """Jobs awaiting an admin decision: exhausted their retry budget, or
-    passed both vision judges but still need the explicit approval that
-    pipeline never grants itself — see backend/builder/codegen.py's module
-    docstring for why approval stays a human action during the pilot."""
+    passed both vision judges but weren't clean enough on the template side
+    to qualify for the auto-verify fast path — see
+    backend/builder/codegen.py's module docstring for the exact bar."""
     return {"jobs": db.list_builder_codegen_jobs_pending_review()}
+
+
+@router.get("/builder-codegen/auto-verified")
+def list_auto_verified_builder_codegen_jobs_route(_admin: str = Depends(get_current_admin)):
+    """The audit trail for the auto-verify fast path — every builder that
+    went live with no admin ever clicking approve, most recent first.
+    Mirrors list_auto_activated_templates_route's own shape one stage
+    further down the pipeline."""
+    return {"jobs": db.list_auto_verified_builder_jobs()}
 
 
 @router.get("/builder-codegen/{job_id}")
@@ -419,9 +428,10 @@ def download_builder_codegen_attempt_render_route(
 
 @router.post("/builder-codegen/{job_id}/approve")
 def approve_builder_codegen_job_route(job_id: str, _admin: str = Depends(get_current_admin)):
-    """The ONE place schools.builder_status is ever set to 'verified' —
-    always this explicit action, never automatic, even for a job whose
-    winning attempt already passed both vision judges. See
+    """The manual path to schools.builder_status = 'verified' — for every
+    job that didn't qualify for the auto-verify fast path (a job whose
+    template needed a manual activation despite warnings still lands here
+    even with a clean vision-judge pass). See
     backend/builder/codegen.py's module docstring."""
     job = db.get_builder_codegen_job(job_id)
     if not job:
