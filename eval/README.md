@@ -10,6 +10,12 @@ What guards retrieval accuracy. Run it before merging anything that touches
 
 Nothing here calls a chat model. The cost is embeddings for the query strings.
 
+For an actual generation-quality reading (does the model's real citation output stay
+grounded, per course) rather than a retrieval-recall check, see
+[`QUALITY_AUDIT_RUNBOOK.md`](./QUALITY_AUDIT_RUNBOOK.md) — that one does call a chat
+model and costs real tokens, so it's a deliberate, budgeted run, not part of this
+suite.
+
 ## The suites
 
 | Suite | Guards | Needs |
