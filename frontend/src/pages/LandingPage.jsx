@@ -413,6 +413,16 @@ export function LandingPage() {
 
       <section className="land-hero">
         <div className="land-blob" aria-hidden="true" />
+        {/* .land-eyebrow already existed in base.css (the glass pill sized
+            and positioned for exactly this spot, over the aurora blob) but
+            had no caller — wired up here rather than inventing a new class.
+            Honest about where the product actually is right now: several
+            subjects' relevance floors are still unmeasured (README's own
+            "Multi-subject" section) and onboarding itself only started
+            working reliably today. A visitor deciding whether to trust this
+            with real curriculum should know that going in, not discover it
+            from a rough edge. */}
+        <span className="land-eyebrow">Beta</span>
         <h1 className="land-title">A week of lesson plans, cited to the standard</h1>
         <p className="land-sub">
           Generated from the verbatim text of the Alabama Course of Study — not a model's
