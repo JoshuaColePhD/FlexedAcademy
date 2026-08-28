@@ -197,6 +197,26 @@ def list_classes_route(include_archived: bool = False, user_id: str = Depends(ge
 def create_class_route(body: ClassBody, user_id: str = Depends(get_current_user)) -> dict:
     _validate_subject(body.subject)
     name = (body.name or "").strip() or _auto_name(body.subject, body.grade)
+    # A real, production-found bug: a teacher (or an automated session acting
+    # on her behalf) ended up with two classes both auto-named "English
+    # Language Arts · 6th" — same subject, same grade, six minutes apart. The
+    # class switcher had no way to show they were different, since nothing
+    # about them WAS different, so switching between them looked like
+    # switching did nothing. Since ClassBody.name is normally left blank
+    # specifically so subject+grade names the class (this file's own comment
+    # above), two active classes ever landing on the identical name is never
+    # a teacher's deliberate choice — there's no field to name a second
+    # section distinctly today, only a collision to prevent. Checked
+    # case/whitespace-insensitively, and only against classes still in use
+    # (archived ones are done, not a name still claimed).
+    normalized = name.strip().casefold()
+    if any(c["name"].strip().casefold() == normalized for c in db.list_classes(user_id)):
+        raise AppError(
+            "duplicate_class_name",
+            f"You already have a class named “{name}.”",
+            status=409,
+            hint="Open that one from the class switcher, or archive it first if you meant to start over.",
+        )
     return db.create_class(user_id, name=name, subject=body.subject, grade=body.grade, state=body.state)
 
 
@@ -221,6 +241,24 @@ def update_class_route(
             subj = fields.get("subject", cls["subject"])
             grd = fields.get("grade", cls["grade"])
             fields["name"] = _auto_name(subj, grd)
+
+    # Same collision this file's own create_class_route guards against —
+    # a subject/grade change (or a direct rename) can land two classes on
+    # the identical name just as easily as creating one already-duplicated
+    # can. Excludes this class's own current row, so setting a class to the
+    # name it already has isn't flagged as colliding with itself.
+    if "name" in fields:
+        normalized = fields["name"].strip().casefold()
+        if any(
+            c["id"] != class_id and c["name"].strip().casefold() == normalized
+            for c in db.list_classes(user_id)
+        ):
+            raise AppError(
+                "duplicate_class_name",
+                f"You already have a class named “{fields['name']}.”",
+                status=409,
+                hint="Pick a different subject or grade, or archive the other one first.",
+            )
 
     updated = db.update_class(user_id, class_id, **fields)
     return updated  # type: ignore[return-value]

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Check, ChevronsUpDown, Plus } from 'lucide-react'
 import { classColor } from '../lib/classColor'
@@ -30,6 +30,39 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
   const ref = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+
+  // The backend now refuses to create or rename a class onto a name another
+  // one of the same account's classes already has (routes/classes.py) — but
+  // this still has to cope with the ones that got in before that existed: a
+  // production account was found with two classes both auto-named "English
+  // Language Arts · 6th," and switching between them looked like switching
+  // did nothing, since the trigger button and the dropdown both show
+  // `c.name` verbatim and nothing else about them differed on screen. This
+  // doesn't rename anything server-side — it's purely what gets displayed,
+  // computed fresh from whichever classes actually collide right now, so a
+  // teacher can still tell two same-named preps apart if one ever slips
+  // through (a genuine race between two near-simultaneous creates isn't
+  // fully closed by a check-then-insert guard either).
+  const displayName = useMemo(() => {
+    const counts = new Map()
+    for (const c of classes) {
+      const key = c.name.trim().toLowerCase()
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    const seen = new Map()
+    const map = new Map()
+    for (const c of classes) {
+      const key = c.name.trim().toLowerCase()
+      if (counts.get(key) > 1) {
+        const n = (seen.get(key) || 0) + 1
+        seen.set(key, n)
+        map.set(c.id, `${c.name} (${n})`)
+      } else {
+        map.set(c.id, c.name)
+      }
+    }
+    return map
+  }, [classes])
 
   useEffect(() => {
     if (!open) return undefined
@@ -137,7 +170,7 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
             leaves it, rather than sizing off its own (untruncated) content
             again. */}
         <span className={inline ? 'min-w-0 flex-1 truncate' : 'min-w-0 flex-1 truncate text-sm font-medium text-ink'}>
-          {activeClass?.name || 'Choose a class'}
+          {(activeClass && displayName.get(activeClass.id)) || 'Choose a class'}
         </span>
         <ChevronsUpDown size={inline ? 12 : 14} aria-hidden="true" className="shrink-0 text-ink-faint" />
       </button>
@@ -184,7 +217,7 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
                   aria-hidden="true"
                   style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
                 />
-                <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                <span className="min-w-0 flex-1 truncate">{displayName.get(c.id)}</span>
                 {c.id === activeClass?.id ? (
                   <Check size={13} aria-hidden="true" className="shrink-0 text-ok" />
                 ) : null}
