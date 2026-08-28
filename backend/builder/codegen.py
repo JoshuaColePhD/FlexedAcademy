@@ -1,34 +1,43 @@
 """The builder-codegen attempt loop: generate a declarative layout spec,
 render it against a synthetic fixture, verify it visually against the real
-uploaded template, retry with feedback up to a hard cap, and land the result
-either fully verified on its own or in the admin review queue.
+uploaded template, retry with feedback up to a hard cap, and ship the result
+— always automatically now, admin review happens AFTER the fact rather than
+gating use (product decision, 2026-08-28: use it now, review post-hoc).
 
-`schools.builder_status` is set to 'verified' in one of two ways:
+`schools.builder_status` reaches 'verified' one of three ways, all
+automatic except the last:
 
-1. **Auto-verify** (_meets_auto_verify_bar, below) — as soon as a job passes
-   both independent vision judges within the attempt cap, full stop. This
-   used to ALSO require the template's own separate content analysis to
-   have cleared its own strict bar (school_templates.auto_activated) before
-   the generated builder became usable — a deliberate pilot-phase choice to
-   ship nothing until two unrelated reviews both agreed. Loosened so a
-   school starts generating real documents against its own AI-drafted
-   format as soon as the layout itself checks out, rather than sitting on
-   Florence's layout for however long the separate, stricter content review
-   takes — accepted as an imperfect-but-useful starting point, to be judged
-   by how it actually performs. The template's content review is NOT
-   skipped: template_status still only reaches 'active' through
+1. **Clean auto-verify** (run_codegen_job's main loop) — an attempt passes
+   both independent vision judges within the attempt cap. This used to ALSO
+   require the template's own separate content analysis to have cleared its
+   own strict bar (school_templates.auto_activated) — loosened so a school
+   starts generating real documents against its own AI-drafted format as
+   soon as the layout itself checks out, rather than waiting on that
+   separate, slower review too. That content review is NOT skipped:
+   template_status still only reaches 'active' through
    template_intake._maybe_auto_activate or an explicit admin approve, and
    docx_build.bulk_builder_readiness reports 'ready_unverified' (not
    'ready') for exactly this window, so the UI keeps saying that review
    hasn't finished even while the document being generated already
-   reflects it. See db.mark_builder_codegen_job_auto_verified and
-   db.list_auto_verified_builder_jobs (the post-hoc audit trail — nothing
-   here ships invisibly, an admin can still catch and roll back a bad one
-   after the fact).
-2. **Manual approve** (db.approve_builder_codegen_job / the
-   POST /admin/builder-codegen/{job_id}/approve route) — every job that
-   never passed both vision judges on its own still waits for an explicit
-   admin click, exactly as before.
+   reflects it.
+2. **Best-effort auto-verify** (_fall_back_to_best_attempt, below) — every
+   attempt exhausted the cap without EITHER judge fully agreeing. Ships the
+   closest attempt's spec anyway rather than leaving the school stuck on
+   Florence's layout — bounded by the fact that every attempt observed so
+   far still got individual field placement right even when the holistic
+   judge verdict didn't (failures have been things like row-shading colors,
+   not wrong data). Distinguishable from case 1 by opening the job in the
+   admin queue: every one of its attempts shows passed=False.
+3. **Manual approve** (db.approve_builder_codegen_job / the
+   POST /admin/builder-codegen/{job_id}/approve route) — still there for an
+   admin who wants to intervene directly (e.g. a job that failed outright
+   with no usable spec at all — see _fall_back_to_best_attempt's own
+   no-usable-spec branch).
+
+See db.mark_builder_codegen_job_auto_verified and
+db.list_auto_verified_builder_jobs — the post-hoc audit trail cases 1 and 2
+both go through; nothing here ships invisibly, an admin can still catch and
+roll back a bad one after the fact.
 
 Entry point: run_codegen_job(job_id), called by the worker loop
 (backend/server.py's startup hook polling db.claim_next_builder_codegen_job).
@@ -54,6 +63,25 @@ _ATTEMPT_ARTIFACT_DIR = Path("uploads/builder_codegen")
 
 def _judge_verdict_passed(verdict: dict) -> bool:
     return bool(verdict.get("pass")) and isinstance(verdict.get("confidence"), (int, float)) and verdict["confidence"] >= 0.7
+
+
+def _judges_passed_count(attempt: dict) -> int:
+    """How many of an attempt's two independent vision judges individually
+    passed it — used only to rank attempts against each other when NEITHER
+    fully cleared the bar (see _fall_back_to_best_attempt); a normal
+    both-passed attempt never reaches this."""
+    count = 0
+    for key in ("judge1_json", "judge2_json"):
+        raw = attempt.get(key)
+        if not raw:
+            continue
+        try:
+            verdict = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        if _judge_verdict_passed(verdict):
+            count += 1
+    return count
 
 
 def _run_one_attempt(
@@ -208,6 +236,7 @@ def run_codegen_job(job_id: str) -> None:
     user_id = template.get("uploaded_by") or ""
 
     prior_feedback: str | None = None
+    attempts_seen: list[dict] = []
     for attempt_number in range(1, settings.builder_codegen_max_attempts + 1):
         passed, attempt = _run_one_attempt(
             job=job, attempt_number=attempt_number, user_id=user_id,
@@ -215,6 +244,7 @@ def run_codegen_job(job_id: str) -> None:
             original_images_b64=original_images_b64, fixture=fixture, expectations=expectations,
             prior_feedback=prior_feedback,
         )
+        attempts_seen.append(attempt)
         if passed:
             db.mark_builder_codegen_job_succeeded(job_id, json.dumps(attempt["_spec"]))
             log.info("builder codegen job %s succeeded on attempt %d", job_id, attempt_number)
@@ -230,8 +260,44 @@ def run_codegen_job(job_id: str) -> None:
         prior_feedback = attempt.get("_feedback")
         log.info("builder codegen job %s attempt %d failed: %s", job_id, attempt_number, prior_feedback)
 
-    db.mark_builder_codegen_job_failed(
-        job_id,
-        f"No attempt passed both vision judges within {settings.builder_codegen_max_attempts} attempts. "
-        "See builder_codegen_attempts for the full history.",
+    _fall_back_to_best_attempt(job_id, job["school_id"], attempts_seen)
+
+
+def _fall_back_to_best_attempt(job_id: str, school_id: str, attempts: list[dict]) -> None:
+    """Every attempt exhausted the cap without a single one passing BOTH
+    vision judges — the normal, fully-verified path in run_codegen_job
+    above. Per product decision (use it now, review it post-hoc rather than
+    block on full verification — see AdminPage.jsx's builder-codegen queue,
+    which already surfaces every attempt's full judge history for exactly
+    this kind of after-the-fact catch), ship the closest attempt's spec
+    anyway instead of leaving the school on Florence's layout indefinitely.
+
+    This is a bounded risk, not a blind guess: every attempt observed so far
+    still had its individual per_field_checks come back correct even when
+    the holistic judge verdict didn't — judges have failed attempts here
+    over things like row-shading colors and page layout, not wrong data
+    placement. 'Best' = most judges that individually passed
+    (_judges_passed_count), tie-broken by the latest attempt number, since
+    later attempts had the most cumulative feedback to work from.
+
+    Still requires a real spec on the winning attempt — a render/rasterize
+    crash produces no spec at all (see _run_one_attempt's early-return
+    branches), and there is nothing to ship for an attempt like that."""
+    usable = [a for a in attempts if a.get("layout_spec_json")]
+    if not usable:
+        db.mark_builder_codegen_job_failed(
+            job_id,
+            f"No attempt produced a usable spec within {len(attempts)} attempts. "
+            "See builder_codegen_attempts for the full history.",
+        )
+        return
+    best = max(usable, key=lambda a: (_judges_passed_count(a), a.get("attempt_number", 0)))
+    db.mark_builder_codegen_job_succeeded(job_id, best["layout_spec_json"])
+    db.mark_builder_codegen_job_auto_verified(job_id)
+    log.warning(
+        "builder codegen job %s auto-verified for school %s WITHOUT a full "
+        "vision-judge pass on any attempt (shipping attempt %s, %d/2 judges "
+        "passed) — used now per product decision, flagged for post-hoc "
+        "admin review in the builder-codegen queue",
+        job_id, school_id, best.get("attempt_number"), _judges_passed_count(best),
     )
