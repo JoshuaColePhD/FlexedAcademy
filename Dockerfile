@@ -63,13 +63,16 @@ COPY pyproject.toml ./
 COPY backend/ ./backend/
 RUN pip install --no-cache-dir -e .
 
-# Only the parsed chunk files, which retrieval.load_chunks() globs at runtime
-# for the citation popover and the whole-plan revise. data/ as a whole is 307MB
-# — data/db/ is the retired Chroma store and data/raw/ is the source PDFs, and
-# neither is read by the running app. This is 36MB.
+# data/processed/*.json (the parsed chunk files retrieval.load_chunks() globs
+# at runtime) used to be COPYed in here, but they're no longer git-tracked at
+# all — moved to Supabase Storage (backend/storage.py) once alcos_chunks.json
+# alone hit 29MB, so `data/processed/` doesn't exist in the build context any
+# more and this COPY would fail outright ("not found"). load_chunks() already
+# calls storage.ensure_local() for every expected chunk file before globbing,
+# restoring them from Supabase Storage on first use — nothing here needs to
+# pre-seed that.
 #
 # The school calendar and the .docx builder live under backend/, already copied.
-COPY data/processed/ ./data/processed/
 COPY --from=web /app/frontend/dist ./frontend/dist
 
 # Generated .docx land here. On a container host with an ephemeral filesystem
