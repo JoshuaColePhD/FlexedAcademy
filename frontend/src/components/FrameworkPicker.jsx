@@ -8,9 +8,16 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
   const { mounted, closing } = useExitTransition(open, 150)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
+  // Which group's header is topmost in the scrolled list right now — mirrors
+  // an IDE settings panel (categories on the left, a tall scrollable list on
+  // the right that the category rail tracks and jumps to), which is exactly
+  // what a 72-item flat dropdown couldn't offer: 18rem of scroll and no way
+  // to jump straight to "Science" without hunting past everything before it.
+  const [activeGroup, setActiveGroup] = useState(null)
   const rootRef = useRef(null)
   const inputRef = useRef(null)
   const listRef = useRef(null)
+  const groupRefs = useRef(new Map())
   const autoId = useId()
   const listId = `${id || autoId}-listbox`
 
@@ -25,6 +32,35 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups])
 
   useEffect(() => setActive(0), [query])
+  useEffect(() => setActiveGroup(groups[0]?.name ?? null), [groups])
+
+  // Tracks which group header is currently topmost in the scrollable list,
+  // so the rail highlights where you actually are — the same "scrollspy"
+  // behavior a settings sidebar gives you, rather than only updating on
+  // click and going stale the moment someone scrolls by hand.
+  useEffect(() => {
+    if (!open || !listRef.current) return undefined
+    const headers = groups
+      .map((g) => groupRefs.current.get(g.name))
+      .filter(Boolean)
+    if (!headers.length) return undefined
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        if (visible[0]) setActiveGroup(visible[0].target.dataset.group)
+      },
+      { root: listRef.current, threshold: 0, rootMargin: '0px 0px -85% 0px' },
+    )
+    headers.forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [open, groups])
+
+  const scrollToGroup = (name) => {
+    setActiveGroup(name)
+    groupRefs.current.get(name)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
 
   useEffect(() => {
     if (!open) return undefined
@@ -84,7 +120,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
           aria-expanded={open}
           aria-controls={open ? listId : undefined}
           aria-autocomplete="list"
-          placeholder="Search courses — try “math”, “biology”, “Pre-AP”..."
+          placeholder="Search courses — try “math”, “elementary”, “Pre-AP”..."
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -112,14 +148,40 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
 
       {mounted ? (
         <div
-          className={`neo-panel fa-card-drop absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`}
+          className={`neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`}
+          style={{ width: 'min(34rem, calc(100vw - 2rem))', maxWidth: 'calc(100vw - 2rem)' }}
         >
+          {/* Category rail — desktop only. A phone-width dropdown has no room
+              for a second column, so it falls back to the plain scrolling
+              list (still grouped, just without the jump-to-category rail). */}
+          {groups.length > 1 ? (
+            <div
+              className="hidden w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-2 sm:flex"
+              style={{ maxHeight: 'min(28rem, 70vh)' }}
+            >
+              {groups.map((g) => (
+                <button
+                  key={g.name}
+                  type="button"
+                  onClick={() => scrollToGroup(g.name)}
+                  className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                    activeGroup === g.name ? 'neo-inset bg-paper text-ink' : 'text-ink-muted hover:bg-paper hover:text-ink'
+                  }`}
+                >
+                  <span className="truncate">{g.name}</span>
+                  <span className="shrink-0 text-[10px] text-ink-faint">{g.items.length}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <ul
             ref={listRef}
             id={listId}
             role="listbox"
             aria-label="Standards frameworks"
-            className="max-h-72 overflow-y-auto py-1"
+            className="min-w-0 flex-1 overflow-y-auto py-1"
+            style={{ maxHeight: 'min(28rem, 70vh)' }}
           >
             {flat.length === 0 ? (
               <li className="px-3 py-6 text-center text-sm text-ink-muted">
@@ -128,7 +190,16 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
             ) : (
               groups.map((g) => (
                 <li key={g.name} role="presentation">
-                  <p className="eyebrow sticky top-0 z-10 bg-paper-sunken px-3 py-1.5">{g.name}</p>
+                  <p
+                    ref={(el) => {
+                      if (el) groupRefs.current.set(g.name, el)
+                      else groupRefs.current.delete(g.name)
+                    }}
+                    data-group={g.name}
+                    className="eyebrow sticky top-0 z-10 bg-paper-sunken px-3 py-1.5"
+                  >
+                    {g.name}
+                  </p>
                   <ul role="presentation">
                     {g.items.map((fw) => {
                       const i = flat.indexOf(fw)

@@ -67,6 +67,27 @@ export function groupFrameworks(frameworks = []) {
   })).filter((g) => g.items.length > 0)
 }
 
+/** Grade-band words a teacher actually thinks in, mapped to the numeric
+ *  grades they cover (see grades.js — K is 0). Same reasoning as the numeric
+ *  case below: "elementary" is never IN a framework's label (a state's
+ *  "English Language Arts (2021)" spans K-12 in one framework and never
+ *  spells out a level), even though its `grades` list is exactly how a
+ *  teacher who teaches "elementary" would recognize it. Keys are checked as
+ *  prefixes so partial typing ("elemen") matches before the whole word is
+ *  in. */
+const LEVEL_BANDS = [
+  { keys: ['kindergarten', 'kinder'], grades: [0] },
+  { keys: ['elementary', 'elem'], grades: [0, 1, 2, 3, 4, 5] },
+  { keys: ['middle'], grades: [6, 7, 8] },
+  { keys: ['high'], grades: [9, 10, 11, 12] },
+]
+
+function matchesLevelBand(word, fw) {
+  if (word.length < 3) return false
+  const band = LEVEL_BANDS.find((b) => b.keys.some((k) => k.startsWith(word) || word.startsWith(k)))
+  return !!band && band.grades.some((g) => fw.grades?.includes(g))
+}
+
 /** Case- and separator-insensitive, and matched word by word rather than as
  *  one glued-together string — "world lang", "World_Languages" and
  *  "worldlanguages" all still find the same row (every word has to appear
@@ -78,14 +99,20 @@ export function groupFrameworks(frameworks = []) {
  *  its own `grades` list. A purely-numeric word matches against `grades`
  *  too for exactly that reason, so a teacher searching by the grade they
  *  actually teach finds the general framework that covers it, not just the
- *  AP courses whose names happen to contain "English". */
+ *  AP courses whose names happen to contain "English".
+ *
+ *  "school" is dropped as a bare word — it only ever shows up glued to a
+ *  level band ("elementary school", "middle school") and never means
+ *  anything on its own, so requiring it to also appear in the label would
+ *  just make the level-band match above pointless. */
 export function matchesFramework(fw, query) {
-  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean).filter((w) => w !== 'school')
   if (!words.length) return true
   const hay = `${fw.label || ''} ${fw.id || ''}`.toLowerCase().replace(/[\s_-]+/g, '')
   return words.every((word) => {
     const normalized = word.replace(/[\s_-]+/g, '')
     if (/^\d+$/.test(normalized) && fw.grades?.includes(Number(normalized))) return true
+    if (matchesLevelBand(normalized, fw)) return true
     return hay.includes(normalized)
   })
 }
