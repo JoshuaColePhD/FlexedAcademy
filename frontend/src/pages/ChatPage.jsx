@@ -655,6 +655,15 @@ export function ChatPage() {
     const el = document.createElement('div')
     el.style.position = 'fixed'
     el.style.zIndex = '100'
+    // Closed by default: this host is never removed from the DOM (only its
+    // *contents* are conditionally portaled in, further down), so left at
+    // the browser's default 'auto' it sat over the full viewport — full
+    // window-sized per the sync effect below whenever overlayAnchorRef
+    // hadn't measured yet — silently eating every click underneath it
+    // (sidebar chat links, the rail's own "open document" row) even while
+    // no document was open. Flipped to 'auto' only while the overlay is
+    // actually mounted (see the effect keyed on overlayExit.mounted).
+    el.style.pointerEvents = 'none'
     return el
   })
   useEffect(() => {
@@ -2570,6 +2579,13 @@ export function ChatPage() {
      had to be kept in sync. */
   const overlayOpen = expanded && hasArtifact
   const overlayExit = useExitTransition(overlayOpen, 130)
+  // See overlayPortalHost's own creation comment: this host spans the full
+  // viewport (or the docked box) at all times, so it must stop intercepting
+  // clicks the instant there's nothing shown inside it, not just while it's
+  // sized to zero.
+  useEffect(() => {
+    overlayPortalHost.style.pointerEvents = overlayExit.mounted ? 'auto' : 'none'
+  }, [overlayExit.mounted, overlayPortalHost])
   /* Measured live (rAF timestamps during the slide-in): the animation
      itself was a rock-solid ~13ms/frame for its whole duration, EXCEPT the
      first two frames (26.7ms, then 39.9ms) — that's not the CSS transform
