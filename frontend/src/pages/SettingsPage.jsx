@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Link as LinkIcon, Loader2, Settings, Sparkles, Upload, User } from 'lucide-react'
+import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Settings, Sparkles, User } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -13,6 +13,7 @@ import { useTheme } from '../hooks/useTheme'
 import { useDesignSkin } from '../hooks/useDesignSkin'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { ConfirmedCalendarReview } from '../components/OnboardingWizard'
+import { UploadDropzone } from '../components/UploadDropzone'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { Tooltip } from '../components/Tooltip'
 import { AccountMenu } from '../components/AccountMenu'
@@ -360,7 +361,6 @@ function SchoolPicker({ value, onSaved }) {
     }
   }
 
-  const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [calendarUrl, setCalendarUrl] = useState('')
 
@@ -376,10 +376,9 @@ function SchoolPicker({ value, onSaved }) {
     } finally {
       setUploading(false)
       setCalendarUrl('')
-      if (fileRef.current) fileRef.current.value = ''
     }
   }
-  const uploadCalendar = (e) => submitCalendar({ file: e.target.files?.[0] })
+  const uploadCalendar = (file) => submitCalendar({ file })
   const submitCalendarUrl = () => submitCalendar({ url: calendarUrl.trim() })
 
   // Was the ONLY place a district's lesson-plan format or calendar could be
@@ -394,7 +393,6 @@ function SchoolPicker({ value, onSaved }) {
   // and copy just switch from "Upload" to "Replace" once something's already
   // there. Same endpoints as the wizard either way, so a file submitted from
   // either place is processed identically.
-  const templateFileRef = useRef(null)
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const [templateUrl, setTemplateUrl] = useState('')
 
@@ -410,10 +408,9 @@ function SchoolPicker({ value, onSaved }) {
     } finally {
       setUploadingTemplate(false)
       setTemplateUrl('')
-      if (templateFileRef.current) templateFileRef.current.value = ''
     }
   }
-  const uploadTemplate = (e) => submitTemplate({ file: e.target.files?.[0] })
+  const uploadTemplate = (file) => submitTemplate({ file })
   const submitTemplateUrl = () => submitTemplate({ url: templateUrl.trim() })
 
   return (
@@ -480,10 +477,9 @@ function SchoolPicker({ value, onSaved }) {
                 ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
                 : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
           </p>
-          <UploadOrLink
+          <UploadDropzone
             uploading={uploadingTemplate}
             label={selected.template_status === 'active' ? 'Replace Template' : 'Upload Template'}
-            fileRef={templateFileRef}
             onFile={uploadTemplate}
             url={templateUrl}
             onUrlChange={setTemplateUrl}
@@ -510,10 +506,9 @@ function SchoolPicker({ value, onSaved }) {
             No calendar is on file for {selected.name} yet, so weeks can’t be scheduled — plans
             will build without a week or a closure to work from until one is added.
           </p>
-          <UploadOrLink
+          <UploadDropzone
             uploading={uploading}
             label="Upload Calendar"
-            fileRef={fileRef}
             onFile={uploadCalendar}
             url={calendarUrl}
             onUrlChange={setCalendarUrl}
@@ -533,10 +528,9 @@ function SchoolPicker({ value, onSaved }) {
             <p className="text-xs text-ink-soft">
               Starting a new school year, or need to fix a date? Upload a new calendar to replace this one.
             </p>
-            <UploadOrLink
+            <UploadDropzone
               uploading={uploading}
               label="Replace Calendar"
-              fileRef={fileRef}
               onFile={uploadCalendar}
               url={calendarUrl}
               onUrlChange={setCalendarUrl}
@@ -544,64 +538,6 @@ function SchoolPicker({ value, onSaved }) {
             />
           </div>
         </div>
-      ) : null}
-    </div>
-  )
-}
-
-/* File button OR a pasted link — same either/or contract every upload
- * endpoint here takes (uploadSchoolCalendar/uploadSchoolTemplate, api.js),
- * and the same split OnboardingWizard's SchoolStep already offers. Factored
- * out once SchoolPicker needed it twice (template and calendar) rather than
- * copy-pasted a second time. */
-function UploadOrLink({ uploading, label, fileRef, onFile, url, onUrlChange, onUrlSubmit }) {
-  return (
-    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        disabled={uploading}
-        className="neo-raised inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset disabled:opacity-50"
-      >
-        {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-        {uploading ? 'Reading…' : label}
-      </button>
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".pdf,.docx"
-        className="hidden"
-        onChange={onFile}
-      />
-      <span className="text-xs text-ink-subtle font-medium text-center sm:text-left">OR</span>
-      <div className="relative flex-1">
-        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
-          <LinkIcon size={13} className="text-ink-subtle" aria-hidden="true" />
-        </div>
-        <input
-          type="url"
-          placeholder="Paste Google Doc link"
-          value={url}
-          onChange={(e) => onUrlChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && url.trim()) {
-              e.preventDefault()
-              onUrlSubmit()
-            }
-          }}
-          disabled={uploading}
-          className="w-full rounded-lg border border-edge bg-paper py-2 pl-7 pr-3 text-sm text-ink outline-none transition-colors focus:border-accent placeholder:text-ink-subtle disabled:opacity-50"
-        />
-      </div>
-      {url.trim() ? (
-        <button
-          type="button"
-          onClick={onUrlSubmit}
-          disabled={uploading}
-          className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Use link
-        </button>
       ) : null}
     </div>
   )
