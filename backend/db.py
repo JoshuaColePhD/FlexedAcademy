@@ -3014,6 +3014,32 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS source TEXT;
     """,
+    # ── 55: auto-verify a builder codegen job on the cleanest pass ──────────────
+    #
+    # codegen.py's module docstring (and approve_builder_codegen_job's own)
+    # used to say approval is ALWAYS an explicit admin action, full stop —
+    # that was a deliberate pilot-phase gate (the vision judge had zero
+    # production track record), not an oversight. It's being narrowed here,
+    # not removed: auto-verify only fires when BOTH independent quality
+    # signals this codebase already trusts enough to act on alone agree —
+    # the template's own analysis was clean enough to auto-activate
+    # (school_templates.auto_activated, migration ~47ish's bar: zero
+    # findings, confidence>=0.9, model recommends it) AND this codegen job
+    # passed both vision judges within its attempt budget (status ==
+    # 'succeeded'). Anything short of that still waits for a human, exactly
+    # as before.
+    #
+    # auto_verified distinguishes this path from an admin's manual approve —
+    # both set schools.builder_status='verified' identically, but list_
+    # auto_verified_builder_jobs (the post-hoc audit trail, mirroring
+    # list_auto_activated_templates) needs to tell which is which.
+    # verified_at is set on the manual path too now, for symmetry — it was
+    # simply absent before since builder_status itself already carried "when"
+    # implicitly via the schools row having no timestamp at all.
+    """
+    ALTER TABLE builder_codegen_jobs ADD COLUMN IF NOT EXISTS auto_verified BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE builder_codegen_jobs ADD COLUMN IF NOT EXISTS verified_at TEXT;
+    """,
 ]
 
 
@@ -3723,9 +3749,12 @@ def get_builder_codegen_job_for_school(school_id: str) -> dict | None:
 
 def list_builder_codegen_jobs_pending_review() -> list[dict]:
     """Jobs an admin still needs to act on: exhausted their retry budget, or
-    passed but haven't been explicitly approved yet (approval is mandatory
-    even on a pass — see backend/builder/codegen.py's module docstring on
-    why the vision judge isn't trusted to auto-verify during the pilot)."""
+    passed but haven't been auto-verified or explicitly approved yet. A job
+    whose template was cleanly auto-activated AND that itself passed both
+    vision judges never reaches this list at all — it self-verifies via
+    mark_builder_codegen_job_auto_verified and shows up in
+    list_auto_verified_builder_jobs instead. See backend/builder/codegen.py's
+    module docstring for the exact bar."""
     return _rows(
         """
         SELECT j.*, s.name AS school_name, s.builder_status AS school_builder_status
@@ -3805,15 +3834,58 @@ def requeue_builder_codegen_job(job_id: str) -> None:
 
 
 def approve_builder_codegen_job(job_id: str) -> dict | None:
-    """The one place builder_status is ever set to 'verified' — always an
-    explicit admin action (POST /admin/builder-codegen/{job_id}/approve),
-    never automatic, even when every attempt inside the loop already passed
-    both vision judges. See backend/builder/codegen.py's module docstring."""
+    """The manual path to 'verified' (POST /admin/builder-codegen/{job_id}
+    /approve) — still how every job short of the auto-verify fast path
+    (mark_builder_codegen_job_auto_verified, migration 55) gets there. See
+    backend/builder/codegen.py's module docstring for which jobs qualify for
+    that fast path and which still land here."""
     job = get_builder_codegen_job(job_id)
     if not job or not job.get("layout_spec_json"):
         return None
     _write("UPDATE schools SET builder_status = 'verified' WHERE id = ?", (job["school_id"],))
+    _write("UPDATE builder_codegen_jobs SET verified_at = ? WHERE id = ?", (now(), job_id))
     return get_school(job["school_id"])
+
+
+def mark_builder_codegen_job_auto_verified(job_id: str) -> dict | None:
+    """The auto-verify fast path (migration 55) — sets schools.builder_status
+    = 'verified' the same as approve_builder_codegen_job, but only ever
+    called from run_codegen_job itself, immediately after a job succeeds,
+    and only when _meets_auto_verify_bar (codegen.py) says both independent
+    quality signals — the template's own clean auto-activation and this
+    job's clean vision-judge pass — agree. auto_verified=true is what lets
+    list_auto_verified_builder_jobs surface these separately from a job an
+    admin actually clicked approve on."""
+    job = get_builder_codegen_job(job_id)
+    if not job or not job.get("layout_spec_json"):
+        return None
+    ts = now()
+    _write("UPDATE schools SET builder_status = 'verified' WHERE id = ?", (job["school_id"],))
+    _write(
+        "UPDATE builder_codegen_jobs SET auto_verified = true, verified_at = ? WHERE id = ?",
+        (ts, job_id),
+    )
+    return get_school(job["school_id"])
+
+
+def list_auto_verified_builder_jobs(limit: int = 20) -> list[dict]:
+    """The audit trail for the auto-verify fast path — mirrors
+    list_auto_activated_templates' own "what did the pipeline decide on its
+    own, after the fact" shape, one level further down the pipeline (a
+    verified document BUILDER, not just an analyzed template format)."""
+    return _rows(
+        """
+        SELECT j.*, s.name AS school_name, u.name AS uploader_name, u.email AS uploader_email
+        FROM builder_codegen_jobs j
+        JOIN schools s ON s.id = j.school_id
+        LEFT JOIN school_templates st ON st.id = j.template_id
+        LEFT JOIN users u ON u.id = st.uploaded_by
+        WHERE j.auto_verified = true
+        ORDER BY j.verified_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
 
 
 def get_school_builder_spec(school_id: str) -> dict | None:

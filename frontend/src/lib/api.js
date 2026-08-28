@@ -364,6 +364,8 @@ export const api = {
     request(`/api/admin/school-templates/${encodeURIComponent(templateId)}/reanalyze`, { method: 'POST' }),
   listPendingBuilderCodegenJobs: ({ signal } = {}) =>
     request('/api/admin/builder-codegen/pending', { signal }),
+  listAutoVerifiedBuilderCodegenJobs: ({ signal } = {}) =>
+    request('/api/admin/builder-codegen/auto-verified', { signal }),
   getBuilderCodegenJob: (jobId, { signal } = {}) =>
     request(`/api/admin/builder-codegen/${encodeURIComponent(jobId)}`, { signal }),
   builderCodegenAttemptRenderUrl: (jobId, attemptNumber) =>
