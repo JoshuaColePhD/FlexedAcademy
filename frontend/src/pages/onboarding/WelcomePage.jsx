@@ -76,6 +76,12 @@ export function WelcomePage() {
   const [grade, setGrade] = useState(ALL_GRADES)
   const [query, setQuery] = useState('')
   const [saving, setSaving] = useState(false)
+  // A sighted teacher SEES the grade select snap to "3rd" the moment they
+  // type it — a screen-reader user, focused in the search box the whole
+  // time, gets no signal that anything off-screen just changed unless
+  // something announces it. Manual selection doesn't need this: the
+  // native <select> already reports its own value change on interaction.
+  const [gradeAnnouncement, setGradeAnnouncement] = useState('')
 
   const { data: frameworks = [] } = useQuery({
     queryKey: qk.frameworks,
@@ -117,10 +123,14 @@ export function WelcomePage() {
     const intent = inferGradeFromQuery(query)
     if (!intent) return
     if (intent.type === 'grade') {
-      if (grade !== intent.grade) setGrade(intent.grade)
+      if (grade !== intent.grade) {
+        setGrade(intent.grade)
+        setGradeAnnouncement(`Grade set to ${gradeLabel(intent.grade) || intent.grade}.`)
+      }
     } else if (intent.type === 'band') {
       if (grade !== ALL_GRADES && !intent.grades.includes(Number(grade))) {
         setGrade(ALL_GRADES)
+        setGradeAnnouncement('Grade cleared to All grades.')
       }
     }
   }, [query, grade])
@@ -232,6 +242,8 @@ export function WelcomePage() {
                 <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
               </svg>
             </div>
+
+            <span className="sr-only" role="status" aria-live="polite">{gradeAnnouncement}</span>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4 md:px-10">
               <p className="mb-2 shrink-0 text-xs text-ink-muted">
