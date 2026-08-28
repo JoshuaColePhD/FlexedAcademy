@@ -97,9 +97,12 @@ alcos_chunks.json
 # regenerable from anything else in the repo.
 data/db/
 data/processed/
-# ...except the hand-audited AP Lang parse, which is ~190KB and whose spot check
-# is recorded in data/raw/SPOT_CHECK_step1.md.
-!data/processed/chunks.json
+# All of data/processed/*chunks.json is storage-backed now (Supabase Storage,
+# see backend/storage.py + scripts/upload_chunks_to_storage.py), including
+# the hand-audited AP Lang parse (chunks.json) that used to be the one
+# tracked exception here. Production restores whatever's missing locally via
+# backend/retrieval.py's load_chunks() — git no longer needs to carry any of
+# it. Re-run the upload script after any re-ingest.
 
 # setuptools build metadata
 *.egg-info
