@@ -151,7 +151,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     staleTime: Infinity,
     enabled: open,
   })
-  const { data: schools = [] } = useQuery({
+  const { data: schools = [], isLoading: schoolsLoading } = useQuery({
     queryKey: qk.schools,
     queryFn: () => api.listSchools(),
     staleTime: Infinity,
@@ -310,7 +310,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div key={stepKey} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
             {stepKey === 'welcome' ? (
-              <WelcomeStep steps={formSteps.length} onNext={goNext} />
+              <WelcomeStep steps={formSteps.length} ready={!schoolsLoading} onNext={goNext} />
             ) : stepKey === 'school' ? (
               <SchoolStep
                 eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
@@ -424,19 +424,32 @@ function StepHeader({ eyebrow, title, body }) {
   )
 }
 
-function WelcomeStep({ steps, onNext }) {
+function WelcomeStep({ steps, ready, onNext }) {
   /* Counted, not asserted. This promised "three quick things" and then showed
      however many the flow actually had — and now that already-answered steps
      drop out (see `plan`), the number genuinely varies by account. A first
      screen that miscounts the work ahead is a small lie the teacher catches
-     within about ten seconds. */
+     within about ten seconds.
+
+     `ready` guards against a DIFFERENT version of the same lie: `steps` comes
+     from `plan`, which starts on a hardcoded guess (no "school" step) and
+     only corrects itself once the `schools` query resolves and reveals
+     schoolNeedsTemplate — so the very first paint could say "Two quick
+     things" for a beat, then visibly jump to "Three" a moment later. Schools
+     is small and cached (staleTime: Infinity), so this only ever shows on a
+     genuinely fresh load — the exact count without ever asserting a wrong
+     one first. */
   const count = ['no', 'One', 'Two', 'Three', 'Four', 'Five'][steps] || String(steps)
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       <StepHeader
         eyebrow="Welcome to FlexEd"
         title="Let’s make some magic"
-        body={`${count} quick thing${steps === 1 ? '' : 's'} — so every plan comes out grounded in your standards, your materials, and your district’s format. Skippable at every step.`}
+        body={
+          ready
+            ? `${count} quick thing${steps === 1 ? '' : 's'} — so every plan comes out grounded in your standards, your materials, and your district’s format. Skippable at every step.`
+            : 'A few quick things — so every plan comes out grounded in your standards, your materials, and your district’s format. Skippable at every step.'
+        }
       />
       <div className="dialog-actions mt-2">
         <motion.button 
