@@ -12,7 +12,7 @@ import { useVoice } from '../lib/voiceContext'
 import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
 import { useLayoutMode } from '../hooks/useMediaQuery'
-import { useActiveClass, useCalendar, useChats } from '../hooks/useAppData'
+import { useActiveClass, useCalendar, useChats, useClasses } from '../hooks/useAppData'
 import { DAYS, FIELD_LABELS, SHORT_DAY, dayTitle, unitSuffix } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
@@ -199,7 +199,7 @@ function TemplateBanner() {
       return list.some((s) => s.builder_readiness === 'in_progress') ? 15_000 : false
     },
   })
-  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
+  const { data: classes = [] } = useClasses()
 
   if (!classId) return null
 

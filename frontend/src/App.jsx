@@ -403,6 +403,21 @@ const queryClient = new QueryClient({
       // retrying it three times first just delays the login screen.
       retry: (count, err) => err?.status !== 401 && err?.status !== 404 && count < 2,
       refetchOnWindowFocus: false,
+      /* Was unset, i.e. staleTime: 0 — every query refetched on EVERY mount.
+         Measured on one page navigation: /api/auth/me six times, /api/classes
+         four. Components like Greeting mount and unmount as the chat empties
+         and fills, and each remount was a fresh round trip for data that had
+         not changed. /api/auth/me in particular is one of the most expensive
+         endpoints in the app (backend/routes/auth.py's _public_user computes
+         the whole entitlement), so paying for it six times dominated the
+         latency of a page load.
+
+         30s is well under how often any of this actually changes server-side,
+         and every mutation that DOES change something already invalidates or
+         seeds its own key — so this only suppresses the redundant refetches,
+         not real updates. Individual queries still override it where they
+         want something longer (useClasses, useCalendar) or shorter. */
+      staleTime: 30_000,
     },
   },
 })

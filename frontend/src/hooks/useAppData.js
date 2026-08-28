@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useParams } from 'react-router-dom'
@@ -19,10 +20,31 @@ import { qk } from '../lib/queryKeys'
  *  migration 9, and the app still has to work — the calendar just shows the
  *  year with no class attached. An error here is not worth a toast. */
 export function useClasses(includeArchived = false) {
+  /* ONE request and ONE cache entry, whichever variant the caller wants.
+     This used to key on `{ includeArchived }`, so useClasses(false) and
+     useClasses(true) were two entries and two round trips for what is the
+     same eleven-row list — and four other call sites bypassed this hook
+     entirely with a bare qk.classes useQuery, making a THIRD entry with no
+     staleTime that refetched on every mount. Measured: /api/classes four
+     times on a single page load.
+
+     Fetching the full list (archived included) and narrowing per-observer
+     with `select` is what collapses that: react-query runs select downstream
+     of the shared cache entry, so each caller gets its own view without its
+     own request. Filtering client-side is free at this size — and the
+     `archived` flag is on the row already, which is how ClassPage has always
+     split these two lists locally. */
+  const select = useCallback(
+    (rows) => {
+      const list = Array.isArray(rows) ? rows : []
+      return includeArchived ? list : list.filter((c) => !c.archived)
+    },
+    [includeArchived]
+  )
   return useQuery({
-    queryKey: [...qk.classes, { includeArchived }],
-    queryFn: () => api.listClasses({ include_archived: includeArchived }),
-    select: (rows) => (Array.isArray(rows) ? rows : []),
+    queryKey: qk.classes,
+    queryFn: () => api.listClasses({ include_archived: true }),
+    select,
     retry: false,
     // No placeholderData: [] here. A placeholder resolves the query
     // IMMEDIATELY as an empty success, so RootRedirect saw "zero classes"

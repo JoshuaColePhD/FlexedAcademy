@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Copy, FileText, ArrowRight, TriangleAlert } from 'lucide-react'
 import { api } from '../lib/api'
+import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
 import { LessonPlanTable } from '../components/LessonPlanTable'
@@ -26,10 +27,18 @@ export function SharedPlanPage() {
     retry: false
   })
 
-  const { data: classes = [] } = useQuery({ 
-    queryKey: ['classes'], 
-    queryFn: api.listClasses,
-    enabled: !!user
+  /* Keeps its own useQuery rather than useClasses() only because of `enabled`
+     — this is a public share page, and an anonymous viewer must not fire an
+     /api/classes that can only 401. The queryKey and queryFn are deliberately
+     IDENTICAL to useClasses' (hooks/useAppData.js) so that when a signed-in
+     teacher does land here it shares that one cache entry instead of racing a
+     second, differently-shaped fetch onto the same key. */
+  const { data: classes = [] } = useQuery({
+    queryKey: qk.classes,
+    queryFn: () => api.listClasses({ include_archived: true }),
+    select: (rows) => (Array.isArray(rows) ? rows.filter((c) => !c.archived) : []),
+    enabled: !!user,
+    staleTime: 60_000,
   })
 
   const handleFork = async () => {

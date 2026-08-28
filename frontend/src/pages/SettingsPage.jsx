@@ -6,7 +6,7 @@ import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { errorParts } from '../lib/apiError'
 import { useTheme } from '../hooks/useTheme'
@@ -1020,24 +1020,50 @@ function IntegrationPlaceholder({ name, description, icon }) {
   )
 }
 
-export 
+export
 function AvatarSelect() {
-  const { data: user, refetch } = useQuery({ queryKey: ['me'], queryFn: api.me })
-  const [saving, setSaving] = useState(false)
+  /* Reads the account through useAuth (which is the qk.me query itself now,
+     see AuthProvider) rather than a second ['me'] useQuery of its own. That
+     duplicate was the bug: this component refetched ITS copy while the
+     sidebar's AccountMenu read AuthProvider's separate useState, so picking an
+     avatar updated the picker here and left the rail showing the old one until
+     a full page reload. */
+  const { user } = useAuth()
+  const qc = useQueryClient()
   const toast = useToast()
 
-  const handleSelect = async (avatarId) => {
-    if (saving || user?.avatar === avatarId) return
-    setSaving(true)
-    try {
-      await api.updateAvatar(avatarId)
-      await refetch()
-      toast.success('Avatar updated')
-    } catch (err) {
+  const chooseAvatar = useMutation({
+    mutationFn: (avatarId) => api.updateAvatar(avatarId),
+    /* Optimistic: the ring moves on click. Picking an avatar is a direct
+       manipulation of something the teacher is looking at — a round trip
+       before it moves reads as the app ignoring the click, which is exactly
+       what "takes a while for it to show" was. Same shape as useRenameChat
+       (hooks/useAppData.js), the pattern this app already uses for this. */
+    onMutate: async (avatarId) => {
+      await qc.cancelQueries({ queryKey: qk.me })
+      const prev = qc.getQueryData(qk.me)
+      qc.setQueryData(qk.me, (u) => (u ? { ...u, avatar: avatarId } : u))
+      return { prev }
+    },
+    onError: (err, _avatarId, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(qk.me, ctx.prev)
       toast.apiError('Could not update avatar', err)
-    } finally {
-      setSaving(false)
-    }
+    },
+    /* PUT /api/auth/avatar already returns the full public user
+       (backend/routes/auth.py), so the authoritative answer replaces the
+       optimistic guess with NO second round trip. This used to be an
+       await refetch() — a whole extra GET /api/auth/me, which is one of the
+       most expensive endpoints in the app, for data the response already had. */
+    onSuccess: (updated) => qc.setQueryData(qk.me, updated),
+  })
+
+  /* No `saving` guard and no disabled state: the update is optimistic, so
+     there is no window where a click could land on stale data, and freezing
+     all twelve buttons on every pick was most of what made this feel slow.
+     No success toast either — the ring moving IS the confirmation. */
+  const handleSelect = (avatarId) => {
+    if (user?.avatar === avatarId) return
+    chooseAvatar.mutate(avatarId)
   }
 
   return (
@@ -1051,7 +1077,7 @@ function AvatarSelect() {
           type="button"
           onClick={() => handleSelect(null)}
           className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${!user?.avatar ? 'border-[var(--accent)] shadow-md' : 'border-transparent bg-paper-inset text-ink-muted hover:bg-paper-sunken'}`}
-          disabled={saving}
+          aria-pressed={!user?.avatar}
           aria-label="Default avatar"
           title="Default"
         >
@@ -1062,8 +1088,8 @@ function AvatarSelect() {
             key={opt.id}
             type="button"
             onClick={() => handleSelect(opt.id)}
-            disabled={saving}
             className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${opt.bg} ${user?.avatar === opt.id ? 'border-[var(--accent)] shadow-[0_0_0_2px_var(--paper),0_0_0_4px_var(--accent)]' : 'border-transparent'}`}
+            aria-pressed={user?.avatar === opt.id}
             aria-label={opt.label}
             title={opt.label}
           >
@@ -1106,6 +1132,15 @@ export function SettingsPage() {
     setSavedName(n)
   }, [meState.data])
 
+  /* PATCH /api/me returns a PARTIAL user (routes/classes.py — name, email,
+     custom_instructions, school, beta_features; no avatar, no entitlement),
+     so these two MERGE the changed fields into the cached account rather than
+     replacing it the way the avatar mutation can. Writing the partial response
+     in wholesale would silently drop the avatar and entitlement off qk.me.
+
+     Merging rather than invalidating also means the sidebar (AccountMenu reads
+     the same qk.me through useAuth) updates in this tick, with no refetch —
+     the old invalidate left the rail showing the previous name. */
   const commitTeacher = async () => {
     const next = teacher.trim()
     if (!next || next === savedName) return setTeacher(savedName)
@@ -1113,7 +1148,7 @@ export function SettingsPage() {
       await api.updateMe({ name: next })
       setSavedName(next)
       toast.success('Saved')
-      qc.invalidateQueries({ queryKey: qk.me })
+      qc.setQueryData(qk.me, (u) => (u ? { ...u, name: next } : u))
     } catch (err) {
       toast.apiError('Could not save your name', err)
       setTeacher(savedName)
@@ -1125,10 +1160,15 @@ export function SettingsPage() {
   // the toggle looked saved but never actually gated anything.
   const betaFeatures = Boolean(meState.data?.beta_features)
   const toggleBetaFeatures = async (next) => {
+    // Optimistic, so the switch knob moves on click instead of after the round
+    // trip — it used to derive purely from the server answer, leaving a
+    // fully-clickable switch that looked inert until the refetch landed.
+    const prev = qc.getQueryData(qk.me)
+    qc.setQueryData(qk.me, (u) => (u ? { ...u, beta_features: next } : u))
     try {
       await api.updateMe({ betaFeatures: next })
-      qc.invalidateQueries({ queryKey: qk.me })
     } catch (err) {
+      if (prev !== undefined) qc.setQueryData(qk.me, prev)
       toast.apiError('Could not save that', err)
     }
   }

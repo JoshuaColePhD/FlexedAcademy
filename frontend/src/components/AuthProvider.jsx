@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AuthContext, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from '../lib/authContext'
 import { api } from '../lib/api'
+import { qk } from '../lib/queryKeys'
 
 function setAuthedState(val) {
   try {
@@ -11,118 +13,152 @@ function setAuthedState(val) {
   }
 }
 
+/* The one fetch of the signed-in account, shared by this provider and every
+ * qk.me reader in the app.
+ *
+ * A 401 is resolved as `null` rather than thrown, which is what lets the three
+ * states below be read straight off `data` with no separate error branch:
+ *
+ *   undefined -> we do not know yet (still fetching, or a transport failure
+ *                exhausted its retry) -> 'loading'
+ *   null      -> definitively not signed in                -> 'anon'
+ *   object    -> signed in                                 -> 'authed'
+ *
+ * Anything that is NOT a 401 is rethrown so react-query's own retry handles it.
+ * That distinction is load-bearing, not tidiness — see the status derivation
+ * below for the outage it prevents. */
+async function fetchMe() {
+  try {
+    return await api.me()
+  } catch (err) {
+    if (err?.status === 401) return null
+    throw err
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [status, setStatus] = useState('loading') // 'loading' | 'authed' | 'anon'
-  const [user, setUser] = useState(null)
+  // None of qk.classes/qk.schools/qk.calendar(...)/etc (queryKeys.js) are
+  // keyed by user id — they don't need to be, since only one account is ever
+  // signed in at a time in a real page load. But react-query's cache
+  // survives a login/logout that DOESN'T reload the page, so without this,
+  // signing out of one account and into another leaves every one of those
+  // queries answering with the FIRST account's data until something happens
+  // to invalidate it — a real teacher testing a second account (or two
+  // people sharing a machine) sees the previous person's classes and school
+  // rendered under their own name. Cleared on every identity transition
+  // below, not just logout, since login/signup/resetPassword each replace
+  // *which* account "the" cache is supposed to belong to just as much.
+  const queryClient = useQueryClient()
 
-  const refresh = useCallback(() => {
-    return api
-      .me()
-      .then((u) => {
-        setUser(u)
-        setStatus('authed')
-        setAuthedState(true)
-        // Returned, not swallowed: callers that need the *fresh* answer (the
-        // return-from-checkout poll) can read it without racing React state.
-        return u
-      })
-      .catch((err) => {
-        /* "The request failed" is not "you are signed out".
-         *
-         * This collapsed every failure into anon, and a 401 and a timeout are
-         * indistinguishable once you throw the error away. api.js aborts every
-         * request at 20 seconds; this app's own keepwarm/README.md records that
-         * the free Render instance sleeps after 15 minutes idle and takes ~50s
-         * to wake, and the pinger that hides that only runs Mon–Fri 7am–4pm.
-         * So the first /api/auth/me of an evening or weekend load — exactly
-         * when a teacher plans — reliably timed out, flipped to anon, and
-         * dropped her at the sign-in form with a perfectly valid session. It
-         * also cleared KNOWN_AUTHED_KEY, so the next cold load skipped
-         * BootScreen too and went straight to the login redirect.
-         *
-         * Only a real 401 means signed out. Anything else keeps the previous
-         * state and lets the retry below settle it — the same distinction
-         * RootRedirect and AfterAuthRedirect in App.jsx already make, both
-         * citing this bug class in their own comments. */
-        if (err?.status === 401) {
-          setUser(null)
-          setStatus('anon')
-          setAuthedState(false)
-          return null
-        }
-        // Transport failure. If we already know who this is, say nothing and
-        // keep them signed in; otherwise stay in 'loading' so the shell holds
-        // rather than accusing them of being logged out, and try once more.
-        if (!retriedRef.current) {
-          retriedRef.current = true
-          // A cold instance answers well inside a second attempt once it is up.
-          setTimeout(() => refreshRef.current?.(), 1500)
-        }
-        return null
-      })
-  }, [])
+  /* The account, as ONE react-query entry (qk.me) rather than this provider's
+     own useState plus an imperative api.me().
 
-  /* Bounds the retry above to one attempt per mount, and gives the catch a
-     stable way to call the current refresh without making refresh depend on
-     itself. */
-  const retriedRef = useRef(false)
-  const refreshRef = useRef(refresh)
+     It used to be both: `user` lived here in useState, while SettingsPage and
+     others separately read a ['me'] query. Nothing synced the two, so writing
+     to one left the other stale — selecting an avatar updated the settings
+     picker and left the sidebar showing the old one until a full page reload
+     (the bug this rewrite is for). OnboardingWizard's own comment already
+     warned about this trap; three call sites had fallen into it anyway.
+     One key means a mutation can seed the answer with setQueryData and every
+     reader in the app — this provider included — sees it in the same tick. */
+  const meQuery = useQuery({
+    queryKey: qk.me,
+    queryFn: fetchMe,
+    /* Exactly one extra attempt, 1.5s apart — the same budget the hand-rolled
+       retriedRef used to give it. Only reachable for non-401s, since fetchMe
+       resolves a 401 as null rather than throwing. */
+    retry: 1,
+    retryDelay: 1500,
+    /* The account does not change underneath a teacher who isn't editing it,
+       and every mutation that DOES change it seeds this key directly. */
+    staleTime: 60_000,
+  })
+
+  const { data: me, isFetched } = meQuery
+
+  /* "The request failed" is not "you are signed out".
+   *
+   * These used to be collapsed together, and a 401 and a timeout are
+   * indistinguishable once you throw the error away. api.js aborts every
+   * request at 20 seconds; this app's own keepwarm/README.md records that the
+   * free Render instance sleeps after 15 minutes idle and takes ~50s to wake,
+   * and the pinger that hides that doesn't cover every hour. So the first
+   * /api/auth/me of an evening or weekend load — exactly when a teacher plans
+   * — reliably timed out, flipped to anon, and dropped her at the sign-in form
+   * with a perfectly valid session. It also cleared KNOWN_AUTHED_KEY, so the
+   * next cold load skipped BootScreen too and went straight to the login
+   * redirect.
+   *
+   * Hence three states, not two: `undefined` (still fetching, or a transport
+   * failure used up its retry) holds at 'loading' so the shell waits instead
+   * of accusing anyone of being logged out. Only an actual 401 — which fetchMe
+   * turns into `null` — is 'anon'. Same distinction RootRedirect and
+   * AfterAuthRedirect in App.jsx already make, both citing this bug class. */
+  const status = me === undefined ? 'loading' : me ? 'authed' : 'anon'
+  const user = me ?? null
+
+  /* Mirrors the query's answer into the localStorage hint BootScreen reads on
+     the next cold load. Deliberately not touched while `me` is undefined — a
+     timeout must leave a previously-known-authed flag alone. */
   useEffect(() => {
-    refreshRef.current = refresh
-  }, [refresh])
+    if (!isFetched || me === undefined) return
+    setAuthedState(Boolean(me))
+  }, [me, isFetched])
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+  /* Re-reads the account and hands back the FRESH answer — callers that need
+     it (BillingProvider's return-from-checkout poll) can read the result
+     without racing React state, same contract as before. fetchQuery rather
+     than meQuery.refetch() so this callback stays referentially stable. */
+  const refresh = useCallback(
+    () => queryClient.fetchQuery({ queryKey: qk.me, queryFn: fetchMe, staleTime: 0 }),
+    [queryClient]
+  )
+
+  /* Every identity transition below funnels through here: wipe the previous
+     account's cache, then seed qk.me with who we now are. Order matters —
+     clear() would drop a freshly-set account too if it ran second. */
+  const applyIdentity = useCallback(
+    (u) => {
+      queryClient.clear()
+      queryClient.setQueryData(qk.me, u ?? null)
+      setAuthedState(Boolean(u))
+      return u
+    },
+    [queryClient]
+  )
 
   // A session expiring mid-use surfaces as a 401 from whatever request hit it
   // first — api.js dispatches this once, globally, instead of every page
   // needing its own "you got logged out" handling.
   useEffect(() => {
-    const onUnauthorized = () => {
-      setUser(null)
-      setStatus('anon')
-      setAuthedState(false)
-    }
+    const onUnauthorized = () => applyIdentity(null)
     window.addEventListener('aplang:unauthorized', onUnauthorized)
     return () => window.removeEventListener('aplang:unauthorized', onUnauthorized)
-  }, [])
+  }, [applyIdentity])
 
-  const login = useCallback(async (email, password) => {
-    const u = await api.login(email, password)
-    setUser(u)
-    setStatus('authed')
-    setAuthedState(true)
-    return u
-  }, [])
+  const login = useCallback(
+    async (email, password) => applyIdentity(await api.login(email, password)),
+    [applyIdentity]
+  )
 
-  const loginWithGoogle = useCallback(async (credential) => {
-    const u = await api.loginWithGoogle(credential)
-    setUser(u)
-    setStatus('authed')
-    setAuthedState(true)
-    return u
-  }, [])
+  const loginWithGoogle = useCallback(
+    async (credential) => applyIdentity(await api.loginWithGoogle(credential)),
+    [applyIdentity]
+  )
 
-  const signup = useCallback(async (name, email, password) => {
-    const u = await api.signup(name, email, password)
-    setUser(u)
-    setStatus('authed')
-    setAuthedState(true)
-    return u
-  }, [])
+  const signup = useCallback(
+    async (name, email, password) => applyIdentity(await api.signup(name, email, password)),
+    [applyIdentity]
+  )
 
   // /api/auth/reset-password logs the account in directly (same cookie the
   // login route sets) — a reset link that dropped you into a second sign-in
   // form would be one more thing standing between "forgot password" and
   // actually building a plan.
-  const resetPassword = useCallback(async (token, password) => {
-    const u = await api.resetPassword(token, password)
-    setUser(u)
-    setStatus('authed')
-    setAuthedState(true)
-    return u
-  }, [])
+  const resetPassword = useCallback(
+    async (token, password) => applyIdentity(await api.resetPassword(token, password)),
+    [applyIdentity]
+  )
 
   const logout = useCallback(async () => {
     /* A flag, not a navigate() call: navigate() and the status flip below
@@ -141,11 +177,9 @@ export function AuthProvider({ children }) {
     try {
       await api.logout()
     } finally {
-      setUser(null)
-      setStatus('anon')
-      setAuthedState(false)
+      applyIdentity(null)
     }
-  }, [])
+  }, [applyIdentity])
 
   /* Same shape as logout — this device's cookie stops working too (its "sv"
      no longer matches, per backend/deps.py), so it has to end up in the same
@@ -159,11 +193,9 @@ export function AuthProvider({ children }) {
     try {
       await api.signOutEverywhere()
     } finally {
-      setUser(null)
-      setStatus('anon')
-      setAuthedState(false)
+      applyIdentity(null)
     }
-  }, [])
+  }, [applyIdentity])
 
   /* NOT the same try/finally shape as logout/signOutEverywhere above — a
      wrong password must stay a normal thrown error with the account intact,
@@ -178,25 +210,43 @@ export function AuthProvider({ children }) {
     } catch {
       /* Not available — same fallback as logout() above. */
     }
-    setUser(null)
-    setStatus('anon')
-    setAuthedState(false)
-  }, [])
+    applyIdentity(null)
+  }, [applyIdentity])
+
+  /* Memoized: this provider sits above the entire app (App.jsx), so a fresh
+     object literal here re-rendered every useAuth() consumer — plus
+     BillingProvider and VoiceProvider — on any render of this component,
+     regardless of whether the account actually changed. */
+  const value = useMemo(
+    () => ({
+      status,
+      user,
+      login,
+      loginWithGoogle,
+      signup,
+      resetPassword,
+      logout,
+      signOutEverywhere,
+      deleteAccount,
+      refresh,
+    }),
+    [
+      status,
+      user,
+      login,
+      loginWithGoogle,
+      signup,
+      resetPassword,
+      logout,
+      signOutEverywhere,
+      deleteAccount,
+      refresh,
+    ]
+  )
 
   return (
     <AuthContext.Provider
-      value={{
-        status,
-        user,
-        login,
-        loginWithGoogle,
-        signup,
-        resetPassword,
-        logout,
-        signOutEverywhere,
-        deleteAccount,
-        refresh,
-      }}
+      value={value}
     >
       {children}
     </AuthContext.Provider>

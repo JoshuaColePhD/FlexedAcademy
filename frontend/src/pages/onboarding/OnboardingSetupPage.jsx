@@ -2,6 +2,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { qk } from '../../lib/queryKeys'
+import { useClasses } from '../../hooks/useAppData'
 import { OnboardingWizard } from '../../components/OnboardingWizard'
 import { BootScreen } from '../../components/BootScreen'
 
@@ -19,7 +20,7 @@ import { BootScreen } from '../../components/BootScreen'
 export function OnboardingSetupPage() {
   const { classId } = useParams()
   const navigate = useNavigate()
-  const { data: classes = [], isLoading } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
+  const { data: classes = [], isLoading } = useClasses()
   /* Prefetched here, not just inside OnboardingWizard: the wizard's own
    * WelcomeStep counts "N quick things" from whether the teacher's school
    * needs a template, which this same query (qk.schools) answers — and that

@@ -4,7 +4,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X, Database } from 'lucide-react'
 
-import { useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
+import { useChats, useClasses, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -626,7 +626,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
  */
 function OnboardingWizardHost() {
   const { classId } = useParams()
-  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
+  const { data: classes = [] } = useClasses()
   const [open, setOpen] = useState(false)
 
   useEffect(() => onOpenOnboardingWizard(() => setOpen(true)), [])

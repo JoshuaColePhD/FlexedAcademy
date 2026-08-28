@@ -5,6 +5,7 @@ import { qk } from '../lib/queryKeys'
 import { Tooltip } from './Tooltip'
 import { Download, Loader2, TriangleAlert, X, Maximize2, Minimize2, Cloud } from 'lucide-react'
 import { api } from '../lib/api'
+import { useClasses } from '../hooks/useAppData'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useLayoutMode } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
@@ -86,7 +87,7 @@ export function ArtifactPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullscreen])
     const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: api.listSchools })
-  const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: api.listClasses })
+  const { data: classes = [] } = useClasses()
   
   const cls = classes.find(c => c.id === classId)
   const school = schools.find(s => s.id === cls?.school)
