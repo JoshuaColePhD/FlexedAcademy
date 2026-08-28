@@ -131,7 +131,16 @@ export function WelcomePage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             onSubmit={submit}
-            className="flex max-h-full w-full max-w-[440px] flex-col gap-7 overflow-y-auto rounded-2xl border border-edge bg-paper-raised p-8 md:p-10"
+            /* max-w-2xl (was 440px): the course picker's split-panel
+               dropdown (FrameworkPicker.jsx) wants ~34rem to show its
+               category rail alongside the list — narrower than that and
+               its own container query collapses it back to a plain
+               single-column list rather than let it overflow the card.
+               440px sat right at that collapse point, so the picker never
+               got to show what it's actually designed to look like here.
+               42rem of card minus p-10's 80px padding leaves ~37rem of
+               content width, comfortably inside the dropdown's own cap. */
+            className="flex max-h-full w-full max-w-2xl flex-col gap-7 overflow-y-auto rounded-2xl border border-edge bg-paper-raised p-8 md:p-10"
           >
             <div>
               <h1 className="text-2xl font-semibold tracking-display text-ink">Let’s set up your year</h1>
