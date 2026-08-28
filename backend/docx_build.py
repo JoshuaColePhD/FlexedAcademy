@@ -34,8 +34,10 @@ def _generated_spec_builder(school_id: str, layout_spec: dict) -> SimpleNamespac
     automated-codegen layout spec, rendered through the one shared
     backend.builder.generic_renderer — never a school-specific generated
     Python file. See backend/builder/codegen.py for how a spec earns
-    'verified' status; only an explicit admin approval sets it, never the
-    codegen loop itself."""
+    'verified' status: either an explicit admin approval, or (as of the
+    loosened auto-verify bar) automatically, the moment the spec passes
+    both vision judges on its own — usable here even while the school's
+    separate template_status review is still pending."""
     from .builder.generic_renderer import render as _render
 
     def build(data: dict, out_path: str) -> None:
@@ -56,29 +58,41 @@ def _custom_builder_school_ids() -> set[str]:
 
 
 def bulk_builder_readiness(school_rows: list[dict]) -> dict[str, str]:
-    """{school_id: "ready" | "pending" | "blocked"} for a batch of already-
-    fetched school rows — the signal frontend/ChatPage.jsx's TemplateBanner
-    uses to know whether downloads for this school will use its real
-    template, silently fall back to the generic one (still 'pending'), or
-    are currently BROKEN: `template_status` reached 'active' (analysis
-    auto-activation, which only ever judges analysis quality) before a real
-    builder — hand-written, or codegen-generated and admin-approved — exists
-    for it. `docx_build.builder()` raises exactly in that last case; this is
-    what lets the UI say so before a teacher hits it as a failed download.
+    """{school_id: "ready" | "ready_unverified" | "pending" | "blocked"} for
+    a batch of already-fetched school rows — the signal
+    frontend/ChatPage.jsx's TemplateBanner uses to know whether downloads
+    for this school will use its real template, its real template but not
+    yet content-reviewed ('ready_unverified' — see below), silently fall
+    back to the generic one (still 'pending'), or are currently BROKEN:
+    `template_status` reached 'active' (analysis auto-activation, which
+    only ever judges analysis quality) before a real builder — hand-written,
+    or codegen-generated — exists for it. `docx_build.builder()` raises
+    exactly in that last case; this is what lets the UI say so before a
+    teacher hits it as a failed download.
 
     template_status and builder_status are deliberately separate columns
     (migration 52) — this function is where the two get reconciled into the
-    one fact a teacher-facing banner actually needs."""
+    one fact a teacher-facing banner actually needs.
+
+    'ready_unverified': a usable builder exists (hand-written, or
+    codegen-generated and either admin-approved or auto-verified — see
+    codegen.py's loosened _meets_auto_verify_bar) but template_status
+    hasn't reached 'active' yet — the school's own layout is already being
+    used for real generation, the separate content review just hasn't
+    caught up. Reported distinctly from 'ready' so the UI keeps saying that
+    review is still in flight, rather than silently going quiet about it
+    the moment generation itself starts working."""
     custom_ids = _custom_builder_school_ids()
     out: dict[str, str] = {}
     for s in school_rows:
         sid = s["id"]
+        has_builder = sid in custom_ids or s.get("builder_status") == "verified"
         if sid == settings.default_builder_school_id:
             out[sid] = "ready"
+        elif has_builder:
+            out[sid] = "ready" if s.get("template_status") == "active" else "ready_unverified"
         elif s.get("template_status") != "active":
             out[sid] = "pending"
-        elif sid in custom_ids or s.get("builder_status") == "verified":
-            out[sid] = "ready"
         else:
             out[sid] = "blocked"
     return out
@@ -92,7 +106,15 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
 
     if school_id and school_id != "generic" and school_id != settings.default_builder_school_id:
         school = db.get_school(school_id)
-        if school and school.get("template_status") == "active":
+        # template_status == 'active' is the normal, fully-reviewed case.
+        # builder_status == 'verified' is included on its own too — a job
+        # can auto-verify (codegen.py's loosened _meets_auto_verify_bar) or
+        # get an admin's explicit approve before the SEPARATE template
+        # content review reaches 'active' — so a verified builder is usable
+        # the moment it exists, not gated on that other review finishing.
+        # bulk_builder_readiness reports this window as 'ready_unverified'
+        # rather than 'ready' so the UI keeps saying so.
+        if school and (school.get("template_status") == "active" or school.get("builder_status") == "verified"):
             # A custom builder lives at the same directory as the default one,
             # named {school_id}_builder.py. Falling through to the default
             # (Florence's own AP-Lang builder) when this file is missing used
@@ -107,13 +129,14 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
             if custom_path.is_file():
                 path = custom_path
             elif school.get("builder_status") == "verified":
-                # No hand-written file, but an admin has explicitly approved
-                # a generated layout spec for this school (see
-                # backend/builder/codegen.py + db.approve_builder_codegen_job
-                # — builder_status only ever reaches 'verified' through that
-                # one explicit action, never automatically). A hand-written
-                # file still wins if one exists, so replacing a generated
-                # spec later with a real hand-written builder just works.
+                # No hand-written file, but a generated layout spec for this
+                # school has been verified — either an admin explicitly
+                # approved it (db.approve_builder_codegen_job), or it
+                # auto-verified on its own after passing both vision judges
+                # (db.mark_builder_codegen_job_auto_verified, see
+                # backend/builder/codegen.py). A hand-written file still
+                # wins if one exists, so replacing a generated spec later
+                # with a real hand-written builder just works.
                 layout_spec = db.get_school_builder_spec(school_id)
                 if layout_spec:
                     return _generated_spec_builder(school_id, layout_spec)

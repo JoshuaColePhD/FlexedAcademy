@@ -103,15 +103,17 @@ function DaySeparator({ label }) {
  * what makes it look like it's sliding out from behind the header bar
  * rather than just fading in beneath it. */
 // template_status ('pending'/'active') and builder_readiness ('pending'
-// /'ready'/'blocked', from docx_build.bulk_builder_readiness) are
-// deliberately different facts as of migration 52: template_status alone
-// used to be enough to know "will downloads use this school's real
-// template," but now a school can reach template_status='active' (analysis
-// auto-activation only ever judges analysis QUALITY) before a real document
-// builder — hand-written, or automatically generated and admin-approved —
-// actually exists for it. Keying this banner off builder_readiness instead
-// of template_status is what keeps it accurate through that whole window,
-// not just the first half of it.
+// /'ready_unverified'/'ready'/'blocked', from docx_build.bulk_builder_
+// readiness) are deliberately different facts as of migration 52:
+// template_status alone used to be enough to know "will downloads use this
+// school's real template," but now a school can reach template_status=
+// 'active' (analysis auto-activation only ever judges analysis QUALITY)
+// before a real document builder — hand-written, or automatically
+// generated — actually exists for it, and (since the auto-verify bar
+// loosened) a generated builder can now be usable BEFORE template_status
+// reaches 'active' too. Keying this banner off builder_readiness instead
+// of template_status is what keeps it accurate through all of that, not
+// just the first half of it.
 const TEMPLATE_BANNER_COPY = {
   pending: {
     tone: 'amber',
@@ -119,6 +121,15 @@ const TEMPLATE_BANNER_COPY = {
       <>
         🛠️ We are currently configuring the AI for <strong>{name}</strong>'s specific lesson plan format. In the
         meantime, document downloads will use a generic fallback format.
+      </>
+    ),
+  },
+  ready_unverified: {
+    tone: 'amber',
+    text: (name) => (
+      <>
+        ✨ Document downloads are using an AI-drafted version of <strong>{name}</strong>'s lesson plan format while
+        our team finishes reviewing it for accuracy — let us know if something looks off.
       </>
     ),
   },

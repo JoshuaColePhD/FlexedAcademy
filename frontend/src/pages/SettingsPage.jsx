@@ -446,12 +446,19 @@ function SchoolPicker({ value, onSaved }) {
               not template_status alone — same reasoning as ChatPage.jsx's
               TemplateBanner: template_status can reach 'active' (analysis
               auto-activation only judges analysis quality) before a real
-              document builder — hand-written, or generated and
-              admin-approved — actually exists for this school. This pill
-              used to read "Active" straight through that gap. */}
+              document builder — hand-written or generated — actually
+              exists for this school, and (since the auto-verify bar
+              loosened) a generated builder can now be usable BEFORE
+              template_status reaches 'active' too ('ready_unverified').
+              This pill used to read "Active" straight through the first
+              gap. */}
           {selected.builder_readiness === 'pending' ? (
             <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
               Template Status: Training AI...
+            </span>
+          ) : selected.builder_readiness === 'ready_unverified' ? (
+            <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
+              Template Status: AI Draft (in review)
             </span>
           ) : selected.builder_readiness === 'blocked' ? (
             <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
@@ -473,9 +480,11 @@ function SchoolPicker({ value, onSaved }) {
           <p className="text-xs text-ink-soft">
             {selected.template_status === 'active'
               ? `${selected.name}'s lesson-plan format is on file. Upload a new one below to replace it.`
-              : selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
-                ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
-                : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
+              : selected.builder_readiness === 'ready_unverified'
+                ? `${selected.name}'s AI-drafted format is already in use while we finish reviewing it — upload a corrected one below if something looks off.`
+                : selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
+                  ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
+                  : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
           </p>
           <UploadDropzone
             uploading={uploadingTemplate}

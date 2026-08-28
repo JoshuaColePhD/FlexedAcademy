@@ -3851,11 +3851,11 @@ def mark_builder_codegen_job_auto_verified(job_id: str) -> dict | None:
     """The auto-verify fast path (migration 55) — sets schools.builder_status
     = 'verified' the same as approve_builder_codegen_job, but only ever
     called from run_codegen_job itself, immediately after a job succeeds,
-    and only when _meets_auto_verify_bar (codegen.py) says both independent
-    quality signals — the template's own clean auto-activation and this
-    job's clean vision-judge pass — agree. auto_verified=true is what lets
-    list_auto_verified_builder_jobs surface these separately from a job an
-    admin actually clicked approve on."""
+    and only when _meets_auto_verify_bar (codegen.py) says this job's own
+    vision-judge pass is enough on its own — independent of whether the
+    template's separate content review (template_status) has finished.
+    auto_verified=true is what lets list_auto_verified_builder_jobs surface
+    these separately from a job an admin actually clicked approve on."""
     job = get_builder_codegen_job(job_id)
     if not job or not job.get("layout_spec_json"):
         return None

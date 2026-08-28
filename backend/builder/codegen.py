@@ -5,29 +5,30 @@ either fully verified on its own or in the admin review queue.
 
 `schools.builder_status` is set to 'verified' in one of two ways:
 
-1. **Auto-verify** (_meets_auto_verify_bar, below) — only when BOTH
-   independent quality signals this codebase already trusts enough to act
-   on alone agree: the template's own analysis was clean enough to
-   auto-activate (school_templates.auto_activated — zero findings,
-   confidence>=0.9, model-recommended; template_intake.py's own bar for the
-   analysis stage) AND this job passed both vision judges within the
-   attempt cap. Originally this was a hard "never automatic, full stop" —
-   the vision judge was a brand-new, unproven trust boundary with no
-   production track record, unlike the two-independent-LLM-pass pattern
-   template_intake.py's analysis pipeline had already been running. Auto-
-   verify narrows that gate rather than removing it: it only fires when the
-   template side ALSO cleared its own equivalently strict bar, not on a
-   vision-judge pass alone. See db.mark_builder_codegen_job_auto_verified
-   and db.list_auto_verified_builder_jobs (the post-hoc audit trail —
-   nothing here ships invisibly, an admin can still catch and roll back a
-   bad one after the fact).
+1. **Auto-verify** (_meets_auto_verify_bar, below) — as soon as a job passes
+   both independent vision judges within the attempt cap, full stop. This
+   used to ALSO require the template's own separate content analysis to
+   have cleared its own strict bar (school_templates.auto_activated) before
+   the generated builder became usable — a deliberate pilot-phase choice to
+   ship nothing until two unrelated reviews both agreed. Loosened so a
+   school starts generating real documents against its own AI-drafted
+   format as soon as the layout itself checks out, rather than sitting on
+   Florence's layout for however long the separate, stricter content review
+   takes — accepted as an imperfect-but-useful starting point, to be judged
+   by how it actually performs. The template's content review is NOT
+   skipped: template_status still only reaches 'active' through
+   template_intake._maybe_auto_activate or an explicit admin approve, and
+   docx_build.bulk_builder_readiness reports 'ready_unverified' (not
+   'ready') for exactly this window, so the UI keeps saying that review
+   hasn't finished even while the document being generated already
+   reflects it. See db.mark_builder_codegen_job_auto_verified and
+   db.list_auto_verified_builder_jobs (the post-hoc audit trail — nothing
+   here ships invisibly, an admin can still catch and roll back a bad one
+   after the fact).
 2. **Manual approve** (db.approve_builder_codegen_job / the
-   POST /admin/builder-codegen/{job_id}/approve route) — everything short
-   of that bar, including every job whose template was manually activated
-   despite warnings, still waits for an explicit admin click, exactly as
-   before. See the plan this was originally built from
-   (moonlit-wondering-spark.md) for the pilot-phase rationale that shaped
-   both the original all-manual gate and this narrower auto-verify bar.
+   POST /admin/builder-codegen/{job_id}/approve route) — every job that
+   never passed both vision judges on its own still waits for an explicit
+   admin click, exactly as before.
 
 Entry point: run_codegen_job(job_id), called by the worker loop
 (backend/server.py's startup hook polling db.claim_next_builder_codegen_job).
@@ -145,19 +146,30 @@ def _run_one_attempt(
     return False, {**attempt, "_feedback": feedback}
 
 
-def _meets_auto_verify_bar(template: dict) -> bool:
-    """True only when the template side of this job already cleared its own
-    strictest bar — school_templates.auto_activated (set exclusively by
-    template_intake._maybe_auto_activate: zero findings of any severity,
-    confidence>=0.9, model-recommended). The job side of the bar is the
-    caller's job: this is only ever checked after db.mark_builder_codegen_
-    job_succeeded, which itself only happens when an attempt passed BOTH
-    vision judges (_judge_verdict_passed on judge1 and judge2, above) — so
-    by the time this runs, both independent signals already agree. A
-    template that was manually activated despite warnings (or never reached
-    'analyzed' with zero findings) still requires a manual approve, no
-    matter how clean this job's own vision-judge pass was."""
-    return bool(template.get("auto_activated"))
+def _meets_auto_verify_bar(template: dict) -> bool:  # noqa: ARG001
+    """True whenever this job's own quality bar was cleared — an attempt
+    that passed BOTH independent vision judges (_judge_verdict_passed on
+    judge1 and judge2, above; this is only ever checked after
+    db.mark_builder_codegen_job_succeeded, which itself only fires on that
+    same pass). That bar alone is what makes the generated builder USABLE
+    (see docx_build.builder()'s builder_status=='verified' branch, entered
+    even while the template's own template_status is still 'pending') — a
+    deliberate choice to let a school start generating documents against
+    its own AI-drafted format right away rather than sit on Florence's
+    layout until a human has separately reviewed the upload, since the
+    vision-judge pass is itself a real (if imperfect) correctness check.
+
+    Previously this also required school_templates.auto_activated (the
+    template's own strictest content bar: zero findings, confidence>=0.9,
+    model-recommended) — decoupled so a clean codegen result doesn't sit
+    idle behind an unrelated, stricter review. That review is untouched:
+    template_status still only reaches 'active' through
+    template_intake._maybe_auto_activate or an explicit admin approve, and
+    docx_build.bulk_builder_readiness reports this state as
+    'ready_unverified' (not 'ready') precisely so the UI keeps saying that
+    review hasn't finished, even though the document being generated right
+    now already reflects the school's own format."""
+    return True
 
 
 def run_codegen_job(job_id: str) -> None:
@@ -210,7 +222,8 @@ def run_codegen_job(job_id: str) -> None:
                 db.mark_builder_codegen_job_auto_verified(job_id)
                 log.info(
                     "builder codegen job %s auto-verified for school %s "
-                    "(template auto-activated + both vision judges passed)",
+                    "(both vision judges passed; template's own content review "
+                    "still runs independently)",
                     job_id, job["school_id"],
                 )
             return
