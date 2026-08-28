@@ -3040,6 +3040,81 @@ MIGRATIONS: list[str] = [
     ALTER TABLE builder_codegen_jobs ADD COLUMN IF NOT EXISTS auto_verified BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE builder_codegen_jobs ADD COLUMN IF NOT EXISTS verified_at TEXT;
     """,
+    # ── 56: close the remaining RLS gaps ─────────────────────────────────────
+    #
+    # Two tables never got migration 12's treatment at all: audit_log
+    # (migration 47) and global_standards (created outside this migration
+    # list entirely, by a one-off data-load script) both shipped with RLS
+    # disabled — Supabase's advisor flags both as CRITICAL: the anon key,
+    # meant to ship in frontend code, could read and write either directly
+    # over PostgREST, no login required. Neither gets a policy, same as
+    # every other table this codebase locks down with no legitimate direct
+    # caller (migration 12's own reasoning): the app connects as `postgres`
+    # (BYPASSRLS), so RLS-enabled-with-zero-policies is "invisible to the
+    # app, a total blackout for anon/authenticated" — exactly what a pure
+    # audit trail and a shared reference table should be.
+    #
+    # Everything else below is defense-in-depth, not a new gap: every one of
+    # these tables already had RLS enabled (migration 20 or its own CREATE
+    # TABLE) with zero policies, which already means zero rows for anon/
+    # authenticated — deny-all is strictly tighter than "only your own
+    # rows." This adds migration 20's per-account policy to every remaining
+    # table that has real per-account data (a user_id column, or one reachable
+    # through a single join), so the SAME explicit "only your own account"
+    # rule governs every one of them consistently — not relying on some
+    # tables being silently locked by omission and others by an explicit
+    # policy. If this app's connection role ever changes and stops
+    # bypassing RLS, every account-scoped table fails the same safe way
+    # instead of some doing so by accident and others not at all.
+    #
+    # plan_shares has no user_id of its own (it's keyed by email, the point
+    # of sharing being letting someone else in) — scoped through the plan it
+    # shares, same shape as messages' own through-chats policy above. Tables
+    # intentionally left alone (schools, school_templates,
+    # school_calendar_submissions, builder_codegen_jobs/attempts, app_settings,
+    # admin_audit_log, chunks, llm_cache, schema_version) are either not
+    # account-scoped data at all or admin/system-managed — already correctly
+    # deny-all, and a policy there would be inventing an account-ownership
+    # model that doesn't exist.
+    """
+    ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE global_standards ENABLE ROW LEVEL SECURITY;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own account" ON users USING (id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own settings" ON settings USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own quizzes" ON quizzes USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own Drive tokens" ON google_drive_tokens USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own usage events" ON usage_events USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own curriculum progress" ON curriculum_progress USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own curriculum chunks" ON curriculum_chunks USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    -- Through plans, because plan_shares has no user_id of its own.
+    DO $$ BEGIN
+        CREATE POLICY "Users can access shares of their own plans" ON plan_shares USING (
+            plan_id IN (SELECT id FROM plans WHERE user_id = current_setting('app.user_id', true))
+        );
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+    """,
 ]
 
 
