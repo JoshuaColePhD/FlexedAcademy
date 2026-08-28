@@ -3,8 +3,14 @@ import { Check, ChevronsUpDown } from 'lucide-react'
 import { findFramework, groupFrameworks, matchesFramework, verifiedPct } from '../lib/frameworks'
 import { useExitTransition } from '../hooks/useExitTransition'
 
-export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
-  const [open, setOpen] = useState(false)
+export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover' }) {
+  // 'inline' is the full-page course browser (WelcomePage.jsx's /welcome) —
+  // permanently visible, no dropdown to open. Every isInline branch below
+  // falls through to the exact 'popover' code path when omitted, so the
+  // other two callers (OnboardingWizard's ClassStep, ClassPage's Classroom
+  // Profile) are byte-identical to before this existed.
+  const isInline = variant === 'inline'
+  const [open, setOpen] = useState(isInline)
   const { mounted, closing } = useExitTransition(open, 150)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
@@ -63,7 +69,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
   }
 
   useEffect(() => {
-    if (!open) return undefined
+    if (isInline || !open) return undefined
     const onDown = (e) => {
       if (!rootRef.current?.contains(e.target)) {
         setOpen(false)
@@ -72,7 +78,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
+  }, [isInline, open])
 
   useEffect(() => {
     if (!open) return
@@ -83,9 +89,15 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
 
   const commit = (fw) => {
     onChange(fw.id)
-    setOpen(false)
-    setQuery('')
-    inputRef.current?.blur()
+    // Inline never "closes" — there's no popover to dismiss, and the
+    // scrollspy/active-scroll effects above are both keyed on `open`, so
+    // flipping it false here would silently kill rail-highlighting for the
+    // rest of the session the moment a teacher picked a course.
+    if (!isInline) {
+      setOpen(false)
+      setQuery('')
+      inputRef.current?.blur()
+    }
   }
 
   const onKeyDown = (e) => {
@@ -109,7 +121,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
   }
 
   return (
-    <div className="fw-picker relative w-full" ref={rootRef}>
+    <div className={`fw-picker relative w-full${isInline ? ' flex min-h-0 flex-1 flex-col gap-3' : ''}`} ref={rootRef}>
       <div className="relative">
         <input
           ref={inputRef}
@@ -125,7 +137,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
-          value={open ? query : (selected?.label || '')}
+          value={isInline ? query : (open ? query : (selected?.label || ''))}
           onFocus={() => {
             setOpen(true)
             setQuery('')
@@ -139,25 +151,31 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
           onKeyDown={onKeyDown}
           className="neo-inset flex w-full items-center justify-between gap-3 rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint outline-none transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
         />
-        <ChevronsUpDown
-          size={14}
-          aria-hidden="true"
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint"
-        />
+        {!isInline ? (
+          <ChevronsUpDown
+            size={14}
+            aria-hidden="true"
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint"
+          />
+        ) : null}
       </div>
 
-      {mounted ? (
+      {(isInline || mounted) ? (
         <div
-          className={`fw-picker-panel neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`}
-          style={{ width: 'min(34rem, calc(100vw - 2rem))', maxWidth: 'calc(100vw - 2rem)' }}
+          className={
+            isInline
+              ? 'fw-picker-panel neo-panel flex min-h-0 w-full flex-1 overflow-hidden rounded-2xl border border-edge bg-paper-raised'
+              : `fw-picker-panel neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`
+          }
+          style={isInline ? undefined : { width: 'min(34rem, calc(100vw - 2rem))', maxWidth: 'calc(100vw - 2rem)' }}
         >
           {/* Category rail — desktop only. A phone-width dropdown has no room
               for a second column, so it falls back to the plain scrolling
               list (still grouped, just without the jump-to-category rail). */}
           {groups.length > 1 ? (
             <div
-              className="fw-picker-rail hidden w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-2 sm:flex"
-              style={{ maxHeight: 'min(28rem, 70vh)' }}
+              className={`fw-picker-rail hidden ${isInline ? 'w-56' : 'w-40'} shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-2 sm:flex${isInline ? ' h-full' : ''}`}
+              style={isInline ? undefined : { maxHeight: 'min(28rem, 70vh)' }}
             >
               {groups.map((g) => (
                 <button
@@ -180,8 +198,8 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id }) {
             id={listId}
             role="listbox"
             aria-label="Standards frameworks"
-            className="min-w-0 flex-1 overflow-y-auto py-1"
-            style={{ maxHeight: 'min(28rem, 70vh)' }}
+            className={`min-w-0 flex-1 overflow-y-auto py-1${isInline ? ' h-full' : ''}`}
+            style={isInline ? undefined : { maxHeight: 'min(28rem, 70vh)' }}
           >
             {flat.length === 0 ? (
               <li className="px-3 py-6 text-center text-sm text-ink-muted">

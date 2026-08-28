@@ -102,15 +102,25 @@ export function WelcomePage() {
     }
   }
 
+  const selectedFramework = frameworks.find((f) => f.id === subject)
+
   /* h-app, not min-h-app: index.html's <body> is overflow-hidden — every
      page has to make its OWN content scrollable rather than relying on
-     document scroll, same reasoning as AuthLayout.jsx. Without max-h-full
-     + overflow-y-auto on the form itself, this card had no ceiling on its
-     own height, so a tall form (the "school isn't listed" panel expanded)
-     just clipped silently against the body's hard edge with no scrollbar
-     and no way to reach the rest of it. */
+     document scroll, same reasoning as AuthLayout.jsx.
+
+     No longer a small centered card: the course picker used to run as a
+     popover here, which meant the entire browsing experience — the
+     category rail, the list — was hidden behind a click, in a box only as
+     wide as the surrounding card allowed. Widening the card (previous
+     pass) fixed the popover from clipping itself, but a teacher's actual
+     first move on this page IS picking a course — that deserves to be the
+     page, not a dropdown floating over one. FrameworkPicker's own
+     variant="inline" mode (see its own comment) renders the exact same
+     rail+list, permanently visible, filling this layout instead of
+     popping over it. Header (course/grade context) and footer (the
+     action) stay as slim bars so the browser gets the space. */
   return (
-    <div className="flex h-app w-full items-center justify-center bg-paper p-gutter">
+    <div className="flex h-app w-full flex-col overflow-hidden bg-paper">
       <AnimatePresence mode="wait">
         {saving ? (
           <motion.div
@@ -118,7 +128,7 @@ export function WelcomePage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="flex flex-col items-center gap-4 text-ink"
+            className="flex flex-1 flex-col items-center justify-center gap-4 p-gutter text-ink"
           >
             <Loader2 size={32} className="animate-spin text-accent" />
             <h2 className="text-xl font-medium tracking-tight">Setting up your AI planner...</h2>
@@ -131,70 +141,55 @@ export function WelcomePage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             onSubmit={submit}
-            /* max-w-2xl (was 440px): the course picker's split-panel
-               dropdown (FrameworkPicker.jsx) wants ~34rem to show its
-               category rail alongside the list — narrower than that and
-               its own container query collapses it back to a plain
-               single-column list rather than let it overflow the card.
-               440px sat right at that collapse point, so the picker never
-               got to show what it's actually designed to look like here.
-               42rem of card minus p-10's 80px padding leaves ~37rem of
-               content width, comfortably inside the dropdown's own cap. */
-            className="flex max-h-full w-full max-w-2xl flex-col gap-7 overflow-y-auto rounded-2xl border border-edge bg-paper-raised p-8 md:p-10"
+            className="flex h-full w-full flex-col overflow-hidden"
           >
-            <div>
-              <h1 className="text-2xl font-semibold tracking-display text-ink">Let’s set up your year</h1>
-              <p className="mt-1.5 text-sm text-ink-muted">
-                What course do you teach? You can add more classes later.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-ink">Your first class</span>
-              <span className="text-xs text-ink-muted">
-                This selects the official standards to ground your lesson plans in.
-              </span>
-              <div className="mt-1 flex flex-col gap-2">
-                <div className="min-w-0">
-                  <FrameworkPicker
-                    frameworks={frameworks}
-                    value={subject}
-                    onChange={setSubject}
-                    id="welcome-framework"
-                  />
-                </div>
+            <div className="flex shrink-0 flex-col gap-3 border-b border-edge bg-paper-raised px-6 py-4 sm:flex-row sm:items-center sm:justify-between md:px-10">
+              <div>
+                <h1 className="text-xl font-semibold tracking-display text-ink">Let’s set up your year</h1>
+                <p className="text-xs text-ink-muted">
+                  Pick the course you teach — it decides which standards ground every plan.
+                </p>
               </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="welcome-grade" className="text-sm font-medium text-ink">
-                Grade level
+              <label htmlFor="welcome-grade" className="flex items-center gap-2 text-sm">
+                <span className="font-medium text-ink">Grade</span>
+                <select
+                  id="welcome-grade"
+                  value={grade}
+                  onChange={(e) => setGrade(e.target.value)}
+                  className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2 pl-3 pr-7 text-sm text-ink outline-none focus:border-accent"
+                >
+                  {GRADES.map((g) => (
+                    <option key={g.value} value={g.value}>
+                      {g.label}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <span className="text-xs text-ink-muted">
-                Used to pick grade-appropriate standards and language.
-              </span>
-              <select
-                id="welcome-grade"
-                value={grade}
-                onChange={(e) => setGrade(e.target.value)}
-                className="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
-              >
-                {GRADES.map((g) => (
-                  <option key={g.value} value={g.value}>
-                    {g.label}
-                  </option>
-                ))}
-              </select>
             </div>
 
-            <button
-              type="submit"
-              disabled={!subject}
-              className="flex min-h-touch-lg w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Open my year
-              <ArrowRight size={15} aria-hidden="true" />
-            </button>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4 md:px-10">
+              <FrameworkPicker
+                frameworks={frameworks}
+                value={subject}
+                onChange={setSubject}
+                id="welcome-framework"
+                variant="inline"
+              />
+            </div>
+
+            <div className="flex shrink-0 items-center justify-between gap-4 border-t border-edge bg-paper-raised px-6 py-4 md:px-10">
+              <span className="min-w-0 truncate text-sm text-ink-muted">
+                {selectedFramework ? `Selected: ${selectedFramework.label}` : 'Choose a course above to continue.'}
+              </span>
+              <button
+                type="submit"
+                disabled={!subject}
+                className="flex shrink-0 min-h-touch-lg items-center justify-center gap-2 rounded-lg bg-ink px-6 text-sm font-semibold text-ink-inverse transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Open my year
+                <ArrowRight size={15} aria-hidden="true" />
+              </button>
+            </div>
           </motion.form>
         )}
       </AnimatePresence>
