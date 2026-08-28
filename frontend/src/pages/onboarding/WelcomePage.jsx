@@ -8,6 +8,7 @@ import { qk } from '../../lib/queryKeys'
 import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
+import { inferGradeFromQuery, matchesFramework } from '../../lib/frameworks'
 import { GRADES, gradeLabel } from '../../lib/grades'
 /* The one grade vocabulary. This file used to declare its own copy, with a
    comment explaining that the VALUE and the LABEL must stay apart because
@@ -73,6 +74,7 @@ export function WelcomePage() {
 
   const [subject, setSubject] = useState('')
   const [grade, setGrade] = useState(ALL_GRADES)
+  const [query, setQuery] = useState('')
   const [saving, setSaving] = useState(false)
 
   const { data: frameworks = [] } = useQuery({
@@ -101,6 +103,41 @@ export function WelcomePage() {
       setSubject('')
     }
   }, [gradeFilteredFrameworks, subject])
+
+  // The search box understands grade words too ("elementary", "3rd",
+  // "high school" — see lib/frameworks.js's matchesFramework), which used
+  // to just silently fight the grade select: leave grade on 11th and type
+  // "elementary" and you'd get zero results with no hint why. A specific
+  // number is unambiguous, so it snaps the select straight to that grade.
+  // A band word ("elementary") spans several grades with no single right
+  // answer, so it only clears the select back to "All grades" — and only
+  // when the CURRENT grade actually conflicts with it; a grade already
+  // inside the band is left alone rather than needlessly widened.
+  useEffect(() => {
+    const intent = inferGradeFromQuery(query)
+    if (!intent) return
+    if (intent.type === 'grade') {
+      if (grade !== intent.grade) setGrade(intent.grade)
+    } else if (intent.type === 'band') {
+      if (grade !== ALL_GRADES && !intent.grades.includes(Number(grade))) {
+        setGrade(ALL_GRADES)
+      }
+    }
+  }, [query, grade])
+
+  // Auto-adjustment above resolves most grade/search conflicts before they
+  // ever render — but a plain course-name search ("cybersecurity") isn't a
+  // grade word, so it doesn't trigger that path, and can still come up
+  // empty purely because the grade filter excludes every course that
+  // matches. FrameworkPicker's own generic "No course matches" is accurate
+  // for a genuine typo; this replaces it with the real reason specifically
+  // when the search WOULD have hits under a different grade.
+  const emptyMessage = useMemo(() => {
+    if (!query.trim() || grade === ALL_GRADES) return undefined
+    if (gradeFilteredFrameworks.some((f) => matchesFramework(f, query))) return undefined
+    if (!frameworks.some((f) => matchesFramework(f, query))) return undefined
+    return `No ${gradeLabel(grade) || grade} courses match “${query}” — try All grades.`
+  }, [query, grade, gradeFilteredFrameworks, frameworks])
 
   const submit = async (e) => {
     e.preventDefault()
@@ -212,6 +249,8 @@ export function WelcomePage() {
                 frameworks={gradeFilteredFrameworks}
                 value={subject}
                 onChange={setSubject}
+                onQueryChange={setQuery}
+                emptyMessage={emptyMessage}
                 id="welcome-framework"
                 variant="inline"
                 beforeInput={

@@ -95,10 +95,56 @@ const LEVEL_BANDS = [
   { keys: ['high'], grades: [9, 10, 11, 12] },
 ]
 
+function findLevelBand(word) {
+  if (word.length < 3) return null
+  return LEVEL_BANDS.find((b) => b.keys.some((k) => k.startsWith(word) || word.startsWith(k))) || null
+}
+
+// "grade"/"graders" only ever show up glued to a number or level band
+// ("3rd grade", "9th graders") and never mean anything alone — same
+// reasoning as dropping "school" below.
+const GRADE_STOPWORDS = new Set(['grade', 'grader', 'graders'])
+
+/** "3rd" -> 3, "12th" -> 12, "math" -> null. A teacher searches "3rd grade
+ *  math," not "3 math" — the bare \d+ test below used to require the
+ *  ordinal suffix already stripped by hand, so the single most natural way
+ *  to type a grade ("3rd", not "3") silently matched nothing at all, and
+ *  because every word in a query must match (matchesFramework's `.every`),
+ *  that one word alone was enough to zero out an otherwise-valid search. */
+function numericGrade(word) {
+  const m = /^(\d{1,2})(?:st|nd|rd|th)?$/.exec(word)
+  if (!m) return null
+  const n = Number(m[1])
+  return n >= 0 && n <= 12 ? n : null
+}
+
 function matchesLevelBand(word, fw) {
-  if (word.length < 3) return false
-  const band = LEVEL_BANDS.find((b) => b.keys.some((k) => k.startsWith(word) || word.startsWith(k)))
+  const band = findLevelBand(word)
   return !!band && band.grades.some((g) => fw.grades?.includes(g))
+}
+
+/** What grade a search query implies, if any — same word-level detection
+ *  matchesFramework already does (a level band like "elementary", or a bare
+ *  grade number), pulled out standalone so a caller can react to it rather
+ *  than only filter by it. WelcomePage.jsx uses this to auto-clear a grade
+ *  selection that would otherwise silently fight the very thing being
+ *  typed: leaving grade on "11th" and typing "elementary" used to just
+ *  return zero results with no indication why. A single grade number
+ *  ("3") is unambiguous, so that one snaps the grade select directly to
+ *  it; a band word ("elementary") spans several real grades with no one
+ *  correct choice among them, so that case only reports the band's own
+ *  range — the caller decides whether the currently-selected grade
+ *  conflicts with it, not this function guessing a specific grade for you. */
+export function inferGradeFromQuery(query) {
+  const words = (query || '').trim().toLowerCase().split(/\s+/).filter(Boolean).filter((w) => !GRADE_STOPWORDS.has(w) && w !== 'school')
+  for (const word of words) {
+    const normalized = word.replace(/[\s_-]+/g, '')
+    const n = numericGrade(normalized)
+    if (n !== null) return { type: 'grade', grade: String(n) }
+    const band = findLevelBand(normalized)
+    if (band) return { type: 'band', grades: band.grades }
+  }
+  return null
 }
 
 /** Case- and separator-insensitive, and matched word by word rather than as
@@ -114,17 +160,20 @@ function matchesLevelBand(word, fw) {
  *  actually teach finds the general framework that covers it, not just the
  *  AP courses whose names happen to contain "English".
  *
- *  "school" is dropped as a bare word — it only ever shows up glued to a
- *  level band ("elementary school", "middle school") and never means
- *  anything on its own, so requiring it to also appear in the label would
- *  just make the level-band match above pointless. */
+ *  "school"/"grade"/"graders" are dropped as bare words — each only ever
+ *  shows up glued to a level band or number ("elementary school", "3rd
+ *  grade", "9th graders") and never means anything on its own, so
+ *  requiring any of them to also appear in the label would just make the
+ *  match above pointless — or worse, zero out an otherwise-valid search,
+ *  since every word has to match (`.every` below). */
 export function matchesFramework(fw, query) {
-  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean).filter((w) => w !== 'school')
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean).filter((w) => !GRADE_STOPWORDS.has(w) && w !== 'school')
   if (!words.length) return true
   const hay = `${fw.label || ''} ${fw.id || ''}`.toLowerCase().replace(/[\s_-]+/g, '')
   return words.every((word) => {
     const normalized = word.replace(/[\s_-]+/g, '')
-    if (/^\d+$/.test(normalized) && fw.grades?.includes(Number(normalized))) return true
+    const n = numericGrade(normalized)
+    if (n !== null && fw.grades?.includes(n)) return true
     if (matchesLevelBand(normalized, fw)) return true
     return hay.includes(normalized)
   })

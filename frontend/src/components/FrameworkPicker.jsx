@@ -3,7 +3,7 @@ import { Check, ChevronsUpDown } from 'lucide-react'
 import { findFramework, gradeRangeLabel, groupFrameworks, matchesFramework } from '../lib/frameworks'
 import { useExitTransition } from '../hooks/useExitTransition'
 
-export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover', beforeInput }) {
+export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover', beforeInput, onQueryChange, emptyMessage }) {
   // 'inline' is the full-page course browser (WelcomePage.jsx's /welcome) —
   // permanently visible, no dropdown to open. Every isInline branch below
   // falls through to the exact 'popover' code path when omitted, so the
@@ -142,13 +142,19 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
             value={isInline ? query : (open ? query : (selected?.label || ''))}
             onFocus={() => {
               setOpen(true)
-              setQuery('')
+              // Popover: refocusing means "reopening," which should start
+              // from a blank search same as the first open. Inline never
+              // closed in the first place — clicking back into a search box
+              // that's been visible the whole time shouldn't silently wipe
+              // whatever was already typed into it.
+              if (!isInline) setQuery('')
               setActive(0)
             }}
             onChange={(e) => {
               setQuery(e.target.value)
               setActive(0)
               if (!open) setOpen(true)
+              onQueryChange?.(e.target.value)
             }}
             onKeyDown={onKeyDown}
             className="neo-inset flex w-full items-center justify-between gap-3 rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint outline-none transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
@@ -206,7 +212,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
           >
             {flat.length === 0 ? (
               <li className="px-3 py-6 text-center text-sm text-ink-muted">
-                No course matches “{query}”.
+                {emptyMessage || `No course matches “${query}”.`}
               </li>
             ) : (
               groups.map((g) => (
