@@ -3,7 +3,7 @@ import { Check, ChevronsUpDown } from 'lucide-react'
 import { findFramework, groupFrameworks, matchesFramework, verifiedPct } from '../lib/frameworks'
 import { useExitTransition } from '../hooks/useExitTransition'
 
-export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover' }) {
+export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover', beforeInput }) {
   // 'inline' is the full-page course browser (WelcomePage.jsx's /welcome) —
   // permanently visible, no dropdown to open. Every isInline branch below
   // falls through to the exact 'popover' code path when omitted, so the
@@ -122,42 +122,45 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
 
   return (
     <div className={`fw-picker relative w-full${isInline ? ' flex min-h-0 flex-1 flex-col gap-3' : ''}`} ref={rootRef}>
-      <div className="relative">
-        <input
-          ref={inputRef}
-          type="text"
-          id={id}
-          disabled={disabled}
-          role="combobox"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          aria-autocomplete="list"
-          placeholder="Search courses — try “math”, “elementary”, “Pre-AP”..."
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          value={isInline ? query : (open ? query : (selected?.label || ''))}
-          onFocus={() => {
-            setOpen(true)
-            setQuery('')
-            setActive(0)
-          }}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setActive(0)
-            if (!open) setOpen(true)
-          }}
-          onKeyDown={onKeyDown}
-          className="neo-inset flex w-full items-center justify-between gap-3 rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint outline-none transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
-        />
-        {!isInline ? (
-          <ChevronsUpDown
-            size={14}
-            aria-hidden="true"
-            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint"
+      <div className={isInline && beforeInput ? 'flex items-center gap-3' : undefined}>
+        {isInline ? beforeInput : null}
+        <div className="relative flex-1">
+          <input
+            ref={inputRef}
+            type="text"
+            id={id}
+            disabled={disabled}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            aria-autocomplete="list"
+            placeholder="Search courses — try “math”, “elementary”, “Pre-AP”..."
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={isInline ? query : (open ? query : (selected?.label || ''))}
+            onFocus={() => {
+              setOpen(true)
+              setQuery('')
+              setActive(0)
+            }}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setActive(0)
+              if (!open) setOpen(true)
+            }}
+            onKeyDown={onKeyDown}
+            className="neo-inset flex w-full items-center justify-between gap-3 rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint outline-none transition-shadow disabled:cursor-not-allowed disabled:opacity-50"
           />
-        ) : null}
+          {!isInline ? (
+            <ChevronsUpDown
+              size={14}
+              aria-hidden="true"
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint"
+            />
+          ) : null}
+        </div>
       </div>
 
       {(isInline || mounted) ? (

@@ -8,7 +8,7 @@ import { qk } from '../../lib/queryKeys'
 import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
-import { GRADES, DEFAULT_GRADE } from '../../lib/grades'
+import { GRADES, DEFAULT_GRADE, gradeLabel } from '../../lib/grades'
 /* The one grade vocabulary. This file used to declare its own copy, with a
    comment explaining that the VALUE and the LABEL must stay apart because
    sending '11th' where '11' belongs made the first class a teacher ever
@@ -164,37 +164,54 @@ export function WelcomePage() {
             onSubmit={submit}
             className="flex h-full w-full flex-col overflow-hidden"
           >
-            <div className="flex shrink-0 flex-col gap-3 border-b border-edge bg-paper-raised px-6 py-4 sm:flex-row sm:items-center sm:justify-between md:px-10">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-edge bg-paper-raised px-6 py-4 md:px-10">
               <div>
                 <h1 className="text-xl font-semibold tracking-display text-ink">Let’s set up your year</h1>
                 <p className="text-xs text-ink-muted">
-                  Pick the course you teach — it decides which standards ground every plan.
+                  Pick a grade, then the course you teach — together they decide which standards ground every plan.
                 </p>
               </div>
-              <label htmlFor="welcome-grade" className="flex items-center gap-2 text-sm">
-                <span className="font-medium text-ink">Grade</span>
-                <select
-                  id="welcome-grade"
-                  value={grade}
-                  onChange={(e) => setGrade(e.target.value)}
-                  className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2 pl-3 pr-7 text-sm text-ink outline-none focus:border-accent"
-                >
-                  {GRADES.map((g) => (
-                    <option key={g.value} value={g.value}>
-                      {g.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {/* Same mark as the app's own sidebar (AppShell.jsx) — this
+                  corner held the grade select, but grade now sits where a
+                  teacher's eye actually goes first (beside the search box,
+                  see below), so this becomes what every other header in the
+                  app already puts here: whose screen this is. */}
+              <svg viewBox="0 0 64 64" className="h-6 w-6 shrink-0 text-[#7c3aed] drop-shadow-sm" aria-hidden="true">
+                <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
+                <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
+                <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" className="land-seal-ring" />
+                <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
+              </svg>
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4 md:px-10">
+              <p className="mb-2 shrink-0 text-xs text-ink-muted">
+                Showing {gradeFilteredFrameworks.length} course{gradeFilteredFrameworks.length === 1 ? '' : 's'} for{' '}
+                <span className="font-medium text-ink">{gradeLabel(grade) || grade}</span>.
+              </p>
               <FrameworkPicker
                 frameworks={gradeFilteredFrameworks}
                 value={subject}
                 onChange={setSubject}
                 id="welcome-framework"
                 variant="inline"
+                beforeInput={
+                  <label htmlFor="welcome-grade" className="flex shrink-0 items-center gap-1.5 text-sm">
+                    <span className="sr-only">Grade</span>
+                    <select
+                      id="welcome-grade"
+                      value={grade}
+                      onChange={(e) => setGrade(e.target.value)}
+                      className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-3 pr-7 text-sm font-medium text-ink outline-none focus:border-accent"
+                    >
+                      {GRADES.map((g) => (
+                        <option key={g.value} value={g.value}>
+                          {g.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                }
               />
             </div>
 
