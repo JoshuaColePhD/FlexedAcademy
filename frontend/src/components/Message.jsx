@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Copy, Pencil, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -51,7 +51,7 @@ function useCopy() {
  * distinct from "said by the app" without giving the assistant an avatar or
  * a second speaker's identity — it's still the page talking back, just
  * boxed like everything else here. */
-export function Message({
+function MessageImpl({
   message,
   subject,
   onRetry,
@@ -451,3 +451,19 @@ export function Message({
     </motion.div>
   )
 }
+
+/* Memoized — this is the single highest-leverage memo in the app.
+ *
+ * Message renders ReactMarkdown, and the transcript renders one per turn. It
+ * was unmemoized, and the composer's text state lives at the top of ChatPage,
+ * so EVERY KEYSTROKE re-rendered the whole tree and re-parsed markdown for
+ * every message in the thread. Streaming was worse: a token arrives, ChatPage
+ * re-renders, and all N messages re-parse — per token.
+ *
+ * This only pays off because the props are stable: ChatPage passes a hoisted
+ * onEdit/ref (see its own comments there) rather than inline closures, and
+ * the streaming update replaces only the one message object it touches, so
+ * every other bubble keeps its identity and skips. Default shallow compare is
+ * enough; no custom comparator to keep in sync with the prop list.
+ */
+export const Message = memo(MessageImpl)

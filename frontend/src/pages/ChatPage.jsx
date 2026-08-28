@@ -2335,6 +2335,32 @@ export function ChatPage() {
     if (lastAsk) submit(lastAsk.content)
   }, [messages, submit])
 
+  /* Both of these exist to keep <Message>'s props referentially stable, which
+     is what makes memoizing it (components/Message.jsx) actually pay off —
+     an inline arrow in the map below would hand every bubble a brand-new prop
+     on every render and skip the memo entirely.
+
+     Message ignores its first argument (it passes its own `message` back), so
+     this can be one shared callback rather than one closure per row. */
+  const handleEditMessage = useCallback((_m, next) => submit(next), [submit])
+
+  /* One ref callback per message id, cached, so the same identity comes back
+     on every render. An inline `ref={(el) => …}` is a NEW function each time,
+     which React treats as a different ref: it calls the old one with null and
+     the new one with the node on every single render, churning this Map
+     constantly for no reason. */
+  const messageRefCallbacks = useRef(new Map())
+  const registerMessageRef = useCallback((id) => {
+    const cached = messageRefCallbacks.current.get(id)
+    if (cached) return cached
+    const fn = (el) => {
+      if (el) messageRefs.current.set(id, el)
+      else messageRefs.current.delete(id)
+    }
+    messageRefCallbacks.current.set(id, fn)
+    return fn
+  }, [])
+
   // Auto-retry once on reconnect: a message that failed while the device
   // was genuinely offline (see the offline-aware hint above) shouldn't need
   // a teacher to notice wifi came back AND remember to tap Retry — the
@@ -3150,10 +3176,7 @@ export function ChatPage() {
                       pinToTopIdRef's own comment below for what this ref is for. */}
                   <div
                     className={i === 0 || daySep ? '' : grouped ? 'mt-2' : 'mt-7'}
-                    ref={(el) => {
-                      if (el) messageRefs.current.set(m.id, el)
-                      else messageRefs.current.delete(m.id)
-                    }}
+                    ref={registerMessageRef(m.id)}
                   >
                     <Message
                       message={m}
@@ -3162,8 +3185,13 @@ export function ChatPage() {
                       onRetry={m.isError && !busy ? retryLast : undefined}
                       /* The pencil rendered unguarded while this was never passed, so
                          clicking it opened a working editor whose "Send again" threw
-                         and silently reverted the text. */
-                      onEdit={m.role === 'user' && !busy ? (_m, next) => submit(next) : undefined}
+                         and silently reverted the text.
+
+                         Hoisted to a stable callback (handleEditMessage) rather than
+                         an inline arrow: Message is memo'd now, and a fresh closure
+                         here every render would defeat that for every bubble in the
+                         thread — which is the whole cost this memo exists to avoid. */
+                      onEdit={m.role === 'user' && !busy ? handleEditMessage : undefined}
                       /* The day-by-day breakdown moved into ArtifactRail's own
                          "This week" section on desktop, which sits right next to
                          the plan it describes instead of scrolling away with the

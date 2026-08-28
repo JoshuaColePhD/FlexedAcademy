@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
 import * as metrics from '../lib/voiceMetrics'
 
@@ -99,6 +99,54 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   const [text, setText] = useState('')
   const abortRef = useRef(null)
 
+  /* Chunk-to-render coalescing.
+   *
+   * setText used to run once per SSE chunk — i.e. per token. Each of those
+   * re-rendered ChatPage (a 3,600-line component), and ChatPage's own effect
+   * then mirrored the new text into `messages`, re-rendering it a SECOND
+   * time. Two full renders per token, and the model emits them far faster
+   * than the browser can paint, so most of that work was for frames nobody
+   * ever saw.
+   *
+   * rAF collapses a burst of chunks into at most one state update per frame:
+   * the text still arrives token-by-token, it just stops asking React to
+   * render faster than the display refreshes. flushText() forces the pending
+   * value out at the end of a stream so the last few tokens can't be left
+   * sitting in a frame that never comes (the stream ends, no more chunks
+   * arrive to schedule one). */
+  const pendingTextRef = useRef(null)
+  const rafRef = useRef(null)
+  const flushText = useCallback(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    if (pendingTextRef.current != null) {
+      setText(pendingTextRef.current)
+      pendingTextRef.current = null
+    }
+  }, [])
+  const queueText = useCallback((value) => {
+    pendingTextRef.current = value
+    if (rafRef.current != null) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      if (pendingTextRef.current == null) return
+      setText(pendingTextRef.current)
+      pendingTextRef.current = null
+    })
+  }, [])
+  // A stream aborted mid-flight (stop(), or unmount) must not land a queued
+  // frame afterwards and resurrect text the caller just cleared.
+  const cancelQueuedText = useCallback(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    pendingTextRef.current = null
+  }, [])
+  useEffect(() => cancelQueuedText, [cancelQueuedText])
+
   const onDoneRef = useRef(onDone)
   const onErrorRef = useRef(onError)
   const onGeneratePlanRef = useRef(onGeneratePlan)
@@ -114,12 +162,14 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     abortRef.current?.abort()
     abortRef.current = null
     setIsStreaming(false)
+    cancelQueuedText()
     setText('')
-  }, [])
+  }, [cancelQueuedText])
 
   const reset = useCallback(() => {
+    cancelQueuedText()
     setText('')
-  }, [])
+  }, [cancelQueuedText])
 
   // One attempt: opens the SSE connection, accumulates chunks into `text` as
   // they arrive, and either returns the finished result or throws. Retrying
@@ -127,6 +177,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // twice for the same logical request.
   const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, controller }) => {
     let accumulated = ''
+    cancelQueuedText()
     setText('')
 
     const res = await fetch(api.chatStreamUrl(), {
@@ -285,7 +336,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
             // turn is open, and only VoiceModePanel opens one).
             if (!accumulated) metrics.firstToken()
             accumulated += event.chunk
-            setText(accumulated)
+            queueText(accumulated)
             emitSentences(false)
           }
 
@@ -296,6 +347,12 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       }
       if (done) break
     }
+
+    /* The stream is over, so no further chunk will arrive to schedule the
+       frame that would have painted the tail. Force the last queued value out
+       (see queueText) — without this the final few tokens of every reply
+       stayed pending forever. */
+    flushText()
 
     if (!finished && !toolCalled) {
       throw new ApiError('The connection closed unexpectedly.', {
@@ -345,7 +402,9 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       dayRevisionRequested,
       spokeStream: emittedTo > 0,
     }
-  }, [])
+    // All three are useCallback'd with empty deps (they only touch refs), so
+    // `attempt` stays referentially stable exactly as it was before.
+  }, [cancelQueuedText, queueText, flushText])
 
   const start = useCallback(
     async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber } = {}) => {
