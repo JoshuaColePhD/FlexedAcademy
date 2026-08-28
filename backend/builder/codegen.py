@@ -48,7 +48,7 @@ import json
 import logging
 from pathlib import Path
 
-from .. import db, llm
+from .. import db, llm, storage
 from ..config import settings
 from . import rasterize
 from .fixtures import fixture_expectations, synthetic_week_fixture
@@ -225,6 +225,18 @@ def run_codegen_job(job_id: str) -> None:
     structure_summary = _summarize_for_llm(structure)
 
     original_path = Path(template["file_path"])
+    # A school's uploaded template is only ever WRITTEN by the instance that
+    # handled the upload (routes/school_calendars.py's upload endpoint) —
+    # Render containers are ephemeral, so on any OTHER instance (a redeploy,
+    # a restart, a second replica) that local file simply doesn't exist,
+    # even though the row referencing it is right there in Postgres. This
+    # produced a very confusing LibreOffice error ("source file could not
+    # be loaded") that looked like an environment problem but was really a
+    # missing-file problem. storage.mirror_file backs up every upload to
+    # Supabase Storage already (see the upload endpoint); ensure_local is
+    # the same self-heal retrieval.load_chunks() and db.py's QTI restore
+    # already use — a no-op if the file's already there.
+    storage.ensure_local(original_path)
     try:
         original_images_b64 = rasterize.file_to_b64_png(original_path)
     except Exception as e:  # noqa: BLE001
