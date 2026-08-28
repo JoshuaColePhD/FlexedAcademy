@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Loader2 } from 'lucide-react'
@@ -73,6 +73,27 @@ export function WelcomePage() {
     staleTime: Infinity,
   })
 
+  // The grade select otherwise only fed the class it creates on submit —
+  // it sat right next to a browser full of courses and did nothing to it,
+  // which reads as broken the moment someone actually tries it. Every
+  // framework already carries its own grades[] (used for the "elementary"/
+  // "middle"/"high" search synonyms in lib/frameworks.js), so filtering the
+  // list the picker sees is a plain narrow, not a new capability.
+  const gradeFilteredFrameworks = useMemo(
+    () => frameworks.filter((f) => (f.grades || []).includes(Number(grade))),
+    [frameworks, grade],
+  )
+
+  // A course chosen under one grade can fall outside the list the moment
+  // the grade changes (e.g. AP Calculus picked at 11th, then grade dropped
+  // to 3rd) — left alone, the footer would keep claiming a course as
+  // "Selected" that's no longer even visible above it.
+  useEffect(() => {
+    if (subject && !gradeFilteredFrameworks.some((f) => f.id === subject)) {
+      setSubject('')
+    }
+  }, [gradeFilteredFrameworks, subject])
+
   const submit = async (e) => {
     e.preventDefault()
     if (!subject) {
@@ -102,7 +123,7 @@ export function WelcomePage() {
     }
   }
 
-  const selectedFramework = frameworks.find((f) => f.id === subject)
+  const selectedFramework = gradeFilteredFrameworks.find((f) => f.id === subject)
 
   /* h-app, not min-h-app: index.html's <body> is overflow-hidden — every
      page has to make its OWN content scrollable rather than relying on
@@ -169,7 +190,7 @@ export function WelcomePage() {
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4 md:px-10">
               <FrameworkPicker
-                frameworks={frameworks}
+                frameworks={gradeFilteredFrameworks}
                 value={subject}
                 onChange={setSubject}
                 id="welcome-framework"
