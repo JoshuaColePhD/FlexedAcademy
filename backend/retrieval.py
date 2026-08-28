@@ -565,6 +565,7 @@ _UNTRACKED_CHUNK_FILES = (
 )
 
 
+@functools.lru_cache(maxsize=1)
 def load_chunks() -> list[dict]:
     """The full chunk records, straight from the *chunks.json files.
 
@@ -576,6 +577,25 @@ def load_chunks() -> list[dict]:
     scripts/02_embed_store.py embeds. Reading only chunks.json meant the browser
     showed 164 AP Lang chunks while the vector store held every Alabama subject,
     so the Standards page and the generator disagreed about what the corpus was.
+
+    Cached — every downstream helper here (chunks_by_code, _codes_by_course,
+    _all_raw_courses, ...) already wraps ITS OWN result in
+    @functools.lru_cache(maxsize=1), which only helped once each of those had
+    independently paid for its own uncached call into this function. Right
+    after a deploy, several of those caches populate concurrently across the
+    first few requests, each re-parsing the full corpus (all five
+    data/processed/*chunks.json files, ~40MB / 33k records, ~75MB of Python
+    objects per parse — measured directly, see git history) from scratch at
+    the same time: on Render's free 512MB plan that's an easy way to OOM the
+    worker and 502 whoever's request triggered it, which is exactly what
+    started happening once alcos_chunks.json/pre_ap_chunks.json/
+    act_chunks.json went from silently-missing (AP-only corpus) to actually
+    loading (the full K-12 corpus, ~4x the data). Every caller already treats
+    the corpus as static for the life of the process (nothing here ever calls
+    .cache_clear() on the downstream caches either), so parsing it once and
+    sharing that instead of once per cache is a pure win, not a behavior
+    change — same reasoning as those already have, just applied to the
+    function they all sit on top of.
     """
     primary = Path(settings.chunks_path)
     for name in _UNTRACKED_CHUNK_FILES:
