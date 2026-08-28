@@ -20,6 +20,7 @@ import logging
 from datetime import UTC
 
 from fastapi import APIRouter, Depends, Request
+from starlette.concurrency import run_in_threadpool
 
 from .. import db, stripe_api
 from ..config import settings
@@ -194,12 +195,25 @@ def _resolve_user(sub: dict) -> str | None:
 
 @router.post("/webhook")
 async def webhook(request: Request):
+    """Reading the body is the only awaitable part; everything after it is
+    blocking (signature crypto, a Stripe HTTP round trip, DB writes) and is
+    handed to the threadpool rather than run on the event loop.
+
+    This has to stay `async def` — unlike the upload routes, it genuinely
+    needs `await request.body()` — so it can't get the threadpool the way they
+    do just by dropping the keyword. Same reason it matters, though: under
+    `--workers 1` (Dockerfile), a Stripe call blocking here stalled every
+    other request, and webhooks arrive on Stripe's schedule, not a teacher's.
+    """
     if not settings.stripe_webhook_secret:
         raise AppError("billing_unconfigured", "No webhook secret configured.", status=503)
     payload = await request.body()
-    event = stripe_api.verify_webhook(
-        payload, request.headers.get("stripe-signature", ""), settings.stripe_webhook_secret
-    )
+    signature = request.headers.get("stripe-signature", "")
+    return await run_in_threadpool(_handle_webhook_event, payload, signature)
+
+
+def _handle_webhook_event(payload: bytes, signature: str) -> dict:
+    event = stripe_api.verify_webhook(payload, signature, settings.stripe_webhook_secret)
     kind = event.get("type")
     obj = (event.get("data") or {}).get("object") or {}
 

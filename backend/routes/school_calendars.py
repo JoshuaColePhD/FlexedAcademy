@@ -40,8 +40,12 @@ def _resolve_school(school_name: str) -> dict:
     return db.create_school(school_id, school_name)
 
 
+# Deliberately `def`, not `async def` — nothing in the body is awaitable, and
+# it does slow blocking work (file/network IO, PDF+LLM parsing). Under
+# `--workers 1` (Dockerfile) an async version ran that on the event loop and
+# froze every other request, SSE streams included. `def` gets the threadpool.
 @router.post("", status_code=201)
-async def upload_calendar(
+def upload_calendar(
     school_name: str = Form(..., min_length=1, max_length=120),
     source_url: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
@@ -103,8 +107,12 @@ def reject_calendar(submission_id: str, _user_id: str = Depends(get_current_user
     return db.reject_calendar_submission(submission_id)
 
 
+# Deliberately `def`, not `async def` — nothing in the body is awaitable, and
+# it does slow blocking work (file/network IO, PDF+LLM parsing). Under
+# `--workers 1` (Dockerfile) an async version ran that on the event loop and
+# froze every other request, SSE streams included. `def` gets the threadpool.
 @router.post("/{school_id}/template", status_code=201)
-async def upload_school_template(
+def upload_school_template(
     school_id: str,
     file: UploadFile | None = File(default=None),
     source_url: str | None = Form(default=None),

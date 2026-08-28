@@ -92,8 +92,12 @@ def list_global_documents(user_id: str = Depends(get_current_user)):
     return [_map_out(r) | {"kind": r.get("kind")} for r in rows]
 
 
+# Deliberately `def`, not `async def` — nothing in the body is awaitable, and
+# it does slow blocking work (file/network IO, PDF+LLM parsing). Under
+# `--workers 1` (Dockerfile) an async version ran that on the event loop and
+# froze every other request, SSE streams included. `def` gets the threadpool.
 @router.post("/curriculum_map")
-async def upload_curriculum_map(
+def upload_curriculum_map(
     subject: str = Form(default="GLOBAL"),
     file: UploadFile | None = File(default=None),
     # A Google Doc link (or any other public URL) as an alternative to a

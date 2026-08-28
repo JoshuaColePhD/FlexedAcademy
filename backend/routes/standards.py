@@ -104,7 +104,7 @@ def get_global_standards(
 
 
 @router.post("/global/upload")
-async def upload_global_standards(
+def upload_global_standards(
     state: str = Form(...),
     subject: str = Form(...),
     grade: str = Form(...),
@@ -113,6 +113,15 @@ async def upload_global_standards(
 ):
     """
     Upload a standards PDF, parse it using the LLM, and save it to the global database.
+
+    Deliberately `def`, not `async def`. Nothing in here is awaitable — it
+    reads file.file (the plain SpooledTemporaryFile), parses the PDF, and makes
+    a synchronous LLM call that can run 30-120s on a large document. As
+    `async def` all of that ran ON the event loop, and the app is deployed with
+    `--workers 1` (Dockerfile), so one standards upload froze every other
+    request in flight — including SSE streams mid-generation. A plain `def`
+    endpoint gets run in FastAPI's threadpool instead, which is exactly what
+    this wants.
     """
     if not file.filename.endswith(".pdf"):
         raise AppError("invalid_file", "Standards document must be a PDF.", status=400)

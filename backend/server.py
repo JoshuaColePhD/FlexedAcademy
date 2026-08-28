@@ -199,6 +199,34 @@ async def lifespan(app: FastAPI):
     db.close()
 
 
+class ConditionalGZipMiddleware:
+    """GZipMiddleware for everything except the server-sent event streams.
+
+    Starlette's GZipResponder compresses a streaming body chunk by chunk, but
+    zlib buffers internally: it emits nothing until a deflate block fills. For
+    a normal response that is invisible and worth it. For SSE — where the whole
+    point is that a token reaches the browser the moment it exists — it means
+    tokens pile up and then arrive several at a time, so a generation that is
+    exactly as fast reads as stuttery.
+
+    Keyed on the `_stream` path suffix rather than the response content-type
+    because the choice of responder has to be made before the app has said
+    anything about what it is returning. Both SSE routes already share that
+    suffix (/api/generate_stream, /api/chat_stream), so it doubles as the
+    convention to keep: a future streaming route named the same way is
+    excluded automatically.
+    """
+
+    def __init__(self, app, minimum_size: int = 1024):
+        self._plain = app
+        self._gzip = GZipMiddleware(app, minimum_size=minimum_size)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("path", "").endswith("_stream"):
+            return await self._plain(scope, receive, send)
+        return await self._gzip(scope, receive, send)
+
+
 app = FastAPI(title="FlexEd Academy", version="2.0.0", lifespan=lifespan)
 
 app.state.limiter = limiter
@@ -212,7 +240,12 @@ app.add_middleware(SlowAPIMiddleware)
 #
 # It matters most for route chunks and generated lesson-plan payloads. The
 # browser can cache those compressed responses without a second asset pipeline.
-app.add_middleware(GZipMiddleware, minimum_size=1024)
+#
+# NOT applied to the SSE endpoints — see ConditionalGZipMiddleware. zlib holds
+# bytes back until a deflate block fills, so wrapping a token-by-token stream
+# in gzip makes tokens land in bursts instead of arriving as they're produced:
+# the generation is exactly as fast, and visibly feels worse.
+app.add_middleware(ConditionalGZipMiddleware, minimum_size=1024)
 
 app.add_middleware(
     CORSMiddleware,

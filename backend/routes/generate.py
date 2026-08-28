@@ -267,6 +267,18 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     def event_stream():
         chunks: list[str] = []
         try:
+            # Emitted BEFORE service.prepare, which is the slowest thing in
+            # this whole request that isn't the model itself — an LLM
+            # expand_query call plus ~30 pgvector reads. It all used to happen
+            # ahead of the first yield, so the response headers were sent and
+            # then nothing followed for seconds: no bytes, nothing for the
+            # client to show, no way to tell a slow retrieval from a hung
+            # request. This costs one frame and makes the wait legible.
+            #
+            # Additive: useLessonStream.js only reads the keys it knows
+            # (grounding/chunk/done/error) and ignores anything else, so an
+            # older client is unaffected by a new frame type.
+            yield _sse({"status": "retrieving"})
             result = service.prepare(user_id, query, cls=cls)
             yield _sse(
                 {
@@ -318,7 +330,16 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
         event_stream(),
         media_type="text/event-stream",
         background=bg_tasks,
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        # X-Accel-Buffering: nginx (and several PaaS routers, Render's
+        # included) buffer a proxied response by default, which re-introduces
+        # exactly the batching that excluding this route from gzip
+        # (ConditionalGZipMiddleware) exists to avoid — just one hop further
+        # out, where it is invisible from here.
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -808,7 +829,12 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        # See the identical header block on /generate_stream above.
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
