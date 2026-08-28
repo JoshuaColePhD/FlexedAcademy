@@ -277,7 +277,7 @@ def finalize(
         bg_tasks.add_task(_build_docx_bg, user_id, plan, out_path, plan_id)
         docx_path_val = None
     else:
-        docx_build.build_docx(plan, out_path)
+        docx_build.build_docx(plan, out_path, school_id)
         storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
@@ -406,7 +406,8 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
         bg_tasks.add_task(_build_docx_bg, user_id, plan, out_path, plan_id)
         return db.get_plan(user_id, plan_id)  # type: ignore[return-value]
     else:
-        docx_build.build_docx(plan, out_path)
+        cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+        docx_build.build_docx(plan, out_path, cls.get("school") if cls else None)
         return db.update_plan(user_id, plan_id, docx_path=str(out_path))  # type: ignore[return-value]
 
 
@@ -539,7 +540,7 @@ def revise_day(
         bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
         docx_path_val = None
     else:
-        docx_build.build_docx(new_plan, out_path)
+        docx_build.build_docx(new_plan, out_path, cls.get("school") if cls else None)
         storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
@@ -635,7 +636,7 @@ def set_day_field(
         bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
         docx_path_val = None
     else:
-        docx_build.build_docx(new_plan, out_path)
+        docx_build.build_docx(new_plan, out_path, cls.get("school") if cls else None)
         storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
@@ -749,7 +750,7 @@ def revise_days(
         bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
         docx_path_val = None
     else:
-        docx_build.build_docx(new_plan, out_path)
+        docx_build.build_docx(new_plan, out_path, cls.get("school") if cls else None)
         storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
