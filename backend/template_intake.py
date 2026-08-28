@@ -84,6 +84,16 @@ _MAX_PDF_PAGES = 20     # ditto for PDFs
 _MIN_TEXT_CHARS = 30    # below this, there's nothing to analyze
 _MAX_DISTINCT_FONTS = 8  # more than this suggests copy-pasted, inconsistent formatting
 _MAX_PDF_CHARS_SAMPLED_PER_PAGE = 4000  # bound cost on a dense page; font/size survey doesn't need every glyph
+# A weekly M-F lesson-plan grid is the shape this whole pipeline exists for —
+# every row is typically a distinct field (standards, learning targets, do
+# now, ...), not repeated filler, so a low cap here starves the LLM of the
+# exact content it needs to identify sections. This used to be a bare `[1:4]`
+# — 3 rows — which on a real 10-row template meant _summarize_for_llm told
+# the model "10 rows" while showing it 3, and the model correctly reported
+# "the remaining lesson-plan fields cannot be identified" rather than
+# guessing. 40 comfortably covers any real blank template; a filled-in packet
+# that size is already rejected earlier by _MAX_PARAGRAPHS/_MAX_PDF_PAGES.
+_MAX_TABLE_SAMPLE_ROWS = 40
 
 
 @dataclass
@@ -243,7 +253,31 @@ def _extract_docx_structure(path: Path) -> dict:
 
     tables: list[dict] = []
     for ti, table in enumerate(d.tables):
-        rows = [[c.text.strip() for c in row.cells] for row in table.rows]
+        rows = []
+        for row in table.rows:
+            # row.cells repeats the SAME _Cell for every grid column a
+            # horizontal merge spans (documented python-docx behavior) — a
+            # naive [c.text for c in row.cells] silently turns one merged
+            # "Standards/DOK" cell spanning all five weekday columns into
+            # that same text repeated 5 times, with nothing distinguishing
+            # it from 5 genuinely different cells. That false duplication is
+            # exactly what a Google-Docs-exported weekly grid produced here,
+            # and what made the analysis step flag the data as internally
+            # inconsistent. Detected via the underlying XML element's
+            # identity (c._tc) rather than text equality, so two distinct
+            # cells that legitimately hold the same short text (e.g. two
+            # blank cells) aren't mistaken for a merge. A continuation cell
+            # becomes "" rather than being dropped, so every row stays the
+            # same width as the table's real column count.
+            seen_tc = None
+            row_cells = []
+            for c in row.cells:
+                if c._tc is seen_tc:
+                    row_cells.append("")
+                else:
+                    seen_tc = c._tc
+                    row_cells.append(c.text.strip())
+            rows.append(row_cells)
         col_counts = {len(r) for r in rows}
         total_chars += sum(len(cell) for row in rows for cell in row)
         tables.append(
@@ -252,7 +286,7 @@ def _extract_docx_structure(path: Path) -> dict:
                 "row_count": len(rows),
                 "col_counts": sorted(col_counts),
                 "header_row": rows[0] if rows else [],
-                "sample_rows": rows[1:4],
+                "sample_rows": rows[1 : 1 + _MAX_TABLE_SAMPLE_ROWS],
             }
         )
 
@@ -353,7 +387,7 @@ def _extract_pdf_structure(path: Path) -> dict:
                         "row_count": len(rows),
                         "col_counts": sorted(col_counts),
                         "header_row": rows[0] if rows else [],
-                        "sample_rows": rows[1:4],
+                        "sample_rows": rows[1 : 1 + _MAX_TABLE_SAMPLE_ROWS],
                     }
                 )
             pages.append(
