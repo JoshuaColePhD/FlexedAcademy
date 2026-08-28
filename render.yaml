@@ -14,26 +14,36 @@
 #
 #   Footprint: query embedding moved to the OpenAI API, so torch (518MB),
 #   transformers (98MB) and sentence-transformers are all gone, along with the
-#   model download at first boot and the CrossEncoder's OOM risk. What's left —
-#   fastapi, pydantic, openai, psycopg2, python-docx — fits the free plan's 512MB
-#   with room to spare and builds in a fraction of the time.
+#   model download at first boot and the CrossEncoder's OOM risk. That headroom
+#   is what the free plan's 512MB used to have "room to spare" in — Docker
+#   spends a real slice of it back on libreoffice-writer/poppler-utils/
+#   tesseract-ocr (see Dockerfile's own top comment for why those are there).
+#   LibreOffice itself is a per-conversion subprocess, not a resident server
+#   (backend/builder/rasterize.py), so it's a transient spike during a
+#   builder-codegen attempt, not a constant tax — but combined with the
+#   Dockerfile's `--workers 2` (two full app processes, each holding its own
+#   copy of the ~75MB standards corpus in memory — see retrieval.py's
+#   load_chunks cache), free-plan headroom is measurably tighter than the
+#   line above once described. Watch Render's metrics after the first deploy
+#   on this image; move to a paid plan (more RAM, not just more CPU — Starter
+#   is the same 512MB as free) if it's actually OOMing rather than
+#   pre-emptively paying for capacity that might not be needed.
 services:
   - type: web
     name: flexed-academy-backend
-    env: python
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     # Push to master -> Render rebuilds and redeploys, no dashboard visit. This
     # is Render's default, but it is stated here so the deploy loop is a fact of
     # the repo rather than a setting someone has to remember checking.
     #
-    # The build runs the FULL pipeline: npm ci, vite build, pip install. So a
-    # one-line frontend change is a several-minute rebuild on the free plan, and
-    # the service is down while it swaps. Batch changes rather than pushing ten
-    # times in a row.
+    # The build runs the FULL pipeline: npm ci, vite build, pip install, PLUS
+    # apt-get install of the three system binaries above — slower than the
+    # old native buildCommand, and the service is down while it swaps. Batch
+    # changes rather than pushing ten times in a row.
     branch: master
     autoDeploy: true
-    buildCommand: "npm --prefix frontend install && npm --prefix frontend run build && pip install -e ."
-    startCommand: "uvicorn backend.server:app --host 0.0.0.0 --port $PORT"
     healthCheckPath: /api/health/ready
     envVars:
       # ── set these in the dashboard ────────────────────────────────────────
@@ -82,9 +92,9 @@ services:
       - key: GOOGLE_CLIENT_ID
         sync: false
 
-      # CORS. This is a single service — the build bundles the frontend as
-      # static assets served by this SAME FastAPI app (buildCommand above,
-      # server.py's serve_spa) — so ordinary browser traffic to
+      # CORS. This is a single service — the Dockerfile's frontend-builder
+      # stage bundles the frontend as static assets served by this SAME
+      # FastAPI app (server.py's serve_spa) — so ordinary browser traffic to
       # flexedacademy.com is same-origin and never touches this check at
       # all. It matters the moment that stops being true: a custom domain
       # added alongside the default onrender.com one, a future split
@@ -182,5 +192,7 @@ services:
       # served over http://127.0.0.1 and a Secure cookie would never be sent.
       - key: COOKIE_SECURE
         value: "true"
-      - key: PYTHON_VERSION
-        value: "3.12.3"
+      # PYTHON_VERSION used to pin the native buildCommand's interpreter —
+      # dropped now that runtime: docker pins it instead (Dockerfile's own
+      # `FROM python:3.12.3-slim`, kept at the same 3.12.3). Setting it here
+      # would be a silent no-op under Docker, not a real pin.
