@@ -127,10 +127,12 @@ export function SplitLayout({
           {/* Mobile Header (Shows only on small screens) */}
           <div className="md:hidden flex items-center gap-3 mb-8">
              <button
+              type="button"
               onClick={() => backPath ? navigate(backPath) : navigate(-1)}
               className="rounded-md p-1.5 text-ink-muted bg-paper-sunken border border-edge/30"
+              aria-label="Go back"
             >
-              <ArrowLeft size={16} />
+              <ArrowLeft size={16} aria-hidden="true" />
             </button>
             <h1 className="text-xl font-bold text-ink">{title}</h1>
           </div>

@@ -28,7 +28,13 @@ export function ChatHeaderSheet({
 }) {
   const { mounted, closing } = useExitTransition(open, 180)
   const sheetRef = useRef(null)
-  useFocusTrap(sheetRef, { active: mounted, trap: true, initialFocus: sheetRef, onEscape: onClose })
+  /* Keyed on `open`, not `mounted`. `mounted` stays true through the 180ms
+     exit transition, so trapping on it kept Tab captured inside a sheet that
+     was already visually gone — and Escape still bound to a dialog the
+     teacher had just dismissed. `open` releases the trap the instant the
+     close is requested, which is when the sheet stops being the thing on
+     screen; it stays mounted a beat longer purely to play its own exit. */
+  useFocusTrap(sheetRef, { active: open, trap: true, initialFocus: sheetRef, onEscape: onClose })
 
   if (!mounted) return null
   const classPath = `/c/${classId}`
@@ -38,7 +44,7 @@ export function ChatHeaderSheet({
       <button
         type="button"
         className={`panel-scrim${closing ? ' is-closing' : ''}`}
-        aria-label="Close"
+        aria-label="Close class and week"
         onClick={onClose}
       />
       <div

@@ -408,7 +408,12 @@ function ClassDetail({ cls, frameworks, onChanged }) {
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
 
+  // Guards a double-click: the button had no disabled state and this had no
+  // reentrancy check, so two fast clicks after confirming sent two
+  // DELETE /classes/{id}.
+  const [removing, setRemoving] = useState(false)
   const remove = async () => {
+    if (removing) return
     const ok = await confirm({
       title: `Remove ${cls.name}?`,
       body: 'Plans you built for it are kept — the class is archived, not deleted.',
@@ -416,6 +421,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
       tone: 'danger',
     })
     if (!ok) return
+    setRemoving(true)
     try {
       await api.deleteClass(cls.id)
       toast.success(`${cls.name} removed`)
@@ -423,6 +429,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
       navigate('/', { replace: true })
     } catch (err) {
       toast.apiError('Could not remove that class', err)
+      setRemoving(false)
     }
   }
 
@@ -505,7 +512,8 @@ function ClassDetail({ cls, frameworks, onChanged }) {
             <button
               type="button"
               onClick={remove}
-              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint"
+              disabled={removing}
+              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Trash2 size={14} aria-hidden="true" />
               Archive / Delete Class
@@ -806,9 +814,16 @@ export function ClassPage() {
           <ClassSetup
             frameworks={frameworks}
             onCancel={() => navigate('/')}
-            onCreated={async (created) => {
-              await reloadClasses()
+            /* Navigate FIRST, then refresh the list. This used to await
+               reloadClasses() before navigating — and ClassSetup's own
+               spinner has already stopped by then (its finally runs when the
+               create resolves), so there was a dead window with no indicator
+               at all while a full class-list refetch blocked the transition.
+               The destination route resolves the list itself; nothing here
+               needs to wait for it, and the invalidate still happens. */
+            onCreated={(created) => {
               navigate(`/c/${created.id}/class`)
+              reloadClasses()
             }}
           />
         </div>

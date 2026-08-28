@@ -206,15 +206,28 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
                 className="input flex-1 bg-paper-inset text-ink-muted select-all font-mono text-xs"
                 onClick={e => e.target.select()}
               />
+              {/* Both this and "Stop sharing" below await a network POST, and
+                  both used to do it with no disabled state and no label
+                  change — a dead-looking button for a whole round trip, and
+                  re-clickable while the first request was still out. The
+                  dialog already owned `submitting` for its other two
+                  actions; these two just weren't using it. */}
               <button
                 type="button"
                 className="btn shrink-0"
+                disabled={submitting}
                 onClick={async () => {
-                  const ok = await copyPlanShareLink(planId, toast)
-                  if (ok) setIsPublic(true)
+                  if (submitting) return
+                  setSubmitting(true)
+                  try {
+                    const ok = await copyPlanShareLink(planId, toast)
+                    if (ok) setIsPublic(true)
+                  } finally {
+                    setSubmitting(false)
+                  }
                 }}
               >
-                Copy
+                {submitting ? 'Copying…' : 'Copy'}
               </button>
               {/* stopSharingPlan (lib/shareLink.js) has existed since the
                   sharing fix landed and was never called from anywhere in the
@@ -224,12 +237,19 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
                 <button
                   type="button"
                   className="btn shrink-0"
+                  disabled={submitting}
                   onClick={async () => {
-                    const ok = await stopSharingPlan(planId, toast)
-                    if (ok) setIsPublic(false)
+                    if (submitting) return
+                    setSubmitting(true)
+                    try {
+                      const ok = await stopSharingPlan(planId, toast)
+                      if (ok) setIsPublic(false)
+                    } finally {
+                      setSubmitting(false)
+                    }
                   }}
                 >
-                  Stop sharing
+                  {submitting ? 'Stopping…' : 'Stop sharing'}
                 </button>
               ) : null}
             </div>

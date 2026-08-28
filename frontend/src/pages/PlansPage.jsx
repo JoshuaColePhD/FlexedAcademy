@@ -484,18 +484,24 @@ export function PlansPage() {
 
               <div className="flex items-center rounded-lg bg-paper-raised/80 p-1 border border-edge/30 ml-auto md:ml-2">
                 <button
+                  type="button"
                   onClick={() => setViewMode('grid')}
                   className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-paper shadow-sm text-ink' : 'text-ink-muted hover:text-ink'}`}
                   title="Grid View"
+                  aria-label="Grid view"
+                  aria-pressed={viewMode === 'grid'}
                 >
-                  <LayoutGrid size={14} />
+                  <LayoutGrid size={14} aria-hidden="true" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setViewMode('list')}
                   className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-paper shadow-sm text-ink' : 'text-ink-muted hover:text-ink'}`}
                   title="List View"
+                  aria-label="List view"
+                  aria-pressed={viewMode === 'list'}
                 >
-                  <ListIcon size={14} />
+                  <ListIcon size={14} aria-hidden="true" />
                 </button>
               </div>
             </div>

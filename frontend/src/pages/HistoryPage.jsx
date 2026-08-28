@@ -106,11 +106,22 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
     setIsDeletingBulk(true)
     try {
       const arr = Array.from(selectedIds)
-      for (const id of arr) {
-        await deleteChat.mutateAsync(id)
-      }
+      /* Concurrent, not a sequential `for await`: these are independent
+         deletes, and serializing them made N chats cost N round trips end to
+         end — 20 selected rows meant twenty consecutive waits behind one
+         spinner. allSettled rather than all() so one failure doesn't abandon
+         the rest half-done; the count below reports what actually went. */
+      const results = await Promise.allSettled(arr.map((id) => deleteChat.mutateAsync(id)))
+      const failed = results.filter((r) => r.status === 'rejected')
       setSelectedIds(new Set())
-      toast.success(`Deleted ${arr.length} chats`)
+      if (failed.length) {
+        toast.apiError(
+          `Deleted ${arr.length - failed.length} of ${arr.length} chats`,
+          failed[0].reason
+        )
+      } else {
+        toast.success(`Deleted ${arr.length} chats`)
+      }
       onDeleteCallback?.()
     } catch (err) {
       toast.apiError('Could not delete all selected chats', err)
@@ -212,7 +223,10 @@ function ChatDetailPanel({ chat, classId, onDelete }) {
     try {
       await renameChat.mutateAsync({ id: chat.id, title: title.trim() })
     } catch {
-      // toast will be handled by mutation if needed, or silently fail gracefully
+      // useRenameChat's own onError toasts and rolls the title back — this
+      // catch exists only so a rejected mutation doesn't become an unhandled
+      // promise. It used to say the mutation would toast "if needed"; it
+      // didn't, so a failed rename reverted with no explanation at all.
     } finally {
       setEditingTitle(false)
     }

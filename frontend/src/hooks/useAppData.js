@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
+import { useToast } from '../lib/toastContext'
 
 /* The data layer that replaced the Shell god object.
  *
@@ -98,6 +99,7 @@ export function useChats() {
 
 export function useRenameChat() {
   const qc = useQueryClient()
+  const toast = useToast()
   return useMutation({
     mutationFn: ({ id, title }) => api.renameChat(id, title),
     // Optimistic, because renaming is a text field the teacher is looking at:
@@ -111,6 +113,39 @@ export function useRenameChat() {
       )
       return { prev }
     },
+    /* Toasts here, not at the call sites. An optimistic rename that fails
+       ROLLS BACK — the title silently snaps to the old one — so without this
+       the teacher sees their edit undo itself with no explanation. HistoryPage
+       swallowed the error assuming this hook reported it ("toast will be
+       handled by mutation if needed"); it didn't. Centralized so a future
+       caller can't reintroduce the same silent failure. */
+    onError: (err, _v, ctx) => {
+      ctx?.prev?.forEach(([key, data]) => qc.setQueryData(key, data))
+      toast.apiError('Could not rename that chat', err)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['chats'] }),
+  })
+}
+
+/* Same optimistic shape as useRenameChat above, for the same reason — and it
+   matters more here, because pinning is the highest-frequency control in the
+   sidebar. It used to live inline in AppShell as an await-then-refetch: two
+   serialized round trips (PATCH, then a full GET /api/chats) during which the
+   pin icon didn't change colour and the row didn't move between the Pinned and
+   Recent sections. Flipping the flag locally does both instantly, since those
+   two lists are just filters over this same cached array. */
+export function useTogglePin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, pinned }) => api.togglePin(id, pinned),
+    onMutate: async ({ id, pinned }) => {
+      await qc.cancelQueries({ queryKey: ['chats'] })
+      const prev = qc.getQueriesData({ queryKey: ['chats'] })
+      qc.setQueriesData({ queryKey: ['chats'] }, (rows) =>
+        Array.isArray(rows) ? rows.map((c) => (c.id === id ? { ...c, is_pinned: pinned } : c)) : rows
+      )
+      return { prev }
+    },
     onError: (_e, _v, ctx) => ctx?.prev?.forEach(([key, data]) => qc.setQueryData(key, data)),
     onSettled: () => qc.invalidateQueries({ queryKey: ['chats'] }),
   })
@@ -120,7 +155,21 @@ export function useDeleteChat() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.deleteChat(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['chats'] }),
+    /* Optimistic too: the row used to sit there unchanged for a round trip
+       plus an invalidate-driven refetch after the confirm dialog had already
+       closed, which reads as the delete not having registered. Removing it
+       from the cached list immediately is safe because onError puts the whole
+       list back — the same rollback the two mutations above rely on. */
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['chats'] })
+      const prev = qc.getQueriesData({ queryKey: ['chats'] })
+      qc.setQueriesData({ queryKey: ['chats'] }, (rows) =>
+        Array.isArray(rows) ? rows.filter((c) => c.id !== id) : rows
+      )
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => ctx?.prev?.forEach(([key, data]) => qc.setQueryData(key, data)),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['chats'] }),
   })
 }
 

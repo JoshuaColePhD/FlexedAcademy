@@ -4,7 +4,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X, Database } from 'lucide-react'
 
-import { useChats, useClasses, useDeleteChat, useRenameChat } from '../hooks/useAppData'
+import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -276,13 +276,14 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   // scroller div below. Harmless unused otherwise: the hook no-ops until its
   // containerRef is actually attached to an element.
   const pullToRefresh = usePullToRefresh(refetch)
-  const togglePin = async (chat) => {
-    try {
-      await api.togglePin(chat.id, !chat.is_pinned)
-      refetch()
-    } catch (err) {
-      toast.apiError('Could not pin chat', err)
-    }
+  // Optimistic (useTogglePin) — the icon and the Pinned/Recent placement both
+  // update on click instead of after a PATCH plus a full list refetch.
+  const togglePinMutation = useTogglePin()
+  const togglePin = (chat) => {
+    togglePinMutation.mutate(
+      { id: chat.id, pinned: !chat.is_pinned },
+      { onError: (err) => toast.apiError('Could not pin chat', err) }
+    )
   }
 
   // Local, spacious-only filter — HistoryPage.jsx already has a full search
