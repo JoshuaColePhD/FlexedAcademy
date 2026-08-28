@@ -52,9 +52,23 @@ def docx_to_images(path: Path) -> list[object]:
         )
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
+        # -env:UserInstallation forces soffice to use ITS OWN fresh, writable
+        # profile directory for this one conversion, instead of the default
+        # (derived from $HOME, which may not be writable for a non-root
+        # container user — see Dockerfile's `USER app` — or may already hold
+        # a stale lock from a prior run). Both are well-known causes of
+        # exactly this symptom: soffice exits 0 (so `check=True` never
+        # trips) but silently writes no output file at all. A fresh profile
+        # per call also means concurrent conversions can never collide on
+        # the same lock.
+        profile_dir = tmp_path / "profile"
         try:
-            subprocess.run(
-                ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(tmp_path), str(path)],
+            result = subprocess.run(
+                [
+                    "soffice", "--headless",
+                    f"-env:UserInstallation=file://{profile_dir}",
+                    "--convert-to", "pdf", "--outdir", str(tmp_path), str(path),
+                ],
                 check=True, capture_output=True, timeout=_SOFFICE_TIMEOUT_S,
             )
         except subprocess.CalledProcessError as e:
@@ -70,7 +84,18 @@ def docx_to_images(path: Path) -> list[object]:
 
         pdf_path = tmp_path / f"{path.stem}.pdf"
         if not pdf_path.is_file():
-            raise AppError("docx_rasterize_failed", f"LibreOffice ran but produced no PDF for {path.name}.")
+            # exit 0 with no output file is a real LibreOffice headless
+            # failure mode (commonly a profile directory it couldn't write
+            # to, or a stale lock from a prior run) — surfacing what it
+            # actually printed is the difference between guessing and
+            # knowing, since `check=True` above only catches a NONZERO exit.
+            stdout = result.stdout.decode(errors="replace")[:500]
+            stderr = result.stderr.decode(errors="replace")[:500]
+            raise AppError(
+                "docx_rasterize_failed",
+                f"LibreOffice ran but produced no PDF for {path.name}. "
+                f"stdout: {stdout!r} stderr: {stderr!r}",
+            )
         return pdf_to_images(pdf_path)
 
 
