@@ -3532,7 +3532,18 @@ def create_school(school_id: str, name: str) -> dict:
     return get_school(school_id)  # type: ignore[return-value]
 
 def update_school_template_status(school_id: str, status: str) -> bool:
-    return _write("UPDATE schools SET template_status = ? WHERE id = ?", (status, school_id)) > 0
+    changed = _write("UPDATE schools SET template_status = ? WHERE id = ?", (status, school_id)) > 0
+    if changed:
+        # docx_build.builder() is lru_cached per school_id — without this, a
+        # school whose FIRST generation ever happened before this activation
+        # (the common case: a teacher tries the app, gets the generic
+        # fallback, then their upload gets approved) keeps silently getting
+        # that same cached fallback module forever, no matter what template
+        # status says now. See the other two call sites that flip
+        # builder_status='verified' for the same fix.
+        from . import docx_build
+        docx_build.builder.cache_clear()
+    return changed
 
 def create_school_template(school_id: str, uploaded_by: str, filename: str, file_path: str) -> dict:
     template_id = new_id()
@@ -3859,6 +3870,10 @@ def approve_builder_codegen_job(job_id: str) -> dict | None:
         return None
     _write("UPDATE schools SET builder_status = 'verified' WHERE id = ?", (job["school_id"],))
     _write("UPDATE builder_codegen_jobs SET verified_at = ? WHERE id = ?", (now(), job_id))
+    # See update_school_template_status's own comment — docx_build.builder()
+    # caches per school_id and never re-checks builder_status on its own.
+    from . import docx_build
+    docx_build.builder.cache_clear()
     return get_school(job["school_id"])
 
 
@@ -3880,6 +3895,10 @@ def mark_builder_codegen_job_auto_verified(job_id: str) -> dict | None:
         "UPDATE builder_codegen_jobs SET auto_verified = true, verified_at = ? WHERE id = ?",
         (ts, job_id),
     )
+    # See update_school_template_status's own comment — docx_build.builder()
+    # caches per school_id and never re-checks builder_status on its own.
+    from . import docx_build
+    docx_build.builder.cache_clear()
     return get_school(job["school_id"])
 
 
