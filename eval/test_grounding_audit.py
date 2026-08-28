@@ -19,7 +19,31 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backend import retrieval as _retrieval  # noqa: E402
 from backend.retrieval import _CODE_RE, _norm_code, audit_grounding  # noqa: E402
+
+# This suite's docstring has always promised "no DB, no API", and part 1 (the
+# regex) genuinely needs neither. Part 2 did: audit_grounding -> cited_standards
+# -> chunks_by_code() -> load_chunks(), which reads data/processed/*chunks.json
+# — gitignored, 29MB, and never present on a CI runner. So it passed locally
+# (where the corpus exists) and died with "No *chunks.json files were found" in
+# CI, which is how eval/run_all.py came to list it needs_corpus=False while it
+# actually needed one.
+#
+# Stubbed rather than reclassified needs_corpus=True: reclassifying is what the
+# workflow did for four other suites, but it would drop this one out of CI
+# entirely, and the regex half is exactly the "layer 3 is the only verifiable
+# layer" coverage the docstring above argues is worth having.
+#
+# Faithful because cited_standards only ever asks this for MEMBERSHIP — the
+# `.keys()` of it for known_course, and `code in known_anywhere` — and never
+# reads a value. The key set is what makes the test's own three-way
+# distinction real: the four codes below exist in the corpus, so an un-retrieved
+# one reads as BORROWED, while LO.9.Z.9.9 is deliberately absent so it reads as
+# INVENTED. Getting that set wrong would collapse those two cases together,
+# which is the failure this suite exists to catch.
+_CORPUS_CODES = ("LO.3.A.3.1", "S.EMI.501", "R.WME.501", "R6")
+_retrieval.chunks_by_code = lambda: {_norm_code(c): {"code": c} for c in _CORPUS_CODES}
 
 # --- 1. the regex sees the corpus's own code vocabulary ---------------------
 PARSE_CASES = [
@@ -70,6 +94,22 @@ PHYSICS_ALLOWED = {_norm_code(c) for c in ("LO.3.A.3.1", "S.EMI.501")}
 EXPECT_FLAGGED = {"R.WME.501", "R6", "LO.9.Z.9.9"}   # borrowed, borrowed, invented
 EXPECT_CLEAN = {"LO.3.A.3.1", "S.EMI.501"}
 
+# The line above has always SAID "borrowed, borrowed, invented" while asserting
+# only that each code appears somewhere in the warnings — so a run where every
+# code came back "invented" passed identically to the correct one, and the
+# distinction the comment names was never actually checked. It matters: telling
+# a teacher a real standard was simply not retrieved is a different claim from
+# telling her she cited something that does not exist.
+#
+# Also what pins the corpus stub at the top of this file honest. Without this,
+# stubbing chunks_by_code() as an empty dict passed just as well as stubbing it
+# faithfully.
+EXPECT_STATUS = {
+    "R.WME.501": "exists in the corpus but was not",   # borrowed: real, not retrieved
+    "R6": "exists in the corpus but was not",          # borrowed
+    "LO.9.Z.9.9": "does not appear in the standards corpus",  # invented
+}
+
 
 def main() -> int:
     failures: list[str] = []
@@ -93,6 +133,14 @@ def main() -> int:
     for code in EXPECT_FLAGGED:
         if code not in blob:
             failures.append(f"audit did NOT flag {code}")
+
+    # Not just THAT it was flagged, but as which kind — see EXPECT_STATUS.
+    for code, phrase in EXPECT_STATUS.items():
+        line = next((w for w in warnings if code in w), None)
+        if line is None:
+            continue  # already reported as unflagged just above
+        if phrase not in line:
+            failures.append(f"{code}: expected {phrase!r} in its warning, got {line!r}")
     for code in EXPECT_CLEAN:
         if code in blob:
             failures.append(f"audit wrongly flagged the grounded code {code}")
