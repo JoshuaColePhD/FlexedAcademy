@@ -241,14 +241,16 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
                           >
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm text-ink font-medium">{fw.label}</span>
-                              <span className="block text-[11px] text-ink-muted">
-                                {/* Leads the line, not trails it — this is the
-                                    fact that tells a K-2 teacher apart from an
-                                    AP one at a glance, especially with "All
-                                    grades" as the browser's own default. */}
-                                {gradeRangeLabel(fw) ? `${gradeRangeLabel(fw)} · ` : ''}
-                                {fw.chunks.toLocaleString()} standards
-                              </span>
+                              {/* Grade range only — the standards count was a
+                                  build-time implementation detail (how many
+                                  chunks got ingested), not something a
+                                  teacher deciding "is this my course" needs
+                                  to see. gradeRangeLabel is the fact that
+                                  actually tells a K-2 teacher apart from an
+                                  AP one at a glance. */}
+                              {gradeRangeLabel(fw) ? (
+                                <span className="block text-[11px] text-ink-muted">{gradeRangeLabel(fw)}</span>
+                              ) : null}
                             </span>
                             {isSelected ? (
                               <Check size={14} aria-hidden="true" className="shrink-0 text-accent-text" />
