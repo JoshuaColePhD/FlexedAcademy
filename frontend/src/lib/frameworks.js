@@ -15,6 +15,8 @@
  * a framework that is ingested stays selectable.
  */
 
+import { gradeLabel } from './grades'
+
 export const GROUP_ENGLISH = 'English / Language Arts'
 export const GROUP_MATH = 'Mathematics'
 export const GROUP_SCIENCE = 'Science'
@@ -55,15 +57,26 @@ function group(fw) {
   return GROUP_OTHER
 }
 
-/** Groups frameworks for display. Within a group, they are sorted alphabetically 
- *  so teachers can easily scroll and find their specific course. (The old chunk-based 
- *  sorting is no longer needed since the database is clean of fragments). */
+/** Groups frameworks for display. Within a group, sorted by grade span
+ *  (widest first), alphabetically within a tie.
+ *
+ *  Of the 72 frameworks, exactly 10 span every grade K-12 — one per core
+ *  subject (ELA, Math, Science, Social Studies, World Languages, Arts, PE,
+ *  Health, CS, Counseling) — and the other 61 are 9-12-only AP/Pre-AP
+ *  electives. Alphabetical order put those 61 electives ahead of the one
+ *  course most non-AP teachers actually want in every single category
+ *  ("AP English Language and Composition" before "English Language Arts
+ *  (2021)"), so the broadest, most-likely-relevant course was the thing
+ *  everyone had to scroll past rather than the thing they saw first. */
 export function groupFrameworks(frameworks = []) {
   const buckets = new Map(GROUP_ORDER.map((g) => [g, []]))
   for (const fw of frameworks) buckets.get(group(fw)).push(fw)
   return GROUP_ORDER.map((name) => ({
     name,
-    items: buckets.get(name).sort((a, b) => (a.label || '').localeCompare(b.label || '')),
+    items: buckets.get(name).sort((a, b) => {
+      const spanDiff = (b.grades?.length || 0) - (a.grades?.length || 0)
+      return spanDiff !== 0 ? spanDiff : (a.label || '').localeCompare(b.label || '')
+    }),
   })).filter((g) => g.items.length > 0)
 }
 
@@ -119,6 +132,29 @@ export function matchesFramework(fw, query) {
 
 export function findFramework(frameworks, id) {
   return (frameworks || []).find((f) => f.id === id) || null
+}
+
+/** "0-12" -> "K-12", "9-12" -> "9th-12th", "0" alone -> "K". A course row
+ *  otherwise looks identical whether it's one of the 10 frameworks that
+ *  cover every grade or one of the 61 that only cover 9-12 — this is the
+ *  thing that lets a teacher tell them apart without opening each one,
+ *  especially with "All grades" as the browser's own default. Assumes a
+ *  contiguous span (true of every framework in this corpus today — a real
+ *  gap, e.g. K-2 and 9-12 but nothing between, would render as one
+ *  misleadingly continuous range); revisit if that ever stops holding. */
+export function gradeRangeLabel(fw) {
+  const grades = fw?.grades
+  if (!grades || !grades.length) return null
+  const min = Math.min(...grades)
+  const max = Math.max(...grades)
+  const lo = gradeLabel(String(min))
+  const hi = gradeLabel(String(max))
+  if (!lo || !hi) return null
+  if (min === max) return lo
+  // "K-12", not "K-12th" — matches this codebase's own convention (grep
+  // any "K-12" comment) rather than pairing K with an ordinal that only
+  // makes sense once you're past it.
+  return min === 0 ? `${lo}-${max}` : `${lo}-${hi}`
 }
 
 /** How much of a framework was verified word-for-word against the source PDF.

@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Check, ChevronsUpDown } from 'lucide-react'
-import { findFramework, groupFrameworks, matchesFramework } from '../lib/frameworks'
+import { findFramework, gradeRangeLabel, groupFrameworks, matchesFramework } from '../lib/frameworks'
 import { useExitTransition } from '../hooks/useExitTransition'
 
 export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover', beforeInput }) {
@@ -242,6 +242,11 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm text-ink font-medium">{fw.label}</span>
                               <span className="block text-[11px] text-ink-muted">
+                                {/* Leads the line, not trails it — this is the
+                                    fact that tells a K-2 teacher apart from an
+                                    AP one at a glance, especially with "All
+                                    grades" as the browser's own default. */}
+                                {gradeRangeLabel(fw) ? `${gradeRangeLabel(fw)} · ` : ''}
                                 {fw.chunks.toLocaleString()} standards
                               </span>
                             </span>
