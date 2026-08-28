@@ -655,6 +655,15 @@ export function ChatPage() {
     const el = document.createElement('div')
     el.style.position = 'fixed'
     el.style.zIndex = '100'
+    // Starts non-interactive: this host exists (and is sized to the full
+    // viewport) even when nothing is portaled into it — e.g. mobile's
+    // MobileChatHome early-return above never mounts overlayAnchorRef, so
+    // the sync effect below leaves this at 100vw/100vh indefinitely. Without
+    // this, that invisible full-screen div sat above every tap target
+    // (New plan, chat list, Workspace Tools) with no overlay ever open. The
+    // effect near overlayExit below flips this to 'auto' only while the
+    // overlay is actually mounted.
+    el.style.pointerEvents = 'none'
     return el
   })
   useEffect(() => {
@@ -2570,6 +2579,13 @@ export function ChatPage() {
      had to be kept in sync. */
   const overlayOpen = expanded && hasArtifact
   const overlayExit = useExitTransition(overlayOpen, 130)
+  // Keep overlayPortalHost click-through except for the brief window it
+  // actually has the scrim+panel portaled into it (see overlayPortalHost's
+  // own comment above) — otherwise its full-viewport host swallows every
+  // tap underneath it whenever the overlay isn't open.
+  useEffect(() => {
+    overlayPortalHost.style.pointerEvents = overlayExit.mounted ? 'auto' : 'none'
+  }, [overlayExit.mounted, overlayPortalHost])
   /* Measured live (rAF timestamps during the slide-in): the animation
      itself was a rock-solid ~13ms/frame for its whole duration, EXCEPT the
      first two frames (26.7ms, then 39.9ms) — that's not the CSS transform
