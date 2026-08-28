@@ -44,13 +44,6 @@ export function BillingProvider({ children }) {
 
   const [open, setOpen] = useState(false)
   const [price, setPrice] = useState(null)
-  // Whether THIS account still gets Stripe's trial_period_days if it checks
-  // out right now — see routes/billing.py's own trial_eligible reasoning
-  // (an account that's already been a Stripe customer once doesn't get a
-  // second trial). null until the /api/billing fetch below lands, same as
-  // price — the copy below treats null the same as "no trial" rather than
-  // flashing trial language and then retracting it.
-  const [trial, setTrial] = useState(null)
   const [busy, setBusy] = useState(false)
   const dialogRef = useRef(null)
   const subscribeRef = useRef(null)
@@ -74,7 +67,6 @@ export function BillingProvider({ children }) {
       .then((b) => {
         if (cancelled) return
         setPrice(b.price || null)
-        setTrial({ days: b.trial_period_days || 0, eligible: !!b.trial_eligible })
       })
       .catch(() => {})
     return () => {
@@ -111,6 +103,24 @@ export function BillingProvider({ children }) {
     }
   }, [toast])
 
+  // True unmount only — NOT "this effect's own deps changed," which is what
+  // the poll effect below used to (mis)use a closure-local `cancelled` flag
+  // for. See that effect's own comment for why the distinction matters.
+  // Resetting to false in the setup phase (not just true in cleanup)
+  // matters even though this effect's own deps never change: StrictMode's
+  // dev-only mount→cleanup→mount simulation runs this cleanup once for
+  // real, and without the reset that leaves unmountedRef permanently true
+  // from nearly the first render on — which silently killed every poll
+  // below in exactly the same "no toast, no recovery" way the bug this
+  // ref was meant to fix did.
+  const unmountedRef = useRef(false)
+  useEffect(() => {
+    unmountedRef.current = false
+    return () => {
+      unmountedRef.current = true
+    }
+  }, [])
+
   /* Back from Stripe. */
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -129,17 +139,24 @@ export function BillingProvider({ children }) {
 
     /* `navigate()` above strips the marker from the URL, which changes
        location.search and re-triggers THIS SAME EFFECT — the new run sees
-       outcome=null and no-ops, but its cleanup used to fire against a `timer`
-       variable that was still null at that exact instant (poll()'s first
-       `await` hadn't resolved yet), so clearTimeout(null) cleared nothing and
-       every retry scheduled afterward was orphaned from any effect's
-       lifecycle. `cancelled` is checked on every tick instead of depending on
-       a timer id existing at the moment cleanup happens to run. */
-    let cancelled = false
+       outcome=null and no-ops immediately, which is fine on its own. What
+       ISN'T fine: React tears down THIS run first, calling whatever cleanup
+       it returned, before that no-op run happens. A `let cancelled` flag
+       captured by this closure and flipped in that cleanup used to get set
+       true within the same tick poll() started in — often before its very
+       first `await refresh()` had even resolved — so the retry loop below
+       died after exactly one check no matter what, silently: no toast
+       either way, since the `cancelled` guard returns before reaching the
+       success or give-up branches. A teacher whose webhook landed a second
+       late (routine — see this file's own top comment) would sit on a
+       stale paywall until they thought to reload themselves.
+       unmountedRef only flips on a REAL unmount (the effect above, keyed on
+       `[]`), so this poll survives the self-triggered re-run that stripping
+       the marker causes. */
     let attempts = 0
     const poll = async () => {
       const u = await refresh().catch(() => null)
-      if (cancelled) return
+      if (unmountedRef.current) return
       if (u?.entitlement?.subscribed) {
         setOpen(false)
         toast.success('You’re subscribed. Build away.')
@@ -152,14 +169,12 @@ export function BillingProvider({ children }) {
       setTimeout(poll, RETRY_MS)
     }
     poll()
-    return () => {
-      cancelled = true
-    }
     // location.search is the trigger; the callbacks are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search])
 
   const priceLabel = formatPrice(price)
+  const trialExpired = !!entitlement?.trial_expired
   /* Same reasoning as ConfirmProvider/ToastProvider: this sits above <Gate/>
      (see App.jsx), so the paywall renders as AppShell's sibling and never
      sees .neo-world's redeclared tokens on its own — scope by the same
@@ -188,23 +203,23 @@ export function BillingProvider({ children }) {
             aria-labelledby="paywall-title"
             aria-describedby="paywall-body"
           >
-            <h2 id="paywall-title">You’ve reached this week’s usage limit</h2>
+            <h2 id="paywall-title">
+              {trialExpired ? 'Your free trial has ended' : 'You’ve reached this week’s usage limit'}
+            </h2>
             <p id="paywall-body">
-              It resets on a rolling week, or {trial?.eligible && trial.days > 0 ? (
-                <>start a free {trial.days}-day trial</>
+              {trialExpired ? (
+                <>Subscribe to keep building{priceLabel ? ` — ${priceLabel}` : ''}.</>
               ) : (
-                <>subscribe now</>
-              )} for a much higher limit
-              {priceLabel ? ` — ${priceLabel}${trial?.eligible && trial.days > 0 ? ' after the trial' : ''}` : ''}.
+                <>It resets on a rolling week, or subscribe now for a much higher limit
+                  {priceLabel ? ` — ${priceLabel}` : ''}.</>
+              )}{' '}
               Everything you’ve already made stays yours either way.
             </p>
             <ul className="mb-4 mt-1 space-y-1.5 text-xs text-ink-soft">
               {[
                 'A much higher weekly usage limit',
                 'Grounded in your standards and your pacing guide',
-                trial?.eligible && trial.days > 0
-                  ? `Free for ${trial.days} days — cancel before it ends and you won’t be charged`
-                  : 'Cancel any time, from your account',
+                'Cancel any time, from your account',
               ].map((line) => (
                 <li key={line} className="flex items-start gap-2">
                   <Check size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-ink-faint" />
@@ -223,11 +238,7 @@ export function BillingProvider({ children }) {
                 onClick={subscribe}
                 disabled={busy}
               >
-                {busy
-                  ? 'Opening…'
-                  : trial?.eligible && trial.days > 0
-                    ? `Start free trial`
-                    : 'Subscribe'}
+                {busy ? 'Opening…' : 'Subscribe'}
               </button>
             </div>
           </div>

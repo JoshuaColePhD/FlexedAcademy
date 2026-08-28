@@ -119,38 +119,87 @@ let seq = 0
 const uid = (p) => `${p}_${++seq}`
 
 const state = {
-  me: { name: 'Josh Cole', custom_instructions: '', school: 'florence-high-school' },
+  // onboarding_seen_at set (unlike a brand-new account) so preview.html lands
+  // on the real app shell — App.jsx's ClassRoutes redirects to the onboarding
+  // wizard for as long as this is unset, and nothing in this mock ever set it.
+  me: { name: 'Josh Cole', custom_instructions: '', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00' },
   // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
-  // Shape matches entitlement.Entitlement.as_dict() — token-capped, not
-  // plan-counted (backend/entitlement.py).
-  entitlement:
-    typeof sessionStorage !== 'undefined' && sessionStorage.getItem('mock.subscribed')
-      ? {
-          may_generate: true,
-          subscribed: true,
-          status: 'active',
-          plans_used: 6,
-          tokens_used: 40_000,
-          token_cap: 2_000_000,
-          tokens_remaining: 1_960_000,
-          usage_window_days: 7,
-          billing_enabled: true,
-          period_end: '2026-09-12T14:00:00+00:00',
-        }
-      : {
-          may_generate: false,
-          subscribed: false,
-          status: null,
-          plans_used: 4,
-          tokens_used: 150_000,
-          token_cap: 150_000,
-          tokens_remaining: 0,
-          usage_window_days: 7,
-          billing_enabled: true,
-          period_end: null,
-        },
+  // ?trial=expired instead shows the OTHER paywall trigger — a still-free
+  // trial account past entitlement.py's TRIAL_ENFORCEMENT_START cutoff,
+  // where there's no cap left to reset (token_cap: null) and trial_expired
+  // is what actually gates. ?trial=3 shows the pre-expiry countdown in
+  // AccountMenu's UsageMeter instead (still under the weekly cap, N days
+  // left). Shape matches entitlement.Entitlement.as_dict() (backend/entitlement.py).
+  entitlement: (() => {
+    const trialParam = new URLSearchParams(window.location.search).get('trial')
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('mock.subscribed')) {
+      return {
+        may_generate: true,
+        subscribed: true,
+        status: 'active',
+        plans_used: 6,
+        tokens_used: 40_000,
+        token_cap: 2_000_000,
+        tokens_remaining: 1_960_000,
+        usage_window_days: 7,
+        billing_enabled: true,
+        period_end: '2026-09-12T14:00:00+00:00',
+        trial_expired: false,
+        trial_days_remaining: null,
+      }
+    }
+    if (trialParam === 'expired') {
+      return {
+        may_generate: false,
+        subscribed: false,
+        status: null,
+        plans_used: 4,
+        tokens_used: 0,
+        token_cap: null,
+        tokens_remaining: null,
+        usage_window_days: 7,
+        billing_enabled: true,
+        period_end: null,
+        burst_limited: false,
+        unlimited: false,
+        trial_expired: true,
+        trial_days_remaining: null,
+      }
+    }
+    if (trialParam) {
+      const days = Math.max(0, parseInt(trialParam, 10) || 0)
+      return {
+        may_generate: true,
+        subscribed: false,
+        status: null,
+        plans_used: 2,
+        tokens_used: 4_000,
+        token_cap: 20_000,
+        tokens_remaining: 16_000,
+        usage_window_days: 7,
+        billing_enabled: true,
+        period_end: null,
+        trial_expired: false,
+        trial_days_remaining: days,
+      }
+    }
+    return {
+      may_generate: false,
+      subscribed: false,
+      status: null,
+      plans_used: 4,
+      tokens_used: 150_000,
+      token_cap: 150_000,
+      tokens_remaining: 0,
+      usage_window_days: 7,
+      billing_enabled: true,
+      period_end: null,
+      trial_expired: false,
+      trial_days_remaining: null,
+    }
+  })(),
   // school on each mirrors backend db.py migration 25 — c2 is deliberately
   // pinned to the calendar-LESS school (springfield-ms) while the account
   // default stays Florence, so switching the active class between the two
@@ -386,6 +435,7 @@ export function installMockApi() {
         has_password: true,
         custom_instructions: state.me.custom_instructions,
         school: state.me.school,
+        onboarding_seen_at: state.me.onboarding_seen_at,
         entitlement: state.entitlement,
       })
     if (path === '/api/auth/forgot-password') return json({ ok: true })

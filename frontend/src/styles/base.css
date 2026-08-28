@@ -792,7 +792,14 @@
      comment); this keeps that fix and layers the glass look on top of it,
      not instead of it. */
   .artifact-overlay {
-    position: fixed;
+    /* absolute, not fixed — this now always lives inside overlayPortalHost
+       (ChatPage.jsx), a position:fixed node kept in sync with either #main's
+       own box (docked) or the true viewport (fullscreen). Switching this
+       element itself between rendered-in-place and portaled used to be how
+       "fullscreen" was reached, but that changed its position in the fiber
+       tree and remounted everything inside it — including ArtifactPanel's
+       own isFullscreen state, which is why clicking maximize did nothing. */
+    position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
@@ -847,19 +854,12 @@
       var(--shadow-panel);
   }
   @media (min-width: 1024px) {
-    /* NOT `left: var(--sidebar-w)` (removed 2026-08-27) — this element's
-       ancestor (AppShell's #main) has `backdrop-filter`, which makes IT the
-       containing block for this `position: fixed` overlay instead of the
-       true viewport (backdrop-filter creates one, same as transform —
-       classic CSS gotcha). #main's own box already starts to the right of
-       the docked rail, since it's a plain flex sibling of the rail, not an
-       overlap — so `inset: 0` above already lands this flush against the
-       rail's own right edge with no extra offset needed. Adding
-       `left: var(--sidebar-w)` on top of that double-counted the rail's
-       width, leaving a ~220px gap between the rail and the overlay with the
-       stale chat transcript still visible through it — confirmed live via
-       getBoundingClientRect: #main.left was 236 and this element's own
-       left was 457 (236 + 220), not 236. */
+    /* NOT `left: var(--sidebar-w)` (removed 2026-08-27) — overlayPortalHost
+       (ChatPage.jsx) is already sized to #main's own content box when
+       docked, which starts to the right of the rail, so `inset: 0` above
+       already lands this flush against the rail's own right edge with no
+       extra offset needed. Adding `left: var(--sidebar-w)` on top of that
+       double-counted the rail's width. */
     .artifact-overlay .doc-shell {
       border-left: 1px solid var(--edge);
     }
@@ -1968,7 +1968,10 @@
      both directions, for both. z-40 — one tier below .dialog-scrim's 90,
      since a dialog opened from inside a panel has to sit above it. */
   .panel-scrim {
-    position: fixed;
+    /* absolute, not fixed — see .artifact-overlay's own comment: both now
+       live inside overlayPortalHost (ChatPage.jsx), which is the
+       position:fixed node. */
+    position: absolute;
     inset: 0;
     z-index: 40;
     background: var(--scrim);

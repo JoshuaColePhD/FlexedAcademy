@@ -9,6 +9,10 @@ The rule, in full:
   * Billing not configured           -> everyone may generate. The gate is inert
                                         until Stripe keys exist, because a gate
                                         with no way through it is a broken app.
+  * Trial expired (unsubscribed,     -> may NOT generate, full stop, until they
+    signed up after the cutoff,         subscribe. Unlike the caps below this
+    more than trial_period_days ago)    never clears on its own — see
+                                        TRIAL_ENFORCEMENT_START.
   * Under the trailing-week token cap -> may generate. Subscribers get a
                                         higher cap sized to what their own
                                         subscription can safely absorb (see
@@ -54,6 +58,20 @@ ENTITLED_STATUSES = frozenset({"active", "trialing", "past_due", "comped"})
 # at a time" framing closely enough without needing a stored period boundary.
 USAGE_WINDOW_DAYS = 7
 
+# The hard trial cutoff, added after this file's own "reverse trial" removal
+# above. That removal was correct — trial_period_days was Stripe's card-
+# required trial (config.py), and a *second* time-boxed grant reusing the
+# same setting for every unsubscribed status was a bug, not a feature. This
+# is a different thing: a free tier that used to run at the usage cap
+# forever now expires trial_period_days after signup, at which point
+# unsubscribed access stops outright rather than just staying capped.
+#
+# Grandfathered by date rather than applied retroactively: an account
+# created before this shipped signed up under "capped, but no expiry" and
+# shouldn't be locked out overnight by a deploy. Only accounts created on or
+# after this date are ever subject to the cutoff.
+TRIAL_ENFORCEMENT_START = datetime(2026, 8, 28, tzinfo=UTC)
+
 # The weekly cap alone bounds total spend but not the RATE of it — a script
 # with valid credentials could still spend the entire week's allowance in
 # one sitting, minutes after it starts, well within generate.py's own
@@ -87,16 +105,28 @@ class Entitlement:
     # comment. token_cap/burst_cap are None in this state; nothing computed
     # from them (tokens_remaining, burst_limited) makes sense to show.
     unlimited: bool = False
+    # The free trial window has closed for good (TRIAL_ENFORCEMENT_START)
+    # — distinct from burst_limited/the weekly cap because it never clears
+    # on its own. require_entitlement() needs this to say something truer
+    # than "wait it out."
+    trial_expired: bool = False
+    # Days left before trial_expired flips, for accounts it applies to.
+    # None for subscribed/unlimited/grandfathered accounts, where a
+    # countdown wouldn't mean anything.
+    trial_days_remaining: int | None = None
 
     @property
     def tokens_remaining(self) -> int | None:
-        if self.unlimited:
+        # unlimited and trial_expired both leave token_cap unset — neither
+        # a real cap nor "0 remaining" (which would misleadingly suggest
+        # generating again is one token-reset away).
+        if self.unlimited or self.token_cap is None:
             return None
         return max(0, self.token_cap - self.tokens_used)
 
     @property
     def burst_limited(self) -> bool:
-        if self.unlimited:
+        if self.unlimited or self.burst_cap is None:
             return False
         return self.tokens_used_recent >= self.burst_cap
 
@@ -114,6 +144,8 @@ class Entitlement:
             "period_end": self.period_end,
             "burst_limited": self.burst_limited,
             "unlimited": self.unlimited,
+            "trial_expired": self.trial_expired,
+            "trial_days_remaining": self.trial_days_remaining,
         }
 
 
@@ -148,6 +180,39 @@ def entitlement(user_id: str) -> Entitlement:
 
     since = (datetime.now(UTC) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat(timespec="seconds")
     tokens_used = db.tokens_used_since(user_id, since)
+
+    # Only ever applies to unsubscribed accounts created on or after
+    # TRIAL_ENFORCEMENT_START — see that constant's own comment for why
+    # grandfathering matters here. created_at is always set (db.py's own
+    # users table), so this only skips a genuinely pre-cutoff signup.
+    trial_expired = False
+    trial_days_remaining = None
+    created_at = user.get("created_at")
+    if settings.billing_enabled and not subscribed and not unlimited and created_at:
+        signed_up = datetime.fromisoformat(created_at)
+        if signed_up.tzinfo is None:
+            signed_up = signed_up.replace(tzinfo=UTC)
+        if signed_up >= TRIAL_ENFORCEMENT_START:
+            trial_ends = signed_up + timedelta(days=settings.trial_period_days)
+            now = datetime.now(UTC)
+            if now >= trial_ends:
+                trial_expired = True
+            else:
+                trial_days_remaining = max(0, (trial_ends - now).days)
+
+    if trial_expired:
+        return Entitlement(
+            may_generate=False,
+            subscribed=subscribed,
+            status=status,
+            plans_used=plans_used,
+            tokens_used=tokens_used,
+            token_cap=None,
+            billing_enabled=settings.billing_enabled,
+            period_end=user.get("subscription_period_end"),
+            burst_cap=None,
+            trial_expired=True,
+        )
 
     if unlimited:
         return Entitlement(
@@ -204,6 +269,7 @@ def entitlement(user_id: str) -> Entitlement:
         period_end=user.get("subscription_period_end"),
         tokens_used_recent=tokens_used_recent,
         burst_cap=burst_cap,
+        trial_days_remaining=trial_days_remaining,
     )
 
 
@@ -224,11 +290,18 @@ def require_entitlement(user_id: str) -> None:
     ent = entitlement(user_id)
     if ent.may_generate:
         return
-    # Same 402 shape either way (the paywall/account-menu UI only branches on
-    # may_generate), but the message a teacher who tripped the BURST cap
-    # mid-afternoon actually needs is different from the one who's genuinely
-    # out for the week — "wait out the week" is both wrong and alarming for
-    # something that clears in well under a day.
+    # Same 402 shape in all three cases (the paywall/account-menu UI only
+    # branches on may_generate), but the message has to match what actually
+    # clears it. A trial that's over never resets — telling that teacher to
+    # "wait it out" would be a straightforwardly false promise.
+    if ent.trial_expired:
+        raise AppError(
+            "subscription_required",
+            "Your free trial has ended.",
+            status=402,
+            hint="Subscribe to keep building — everything you’ve already made stays yours either way.",
+            extra={"entitlement": ent.as_dict()},
+        )
     if ent.burst_limited:
         raise AppError(
             "subscription_required",

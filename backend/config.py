@@ -103,16 +103,14 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     # Where Stripe sends them back to. Empty = derive from the request.
     billing_return_url: str = ""
-    # A week free, card required upfront — Stripe runs the whole thing
-    # (the countdown, the auto-charge on day 8, dunning if the card fails)
-    # via subscription_data.trial_period_days on the Checkout Session
-    # (stripe_api.create_checkout_session). The app's own entitlement.py
-    # already treats Stripe's 'trialing' status as fully entitled — it has
-    # since ENTITLED_STATUSES was written — so this is the one setting that
-    # actually turns a trial on; no other code needed a trial to exist
-    # before this. 0 disables it outright (every checkout charges
-    # immediately), which is what "not configured yet" should mean rather
-    # than a silent no-op days value nobody remembers is there.
+    # How long a new (unsubscribed) account may use the app, free, no card,
+    # before entitlement.py's trial_expired cuts it off and Checkout becomes
+    # the only way back in. Enforced app-side, by comparing this against
+    # users.created_at (entitlement.py, TRIAL_ENFORCEMENT_START) — not by
+    # Stripe. routes/billing.py's checkout() always passes trial_days=0 to
+    # Stripe itself, deliberately: the free week already happened before
+    # they ever reach Checkout, so a *second*, card-required Stripe trial on
+    # top of it would just delay the first real charge for no reason.
     trial_period_days: int = 7
 
     # ── Google Drive sharing ─────────────────────────────────────────────────

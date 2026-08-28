@@ -617,6 +617,18 @@ def voice_usage(req: VoiceUsageRequest, request: Request, user_id: str = Depends
 @limiter.limit("100/minute")
 def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Stream a standard conversational response, not a JSON schema."""
+    # Before the stream opens, so a blocked request is an ordinary 402 with the
+    # normal error envelope rather than an SSE frame the reader has to special-
+    # case — same reasoning and placement as generate_stream's own call above.
+    # This route is the one door that used to slip past the gate entirely: the
+    # client only pre-checks mayGenerate for a chat with no plan yet
+    # (ChatPage.jsx's own comment on that check), so a REVISION to an existing
+    # plan — which still spends real tokens, same as building one — reached
+    # this endpoint with no entitlement check anywhere in it, trial_expired or
+    # over-cap and all. entitlement.py's own module docstring already claimed
+    # chat_stream was covered; it wasn't, until now.
+    require_entitlement(user_id)
+
     def event_stream():
         try:
             plans_for_chat = db.list_plans(user_id, chat_id=req.chat_id, limit=1)["items"] if req.chat_id else []

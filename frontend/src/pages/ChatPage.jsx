@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, TriangleAlert, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, Loader2, TriangleAlert, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -103,10 +103,10 @@ function DaySeparator({ label }) {
  * what makes it look like it's sliding out from behind the header bar
  * rather than just fading in beneath it. */
 // template_status ('pending'/'active') and builder_readiness ('pending'
-// /'ready_unverified'/'ready'/'blocked', from docx_build.bulk_builder_
-// readiness) are deliberately different facts as of migration 52:
-// template_status alone used to be enough to know "will downloads use this
-// school's real template," but now a school can reach template_status=
+// /'in_progress'/'ready_unverified'/'ready'/'blocked', from docx_build.
+// bulk_builder_readiness) are deliberately different facts as of migration
+// 52: template_status alone used to be enough to know "will downloads use
+// this school's real template," but now a school can reach template_status=
 // 'active' (analysis auto-activation only ever judges analysis QUALITY)
 // before a real document builder — hand-written, or automatically
 // generated — actually exists for it, and (since the auto-verify bar
@@ -114,9 +114,17 @@ function DaySeparator({ label }) {
 // reaches 'active' too. Keying this banner off builder_readiness instead
 // of template_status is what keeps it accurate through all of that, not
 // just the first half of it.
+//
+// 'in_progress' exists so a teacher who just uploaded a template sees THAT,
+// not the same flat "pending" a school that's never been touched shows —
+// there's a real codegen job running right now (a few minutes, not
+// instant), and nothing here ever blocks chatting or building the lesson
+// plan itself in the meantime; only the downloadable .docx format depends
+// on this.
 const TEMPLATE_BANNER_COPY = {
   pending: {
     tone: 'amber',
+    icon: TriangleAlert,
     text: (name) => (
       <>
         🛠️ We are currently configuring the AI for <strong>{name}</strong>'s specific lesson plan format. In the
@@ -124,8 +132,21 @@ const TEMPLATE_BANNER_COPY = {
       </>
     ),
   },
+  in_progress: {
+    tone: 'blue',
+    icon: Loader2,
+    iconClassName: 'animate-spin',
+    text: (name) => (
+      <>
+        🪄 We're drafting an AI version of <strong>{name}</strong>'s lesson plan format right now — usually just a
+        few minutes. Keep chatting and building your plan; downloads will switch over automatically the moment it's
+        ready.
+      </>
+    ),
+  },
   ready_unverified: {
     tone: 'amber',
+    icon: TriangleAlert,
     text: (name) => (
       <>
         ✨ Document downloads are using an AI-drafted version of <strong>{name}</strong>'s lesson plan format while
@@ -133,8 +154,19 @@ const TEMPLATE_BANNER_COPY = {
       </>
     ),
   },
+  ready: {
+    tone: 'green',
+    icon: CheckCircle2,
+    text: (name) => (
+      <>
+        ✅ <strong>{name}</strong>'s lesson plan format is ready — document downloads now match your school's real
+        format.
+      </>
+    ),
+  },
   blocked: {
     tone: 'red',
+    icon: TriangleAlert,
     text: (name) => (
       <>
         ⚠️ <strong>{name}</strong>'s lesson plan format is still being finalized — document downloads for this class
@@ -146,12 +178,27 @@ const TEMPLATE_BANNER_COPY = {
 
 const TEMPLATE_BANNER_TONE_CLASSES = {
   amber: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  blue: 'bg-sky-500/10 text-sky-600 border-sky-500/20',
+  green: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
   red: 'bg-red-500/10 text-red-600 border-red-500/20',
 }
 
 function TemplateBanner() {
   const { classId } = useParams()
-  const { data: schools = [] } = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
+  const { data: schools = [] } = useQuery({
+    queryKey: qk.schools,
+    queryFn: () => api.listSchools(),
+    // 'in_progress' is a live, in-flight state — the default staleTime
+    // elsewhere (Infinity, since a school row otherwise never changes
+    // mid-session) would leave this banner showing "drafting now" for the
+    // rest of the visit even after the job actually finishes. Short
+    // polling only while THIS banner is mounted (a class with a school),
+    // not a global change to every other consumer of qk.schools.
+    refetchInterval: (query) => {
+      const list = query.state.data || []
+      return list.some((s) => s.builder_readiness === 'in_progress') ? 15_000 : false
+    },
+  })
   const { data: classes = [] } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
 
   if (!classId) return null
@@ -163,6 +210,8 @@ function TemplateBanner() {
   const copy = school && TEMPLATE_BANNER_COPY[school.builder_readiness]
   if (!copy) return null
 
+  const Icon = copy.icon
+
   return (
     <motion.div
       initial={{ height: 0, opacity: 0 }}
@@ -173,10 +222,124 @@ function TemplateBanner() {
       <div
         className={`flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}
       >
-        <TriangleAlert size={14} className="shrink-0" aria-hidden="true" />
+        <Icon size={14} className={`shrink-0 ${copy.iconClassName || ''}`} aria-hidden="true" />
         <p>{copy.text(school.name)}</p>
       </div>
     </motion.div>
+  )
+}
+
+// Below this many days left, the countdown stops being background info in
+// AccountMenu's usage meter (easy to never open) and earns a banner where a
+// teacher is already looking. 2, not the full week, so it reads as "soon,"
+// not as noise for most of a trial's life.
+const TRIAL_BANNER_THRESHOLD_DAYS = 2
+
+// One dismissal per remaining-days VALUE, not one ever — closing "2 days
+// left" shouldn't also swallow "1 day left" tomorrow, or the countdown
+// silently stops warning anyone right when it matters most. localStorage
+// (not state) so it survives the reload a real day boundary implies.
+const TRIAL_BANNER_DISMISSED_KEY = 'fa.trialBannerDismissedAt'
+
+// height/opacity via AnimatePresence (not just a conditional return null, like
+// TemplateBanner above it) specifically so the EXPIRED banner can recede
+// instead of vanishing outright the instant the webhook lands and subscribed
+// flips true — that moment is the one time this banner's own message stops
+// being true, so it's the one time leaving without an animation would read as
+// a glitch rather than a resolution.
+function TrialBanner() {
+  const { entitlement, openPaywall } = useBilling()
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem(TRIAL_BANNER_DISMISSED_KEY) : null
+    } catch {
+      return null
+    }
+  })
+
+  const expired = !!entitlement?.trial_expired
+  const daysLeft = entitlement?.trial_days_remaining
+  const showCountdown = !expired && daysLeft != null && daysLeft <= TRIAL_BANNER_THRESHOLD_DAYS && dismissed !== String(daysLeft)
+
+  const dismissCountdown = () => {
+    try {
+      localStorage.setItem(TRIAL_BANNER_DISMISSED_KEY, String(daysLeft))
+    } catch {
+      /* dismissal just won't survive a reload — not worth failing over */
+    }
+    setDismissed(String(daysLeft))
+  }
+
+  const bannerVariants = {
+    initial: { height: 0, opacity: 0 },
+    animate: { height: 'auto', opacity: 1 },
+    exit: { height: 0, opacity: 0 },
+  }
+  const transition = { duration: 0.32, ease: [0.16, 1, 0.3, 1] }
+
+  return (
+    <AnimatePresence initial={false}>
+      {expired ? (
+        // Bigger and un-dismissible on purpose: unlike the countdown below,
+        // this isn't a heads-up about something still usable — every
+        // token-spending route already hard-blocks behind this exact same
+        // entitlement.trial_expired flag (backend/entitlement.py), so
+        // hiding the reason without resolving it would just leave a
+        // confused blocked teacher with no explanation on screen.
+        <motion.div
+          key="trial-expired"
+          variants={bannerVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={transition}
+          className="shrink-0 overflow-hidden"
+        >
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b border-red-500/25 bg-red-500/10 px-6 py-4 text-red-600 shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <TriangleAlert size={20} className="shrink-0" aria-hidden="true" />
+              <p className="text-sm font-semibold">
+                Your free trial has ended — subscribe to keep building.
+              </p>
+            </div>
+            <button type="button" className="btn btn-primary shrink-0" onClick={openPaywall}>
+              Subscribe
+            </button>
+          </div>
+        </motion.div>
+      ) : showCountdown ? (
+        <motion.div
+          key="trial-countdown"
+          variants={bannerVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={transition}
+          className="shrink-0 overflow-hidden"
+        >
+          <div className="flex items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-600 shadow-sm">
+            <Clock size={14} className="shrink-0" aria-hidden="true" />
+            <p>
+              {daysLeft === 0
+                ? 'Your free trial ends today.'
+                : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left in your free trial.`}{' '}
+              <button type="button" className="font-semibold underline underline-offset-2" onClick={openPaywall}>
+                Subscribe
+              </button>{' '}
+              to keep building without interruption.
+            </p>
+            <button
+              type="button"
+              className="btn-icon shrink-0 -my-1"
+              aria-label="Dismiss"
+              onClick={dismissCountdown}
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   )
 }
 
@@ -249,7 +412,7 @@ export function ChatPage() {
   const qc = useQueryClient()
   const isOnline = useOnlineStatus()
   const { refresh: refreshAuth } = useAuth()
-  const { mayGenerate, openPaywall } = useBilling()
+  const { mayGenerate, entitlement, openPaywall } = useBilling()
   const voice = useVoice()
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
@@ -475,6 +638,61 @@ export function ChatPage() {
   // effect for why the class actually has to land on .artifact-overlay
   // (below) rather than the doc-shell div inside it that clicked the button.
   const [artifactFullscreen, setArtifactFullscreen] = useState(false)
+  /* The doc overlay is ALWAYS portaled to document.body now, never
+     conditionally switched between "rendered in place" and "portaled" —
+     that switch used to change the overlay's position in the fiber tree
+     (plain element one render, wrapped in a Portal the next), which React
+     treats as a full unmount/remount of everything inside, including
+     ArtifactPanel's own isFullscreen state. The maximize button set that
+     state true, the resulting remount reset it straight back to false in
+     the same tick — "clicking maximize does nothing" was that reset, not a
+     missing click handler. Same fix as composerAnchorRef/portalHost just
+     above: one host node, created once, whose box is kept in sync with
+     overlayAnchorRef's rect (see the effect below) instead of switching
+     containers. */
+  const overlayAnchorRef = useRef(null)
+  const [overlayPortalHost] = useState(() => {
+    const el = document.createElement('div')
+    el.style.position = 'fixed'
+    el.style.zIndex = '100'
+    return el
+  })
+  useEffect(() => {
+    document.body.appendChild(overlayPortalHost)
+    return () => document.body.removeChild(overlayPortalHost)
+  }, [overlayPortalHost])
+  // Fullscreen: the host becomes the true viewport. Docked: the host
+  // becomes exactly the box #main used to provide for free (before this
+  // was always portaled, .artifact-overlay's own position:fixed picked up
+  // #main as its containing block, since #main's backdrop-filter/transform
+  // make it one) — .artifact-overlay's own left:64px etc. (base.css) still
+  // does the rest, unchanged, now measured explicitly instead of inherited
+  // by accident.
+  useEffect(() => {
+    const anchor = overlayAnchorRef.current
+    const sync = () => {
+      if (artifactFullscreen || !anchor) {
+        overlayPortalHost.style.top = '0px'
+        overlayPortalHost.style.left = '0px'
+        overlayPortalHost.style.width = '100vw'
+        overlayPortalHost.style.height = '100vh'
+        return
+      }
+      const r = anchor.getBoundingClientRect()
+      overlayPortalHost.style.top = `${r.top}px`
+      overlayPortalHost.style.left = `${r.left}px`
+      overlayPortalHost.style.width = `${r.width}px`
+      overlayPortalHost.style.height = `${r.height}px`
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    if (anchor) ro.observe(anchor)
+    window.addEventListener('resize', sync)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', sync)
+    }
+  }, [artifactFullscreen, overlayPortalHost])
   /* The composer dock is portaled to document.body — see composerAnchorRef's
      own comment near chatPane's return for why — which needs two pieces of
      plumbing: an invisible ANCHOR left in the dock's normal flow position
@@ -1512,14 +1730,22 @@ export function ChatPage() {
         if (!mayGenerate) {
           setPreparing(false)
           openPaywall()
+          // Same split as the paywall dialog itself (BillingProvider.jsx) and
+          // the server's own two AppErrors (entitlement.require_entitlement)
+          // — a trial that's over never resets, so telling that teacher to
+          // "wait for it to reset" here would be exactly the false promise
+          // this file's own comment above says the paywall exists to avoid.
+          const trialExpired = !!entitlement?.trial_expired
           setMessages((prev) => [
             ...prev,
             {
               id: nextId(),
               role: 'assistant',
               isError: true,
-              content: 'You’ve reached this week’s usage limit.',
-              hint: 'Subscribe for a much higher limit, or wait for it to reset — everything you’ve already built stays yours.',
+              content: trialExpired ? 'Your free trial has ended.' : 'You’ve reached this week’s usage limit.',
+              hint: trialExpired
+                ? 'Subscribe to keep building — everything you’ve already made stays yours either way.'
+                : 'Subscribe for a much higher limit, or wait for it to reset — everything you’ve already built stays yours.',
             },
           ])
           return
@@ -2856,6 +3082,7 @@ export function ChatPage() {
       ) : null}
 
       <TemplateBanner />
+      <TrialBanner />
 
       {isEmpty ? (
         <Greeting
@@ -3288,7 +3515,7 @@ export function ChatPage() {
     // fa-rise — see fa-rise-panel's own comment in base.css for why a
     // full-viewport container inside AppShell's blurred "main" panel
     // shouldn't animate opacity.
-    <div className={`flex h-full w-full min-w-0 gap-2${isPhone ? ' fa-rise-panel' : ''}`}>
+    <div ref={overlayAnchorRef} className={`flex h-full w-full min-w-0 gap-2${isPhone ? ' fa-rise-panel' : ''}`}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document
@@ -3371,54 +3598,42 @@ export function ChatPage() {
           already tracked for the anchor above) into the sheet's bottom
           media query in base.css, so the sheet's own bottom edge stops
           short of the composer instead of running underneath it. */}
-      {/* Fullscreen is portaled to document.body; docked is rendered here in
-          place. #main (AppShell's motion.div wrapping the whole chat pane)
-          applies its own inline `transform` for its mount animation and
-          declares overflow-hidden, and EITHER ONE alone makes an ancestor
-          the real containing block for a position:fixed descendant, clipped
-          to that ancestor's own box besides. Confirmed live chasing
-          "maximize doesn't reach the sidebar": .artifact-overlay's inset:0
-          was resolving — and being clipped — against #main's own bounds the
-          whole time, which starts to the right of the sidebar, so no CSS
-          value on .artifact-overlay itself could ever have reached past
-          that. Docked stays in place on purpose: its own `left: 64px` is a
-          deliberate offset from #main's edge (see artifact-slide-in's own
-          comment — "the chat peeking through on the left"), and portaling
-          it unconditionally would turn that into 64px from the TRUE
-          viewport edge instead, covering the sidebar even when nobody
-          asked to maximize. Only escape the DOM subtree for the one state
-          that actually needs the real viewport. */}
+      {/* Always portaled into overlayPortalHost (see its own comment near
+          artifactFullscreen) — never switched between rendered-in-place and
+          portaled, which is what used to remount ArtifactPanel (and reset
+          its isFullscreen state) the instant maximize was clicked. The host
+          itself is resized to either #main's own box (docked) or the true
+          viewport (fullscreen), so .artifact-overlay's own offsets
+          (base.css) keep working unchanged either way. */}
       {overlayExit.mounted
-        ? (() => {
-            const overlay = (
-              <>
-                <button
-                  type="button"
-                  aria-label={`Close ${viewLabel}`}
-                  className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
-                  onClick={collapse}
-                />
-                <div
-                  className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}`}
-                  style={{ '--composer-h': `${composerDockH}px` }}
-                >
-                  {/* artifactContentReady: see its own comment near overlayOpen —
-                      the real content (the district table, potentially dozens of
-                      cells) mounts a couple of frames late on purpose, so laying
-                      it out doesn't compete with the slide-in's own opening
-                      frames. Empty glass for a ~30ms blink, not a spinner: at
-                      this duration a loading indicator would just be visual
-                      noise flashing in and out, and the panel's own background
-                      already reads as "something is here." Skipped entirely
-                      while closing — the exit is fast (130ms) and this has
-                      already been showing real content the whole time it was
-                      open, so there is nothing to stagger on the way out. */}
-                  {artifactContentReady || overlayExit.closing ? artifactEl : null}
-                </div>
-              </>
-            )
-            return artifactFullscreen ? createPortal(overlay, document.body) : overlay
-          })()
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                aria-label={`Close ${viewLabel}`}
+                className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
+                onClick={collapse}
+              />
+              <div
+                className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}`}
+                style={{ '--composer-h': `${composerDockH}px` }}
+              >
+                {/* artifactContentReady: see its own comment near overlayOpen —
+                    the real content (the district table, potentially dozens of
+                    cells) mounts a couple of frames late on purpose, so laying
+                    it out doesn't compete with the slide-in's own opening
+                    frames. Empty glass for a ~30ms blink, not a spinner: at
+                    this duration a loading indicator would just be visual
+                    noise flashing in and out, and the panel's own background
+                    already reads as "something is here." Skipped entirely
+                    while closing — the exit is fast (130ms) and this has
+                    already been showing real content the whole time it was
+                    open, so there is nothing to stagger on the way out. */}
+                {artifactContentReady || overlayExit.closing ? artifactEl : null}
+              </div>
+            </>,
+            overlayPortalHost
+          )
         : null}
 
       <AddDocumentDialog

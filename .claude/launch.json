@@ -6,7 +6,8 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
-      "port": 5174
+      "port": 5174,
+      "autoPort": true
     },
     {
       "name": "flexed-academy-backend",

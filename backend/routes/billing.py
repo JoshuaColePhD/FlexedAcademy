@@ -107,12 +107,11 @@ def billing_status(request: Request, user_id: str = Depends(get_current_user)):
     return {
         **ent,
         "price": price,
+        # The free week already happened app-side (entitlement.py's
+        # trial_expired/trial_days_remaining, both already in `ent`) before
+        # anyone reaches this endpoint — Checkout itself never grants a
+        # second, Stripe-native trial. See checkout()'s trial_days=0.
         "trial_period_days": settings.trial_period_days,
-        # Whether THIS account would actually get the trial if it checked
-        # out right now — see checkout()'s own reasoning. Lets the paywall
-        # say "start your free week" only when that's true, rather than
-        # promising a trial to someone who's already used theirs.
-        "trial_eligible": False,  # Reverse trial means UI does not offer Stripe trials.
     }
 
 
@@ -133,14 +132,10 @@ def checkout(request: Request, user_id: str = Depends(get_current_user)):
         user_id=user_id,
         success_url=f"{base}/?checkout=success",
         cancel_url=f"{base}/?checkout=cancelled",
-        # Only ever offered on this account's FIRST checkout — a
-        # stripe_customer_id already on file means they've been through this
-        # flow before (an earlier trial, a lapsed subscription), and letting
-        # a cancel-then-resubscribe loop mint a fresh trial each time would
-        # turn a one-week goodwill offer into an unlimited one. This doesn't
-        # stop someone from deleting the account and signing up again under
-        # a new email — that's a different, harder problem this doesn't
-        # attempt to solve.
+        # Always 0: the free week is entitlement.py's app-side trial, run
+        # against users.created_at before anyone ever reaches Checkout. A
+        # second, card-required Stripe trial stacked on top of that would
+        # just delay the first real charge for no reason.
         trial_days=0,
     )
     return {"url": session["url"]}

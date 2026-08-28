@@ -33,9 +33,16 @@ import { useExitTransition } from '../hooks/useExitTransition'
  * open to find yourself. Rendered whenever the entitlement rode in on
  * /api/auth/me, regardless of whether billing itself is turned on — the
  * trailing-week cap governs generation either way (backend/entitlement.py). */
-function UsageMeter({ entitlement }) {
+function UsageMeter({ entitlement, onSubscribeClick }) {
   if (!entitlement) return null
-  const { tokens_used: used, token_cap: cap, usage_window_days: days, unlimited } = entitlement
+  const {
+    tokens_used: used,
+    token_cap: cap,
+    usage_window_days: days,
+    unlimited,
+    trial_expired: trialExpired,
+    trial_days_remaining: trialDaysRemaining,
+  } = entitlement
   // Genuinely uncapped (comped, no admin override) — entitlement.py sends
   // token_cap: null for exactly this case now. Said outright rather than
   // silently hiding the section: a blank space where the usage meter
@@ -46,6 +53,21 @@ function UsageMeter({ entitlement }) {
       <div className="px-3 py-2">
         <span className="text-2xs font-medium uppercase tracking-wider text-ink-muted">Usage</span>
         <p className="mt-1 text-xs font-medium text-ok">Unlimited access</p>
+      </div>
+    )
+  }
+  // trial_expired also carries token_cap: null (there's no cap left to show
+  // — see entitlement.py) but that's a different reason a teacher hits the
+  // paywall than a cap ever was, and needs its own line rather than falling
+  // into the generic "no cap number" case below and going blank.
+  if (trialExpired) {
+    return (
+      <div className="px-3 py-2">
+        <span className="text-2xs font-medium uppercase tracking-wider text-ink-muted">Usage</span>
+        <p className="mt-1 text-xs font-medium text-mark">Your free trial has ended</p>
+        <button type="button" className="mt-1 text-2xs font-medium text-accent underline" onClick={onSubscribeClick}>
+          Subscribe to keep building
+        </button>
       </div>
     )
   }
@@ -89,13 +111,24 @@ function UsageMeter({ entitlement }) {
       <p className="text-2xs text-ink-muted">
         {pct}% / 100% usage limit
       </p>
+      {/* Only set for an unsubscribed account still inside its free week
+          (entitlement.py) — a countdown that means "this stops working
+          entirely," not "this resets," which is why it reads as its own
+          line rather than folding into the reset copy above. */}
+      {trialDaysRemaining != null ? (
+        <p className="mt-1 text-2xs font-medium text-flag">
+          {trialDaysRemaining === 0
+            ? 'Your free trial ends today'
+            : `${trialDaysRemaining} day${trialDaysRemaining === 1 ? '' : 's'} left in your free trial`}
+        </p>
+      ) : null}
     </div>
   )
 }
 
 export function AccountMenu({ classPath, collapsed, spacious }) {
   const { user, logout } = useAuth()
-  const { entitlement } = useBilling()
+  const { entitlement, openPaywall } = useBilling()
   const [open, setOpen] = useState(false)
   // Sits right above the trigger (bottom-full) — mirrors ClassSwitcher's own
   // dropdown, closing shape and all, just growing up instead of dropping down.
@@ -182,7 +215,13 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
             <p className="truncate px-3 py-1.5 text-2xs text-ink-muted">{user.email}</p>
           ) : null}
 
-          <UsageMeter entitlement={entitlement} />
+          <UsageMeter
+            entitlement={entitlement}
+            onSubscribeClick={() => {
+              setOpen(false)
+              openPaywall()
+            }}
+          />
 
           {/* Its own group, not lumped in with My classes/Settings below —
               it used to sit one plain row among them, same size, same grey,
