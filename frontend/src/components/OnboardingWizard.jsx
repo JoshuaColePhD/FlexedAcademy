@@ -151,7 +151,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     staleTime: Infinity,
     enabled: open,
   })
-  const { data: schools = [], isLoading: schoolsLoading } = useQuery({
+  const { data: schools = [] } = useQuery({
     queryKey: qk.schools,
     queryFn: () => api.listSchools(),
     staleTime: Infinity,
@@ -193,14 +193,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   /* Live, not stateful — computed fresh every render from the current
    * school/schoolNeedsTemplate/subject rather than committed via an effect.
    * `schools` is an async query, so schoolNeedsTemplate can flip from false
-   * to true partway through a render (the same render that flips
-   * schoolsLoading to false) — a version of this that stored the plan in
-   * state and recomputed it from a useEffect showed the OLD count for one
-   * extra render after `ready` had already gone true (effects commit a
-   * render behind the state change that triggered them), which is exactly
-   * the "says Two, then jumps to Three" bug this replaced. Computing it
-   * inline instead means the count and the flag that gates showing it
-   * always agree on the very first render where the school data is known. */
+   * to true partway through a render — a version of this that stored the
+   * plan in state and recomputed it from a useEffect lagged one render
+   * behind that flip (effects commit after the render that triggered them),
+   * which was how the welcome screen's old step-count copy briefly showed a
+   * stale number before correcting itself. Computing it inline avoids that
+   * lag entirely, independent of whether anything on screen still displays
+   * a count. */
   const livePlan = useMemo(() => {
     const next = ['welcome']
     if (!school || schoolNeedsTemplate) next.push('school')
@@ -326,7 +325,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div key={stepKey} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
             {stepKey === 'welcome' ? (
-              <WelcomeStep steps={formSteps.length} ready={!schoolsLoading} onNext={goNext} />
+              <WelcomeStep onNext={goNext} />
             ) : stepKey === 'school' ? (
               <SchoolStep
                 eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
@@ -440,33 +439,19 @@ function StepHeader({ eyebrow, title, body }) {
   )
 }
 
-function WelcomeStep({ steps, ready, onNext }) {
-  /* Counted, not asserted. This promised "three quick things" and then showed
-     however many the flow actually had — and now that already-answered steps
-     drop out (see `plan`), the number genuinely varies by account. A first
-     screen that miscounts the work ahead is a small lie the teacher catches
-     within about ten seconds.
-
-     `ready` guards against a DIFFERENT version of the same lie: `steps` comes
-     from `plan`, which starts on a hardcoded guess (no "school" step) and
-     only corrects itself once the `schools` query resolves and reveals
-     schoolNeedsTemplate — so the very first paint could say "Two quick
-     things" for a beat, then visibly jump to "Three" a moment later. Schools
-     is small and cached (staleTime: Infinity), so this only ever shows on a
-     genuinely fresh load — the exact count without ever asserting a wrong
-     one first. */
-  const count = ['no', 'One', 'Two', 'Three', 'Four', 'Five'][steps] || String(steps)
+function WelcomeStep({ onNext }) {
+  /* No counted body copy here anymore — it used to promise "N quick
+     things", but N came from `plan`, which depends on the async `schools`
+     query (schoolNeedsTemplate isn't known until that resolves). Even after
+     prefetching that query earlier (see OnboardingSetupPage) so the count is
+     right by the time this ever mounts, a slow connection or the "take the
+     tour again" reopen (AppShell) could still show a placeholder before
+     flipping to the real number — a visible correction on a screen whose
+     only job is a first impression. Title alone says enough; the actual
+     steps introduce themselves as the teacher reaches each one. */
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-      <StepHeader
-        eyebrow="Welcome to FlexEd"
-        title="Let’s make some magic"
-        body={
-          ready
-            ? `${count} quick thing${steps === 1 ? '' : 's'} — so every plan comes out grounded in your standards, your materials, and your district’s format. Skippable at every step.`
-            : 'A few quick things — so every plan comes out grounded in your standards, your materials, and your district’s format. Skippable at every step.'
-        }
-      />
+      <StepHeader eyebrow="Welcome to FlexEd" title="Let’s make some magic" />
       <div className="dialog-actions mt-2">
         <motion.button 
           whileHover={{ scale: 1.02 }}

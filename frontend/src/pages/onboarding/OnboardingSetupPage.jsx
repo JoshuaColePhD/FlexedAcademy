@@ -20,8 +20,24 @@ export function OnboardingSetupPage() {
   const { classId } = useParams()
   const navigate = useNavigate()
   const { data: classes = [], isLoading } = useQuery({ queryKey: qk.classes, queryFn: () => api.listClasses() })
+  /* Prefetched here, not just inside OnboardingWizard: the wizard's own
+   * WelcomeStep counts "N quick things" from whether the teacher's school
+   * needs a template, which this same query (qk.schools) answers — and that
+   * query is async. Fetching it only once the wizard itself mounted meant
+   * the very first paint promised one count (school status still unknown)
+   * and then corrected itself a beat later once it resolved. staleTime:
+   * Infinity means this shares one cache entry with the wizard's own query,
+   * so gating the page's loading screen on it too means the wizard never
+   * mounts until the school data it needs to count correctly is already in
+   * hand — the count is right from its very first paint, not corrected into
+   * being right. */
+  const { isLoading: schoolsLoading } = useQuery({
+    queryKey: qk.schools,
+    queryFn: () => api.listSchools(),
+    staleTime: Infinity,
+  })
 
-  if (isLoading) return <BootScreen />
+  if (isLoading || schoolsLoading) return <BootScreen />
 
   const cls = classes.find((c) => c.id === classId) || classes[0]
   // No class at all (deep link with a stale/foreign id) — nothing to onboard
