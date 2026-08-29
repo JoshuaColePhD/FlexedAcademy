@@ -3139,6 +3139,20 @@ MIGRATIONS: list[str] = [
           AND j.error_message = 'Auto-verification revoked: no attempt passed both visual judges.'
       );
     """,
+    # ── 58: durable DOCX builds ─────────────────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS document_build_jobs (
+      plan_id TEXT PRIMARY KEY REFERENCES plans(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','building','ready','failed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_document_build_jobs_status ON document_build_jobs(status, updated_at);
+    ALTER TABLE document_build_jobs ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -4362,7 +4376,63 @@ def update_plan(user_id: str, plan_id: str, **fields: Any) -> dict | None:
     if sets:
         params += [plan_id, user_id]
         _write(f"UPDATE plans SET {', '.join(sets)} WHERE id = ? AND user_id = ?", tuple(params))
+        # Every async rebuild clears docx_path before returning. Queue its
+        # durable replacement in the same request instead of trusting a
+        # FastAPI in-process background task to survive a restart.
+        if fields.get("docx_path", object()) is None:
+            enqueue_document_build(plan_id, user_id)
     return get_plan(user_id, plan_id)
+
+
+def enqueue_document_build(plan_id: str, user_id: str) -> dict:
+    """Queue (or re-queue) a DOCX build after its plan transaction commits."""
+    stamp = now()
+    _write(
+        """
+        INSERT INTO document_build_jobs (plan_id, user_id, status, attempts, error_message, created_at, updated_at)
+        VALUES (?, ?, 'queued', 0, NULL, ?, ?)
+        ON CONFLICT (plan_id) DO UPDATE SET
+          status = 'queued', error_message = NULL, updated_at = EXCLUDED.updated_at
+        """,
+        (plan_id, user_id, stamp, stamp),
+    )
+    return get_document_build_status(plan_id, user_id) or {}
+
+
+def get_document_build_status(plan_id: str, user_id: str) -> dict | None:
+    return _row(
+        "SELECT plan_id, status, attempts, error_message, updated_at FROM document_build_jobs WHERE plan_id = ? AND user_id = ?",
+        (plan_id, user_id),
+    )
+
+
+def claim_next_document_build() -> dict | None:
+    return _row(
+        """
+        UPDATE document_build_jobs SET status = 'building', attempts = attempts + 1, updated_at = ?
+        WHERE plan_id = (
+          SELECT plan_id FROM document_build_jobs WHERE status = 'queued'
+          ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1
+        )
+        RETURNING *
+        """,
+        (now(),),
+    )
+
+
+def finish_document_build(plan_id: str, user_id: str, *, error_message: str | None = None) -> None:
+    _write(
+        "UPDATE document_build_jobs SET status = ?, error_message = ?, updated_at = ? WHERE plan_id = ? AND user_id = ?",
+        ('failed' if error_message else 'ready', error_message, now(), plan_id, user_id),
+    )
+
+
+def reset_stale_document_builds(stale_after_seconds: int = 900) -> int:
+    threshold = (datetime.now(UTC) - timedelta(seconds=stale_after_seconds)).isoformat(timespec='seconds')
+    return _write(
+        "UPDATE document_build_jobs SET status = 'queued', updated_at = ? WHERE status = 'building' AND updated_at < ?",
+        (now(), threshold),
+    )
 
 
 def list_plans_for_school_template_repair(school_id: str, stale_template: str) -> list[dict]:

@@ -146,6 +146,14 @@ const location = useLocation()
 
   const plan = artifact?.plan
   const planId = artifact?.planId
+  const documentJob = useQuery({
+    queryKey: ['document-status', planId],
+    queryFn: () => api.getDocumentStatus(planId),
+    enabled: Boolean(planId),
+    refetchInterval: (query) => ['queued', 'building'].includes(query.state.data?.status) ? 1500 : false,
+  })
+  const documentStatus = documentJob.data?.status || (planId ? 'queued' : 'ready')
+  const downloadReady = documentStatus === 'ready'
   const grounded = new Set(artifact?.grounding?.codes || artifact?.retrievedIds || [])
 
   return (
@@ -193,7 +201,7 @@ const location = useLocation()
                   (one half-rounded pill needs its other half); a single
                   control gets the plain, fully-rounded pill the failed-
                   build state already uses (ArtifactDetailPanel.jsx). */}
-              <a
+              {downloadReady ? <a
                 href={planId ? api.planDownloadUrl(planId) : undefined}
                 download
                 className="doc-download fa-press flex items-center gap-1.5"
@@ -207,7 +215,21 @@ const location = useLocation()
                 ) : null}
                 <Download size={14} aria-hidden="true" className="text-ink-muted" />
                 <span className="font-medium">Download as DOCX</span>
-              </a>
+              </a> : (
+                <button
+                  type="button"
+                  className="doc-download fa-press flex items-center gap-1.5"
+                  disabled={documentStatus !== 'failed'}
+                  onClick={async () => {
+                    if (documentStatus === 'failed') {
+                      await api.rebuildPlan(planId)
+                      documentJob.refetch()
+                    }
+                  }}
+                >
+                  {documentStatus === 'failed' ? 'Rebuild document' : documentStatus === 'building' ? 'Preparing document…' : 'Document queued…'}
+                </button>
+              )}
             </>
           ) : (
             <span className="doc-download opacity-45 flex items-center gap-1.5" aria-disabled="true">

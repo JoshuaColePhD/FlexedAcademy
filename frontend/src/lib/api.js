@@ -217,6 +217,7 @@ export const api = {
   // which isn't the same query shape as listPlans' paginated flat list.
   listPlanWeeks: (classId) => request(`/api/plans/weeks?class_id=${encodeURIComponent(classId)}`),
   getPlan: (id) => request(`/api/plans/${id}`),
+  getDocumentStatus: (id) => request(`/api/plans/${id}/document-status`),
   rebuildPlan: (id) => request(`/api/plans/${id}/rebuild`, { method: 'POST' }),
   deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),
   /* These two existed on the server and were called from LessonPlanTable with a

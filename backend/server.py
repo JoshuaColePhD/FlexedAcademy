@@ -48,6 +48,7 @@ log = logging.getLogger("flexedacademy")
 
 _codegen_worker_task: asyncio.Task | None = None
 _CODEGEN_POLL_INTERVAL_S = 15
+_DOCUMENT_BUILD_POLL_INTERVAL_S = 2
 
 
 async def _builder_codegen_worker_loop() -> None:
@@ -82,6 +83,22 @@ async def _builder_codegen_worker_loop() -> None:
         except Exception:
             log.exception("builder codegen worker loop: unexpected error")
         await asyncio.sleep(_CODEGEN_POLL_INTERVAL_S)
+
+
+async def _document_build_worker_loop() -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, db.reset_stale_document_builds)
+    while True:
+        try:
+            job = await loop.run_in_executor(None, db.claim_next_document_build)
+            if job:
+                await loop.run_in_executor(None, service.run_document_build_job, job)
+                continue
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("document build worker: unexpected error")
+        await asyncio.sleep(_DOCUMENT_BUILD_POLL_INTERVAL_S)
 
 if settings.sentry_dsn:
     import sentry_sdk
@@ -190,6 +207,8 @@ async def lifespan(app: FastAPI):
         _codegen_worker_task = asyncio.create_task(_builder_codegen_worker_loop())
         log.info("builder codegen worker loop started")
 
+    document_build_worker_task = asyncio.create_task(_document_build_worker_loop())
+
     # One-time, idempotent repair for the records produced while Weeden's
     # rejected generated spec was incorrectly marked verified.
     loop.run_in_executor(None, service.repair_weeden_plans)
@@ -200,6 +219,9 @@ async def lifespan(app: FastAPI):
         _codegen_worker_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await _codegen_worker_task
+    document_build_worker_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await document_build_worker_task
     db.close()
 
 

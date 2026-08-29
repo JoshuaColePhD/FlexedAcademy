@@ -170,31 +170,31 @@ from fastapi import BackgroundTasks
 
 
 def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
-    from . import db, docx_build
+    # FastAPI background work is not durable across a deploy or process restart.
+    # Keep this compatibility entry point, but make it only enqueue work in the
+    # Postgres-backed worker below.
+    db.enqueue_document_build(plan_id, user_id)
+
+
+def run_document_build_job(job: dict) -> None:
+    """Build one claimed DOCX job; called by the durable server worker."""
+    plan_id, user_id = job["plan_id"], job["user_id"]
+    row = db.get_plan(user_id, plan_id)
+    if not row or not row.get("plan_json"):
+        db.finish_document_build(plan_id, user_id, error_message="The saved plan no longer exists.")
+        return
     try:
-        plan_row = db.get_plan(user_id, plan_id)
-        school_id = None
-        if plan_row and plan_row.get("class_id"):
-            cls = db.get_class(user_id, plan_row["class_id"])
-            if cls:
-                school_id = cls.get("school")
-                
-        docx_build.build_docx(plan, out_path, school_id)
+        cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+        out_path = docx_build.plan_output_path(row["plan_json"], plan_id)
+        docx_build.build_docx(row["plan_json"], out_path, cls.get("school") if cls else None)
         storage.mirror_file(out_path)
         db.update_plan(user_id, plan_id, docx_path=str(out_path))
-        log.info("background docx built for plan_id=%s", plan_id)
-    except Exception:
-        # A failure here used to be logged and then forgotten. update_plan has
-        # already cleared docx_path by this point, so the row was left looking
-        # exactly like one whose build had not finished yet — and /download
-        # answered "still generating in the background" forever, for a build
-        # that was never coming. Recording it lets the download endpoint tell
-        # the teacher the truth and point at Rebuild.
-        log.exception("failed to build background docx for plan_id=%s", plan_id)
-        try:
-            db.update_plan(user_id, plan_id, warnings=(plan.get("_warnings") or []) + [DOCX_FAILED])
-        except Exception:
-            log.exception("could not record the docx failure for plan_id=%s", plan_id)
+        db.finish_document_build(plan_id, user_id)
+        log.info("document build ready plan_id=%s", plan_id)
+    except Exception as exc:
+        log.exception("failed to build document plan_id=%s", plan_id)
+        db.update_plan(user_id, plan_id, warnings=(row.get("warnings") or []) + [DOCX_FAILED])
+        db.finish_document_build(plan_id, user_id, error_message=str(exc)[:500])
 
 
 # Written into plans.warnings so the download endpoint can distinguish "not
@@ -421,6 +421,10 @@ def finalize(
         class_id=class_id,
         week_number=week_number,
     )
+    if bg_tasks is not None:
+        # Queue only after the plan row exists; the durable worker can now
+        # survive this request ending, a deploy, or a process restart.
+        db.enqueue_document_build(plan_id, user_id)
     db.replace_plan_standards(
         plan_id, user_id, class_id=row.get("class_id"), subject=subject_code, grade=grade, entries=cited
     )

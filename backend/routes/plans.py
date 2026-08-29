@@ -136,6 +136,15 @@ def get_plan(plan_id: str, user_id: str = Depends(get_current_user)):
     return _require_plan(user_id, plan_id)
 
 
+@router.get("/{plan_id}/document-status")
+def document_status(plan_id: str, user_id: str = Depends(get_current_user)):
+    row = _require_plan(user_id, plan_id)
+    job = db.get_document_build_status(plan_id, user_id)
+    if job:
+        return job
+    return {"plan_id": plan_id, "status": "ready" if row.get("docx_path") else "queued"}
+
+
 @router.get("/public/{plan_id}")
 def get_public_plan(plan_id: str):
     _require_id(plan_id)
