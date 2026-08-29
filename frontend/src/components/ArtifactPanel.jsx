@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import * as Sentry from '@sentry/react'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
@@ -154,6 +155,24 @@ const location = useLocation()
   })
   const documentStatus = documentJob.data?.status || (planId ? 'queued' : 'ready')
   const downloadReady = documentStatus === 'ready'
+  const reportedDocumentStatus = useRef(null)
+  useEffect(() => {
+    if (!planId || reportedDocumentStatus.current === documentStatus) return
+    reportedDocumentStatus.current = documentStatus
+    Sentry.addBreadcrumb({
+      category: 'document.build',
+      message: `Document ${documentStatus}`,
+      level: documentStatus === 'failed' ? 'error' : 'info',
+      // Status-only: telemetry must never receive a plan identifier, lesson
+      // content, or server error text.
+      data: { attempts: documentJob.data?.attempts },
+    })
+    if (documentStatus === 'failed') {
+      Sentry.captureMessage('Document build failed', {
+        level: 'error',
+      })
+    }
+  }, [documentStatus, documentJob.data?.attempts, documentJob.data?.error_message, planId])
   const grounded = new Set(artifact?.grounding?.codes || artifact?.retrievedIds || [])
 
   return (
