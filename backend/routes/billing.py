@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import db, stripe_api
 from ..config import settings
 from ..deps import get_current_user
-from ..entitlement import entitlement
+from ..entitlement import ENTITLED_STATUSES, entitlement
 from ..errors import AppError
 
 log = logging.getLogger("flexedacademy.billing")
@@ -144,17 +144,64 @@ def checkout(request: Request, user_id: str = Depends(get_current_user)):
 
 @router.post("/portal")
 def portal(request: Request, user_id: str = Depends(get_current_user)):
+    """The ONLY way a subscriber can cancel, so a failure here is an outage of
+    something people are legally entitled to reach — not a routine 4xx.
+
+    Both failure paths below log at ERROR on purpose. server.py's Sentry
+    before_send drops every AppError, deliberately, so that expected
+    control-flow 4xx (a 401, "email taken") don't bury real crashes. Correct in
+    general, and exactly wrong here: a Stripe rejection arrives AS an AppError,
+    so a portal that stopped working would be invisible — the teacher gets a
+    toast, nobody is told, and the only evidence is somebody eventually
+    complaining. These use log.error rather than log.exception precisely so
+    they carry no exc_info and survive that filter.
+
+    Found because the live account had no customer portal configuration at all
+    (Stripe returns none until the Dashboard's portal settings are saved), which
+    means every one of these calls would have failed with nothing reported.
+    """
     user = db.get_user_by_id(user_id) or {}
     customer_id = user.get("stripe_customer_id")
     if not customer_id:
+        # Only an error when the app is TELLING this account it's subscribed.
+        # SettingsPage renders "Manage subscription" off exactly that, so the
+        # two disagreeing means someone is being shown a subscription they
+        # cannot manage. A genuinely unsubscribed caller hitting this route is
+        # just a stale tab, and stays a quiet 400.
+        if user.get("subscription_status") in ENTITLED_STATUSES:
+            log.error(
+                "user=%s shows subscription_status=%s but has no stripe_customer_id, so the "
+                "billing portal cannot open — this account is being shown a subscription it "
+                "cannot cancel from the app.",
+                user_id,
+                user.get("subscription_status"),
+            )
         raise AppError(
             "no_subscription",
             "There’s no subscription on this account yet.",
             status=400,
         )
-    session = stripe_api.create_portal_session(
-        customer_id=customer_id, return_url=_return_url(request)
-    )
+    try:
+        session = stripe_api.create_portal_session(
+            customer_id=customer_id, return_url=_return_url(request)
+        )
+    except AppError as e:
+        log.error(
+            "customer portal session failed for user=%s customer=%s: %s — a subscriber "
+            "cannot cancel while this is failing. If Stripe reports no default portal "
+            "configuration, save the portal settings in the Dashboard "
+            "(Settings > Billing > Customer portal, Live mode).",
+            user_id,
+            customer_id,
+            e,
+        )
+        raise AppError(
+            "portal_unavailable",
+            "We couldn’t open the billing page just now. Your subscription hasn’t changed.",
+            status=502,
+            hint="Please try again in a moment. If it keeps failing, reply to any billing "
+                 "receipt to reach us and we'll cancel it for you.",
+        ) from e
     return {"url": session["url"]}
 
 
