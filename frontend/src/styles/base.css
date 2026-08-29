@@ -4078,7 +4078,10 @@
   .msg-bubble::after {
     position: absolute;
     bottom: 11px;
-    z-index: -1;
+    /* Keep the pointer above the bubble's own background. A negative layer
+       sits behind that background inside the isolated stacking context, which
+       made the tail technically present but invisible on mobile and desktop. */
+    z-index: 0;
     width: 12px;
     height: 12px;
     background: inherit;
@@ -4086,6 +4089,7 @@
     box-shadow: 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.24);
     content: '';
     transform: rotate(45deg);
+    pointer-events: none;
   }
   .msg-bubble-user::after {
     right: -5px;
