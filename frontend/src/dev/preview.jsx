@@ -1,4 +1,13 @@
-/* TEMPORARY design-verification entry. Delete with mockApi.js and preview.html. */
+/* The entry point for looking at the UI without a backend — and, since
+   scripts/test-buttons.mjs, the entry point every button test drives.
+ *
+ * This used to say "TEMPORARY … delete with mockApi.js and preview.html." It
+ * isn't temporary any more. Deleting this file, mockApi.js, or preview.html
+ * deletes the only coverage the app's 223 buttons have; `npm run test:buttons`
+ * and the `buttons` job in .github/workflows/quality.yml both start here.
+ *
+ * Still dev-only in the shipped sense: Vite builds index.html, so none of this
+ * reaches production. */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { installMockApi } from './mockApi'

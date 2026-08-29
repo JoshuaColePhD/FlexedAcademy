@@ -26,6 +26,54 @@ jobs:
       - name: Run focused behavior tests
         run: npm run test:voice && npm run test:contextual && npm run test:onboarding && npm run test:auth
 
+  # Does every button in the app still do what it is supposed to do?
+  #
+  # The `frontend` job above proves the code compiles, lints, and references
+  # only tokens and classes that exist. None of that has ever established that
+  # a click does anything: a button whose endpoint was renamed underneath it
+  # passes every one of those checks and fails for the teacher. See
+  # frontend/scripts/test-buttons.mjs for what it asserts and why.
+  #
+  # Needs a real browser, hence its own job rather than a step inside
+  # `frontend`. It drives frontend/preview.html — the real App.jsx against the
+  # canned backend in src/dev/mockApi.js — so there is no database, no API key
+  # and no Google OAuth involved, and nothing here touches production.
+  #
+  # BUDGET: same 2,000 min/month cap uptime.yml documents. The playwright
+  # container is pre-baked and the suite crawls four routes at a time, so a run
+  # is ~2 minutes — cheap enough to run on every push rather than path-gate,
+  # which would mean a paths-filter action and a second job to decide.
+  buttons:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.0-noble
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Click every button
+        # Server and suite in ONE step on purpose. `npm run dev` never exits,
+        # so it has to be backgrounded — and a background process started in an
+        # earlier step is not something to rely on surviving into a later one.
+        # Polled rather than slept: a fixed sleep is either too short on a cold
+        # runner or wasted time on a warm one.
+        run: |
+          npm run dev &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:5174/preview.html > /dev/null && break
+            if [ "$i" = "60" ]; then echo "preview harness never came up" >&2; exit 1; fi
+            sleep 1
+          done
+          npm run test:buttons
+
   backend:
     runs-on: ubuntu-latest
     steps:

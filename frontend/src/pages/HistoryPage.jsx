@@ -183,9 +183,16 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
           ) : (
             chats.map(c => (
               <li key={c.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-paper-inset">
+                {/* aria-label AND aria-pressed: the icon is the only thing
+                    here, so without a label a screen reader announced nine
+                    identical "button"s down the list, and without the pressed
+                    state it could not say which of them were already ticked —
+                    the one piece of information the control exists to carry. */}
                 <button
                   type="button"
                   onClick={() => toggleSelect(c.id)}
+                  aria-pressed={selectedIds.has(c.id)}
+                  aria-label={`${selectedIds.has(c.id) ? 'Deselect' : 'Select'} ${c.title || 'Untitled chat'}`}
                   className="shrink-0 text-ink-muted hover:text-ink transition-colors"
                 >
                   {selectedIds.has(c.id) ? (

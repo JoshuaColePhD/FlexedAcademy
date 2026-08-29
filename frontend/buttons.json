@@ -1,0 +1,388 @@
+{
+  "src/App.jsx": {
+    "count": 1,
+    "named": [
+      "Try again"
+    ]
+  },
+  "src/components/AccordionPanel.jsx": {
+    "count": 1,
+    "named": []
+  },
+  "src/components/AccountMenu.jsx": {
+    "count": 3,
+    "named": [
+      "Log out",
+      "Subscribe to keep building",
+      "{(() => { const avatar = getAvatar(user?.avatar) const sizeCls = spacious ? 'h-9 w-9' : 'h-7 w-7' if (avatar) { return ( ) } return ( ) })()} {collapsed ? null : ( )}"
+    ]
+  },
+  "src/components/AddDocumentDialog.jsx": {
+    "count": 1,
+    "named": [
+      "Done"
+    ]
+  },
+  "src/components/AppShell.jsx": {
+    "count": 11,
+    "named": [
+      "Close menu",
+      "Close menu",
+      "Collapse the sidebar",
+      "Show menu"
+    ]
+  },
+  "src/components/ArtifactDetailPanel.jsx": {
+    "count": 8,
+    "named": [
+      "Cancel",
+      "Close document",
+      "Edit Question",
+      "Export this quiz",
+      "Quiz file failed to build — ask again in chat to rebuild it",
+      "{isFullscreen ? : }"
+    ]
+  },
+  "src/components/ArtifactPanel.jsx": {
+    "count": 3,
+    "named": [
+      "Close document",
+      "Share or save to Google Drive",
+      "{isFullscreen ? : }"
+    ]
+  },
+  "src/components/ArtifactRail.jsx": {
+    "count": 7,
+    "named": [
+      "Document · DOCX",
+      "Download or Share",
+      "Download or Share",
+      "Reload",
+      "The file failed to build — ask again in chat to rebuild it"
+    ]
+  },
+  "src/components/BillingProvider.jsx": {
+    "count": 2,
+    "named": [
+      "Not now"
+    ]
+  },
+  "src/components/CellTweak.jsx": {
+    "count": 7,
+    "named": [
+      "All days",
+      "Apply",
+      "Cancel this tweak",
+      "This day",
+      "Tweak ’s"
+    ]
+  },
+  "src/components/ChatHeaderSheet.jsx": {
+    "count": 2,
+    "named": [
+      "Close",
+      "Close class and week"
+    ]
+  },
+  "src/components/Citation.jsx": {
+    "count": 1,
+    "named": []
+  },
+  "src/components/ClassDocuments.jsx": {
+    "count": 4,
+    "named": [
+      "Paste Link",
+      "Remove this document",
+      "{uploading ? ( ) : ( )}",
+      "{uploading ? : null}"
+    ]
+  },
+  "src/components/ClassSwitcher.jsx": {
+    "count": 2,
+    "named": [
+      "inside it sizes itself by its OWN content up to its // own max-width regardless of how far its parent shrank — // nothing ties the two together without this. Under real space // pressure (a long class name sharing the row with WeekPicker) // the button rendered at its full 144px cap anyway, spilling // its text out over WeekPicker's own icon and label rather than // truncating. w-full makes it fill whatever width the parent's // shrink actually leaves it, so `truncate` on the name span // below has a real, definite box to ellipsize against. // // tap-target: px-1 py-0.5 keeps this pill visually compact // (the whole point of `inline`, sitting flush beside WeekPicker // in the header), but that same tightness left its actual tap // area well under the touch minimum on phone — tap-target // widens the hit area via an invisible ::before, same trick // Composer's own icon buttons already use. 'chat-week tap-target min-w-0 w-full max-w-xs shrink rounded-md bg-paper-raised px-1 py-0.5 normal-case tracking-normal transition-colors hover:bg-paper-sunken' : 'flex min-h-touch w-full items-center gap-2 rounded-lg bg-paper-raised px-2 py-1.5 text-left transition-colors hover:bg-paper-sunken' } > {activeClass ? ( ) : null}",
+      "{c.id === activeClass?.id ? ( ) : null}"
+    ]
+  },
+  "src/components/Composer.jsx": {
+    "count": 4,
+    "named": [
+      "Save as this class's pacing guide"
+    ]
+  },
+  "src/components/ConfirmProvider.jsx": {
+    "count": 2,
+    "named": []
+  },
+  "src/components/ContextualSuggestionList.jsx": {
+    "count": 1,
+    "named": []
+  },
+  "src/components/DecisionStack.jsx": {
+    "count": 3,
+    "named": [
+      "Cancel",
+      "Save"
+    ]
+  },
+  "src/components/ErrorBoundary.jsx": {
+    "count": 3,
+    "named": [
+      "Clear local settings and reload",
+      "Copy details",
+      "Reload"
+    ]
+  },
+  "src/components/FrameworkPicker.jsx": {
+    "count": 2,
+    "named": [
+      "{gradeRangeLabel(fw) ? ( ) : null} {isSelected ? ( ) : null}"
+    ]
+  },
+  "src/components/Greeting.jsx": {
+    "count": 2,
+    "named": [
+      "Voice Mode Beta",
+      "{hint.reason ? ` — $` : ''}"
+    ]
+  },
+  "src/components/LessonPlanTable.jsx": {
+    "count": 3,
+    "named": [
+      "This plan is good",
+      "This plan needs work"
+    ]
+  },
+  "src/components/LessonQuestions.jsx": {
+    "count": 5,
+    "named": [
+      "Cancel",
+      "Other — type your own",
+      "Skip",
+      "Use this answer"
+    ]
+  },
+  "src/components/Marginalia.jsx": {
+    "count": 1,
+    "named": []
+  },
+  "src/components/Message.jsx": {
+    "count": 5,
+    "named": [
+      "Build this plan again",
+      "Cancel",
+      "Edit and send again",
+      "Retry Request",
+      "Send again"
+    ]
+  },
+  "src/components/OnboardingWizard.jsx": {
+    "count": 1,
+    "named": [
+      "Close"
+    ]
+  },
+  "src/components/PlanDayCards.jsx": {
+    "count": 1,
+    "named": []
+  },
+  "src/components/SchoolSelect.jsx": {
+    "count": 2,
+    "named": [
+      "{parseSchoolName(s.name).type && ( )} {s.id === value ? : null}",
+      "{value === genericValue ? ( ) : null}"
+    ]
+  },
+  "src/components/ShareDialog.jsx": {
+    "count": 8,
+    "named": [
+      "Cancel",
+      "Close",
+      "Close",
+      "Connect Google Drive",
+      "{submitting ? : }"
+    ]
+  },
+  "src/components/SignInForm.jsx": {
+    "count": 4,
+    "named": [
+      "Close",
+      "{showPassword ? : }"
+    ]
+  },
+  "src/components/SplitLayout.jsx": {
+    "count": 3,
+    "named": [
+      "Back",
+      "Go back",
+      "{tab.count !== undefined && ( )}"
+    ]
+  },
+  "src/components/ToastProvider.jsx": {
+    "count": 2,
+    "named": []
+  },
+  "src/components/UploadDropzone.jsx": {
+    "count": 2,
+    "named": [
+      "Use link",
+      "{uploading ? : }"
+    ]
+  },
+  "src/components/VoiceModePanel.jsx": {
+    "count": 15,
+    "named": [
+      "Cancel",
+      "Close",
+      "Close voice conversation",
+      "Done",
+      "Enable audio",
+      "Fix it",
+      "Hold to talk",
+      "Replay the last reply",
+      "Skip",
+      "Try again",
+      "You said “”",
+      "{mode === 'auto' ? Hands-free : Push to talk }",
+      "{voice.muted ? : }",
+      "✨ Build Lesson Plan"
+    ]
+  },
+  "src/components/WeedenPlanDayCards.jsx": {
+    "count": 1,
+    "named": []
+  },
+  "src/pages/AdminPage.jsx": {
+    "count": 32,
+    "named": [
+      "Add",
+      "Analysis {isExpanded ? : }",
+      "Approve",
+      "Approve",
+      "Attempts {isExpanded ? : }",
+      "Attempts {isExpanded ? : }",
+      "Cancel",
+      "Cancel",
+      "Clear",
+      "Clear search",
+      "Detail {expanded ? : }",
+      "Done",
+      "Edit",
+      "End now",
+      "Extend 7d",
+      "Grant unlimited",
+      "Mark Active",
+      "New beta account",
+      "Reject",
+      "Remove this school",
+      "Retry",
+      "Revoke unlimited",
+      "Save",
+      "Set cap",
+      "{active ? ( sort.dir === 'asc' ? ( ) : ( ) ) : null}"
+    ]
+  },
+  "src/pages/ChatPage.jsx": {
+    "count": 9,
+    "named": [
+      "Back to your chats",
+      "Cancel queued message",
+      "Dismiss",
+      "Latest",
+      "Open downloads",
+      "Subscribe",
+      "Subscribe",
+      "{displayWeek ? ` · Week $` : ''}"
+    ]
+  },
+  "src/pages/ClassPage.jsx": {
+    "count": 11,
+    "named": [
+      "Archive / Delete Class",
+      "Cancel",
+      "Generate 5-Minute Sub Plan",
+      "Manage",
+      "Remove this document",
+      "{archiving ? : showArchived ? : }",
+      "{saving ? : null} Create Class",
+      "{saving ? : null} Save Changes",
+      "{showArchived ? 'View Active Classes' : `View Archived ($)`}",
+      "{uploading ? ( ) : ( )}"
+    ]
+  },
+  "src/pages/HistoryPage.jsx": {
+    "count": 8,
+    "named": [
+      "Back to Chat",
+      "Back to chat list",
+      "Delete Conversation",
+      "{chats.length > 0 && selectedIds.size === chats.length ? ( ) : ( )}",
+      "{isDeletingBulk ? : } Delete Selected",
+      "{selectedIds.has(c.id) ? ( ) : ( )}"
+    ]
+  },
+  "src/pages/LandingPage.jsx": {
+    "count": 1,
+    "named": [
+      "Sign in"
+    ]
+  },
+  "src/pages/PlansPage.jsx": {
+    "count": 12,
+    "named": [
+      "Cancel",
+      "Copy Link",
+      "Copy Link",
+      "Delete",
+      "Delete",
+      "Delete ()",
+      "Grid view",
+      "List view",
+      "Select multiple",
+      "{selected ? ( ) : ( )}"
+    ]
+  },
+  "src/pages/SettingsPage.jsx": {
+    "count": 18,
+    "named": [
+      "Back",
+      "Cancel",
+      "Coming Soon",
+      "Default avatar",
+      "Delete my account",
+      "Save Profile",
+      "Take the tour again",
+      "{entitlement.subscribed ? ( ) : ( )}"
+    ]
+  },
+  "src/pages/SharedPlanPage.jsx": {
+    "count": 3,
+    "named": [
+      "Go to Home",
+      "Sign in to duplicate Sign in",
+      "{forking ? : } Duplicate to My Classes Duplicate"
+    ]
+  },
+  "src/pages/StandardsPage.jsx": {
+    "count": 3,
+    "named": [
+      "Add to active lesson plan",
+      "List View",
+      "Visual Heatmap"
+    ]
+  },
+  "src/pages/auth/ResetPasswordPage.jsx": {
+    "count": 1,
+    "named": []
+  },
+  "src/pages/auth/SignupPage.jsx": {
+    "count": 1,
+    "named": []
+  },
+  "src/pages/onboarding/WelcomePage.jsx": {
+    "count": 1,
+    "named": [
+      "Open my year"
+    ]
+  }
+}

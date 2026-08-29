@@ -27,6 +27,9 @@ development and no API host is hardcoded anywhere. For a deployed build, set
 | `npm run build` | Production build to `dist/` |
 | `npm run preview` | Serve the built output |
 | `npm run lint` | oxlint |
+| `npm run check` | lint + tokens + classes + buttons inventory + build |
+| `npm run check:buttons` | Every button in the source is accounted for in `buttons.json` |
+| `npm run test:buttons` | Clicks every button in a real browser (needs `npm run dev` running) |
 
 ## Layout
 
@@ -88,3 +91,31 @@ npm run dev        # then open http://localhost:5174/preview.html
 
 Dev-only: Vite builds `index.html`, so nothing under `src/dev/` reaches the
 production bundle.
+
+## Are the buttons working?
+
+`preview.html` is also what the button suite drives, which is why `src/dev/` is
+no longer disposable.
+
+```
+npm run dev &          # the harness has to be up
+npm run test:buttons   # clicks every button on every route
+```
+
+Every button gets the same four checks — it has an accessible name; clicking it
+throws nothing and doesn't reach the ErrorBoundary; it calls no endpoint
+`mockApi.js` doesn't recognise; and *something happens* (a request, a
+navigation, or a DOM change). A short list in `scripts/test-buttons.mjs` pins
+the exact request a few load-bearing buttons must issue.
+
+`npm run check:buttons` is the static half: it inventories every `<button>` in
+the source into `buttons.json` and fails when that drifts, so adding a button
+without covering it is a thing you have to do on purpose. After deliberately
+adding one:
+
+```
+npm run check:buttons -- --update
+```
+
+Both run in CI — the inventory inside `npm run check`, the browser suite as its
+own `buttons` job in `.github/workflows/quality.yml`.
