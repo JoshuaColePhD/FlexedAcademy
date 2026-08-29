@@ -151,6 +151,17 @@
     /* Slightly faster than before but still slow and subtle */
     animation: land-blob-drift 18s ease-in-out infinite alternate;
     pointer-events: none;
+    transition: opacity var(--t-base) var(--ease);
+  }
+
+  /* The aurora is atmosphere while reading, not an effect that should compete
+     with a focused composer or an open modal. Pausing it also avoids repainting
+     a large animated gradient beneath blurred panels on lower-power devices. */
+  body:has(.composer-shell:focus-within) .app-blob,
+  body:has(.artifact-overlay) .app-blob,
+  body:has([role='dialog'][aria-modal='true']) .app-blob {
+    animation-play-state: paused;
+    opacity: 0.32;
   }
 
   /* Same wash as .app-blob, scoped to OnboardingWizard's own dialog instead
@@ -284,7 +295,7 @@
      vertical slope at t=0 read as a snap rather than a glide at that
      distance, same as it did there. */
   .app-rail.rail-drawer {
-    animation: rail-drawer-in 380ms var(--ease-glide) both;
+    animation: rail-drawer-in var(--t-panel) var(--ease-glide) both;
   }
   .app-rail.rail-drawer.is-closing {
     animation: rail-drawer-out var(--t-fast) var(--ease) both;
@@ -559,7 +570,11 @@
     color: var(--ink-muted);
     background: var(--paper-sunken);
     border-radius: var(--r-sm);
-    transition: all var(--t-fast) var(--ease);
+    transition:
+      color var(--t-fast) var(--ease),
+      background-color var(--t-fast) var(--ease),
+      border-color var(--t-fast) var(--ease),
+      box-shadow var(--t-fast) var(--ease);
   }
   .plan-deck-tab.is-active {
     color: var(--ink-inverse);
@@ -1417,7 +1432,11 @@
     border: 1px solid transparent;
     border-radius: var(--r-sm);
     cursor: pointer;
-    transition: all var(--t-fast) var(--ease);
+    transition:
+      color var(--t-fast) var(--ease),
+      background-color var(--t-fast) var(--ease),
+      border-color var(--t-fast) var(--ease),
+      box-shadow var(--t-fast) var(--ease);
   }
   .btn-icon:hover:not(:disabled) {
     color: var(--ink);
@@ -1473,7 +1492,11 @@
     border: 1px solid transparent;
     border-radius: var(--r-sm);
     cursor: pointer;
-    transition: all var(--t-fast) var(--ease);
+    transition:
+      color var(--t-fast) var(--ease),
+      background-color var(--t-fast) var(--ease),
+      border-color var(--t-fast) var(--ease),
+      box-shadow var(--t-fast) var(--ease);
   }
   .btn-icon-lg:not(:disabled) {
     box-shadow:
@@ -1520,7 +1543,11 @@
     border: none;
     border-radius: var(--r-full);
     cursor: pointer;
-    transition: all var(--t-fast) var(--ease);
+    transition:
+      background-color var(--t-fast) var(--ease),
+      color var(--t-fast) var(--ease),
+      box-shadow var(--t-fast) var(--ease),
+      opacity var(--t-fast) var(--ease);
   }
   .btn-send:hover:not(:disabled) {
     background: var(--ink-soft);
@@ -1808,6 +1835,35 @@
     flex-direction: column;
   }
 
+  /* Status banners above the transcript use the same content-sized grid
+     expansion as the composer question dock. A height:auto animation measures
+     and reflows on every frame, which made the chat/composer jump when a
+     template or trial status changed. */
+  .chat-banner-reveal {
+    display: grid;
+    flex-shrink: 0;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--t-base) var(--ease-glide);
+  }
+  .chat-banner-reveal.is-open {
+    grid-template-rows: 1fr;
+    transition-duration: var(--t-enter);
+  }
+  .chat-banner-reveal > div {
+    min-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition:
+      opacity var(--t-base) var(--ease-glide),
+      transform var(--t-base) var(--ease-glide);
+  }
+  .chat-banner-reveal.is-open > div {
+    opacity: 1;
+    transform: none;
+    transition-duration: var(--t-enter), var(--t-enter);
+  }
+
   .toast {
     display: flex;
     align-items: flex-start;
@@ -1841,7 +1897,7 @@
   @keyframes toast-in {
     from {
       opacity: 0;
-      transform: translateY(8px) scale(0.98);
+      transform: translateY(8px);
     }
     to {
       opacity: 1;
@@ -1855,7 +1911,7 @@
     }
     to {
       opacity: 0;
-      transform: translateY(8px) scale(0.98);
+      transform: translateY(8px);
     }
   }
 

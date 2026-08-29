@@ -111,9 +111,15 @@
   --r-full: 999px;
 
   /* ── motion ────────────────────────────────────────────────────────────── */
+  /* A compact motion scale: feedback, ordinary UI, content entry, and a
+     panel travelling across the page. Keeping named steps prevents nearby
+     values (180/220/320/380/420ms) from making related interactions feel as
+     if they belong to different products. */
   --t-fast: 130ms;
   --t-base: 220ms;
-  --t-slow: 420ms;
+  --t-enter: 320ms;
+  --t-panel: 380ms;
+  --t-slow: var(--t-panel);
   --motion-press: 1px;
   --motion-lift: 3px;
   --motion-reveal: 8px;

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, Loader2, TriangleAlert, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
@@ -191,6 +190,32 @@ const TEMPLATE_BANNER_TONE_CLASSES = {
   red: 'bg-red-500/10 text-red-600 border-red-500/20',
 }
 
+/* A grid row reaches a content-driven height without Framer Motion measuring
+   `height: auto` on every frame. That keeps the transcript and the portaled
+   composer from taking a visible first-frame jump when a status banner opens
+   or closes. `useExitTransition` keeps the row around for the matching close
+   duration instead of unmounting it before the collapse can play. */
+function BannerReveal({ open, children }) {
+  const { mounted, closing } = useExitTransition(open, 220)
+  const [revealed, setRevealed] = useState(false)
+
+  useEffect(() => {
+    if (!mounted || closing || !open) {
+      setRevealed(false)
+      return undefined
+    }
+    const frame = requestAnimationFrame(() => setRevealed(true))
+    return () => cancelAnimationFrame(frame)
+  }, [mounted, closing, open])
+
+  if (!mounted) return null
+  return (
+    <div className={`chat-banner-reveal${revealed && !closing ? ' is-open' : ''}${closing ? ' is-closing' : ''}`}>
+      <div>{children}</div>
+    </div>
+  )
+}
+
 function TemplateBanner() {
   const { classId } = useParams()
   const { data: schools = [] } = useQuery({
@@ -209,31 +234,20 @@ function TemplateBanner() {
   })
   const { data: classes = [] } = useClasses()
 
-  if (!classId) return null
-
   const cls = classes.find((c) => c.id === classId)
-  if (!cls) return null
-
-  const school = schools.find((s) => s.id === cls.school)
+  const school = schools.find((s) => s.id === cls?.school)
   const copy = school && TEMPLATE_BANNER_COPY[school.builder_readiness]
-  if (!copy) return null
-
-  const Icon = copy.icon
+  const Icon = copy?.icon
 
   return (
-    <motion.div
-      initial={{ height: 0, opacity: 0 }}
-      animate={{ height: 'auto', opacity: 1 }}
-      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-      className="shrink-0 overflow-hidden"
-    >
-      <div
-        className={`flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}
-      >
-        <Icon size={14} className={`shrink-0 ${copy.iconClassName || ''}`} aria-hidden="true" />
-        <p>{copy.text(school.name)}</p>
-      </div>
-    </motion.div>
+    <BannerReveal open={Boolean(copy)}>
+      {copy && Icon ? (
+        <div className={`flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}>
+          <Icon size={14} className={`shrink-0 ${copy.iconClassName || ''}`} aria-hidden="true" />
+          <p>{copy.text(school.name)}</p>
+        </div>
+      ) : null}
+    </BannerReveal>
   )
 }
 
@@ -249,12 +263,8 @@ const TRIAL_BANNER_THRESHOLD_DAYS = 2
 // (not state) so it survives the reload a real day boundary implies.
 const TRIAL_BANNER_DISMISSED_KEY = 'fa.trialBannerDismissedAt'
 
-// height/opacity via AnimatePresence (not just a conditional return null, like
-// TemplateBanner above it) specifically so the EXPIRED banner can recede
-// instead of vanishing outright the instant the webhook lands and subscribed
-// flips true — that moment is the one time this banner's own message stops
-// being true, so it's the one time leaving without an animation would read as
-// a glitch rather than a resolution.
+// The grid-based BannerReveal keeps this mounted long enough to recede instead
+// of vanishing outright the instant a webhook resolves the status.
 function TrialBanner() {
   const { entitlement, openPaywall } = useBilling()
   const [dismissed, setDismissed] = useState(() => {
@@ -278,15 +288,8 @@ function TrialBanner() {
     setDismissed(String(daysLeft))
   }
 
-  const bannerVariants = {
-    initial: { height: 0, opacity: 0 },
-    animate: { height: 'auto', opacity: 1 },
-    exit: { height: 0, opacity: 0 },
-  }
-  const transition = { duration: 0.32, ease: [0.16, 1, 0.3, 1] }
-
   return (
-    <AnimatePresence initial={false}>
+    <BannerReveal open={expired || showCountdown}>
       {expired ? (
         // Bigger and un-dismissible on purpose: unlike the countdown below,
         // this isn't a heads-up about something still usable — every
@@ -294,15 +297,7 @@ function TrialBanner() {
         // entitlement.trial_expired flag (backend/entitlement.py), so
         // hiding the reason without resolving it would just leave a
         // confused blocked teacher with no explanation on screen.
-        <motion.div
-          key="trial-expired"
-          variants={bannerVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={transition}
-          className="shrink-0 overflow-hidden"
-        >
+        <div>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b border-red-500/25 bg-red-500/10 px-6 py-4 text-red-600 shadow-sm">
             <div className="flex items-center gap-2.5">
               <TriangleAlert size={20} className="shrink-0" aria-hidden="true" />
@@ -314,17 +309,9 @@ function TrialBanner() {
               Subscribe
             </button>
           </div>
-        </motion.div>
+        </div>
       ) : showCountdown ? (
-        <motion.div
-          key="trial-countdown"
-          variants={bannerVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={transition}
-          className="shrink-0 overflow-hidden"
-        >
+        <div>
           <div className="flex items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-600 shadow-sm">
             <Clock size={14} className="shrink-0" aria-hidden="true" />
             <p>
@@ -345,9 +332,9 @@ function TrialBanner() {
               <X size={14} aria-hidden="true" />
             </button>
           </div>
-        </motion.div>
+        </div>
       ) : null}
-    </AnimatePresence>
+    </BannerReveal>
   )
 }
 
