@@ -1864,10 +1864,12 @@
     transition-duration: var(--t-enter), var(--t-enter);
   }
   .banner-dismiss {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     color: currentColor;
-    box-shadow: none;
+    background: rgb(var(--paper-rgb) / 0.5);
+    border-color: rgb(var(--paper-rgb) / 0.55);
+    box-shadow: 1px 1px 3px rgb(var(--neo-dark-rgb) / 0.2);
   }
   .banner-dismiss:hover:not(:disabled) {
     background: rgb(var(--paper-rgb) / 0.38);

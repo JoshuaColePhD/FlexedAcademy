@@ -267,10 +267,10 @@ function TemplateBanner() {
   return (
     <BannerReveal open={Boolean(copy) && !dismissed}>
       {copy && Icon ? (
-        <div className={`flex items-start gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}>
+        <div className={`relative flex items-start gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}>
           <Icon size={14} className={`mt-0.5 shrink-0 ${copy.iconClassName || ''}`} aria-hidden="true" />
-          <p className="min-w-0 flex-1 text-center">{copy.text(school.name)}</p>
-          <button type="button" className="banner-dismiss btn-icon -my-1 shrink-0" onClick={dismiss} aria-label="Dismiss template status message" title="Dismiss">
+          <p className="min-w-0 flex-1 pr-8 text-center">{copy.text(school.name)}</p>
+          <button type="button" className="banner-dismiss btn-icon absolute right-3 top-2" onClick={dismiss} aria-label="Dismiss template status message" title="Dismiss">
             <X size={14} aria-hidden="true" />
           </button>
         </div>
@@ -2945,6 +2945,12 @@ export function ChatPage() {
       />
     )
 
+  // The desktop dock is portaled so it can remain over the document overlay.
+  // On a phone that extra fixed layer has no benefit and can attach to a stale
+  // anchor after a plan is built, putting its file controls over the header.
+  // Keep the phone dock in the chat's normal flex flow instead.
+  const renderComposerDock = (dock) => (isPhone ? dock : createPortal(dock, portalHost))
+
   const chatPane = (
     /* border-r-0, not a plain `border`: this pane's own background is only
        30% opaque (the glassmorphism pass above), so a border on the edge
@@ -3330,8 +3336,8 @@ export function ChatPage() {
           host positioned over it, so the dock still tracks the chat
           column's left edge and width (e.g. when the plans rail toggles)
           exactly as if it had never left. */}
-      <div ref={composerAnchorRef} className="shrink-0" style={{ height: composerDockH || undefined }} aria-hidden="true" />
-      {createPortal(
+      {!isPhone ? <div ref={composerAnchorRef} className="shrink-0" style={{ height: composerDockH || undefined }} aria-hidden="true" /> : null}
+      {renderComposerDock(
         <div ref={composerDockRef} className="relative shrink-0 z-10" style={{ pointerEvents: 'auto' }}>
         {latestPill.mounted ? (
           <div className="pointer-events-none absolute bottom-full left-0 right-0 mb-4 flex justify-center">
@@ -3548,7 +3554,6 @@ export function ChatPage() {
         </div>
       </div>
       </div>,
-        portalHost
       )}
     </div>
   )
