@@ -1,0 +1,72 @@
+# Is the deployed site usable by a stranger?
+#
+# The Quality workflow proves the code is sound. This proves the thing running
+# at flexedacademy.com right now actually works — which is not the same
+# question, and the difference has already cost an outage: a bug shipped that
+# left every logged-out visitor on a blank boot screen while `/` returned 200,
+# /api/health returned ok, /api/health/ready returned ok, and Sentry saw
+# nothing because nothing threw. It was found by a person opening the site.
+#
+# Needs a real browser. The app is a single-page app, so `curl /` returns a
+# shell containing none of the landing page's words — any check that doesn't
+# execute JavaScript cannot catch this class of failure and would have stayed
+# green throughout. See scripts/smoke_production.mjs.
+#
+# BUDGET (this repo is private, so Actions minutes are capped at 2,000/month):
+# the playwright container is pre-baked, so a run is ~1 minute. The schedule
+# below is 8 runs/day plus one per deploy — roughly 300 runs and ~350 minutes
+# a month, well inside the allowance. Deliberately NOT every 10 minutes; the
+# point is to catch a bad deploy within hours instead of never, and a
+# tighter loop would spend the budget without changing that.
+name: Uptime
+
+on:
+  # After a deploy — when breakage actually happens. The outage this exists
+  # for shipped on a routine push to master.
+  workflow_run:
+    workflows: ["Quality"]
+    types: [completed]
+    branches: [master]
+  # And a few times a day, to catch anything that breaks without a deploy
+  # (an expired cert, a dead database, a Render incident).
+  schedule:
+    - cron: "0 12,15,18,21 * * *" # ~6am/9am/12pm/3pm US Central
+    - cron: "0 0,3 * * *" #  ~7pm/10pm US Central
+  workflow_dispatch:
+
+# A later run's result supersedes an in-flight one; no value in queueing them.
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    # Skip when the deploy that triggered this never succeeded — Quality
+    # failing means Render didn't ship anything, so the live site is whatever
+    # it already was and a failure here would just be noise pointing at the
+    # wrong commit. Scheduled and manual runs have no workflow_run to check.
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    # Browsers preinstalled — avoids ~60s of `playwright install` per run,
+    # which at this frequency is most of the cost.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.0-noble
+    steps:
+      - uses: actions/checkout@v5
+
+      # Render deploys on push and takes a minute or two. Checking immediately
+      # after Quality goes green would test the OLD build and, worse, could
+      # catch the instance mid-swap and report a failure that isn't real.
+      - name: Wait for the deploy to land
+        if: github.event_name == 'workflow_run'
+        run: sleep 120
+
+      - name: Install playwright
+        run: npm install --no-save playwright@1.56.0
+
+      - name: Smoke the live site
+        run: node scripts/smoke_production.mjs "$SMOKE_URL"
+        env:
+          SMOKE_URL: https://flexedacademy.com
