@@ -9,7 +9,7 @@ import {
 } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { motion, AnimatePresence, MotionConfig, useReducedMotion } from 'framer-motion'
 import { api } from './lib/api'
 import { onboardingDeferred } from './lib/onboardingWizardBus'
 import { useToast } from './lib/toastContext'
@@ -484,31 +484,33 @@ function BootMessage() {
 export default function App() {
   return (
     <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
-            <ToastProvider>
-              <ConfirmProvider>
-                <AuthProvider>
-                  {/* Inside AuthProvider: the entitlement rides on the user. */}
-                  <BillingProvider>
-                    <VoiceProvider>
-                      <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper-sunken font-sans text-ink relative">
-                        <div className="app-blob absolute inset-0 z-0" aria-hidden="true" />
-                        <BootMessage />
-                        <Suspense fallback={<BootScreen />}>
-                          <CommandPalette />
-                          <Gate />
-                        </Suspense>
-                      </div>
-                    </VoiceProvider>
-                  </BillingProvider>
-                </AuthProvider>
-              </ConfirmProvider>
-            </ToastProvider>
-          </BrowserRouter>
-        </QueryClientProvider>
-      </ErrorBoundary>
+      <MotionConfig reducedMotion="user">
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <BrowserRouter>
+              <ToastProvider>
+                <ConfirmProvider>
+                  <AuthProvider>
+                    {/* Inside AuthProvider: the entitlement rides on the user. */}
+                    <BillingProvider>
+                      <VoiceProvider>
+                        <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper-sunken font-sans text-ink relative">
+                          <div className="app-blob absolute inset-0 z-0" aria-hidden="true" />
+                          <BootMessage />
+                          <Suspense fallback={<BootScreen />}>
+                            <CommandPalette />
+                            <Gate />
+                          </Suspense>
+                        </div>
+                      </VoiceProvider>
+                    </BillingProvider>
+                  </AuthProvider>
+                </ConfirmProvider>
+              </ToastProvider>
+            </BrowserRouter>
+          </QueryClientProvider>
+        </ErrorBoundary>
+      </MotionConfig>
     </GoogleOAuthProvider>
   )
 }
