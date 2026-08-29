@@ -3160,6 +3160,28 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_document_build_jobs_ready
       ON document_build_jobs(status, available_at);
     """,
+    # ── 60: explicit AI output-length preference ────────────────────────────
+    # Response Length used to live only as a prose tag inside
+    # users.custom_instructions. That meant the model saw a suggestion but the
+    # API always allowed the same completion budget, and changing the tag could
+    # still hit a cached result made under a different budget. Keep the
+    # preference as data so generation can enforce it. The default preserves
+    # the current Medium behavior; the two backfills retain Short/Long choices
+    # already saved in the old tag form.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS output_length TEXT NOT NULL DEFAULT 'medium';
+    UPDATE users
+       SET output_length = 'short'
+     WHERE LOWER(COALESCE(custom_instructions, '')) LIKE '%[response length: short]%'
+       AND output_length = 'medium';
+    UPDATE users
+       SET output_length = 'long'
+     WHERE LOWER(COALESCE(custom_instructions, '')) LIKE '%[response length: long]%'
+       AND output_length = 'medium';
+    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_output_length_check;
+    ALTER TABLE users ADD CONSTRAINT users_output_length_check
+      CHECK (output_length IN ('short', 'medium', 'long'));
+    """,
 ]
 
 
@@ -5852,7 +5874,7 @@ def end_beta_account(user_id: str) -> None:
     )
 
 
-_USER_FIELDS = {"name", "custom_instructions", "school", "beta_features"}
+_USER_FIELDS = {"name", "custom_instructions", "school", "beta_features", "output_length"}
 
 
 def update_user(user_id: str, **fields: Any) -> dict | None:

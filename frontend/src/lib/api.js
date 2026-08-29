@@ -550,10 +550,16 @@ export const api = {
      A teacher has several preps. `subject` used to be the scoping token in
      every URL here, which is why two classes on the same framework collided. */
   /** The teacher's name, once for the whole app rather than per class. */
-  updateMe: ({ name, customInstructions, school, betaFeatures } = {}) =>
+  updateMe: ({ name, customInstructions, school, betaFeatures, outputLength } = {}) =>
     request('/api/me', {
       method: 'PATCH',
-      body: { name, custom_instructions: customInstructions, school, beta_features: betaFeatures },
+      body: {
+        name,
+        custom_instructions: customInstructions,
+        school,
+        beta_features: betaFeatures,
+        output_length: outputLength,
+      },
     }),
   /** Whitelisted schools for the settings page dropdown — one entry today. */
   listSchools: ({ signal } = {}) => request('/api/schools', { signal }),

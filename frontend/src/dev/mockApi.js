@@ -122,7 +122,7 @@ const state = {
   // onboarding_seen_at set (unlike a brand-new account) so preview.html lands
   // on the real app shell — App.jsx's ClassRoutes redirects to the onboarding
   // wizard for as long as this is unset, and nothing in this mock ever set it.
-  me: { name: 'Josh Cole', custom_instructions: '', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00' },
+  me: { name: 'Josh Cole', custom_instructions: '', output_length: 'medium', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00' },
   // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
@@ -434,6 +434,7 @@ export function installMockApi() {
         is_admin: true,
         has_password: true,
         custom_instructions: state.me.custom_instructions,
+        output_length: state.me.output_length,
         school: state.me.school,
         onboarding_seen_at: state.me.onboarding_seen_at,
         entitlement: state.entitlement,
@@ -550,12 +551,14 @@ export function installMockApi() {
       await wait(120)
       if (body?.name != null) state.me.name = body.name
       if (body?.custom_instructions != null) state.me.custom_instructions = body.custom_instructions
+      if (body?.output_length != null) state.me.output_length = body.output_length
       if (body?.school != null) state.me.school = body.school
       return json({
         id: 'u1',
         email: 'jc@x.org',
         name: state.me.name,
         custom_instructions: state.me.custom_instructions,
+        output_length: state.me.output_length,
         school: state.me.school,
       })
     }

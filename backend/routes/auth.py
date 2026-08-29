@@ -80,6 +80,7 @@ def _public_user(user: dict) -> dict:
         # frontend refetches the account from after any settings change.
         "custom_instructions": user.get("custom_instructions"),
         "school": user.get("school"),
+        "output_length": user.get("output_length") or "medium",
         # SettingsPage.jsx's "Enable Beta Features" toggle — gates Voice Mode
         # (ChatPage.jsx's openVoice) so a rollout-in-progress feature isn't on
         # by default for every account.

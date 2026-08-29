@@ -87,7 +87,7 @@ function DesignSkinSection() {
 }
 
 
-function AiGenerationPreferences({ value, onSaved }) {
+function AiGenerationPreferences({ value, outputLength, onSaved }) {
   const toast = useToast()
   const [saving, setSaving] = useState(false)
 
@@ -102,7 +102,9 @@ function AiGenerationPreferences({ value, onSaved }) {
     return match ? match[1].trim() : ''
   }
 
-  const length = getLevel('Response Length', 'Medium')
+  const legacyLength = getLevel('Response Length', 'Medium')
+  const length = String(outputLength || ({ Short: 'short', Medium: 'medium', Long: 'long' }[legacyLength] || 'medium')).toLowerCase()
+  const lengthLabel = length.charAt(0).toUpperCase() + length.slice(1)
   const detail = getLevel('Level of Detail', 'Standard')
   const examples = getLevel('Specific Examples', 'Some')
   const differentiation = getLevel('Differentiation', 'None')
@@ -122,15 +124,12 @@ function AiGenerationPreferences({ value, onSaved }) {
       
     const activeTags = []
     
-    const newLength = tag === 'Response Length' ? level : length
+    const newLength = tag === 'Response Length' ? level : lengthLabel
     const newDetail = tag === 'Level of Detail' ? level : detail
     const newExamples = tag === 'Specific Examples' ? level : examples
     const newDiff = tag === 'Differentiation' ? level : differentiation
     const newProfile = tag === 'Classroom Profile' ? customProfileText : profileText
 
-    if (newLength !== 'Medium') {
-      activeTags.push(`[Response Length: ${newLength}] ${newLength === 'Short' ? 'Keep responses brief and to the point.' : 'Provide extended, comprehensive answers.'}`)
-    }
     if (newDetail !== 'Standard') {
       activeTags.push(`[Level of Detail: ${newDetail}] ${newDetail === 'Concise' ? 'Focus strictly on the main points without extra fluff.' : 'Break down concepts thoroughly and exhaustively.'}`)
     }
@@ -150,7 +149,10 @@ function AiGenerationPreferences({ value, onSaved }) {
     }
 
     try {
-      await api.updateMe({ customInstructions: baseInstructions })
+      await api.updateMe({
+        customInstructions: baseInstructions,
+        outputLength: newLength.toLowerCase(),
+      })
       if (tag !== 'Classroom Profile') toast.success(`Updated ${tag}`)
       else toast.success('Saved Classroom Profile')
       onSaved?.()
@@ -207,7 +209,7 @@ function AiGenerationPreferences({ value, onSaved }) {
         description="How long the AI's generated narratives and plans should be."
         tag="Response Length"
         options={['Short', 'Medium', 'Long']}
-        currentValue={length}
+        currentValue={lengthLabel}
       />
       <Slider 
         title="Level of Detail" 
@@ -1305,6 +1307,7 @@ export function SettingsPage() {
                 />
                 <AiGenerationPreferences
                   value={meState.data?.custom_instructions}
+                  outputLength={meState.data?.output_length}
                   onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
                 />
               </section>

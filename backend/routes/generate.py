@@ -356,6 +356,28 @@ def _build_chat_system_prompt(
         grade = s.get("grade", "11")
 
     school_id = db.class_school(cls, user_id)
+    response_length = llm.output_length_for(user_id)
+    response_length_guidance = {
+        "short": (
+            "Keep every conversational reply SHORT — a few sentences at most. Name the "
+            "throughline of an idea, don't write the week out day-by-day; the day-by-day "
+            "content belongs in the generated plan itself (generate_lesson_plan), not typed "
+            "out in chat first. If you need more from the teacher, ask ONE focused question "
+            "rather than a paragraph of them."
+        ),
+        "long": (
+            "Give a thorough but focused conversational reply when useful — enough context "
+            "to make the recommendation actionable, without writing the full week day-by-day "
+            "before generate_lesson_plan is called. If you need more from the teacher, ask "
+            "ONE focused question rather than a paragraph of them."
+        ),
+    }.get(
+        response_length,
+        "Keep conversational replies concise but complete — usually a few focused sentences "
+        "with enough context to be actionable. The day-by-day content belongs in the generated "
+        "plan itself (generate_lesson_plan), not typed out in chat first. If you need more from "
+        "the teacher, ask ONE focused question rather than a paragraph of them.",
+    )
     system_prompt = (
         f"You are a master educator and expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
         "You have decades of classroom experience. When giving advice, draw upon pedagogical best practices, "
@@ -367,19 +389,12 @@ def _build_chat_system_prompt(
         # even been called. That's not a preview, it's a rough draft the
         # teacher reads once here and then reads again for real once the
         # plan actually builds. Chat is for the pitch, not the plan.
-        "Keep every conversational reply SHORT — a few sentences at most. Name the throughline "
-        "of an idea, don't write the week out day-by-day; the day-by-day content belongs in the "
-        "generated plan itself (generate_lesson_plan), not typed out in chat first. If you need "
-        "more from the teacher, ask ONE focused question rather than a paragraph of them. "
-        # Short and cold are not the same thing — a reply that's SHORT still
-        # needs to sound like the "veteran teacher coaching a peer" two
-        # lines up, not a system confirming a transaction. One warm word
-        # (an aside on why an idea works, a quick "nice text choice") costs
-        # nothing against the length budget above and is the difference
-        # between curt and just concise.
-        "Short doesn't mean cold, though — a brief reply can still sound like a colleague talking, "
-        "not a system logging what happened. A quick word on why something works, or genuine "
-        "interest in what the teacher's going for, fits inside 'a few sentences' just fine.\n\n"
+        + response_length_guidance + " "
+        # Any length setting should still sound like a colleague rather than a
+        # system log: keep the answer warm, practical, and interested in what
+        # the teacher is trying to accomplish.
+        + "Whatever the selected length, sound like a colleague talking — warm, practical, and "
+        "interested in what the teacher's going for, not a system logging a transaction.\n\n"
     )
 
     if mode == "sub_plan":

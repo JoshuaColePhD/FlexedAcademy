@@ -164,6 +164,37 @@ def _class_custom_instructions_block(class_custom_instructions: str | None) -> s
     )
 
 
+def output_length_block(output_length: str = "medium") -> str:
+    """Give the model a calibrated target without weakening required fields.
+
+    The API also enforces the matching completion ceiling. This wording keeps
+    the model from treating a lower ceiling as permission to omit required
+    day fields or standards. Medium is calibrated from the latest Florence
+    plans: 1,493–2,097 raw JSON tokens, median 1,793.
+    """
+    level = str(output_length or "medium").strip().lower()
+    if level == "short":
+        target = (
+            "Keep narrative fields compact and classroom-ready, usually one or two concise "
+            "sentences per activity field while still completing every required field."
+        )
+    elif level == "long":
+        target = (
+            "Use the available space for fuller, highly specific activity directions, "
+            "differentiation, and assessment details without repeating yourself."
+        )
+    else:
+        target = (
+            "Aim for the normal Florence lesson-plan size: about 1,750–1,900 completion "
+            "tokens for the structured plan, with practical detail and no filler."
+        )
+    return (
+        "OUTPUT LENGTH PREFERENCE — this is a response-size target, not permission to "
+        "omit required schema fields or standards. "
+        + target
+    )
+
+
 def _coverage_notice(result: RetrievalResult) -> str:
     if result.thin:
         return (
@@ -183,6 +214,7 @@ def week_system_prompt(
     custom_instructions: str | None = None,
     class_custom_instructions: str | None = None,
     school_id: str = "florence-high-school",
+    output_length: str = "medium",
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
 
@@ -194,6 +226,7 @@ def week_system_prompt(
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
+        output_length_block(output_length),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
@@ -259,6 +292,7 @@ def day_system_prompt(
     grade: str = "11",
     custom_instructions: str | None = None,
     class_custom_instructions: str | None = None,
+    output_length: str = "medium",
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
 
@@ -269,6 +303,7 @@ def day_system_prompt(
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
+        output_length_block(output_length),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"

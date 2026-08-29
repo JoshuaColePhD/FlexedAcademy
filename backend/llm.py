@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -26,7 +27,7 @@ from . import curriculum, db
 from .config import settings
 from .embeddings import embed_query
 from .errors import AppError
-from .prompts import day_field_system_prompt, day_system_prompt, week_system_prompt
+from .prompts import day_field_system_prompt, day_system_prompt, output_length_block, week_system_prompt
 from .retrieval import RetrievalResult
 from .schema import (
     BUILDER_LAYOUT_JSON_SCHEMA,
@@ -51,6 +52,21 @@ log = logging.getLogger("flexedacademy.llm")
 # max_retries=2 (the SDK default) still applies underneath this, for the
 # connection-level errors it retries before it ever reaches our code.
 _REQUEST_TIMEOUT_S = 30.0
+
+# The latest twelve Florence plans (Aug 21–27, 2026) used 1,493–2,097 raw
+# completion tokens, with a median of 1,793 and a mean of 1,791. Medium is
+# therefore a 2,200-token ceiling: it contains the observed normal range plus
+# modest room for a longer week without returning to the old 4,000-token cap.
+# Short and Long are intentionally separated enough to be perceptible while
+# leaving room for the strict five-day JSON shape. Short stays just above the
+# shortest observed valid Florence plan so reducing verbosity cannot make the
+# structured response fail JSON validation.
+OUTPUT_LENGTH_BUDGETS = {
+    "short": 1_600,
+    "medium": 2_200,
+    "long": 3_600,
+}
+_OUTPUT_LENGTH_VALUES = frozenset(OUTPUT_LENGTH_BUDGETS)
 
 # retrieve_map_context is a nice-to-have supplement, not something the teacher
 # is aware is even running — it must never be the reason a chat reply is slow
@@ -171,6 +187,28 @@ def custom_instructions_for(user_id: str) -> str | None:
     return user.get("custom_instructions") if user else None
 
 
+def output_length_for(user_id: str) -> str:
+    """Return the account's canonical output-length preference.
+
+    The migration stores this explicitly. The tag fallback is retained for a
+    partially migrated deployment or an old account row read before migration
+    60 completes, so an existing Short/Long choice never silently becomes
+    Medium during a rolling deploy.
+    """
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return "medium"
+    value = str(user.get("output_length") or "").strip().lower()
+    if value in _OUTPUT_LENGTH_VALUES:
+        return value
+    match = re.search(r"\[response length:\s*(short|medium|long)\]", user.get("custom_instructions") or "", re.I)
+    return match.group(1).lower() if match else "medium"
+
+
+def output_length_tokens_for(user_id: str) -> int:
+    return OUTPUT_LENGTH_BUDGETS[output_length_for(user_id)]
+
+
 def class_custom_instructions_for(user_id: str, class_id: str | None) -> str | None:
     """The per-class layer on top of custom_instructions_for — one column on
     `classes` (migration 44), additive to the account-wide instructions
@@ -195,6 +233,10 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
         "temperature": temperature,
         "messages": messages,
         "response_format": response_format,
+        # The same prompt under Short/Medium/Long must not share a cached
+        # completion. This was omitted when output length was only prose and
+        # made a later budget change appear to do nothing for cached prompts.
+        "max_completion_tokens": kwargs.get("max_completion_tokens"),
     }
     hash_key = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
     
@@ -223,11 +265,12 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     would otherwise get the wrong one named in its own prompt."""
     s = db.get_settings_row(user_id)
     map_context = map_context_for(user_id, s["subject"], query, class_id=class_id)
+    output_length = output_length_for(user_id)
     content = _cached_completion(
         user_id,
         "generate_plan",
         model=settings.openai_model,
-        max_completion_tokens=4000,
+        max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
@@ -240,6 +283,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,
+                    output_length=output_length,
                 ),
             },
             {"role": "user", "content": query},
@@ -255,9 +299,10 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
     rather than resolved internally."""
     s = db.get_settings_row(user_id)
     map_context = map_context_for(user_id, s["subject"], query, class_id=class_id)
+    output_length = output_length_for(user_id)
     stream = client().chat.completions.create(
         model=settings.openai_model,
-        max_completion_tokens=4000,
+        max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
@@ -270,6 +315,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,
+                    output_length=output_length,
                 ),
             },
             {"role": "user", "content": query},
@@ -475,11 +521,12 @@ def rewrite_day(
     string — so a rewritten day could not be merged back into the week.
     """
     s = db.get_settings_row(user_id)
+    output_length = output_length_for(user_id)
     content = _cached_completion(
         user_id,
         "rewrite_day",
         model=settings.openai_model,
-        max_completion_tokens=1600,
+        max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
         response_format=_response_format("lesson_plan_day", DAY_JSON_SCHEMA),
         messages=[
             {
@@ -491,6 +538,7 @@ def rewrite_day(
                     grade=s["grade"],
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
+                    output_length=output_length,
                 ),
             },
             {
@@ -588,6 +636,7 @@ def critique_and_revise(
     just asked for is the most annoying possible behaviour.
     """
     s = db.get_settings_row(user_id)
+    output_length = output_length_for(user_id)
 
     if feedback:
         instruction = (
@@ -605,13 +654,13 @@ def critique_and_revise(
         user_id,
         "critique_and_revise",
         model=settings.openai_model,
-        max_completion_tokens=4000,
+        max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
                 "role": "system",
                 "content": (
-                    f"{instruction}\n\n"
+                    f"{instruction}\n\n{output_length_block(output_length)}\n\n"
                     f"Subject: {s['subject']} (Grade {s['grade']})\n\n"
                     f"Retrieved Standards Context:\n{retrieved_context}"
                 )
@@ -1475,10 +1524,10 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
         # and only accepts minimal/low/medium/high, so every hands-free turn
         # 400'd. "minimal" is the lowest tier it does accept.
         reasoning_effort="minimal" if voice else "none",
-        # Voice replies are deliberately short; the lower ceiling keeps a
-        # routing turn from spending time generating an essay before its first
-        # sentence can reach the browser.
-        max_completion_tokens=700 if voice else 4000,
+        # Voice replies stay deliberately short. Written chat follows the
+        # same persisted preference as lesson-plan generation, so this setting
+        # is no longer a prompt-only suggestion on either surface.
+        max_completion_tokens=700 if voice else output_length_tokens_for(user_id),
         messages=messages,
         stream=True,
         tools=CHAT_TOOLS,

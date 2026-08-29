@@ -6,6 +6,7 @@ class is what you plan for, and the week board is what there is left to plan.
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -112,6 +113,9 @@ class MeBody(BaseModel):
     # today (ChatPage.jsx's openVoice). `bool | None` rather than `bool`
     # so an unrelated PATCH (e.g. just `name`) doesn't have to resend it.
     beta_features: bool | None = Field(default=None)
+    # Explicit generation control, separate from free-form custom
+    # instructions. Lower-case values match the persisted database contract.
+    output_length: Literal["short", "medium", "long"] | None = Field(default=None)
 
 
 @router.get("/schools")
@@ -155,7 +159,7 @@ def list_schools_route() -> list[dict]:
 
 @router.patch("/me")
 def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> dict:
-    """Set the teacher's name/custom instructions/school — whichever the
+    """Set the teacher's name/custom instructions/school/output length — whichever the
     caller sent, independently (db.update_user's own whitelist).
 
     `school` is checked against the live `schools` table here, in the
@@ -185,6 +189,7 @@ def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> d
         "custom_instructions": user.get("custom_instructions"),
         "school": user.get("school"),
         "beta_features": bool(user.get("beta_features")),
+        "output_length": user.get("output_length") or "medium",
     }
 
 
