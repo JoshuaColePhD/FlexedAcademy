@@ -48,10 +48,12 @@ import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 
-/* 127.0.0.1, not localhost: vite binds IPv4 only, and in the CI playwright
-   container node resolves localhost to ::1 first — which cost a whole run to a
-   readiness poll that could not reach a server that was already up. Local runs
-   use the same address so the two cannot diverge again. */
+/* A literal address, not the name "localhost". Vite's default host is that
+   name, and which stack it resolves to differs between the CI container and a
+   laptop — server bound one address, poller knocked on the other, sixty
+   seconds of ECONNREFUSED against a server that had just printed "ready".
+   The CI job binds vite to this same literal address (quality.yml), so nothing
+   on either end has to resolve a name. */
 const BASE = (process.env.BUTTONS_BASE || 'http://127.0.0.1:5174').replace(/\/$/, '')
 const NAV_TIMEOUT_MS = 30_000
 
@@ -309,7 +311,17 @@ const enumerate = async (page) => {
            nothing there to click. A button a person cannot hit is not a button
            under test. */
         const box = el.getBoundingClientRect()
-        const visible = box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'
+        const onScreen = box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'
+        /* Laid out, but is anything on top of it? The sidebar's swipe actions
+           ("Delete <chat>") are rendered UNDERNEATH their row and revealed by
+           dragging, so they have a real box while being genuinely unclickable
+           — and Playwright, correctly, waits five seconds for a click that can
+           never land and then reports a timeout. Asking who is actually at the
+           button's centre gets the same answer in one call, and lets the crawl
+           say "unreachable in this state" instead of "broken". */
+        const at = onScreen ? document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) : null
+        const covered = onScreen && !(at === el || el.contains(at))
+        const visible = onScreen && !covered
         // For reporting, and for finding this button again after a reload —
         // not for locating it. See the probe id above.
         const name = (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '')
@@ -320,7 +332,7 @@ const enumerate = async (page) => {
           ordinal = seen.get(name) ?? 0
           seen.set(name, ordinal + 1)
         }
-        return { probe: i, name, ordinal, visible, disabled: el.disabled || el.getAttribute('aria-disabled') === 'true' }
+        return { probe: i, name, ordinal, visible, covered, disabled: el.disabled || el.getAttribute('aria-disabled') === 'true' }
       })
     },
     PROBE
@@ -385,6 +397,17 @@ describe('buttons', { concurrency: 4 }, () => {
         )
 
         const clickable = initial.filter((b) => b.visible && !b.disabled)
+        /* Said out loud rather than silently dropped: a button nothing can
+           reach is a button this crawl did not test, and the number belongs in
+           the record next to the number it did. A jump here is the signal that
+           an overlay started swallowing clicks. */
+        const covered = initial.filter((b) => b.covered)
+        if (covered.length) {
+          console.log(
+            `  ${route.at}: ${clickable.length} clicked, ${covered.length} unreachable behind another element ` +
+              `(${[...new Set(covered.map((b) => b.name))].slice(0, 4).join(', ')})`
+          )
+        }
         const failures = []
 
         for (const target of clickable) {
