@@ -76,6 +76,7 @@ export function ArtifactPanel({
   flashCells,
   openTweak,
   setOpenTweak,
+  mobileReader = false,
 }) {
   const [shareOpen, setShareOpen] = useState(false)
   const [completionPulse, setCompletionPulse] = useState(false)
@@ -118,7 +119,10 @@ const location = useLocation()
      dialog. `isPhone` still decides what SHAPE the document takes (days vs.
      the district table) — that's a real, ongoing distinction; whether the
      panel COVERS the chat stopped being one. */
-  const isOverlay = true
+  // Phone plans are rendered as a destination in the app, rather than a
+  // dialog layered over chat. That keeps the reader's semantics and scroll
+  // behavior honest without changing the desktop document surface.
+  const isOverlay = !mobileReader
   const isPhone = useLayoutMode() === 'phone'
 
   // Days is the phone shape — the district table has a min-width and a
@@ -133,7 +137,7 @@ const location = useLocation()
      down in the input is already too late. Cancelling a two-word tweak used to
      throw away the whole document you were working in. */
   useFocusTrap(panelRef, {
-    active: true,
+    active: !mobileReader,
     trap: isOverlay,
     initialFocus: titleRef,
     onEscape: () => {
@@ -177,7 +181,7 @@ const location = useLocation()
 
   return (
     <section
-      className={`doc-shell${completionPulse ? ' fa-shadow-lift' : ''}${isFullscreen ? ' is-fullscreen' : ''}`}
+      className={`doc-shell${completionPulse ? ' fa-shadow-lift' : ''}${isFullscreen ? ' is-fullscreen' : ''}${mobileReader ? ' is-mobile-reader' : ''}`}
       aria-label="Generated lesson plan"
       ref={panelRef}
       tabIndex={-1}
@@ -257,15 +261,17 @@ const location = useLocation()
             </span>
           )}
 
-          <button
-            type="button"
-            className="btn-icon fa-press ml-1"
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          >
-            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
+          {!mobileReader ? (
+            <button
+              type="button"
+              className="btn-icon fa-press ml-1"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+          ) : null}
 
           <button
             type="button"

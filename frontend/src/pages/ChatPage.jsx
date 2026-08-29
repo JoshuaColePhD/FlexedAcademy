@@ -2626,13 +2626,16 @@ export function ChatPage() {
      had to be kept in sync. */
   const overlayOpen = expanded && hasArtifact
   const overlayExit = useExitTransition(overlayOpen, 130)
+  const mobileReaderOpen = isPhone && viewKind === 'plan' && overlayExit.mounted
   // See overlayPortalHost's own creation comment: this host spans the full
   // viewport (or the docked box) at all times, so it must stop intercepting
   // clicks the instant there's nothing shown inside it, not just while it's
   // sized to zero.
   useEffect(() => {
-    overlayPortalHost.style.pointerEvents = overlayExit.mounted ? 'auto' : 'none'
-  }, [overlayExit.mounted, overlayPortalHost])
+    // The phone reader lives in ChatPage's normal tree. Its unused desktop
+    // portal must remain inert or it can sit above the reader and eat taps.
+    overlayPortalHost.style.pointerEvents = overlayExit.mounted && !mobileReaderOpen ? 'auto' : 'none'
+  }, [mobileReaderOpen, overlayExit.mounted, overlayPortalHost])
   /* Measured live (rAF timestamps during the slide-in): the animation
      itself was a rock-solid ~13ms/frame for its whole duration, EXCEPT the
      first two frames (26.7ms, then 39.9ms) — that's not the CSS transform
@@ -2935,6 +2938,7 @@ export function ChatPage() {
         setOpenTweak={setOpenTweak}
         flashCells={flashCells}
         onFullscreenChange={setArtifactFullscreen}
+        mobileReader={isPhone && viewKind === 'plan'}
       />
     ) : (
       <ArtifactDetailPanel
@@ -3577,6 +3581,17 @@ export function ChatPage() {
     return <MobileChatHome onNavigate={() => setMobileShowHome(false)} />
   }
 
+  // On a phone, a lesson plan is a place to go, not a sheet competing with
+  // chat, keyboard, and composer layers. This provides one predictable
+  // vertical scroll surface while keeping the same plan data and actions.
+  if (mobileReaderOpen) {
+    return (
+      <main className={`mobile-plan-reader${overlayExit.closing ? ' is-closing' : ''}`}>
+        {artifactEl}
+      </main>
+    )
+  }
+
   /* The chat pane keeps the SAME slot in the SAME parent in every state — only
      its width changes. Moving it between containers would remount the Composer,
      and the Composer owns a MediaRecorder and a ResizeObserver that do not
@@ -3683,7 +3698,7 @@ export function ChatPage() {
           itself is resized to either #main's own box (docked) or the true
           viewport (fullscreen), so .artifact-overlay's own offsets
           (base.css) keep working unchanged either way. */}
-      {overlayExit.mounted
+      {overlayExit.mounted && !mobileReaderOpen
         ? createPortal(
             <>
               <button
