@@ -319,8 +319,18 @@ const enumerate = async (page) => {
            never land and then reports a timeout. Asking who is actually at the
            button's centre gets the same answer in one call, and lets the crawl
            say "unreachable in this state" instead of "broken". */
-        const at = onScreen ? document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) : null
-        const covered = onScreen && !(at === el || el.contains(at))
+        const cx = box.left + box.width / 2
+        const cy = box.top + box.height / 2
+        /* elementFromPoint takes VIEWPORT coordinates and answers null for
+           anything outside them — so a button scrolled below the fold reads as
+           covered when it is merely further down. The artifact rail is a
+           scrolling panel and reported four perfectly good accordion headers
+           that way. Off-screen means "cannot tell from here", and Playwright
+           scrolls it into view before clicking anyway, so the honest answer is
+           to leave it in the crawl. */
+        const inViewport = cx >= 0 && cy >= 0 && cx <= window.innerWidth && cy <= window.innerHeight
+        const at = onScreen && inViewport ? document.elementFromPoint(cx, cy) : null
+        const covered = onScreen && inViewport && !(at === el || el.contains(at))
         const visible = onScreen && !covered
         // For reporting, and for finding this button again after a reload —
         // not for locating it. See the probe id above.
