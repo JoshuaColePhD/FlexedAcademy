@@ -371,6 +371,27 @@ const enumerate = async (page) => {
 
 const locate = (page, b) => page.locator(`[${PROBE}="${b.probe}"]`)
 
+/* Is something on top of this button right now, with it scrolled into view?
+   The same question enumerate asks, asked again at the point of failure and
+   after the scroll Playwright would have done itself. Anything it cannot
+   determine answers false — "not proven unreachable" — so a genuine failure is
+   never explained away by this. */
+async function coveredNow(page, b) {
+  const el = locate(page, b)
+  await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {})
+  return el
+    .evaluate((node) => {
+      const box = node.getBoundingClientRect()
+      if (!box.width || !box.height) return false
+      const cx = box.left + box.width / 2
+      const cy = box.top + box.height / 2
+      if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return false
+      const at = document.elementFromPoint(cx, cy)
+      return !(at === node || node.contains(at))
+    })
+    .catch(() => false)
+}
+
 /* Did the page move? One definition, used by both the click loop and the
    keyboard check — they had two, and when signature()'s fields were renamed
    only one of them was updated. The stale copy compared undefined to undefined
@@ -460,6 +481,7 @@ describe('buttons', { concurrency: 4 }, () => {
         }
         const failures = []
         const leftHarness = []
+        const leftUnreachable = []
 
         for (const target of clickable) {
           // Re-resolve by name each time: an earlier click may have re-rendered
@@ -505,6 +527,18 @@ describe('buttons', { concurrency: 4 }, () => {
               if (attempt === 0 && fresh) {
                 match = fresh
                 continue
+              }
+              /* Last look before calling it broken: is something on top of it
+                 NOW? The enumerate-time coverage check can only answer for
+                 buttons already in the viewport, and the sidebar's swipe
+                 actions sit below the fold — so they come back "cannot tell",
+                 join the crawl, and only become unreachable once Playwright
+                 scrolls them into view and their own row is over them. That
+                 read as a ten-second timeout, and it was the last thing making
+                 this suite flaky between a laptop and CI. */
+              if (await coveredNow(page, match)) {
+                leftUnreachable.push(target.name)
+                break
               }
               failures.push(`"${target.name}" — click failed: ${err.message.split('\n')[0]}`)
               break
@@ -591,6 +625,12 @@ describe('buttons', { concurrency: 4 }, () => {
           }
         }
 
+        if (leftUnreachable.length) {
+          console.log(
+            `  ${route.at}: ${leftUnreachable.length} became unreachable once scrolled into view ` +
+              `(${[...new Set(leftUnreachable)].slice(0, 4).join(', ')})`
+          )
+        }
         if (leftHarness.length) {
           console.log(`  ${route.at}: ${leftHarness.length} navigated out of the harness (${[...new Set(leftHarness)].join(', ')})`)
         }
