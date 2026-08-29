@@ -268,51 +268,66 @@ const signature = (page) =>
     }
   })
 
-/* Every enabled, visible button on the page right now.
+/* Every enabled, visible button on the page right now, each STAMPED with a
+ * probe id it is then clicked through.
  *
- * Each carries its accessible name and its ORDINAL among visible buttons
- * sharing that name — which is what a click resolves through, not the DOM
- * index. The index is a snapshot, and on a page still settling (the admin page
- * mounts eight independent queries) a re-render between enumerating and
- * clicking shifts it, so the click lands on a neighbour and the neighbour gets
- * blamed. That is what reported all five admin sort headers as dead buttons
- * while clicking them by hand changed the table every time. A Playwright
- * locator resolves at action time instead, so the race has nowhere to happen.
+ * Two wrong answers came before this one. Clicking by DOM index is racy: the
+ * index is a snapshot, and on a page still settling (the admin page mounts
+ * eight independent queries) a re-render between enumerating and clicking
+ * shifts every index after the one that moved, so the click lands on a
+ * neighbour and the neighbour gets blamed — that is what reported all five
+ * admin sort headers as dead while clicking them by hand reordered the table
+ * every time.
+ *
+ * Clicking by getByRole name is worse in a subtler way: it asks Playwright to
+ * re-derive the accessible name and match the one computed here, and the two
+ * algorithms disagree. Playwright separates the text of child elements with a
+ * space; textContent does not. "Review Week 3's plan" + "Built and ready for a
+ * second pass." concatenates to "…planBuilt and ready…", which matches nothing,
+ * and the button reads as a click timeout rather than a naming mismatch.
+ *
+ * So: stamp a probe id in the same pass that reads the button, and click
+ * through that. It resolves at action time like a name locator, but the
+ * attribute is ours and nothing has to agree about it. If a re-render replaced
+ * the node between the stamp and the click, the locator matches nothing and
+ * Playwright says so — a clean miss, never a click on the wrong element.
  */
+const PROBE = 'data-btn-probe'
+
 const enumerate = async (page) => {
-  const found = await page.$$eval('button', (els) => {
-    const seen = new Map()
-    return els.map((el) => {
-      const style = getComputedStyle(el)
-      /* A zero-height box counts as not visible. offsetParent alone said yes
-         to the sign-in page's collapsed "forgot password" panel, whose Send
-         link button is in the DOM at height 0 behind a framer-motion collapse
-         — and a click on it never resolved, because there is nothing there to
-         click. A button a person cannot hit is not a button under test. */
-      const box = el.getBoundingClientRect()
-      const visible = box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'
-      // Same precedence the accessibility tree uses for these three, which is
-      // all this app relies on: aria-label, then title, then contents.
-      const name = (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '')
-        .replace(/\s+/g, ' ')
-        .trim()
-      let ordinal = -1
-      if (visible) {
-        ordinal = seen.get(name) ?? 0
-        seen.set(name, ordinal + 1)
-      }
-      return { name, ordinal, visible, disabled: el.disabled || el.getAttribute('aria-disabled') === 'true' }
-    })
-  })
-  return found
+  return page.$$eval(
+    'button',
+    (els, probe) => {
+      const seen = new Map()
+      return els.map((el, i) => {
+        el.setAttribute(probe, String(i))
+        const style = getComputedStyle(el)
+        /* A zero-height box counts as not visible. offsetParent alone said yes
+           to the sign-in page's collapsed "forgot password" panel, whose Send
+           link button is in the DOM at height 0 behind a framer-motion
+           collapse — and a click on it never resolved, because there is
+           nothing there to click. A button a person cannot hit is not a button
+           under test. */
+        const box = el.getBoundingClientRect()
+        const visible = box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'
+        // For reporting, and for finding this button again after a reload —
+        // not for locating it. See the probe id above.
+        const name = (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+        let ordinal = -1
+        if (visible) {
+          ordinal = seen.get(name) ?? 0
+          seen.set(name, ordinal + 1)
+        }
+        return { probe: i, name, ordinal, visible, disabled: el.disabled || el.getAttribute('aria-disabled') === 'true' }
+      })
+    },
+    PROBE
+  )
 }
 
-/* The locator for one enumerated button. `filter({ visible: true })` keeps the
-   ordinal counting the same buttons enumerate counted — the app renders a
-   desktop table and a mobile card list from the same data, so half the
-   same-named buttons on a page are hidden at any width. */
-const locate = (page, b) =>
-  page.getByRole('button', { name: b.name, exact: true }).filter({ visible: true }).nth(b.ordinal)
+const locate = (page, b) => page.locator(`[${PROBE}="${b.probe}"]`)
 
 /* Did the page move? One definition, used by both the click loop and the
    keyboard check — they had two, and when signature()'s fields were renamed
@@ -365,7 +380,7 @@ describe('buttons', { concurrency: 4 }, () => {
           nameless.length,
           0,
           `${route.at}: ${nameless.length} visible button(s) with no accessible name ` +
-            `(index ${nameless.map((b) => b.index).join(', ')}). Add an aria-label — an icon ` +
+            `(button ${nameless.map((b) => b.probe).join(', ')} in DOM order). Add an aria-label — an icon ` +
             `alone names nothing for a screen reader.`
         )
 
