@@ -209,7 +209,7 @@ async function openPage(route) {
    container, so the window never moves and scrollY never changes. Any
    "jump to" control in a scrollable pane is the same shape. */
 const signature = (page) =>
-  page.evaluate(() => {
+  safeEval(page, () => {
     /* ONE pass over the document. The first version made six separate
        querySelectorAll calls plus a document.body.innerHTML read, twice per
        button — innerHTML serialises the entire tree into a string, and on the
@@ -232,6 +232,15 @@ const signature = (page) =>
     for (const el of document.getElementsByTagName('*')) {
       elements++
       scroll += el.scrollTop + el.scrollLeft
+      /* Tag name first, so this is a STRUCTURAL hash and not just an aggregate
+         one. The admin sort headers are why: with the account list filtered
+         down, sorting cannot reorder rows, and the only thing that moves is
+         the chevron — one <svg> leaving one <th> and appearing in another.
+         Element count, class set and text are all identical before and after,
+         so every count-based signature called five working headers dead.
+         Hashing tags in document order sees the move. */
+      const tag = el.tagName
+      for (let i = 0; i < tag.length; i++) classes = (classes * 31 + tag.charCodeAt(i)) | 0
       const cn = typeof el.className === 'string' ? el.className : ''
       for (let i = 0; i < cn.length; i++) classes = (classes * 31 + cn.charCodeAt(i)) | 0
       /* Inline style too, because framer-motion animates through it rather
@@ -367,11 +376,31 @@ const changed = (before, after) => Object.keys(before).some((k) => k !== 'crashe
 async function settle(page) {
   let last = -1
   for (let i = 0; i < 12; i++) {
-    const n = await page.evaluate(() => (window.__mock?.calls || []).length)
+    const n = await safeEval(page, () => (window.__mock?.calls || []).length, 0)
     if (n === last && i > 0) return
     last = n
     await page.waitForTimeout(i === 0 ? 200 : 150)
   }
+}
+
+/* page.evaluate, for the window in which the page may be navigating.
+ *
+ * Some of these buttons navigate — "Sign out everywhere", the Stripe checkout
+ * redirect — and an evaluate that lands mid-navigation throws "Execution
+ * context was destroyed", which failed the whole settings route on a button
+ * that was doing exactly what it should. Wait for the new document and ask
+ * again; a click that navigates is a click that worked. */
+async function safeEval(page, fn, fallback) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await page.evaluate(fn)
+    } catch (err) {
+      if (!/Execution context was destroyed|Target closed|navigation/i.test(err.message)) throw err
+      await page.waitForLoadState('domcontentloaded').catch(() => {})
+      await page.waitForTimeout(300)
+    }
+  }
+  return fallback
 }
 
 /* BUTTONS_ROUTE narrows the run to routes whose path contains it. Iterating on
@@ -440,7 +469,12 @@ describe('buttons', { concurrency: 4 }, () => {
           const before = await signature(page)
 
           try {
-            await locate(page, match).click({ timeout: 5000, noWaitAfter: true })
+            // 10s, not 5. Four routes crawl at once and a click that has to
+            // wait its turn for a busy renderer is not a click that failed —
+            // "Download or Share" timed out under concurrency and passed every
+            // time its route ran alone. A timeout only costs time when it
+            // fires, so a generous one is free on the happy path.
+            await locate(page, match).click({ timeout: 10_000, noWaitAfter: true })
           } catch (err) {
             failures.push(`"${target.name}" — click failed: ${err.message.split('\n')[0]}`)
             continue
@@ -514,9 +548,18 @@ describe('buttons', { concurrency: 4 }, () => {
 test('buttons respond to the keyboard, not only the mouse', async () => {
   const { context, page } = await openPage({ at: '/c/c1' })
   try {
-    const names = (await enumerate(page)).filter((b) => b.visible && !b.disabled).slice(0, 8)
+    const sample = (await enumerate(page)).filter((b) => b.visible && !b.disabled).slice(0, 8)
     const failures = []
-    for (const b of names) {
+    for (const target of sample) {
+      /* Re-enumerated every iteration, and matched by name — the probe ids are
+         stamped onto the nodes that existed at the time, and the previous
+         Enter re-rendered some of them away. Reusing the first pass's ids
+         timed out waiting for an element React had already replaced, which
+         read as a broken test rather than a stale handle. */
+      const b = (await enumerate(page)).find(
+        (x) => x.name === target.name && x.ordinal === target.ordinal && x.visible && !x.disabled
+      )
+      if (!b) continue
       await page.evaluate(() => window.__mock?.reset?.())
       const before = await signature(page)
       await locate(page, b).focus()
