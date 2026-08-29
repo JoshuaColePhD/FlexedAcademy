@@ -598,7 +598,12 @@
     gap: var(--sp-3);
     overflow-x: auto;
     scroll-snap-type: x mandatory;
-    touch-action: pan-x pinch-zoom;
+    /* A day card fills most of the phone sheet. Restricting it to pan-x
+       prevented a vertical drag that began on the card from reaching
+       .doc-body, leaving the rest of the lesson plan inaccessible. Native
+       scroll routing still sends horizontal motion to this rail and vertical
+       motion to the document body when both axes are permitted. */
+    touch-action: pan-x pan-y pinch-zoom;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
   }
