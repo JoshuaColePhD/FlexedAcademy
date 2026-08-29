@@ -68,16 +68,20 @@ jobs:
         # curl, which this image does not promise to ship — node is the one
         # thing the job cannot be missing.
         #
-        # 127.0.0.1, NOT localhost. Vite binds IPv4 only, and node's fetch
-        # resolves localhost to ::1 first inside this container — so the poll
-        # spent its full sixty seconds failing to reach a server that had
-        # printed "ready in 405 ms" one line earlier, and the suite never ran.
-        # The error is printed now rather than swallowed, so the next version
-        # of that mistake says what it was.
+        # `--host 127.0.0.1` is the point, not decoration. Vite's default host
+        # is the NAME "localhost", and which stack that resolves to differs
+        # between this container and a laptop — two runs were lost to a poll
+        # getting ECONNREFUSED for sixty seconds against a server that had
+        # printed "ready in 293 ms" one line earlier, because the two ends
+        # resolved the same name to different addresses. Binding and polling
+        # the same literal address takes resolution out of it entirely.
+        # The poll prints the error it got rather than swallowing it; that is
+        # how the second attempt was diagnosed as ECONNREFUSED (nothing
+        # listening) rather than a timeout (listening but slow).
         env:
           BUTTONS_BASE: http://127.0.0.1:5174
         run: |
-          npm run dev &
+          npm run dev -- --host 127.0.0.1 &
           for i in $(seq 1 60); do
             node -e "fetch('$BUTTONS_BASE/preview.html').then(r => process.exit(r.ok ? 0 : 1)).catch(e => { console.error(e.cause?.code || e.message); process.exit(1) })" && break
             if [ "$i" = "60" ]; then echo "preview harness never came up at $BUTTONS_BASE" >&2; exit 1; fi
