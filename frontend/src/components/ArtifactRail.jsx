@@ -313,18 +313,18 @@ export function ArtifactRail({
       {planId || busy || artifactLoadError ? (
         <RailGroup title="Materials" defaultOpen={true} isBar={isBar}>
           {planId ? (
-          /* The whole card expands the panel. Download stops the event: the one
-             button a teacher came for must not also open a viewer they didn't
-             ask for. */
-          /* NOT a role="button" wrapping a link and a button.
-             That is an ARIA structural violation, and it broke the keyboard
-             outright: the card's onKeyDown fired on Enter bubbling up from the
-             Download link and called preventDefault(), so tabbing to Download
-             and pressing Enter opened the document and downloaded nothing —
-             exactly the confusion the mouse handlers stopPropagation to avoid.
-             The card is a plain container; the title is the button. */
-          <div className="rail-card fa-lift" onClick={onExpand}>
-            <span className="rail-card-head">
+          /* Reading is the primary action. The full content area is one real
+             button, while download remains its separate, unambiguous sibling
+             so a phone tap never has to guess between opening and exporting. */
+          <div className="rail-card fa-lift">
+            <button
+              type="button"
+              id="rail-open-title"
+              className="rail-card-reader"
+              onClick={onExpand}
+              aria-label={`Open ${plan?.week_of || 'weekly lesson plan'}`}
+            >
+              <span className="rail-card-head">
               {/* Tinted by the class's own colour (lib/classColor.js) rather
                   than the flat --paper-inset + --accent-text every artifact
                   used to share — a teacher with three preps could not tell
@@ -337,36 +337,25 @@ export function ArtifactRail({
               >
                 <FileText size={15} aria-hidden="true" />
               </span>
-              <button
-                type="button"
-                /* Stable id so ChatPage can put focus back here when the
-                   document closes — see the restore effect there. */
-                id="rail-open-title"
-                className="rail-text rail-open-title"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onExpand()
-                }}
-              >
+              <span className="rail-text rail-open-title">
                 <span className="rail-title">{plan?.week_of || 'Weekly lesson plan'}</span>
                 <span className="rail-sub">
-                  Document · DOCX{unitSuffix(artifact?.unit, ' · ')}
+                  View lesson plan{unitSuffix(artifact?.unit, ' · ')}
                 </span>
-              </button>
-            </span>
+              </span>
+              </span>
+              <ChevronRight className="rail-reader-chevron" size={16} aria-hidden="true" />
+            </button>
             <span className="rail-actions flex items-center">
-              <button
-                type="button"
+              <a
+                href={api.planDownloadUrl(planId)}
+                download
                 className="rail-open fa-press"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setShareTarget({ type: 'plan' })
-                }}
-                aria-label="Download or Share"
-                title="Download or Share"
+                aria-label="Download as DOCX"
+                title="Download as DOCX"
               >
                 <Download size={13} aria-hidden="true" />
-              </button>
+              </a>
             </span>
           </div>
         ) : busy ? (

@@ -2588,7 +2588,7 @@
     background: var(--paper);
     border: 1px solid var(--edge);
     border-radius: var(--r-xl);
-    cursor: pointer;
+    cursor: default;
     box-shadow: 2px 2px 6px rgb(var(--neo-dark-rgb) / 0.2), -2px -2px 6px rgb(var(--neo-light-rgb) / 0.5);
     transition: box-shadow var(--t-fast) var(--ease), border-color var(--t-fast);
   }
@@ -2597,6 +2597,37 @@
   }
   .rail-card:active {
     box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.3), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.5);
+  }
+  /* The plan card has two intentionally different actions: its broad content
+     area opens the reader, while the compact icon exports the DOCX. Keeping
+     them as siblings gives both a real, reliable touch target. */
+  .rail-card-reader {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 0;
+    color: inherit;
+    text-align: left;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+  .rail-card-reader:focus-visible {
+    outline: none;
+    border-radius: var(--r-md);
+    box-shadow: var(--focus-ring);
+  }
+  .rail-reader-chevron {
+    flex-shrink: 0;
+    color: var(--ink-faint);
+    transition: transform var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .rail-card-reader:hover .rail-reader-chevron,
+  .rail-card-reader:active .rail-reader-chevron {
+    color: var(--accent-text);
+    transform: translateX(2px);
   }
 
   /* The empty rail's three starter cards (AccordionSkeleton) — same cursor
