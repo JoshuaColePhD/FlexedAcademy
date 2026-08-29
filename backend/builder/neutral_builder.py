@@ -10,7 +10,14 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Twips
 
-from .docx_helpers import fixed_layout, set_width, shade, strip_bloat, write_content_lines, write_plain
+from .docx_helpers import (
+    fixed_layout,
+    set_width,
+    shade,
+    strip_bloat,
+    write_content_lines,
+    write_plain,
+)
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 COL_DXA = [1900] + [2500] * 5

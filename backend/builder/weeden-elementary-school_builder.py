@@ -21,7 +21,14 @@ from docx.shared import Pt, Twips
 _THIS_DIR = str(Path(__file__).resolve().parent)
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
-from docx_helpers import fixed_layout, set_width, shade, strip_bloat, write_content_lines, write_plain
+from docx_helpers import (
+    fixed_layout,
+    set_width,
+    shade,
+    strip_bloat,
+    write_content_lines,
+    write_plain,
+)
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 DAY_ABBREVIATIONS = ["M", "T", "W", "R", "F"]

@@ -60,6 +60,18 @@ packages = ["backend", "backend.routes"]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint.per-file-ignores]
+# N999 (invalid module name) is correct in general and wrong here. A school's
+# hand-written builder MUST be named "{school_id}_builder.py" — docx_build.py
+# looks it up by that exact string (`path.parent / f"{school_id}_builder.py"`),
+# and school ids are hyphenated slugs like weeden-elementary-school. The
+# hyphen is a lookup key, not a typo: renaming the file to satisfy the linter
+# would silently stop that school's own template from ever being found, which
+# is the bug this whole path exists to prevent. These modules are loaded by
+# path via importlib, never imported by name, so the rule's actual concern
+# (an unimportable module) does not apply.
+"backend/builder/*_builder.py" = ["N999"]
+
 [tool.ruff.lint.flake8-bugbear]
 # B008 already exempts FastAPI's other call-as-default markers (Depends, Form,
 # Query, ...) since they're immutable factories evaluated once per request by
