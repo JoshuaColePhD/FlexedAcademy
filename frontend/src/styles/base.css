@@ -4059,6 +4059,38 @@
     border-left: 3px solid var(--mark);
     border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
   }
+  /* Traditional chat-bubble tails, kept small and softly embossed so they
+     belong to FlexEd's metamorphic paper surfaces instead of becoming cartoon
+     speech balloons. A rotated square shares the bubble's computed fill,
+     including the user's translucent accent color and dark mode tokens. */
+  .msg-bubble {
+    position: relative;
+    isolation: isolate;
+  }
+  .msg-bubble::after {
+    position: absolute;
+    bottom: 11px;
+    z-index: -1;
+    width: 12px;
+    height: 12px;
+    background: inherit;
+    border-radius: 3px;
+    box-shadow: 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.24);
+    content: '';
+    transform: rotate(45deg);
+  }
+  .msg-bubble-user::after {
+    right: -5px;
+  }
+  .msg-bubble-assistant::after {
+    left: -5px;
+    box-shadow: -2px 2px 4px rgb(var(--neo-dark-rgb) / 0.18);
+  }
+  /* Error messages have their own left marker and asymmetric radius; adding a
+     second visual pointer would compete with that warning treatment. */
+  .msg-error::after {
+    display: none;
+  }
 
   /* The assistant's own words, not a plan cell — the model writes markdown
      (bold day labels, numbered lists) and it used to render as literal
