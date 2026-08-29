@@ -78,6 +78,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
         type="button"
         className="plan-peek-handle"
         aria-expanded={open}
+        aria-controls="plan-peek-body"
         aria-label={open ? 'Collapse lesson plan preview' : `Open ${weekLabel || 'lesson plan'} preview`}
         onClick={handleClick}
         onPointerDown={onPointerDown}
@@ -91,7 +92,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
           {open ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
         </span>
       </button>
-      <div className="plan-peek-body">
+      <div id="plan-peek-body" className="plan-peek-body" aria-hidden={!open} inert={!open}>
         <div className="plan-peek-body-inner">{children}</div>
       </div>
     </section>
