@@ -134,14 +134,20 @@ after(async () => {
    Drive connection. Clearing it is what keeps the button after a Subscribe
    click measured against the same account state as the button before it. */
 async function reset(page, route) {
-  await page.evaluate(() => {
-    try {
-      sessionStorage.clear()
-      localStorage.clear()
-    } catch {
-      /* a context with storage blocked is still a usable one */
-    }
-  })
+  // .catch: reset is also how the crawl recovers from a click that navigated
+  // out of the harness, and the page it lands on may be an error document with
+  // no storage access at all. Clearing is best-effort; the goto below is what
+  // actually matters.
+  await page
+    .evaluate(() => {
+      try {
+        sessionStorage.clear()
+        localStorage.clear()
+      } catch {
+        /* a context with storage blocked is still a usable one */
+      }
+    })
+    .catch(() => {})
   await page.goto(pageUrl(route), { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('button, a[href], input', { timeout: NAV_TIMEOUT_MS })
   await page.waitForTimeout(350)
@@ -181,7 +187,12 @@ async function openPage(route) {
   const page = await context.newPage()
   const errors = []
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text())
+    if (m.type() !== 'error') return
+    /* The URL, not just the message. "Failed to load resource: 502" names
+       nothing that can be acted on, and a whole run went by knowing a request
+       had failed without knowing which one. */
+    const where = m.location()?.url
+    errors.push(where ? `${m.text()} [${where}]` : m.text())
   })
   page.on('pageerror', (e) => errors.push(`uncaught: ${e.message}`))
   // A file input opened by an "Upload" button blocks forever otherwise.
@@ -448,6 +459,7 @@ describe('buttons', { concurrency: 4 }, () => {
           )
         }
         const failures = []
+        const leftHarness = []
 
         for (const target of clickable) {
           // Re-resolve by name each time: an earlier click may have re-rendered
@@ -468,25 +480,72 @@ describe('buttons', { concurrency: 4 }, () => {
           await page.evaluate(() => window.__mock?.reset?.())
           const before = await signature(page)
 
-          try {
-            // 10s, not 5. Four routes crawl at once and a click that has to
-            // wait its turn for a busy renderer is not a click that failed —
-            // "Download or Share" timed out under concurrency and passed every
-            // time its route ran alone. A timeout only costs time when it
-            // fires, so a generous one is free on the happy path.
-            await locate(page, match).click({ timeout: 10_000, noWaitAfter: true })
-          } catch (err) {
-            failures.push(`"${target.name}" — click failed: ${err.message.split('\n')[0]}`)
-            continue
+          /* 10s, not 5. Four routes crawl at once and a click that has to wait
+             its turn for a busy renderer is not a click that failed — "Download
+             or Share" timed out under concurrency and passed every time its
+             route ran alone. A timeout only costs time when it fires.
+
+             Retried once against a fresh stamp, because the probe id lives on
+             the node that existed when it was read. The settings sliders
+             disable themselves while a save is in flight and come back as new
+             nodes, so a mutation landing between the enumerate and the click
+             leaves the locator waiting for an element React has replaced. That
+             is the safe failure the probe was chosen for — a clean miss rather
+             than a click on the wrong thing — and re-stamping is the answer to
+             it. A second miss is a real one. */
+          let clicked = false
+          for (let attempt = 0; attempt < 2 && !clicked; attempt++) {
+            try {
+              await locate(page, match).click({ timeout: 10_000, noWaitAfter: true })
+              clicked = true
+            } catch (err) {
+              const fresh = (await enumerate(page)).find(
+                (b) => b.name === target.name && b.ordinal === target.ordinal && b.visible && !b.disabled
+              )
+              if (attempt === 0 && fresh) {
+                match = fresh
+                continue
+              }
+              failures.push(`"${target.name}" — click failed: ${err.message.split('\n')[0]}`)
+              break
+            }
           }
+          if (!clicked) continue
 
           await settle(page)
 
+          /* Did the click leave the harness entirely? "Connect Google Drive"
+             sets window.location to /api/drive/connect — a real top-level
+             navigation, which is exactly right in production and unservable
+             here: vite proxies /api to a backend that isn't running, so the
+             browser lands on a 502 and every subsequent request does too.
+             mockApi overrides window.fetch, not navigation, so it cannot help.
+             Leaving the harness IS the button working; what it is not is a
+             page whose console errors mean anything about this app. Count it,
+             say so, and go back. */
+          /* "Is the mock installed here", not "does the URL say preview.html".
+             preview.jsx history.replaceState's the URL to the app route on
+             boot, so the path is NEVER /preview.html after the first tick —
+             checking it reported all 79 settings buttons as having left the
+             harness and skipped every assertion on them. A green that means
+             nothing is worse than a red. window.__mock exists if and only if
+             installMockApi ran in this document. */
+          const inHarness = await safeEval(page, () => typeof window.__mock !== 'undefined', true)
+          if (!inHarness) {
+            leftHarness.push(target.name)
+            await reset(page, route)
+            continue
+          }
+
           const after = await signature(page)
-          const state = await page.evaluate(() => ({
-            calls: (window.__mock?.calls || []).map((c) => ({ path: c.path, method: c.method, status: c.status })),
-            unhandled: (window.__mock?.unhandled || []).map((u) => `${u.method} ${u.path}`),
-          }))
+          const state = await safeEval(
+            page,
+            () => ({
+              calls: (window.__mock?.calls || []).map((c) => ({ path: c.path, method: c.method, status: c.status })),
+              unhandled: (window.__mock?.unhandled || []).map((u) => `${u.method} ${u.path}`),
+            }),
+            { calls: [], unhandled: [] }
+          )
 
           // ── check 2 ──────────────────────────────────────────────────────────
           if (after.crashed) failures.push(`"${target.name}" — click rendered the ErrorBoundary crash screen`)
@@ -532,6 +591,9 @@ describe('buttons', { concurrency: 4 }, () => {
           }
         }
 
+        if (leftHarness.length) {
+          console.log(`  ${route.at}: ${leftHarness.length} navigated out of the harness (${[...new Set(leftHarness)].join(', ')})`)
+        }
         assert.equal(failures.length, 0, `${route.at} — ${failures.length} button problem(s):\n  ${failures.join('\n  ')}`)
       } finally {
         await context.close()
