@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AuthContext, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from '../lib/authContext'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
+import { applyIdentityToCache, deriveAuthStatus } from '../lib/authState'
 
 function setAuthedState(val) {
   try {
@@ -94,7 +95,10 @@ export function AuthProvider({ children }) {
    * of accusing anyone of being logged out. Only an actual 401 — which fetchMe
    * turns into `null` — is 'anon'. Same distinction RootRedirect and
    * AfterAuthRedirect in App.jsx already make, both citing this bug class. */
-  const status = me === undefined ? 'loading' : me ? 'authed' : 'anon'
+  // lib/authState.js, so scripts/test-auth-state.mjs pins the real rule rather
+  // than a copy of it. See that module for why the undefined/null split is
+  // load-bearing.
+  const status = deriveAuthStatus(me)
   const user = me ?? null
 
   /* Mirrors the query's answer into the localStorage hint BootScreen reads on
@@ -139,8 +143,7 @@ export function AuthProvider({ children }) {
      there is no frame where it is momentarily absent. */
   const applyIdentity = useCallback(
     (u) => {
-      queryClient.setQueryData(qk.me, u ?? null)
-      queryClient.removeQueries({ predicate: (query) => query.queryKey?.[0] !== qk.me[0] })
+      applyIdentityToCache(queryClient, u, qk.me)
       setAuthedState(Boolean(u))
       return u
     },

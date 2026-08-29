@@ -10,6 +10,7 @@
     "test:voice": "node scripts/test-voice-loop.mjs",
     "test:contextual": "node scripts/test-contextual-suggestions.mjs",
     "test:onboarding": "node scripts/test-onboarding-steps.mjs",
+    "test:auth": "node scripts/test-auth-state.mjs",
     "check:tokens": "node scripts/check-tokens.mjs",
     "check:classes": "node scripts/check-classes.mjs",
     "check": "npm run lint && npm run check:tokens && npm run check:classes && npm run build",

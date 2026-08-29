@@ -24,7 +24,7 @@ jobs:
       - name: Run frontend checks
         run: npm run check
       - name: Run focused behavior tests
-        run: npm run test:voice && npm run test:contextual && npm run test:onboarding
+        run: npm run test:voice && npm run test:contextual && npm run test:onboarding && npm run test:auth
 
   backend:
     runs-on: ubuntu-latest
