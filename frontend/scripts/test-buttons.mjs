@@ -42,13 +42,17 @@
  * destructive button ("Delete Class") safe to click here at all.
  *
  * Usage: node --test scripts/test-buttons.mjs
- *        BUTTONS_BASE=http://localhost:5174 node --test scripts/test-buttons.mjs
+ *        BUTTONS_BASE=http://127.0.0.1:5174 node --test scripts/test-buttons.mjs
  */
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 
-const BASE = (process.env.BUTTONS_BASE || 'http://localhost:5174').replace(/\/$/, '')
+/* 127.0.0.1, not localhost: vite binds IPv4 only, and in the CI playwright
+   container node resolves localhost to ::1 first — which cost a whole run to a
+   readiness poll that could not reach a server that was already up. Local runs
+   use the same address so the two cannot diverge again. */
+const BASE = (process.env.BUTTONS_BASE || 'http://127.0.0.1:5174').replace(/\/$/, '')
 const NAV_TIMEOUT_MS = 30_000
 
 /* Every route worth crawling, and the state to reach it in.
