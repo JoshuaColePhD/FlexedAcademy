@@ -114,6 +114,19 @@ const STANDARDS = {
   },
 }
 
+/* GET /api/standards' list view — routes/standards.py's _slim(), which is a
+   strictly narrower record than the per-code lookup STANDARDS above returns.
+   Two strands, because StandardsPage derives its filter chips from whatever
+   distinct `strand` values come back and a single-strand corpus leaves the
+   "All / <strand>" switcher with nothing to switch between. */
+const STANDARDS_LIST = [
+  { code: 'ELA21.11.R2', description: 'Analyze how an author develops and refines a point of view.', source_type: 'state', strand: 'Reading', domain: 'Literature', reporting_category: 'Craft & Structure', source_document: 'Alabama Course of Study: ELA (2021)', source_page_or_section: 'Grade 11, R2' },
+  { code: 'RHS-2', description: 'Make strategic use of digital media in presentations.', source_type: 'state', strand: 'Reading', domain: 'Informational', reporting_category: 'Integration', source_document: 'Alabama Course of Study: ELA (2021)', source_page_or_section: 'Grade 11, RHS-2' },
+  { code: 'CLE-4', description: 'Analyze and select evidence to develop a claim.', source_type: 'state', strand: 'Writing', domain: 'Argument', reporting_category: 'Evidence', source_document: 'Alabama Course of Study: ELA (2021)', source_page_or_section: 'Grade 11, CLE-4' },
+  { code: 'R.TST.701', description: 'Cite strong and thorough textual evidence to support analysis.', source_type: 'act', strand: 'Reading', domain: 'Close Reading', reporting_category: 'Textual Evidence', source_document: 'ACT College & Career Readiness Standards', source_page_or_section: 'Reading, 701' },
+  { code: 'ORG 403', description: 'Use transitions to clarify the relationships between ideas.', source_type: 'act', strand: 'Writing', domain: 'Organization', reporting_category: 'Transitions', source_document: 'ACT College & Career Readiness Standards', source_page_or_section: 'English, 403' },
+]
+
 /* ── in-memory state ─────────────────────────────────────────────────────── */
 let seq = 0
 const uid = (p) => `${p}_${++seq}`
@@ -122,7 +135,7 @@ const state = {
   // onboarding_seen_at set (unlike a brand-new account) so preview.html lands
   // on the real app shell — App.jsx's ClassRoutes redirects to the onboarding
   // wizard for as long as this is unset, and nothing in this mock ever set it.
-  me: { name: 'Josh Cole', custom_instructions: '', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00' },
+  me: { name: 'Josh Cole', custom_instructions: '', avatar: null, school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00' },
   // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
@@ -342,6 +355,9 @@ const state = {
   // db.list_plan_shares/plans.drive_web_link return for real.
   planShares: {},
   planDriveFiles: {},
+  // planId -> published? Seeded empty: a plan is private until the "share
+  // publicly" consent step runs, and /api/plans/public/:id 404s until then.
+  publicPlans: {},
   // Flat array, filtered by class_id — see docList below. Seeded with one
   // document for c1 so the rail's "Built from" group has a row to open;
   // ArtifactDetailPanel's document view had no mock coverage before this,
@@ -371,6 +387,124 @@ const state = {
     { week: 7, start: '2026-09-14', end: '2026-09-18', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
     { week: 12, start: '2026-10-19', end: '2026-10-23', no_school: false, has_plan: true, is_current: false, is_past: false, plan_id: 'planOrphan', chat_id: null, unit: 'Satire' },
   ],
+
+  /* ── admin ───────────────────────────────────────────────────────────────
+     Every list below is seeded NON-EMPTY on purpose. AdminPage's review
+     sections each open with `if (isLoading || isError || !rows.length) return
+     null` — an empty list doesn't render an empty state, it renders nothing at
+     all, and the Approve / Reject / Retry / Mark Active / Attempts buttons
+     don't exist in the DOM to be clicked. Seeded empty, scripts/test-buttons
+     .mjs would report full coverage of a page that was mostly absent.
+
+     Mutable, and the handlers really do splice: approving a submission has to
+     remove the row, the same way every other mutation in this file applies. */
+  calendarSubmissions: [
+    {
+      id: 'calsub1',
+      school_id: 'springfield-middle-school',
+      submitted_at: '2026-08-20T14:00:00+00:00',
+      source_kind: 'pdf',
+      source_name: 'SMS 2026-27 calendar.pdf',
+      status: 'pending',
+      weeks: [
+        { week: 1, start: '2026-08-03', end: '2026-08-07' },
+        { week: 2, start: '2026-08-10', end: '2026-08-14' },
+      ],
+    },
+  ],
+  // analysis_status covers two of TEMPLATE_STATUS_STYLE's five branches —
+  // the clean one and the warnings one — so the badge has something other
+  // than a single look under test.
+  pendingTemplates: [
+    {
+      id: 'tpl1',
+      school_id: 'springfield-middle-school',
+      school_name: 'Springfield Middle School',
+      analysis_status: 'analyzed_with_warnings',
+      uploader_name: 'Dana Reyes',
+      uploader_email: 'dreyes@springfield.k12',
+      uploaded_by: 'u9',
+      created_at: '2026-08-18T09:00:00+00:00',
+    },
+  ],
+  autoActivatedTemplates: [
+    {
+      id: 'tpl2',
+      school_id: 'northside-high-school',
+      school_name: 'Northside High School',
+      analysis_status: 'analyzed',
+      uploader_name: 'Pat Ellis',
+      uploader_email: 'pellis@northside.k12',
+      uploaded_by: 'u10',
+      created_at: '2026-08-10T09:00:00+00:00',
+      analyzed_at: '2026-08-10T09:04:00+00:00',
+    },
+  ],
+  // Two jobs, deliberately: 'succeeded' is the only status that renders the
+  // Approve button (`canApprove`), and 'failed_needs_human' is the one that
+  // renders error_message. One job alone would leave one of the two unreached.
+  builderJobs: [
+    {
+      id: 'job1',
+      school_id: 'springfield-middle-school',
+      school_name: 'Springfield Middle School',
+      status: 'succeeded',
+      attempt_count: 2,
+      created_at: '2026-08-19T11:00:00+00:00',
+      error_message: null,
+    },
+    {
+      id: 'job2',
+      school_id: 'eastview-high-school',
+      school_name: 'Eastview High School',
+      status: 'failed_needs_human',
+      attempt_count: 3,
+      created_at: '2026-08-17T11:00:00+00:00',
+      error_message: 'Ran out of attempts — the header row never rendered on one page.',
+    },
+  ],
+  autoVerifiedJobs: [
+    {
+      id: 'job3',
+      school_id: 'northside-high-school',
+      school_name: 'Northside High School',
+      status: 'succeeded',
+      attempt_count: 1,
+      created_at: '2026-08-11T11:00:00+00:00',
+      finished_at: '2026-08-11T11:06:00+00:00',
+      verified_at: '2026-08-11T11:06:00+00:00',
+      uploader_name: 'Pat Ellis',
+      uploader_email: 'pellis@northside.k12',
+      error_message: null,
+    },
+  ],
+  // db.get_app_settings()'s shape. Mutated by PUT /api/admin/settings, which
+  // is what makes the Settings tab's Save round-trip real rather than a toast.
+  appSettings: {
+    free_weekly_token_cap: 150_000,
+    subscriber_weekly_token_cap: 2_000_000,
+    updated_at: '2026-08-01T00:00:00+00:00',
+    updated_by: 'jc@x.org',
+  },
+  // One entry per branch of describeAuditEntry — including `settings_update`,
+  // whose renderer reaches into detail.before/after and calls
+  // .toLocaleString() on both caps. A row missing that nesting throws inside
+  // render, which is a crash screen, not a failed fetch.
+  auditLog: [
+    {
+      id: 'audit1',
+      action: 'settings_update',
+      actor_email: 'jc@x.org',
+      target: null,
+      created_at: '2026-08-21T15:00:00+00:00',
+      detail: {
+        before: { free_weekly_token_cap: 120_000, subscriber_weekly_token_cap: 1_800_000 },
+        after: { free_weekly_token_cap: 150_000, subscriber_weekly_token_cap: 2_000_000 },
+      },
+    },
+    { id: 'audit2', action: 'comp_grant', actor_email: 'jc@x.org', target: 'kim@x.org', created_at: '2026-08-20T15:00:00+00:00', detail: {} },
+    { id: 'audit3', action: 'school_add', actor_email: 'jc@x.org', target: 'northside-high-school', created_at: '2026-08-19T15:00:00+00:00', detail: { name: 'Northside High School' } },
+  ],
 }
 
 /* Per-endpoint latency, in ms. Tunable from the console at runtime so a race
@@ -387,6 +521,9 @@ const latency = {
 }
 
 const calls = []
+/* Requests that matched no route. Read by scripts/test-buttons.mjs, which fails
+   the run if a click lands here — see the fallthrough at the end of `route`. */
+const unhandled = []
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 const json = (body) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -410,35 +547,63 @@ function sse(chunks) {
 export function installMockApi() {
   const real = window.fetch.bind(window)
 
-  window.fetch = async (input, init = {}) => {
-    const url = typeof input === 'string' ? input : input.url
-    if (!url.startsWith('/api') && !url.includes('/api/')) return real(input, init)
-    const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0]
-    const method = (init.method || 'GET').toUpperCase()
-    // Only JSON bodies parse. Uploads send FormData, and JSON.parse on it threw
-    // before any route matched — so every upload failed inside the mock and the
-    // app dutifully reported "Could not read that file".
-    const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
-    calls.push({ path, method, at: performance.now() })
-
+  /* Routing lives in its own function, with a thin recording wrapper around it
+     below. Inline, the only way to know what a route returned was to touch all
+     forty-odd `return` statements — and the button suite's central question is
+     "what did this click actually get back," so the status has to be recorded
+     in one place or not at all. */
+  const route = async (path, method, body, init, url) => {
     /* The entitlement rides on /me exactly as it does in production, so the
        paywall can be driven here. Tune it live:
          window.__mock.state.entitlement = { may_generate: false, subscribed: false,
            status: null, plans_used: 4, tokens_used: 150000, token_cap: 150000,
            tokens_remaining: 0, usage_window_days: 7, billing_enabled: true } */
-    if (path === '/api/auth/me')
+    /* One shape, one place. /auth/me and PUT /auth/avatar both return the full
+       public user (routes/auth.py), and SettingsPage's avatar mutation writes
+       whatever the PUT returns straight into the qk.me cache with no refetch —
+       so an avatar response that omitted a field would blank the account
+       everywhere it is read, not just on the avatar picker. */
+    const publicUser = () => ({
+      id: 'u1',
+      name: state.me.name,
+      email: 'jc@x.org',
+      is_admin: true,
+      has_password: true,
+      custom_instructions: state.me.custom_instructions,
+      school: state.me.school,
+      avatar: state.me.avatar,
+      onboarding_seen_at: state.me.onboarding_seen_at,
+      entitlement: state.entitlement,
+    })
+    if (path === '/api/auth/me') return json(publicUser())
+    if (path === '/api/health')
+      // routes/misc.py returns the diagnostic body only to a signed-in
+      // caller; this harness is always signed in, so that is the shape here.
       return json({
-        id: 'u1',
-        name: state.me.name,
-        email: 'jc@x.org',
-        is_admin: true,
-        has_password: true,
-        custom_instructions: state.me.custom_instructions,
-        school: state.me.school,
-        onboarding_seen_at: state.me.onboarding_seen_at,
-        entitlement: state.entitlement,
+        ok: true,
+        model: 'gpt-5',
+        api_key_set: true,
+        database: 'PostgreSQL',
+        plans_dir: '/data/plans',
+        retrieval_floor: 0.55,
+        retrieval_top_k: 12,
+        require_login: true,
+        cookie_secure_forced: false,
+        database_url_len: 110,
+        builder_found: true,
       })
     if (path === '/api/auth/forgot-password') return json({ ok: true })
+    if (path === '/api/auth/logout' && method === 'POST') return json({ ok: true })
+    if (path === '/api/auth/sign_out_everywhere' && method === 'POST') return json({ ok: true })
+    if (path === '/api/auth/delete_account' && method === 'POST') return json({ ok: true })
+    if (path === '/api/auth/onboarding-seen' && method === 'POST') {
+      state.me.onboarding_seen_at = new Date().toISOString()
+      return json({ ok: true })
+    }
+    if (path === '/api/auth/avatar') {
+      state.me.avatar = body?.avatar ?? null
+      return json(publicUser())
+    }
     if (path === '/api/auth/reset-password') return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', is_admin: true, has_password: true, entitlement: state.entitlement })
     if (path === '/api/auth/change-password') return json({ ok: true })
     if (path === '/api/admin/accounts') return json({ accounts: state.accounts })
@@ -448,6 +613,174 @@ export function installMockApi() {
       if (acct) acct.subscription_status = body?.comped ? 'comped' : null
       return json({ account: acct || null })
     }
+    const capMatch = path.match(/^\/api\/admin\/accounts\/([^/]+)\/cap$/)
+    if (capMatch && method === 'POST') {
+      const acct = state.accounts.find((a) => a.id === capMatch[1])
+      if (acct) acct.custom_weekly_token_cap = body?.cap ?? null
+      return json({ account: acct || null })
+    }
+    const extendBetaMatch = path.match(/^\/api\/admin\/accounts\/([^/]+)\/extend-beta$/)
+    if (extendBetaMatch && method === 'POST') {
+      const acct = state.accounts.find((a) => a.id === extendBetaMatch[1])
+      return json({ account: acct || null })
+    }
+    const endBetaMatch = path.match(/^\/api\/admin\/accounts\/([^/]+)\/end-beta$/)
+    if (endBetaMatch && method === 'POST') {
+      const acct = state.accounts.find((a) => a.id === endBetaMatch[1])
+      return json({ account: acct || null })
+    }
+    if (path === '/api/admin/beta-accounts' && method === 'POST') {
+      await wait(200)
+      // The generated password is the whole point of the response — it is
+      // shown once and never again, so returning it is what makes the
+      // "copy this password" panel reachable.
+      return json({ email: body?.email, name: body?.name, password: 'copper-lantern-4417', days: body?.days ?? 30 })
+    }
+    if (path === '/api/admin/usage-trend')
+      return json({
+        weeks: [
+          { week_start: '2026-07-06', tokens: 210_000 },
+          { week_start: '2026-07-13', tokens: 340_000 },
+          { week_start: '2026-07-20', tokens: 180_000 },
+          { week_start: '2026-07-27', tokens: 520_000 },
+          { week_start: '2026-08-03', tokens: 610_000 },
+          { week_start: '2026-08-10', tokens: 455_000 },
+          { week_start: '2026-08-17', tokens: 700_000 },
+        ],
+      })
+    if (path === '/api/admin/qa/standards-check')
+      // One flagged plan, exercising BOTH of the section's conditional lines
+      // (hallucinated and mismatched). Empty would render the green "no
+      // issues" branch instead, which is the branch that needs no fixture.
+      return json({
+        flagged: [
+          {
+            plan_id: 'plan1',
+            week_label: 'Week 03 — Aug 17-21, 2026',
+            email: 'jc@x.org',
+            subject: 'AP Lang',
+            grade: 11,
+            hallucinated: ['4.C'],
+            mismatched: ['ELA21.9.R2'],
+          },
+        ],
+      })
+    if (path === '/api/admin/calendar-submissions' && method === 'GET')
+      return json({ submissions: state.calendarSubmissions })
+    const calDecide = path.match(/^\/api\/admin\/calendar-submissions\/([^/]+)\/(approve|reject)$/)
+    if (calDecide && method === 'POST') {
+      await wait(200)
+      const i = state.calendarSubmissions.findIndex((s) => s.id === calDecide[1])
+      const [row] = i >= 0 ? state.calendarSubmissions.splice(i, 1) : [null]
+      return json({ ...(row || {}), status: calDecide[2] === 'approve' ? 'confirmed' : 'rejected' })
+    }
+    if (path === '/api/admin/school-templates/pending' && method === 'GET')
+      return json({ templates: state.pendingTemplates })
+    if (path === '/api/admin/school-templates/auto-activated' && method === 'GET')
+      return json({ templates: state.autoActivatedTemplates })
+    const tplAnalysis = path.match(/^\/api\/admin\/school-templates\/([^/]+)\/analysis$/)
+    if (tplAnalysis && method === 'GET') {
+      await wait(150)
+      return json({
+        findings: [
+          { severity: 'warning', check_name: 'header_row', message: 'The header row spans two cells on page 2.' },
+          { severity: 'info', check_name: 'font', message: 'Body font resolved to Calibri 11.' },
+        ],
+        analysis: {
+          sections: [
+            { name: 'Standards', description: 'Cited codes, one per line.', source_evidence: 'ALCOS / ACT' },
+            { name: 'Do Now', description: 'Opening bell-ringer.', source_evidence: 'Do Now:' },
+          ],
+          overall_confidence: 0.82,
+          recommended_for_auto_use: false,
+        },
+      })
+    }
+    const tplReanalyze = path.match(/^\/api\/admin\/school-templates\/([^/]+)\/reanalyze$/)
+    if (tplReanalyze && method === 'POST') {
+      await wait(400)
+      return json({ id: tplReanalyze[1], analysis_status: 'analyzed' })
+    }
+    const activateTpl = path.match(/^\/api\/admin\/schools\/([^/]+)\/activate-template$/)
+    if (activateTpl && method === 'POST') {
+      await wait(200)
+      const i = state.pendingTemplates.findIndex((t) => t.school_id === activateTpl[1])
+      if (i >= 0) state.pendingTemplates.splice(i, 1)
+      return json({ status: 'ok' })
+    }
+    if (path === '/api/admin/builder-codegen/pending' && method === 'GET')
+      return json({ jobs: state.builderJobs })
+    if (path === '/api/admin/builder-codegen/auto-verified' && method === 'GET')
+      return json({ jobs: state.autoVerifiedJobs })
+    const builderApprove = path.match(/^\/api\/admin\/builder-codegen\/([^/]+)\/approve$/)
+    if (builderApprove && method === 'POST') {
+      await wait(200)
+      const i = state.builderJobs.findIndex((j) => j.id === builderApprove[1])
+      const [job] = i >= 0 ? state.builderJobs.splice(i, 1) : [null]
+      return json({ school: { id: job?.school_id || null, name: job?.school_name || null } })
+    }
+    const builderRetry = path.match(/^\/api\/admin\/builder-codegen\/([^/]+)\/retry$/)
+    if (builderRetry && method === 'POST') {
+      await wait(200)
+      const job = state.builderJobs.find((j) => j.id === builderRetry[1])
+      if (job) job.status = 'queued'
+      return json({ status: 'queued' })
+    }
+    const builderJob = path.match(/^\/api\/admin\/builder-codegen\/([^/]+)$/)
+    if (builderJob && method === 'GET') {
+      await wait(150)
+      // Two attempts: one with a render (the download link) and both judges,
+      // one rejected before rendering (the "see the spec below" branch).
+      return json({
+        id: builderJob[1],
+        attempts: [
+          {
+            id: 'att1',
+            attempt_number: 1,
+            passed: false,
+            render_image_path: null,
+            layout_spec: { rows: 5, columns: ['Day', 'Standards', 'Do Now'] },
+            judge1: null,
+            judge2: null,
+          },
+          {
+            id: 'att2',
+            attempt_number: 2,
+            passed: true,
+            render_image_path: '/tmp/att2.png',
+            layout_spec: { rows: 5, columns: ['Day', 'Standards', 'Do Now', 'Assessment'] },
+            judge1: { pass: true, confidence: 0.91, reasoning: 'Every field landed in its labelled cell.', visual_defects: [], per_field_checks: [{ field: 'do_now', correct_cell: true }] },
+            judge2: { pass: true, confidence: 0.87, reasoning: 'Header repeats correctly on page 2.', visual_defects: [], per_field_checks: [{ field: 'standards', correct_cell: true }] },
+          },
+        ],
+      })
+    }
+    if (path === '/api/admin/settings' && method === 'GET') return json(state.appSettings)
+    if (path === '/api/admin/settings' && method === 'PUT') {
+      await wait(200)
+      state.appSettings = {
+        ...state.appSettings,
+        free_weekly_token_cap: Number(body?.free_weekly_token_cap ?? state.appSettings.free_weekly_token_cap),
+        subscriber_weekly_token_cap: Number(body?.subscriber_weekly_token_cap ?? state.appSettings.subscriber_weekly_token_cap),
+        updated_at: new Date().toISOString(),
+      }
+      return json(state.appSettings)
+    }
+    if (path === '/api/admin/audit-log' && method === 'GET') return json({ entries: state.auditLog })
+    if (path === '/api/admin/entitled-statuses')
+      return json({ statuses: ['active', 'comped', 'past_due', 'trialing'] })
+    if (path === '/api/admin/billing')
+      return json({
+        billing_enabled: true,
+        counts: { active: 12, trialing: 3, past_due: 1, comped: 2, canceled: 4, none: 31 },
+        paying_accounts: 15,
+        price: { amount: 1200, currency: 'USD', interval: 'month', interval_count: 1 },
+        mrr_cents: 18_000,
+        // Non-empty, so "Payment at risk" renders its list rather than its
+        // empty state — the list is the half with per-row markup to get wrong.
+        past_due_accounts: [{ id: 'u7', name: 'Kim Alvarez', email: 'kalvarez@x.org' }],
+      })
+
     if (path === '/api/billing/price')
       return json({
         price: { amount: 1000, currency: 'USD', interval: 'month', interval_count: 1 },
@@ -637,6 +970,18 @@ export function installMockApi() {
       // Mirrors db.list_chats: scoped, but NULL belongs to everyone.
       return json(cid ? state.chats.filter((c) => c.class_id === cid || c.class_id == null) : state.chats)
     }
+    const pinMatch = path.match(/^\/api\/chats\/([^/]+)\/pin$/)
+    if (pinMatch && method === 'PATCH') {
+      await wait(120)
+      const chat = state.chats.find((c) => c.id === pinMatch[1])
+      if (!chat) return new Response('{}', { status: 404 })
+      chat.is_pinned = !!body?.is_pinned
+      return json(chat)
+    }
+    if (path === '/api/chats/import' && method === 'POST') {
+      await wait(300)
+      return json({ imported: 0, skipped: 0 })
+    }
     if (path === '/api/chats/title' && method === 'POST') {
       // Stands in for the model: returns something that is NOT the raw prompt,
       // so a test can tell the suggestion apart from the placeholder.
@@ -712,7 +1057,27 @@ export function installMockApi() {
       return json({ items: ids.map((id) => ({ id, week_label: state.plans[id].week_of })), total: ids.length })
     }
 
-    /* ── plans ───────────────────────────────────────────────────────────── */
+    /* ── plans ─────────────────────────────────────────────────────────────
+       /weeks BEFORE the {plan_id} matcher below, for exactly the reason
+       routes/plans.py has the same note above its own registration: "weeks"
+       matches [^/]+ perfectly well. It was landing in the plan lookup, finding
+       no plan called "weeks", and 404ing — so PlansPage showed an empty
+       library and its whole button set (select, share, download, delete) never
+       rendered. */
+    if (path === '/api/plans/weeks' && method === 'GET') {
+      await wait(latency.getPlan)
+      // db.list_plan_weeks: one entry per week, newest revision as `latest`,
+      // the rest collapsed into `revisions`.
+      const weeks = Object.entries(state.plans).map(([id, p], i) => ({
+        week_number: i === 0 ? 3 : 12,
+        week_label: p.week_of,
+        unit: i === 0 ? 'Unit 2 · weeks 3–6' : 'Satire',
+        latest: { id, week_label: p.week_of, unit: i === 0 ? 'Unit 2 · weeks 3–6' : 'Satire', course: p.course, created_at: '2026-08-17T12:00:00+00:00' },
+        revisions: [],
+      }))
+      return json({ weeks })
+    }
+
     const planMatch = path.match(/^\/api\/plans\/([^/]+)$/)
     if (planMatch && method === 'GET') {
       await wait(latency.getPlan)
@@ -726,6 +1091,34 @@ export function installMockApi() {
         unit: 'Unit 2 · weeks 3–6',
         week_label: p.week_of,
       })
+    }
+
+    const publicLink = path.match(/^\/api\/plans\/([^/]+)\/public_link$/)
+    if (publicLink && method === 'POST') {
+      await wait(200)
+      // The consent step (backend migration 39): until a plan is published,
+      // GET /api/plans/public/:id 404s.
+      state.publicPlans[publicLink[1]] = !!body?.public
+      return json({ id: publicLink[1], is_public: !!body?.public, shared_at: new Date().toISOString() })
+    }
+    const publicPlan = path.match(/^\/api\/plans\/public\/([^/]+)$/)
+    if (publicPlan && method === 'GET') {
+      await wait(latency.getPlan)
+      const p = state.plans[publicPlan[1]]
+      if (!p || !state.publicPlans[publicPlan[1]]) return new Response('{}', { status: 404 })
+      return json({ id: publicPlan[1], plan_json: p, week_label: p.week_of, teacher: p.teacher, course: p.course })
+    }
+    const forkPlan = path.match(/^\/api\/plans\/([^/]+)\/fork$/)
+    if (forkPlan && method === 'POST') {
+      await wait(400)
+      const id = uid('plan')
+      state.plans[id] = { ...state.plans[forkPlan[1]] || Object.values(state.plans)[0] }
+      return json({ id, week_label: state.plans[id].week_of })
+    }
+    const rebuildPlan = path.match(/^\/api\/plans\/([^/]+)\/rebuild$/)
+    if (rebuildPlan && method === 'POST') {
+      await wait(600)
+      return json({ id: rebuildPlan[1], docx_path: `/plans/${rebuildPlan[1]}.docx` })
     }
 
     const quizListMatch = path.match(/^\/api\/plans\/([^/]+)\/quizzes$/)
@@ -765,6 +1158,96 @@ export function installMockApi() {
     if (path === '/api/drive/status') {
       await wait(150)
       return json({ enabled: true, connected: state.drive.connected })
+    }
+    if (path === '/api/drive/disconnect' && method === 'POST') {
+      state.drive.connected = false
+      sessionStorage.removeItem('mock.driveConnected')
+      return json({ ok: true })
+    }
+
+    if (path === '/api/canvas/export_quiz' && method === 'POST') {
+      await wait(500)
+      return json({ status: 'success', message: 'Quiz successfully synced to Canvas!' })
+    }
+    if (path === '/api/bell_ringer' && method === 'POST') {
+      await wait(500)
+      return json({
+        prompt: 'Rank these three openings by how much you trust the speaker, and say why.',
+        standard_code: 'ELA21.11.R2',
+      })
+    }
+    if (path === '/api/documents/global' && method === 'GET') return json([])
+
+    if (path === '/api/decisions' && method === 'POST') {
+      await wait(250)
+      // Three of the four CORE_CHECKLIST slots filled, plus one extra —
+      // DecisionStack renders settled slots, unsettled slots and off-checklist
+      // decisions differently, and all three branches need a fixture.
+      return json({
+        decisions: [
+          { label: 'Week', value: 'Week 03 — Aug 17-21' },
+          { label: 'Anchor text', value: '"The Cask of Amontillado"' },
+          { label: 'Skill focus', value: 'Dramatic irony' },
+          { label: 'Grouping', value: 'A/B partners' },
+        ],
+      })
+    }
+
+    if (path === '/api/suggestion' && method === 'POST') {
+      await wait(300)
+      return json({
+        prompt: 'Want to swap Wednesday’s ungrounded 4.C for a code retrieval actually supplied?',
+        reason: 'Wednesday cites a standard that is not in the corpus.',
+      })
+    }
+
+    if (path === '/api/revise_days' && method === 'POST') {
+      await wait(600)
+      const p = state.plans[body.plan_id] || Object.values(state.plans)[0]
+      for (const i of body.day_indices || []) {
+        const d = p.days[i]
+        if (d && body.field) p.days[i] = { ...d, [body.field]: `${body.feedback} — rewritten.` }
+      }
+      return json({ id: body.plan_id, plan_json: p, warnings: WARNINGS, retrieved_ids: RETRIEVED, week_label: p.week_of })
+    }
+
+    if (path === '/api/set_day_field' && method === 'POST') {
+      // No latency: this is the direct-edit path, not a model call — see
+      // service.set_day_field. A delay here would misrepresent it as one.
+      const p = state.plans[body.plan_id] || Object.values(state.plans)[0]
+      const d = p.days[body.day_index]
+      if (d) p.days[body.day_index] = { ...d, [body.field]: body.value }
+      return json({ id: body.plan_id, plan_json: p, warnings: WARNINGS, retrieved_ids: RETRIEVED, week_label: p.week_of })
+    }
+
+    if (path === '/api/voice/session' && method === 'POST') {
+      await wait(200)
+      // A token this harness cannot actually open a WebRTC session with —
+      // the point is that the button's request path and its failure handling
+      // are exercised, not that Realtime connects.
+      return json({ token: 'mock-ephemeral-token', model: 'gpt-realtime', expires_at: Date.now() + 60_000 })
+    }
+    if (path === '/api/voice/usage' && method === 'POST') return json({ ok: true })
+    if (path === '/api/transcribe' && method === 'POST') {
+      await wait(400)
+      return json({ text: 'Let’s build week three around dramatic irony.' })
+    }
+
+    const confirmedCal = path.match(/^\/api\/school-calendars\/confirmed\/([^/]+)$/)
+    if (confirmedCal && method === 'GET') {
+      await wait(150)
+      const school = state.schools.find((s) => s.id === confirmedCal[1])
+      // A school with no calendar 404s, exactly as routes/school_calendars.py
+      // does — that is what the settings panel's "no calendar yet" state reads.
+      if (!school || !school.has_calendar) return new Response('{}', { status: 404 })
+      return json({ weeks: state.weeks.map((w) => ({ week: w.week, start: w.start, end: w.end, no_school: w.no_school })) })
+    }
+    const pendingCal = path.match(/^\/api\/school-calendars\/pending$/)
+    if (pendingCal && method === 'GET') return json({ submissions: [] })
+    const calDecideUser = path.match(/^\/api\/school-calendars\/([^/]+)\/(confirm|reject)$/)
+    if (calDecideUser && method === 'POST') {
+      await wait(200)
+      return json({ id: calDecideUser[1], status: calDecideUser[2] === 'confirm' ? 'confirmed' : 'rejected' })
     }
 
     const shareListMatch = path.match(/^\/api\/plans\/([^/]+)\/shares$/)
@@ -896,6 +1379,81 @@ export function installMockApi() {
       })
     }
 
+    /* ── standards ───────────────────────────────────────────────────────────
+       ORDER MATTERS, and it is the same trap routes/standards.py registers
+       around: `/{code:path}` matches "coverage" and "stats" perfectly well, so
+       anything that isn't a literal code has to be claimed BEFORE the
+       catch-all at the bottom of this block. Both of these were reaching it —
+       /coverage came back as a 404 "code not in the corpus", which the heatmap
+       read as "every standard used zero times" and rendered without complaint. */
+    if (path === '/api/standards' && method === 'GET') {
+      await wait(120)
+      return json({ items: STANDARDS_LIST, total: STANDARDS_LIST.length })
+    }
+
+    // batch and global, like coverage and stats below, are literal segments the
+    // {code:path} catch-all would otherwise swallow. Everything /api/standards
+    // lives in this block, in this order, for that reason.
+    if (path === '/api/standards/batch' && method === 'GET') return json(STANDARDS)
+    if (path.startsWith('/api/standards/global')) return json({ standards: STANDARDS_LIST })
+
+    if (path === '/api/standards/coverage') {
+      // code -> citation count. Deliberately spans the heatmap's four colour
+      // bands (0, 1-2, 3-5, 6+) so no band goes unrendered.
+      await wait(80)
+      return json({ 'ELA21.11.R2': 7, 'RHS-2': 4, 'CLE-4': 2, 'R.TST.701': 1 })
+    }
+
+    if (path === '/api/standards/stats') {
+      return json({
+        total: STANDARDS_LIST.length,
+        by_source_type: { state: 3, act: 2 },
+        by_source_document: {
+          'Alabama Course of Study: ELA (2021)': 3,
+          'ACT College & Career Readiness Standards': 2,
+        },
+      })
+    }
+
+    if (path === '/api/standards/gaps') {
+      return json({
+        sections: [
+          { title: 'AP Language & Composition', body_md: 'Ingested verbatim from the CED.' },
+          { title: 'World Languages', body_md: 'Not ingested — cite by description, not by code.' },
+        ],
+        intro_md: 'What the corpus does and does not contain.',
+        ungroundable_families: ['WL', 'FA'],
+      })
+    }
+
+    if (path === '/api/standards/search' && method === 'POST') {
+      await wait(200)
+      const q = (body?.query || '').toLowerCase()
+      const hits = STANDARDS_LIST.filter((s) => s.description.toLowerCase().includes(q) || s.code.toLowerCase().includes(q))
+      return json({
+        floor: 0.42,
+        // Distance ASCENDING — nearest first. The floor only reads as a floor
+        // if the list it cuts is ordered against it.
+        results: (hits.length ? hits : STANDARDS_LIST).slice(0, body?.top_k || 10).map((s, i) => ({
+          ...s,
+          distance: 0.18 + i * 0.09,
+        })),
+      })
+    }
+
+    const lessonsMatch = path.match(/^\/api\/standards\/(.+)\/lessons$/)
+    if (lessonsMatch) {
+      await wait(120)
+      const code = decodeURIComponent(lessonsMatch[1]).toUpperCase()
+      // ELA21.11.R2 alone has history, so StandardRow's "you haven't used this
+      // standard yet" copy stays reachable for every other code.
+      return json(
+        code === 'ELA21.11.R2'
+          ? [{ plan_id: 'plan1', week_label: 'Week 03 — Aug 17-21, 2026', day_name: 'Monday', created_at: '2026-08-17T00:00:00+00:00' }]
+          : []
+      )
+    }
+
     if (path.startsWith('/api/standards/') && path !== '/api/standards/stats') {
       const code = decodeURIComponent(path.slice('/api/standards/'.length)).replace(/\s+/g, ' ').trim().toUpperCase()
       const record = STANDARDS[code]
@@ -905,9 +1463,55 @@ export function installMockApi() {
       return record ? json(record) : new Response('{}', { status: 404 })
     }
 
-    return json({})
+    /* NOT `return json({})`.
+     *
+     * This used to hand an empty 200 to any endpoint the mock didn't
+     * recognise, which is the most dangerous possible default. mockApi covers
+     * about half of what src/lib/api.js calls, so roughly thirty endpoints
+     * silently "succeeded" with `{}` — and a button whose mutation resolves is
+     * a button that looks like it worked. Every test written on top of that
+     * would have passed while the feature was dead.
+     *
+     * A 501 instead: recorded, and loud enough that scripts/test-buttons.mjs
+     * fails the run. Deliberately a response rather than a throw — the app's
+     * own error handling (toastContext, ErrorBoundary) is part of what's under
+     * test, and a button that reports a server failure gracefully IS working.
+     * Add the route rather than muting this. */
+    unhandled.push({ path, method, body })
+    return new Response(
+      JSON.stringify({ error: `mockApi has no handler for ${method} ${path}` }),
+      { status: 501, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input.url
+    if (!url.startsWith('/api') && !url.includes('/api/')) return real(input, init)
+    const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0]
+    const method = (init.method || 'GET').toUpperCase()
+    // Only JSON bodies parse. Uploads send FormData, and JSON.parse on it threw
+    // before any route matched — so every upload failed inside the mock and the
+    // app dutifully reported "Could not read that file".
+    const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
+    /* Pushed before the await and mutated after, so `calls` stays in request
+       order. Ordering by completion would scramble exactly the races the
+       per-endpoint `latency` knobs exist to reproduce. */
+    const call = { path, method, body, at: performance.now(), status: null }
+    calls.push(call)
+    const res = await route(path, method, body, init, url)
+    call.status = res.status
+    return res
   }
 
   // Handle for the test driver.
-  window.__mock = { state, latency, calls, reset: () => calls.splice(0) }
+  window.__mock = {
+    state,
+    latency,
+    calls,
+    unhandled,
+    reset: () => {
+      calls.splice(0)
+      unhandled.splice(0)
+    },
+  }
 }

@@ -13,7 +13,9 @@
     "test:auth": "node scripts/test-auth-state.mjs",
     "check:tokens": "node scripts/check-tokens.mjs",
     "check:classes": "node scripts/check-classes.mjs",
-    "check": "npm run lint && npm run check:tokens && npm run check:classes && npm run build",
+    "check:buttons": "node scripts/check-buttons.mjs",
+    "test:buttons": "node --test scripts/test-buttons.mjs",
+    "check": "npm run lint && npm run check:tokens && npm run check:classes && npm run check:buttons && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -33,6 +35,7 @@
     "@vitejs/plugin-react": "^6.0.4",
     "autoprefixer": "^10.5.4",
     "oxlint": "^1.75.0",
+    "playwright": "^1.56.0",
     "postcss": "^8.5.25",
     "tailwindcss": "^3.4.19",
     "vite": "^8.2.0"

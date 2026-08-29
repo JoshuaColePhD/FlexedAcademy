@@ -20,9 +20,14 @@ export function AccordionPanel({ title, defaultOpen = true, forceOpen = false, c
 
   return (
     <div className="bg-paper-raised border border-edge rounded-xl shadow-sm mb-3 overflow-hidden">
-      <button 
-        type="button" 
+      {/* aria-expanded: this is a disclosure button, and without it the only
+          thing announcing the panel's state was the chevron — which is a
+          rotation, i.e. nothing at all to a screen reader. A teacher using one
+          could open and close "Built from" and never be told which it now was. */}
+      <button
+        type="button"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
         className="w-full flex items-center justify-between px-3 py-2.5 bg-paper hover:bg-paper-sunken transition-colors outline-none"
       >
         <span className="text-sm font-semibold text-ink">{title}</span>

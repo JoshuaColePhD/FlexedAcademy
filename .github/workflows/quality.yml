@@ -26,6 +26,73 @@ jobs:
       - name: Run focused behavior tests
         run: npm run test:voice && npm run test:contextual && npm run test:onboarding && npm run test:auth
 
+  # Does every button in the app still do what it is supposed to do?
+  #
+  # The `frontend` job above proves the code compiles, lints, and references
+  # only tokens and classes that exist. None of that has ever established that
+  # a click does anything: a button whose endpoint was renamed underneath it
+  # passes every one of those checks and fails for the teacher. See
+  # frontend/scripts/test-buttons.mjs for what it asserts and why.
+  #
+  # Needs a real browser, hence its own job rather than a step inside
+  # `frontend`. It drives frontend/preview.html — the real App.jsx against the
+  # canned backend in src/dev/mockApi.js — so there is no database, no API key
+  # and no Google OAuth involved, and nothing here touches production.
+  #
+  # BUDGET: same 2,000 min/month cap uptime.yml documents. The playwright
+  # container is pre-baked and the suite crawls four routes at a time; a run
+  # measured 4-6 minutes across runs (244-373s for 223 buttons over 15 routes),
+  # not the ~2 first guessed at before it had ever run. Still affordable on
+  # every push alongside uptime's ~350 min/month, and worth more than
+  # path-gating it, which would cost a paths-filter action and a second job to
+  # decide. If the cap ever gets tight, gate this one on frontend/** before
+  # trimming what it covers.
+  buttons:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.0-noble
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Click every button
+        # Server and suite in ONE step on purpose. `npm run dev` never exits,
+        # so it has to be backgrounded — and a background process started in an
+        # earlier step is not something to rely on surviving into a later one.
+        # Polled rather than slept: a fixed sleep is either too short on a cold
+        # runner or wasted time on a warm one. Polled with node rather than
+        # curl, which this image does not promise to ship — node is the one
+        # thing the job cannot be missing.
+        #
+        # `--host 127.0.0.1` is the point, not decoration. Vite's default host
+        # is the NAME "localhost", and which stack that resolves to differs
+        # between this container and a laptop — two runs were lost to a poll
+        # getting ECONNREFUSED for sixty seconds against a server that had
+        # printed "ready in 293 ms" one line earlier, because the two ends
+        # resolved the same name to different addresses. Binding and polling
+        # the same literal address takes resolution out of it entirely.
+        # The poll prints the error it got rather than swallowing it; that is
+        # how the second attempt was diagnosed as ECONNREFUSED (nothing
+        # listening) rather than a timeout (listening but slow).
+        env:
+          BUTTONS_BASE: http://127.0.0.1:5174
+        run: |
+          npm run dev -- --host 127.0.0.1 &
+          for i in $(seq 1 60); do
+            node -e "fetch('$BUTTONS_BASE/preview.html').then(r => process.exit(r.ok ? 0 : 1)).catch(e => { console.error(e.cause?.code || e.message); process.exit(1) })" && break
+            if [ "$i" = "60" ]; then echo "preview harness never came up at $BUTTONS_BASE" >&2; exit 1; fi
+            sleep 1
+          done
+          npm run test:buttons
+
   backend:
     runs-on: ubuntu-latest
     steps:
