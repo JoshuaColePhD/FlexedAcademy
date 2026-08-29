@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
 // linter until someone dragged a file.
-import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Square, Upload, X } from 'lucide-react'
+import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Plus, Square, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -29,7 +29,7 @@ const MAX_ATTACH_BATCH = 5
 // the textarea, but not in the composer as a whole. Keep the same total
 // padding (and therefore the same autosized height), with four pixels moved
 // from below the line to above it so the text's visual centre is the shell's.
-const COMPOSER_TEXT_METRICS = 'px-0 pt-[1.1875rem] pb-[0.6875rem] text-[0.9375rem] leading-relaxed'
+const COMPOSER_TEXT_METRICS = 'px-0 pt-[0.9375rem] pb-[0.8125rem] text-[0.9375rem] leading-relaxed'
 
 /* An attachment chip's own mount lifecycle — entrance was already implicit
  * (a plain array render, no fade), removal was a hard splice. This is
@@ -149,6 +149,7 @@ export function Composer({
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isAttaching, setIsAttaching] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [shake, setShake] = useState(false)
   const [motionState, setMotionState] = useState('')
   const motionTimerRef = useRef(null)
@@ -188,11 +189,9 @@ export function Composer({
   // (add-pacing-guide, add-school-calendar) — those have no sentence to
   // type or send, so they're the Greeting's own inline hint instead (see
   // ChatPage's emptyStateHint). Whatever's here is always a real ghost-
-  // text candidate — the composer itself never renders a suggestion as a
-  // clickable card any more. The one thing that visually opens this box is
-  // an actual clarifying-questions round (questionsPanel below); a mere
-  // suggestion, however specific, is text you can Tab to accept and nothing
-  // more, the same contract VS Code's own inline completion keeps.
+  // text candidate. When the composer is empty, that candidate also gets one
+  // quiet chip above the writing surface; it disappears at the first typed
+  // character, leaving the input itself free of competing UI.
   const textSuggestion = candidateSuggestions[0] || null
   // A stable identity for "which suggestion is this" that survives the
   // LLM-grounding call swapping in better wording later (see ChatPage's
@@ -532,8 +531,20 @@ export function Composer({
   const isExpanded = Boolean(questionsPanel) || voiceModeActive
   return (
     <div className="relative w-full">
+      {activeSuggestion && !value && !isStreaming && !questionsPanel ? (
+        <div className="composer-suggestion-tray" aria-label="Suggested prompt">
+          <button
+            type="button"
+            className="composer-suggestion-chip fa-press"
+            onClick={() => acceptSuggestion(activeSuggestion)}
+          >
+            <span className="composer-suggestion-label">Try this</span>
+            <span className="composer-suggestion-text">{activeSuggestion.prompt}</span>
+          </button>
+        </div>
+      ) : null}
       <div
-        className={`composer-shell ${isExpanded ? 'is-expanded' : ''} relative flex w-full flex-col overflow-hidden border border-edge bg-paper focus-within:scale-[1.01] focus-within:ring-1 focus-within:ring-accent/50 ${
+        className={`composer-shell ${isExpanded ? 'is-expanded' : ''} relative flex w-full flex-col overflow-hidden border border-edge bg-paper ${
           !isExpanded ? 'shadow-sm' : ''
         } ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}
@@ -727,7 +738,7 @@ export function Composer({
               button read as two disconnected controls rather than one
               cluster. A row keeps the bar's height constant regardless of
               which button is showing. */}
-          <div className="flex flex-row shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
+          <div className="relative flex flex-row shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
             {/* One persistent button now, not three swapped in and out —
                 a swapped-out button unmounts outright, so nothing about a
                 plain CSS transition could ever animate THAT change; only an
@@ -787,57 +798,51 @@ export function Composer({
               />
             </button>
 
-            {!hasContent && onOpenVoice && !voiceModeActive && !isStreaming ? (
+            {onOpenVoice && !voiceModeActive && !isStreaming ? (
               <button
                 type="button"
-                className="fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper-sunken md:h-9 md:w-9"
-                onClick={() => {
-                  // The dock this opens animates in on its own slow
-                  // (--t-slow) grid transition — by the time it's visibly
-                  // moving, this button is already gone (voiceModeActive
-                  // stops rendering this branch). Without its own brief
-                  // acknowledgment the tap itself was the one moment in this
-                  // whole bar with zero feedback between "pressed" and "the
-                  // dock is now open."
-                  pulseMotion('voice', 260)
-                  onOpenVoice()
-                }}
-                aria-label="Start a voice conversation (beta)"
-                title="Talk instead of type — beta"
+                className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9 ${toolsOpen ? 'bg-paper-sunken text-ink' : ''}`}
+                onClick={() => setToolsOpen((open) => !open)}
+                aria-label="More composer actions"
+                aria-expanded={toolsOpen}
+                aria-haspopup="menu"
               >
-                <AudioLines
-                  size={19}
-                  className={`absolute transition-all duration-300 md:size-[18px] ${
-                    motionState === 'voice' ? 'scale-50 rotate-90 opacity-0' : 'scale-100 rotate-0 opacity-100'
-                  }`}
-                  aria-hidden="true"
-                />
-                <Loader2
-                  size={19}
-                  className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${
-                    motionState === 'voice' ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
-                  }`}
-                  aria-hidden="true"
-                />
+                <Plus size={19} className={`transition-transform duration-200 md:size-[18px] ${toolsOpen ? 'rotate-45' : ''}`} aria-hidden="true" />
               </button>
-            ) : (
-              <button
-                type="button"
-                className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-8 md:w-8 ${
+            ) : null}
+            {toolsOpen ? (
+              <div className="composer-tools-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="composer-tools-item fa-press"
+                  onClick={() => {
+                    setToolsOpen(false)
+                    pulseMotion('voice', 260)
+                    onOpenVoice?.()
+                  }}
+                >
+                  <AudioLines size={16} aria-hidden="true" />
+                  <span>Talk instead of type</span>
+                </button>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-8 md:w-8 ${
                   isStreaming && onStop ? 'bg-mark-tint text-mark hover:shadow-sm'
                   : isStreaming ? 'bg-transparent text-ink-muted'
-                  : canSend ? 'bg-ink text-ink-inverse hover:opacity-90'
+                  : canSend ? 'bg-accent text-accent-on hover:bg-accent-hover'
                   : 'cursor-not-allowed bg-paper-inset text-ink-faint'
                 } ${motionState === 'submit' ? 'fa-settle' : motionState === 'ready' ? 'fa-ready-pop' : ''}`}
-                onClick={isStreaming && onStop ? onStop : isStreaming ? undefined : submit}
-                disabled={(!canSend && !isStreaming) || (isStreaming && !onStop)}
-                aria-label={isStreaming && onStop ? "Stop generating" : sendLabel}
-              >
-                <ArrowUp size={19} className={`absolute transition-all duration-300 md:size-[18px] ${isStreaming ? 'scale-50 opacity-0 rotate-90' : 'scale-100 opacity-100 rotate-0'}`} strokeWidth={3} aria-hidden="true" />
-                <Loader2 size={20} className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${isStreaming && !onStop ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`} aria-hidden="true" />
-                <Square size={15} className={`absolute transition-all duration-300 md:size-3.5 ${isStreaming && onStop ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`} fill="currentColor" aria-hidden="true" />
-              </button>
-            )}
+              onClick={isStreaming && onStop ? onStop : isStreaming ? undefined : submit}
+              disabled={(!canSend && !isStreaming) || (isStreaming && !onStop)}
+              aria-label={isStreaming && onStop ? "Stop generating" : sendLabel}
+            >
+              <ArrowUp size={19} className={`absolute transition-all duration-300 md:size-[18px] ${isStreaming ? 'scale-50 opacity-0 rotate-90' : 'scale-100 opacity-100 rotate-0'}`} strokeWidth={3} aria-hidden="true" />
+              <Loader2 size={20} className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${isStreaming && !onStop ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`} aria-hidden="true" />
+              <Square size={15} className={`absolute transition-all duration-300 md:size-3.5 ${isStreaming && onStop ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`} fill="currentColor" aria-hidden="true" />
+            </button>
           </div>
         </div>
       </div>

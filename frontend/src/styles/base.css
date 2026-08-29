@@ -3749,10 +3749,10 @@
       6px 6px 14px rgb(var(--neo-dark-rgb) / 0.6),
       -6px -6px 14px rgb(var(--neo-light-rgb) / 0.85);
     transition:
-      border-radius var(--t-slow) var(--ease-glide),
+      border-radius 220ms var(--ease-glide),
       border-color var(--t-fast) var(--ease),
-      box-shadow var(--t-base) var(--ease-out),
-      transform var(--t-base) var(--ease-out);
+      box-shadow 180ms var(--ease-out),
+      background-color 180ms var(--ease-out);
   }
   .composer-shell.is-expanded {
     border-radius: 22px;
@@ -3761,11 +3761,96 @@
      nudge, because it is now the only non-caret indication that typing will go
      here (WCAG 2.4.7). */
   .composer-shell:focus-within {
-    border-color: var(--edge-strong);
-    transform: translateY(-1px);
+    border-color: rgb(var(--accent-rgb) / 0.55);
     box-shadow:
-      7px 7px 16px rgb(var(--neo-dark-rgb) / 0.56),
-      -7px -7px 16px rgb(var(--neo-light-rgb) / 0.82);
+      6px 6px 14px rgb(var(--neo-dark-rgb) / 0.5),
+      -6px -6px 14px rgb(var(--neo-light-rgb) / 0.78),
+      0 0 0 3px rgb(var(--accent-rgb) / 0.09);
+  }
+
+  /* One optional nudge before writing, outside the field rather than inside
+     it. This keeps the text surface calm and gives the chip a clear role:
+     fill the composer, then continue editing or send when ready. */
+  .composer-suggestion-tray {
+    display: flex;
+    min-width: 0;
+    margin: 0 0 var(--sp-2) var(--sp-2);
+    overflow: hidden;
+    animation: composer-suggestion-in 180ms var(--ease-out) both;
+  }
+  .composer-suggestion-chip {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 7px 11px;
+    color: var(--ink-soft);
+    background: rgb(var(--accent-rgb) / 0.08);
+    border: 1px solid rgb(var(--accent-rgb) / 0.18);
+    border-radius: var(--r-full);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  }
+  .composer-suggestion-chip:hover,
+  .composer-suggestion-chip:focus-visible {
+    background: rgb(var(--accent-rgb) / 0.13);
+    border-color: rgb(var(--accent-rgb) / 0.34);
+    outline: none;
+  }
+  .composer-suggestion-label {
+    flex-shrink: 0;
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    color: var(--accent-text);
+  }
+  .composer-suggestion-text {
+    overflow: hidden;
+    font-size: var(--fs-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .composer-tools-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + var(--sp-2));
+    z-index: 3;
+    min-width: 190px;
+    padding: var(--sp-1);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
+    animation: composer-tools-in 160ms var(--ease-out) both;
+  }
+  .composer-tools-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: var(--touch-min);
+    padding: 0 var(--sp-3);
+    color: var(--ink-soft);
+    font-size: var(--fs-sm);
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: var(--r-md);
+    cursor: pointer;
+  }
+  .composer-tools-item:hover,
+  .composer-tools-item:focus-visible {
+    color: var(--ink);
+    background: var(--paper-sunken);
+    outline: none;
+  }
+  @keyframes composer-suggestion-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes composer-tools-in {
+    from { opacity: 0; transform: translateY(4px) scale(0.98); }
+    to { opacity: 1; transform: none; }
   }
 
   /* The week and the class, above the transcript. Rule 1: no rule under it —
