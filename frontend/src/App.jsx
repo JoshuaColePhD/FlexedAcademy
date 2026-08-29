@@ -11,6 +11,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from './lib/api'
+import { onboardingDeferred } from './lib/onboardingWizardBus'
 import { useToast } from './lib/toastContext'
 import { ToastProvider } from './components/ToastProvider'
 import { ConfirmProvider } from './components/ConfirmProvider'
@@ -193,7 +194,12 @@ function ClassRoutes() {
   // is the one place every path into a class passes through, so it's the one
   // place that has to hold the line: no account with onboarding still
   // outstanding ever sees the app shell behind it.
-  if (user && !user.onboarding_seen_at) {
+  // onboardingDeferred(): this teacher already tried to finish or skip the
+  // wizard and the server would not record it (offline, 500). Without this
+  // the redirect fires again immediately and there is no way into the app —
+  // see deferOnboarding() in lib/onboardingWizardBus.js. Session-scoped, so
+  // the wizard still returns next login; it is not a way to opt out.
+  if (user && !user.onboarding_seen_at && !onboardingDeferred()) {
     return <Navigate to={`/c/${classId}/onboarding`} replace />
   }
   return (

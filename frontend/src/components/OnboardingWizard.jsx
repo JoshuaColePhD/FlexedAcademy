@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
+import { deferOnboarding } from '../lib/onboardingWizardBus'
 import { hasChosenSchool } from '../lib/schools'
 import { useAuth } from '../lib/authContext'
 import { useToast } from '../lib/toastContext'
@@ -299,13 +300,26 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setFinishing(true)
     try {
       await api.markOnboardingSeen()
-      // useAuth's `user` is plain component state (AuthProvider.jsx), not a
-      // react-query cache entry — invalidating qk.me wouldn't touch it.
-      // refresh() re-fetches /api/auth/me and updates it directly, which is
-      // what AppShell's auto-open check (`!user.onboarding_seen_at`) reads.
+      // refresh() re-reads /api/auth/me, which is what ClassRoutes' own
+      // `!user.onboarding_seen_at` check (App.jsx) reads to decide whether to
+      // send this teacher back here.
+      //
+      // (It used to be worth noting that useAuth's `user` was plain component
+      // state and invalidating qk.me wouldn't touch it. That is no longer
+      // true — AuthProvider backs `user` with the qk.me query now — but
+      // refresh() is still the right call: it awaits the fresh answer rather
+      // than firing an invalidate and racing the redirect below.)
       await refresh()
-    } catch {
-      // Non-fatal: worst case the wizard offers itself again next login.
+    } catch (err) {
+      /* Deliberately NOT silent, and no longer a dead end.
+         This close is followed by ClassRoutes redirecting any account without
+         onboarding_seen_at straight back here — so swallowing the failure and
+         closing anyway produced an instant loop with no escape, the X button
+         included. Offline or a 500 meant the teacher could not get into the
+         app at all. Deferring for this session lets them past; the flag is
+         sessionStorage, so the wizard genuinely does return next login. */
+      deferOnboarding()
+      toast.apiError("Couldn't save your setup progress", err)
     } finally {
       setFinishing(false)
       onClose()

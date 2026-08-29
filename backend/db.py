@@ -3376,12 +3376,25 @@ def _write_returning(sql: str, params: tuple = ()) -> dict | None:
 # Settings (singleton)
 # ---------------------------------------------------------------------------
 
+# The shape a settings row falls back to when one is created lazily for a
+# subject that has never had one.
+#
+# `teacher` was "Josh Cole" and `period` "3rd period" — this app's author, left
+# over from when it was a single-user tool. The normal path overwrites both
+# (create_class -> sync_settings_from_class), so it stayed invisible, but
+# get_settings_row below will happily INSERT this for any subject with no row
+# yet — and `teacher` is printed in the document header. Another teacher's
+# name appearing on a stranger's lesson plan is not a cosmetic default.
+#
+# Empty rather than a placeholder like "Teacher": the builder already handles a
+# blank header field, and a wrong name is worse than a missing one. The real
+# name is filled in by get_settings_row from the account itself.
 DEFAULT_SETTINGS = {
-    "teacher": "Josh Cole",
-    "course": "AP Language & Composition",
-    "period": "3rd period",
-    "subject": "AP Language & Composition",
-    "grade": "11",
+    "teacher": "",
+    "course": "",
+    "period": "",
+    "subject": "General",
+    "grade": "",
 }
 
 
@@ -3394,13 +3407,25 @@ def get_settings_row(user_id: str = "default_user", subject: str | None = None) 
         
     if row is None:
         target_subject = subject or DEFAULT_SETTINGS["subject"]
+        # The account's own name, not DEFAULT_SETTINGS' empty one, whenever we
+        # have it — this row's `teacher` is what prints in the document header,
+        # so the one thing worth doing here is getting it right rather than
+        # leaving it for a later sync that may never come. Falls back to the
+        # (now blank) default for a user id with no row, e.g. 'default_user' in
+        # local dev before anyone has signed up.
+        owner = _row("SELECT name FROM users WHERE id = ?", (user_id,))
+        teacher = (owner["name"] if owner and owner.get("name") else DEFAULT_SETTINGS["teacher"])
+        # `subject` doubles as the course label on a lazily-created row: it is
+        # the only thing the caller actually told us about this profile, and
+        # it beats a hardcoded course belonging to a different school.
+        course = target_subject if subject else DEFAULT_SETTINGS["course"]
         _write(
             "INSERT INTO settings (user_id, subject, teacher, course, period, grade, updated_at) VALUES (?,?,?,?,?,?,?)",
             (
                 user_id,
                 target_subject,
-                DEFAULT_SETTINGS["teacher"],
-                DEFAULT_SETTINGS["course"],
+                teacher,
+                course,
                 DEFAULT_SETTINGS["period"],
                 DEFAULT_SETTINGS["grade"],
                 now(),
