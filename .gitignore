@@ -18,6 +18,12 @@ chroma_db/
 # Node
 node_modules/
 
+# Playwright failure artifacts can contain rendered lesson-plan text. They are
+# useful only locally while diagnosing a failed staging run and must not enter
+# version control.
+frontend/test-results/
+frontend/playwright-report/
+
 # Wrangler's own local cache (Cloudflare account id + email for whoever ran
 # `wrangler` on this machine) — regenerated on demand, not build input.
 .wrangler/

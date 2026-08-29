@@ -210,14 +210,14 @@ function ClassRoutes() {
           {/* A new plan IS the home screen. There is no calendar route: the
               school calendar still shapes every generation, from
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
-          <Route index element={<ChatPage />} />
-          <Route path="chat/:chatId" element={<ChatPage />} />
-          <Route path="plans" element={<PlansPage />} />
-          <Route path="history" element={<HistoryPage />} />
-          <Route path="class" element={<ClassPage />} />
-          <Route path="standards" element={<StandardsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="admin" element={<AdminPage />} />
+          <Route index element={<ErrorBoundary scope="chat" compact><ChatPage /></ErrorBoundary>} />
+          <Route path="chat/:chatId" element={<ErrorBoundary scope="chat" compact><ChatPage /></ErrorBoundary>} />
+          <Route path="plans" element={<ErrorBoundary scope="plans" compact><PlansPage /></ErrorBoundary>} />
+          <Route path="history" element={<ErrorBoundary scope="history" compact><HistoryPage /></ErrorBoundary>} />
+          <Route path="class" element={<ErrorBoundary scope="class-settings" compact><ClassPage /></ErrorBoundary>} />
+          <Route path="standards" element={<ErrorBoundary scope="standards" compact><StandardsPage /></ErrorBoundary>} />
+          <Route path="settings" element={<ErrorBoundary scope="settings" compact><SettingsPage /></ErrorBoundary>} />
+          <Route path="admin" element={<ErrorBoundary scope="admin" compact><AdminPage /></ErrorBoundary>} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AppShell>

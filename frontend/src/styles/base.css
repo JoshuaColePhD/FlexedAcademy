@@ -1771,6 +1771,17 @@
     border: 1px solid var(--edge-strong);
     border-radius: var(--r-lg);
   }
+  /* A route boundary sits inside the persistent desktop shell. It should
+     recover that one workspace surface, not look like a full application
+     outage or force a teacher out of the sidebar. */
+  .crash-compact {
+    min-height: 100%;
+    padding: var(--sp-5) var(--gutter);
+    background: transparent;
+  }
+  .crash-compact .crash-card {
+    box-shadow: var(--shadow-panel);
+  }
   .crash-card h1 {
     font-size: var(--fs-xl);
     font-weight: var(--fw-semibold);

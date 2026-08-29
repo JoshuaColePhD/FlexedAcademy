@@ -3153,6 +3153,13 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_document_build_jobs_status ON document_build_jobs(status, updated_at);
     ALTER TABLE document_build_jobs ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 59: bounded automatic recovery for durable DOCX builds ────────────
+    """
+    ALTER TABLE document_build_jobs ADD COLUMN IF NOT EXISTS available_at TEXT;
+    UPDATE document_build_jobs SET available_at = updated_at WHERE available_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_document_build_jobs_ready
+      ON document_build_jobs(status, available_at);
+    """,
 ]
 
 
@@ -4389,19 +4396,20 @@ def enqueue_document_build(plan_id: str, user_id: str) -> dict:
     stamp = now()
     _write(
         """
-        INSERT INTO document_build_jobs (plan_id, user_id, status, attempts, error_message, created_at, updated_at)
-        VALUES (?, ?, 'queued', 0, NULL, ?, ?)
+        INSERT INTO document_build_jobs (plan_id, user_id, status, attempts, error_message, created_at, updated_at, available_at)
+        VALUES (?, ?, 'queued', 0, NULL, ?, ?, ?)
         ON CONFLICT (plan_id) DO UPDATE SET
-          status = 'queued', error_message = NULL, updated_at = EXCLUDED.updated_at
+          status = 'queued', attempts = 0, error_message = NULL,
+          updated_at = EXCLUDED.updated_at, available_at = EXCLUDED.available_at
         """,
-        (plan_id, user_id, stamp, stamp),
+        (plan_id, user_id, stamp, stamp, stamp),
     )
     return get_document_build_status(plan_id, user_id) or {}
 
 
 def get_document_build_status(plan_id: str, user_id: str) -> dict | None:
     return _row(
-        "SELECT plan_id, status, attempts, error_message, updated_at FROM document_build_jobs WHERE plan_id = ? AND user_id = ?",
+        "SELECT plan_id, status, attempts, error_message, updated_at, available_at FROM document_build_jobs WHERE plan_id = ? AND user_id = ?",
         (plan_id, user_id),
     )
 
@@ -4411,27 +4419,47 @@ def claim_next_document_build() -> dict | None:
         """
         UPDATE document_build_jobs SET status = 'building', attempts = attempts + 1, updated_at = ?
         WHERE plan_id = (
-          SELECT plan_id FROM document_build_jobs WHERE status = 'queued'
-          ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1
+          SELECT plan_id FROM document_build_jobs
+          WHERE status = 'queued' AND COALESCE(available_at, updated_at) <= ?
+          ORDER BY COALESCE(available_at, updated_at) FOR UPDATE SKIP LOCKED LIMIT 1
         )
         RETURNING *
         """,
-        (now(),),
+        (now(), now()),
     )
 
 
 def finish_document_build(plan_id: str, user_id: str, *, error_message: str | None = None) -> None:
+    if error_message:
+        job = get_document_build_status(plan_id, user_id) or {}
+        attempts = int(job.get("attempts") or 0)
+        # A restart, transient storage failure, or short-lived LibreOffice
+        # issue should not require a teacher to notice and click Rebuild. Keep
+        # retries bounded so a persistently malformed document reaches a clear
+        # failed state for recovery instead of looping forever.
+        if attempts < 3:
+            delay_seconds = 15 * (2 ** max(0, attempts - 1))
+            available_at = (datetime.now(UTC) + timedelta(seconds=delay_seconds)).isoformat(timespec="seconds")
+            _write(
+                """
+                UPDATE document_build_jobs
+                SET status = 'queued', error_message = ?, updated_at = ?, available_at = ?
+                WHERE plan_id = ? AND user_id = ?
+                """,
+                (error_message, now(), available_at, plan_id, user_id),
+            )
+            return
     _write(
-        "UPDATE document_build_jobs SET status = ?, error_message = ?, updated_at = ? WHERE plan_id = ? AND user_id = ?",
-        ('failed' if error_message else 'ready', error_message, now(), plan_id, user_id),
+        "UPDATE document_build_jobs SET status = ?, error_message = ?, updated_at = ?, available_at = ? WHERE plan_id = ? AND user_id = ?",
+        ('failed' if error_message else 'ready', error_message, now(), now(), plan_id, user_id),
     )
 
 
 def reset_stale_document_builds(stale_after_seconds: int = 900) -> int:
     threshold = (datetime.now(UTC) - timedelta(seconds=stale_after_seconds)).isoformat(timespec='seconds')
     return _write(
-        "UPDATE document_build_jobs SET status = 'queued', updated_at = ? WHERE status = 'building' AND updated_at < ?",
-        (now(), threshold),
+        "UPDATE document_build_jobs SET status = 'queued', updated_at = ?, available_at = ? WHERE status = 'building' AND updated_at < ?",
+        (now(), now(), threshold),
     )
 
 

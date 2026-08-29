@@ -18,13 +18,20 @@ export class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error('Unhandled UI error:', error, info)
-    Sentry.captureException(error, { extra: { componentStack: info?.componentStack } })
+    // A thrown value can include an API response or lesson text. Observability
+    // needs the failure shape, not a teacher's content, so report a stable,
+    // content-free event rather than serialising the exception or component
+    // stack to a third party.
+    Sentry.captureMessage('UI section crashed', {
+      level: 'error',
+      tags: { scope: this.props.scope || 'application' },
+    })
   }
 
   render() {
     if (!this.state.error) return this.props.children
     return (
-      <div className="crash">
+      <div className={this.props.compact ? 'crash crash-compact' : 'crash'}>
         <div className="crash-card">
           <h1>Something broke in the interface</h1>
           <p>
@@ -40,6 +47,9 @@ export class ErrorBoundary extends Component {
             <pre>{String(this.state.error?.stack || this.state.error)}</pre>
           </details>
           <div className="crash-actions">
+            <button type="button" className="btn btn-primary" onClick={() => this.setState({ error: null })}>
+              <RotateCcw size={14} aria-hidden="true" /> Try this section again
+            </button>
             <button type="button" className="btn btn-primary" onClick={() => location.reload()}>
               <RotateCcw size={14} aria-hidden="true" /> Reload
             </button>

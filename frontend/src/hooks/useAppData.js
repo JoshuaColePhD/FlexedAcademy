@@ -44,7 +44,7 @@ export function useClasses(includeArchived = false) {
   )
   return useQuery({
     queryKey: qk.classes,
-    queryFn: () => api.listClasses({ include_archived: true }),
+    queryFn: ({ signal }) => api.listClasses({ include_archived: true, signal }),
     select,
     retry: false,
     // No placeholderData: [] here. A placeholder resolves the query
@@ -78,7 +78,7 @@ export function useActiveClass() {
 export function useCalendar(classId) {
   return useQuery({
     queryKey: qk.calendar(classId),
-    queryFn: () => api.getWeeks(classId),
+    queryFn: ({ signal }) => api.getWeeks(classId, { signal }),
     enabled: Boolean(classId),
     // The school year does not change while a teacher is looking at it. This is
     // what stops four surfaces reading the same board from firing four requests.
@@ -92,7 +92,7 @@ export function useChats() {
   const { classId } = useParams()
   return useQuery({
     queryKey: qk.chats(classId),
-    queryFn: () => api.listChats({ classId }),
+    queryFn: ({ signal }) => api.listChats({ classId, signal }),
     enabled: Boolean(classId),
   })
 }

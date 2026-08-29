@@ -11,6 +11,7 @@
     "test:contextual": "node scripts/test-contextual-suggestions.mjs",
     "test:onboarding": "node scripts/test-onboarding-steps.mjs",
     "test:auth": "node scripts/test-auth-state.mjs",
+    "test:e2e": "playwright test",
     "check:tokens": "node scripts/check-tokens.mjs",
     "check:classes": "node scripts/check-classes.mjs",
     "check": "npm run lint && npm run check:tokens && npm run check:classes && npm run build",
@@ -30,6 +31,7 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@vitejs/plugin-react": "^6.0.4",
     "autoprefixer": "^10.5.4",
     "oxlint": "^1.75.0",

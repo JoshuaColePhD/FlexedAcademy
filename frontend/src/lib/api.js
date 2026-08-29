@@ -78,41 +78,50 @@ async function toError(res) {
   return apiErrorFromBody(body, res.status)
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const isSafeRead = (method) => method === 'GET' || method === 'HEAD'
+
 async function request(path, { method = 'GET', body, signal } = {}) {
   // A bare fetch has no default timeout, so a backend that stalls without
   // ever sending a response (a stuck DB connection, a dead proxy) leaves the
   // promise pending forever and callers like OnboardingWizard.finish() never
   // resolve their try/finally. Bound every request so a stall surfaces as an
   // ordinary network error instead.
-  const timeoutController = new AbortController()
-  const timeoutId = setTimeout(() => timeoutController.abort(), 20000)
-  const combinedSignal = signal
-    ? AbortSignal.any([signal, timeoutController.signal])
-    : timeoutController.signal
+  // Retries belong here, not scattered across every list view. Only safe reads
+  // retry automatically: a transient gateway failure should not create a
+  // second plan, revision, or upload. Writes already carry explicit
+  // idempotency where needed (messages) and otherwise remain one deliberate
+  // request the UI can report honestly.
+  const maxAttempts = isSafeRead(method) ? 3 : 1
   let res
-  try {
-    res = await fetch(`${API_BASE}${path}`, {
-      method,
-      signal: combinedSignal,
-      // 'include' rather than the default 'same-origin': harmless in dev
-      // (proxied, so already same-origin) but required once the frontend and
-      // API are served from different origins — the login session is a
-      // cookie, and without this it silently stops being sent.
-      credentials: 'include',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    })
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      if (signal?.aborted) throw err
-      throw new ApiError('The server took too long to respond.', { code: 'timeout' })
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const timeoutController = new AbortController()
+    const timeoutId = setTimeout(() => timeoutController.abort(), 20000)
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, timeoutController.signal])
+      : timeoutController.signal
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        method,
+        signal: combinedSignal,
+        credentials: 'include',
+        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+      if (res.ok || !isSafeRead(method) || ![502, 503, 504].includes(res.status) || attempt === maxAttempts - 1) break
+    } catch (err) {
+      if (err.name === 'AbortError' && signal?.aborted) throw err
+      if (attempt === maxAttempts - 1) {
+        if (err.name === 'AbortError') throw new ApiError('The server took too long to respond.', { code: 'timeout' })
+        throw new ApiError('Can’t reach the server.', {
+          code: 'network_error',
+          hint: 'Check your connection and try again.',
+        })
+      }
+    } finally {
+      clearTimeout(timeoutId)
     }
-    throw new ApiError('Can’t reach the server.', {
-      code: 'network_error',
-      hint: 'Is the backend running? Start it with ./run.sh',
-    })
-  } finally {
-    clearTimeout(timeoutId)
+    await sleep(250 * 2 ** attempt)
   }
   if (!res.ok) throw await toError(res)
   if (res.status === 204) return null
