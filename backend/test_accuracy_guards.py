@@ -72,6 +72,16 @@ def test_validate_day_still_allows_blank_act_alignment():
     schema.validate_day(_full_day(act_alignment=""))
 
 
+@pytest.mark.parametrize("field", schema.WEEDEN_SECTION_FIELDS)
+def test_weeden_plan_rejects_a_blank_required_template_row(field):
+    """A new Weeden document must not be saved with a visible empty row."""
+    with pytest.raises(SchemaError) as exc:
+        schema.validate_day(
+            _full_day(**{field: ""}), require_weeden_sections=True
+        )
+    assert exc.value.code == "day_empty_field"
+
+
 # ---------------------------------------------------------------------------
 # Gap 2 — audit_grounding used to only WARN about a missing ACT alignment,
 # even for a course whose companion ACT section makes it mandatory; the

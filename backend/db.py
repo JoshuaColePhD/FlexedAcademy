@@ -4383,6 +4383,26 @@ def list_plans_for_school_template_repair(school_id: str, stale_template: str) -
     return [_hydrate_plan(row) for row in rows]
 
 
+def list_plans_for_school(school_id: str) -> list[dict]:
+    """All plans attached to one school's classes.
+
+    Kept separate from the template-id migration query above: a plan can use
+    the correct builder and still predate fields that builder visibly requires.
+    The service decides which rows actually need repair after reading their
+    normalized JSON, avoiding database-specific JSON predicates.
+    """
+    rows = _rows(
+        """
+        SELECT p.* FROM plans p
+        JOIN classes c ON c.id = p.class_id
+        WHERE c.school = ?
+        ORDER BY p.created_at
+        """,
+        (school_id,),
+    )
+    return [_hydrate_plan(row) for row in rows]
+
+
 def delete_plan(user_id: str, plan_id: str) -> bool:
     return _write("DELETE FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id)) > 0
 

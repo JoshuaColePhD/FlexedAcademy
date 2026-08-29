@@ -743,7 +743,9 @@ def normalize_day(day: dict, warnings: list[str] | None = None) -> dict:
     return d
 
 
-def validate_day(day: object, *, path: str = "day") -> tuple[dict, list[str]]:
+def validate_day(
+    day: object, *, path: str = "day", require_weeden_sections: bool = False
+) -> tuple[dict, list[str]]:
     """Validate one day. Returns (normalized_day, warnings)."""
     if not isinstance(day, dict):
         raise SchemaError("day_not_an_object", f"Expected an object at {path}.", path=path)
@@ -784,7 +786,11 @@ def validate_day(day: object, *, path: str = "day") -> tuple[dict, list[str]]:
     # here would reject valid plans. Its narrower, course-aware version of
     # this same check lives in retrieval.audit_grounding instead, which knows
     # whether ACT alignment was expected for this specific subject.
-    for field in ("learning_targets", "standards", "do_now", "during", "assessment"):
+    required_text_fields = ("learning_targets", "standards", "do_now", "during", "assessment")
+    if require_weeden_sections:
+        required_text_fields += WEEDEN_SECTION_FIELDS
+
+    for field in required_text_fields:
         if not str(d.get(field, "")).strip():
             raise SchemaError(
                 "day_empty_field",
@@ -874,7 +880,9 @@ def _clean(obj):
     return obj
 
 
-def validate_plan(plan: object) -> tuple[dict, list[str]]:
+def validate_plan(
+    plan: object, *, require_weeden_sections: bool = False
+) -> tuple[dict, list[str]]:
     """Validate a whole week. Returns (normalized_plan, warnings).
 
     Raises SchemaError with a distinct `code` per failure so the frontend can
@@ -906,7 +914,9 @@ def validate_plan(plan: object) -> tuple[dict, list[str]]:
     out_days = []
     seen: list[str] = []
     for i, raw in enumerate(days):
-        d, w = validate_day(raw, path=f"days[{i}]")
+        d, w = validate_day(
+            raw, path=f"days[{i}]", require_weeden_sections=require_weeden_sections
+        )
         warnings.extend(w)
         if d["name"] in seen:
             raise SchemaError(

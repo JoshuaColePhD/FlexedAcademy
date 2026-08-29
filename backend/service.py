@@ -6,6 +6,7 @@ eval harness — which is how they stay consistent.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -229,6 +230,77 @@ def repair_weeden_documents() -> int:
     return repaired
 
 
+def repair_weeden_missing_sections() -> int:
+    """Backfill only blank, visible Weeden rows in plans saved before the guard.
+
+    A document rebuild alone cannot invent pedagogically appropriate reteach
+    and cross-curricular content.  This uses the same tightly scoped
+    one-field revision path a teacher uses in the app, preserving every other
+    part of the saved week byte-for-byte before rebuilding its DOCX.
+    """
+    school_id = "weeden-elementary-school"
+    repaired = 0
+    for row in db.list_plans_for_school(school_id):
+        plan = row.get("plan_json") or {}
+        days = plan.get("days") or []
+        missing = [
+            (index, field)
+            for index, day in enumerate(days)
+            if not day.get("no_school")
+            for field in schema.WEEDEN_SECTION_FIELDS
+            if not str(day.get(field) or "").strip()
+        ]
+        if not missing:
+            continue
+
+        updated = {**plan, "days": [dict(day) for day in days]}
+        try:
+            for index, field in missing:
+                day = updated["days"][index]
+                value = llm.rewrite_day_field(
+                    row["user_id"],
+                    day,
+                    (
+                        "This previously saved Weeden lesson plan left the "
+                        f"required '{field}' row blank. Fill that one row with "
+                        "concise, specific content tied to this day's existing lesson."
+                    ),
+                    field,
+                    json.dumps(updated, indent=2),
+                    RetrievalResult(),
+                    class_id=row.get("class_id"),
+                )
+                if not str(value or "").strip():
+                    raise ValueError(f"model returned blank {field!r} for day {index}")
+                day[field] = value
+
+            # The migration only writes a fully repaired plan; one failed LLM
+            # call leaves the original record untouched for the next startup.
+            updated, _ = schema.validate_plan(updated, require_weeden_sections=True)
+            out_path = docx_build.plan_output_path(updated, row["id"])
+            docx_build.build_docx(updated, out_path, school_id)
+            storage.mirror_file(out_path)
+            db.update_plan(
+                row["user_id"], row["id"],
+                plan_json=updated,
+                docx_path=str(out_path),
+                template=docx_build.builder_template(school_id),
+            )
+            repaired += 1
+        except Exception:
+            log.exception("failed to backfill Weeden plan_id=%s", row["id"])
+
+    if repaired:
+        log.info("backfilled required Weeden sections in %d plan(s)", repaired)
+    return repaired
+
+
+def repair_weeden_plans() -> None:
+    """Run the two legacy Weeden repairs in order, never concurrently."""
+    repair_weeden_documents()
+    repair_weeden_missing_sections()
+
+
 def finalize(
     *,
     user_id: str,
@@ -270,7 +342,15 @@ def finalize(
     own subject_code already uses, two lines below).
     """
     started = time.monotonic()
-    plan, warnings = schema.validate_plan(plan_raw)
+    # Weeden's approved form has three additional required daily rows. Legacy
+    # plans may still open and rebuild, but a newly generated Weeden plan must
+    # never persist with those cells blank just because the structured schema
+    # permits an empty string.
+    resolved_school_id = school_id or (cls or {}).get("school")
+    uses_weeden_template = resolved_school_id == "weeden-elementary-school"
+    plan, warnings = schema.validate_plan(
+        plan_raw, require_weeden_sections=uses_weeden_template
+    )
 
     identity = identity_for(user_id, cls)
     plan = schema.with_identity(

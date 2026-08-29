@@ -192,7 +192,7 @@ async def lifespan(app: FastAPI):
 
     # One-time, idempotent repair for the records produced while Weeden's
     # rejected generated spec was incorrectly marked verified.
-    loop.run_in_executor(None, service.repair_weeden_documents)
+    loop.run_in_executor(None, service.repair_weeden_plans)
 
     yield
 
