@@ -424,18 +424,14 @@ export function ChatPage() {
   const voice = useVoice()
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
-  /* Phone landing screen (MobileChatHome — chats list, Workspace Tools,
-     Settings) instead of this page's own empty-chat Greeting, whenever
-     there's no chat open. "New plan" from that screen has nowhere to
-     NAVIGATE to (it's already sitting on this exact URL — chatId is
-     undefined either way), so it flips this instead; the header's back
-     button flips it back. Reset to true whenever chatId clears (including
-     on mount) — chatId-only changes don't remount ChatPage, so without
-     this, navigating from a chat back to the index route would leave
-     whatever this was mid-conversation, not necessarily the list. */
-  const [mobileShowHome, setMobileShowHome] = useState(true)
+  /* A phone must land in a ready-to-type conversation. The old default sent
+     every no-chat route to MobileChatHome, which rendered the rail but not
+     the Composer — exactly the moment a teacher needs to start a plan. The
+     chat home remains available through the header back button, but it is an
+     explicit navigation choice rather than the default state. */
+  const [mobileShowHome, setMobileShowHome] = useState(false)
   useEffect(() => {
-    if (!chatId) setMobileShowHome(true)
+    if (chatId) setMobileShowHome(false)
   }, [chatId])
   // ChatHeaderSheet — phone's stand-in for the header row's own
   // ClassSwitcher/WeekPicker/status, given room to breathe there instead.
