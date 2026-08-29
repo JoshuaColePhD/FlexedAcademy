@@ -24,7 +24,12 @@ const MAX_ATTACH_BATCH = 5
 // than the suggestion it replaced (Josh's own "the text is not centered
 // when you type," 2026-08-27). One shared string both className templates
 // below pull from, so there's no second copy left to silently diverge.
-const COMPOSER_TEXT_METRICS = 'px-0 py-[0.9375rem] text-[0.9375rem] leading-relaxed'
+// The composer shell has an 8px bottom gutter for its action controls. Equal
+// textarea padding therefore looks optically high: its text is centered in
+// the textarea, but not in the composer as a whole. Keep the same total
+// padding (and therefore the same autosized height), with four pixels moved
+// from below the line to above it so the text's visual centre is the shell's.
+const COMPOSER_TEXT_METRICS = 'px-0 pt-[1.1875rem] pb-[0.6875rem] text-[0.9375rem] leading-relaxed'
 
 /* An attachment chip's own mount lifecycle — entrance was already implicit
  * (a plain array render, no fade), removal was a hard splice. This is
@@ -702,10 +707,11 @@ export function Composer({
                  collected entirely below the text instead of splitting
                  evenly — confirmed live (10px padding, 26px line-height,
                  inside a forced 54px box, textarea content doesn't
-                 self-center). COMPOSER_TEXT_METRICS's 15px top/bottom
-                 covers that slack itself (15+15+26 = 56, past the 54px
-                 floor), so there's nothing left for min-height to
-                 unevenly pad out. */
+                 self-center). COMPOSER_TEXT_METRICS provides 30px total
+                 vertical padding (past the 54px floor with the line height)
+                 and biases 4px toward the top to account for the shell's
+                 bottom action gutter, so the text is centered in the
+                 visible composer rather than merely its textarea. */
               className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
