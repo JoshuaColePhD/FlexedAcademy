@@ -173,7 +173,7 @@ function GlobalHistoryDashboard({ chats, deleteChat, onDeleteCallback }) {
           )}
         </div>
 
-        <ul className="divide-y divide-edge">
+        <ul className="fa-list-stagger divide-y divide-edge">
           {chats.length === 0 ? (
             <li className="px-4 py-16 text-center">
               <MessageSquare size={32} className="mx-auto text-ink-faint mb-4" />

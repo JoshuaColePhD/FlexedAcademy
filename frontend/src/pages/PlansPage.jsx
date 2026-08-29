@@ -518,7 +518,7 @@ export function PlansPage() {
             </p>
           ) : filtered.length ? (
             viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-8">
+              <div className="fa-list-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-8">
                 {filtered.map((week) => (
                   <PlanCard
                     key={week.week_number ?? week.latest.id}
@@ -534,7 +534,7 @@ export function PlansPage() {
                 ))}
               </div>
             ) : (
-              <ul className="neo-panel divide-y divide-edge/30 overflow-hidden rounded-xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm mb-8">
+              <ul className="fa-list-stagger neo-panel divide-y divide-edge/30 overflow-hidden rounded-xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm mb-8">
                 {filtered.map((week) => (
                   <Fragment key={week.week_number ?? week.latest.id}>
                     <PlanRow

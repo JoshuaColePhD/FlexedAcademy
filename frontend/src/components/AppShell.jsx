@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X, Database } from 'lucide-react'
@@ -642,6 +642,7 @@ function OnboardingWizardHost() {
 
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
+  const prefersReducedMotion = useReducedMotion()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerRef = useRef(null)
   const drawerExit = useExitTransition(drawerOpen, 130)
@@ -743,10 +744,10 @@ export function AppShell({ children }) {
         </>
       ) : null}
 
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.96, y: 30 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}
+      <motion.div
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.32, ease: [0.22, 0.8, 0.24, 1] }}
         className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
         id="main"
       >

@@ -225,9 +225,10 @@ const location = useLocation()
                   control gets the plain, fully-rounded pill the failed-
                   build state already uses (ArtifactDetailPanel.jsx). */}
               {downloadReady ? <a
+                key="document-ready"
                 href={planId ? api.planDownloadUrl(planId) : undefined}
                 download
-                className="doc-download fa-press flex items-center gap-1.5"
+                className="doc-download fa-press fa-context-pop flex items-center gap-1.5"
                 aria-label="Download as DOCX"
                 title="Download as DOCX"
               >
@@ -240,8 +241,9 @@ const location = useLocation()
                 <span className="font-medium">Download as DOCX</span>
               </a> : (
                 <button
+                  key={`document-${documentStatus}`}
                   type="button"
-                  className="doc-download fa-press flex items-center gap-1.5"
+                  className="doc-download fa-press fa-context-pop flex items-center gap-1.5"
                   disabled={documentStatus !== 'failed'}
                   onClick={async () => {
                     if (documentStatus === 'failed') {

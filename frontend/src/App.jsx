@@ -9,7 +9,7 @@ import {
 } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { api } from './lib/api'
 import { onboardingDeferred } from './lib/onboardingWizardBus'
 import { useToast } from './lib/toastContext'
@@ -186,6 +186,7 @@ function RememberClass() {
 function ClassRoutes() {
   const { user } = useAuth()
   const { classId } = useParams()
+  const routeLocation = useLocation()
   // First run, enforced here rather than trusted to whichever page linked in:
   // WelcomePage sends a brand-new account straight to .../onboarding, but
   // RootRedirect and AfterAuthRedirect both land on plain `/c/:classId` for
@@ -206,7 +207,8 @@ function ClassRoutes() {
     <>
       <RememberClass />
       <AppShell>
-        <Routes>
+        <RouteTransition>
+          <Routes location={routeLocation}>
           {/* A new plan IS the home screen. There is no calendar route: the
               school calendar still shapes every generation, from
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
@@ -218,10 +220,32 @@ function ClassRoutes() {
           <Route path="standards" element={<ErrorBoundary scope="standards" compact><StandardsPage /></ErrorBoundary>} />
           <Route path="settings" element={<ErrorBoundary scope="settings" compact><SettingsPage /></ErrorBoundary>} />
           <Route path="admin" element={<ErrorBoundary scope="admin" compact><AdminPage /></ErrorBoundary>} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </RouteTransition>
       </AppShell>
     </>
+  )
+}
+
+/* One transition around the outlet gives every destination the same calm
+ * handoff while leaving the persistent shell and sidebar in place. */
+function RouteTransition({ children }) {
+  const location = useLocation()
+  const prefersReducedMotion = useReducedMotion()
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={location.pathname}
+        className="route-stage"
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: -4 }}
+        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.26, ease: [0.22, 0.8, 0.24, 1] }}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
   )
 }
 
@@ -430,6 +454,7 @@ const queryClient = new QueryClient({
 
 function BootMessage() {
   const { status } = useAuth()
+  const prefersReducedMotion = useReducedMotion()
   return (
     <AnimatePresence>
       {status === 'loading' && (
@@ -445,9 +470,9 @@ function BootMessage() {
              Same --ease-glide curve used for the plan overlay's own
              entrance a few commits ago (framer-motion needs the literal
              cubic-bezier values, not the CSS var), both directions now. */
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1, transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
-          exit={{ opacity: 0, transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
+          initial={prefersReducedMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1, transition: prefersReducedMotion ? { duration: 0 } : { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
+          exit={{ opacity: 0, transition: prefersReducedMotion ? { duration: 0 } : { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
         >
           <h1 className="text-4xl font-semibold tracking-tight text-ink/40">FlexEd Academy</h1>
         </motion.div>

@@ -94,6 +94,14 @@
 }
 
 @layer components {
+  .route-stage {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+    flex: 1;
+    flex-direction: column;
+  }
   /* A quiet aside: smaller, softer, same face as everything else. This used to
      be an italic serif set in the margin of a ruled page. */
   .note {
@@ -5579,6 +5587,17 @@
   .fa-rise {
     animation: fa-rise 500ms var(--ease-out) both;
   }
+  /* Lists enter as one coordinated handoff instead of every row arriving on
+     the exact same frame. The short stagger is deliberately capped so a long
+     history never feels like it is still loading; rows with their own exit
+     animation keep that removal motion intact. */
+  .fa-list-stagger > :not(.fa-row-exit) {
+    animation: fa-rise 360ms var(--ease-out) both;
+  }
+  .fa-list-stagger > :nth-child(2) { animation-delay: 28ms; }
+  .fa-list-stagger > :nth-child(3) { animation-delay: 56ms; }
+  .fa-list-stagger > :nth-child(4) { animation-delay: 84ms; }
+  .fa-list-stagger > :nth-child(n + 5) { animation-delay: 112ms; }
   /* fa-rise's transform-only sibling, for the two full-viewport containers
      that swap places on MobileChatHome<->the phone chat view (see
      MobileChatHome.jsx and ChatPage.jsx's own comments on this class) —
