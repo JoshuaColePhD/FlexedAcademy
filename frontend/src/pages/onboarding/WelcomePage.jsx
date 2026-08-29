@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
+import { GENERIC_SCHOOL } from '../../lib/schools'
 import { qk } from '../../lib/queryKeys'
 import { useAuth } from '../../lib/authContext'
 import { useToast } from '../../lib/toastContext'
@@ -42,7 +43,7 @@ import { GRADES, gradeLabel } from '../../lib/grades'
  * school's real dates wearing this teacher's name — which is exactly why
  * the nudge below asks for their real calendar, so their actual school can
  * replace this placeholder the same way the one curated school was added. */
-const GENERIC_SCHOOL = 'generic'
+
 
 // Not a real grade — GRADES/DEFAULT_GRADE (lib/grades.js) stay the single
 // canonical vocabulary for what actually gets SAVED; this is a browse-only

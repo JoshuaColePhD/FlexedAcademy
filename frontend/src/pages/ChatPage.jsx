@@ -164,13 +164,21 @@ const TEMPLATE_BANNER_COPY = {
       </>
     ),
   },
+  /* Was: "document downloads for this class won't work until it's ready.
+     This shouldn't take long; try again shortly." Both halves were wrong.
+     Downloads DO work now — they fall back to the default layout the same
+     way a 'pending' school's do (backend/docx_build.py) rather than failing
+     outright — and "shortly" was a promise nothing kept: this state is
+     reached precisely when builder generation stopped (turned off, daily cap,
+     or attempts exhausted), so waiting doesn't fix it. Telling a teacher to
+     retry something that can never succeed is worse than telling her nothing. */
   blocked: {
-    tone: 'red',
+    tone: 'amber',
     icon: TriangleAlert,
     text: (name) => (
       <>
-        ⚠️ <strong>{name}</strong>'s lesson plan format is still being finalized — document downloads for this class
-        won't work until it's ready. This shouldn't take long; try again shortly.
+        ⚠️ We hit a snag building <strong>{name}</strong>'s lesson plan format. Downloads still work, but they'll use
+        a generic fallback format for now — we're looking into it.
       </>
     ),
   },

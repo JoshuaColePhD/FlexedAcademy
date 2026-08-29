@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
+import { hasChosenSchool } from '../lib/schools'
 import { useAuth } from '../lib/authContext'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -173,8 +174,18 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   useFocusTrap(dialogRef, { active: open, trap: true, onEscape: onClose })
 
+  /* hasChosenSchool, not a bare `school` truthiness check — see lib/schools.js.
+     users.school DEFAULTs to 'generic', so a brand-new account that has never
+     been asked anything already holds a truthy value here, while
+     schools.find() for that same value returns undefined because 'generic' is
+     deliberately not a row in the table. The old test read
+     `school && selectedSchool && ...`, so BOTH halves evaluated falsy for
+     exactly the accounts the step exists for: every new teacher silently
+     skipped it, was never asked where they teach, and got dateless weeks plus
+     the default school's layout on every download with nothing saying so. */
+  const chosenSchool = hasChosenSchool(school)
   const selectedSchool = schools.find((s) => s.id === school)
-  const schoolNeedsTemplate = school && selectedSchool && selectedSchool.template_status !== 'active'
+  const schoolNeedsTemplate = chosenSchool && selectedSchool && selectedSchool.template_status !== 'active'
 
   /* Which steps this account actually has to sit through.
    *
@@ -202,11 +213,11 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
    * a count. */
   const livePlan = useMemo(() => {
     const next = ['welcome']
-    if (!school || schoolNeedsTemplate) next.push('school')
+    if (!chosenSchool || schoolNeedsTemplate) next.push('school')
     if (!subject) next.push('class')
     next.push('documents', 'tips', 'done')
     return next
-  }, [school, schoolNeedsTemplate, subject])
+  }, [chosenSchool, schoolNeedsTemplate, subject])
 
   /* Frozen the moment the teacher leaves welcome — once they've started
    * moving through the flow, the shape must not shift under them even if

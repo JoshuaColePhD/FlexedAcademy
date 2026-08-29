@@ -222,7 +222,20 @@ def school_weeks(school_id: str) -> list[dict]:
     if pending:
         return pending["weeks"]
 
-    return _file_weeks(school_id)
+    # Dateless weeks rather than NOTHING when a school has no calendar on any
+    # of the paths above. _file_weeks returns [] for every school without a
+    # hand-curated file — which is ~1,600 of the seeded ones — and an empty
+    # list here left the week picker blank, so picking your REAL school was
+    # strictly worse than leaving the account on 'generic', which has always
+    # degraded to these same synthetic weeks. That inversion was hidden only
+    # because the onboarding wizard never asked for a school (see
+    # lib/schools.js); asking properly is what makes it reachable.
+    #
+    # calendar_status/bulk_calendar_status deliberately do NOT go through this
+    # function — they test _file_weeks and the submissions directly — so
+    # has_calendar still reports the truth and the UI keeps nudging for a real
+    # calendar instead of believing one arrived.
+    return _file_weeks(school_id) or _synthetic_weeks()
 
 
 def calendar_status(school_id: str) -> dict:
