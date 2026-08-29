@@ -40,9 +40,12 @@ jobs:
   # and no Google OAuth involved, and nothing here touches production.
   #
   # BUDGET: same 2,000 min/month cap uptime.yml documents. The playwright
-  # container is pre-baked and the suite crawls four routes at a time, so a run
-  # is ~2 minutes — cheap enough to run on every push rather than path-gate,
-  # which would mean a paths-filter action and a second job to decide.
+  # container is pre-baked and the suite crawls four routes at a time; a run
+  # measured ~4.7 minutes here (283s for 223 buttons across 15 routes), not the
+  # ~2 first guessed at. That is still affordable on every push alongside
+  # uptime's ~350 min/month, and worth more than path-gating it, which would
+  # cost a paths-filter action and a second job to decide. If the cap ever gets
+  # tight, gate this one on frontend/** before trimming what it covers.
   buttons:
     runs-on: ubuntu-latest
     container:
