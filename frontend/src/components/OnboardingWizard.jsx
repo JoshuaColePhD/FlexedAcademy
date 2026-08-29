@@ -363,6 +363,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 setTemplateFile={setTemplateFile}
                 templateUrl={templateUrl}
                 setTemplateUrl={setTemplateUrl}
+                blankTemplateAttested={blankTemplateAttested}
+                setBlankTemplateAttested={setBlankTemplateAttested}
                 saving={savingSchool}
                 onBack={goBack}
                 onNext={saveSchool}
@@ -505,6 +507,8 @@ function SchoolStep({
   setTemplateFile,
   templateUrl,
   setTemplateUrl,
+  blankTemplateAttested,
+  setBlankTemplateAttested,
   saving,
   onBack,
   onNext,

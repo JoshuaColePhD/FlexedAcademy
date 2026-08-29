@@ -2925,6 +2925,15 @@
   .doc-download:active {
     box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.5), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.7);
   }
+  /* Keep every document action reachable in a 320–390px header. The visible
+     text is redundant with its accessible name, so the phone gets one clear
+     download icon instead of a clipped label competing with close/fullscreen. */
+  @media (max-width: 767.98px) {
+    .doc-head { height: 52px; padding: 0 var(--sp-3); gap: var(--sp-1); }
+    .doc-head .doc-download { min-width: 34px; width: 34px; justify-content: center; padding: 0; }
+    .doc-head .doc-download .font-medium { display: none; }
+    .doc-head .btn-icon { min-width: 34px; min-height: 34px; }
+  }
   .doc-body {
     min-height: 0;
     flex: 1;
@@ -3243,6 +3252,25 @@
       padding: var(--sp-3) var(--sp-4) var(--sp-6);
     }
   }
+
+  /* Weeden's six-column district form becomes a single-day colored card on a
+     phone. It preserves the form's labels and colors without asking a teacher
+     to pan sideways through a whole week. */
+  .weeden-week-label { margin: 0 0 var(--sp-3); font-size: var(--fs-xs); color: var(--ink-muted); }
+  .weeden-day-card { scroll-snap-align: center; display: flex; flex-direction: column; padding: var(--sp-4); background: var(--district-cell); border: 1px solid var(--edge); border-radius: var(--r-lg); }
+  .weeden-day-card-head { display: flex; justify-content: space-between; gap: var(--sp-2); margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4); padding: var(--sp-3) var(--sp-4); color: #111827; background: #ead1dc; border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; font-weight: var(--fw-semibold); font-size: var(--fs-sm); }
+  .weeden-day-card-head span:last-child { font-size: var(--fs-xs); opacity: .7; }
+  .weeden-day-field { margin-top: var(--sp-3); overflow: hidden; border: 1px solid var(--edge); border-radius: var(--r-md); }
+  .weeden-day-field h3 { margin: 0; padding: var(--sp-2) var(--sp-3); color: var(--weeden-text, #fff); background: var(--weeden-label); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+  .weeden-day-field p { margin: 0; padding: var(--sp-3); white-space: pre-wrap; font-size: var(--fs-sm); line-height: var(--lh-relaxed); }
+  .weeden-standard { --weeden-label: #e06666; }
+  /* The deck is .plan-deck + this modifier, and .plan-deck is a flex column
+     with `gap: var(--sp-3)`. The week label above the tabs carries its own
+     bottom margin too, so the two stack and the space under it lands at
+     double every other gap in the deck. Scoped to the deck rather than
+     dropped from .weeden-week-label outright so the label keeps its own
+     spacing if it is ever used somewhere without a flex parent. */
+  .weeden-plan-deck .weeden-week-label { margin-bottom: 0; }
 
   /* ══ IN-CELL TWEAKING ═════════════════════════════════════════════════════
      The revise UI used to be a row of Sparkles buttons under the table plus one

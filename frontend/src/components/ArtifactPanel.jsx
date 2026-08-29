@@ -12,6 +12,7 @@ import { classColor } from '../lib/classColor'
 import { unitSuffix } from '../lib/planShape'
 import { LessonPlanTable } from './LessonPlanTable'
 import { WeedenLessonPlanTable } from './WeedenLessonPlanTable'
+import { WeedenPlanDayCards } from './WeedenPlanDayCards'
 import { Marginalia } from './Marginalia'
 import { ShareDialog } from './ShareDialog'
 import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
@@ -243,7 +244,7 @@ const location = useLocation()
         {plan?.days?.length ? (
           <div className="doc-sheet">
             {cls?.school === 'weeden-elementary-school' ? (
-              <WeedenLessonPlanTable plan={plan} />
+              view === 'days' ? <WeedenPlanDayCards plan={plan} missingDays={missingDays} /> : <WeedenLessonPlanTable plan={plan} />
             ) : <LessonPlanTable
               plan={plan}
               planId={planId}
