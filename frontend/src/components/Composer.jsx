@@ -524,21 +524,17 @@ export function Composer({
     }
   }
 
-  // rounded-full is a single-line pill — right for the default composer,
-  // wrong the instant questionsPanel/voicePanel grows this shell to several
-  // lines tall: a 9999px radius on a tall box reads as two huge semicircle
-  // caps top and bottom, and overflow-hidden then clips the square-cornered
-  // content inside those caps (the first few characters of the top row of
-  // LessonQuestions' own card, in practice). Both docks used to share this
-  // shell's radius unconditionally; this is the same "the composer visibly
-  // grows to make room" moment .questions-dock's own comment describes,
-  // so the shell's shape has to grow with it, not stay pill-shaped.
+  // The compact composer is a 60px-tall pill, so its real end-cap is 30px —
+  // not Tailwind's `rounded-full` (9999px). Interpolating 9999px into a card
+  // radius while the questions panel grows is what caused the brief bubble
+  // shape at the beginning of this animation. The CSS classes below animate
+  // between two physically meaningful radii in sync with the dock.
   const isExpanded = Boolean(questionsPanel) || voiceModeActive
   return (
     <div className="relative w-full">
       <div
-        className={`composer-shell relative flex w-full flex-col overflow-hidden border border-edge bg-paper transition-all focus-within:scale-[1.01] focus-within:ring-1 focus-within:ring-accent/50 ${
-          isExpanded ? 'rounded-[28px]' : 'rounded-full shadow-sm'
+        className={`composer-shell ${isExpanded ? 'is-expanded' : ''} relative flex w-full flex-col overflow-hidden border border-edge bg-paper focus-within:scale-[1.01] focus-within:ring-1 focus-within:ring-accent/50 ${
+          !isExpanded ? 'shadow-sm' : ''
         } ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}
       >

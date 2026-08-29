@@ -3576,13 +3576,21 @@
      the overhaul gets — .neo-world being global means this resolves
      everywhere, not just where it was written for. */
   .composer-shell {
+    /* A real pill end-cap (half the compact composer's 60px height), not an
+       unbounded `rounded-full`. See Composer.jsx: transitioning 9999px to a
+       card radius while a question dock grows made the first frame balloon. */
+    border-radius: 30px;
     box-shadow:
       6px 6px 14px rgb(var(--neo-dark-rgb) / 0.6),
       -6px -6px 14px rgb(var(--neo-light-rgb) / 0.85);
     transition:
+      border-radius var(--t-slow) var(--ease-glide),
       border-color var(--t-fast) var(--ease),
       box-shadow var(--t-base) var(--ease-out),
       transform var(--t-base) var(--ease-out);
+  }
+  .composer-shell.is-expanded {
+    border-radius: 22px;
   }
   /* The signal that replaces it. A full tone step on the border, not a hairline
      nudge, because it is now the only non-caret indication that typing will go
