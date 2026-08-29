@@ -238,13 +238,41 @@ function TemplateBanner() {
   const school = schools.find((s) => s.id === cls?.school)
   const copy = school && TEMPLATE_BANNER_COPY[school.builder_readiness]
   const Icon = copy?.icon
+  // A status change is new information, so its dismissal must not suppress a
+  // later state (for example, "reviewing" should not hide "needs attention").
+  const dismissalKey = school && copy ? `fa.templateBannerDismissed:${school.id}:${school.builder_readiness}` : ''
+  const [dismissed, setDismissed] = useState(false)
+
+  useEffect(() => {
+    if (!dismissalKey) {
+      setDismissed(false)
+      return
+    }
+    try {
+      setDismissed(localStorage.getItem(dismissalKey) === '1')
+    } catch {
+      setDismissed(false)
+    }
+  }, [dismissalKey])
+
+  const dismiss = () => {
+    try {
+      localStorage.setItem(dismissalKey, '1')
+    } catch {
+      /* The banner can still be dismissed for this visit. */
+    }
+    setDismissed(true)
+  }
 
   return (
-    <BannerReveal open={Boolean(copy)}>
+    <BannerReveal open={Boolean(copy) && !dismissed}>
       {copy && Icon ? (
-        <div className={`flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}>
-          <Icon size={14} className={`shrink-0 ${copy.iconClassName || ''}`} aria-hidden="true" />
-          <p>{copy.text(school.name)}</p>
+        <div className={`flex items-start gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}>
+          <Icon size={14} className={`mt-0.5 shrink-0 ${copy.iconClassName || ''}`} aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-center">{copy.text(school.name)}</p>
+          <button type="button" className="banner-dismiss btn-icon -my-1 shrink-0" onClick={dismiss} aria-label="Dismiss template status message" title="Dismiss">
+            <X size={14} aria-hidden="true" />
+          </button>
         </div>
       ) : null}
     </BannerReveal>
@@ -3509,10 +3537,10 @@ export function ChatPage() {
             placeholder={
               artifact?.planId
                 ? isPhone
-                  ? 'What should change?'
+                  ? 'Revise this plan…'
                   : 'What should change? — e.g. make Thursday a Socratic seminar'
                 : isPhone
-                  ? 'What are you planning?'
+                  ? 'Plan this week…'
                   : 'What do you need a lesson plan for?'
             }
             sendLabel={artifact?.planId ? 'Revise the plan' : 'Build the lesson plan'}

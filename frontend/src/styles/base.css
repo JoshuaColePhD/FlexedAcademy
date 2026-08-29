@@ -1863,6 +1863,16 @@
     transform: none;
     transition-duration: var(--t-enter), var(--t-enter);
   }
+  .banner-dismiss {
+    width: 28px;
+    height: 28px;
+    color: currentColor;
+    box-shadow: none;
+  }
+  .banner-dismiss:hover:not(:disabled) {
+    background: rgb(var(--paper-rgb) / 0.38);
+    border-color: currentColor;
+  }
 
   .toast {
     display: flex;
