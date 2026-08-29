@@ -977,10 +977,15 @@ function Toggle({ checked, onChange, label, description }) {
         <p className="text-sm font-medium text-ink">{label}</p>
         {description && <p className="text-xs text-ink-muted">{description}</p>}
       </div>
+      {/* aria-label={label}: the visible label is a sibling <p>, so nothing
+          associated it with the switch. All four toggles on this page
+          announced as an unnamed "switch, on" — the state without the
+          subject, which is the half a screen-reader user cannot guess. */}
       <button
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 ${
           checked ? 'bg-accent' : 'bg-edge-strong'

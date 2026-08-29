@@ -92,6 +92,10 @@ const ROUTES = [
 const NO_VISIBLE_EFFECT = {
   'Copy link': 'writes to the clipboard; the toast it raises is async and may land after the check',
   'Copy password': 'clipboard only',
+  // StandardsPage's view toggle starts on 'list', and re-selecting the segment
+  // you are already in is correctly a no-op. Its sibling, "Visual Heatmap", is
+  // NOT exempt — that one has to switch the view, and does.
+  'List View': 'the already-selected segment of a segmented control; re-selecting it is meant to do nothing',
 }
 
 /* The buttons whose exact request is a contract worth pinning. A rename on the
@@ -224,6 +228,12 @@ const signature = (page) =>
       scroll += el.scrollTop + el.scrollLeft
       const cn = typeof el.className === 'string' ? el.className : ''
       for (let i = 0; i < cn.length; i++) classes = (classes * 31 + cn.charCodeAt(i)) | 0
+      /* Inline style too, because framer-motion animates through it rather
+         than through classes — a rotating chevron or a collapsing panel is a
+         `transform`/`height` on the element, and a signature that reads only
+         className is blind to every animated toggle in the app. */
+      const st = el.getAttribute('style')
+      if (st) for (let i = 0; i < st.length; i++) classes = (classes * 31 + st.charCodeAt(i)) | 0
       const ae = el.getAttribute('aria-expanded')
       if (ae !== null) expanded += ae[0]
       const ap = el.getAttribute('aria-pressed')
@@ -254,12 +264,21 @@ const signature = (page) =>
     }
   })
 
-/* Every enabled, visible button on the page right now, with the accessible
-   name the browser actually computes. Identified by name + ordinal, because
-   after a reload the element handles are gone but the names are not. */
-const enumerate = (page) =>
-  page.$$eval('button', (els) =>
-    els.map((el, i) => {
+/* Every enabled, visible button on the page right now.
+ *
+ * Each carries its accessible name and its ORDINAL among visible buttons
+ * sharing that name — which is what a click resolves through, not the DOM
+ * index. The index is a snapshot, and on a page still settling (the admin page
+ * mounts eight independent queries) a re-render between enumerating and
+ * clicking shifts it, so the click lands on a neighbour and the neighbour gets
+ * blamed. That is what reported all five admin sort headers as dead buttons
+ * while clicking them by hand changed the table every time. A Playwright
+ * locator resolves at action time instead, so the race has nowhere to happen.
+ */
+const enumerate = async (page) => {
+  const found = await page.$$eval('button', (els) => {
+    const seen = new Map()
+    return els.map((el) => {
       const style = getComputedStyle(el)
       /* A zero-height box counts as not visible. offsetParent alone said yes
          to the sign-in page's collapsed "forgot password" panel, whose Send
@@ -267,16 +286,29 @@ const enumerate = (page) =>
          — and a click on it never resolved, because there is nothing there to
          click. A button a person cannot hit is not a button under test. */
       const box = el.getBoundingClientRect()
-      return {
-        index: i,
-        // Same precedence the accessibility tree uses for these three, which
-        // is all this app relies on: aria-label, then title, then contents.
-        name: (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '').replace(/\s+/g, ' ').trim(),
-        disabled: el.disabled || el.getAttribute('aria-disabled') === 'true',
-        visible: box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none',
+      const visible = box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'
+      // Same precedence the accessibility tree uses for these three, which is
+      // all this app relies on: aria-label, then title, then contents.
+      const name = (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+      let ordinal = -1
+      if (visible) {
+        ordinal = seen.get(name) ?? 0
+        seen.set(name, ordinal + 1)
       }
+      return { name, ordinal, visible, disabled: el.disabled || el.getAttribute('aria-disabled') === 'true' }
     })
-  )
+  })
+  return found
+}
+
+/* The locator for one enumerated button. `filter({ visible: true })` keeps the
+   ordinal counting the same buttons enumerate counted — the app renders a
+   desktop table and a mobile card list from the same data, so half the
+   same-named buttons on a page are hidden at any width. */
+const locate = (page, b) =>
+  page.getByRole('button', { name: b.name, exact: true }).filter({ visible: true }).nth(b.ordinal)
 
 /* Did the page move? One definition, used by both the click loop and the
    keyboard check — they had two, and when signature()'s fields were renamed
@@ -347,7 +379,7 @@ describe('buttons', { concurrency: 4 }, () => {
             // the route's clean state and look again.
             await reset(page, route)
             live = await enumerate(page)
-            match = live.find((b) => b.name === target.name && b.visible && !b.disabled)
+            match = live.find((b) => b.name === target.name && b.ordinal === target.ordinal && b.visible && !b.disabled)
             if (!match) continue // genuinely conditional; the reload didn't render it
           }
 
@@ -356,7 +388,7 @@ describe('buttons', { concurrency: 4 }, () => {
           const before = await signature(page)
 
           try {
-            await page.locator('button').nth(match.index).click({ timeout: 5000, noWaitAfter: true })
+            await locate(page, match).click({ timeout: 5000, noWaitAfter: true })
           } catch (err) {
             failures.push(`"${target.name}" — click failed: ${err.message.split('\n')[0]}`)
             continue
@@ -435,8 +467,7 @@ test('buttons respond to the keyboard, not only the mouse', async () => {
     for (const b of names) {
       await page.evaluate(() => window.__mock?.reset?.())
       const before = await signature(page)
-      const el = page.locator('button').nth(b.index)
-      await el.focus()
+      await locate(page, b).focus()
       const focused = await page.evaluate(() => document.activeElement?.tagName)
       if (focused !== 'BUTTON') {
         failures.push(`"${b.name}" — could not take keyboard focus (activeElement was ${focused})`)

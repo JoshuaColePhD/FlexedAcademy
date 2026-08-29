@@ -229,14 +229,22 @@ export function StandardsPage() {
           </div>
           
           {/* View Toggle */}
+          {/* aria-pressed on both: this is a segmented control, and which
+              segment is active was carried purely by a background class.
+              A screen reader could switch views and never be told which one
+              it was now in. */}
           <div className="flex items-center bg-paper-sunken p-1 rounded-lg border border-edge/30 shrink-0 w-fit">
-            <button 
+            <button
+              type="button"
+              aria-pressed={viewMode === 'list'}
               onClick={() => setViewMode('list')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'list' ? 'bg-paper shadow-sm text-ink' : 'text-ink-muted hover:text-ink'}`}
             >
               List View
             </button>
-            <button 
+            <button
+              type="button"
+              aria-pressed={viewMode === 'heatmap'}
               onClick={() => setViewMode('heatmap')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'heatmap' ? 'bg-paper shadow-sm text-ink' : 'text-ink-muted hover:text-ink'}`}
             >
