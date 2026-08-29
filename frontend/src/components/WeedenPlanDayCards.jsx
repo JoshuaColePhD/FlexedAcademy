@@ -75,7 +75,7 @@ export function WeedenPlanDayCards({ plan, missingDays }) {
     if (nearest !== active) setActive(nearest)
   }
   return (
-    <div className="plan-deck weeden-plan-deck">
+    <div className="plan-deck">
       <p className="weeden-week-label">{plan.course} · {plan.week_of}</p>
       <div className="plan-deck-tabs" role="group" aria-label="Jump to a day">
         {days.map((day, i) => <button key={day.name} type="button" aria-current={i === active ? 'true' : undefined} onClick={() => goTo(i)} className={`plan-deck-tab ${i === active ? 'is-active' : ''} ${dayState(day) === 'no_school' ? 'is-closed' : ''}`}>{SHORT_DAY[day.name]}</button>)}
