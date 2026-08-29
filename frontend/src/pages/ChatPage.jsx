@@ -35,6 +35,7 @@ import { Message } from '../components/Message'
 import { LessonQuestions } from '../components/LessonQuestions'
 import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
+import { PlanPeek } from '../components/PlanPeek'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WeekStrip } from '../components/WeekStrip'
 import { Greeting } from '../components/Greeting'
@@ -613,6 +614,13 @@ export function ChatPage() {
      after the teacher had deliberately closed it. Reset alongside
      `railOpen` itself wherever that resets to false. */
   const railAutoOpenedRef = useRef(false)
+  /* Mobile plan peek: a first build opens the lightweight sheet above the
+     composer once the saved plan is actually ready. Revisions do not force it
+     back open after a teacher has intentionally collapsed it. Existing plans
+     loaded when a chat is reopened also stay collapsed until the teacher asks
+     to see them. */
+  const [planPeekOpen, setPlanPeekOpen] = useState(false)
+  const planBuildStartedRef = useRef(false)
   const [revising, setRevising] = useState(false)
   // A quiz build is its own busy state, not folded into `revising` — the
   // two can genuinely overlap (asking for a quiz while a revision request
@@ -1021,6 +1029,8 @@ export function ChatPage() {
       setViewingDoc(null)
       setRailOpen(false)
       railAutoOpenedRef.current = false
+      setPlanPeekOpen(false)
+      planBuildStartedRef.current = false
       setSelectedWeek(null)
       localFor.current = null
       lastSpokenRef.current = null
@@ -1051,6 +1061,8 @@ export function ChatPage() {
     setViewingDoc(null)
     setRailOpen(false)
     railAutoOpenedRef.current = false
+    setPlanPeekOpen(false)
+    planBuildStartedRef.current = false
 
     // A reopened phone chat often hits the API just as a cellular connection
     // is waking up. One immediate retry simply repeated the same failed
@@ -1489,6 +1501,24 @@ export function ChatPage() {
   })
 
   const busy = stream.isStreaming || revising || chatStream.isStreaming || preparing
+
+  useEffect(() => {
+    if (!isPhone) {
+      planBuildStartedRef.current = false
+      return
+    }
+    // Only the initial build opens the peek. A revision keeps the teacher's
+    // chosen collapsed/open state, and a plan fetched while reopening a chat
+    // never looks like a new completion.
+    if (busy && !artifact?.planId) {
+      planBuildStartedRef.current = true
+      return
+    }
+    if (!busy && artifact?.planId && planBuildStartedRef.current) {
+      planBuildStartedRef.current = false
+      setPlanPeekOpen(true)
+    }
+  }, [artifact?.planId, busy, isPhone])
 
   /* Opening the panel is itself a real click — the one gesture VoiceProvider
      needs to unlock playback on THIS page load (see its own comment on
@@ -3367,15 +3397,10 @@ export function ChatPage() {
           </div>
         ) : null}
 
-      {/* On a phone the 240px rail has nowhere to go, so the artifact becomes a
-          one-row bar above the composer. Without it the only way to the .docx
-          is the card inside the last assistant message, which scrolls out of
-          reach as the conversation grows.
-
-          A conditional, NOT wrapped in a fragment with the dock: React renders
-          `null` as a placeholder, so the dock below keeps its child position
-          and the Composer is never remounted. */}
-      {hasArtifact && isPhone && !expanded ? (
+      {/* While a plan is still being written, retain the compact progress row.
+          Once the saved plan lands, PlanPeek replaces it so the same space
+          becomes a thumb-driven reader rather than a second plan card. */}
+      {hasArtifact && isPhone && !expanded && !artifact?.planId ? (
         <ArtifactRail
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
@@ -3387,6 +3412,34 @@ export function ChatPage() {
           artifactLoadError={artifactLoadError}
           onRetryArtifact={retryArtifactLoad}
         />
+      ) : null}
+
+      {artifact?.planId && hasArtifact && isPhone && !expanded ? (
+        <PlanPeek
+          open={planPeekOpen}
+          onToggle={setPlanPeekOpen}
+          weekLabel={livePlan?.week_of}
+        >
+          <ArtifactPanel
+            artifact={{ ...liveArtifact, plan: livePlan }}
+            classId={classId}
+            subject={activeClass?.subject}
+            missingDays="no_school"
+            onCollapse={() => setPlanPeekOpen(false)}
+            onReviseDay={reviseDay}
+            onReviseDays={reviseDays}
+            onPickStandard={pickStandard}
+            onPlanRevised={onPlanRevised}
+            busy={busy}
+            preparing={preparing}
+            streamingText={stream.text}
+            openTweak={openTweak}
+            setOpenTweak={setOpenTweak}
+            flashCells={flashCells}
+            onFullscreenChange={() => {}}
+            mobileReader
+          />
+        </PlanPeek>
       ) : null}
 
       {/* The dock. Composer must stay in the SAME slot of the same parent across

@@ -2258,6 +2258,89 @@
     animation: voice-dock-body-out var(--t-fast) var(--ease) both;
   }
 
+  /* The phone plan peek grows out of the same dock as the composer. The
+     handle remains visible while collapsed, and the body owns the only
+     internal scroll region so swiping through a long plan never steals the
+     transcript's scroll position. */
+  .plan-peek {
+    display: flex;
+    min-width: 0;
+    flex-shrink: 0;
+    flex-direction: column;
+    border-top: 1px solid var(--edge);
+    background: var(--paper-raised);
+    box-shadow: 0 -6px 16px rgb(var(--neo-dark-rgb) / 0.2);
+    transition: transform var(--t-base) var(--ease-glide), box-shadow var(--t-base) var(--ease-glide);
+  }
+  .plan-peek-handle {
+    display: flex;
+    min-height: 44px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    padding: 0 var(--gutter);
+    color: var(--ink-muted);
+    background: var(--paper-raised);
+    border: 0;
+    cursor: grab;
+    touch-action: pan-y;
+    user-select: none;
+  }
+  .plan-peek-handle:active {
+    cursor: grabbing;
+  }
+  .plan-peek-handle:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+  .plan-peek-handle-label {
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    color: var(--ink-soft);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .plan-peek-handle-action {
+    display: grid;
+    place-items: center;
+    color: var(--accent-text);
+  }
+  .plan-peek-body {
+    display: grid;
+    min-height: 0;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--t-base) var(--ease-glide);
+  }
+  .plan-peek.is-open .plan-peek-body {
+    grid-template-rows: 1fr;
+  }
+  .plan-peek-body-inner {
+    min-height: 0;
+    max-height: min(68vh, 620px);
+    overflow: hidden;
+  }
+  .plan-peek-body-inner > .doc-shell {
+    min-height: 0;
+    max-height: min(68vh, 620px);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+  }
+  .plan-peek-body-inner > .doc-shell .doc-body {
+    overscroll-behavior-y: contain;
+  }
+  .plan-peek.is-open .plan-peek-body-inner > .doc-shell {
+    animation: plan-peek-in var(--t-base) var(--ease-glide) both;
+  }
+  @keyframes plan-peek-in {
+    from { opacity: 0.7; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+
   /* VoiceModePanel's own caption line — what's currently being said, above
      the checklist. Always mounted now (it used to mount/unmount outright),
      so this 0fr/1fr grid row (the same technique .voice-dock uses for its
