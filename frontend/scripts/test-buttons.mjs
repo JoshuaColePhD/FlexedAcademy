@@ -66,7 +66,10 @@ const ROUTES = [
   { at: '/c/c1/standards', label: 'standards browser' },
   { at: '/c/c1/settings', label: 'account settings' },
   { at: '/c/c1/admin', label: 'admin' },
-  { at: '/nope', label: 'not found' },
+  // NotFoundPage's only escape hatch is a <Link>, not a button — the route is
+  // still worth loading (a 404 page that crashes is a 404 page nobody escapes),
+  // there is simply nothing here to click.
+  { at: '/nope', label: 'not found', minButtons: 0 },
   { at: '/', anon: true, label: 'landing (signed out)' },
   { at: '/login', anon: true, label: 'sign in' },
   { at: '/signup', anon: true, label: 'sign up' },
@@ -209,9 +212,18 @@ const signature = (page) =>
     let expanded = ''
     let pressed = ''
     let inputs = ''
+    /* A rolling hash over every className. Without it the signature is blind to
+       the single most common way this app shows state: a selected tab, an
+       active filter chip, a pressed toggle are all a class swap on an element
+       whose text and children never change. SplitLayout's class nav was
+       reported as a dead button for exactly that reason — it highlights the
+       row it selects, and nothing else about the page moves. */
+    let classes = 0
     for (const el of document.getElementsByTagName('*')) {
       elements++
       scroll += el.scrollTop + el.scrollLeft
+      const cn = typeof el.className === 'string' ? el.className : ''
+      for (let i = 0; i < cn.length; i++) classes = (classes * 31 + cn.charCodeAt(i)) | 0
       const ae = el.getAttribute('aria-expanded')
       if (ae !== null) expanded += ae[0]
       const ap = el.getAttribute('aria-pressed')
@@ -219,18 +231,26 @@ const signature = (page) =>
       if (el.getAttribute('role') === 'dialog' || (el.tagName === 'DIALOG' && el.hasAttribute('open'))) dialogs++
       if (el.tagName === 'INPUT') inputs += `${el.checked}${el.value}|`
     }
-    const text = document.body.textContent || ''
+    /* Hashed, not measured. `text.length` misses the one thing a sort header
+       does: reordering rows rearranges identical markup, so the element count,
+       the class hash and the character count all come back unchanged. Every
+       "Account / Status / Plans built / Tokens 7d / Joined" header in the admin
+       table was reported as a dead button on that basis. */
+    const raw = document.body.textContent || ''
+    let text = raw.length
+    for (let i = 0; i < raw.length; i++) text = (text * 31 + raw.charCodeAt(i)) | 0
     return {
       url: location.pathname + location.search + location.hash,
       elements,
-      text: text.length,
+      classes,
+      text,
       scroll: scroll + Math.round(window.scrollY + window.scrollX),
       dialogs,
       expanded,
       pressed,
       inputs: inputs.length,
       focus: document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName || '',
-      crashed: text.includes('Something went wrong'),
+      crashed: raw.includes('Something went wrong'),
     }
   })
 
@@ -241,13 +261,19 @@ const enumerate = (page) =>
   page.$$eval('button', (els) =>
     els.map((el, i) => {
       const style = getComputedStyle(el)
+      /* A zero-height box counts as not visible. offsetParent alone said yes
+         to the sign-in page's collapsed "forgot password" panel, whose Send
+         link button is in the DOM at height 0 behind a framer-motion collapse
+         — and a click on it never resolved, because there is nothing there to
+         click. A button a person cannot hit is not a button under test. */
+      const box = el.getBoundingClientRect()
       return {
         index: i,
         // Same precedence the accessibility tree uses for these three, which
         // is all this app relies on: aria-label, then title, then contents.
         name: (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '').replace(/\s+/g, ' ').trim(),
         disabled: el.disabled || el.getAttribute('aria-disabled') === 'true',
-        visible: !!(el.offsetParent || el.getClientRects().length) && style.visibility !== 'hidden',
+        visible: box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none',
       }
     })
   )

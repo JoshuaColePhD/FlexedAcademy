@@ -64,11 +64,13 @@ jobs:
         # so it has to be backgrounded — and a background process started in an
         # earlier step is not something to rely on surviving into a later one.
         # Polled rather than slept: a fixed sleep is either too short on a cold
-        # runner or wasted time on a warm one.
+        # runner or wasted time on a warm one. Polled with node rather than
+        # curl, which this image does not promise to ship — node is the one
+        # thing the job cannot be missing.
         run: |
           npm run dev &
           for i in $(seq 1 60); do
-            curl -sf http://localhost:5174/preview.html > /dev/null && break
+            node -e "fetch('http://localhost:5174/preview.html').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" && break
             if [ "$i" = "60" ]; then echo "preview harness never came up" >&2; exit 1; fi
             sleep 1
           done

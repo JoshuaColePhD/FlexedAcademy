@@ -16,7 +16,13 @@ function StandardRow({ s, classId, subject: _subject, coverageCount }) {
     e.stopPropagation()
     const text = `Focus this lesson on ${s.code}: ${s.description}`
     navigate(`/c/${classId}?prefill=${encodeURIComponent(text)}`)
-    toast({ title: 'Added to chat', type: 'success' })
+    /* toast.success(), not toast(). useToast returns ToastProvider's context
+       OBJECT — { success, error, apiError, … } — and calling it threw
+       "toast is not a function" on every click. The navigate above runs first,
+       so the button looked like it worked: the chat opened with the standard
+       prefilled, and the only casualties were the confirmation, which never
+       appeared, and an uncaught exception on the way out. */
+    toast.success('Added to chat')
   }
 
   const { data: lessons, isLoading: lessonsLoading } = useQuery({
