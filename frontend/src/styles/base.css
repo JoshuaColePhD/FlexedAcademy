@@ -930,6 +930,16 @@
          a move that small would drag rather than glide. Same --ease-glide
          curve either way, just less time to cover less ground. */
       animation-duration: 380ms;
+      /* A moving backdrop-filter over a full-screen nested scroller is one of
+         Safari's least reliable compositing paths: it can drop touch frames
+         and, after a memory-pressure pause, leave the sheet apparently open
+         but unresponsive. The phone sheet is its own focused reading surface,
+         so an opaque material is both clearer and substantially cheaper. */
+      background-color: var(--paper-raised);
+      background-image: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      will-change: auto;
     }
   }
 

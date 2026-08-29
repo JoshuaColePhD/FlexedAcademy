@@ -1052,20 +1052,22 @@ export function ChatPage() {
     setRailOpen(false)
     railAutoOpenedRef.current = false
 
-    // One retry, not a loop — a reopened chat's getPlan() is a single request
-    // right after mount, exactly where a cold connection/transient blip is
-    // most likely, and this used to fail permanently on the first stumble
-    // with nothing surfaced: the app quietly fell back to decisions.length
-    // (repopulated from the SAME transcript that proves a plan exists),
-    // showing "the plan so far" list standing in for a real plan that just
-    // failed to load — reading as "nothing built yet" while the chat above
-    // it says otherwise.
+    // A reopened phone chat often hits the API just as a cellular connection
+    // is waking up. One immediate retry simply repeated the same failed
+    // connection and then hid an existing plan. Use a short bounded backoff:
+    // enough to recover a transient request without turning a real outage into
+    // a forever-loading document.
     const getPlanWithRetry = async (id) => {
-      try {
-        return await api.getPlan(id)
-      } catch {
-        return await api.getPlan(id)
+      let lastError
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await api.getPlan(id)
+        } catch (error) {
+          lastError = error
+          if (attempt < 2) await waitBeforeRetry(300 * (attempt + 1))
+        }
       }
+      throw lastError
     }
 
     api
@@ -2652,6 +2654,14 @@ export function ChatPage() {
       setArtifactContentReady(false)
       return undefined
     }
+    // The desktop panel has enough GPU headroom for a two-frame delayed mount
+    // that makes its slide-in look smoother. On a phone that delay can leave a
+    // full-screen, focus-trapping sheet with no document in it while Safari is
+    // also recompositing its blur. Mount the already-available plan directly.
+    if (isPhone) {
+      setArtifactContentReady(true)
+      return undefined
+    }
     let raf2 = null
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => setArtifactContentReady(true))
@@ -2660,7 +2670,7 @@ export function ChatPage() {
       cancelAnimationFrame(raf1)
       if (raf2 != null) cancelAnimationFrame(raf2)
     }
-  }, [overlayOpen])
+  }, [overlayOpen, isPhone])
   /* While the document overlay covers the transcript, a reply has nowhere
      visible to land — so it surfaces as a toast instead. Watches the last
      message rather than hooking every place this file appends one (there
