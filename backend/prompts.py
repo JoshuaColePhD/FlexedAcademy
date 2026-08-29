@@ -218,6 +218,7 @@ def week_system_prompt(
 
 Design a cohesive five-day arc, {' -> '.join(DAY_NAMES)}. Scaffold the learning
 targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For EVERY teaching day, you must identify the closest-fitting primary standard from the "--- PRIMARY COURSE STANDARDS ---" block. HOWEVER, if no primary course standards are provided (e.g. for a Pre-AP class), you MUST leave the `standards` field blank. NEVER put ACT standards in the `standards` field.
+Also complete `vocabulary`, `reteach_small_groups`, and `cross_curricular_connection` for every teaching day. These are printed in school templates that require each section; make them specific to that day's lesson instead of repeating generic filler.
 THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, `act_alignment`
 is MANDATORY on every teaching day — pick the closest-fitting companion ACT
 standard from that block for EACH day, even if it's a broader skill than the
@@ -312,6 +313,9 @@ FIELD_LABELS = {
     "do_now": "Do Now",
     "during": "During",
     "assessment": "Assessment",
+    "vocabulary": "Vocabulary",
+    "reteach_small_groups": "Reteach / Small Groups",
+    "cross_curricular_connection": "Cross-Curricular Connection",
 }
 
 

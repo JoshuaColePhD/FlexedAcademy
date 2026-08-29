@@ -11,6 +11,7 @@ import { useLayoutMode } from '../hooks/useMediaQuery'
 import { classColor } from '../lib/classColor'
 import { unitSuffix } from '../lib/planShape'
 import { LessonPlanTable } from './LessonPlanTable'
+import { WeedenLessonPlanTable } from './WeedenLessonPlanTable'
 import { Marginalia } from './Marginalia'
 import { ShareDialog } from './ShareDialog'
 import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
@@ -91,7 +92,7 @@ export function ArtifactPanel({
   
   const cls = classes.find(c => c.id === classId)
   const school = schools.find(s => s.id === cls?.school)
-  const isPendingTemplate = school?.template_status === 'pending'
+  const isPendingTemplate = ['pending', 'in_progress', 'blocked'].includes(school?.builder_readiness)
 const location = useLocation()
   const panelRef = useRef(null)
   const titleRef = useRef(null)
@@ -199,7 +200,7 @@ const location = useLocation()
                 title="Download as DOCX"
               >
                 {isPendingTemplate ? (
-                  <Tooltip content="We are currently training our AI on your district's specific format. In the meantime, this plan will download in a generic format." position="bottom-right">
+                  <Tooltip content="Your district form is still awaiting verification. This plan downloads in a clearly labeled neutral format, never another district's template." position="bottom-right">
                     <TriangleAlert size={14} className="text-amber-500" aria-hidden="true" />
                   </Tooltip>
                 ) : null}
@@ -241,7 +242,9 @@ const location = useLocation()
       <div className="doc-body" tabIndex={0} role="region" aria-label="The lesson plan document">
         {plan?.days?.length ? (
           <div className="doc-sheet">
-            <LessonPlanTable
+            {cls?.school === 'weeden-elementary-school' ? (
+              <WeedenLessonPlanTable plan={plan} />
+            ) : <LessonPlanTable
               plan={plan}
               planId={planId}
               subject={subject}
@@ -256,7 +259,7 @@ const location = useLocation()
               flashCells={flashCells}
               openTweak={openTweak}
               setOpenTweak={setOpenTweak}
-            />
+            />}
             <Marginalia
               warnings={artifact?.warnings}
               plan={plan}

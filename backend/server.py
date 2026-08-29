@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from . import db, retrieval
+from . import db, retrieval, service
 from .config import settings
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
@@ -189,6 +189,10 @@ async def lifespan(app: FastAPI):
     if settings.builder_codegen_enabled:
         _codegen_worker_task = asyncio.create_task(_builder_codegen_worker_loop())
         log.info("builder codegen worker loop started")
+
+    # One-time, idempotent repair for the records produced while Weeden's
+    # rejected generated spec was incorrectly marked verified.
+    loop.run_in_executor(None, service.repair_weeden_documents)
 
     yield
 

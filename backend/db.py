@@ -3116,6 +3116,29 @@ MIGRATIONS: list[str] = [
         );
     EXCEPTION WHEN duplicate_object THEN null; END $$;
     """,
+    # ── 57: never retain a visually rejected auto-verified builder ───────────
+    """
+    UPDATE builder_codegen_jobs j
+    SET status = 'failed_needs_human',
+        auto_verified = false,
+        verified_at = NULL,
+        error_message = 'Auto-verification revoked: no attempt passed both visual judges.'
+    WHERE j.auto_verified = true
+      AND NOT EXISTS (
+        SELECT 1 FROM builder_codegen_attempts a
+        WHERE a.job_id = j.id AND a.passed = true
+      );
+
+    UPDATE schools s
+    SET builder_status = 'not_started'
+    WHERE s.builder_status = 'verified'
+      AND EXISTS (
+        SELECT 1 FROM builder_codegen_jobs j
+        WHERE j.school_id = s.id
+          AND j.status = 'failed_needs_human'
+          AND j.error_message = 'Auto-verification revoked: no attempt passed both visual judges.'
+      );
+    """,
 ]
 
 
@@ -4329,7 +4352,7 @@ def list_plan_weeks(user_id: str, class_id: str) -> dict:
 
 
 def update_plan(user_id: str, plan_id: str, **fields: Any) -> dict | None:
-    allowed = {"plan_json", "week_label", "unit", "docx_path", "warnings", "course", "class_id"}
+    allowed = {"plan_json", "week_label", "unit", "docx_path", "warnings", "course", "class_id", "template"}
     sets, params = [], []
     for k, v in fields.items():
         if k not in allowed:
@@ -4340,6 +4363,24 @@ def update_plan(user_id: str, plan_id: str, **fields: Any) -> dict | None:
         params += [plan_id, user_id]
         _write(f"UPDATE plans SET {', '.join(sets)} WHERE id = ? AND user_id = ?", tuple(params))
     return get_plan(user_id, plan_id)
+
+
+def list_plans_for_school_template_repair(school_id: str, stale_template: str) -> list[dict]:
+    """Plans whose stored document was built with an obsolete school form.
+
+    Kept deliberately narrow and idempotent: after a successful rebuild each
+    row receives its new template id, so later deployments do no extra work.
+    """
+    rows = _rows(
+        """
+        SELECT p.* FROM plans p
+        JOIN classes c ON c.id = p.class_id
+        WHERE c.school = ? AND p.template = ?
+        ORDER BY p.created_at
+        """,
+        (school_id, stale_template),
+    )
+    return [_hydrate_plan(row) for row in rows]
 
 
 def delete_plan(user_id: str, plan_id: str) -> bool:

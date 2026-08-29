@@ -116,6 +116,7 @@ def upload_school_template(
     school_id: str,
     file: UploadFile | None = File(default=None),
     source_url: str | None = Form(default=None),
+    blank_template_attested: bool = Form(default=False),
     user_id: str = Depends(get_current_user),
 ):
     """Upload a blank lesson plan template for a school that doesn't have a
@@ -137,6 +138,8 @@ def upload_school_template(
 
     if not file and not source_url:
         raise AppError("bad_request", "Please provide either a file or a Google Doc link.", status=400)
+    if not blank_template_attested:
+        raise AppError("blank_template_confirmation_required", "Confirm that this is a blank, reusable district template before uploading.", status=400)
 
     if source_url:
         if "docs.google.com/document/d/" not in source_url:
@@ -153,6 +156,7 @@ def upload_school_template(
         spooled = _spool(file, ext_hint, settings.max_doc_bytes)
     try:
         ext = template_intake.validate_upload(filename, spooled)
+        template_intake.require_blank_template(spooled, ext)
 
         uploads_dir = Path("uploads/templates")
         uploads_dir.mkdir(parents=True, exist_ok=True)

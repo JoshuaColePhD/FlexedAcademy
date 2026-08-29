@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -94,6 +95,10 @@ _MAX_PDF_CHARS_SAMPLED_PER_PAGE = 4000  # bound cost on a dense page; font/size 
 # guessing. 40 comfortably covers any real blank template; a filled-in packet
 # that size is already rejected earlier by _MAX_PARAGRAPHS/_MAX_PDF_PAGES.
 _MAX_TABLE_SAMPLE_ROWS = 40
+_FILLED_TEMPLATE_CHAR_LIMIT = 8_000
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
+_PHONE_RE = re.compile(r"\b(?:\+?1[-. ]?)?(?:\(?\d{3}\)?[-. ]?)\d{3}[-. ]?\d{4}\b")
+_DATE_RE = re.compile(r"\b(?:week\s+of\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?\b", re.I)
 
 
 @dataclass
@@ -115,6 +120,36 @@ class TemplateAnalysisFailed(Exception):
     def __init__(self, findings: list[Finding]):
         self.findings = findings
         super().__init__(findings[-1].message if findings else "template analysis failed")
+
+
+def require_blank_template(path: Path, ext: str) -> None:
+    """Reject a completed plan before it becomes a reusable school template.
+
+    The checks intentionally require several strong signals before rejecting
+    ordinary instructional labels. We never attempt to erase submitted text:
+    doing so can destroy a district form's legitimate instructions and leaves
+    the uploader unsure which information was retained.
+    """
+    structure = _extract_docx_structure(path) if ext == ".docx" else _extract_pdf_structure(path)
+    samples = []
+    for table in structure.get("tables", []):
+        samples.extend(cell for row in table.get("sample_rows", []) for cell in row if cell)
+    sample_text = "\n".join(samples)
+    privacy_hit = _EMAIL_RE.search(sample_text) or _PHONE_RE.search(sample_text)
+    if privacy_hit:
+        raise AppError(
+            "template_contains_personal_data",
+            "This file appears to contain an email address or phone number. Upload a blank, reusable district form with personal information removed.",
+            status=400,
+        )
+    detailed_cells = sum(len(re.sub(r"\s+", " ", cell).strip()) >= 350 for cell in samples)
+    is_filled = structure.get("total_text_chars", 0) > _FILLED_TEMPLATE_CHAR_LIMIT or detailed_cells >= 3
+    if is_filled or _DATE_RE.search(sample_text):
+        raise AppError(
+            "template_not_blank",
+            "This appears to be a completed lesson plan or sample packet, not a blank reusable template. Please upload the original district form with labels and formatting intact but no dates, standards, activities, teacher/student details, or filled weekday cells.",
+            status=400,
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -46,6 +46,14 @@ def _generated_spec_builder(school_id: str, layout_spec: dict) -> SimpleNamespac
     return SimpleNamespace(build=build, __doc__=f"Generated builder spec for {school_id} (template unknown)")
 
 
+def _neutral_builder(school_id: str) -> SimpleNamespace:
+    """A temporary, explicitly school-neutral document for an uploaded form
+    still awaiting verification.  Non-Florence schools must never silently
+    receive Florence's district form during that interval."""
+    from .builder.neutral_builder import build as render
+    return SimpleNamespace(build=render, __doc__=f"template neutral-fallback-v1 ({school_id})")
+
+
 def _custom_builder_school_ids() -> set[str]:
     """Every school_id with a hand-written {school_id}_builder.py file,
     from one directory listing rather than a file-existence check per
@@ -131,8 +139,9 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
     from . import db
 
     path = Path(settings.builder_path)
-    # Every school resolves the same way now: look for one of its own, and
-    # fall back to this default if it hasn't got one yet.
+    # Every school resolves its own builder first. Florence's builder is the
+    # intentional default only for Florence; other schools get a neutral
+    # fallback while an uploaded format is still unverified.
     #
     # Florence used to be excluded from the check entirely (it IS the default
     # builder — see default_builder_school_id in config.py), which meant a new
@@ -144,6 +153,12 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
     # longer happens.
     if school_id and school_id != "generic":
         school = db.get_school(school_id)
+        custom_path = path.parent / f"{school_id}_builder.py"
+        # A checked-in school builder is the human-approved source of truth.
+        # It is usable even while the separate structural-analysis status is
+        # pending; that status governs review messaging, not document safety.
+        if school and custom_path.is_file():
+            path = custom_path
         # template_status == 'active' is the normal, fully-reviewed case.
         # builder_status == 'verified' is included on its own too — a job
         # can auto-verify (codegen.py's loosened _meets_auto_verify_bar) or
@@ -152,7 +167,7 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
         # the moment it exists, not gated on that other review finishing.
         # bulk_builder_readiness reports this window as 'ready_unverified'
         # rather than 'ready' so the UI keeps saying so.
-        if school and (school.get("template_status") == "active" or school.get("builder_status") == "verified"):
+        elif school and school.get("builder_status") == "verified":
             # A custom builder lives at the same directory as the default one,
             # named {school_id}_builder.py. Falling through to the default
             # (Florence's own AP-Lang builder) when this file is missing used
@@ -163,10 +178,7 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
             # anywhere saying so. A school marked active is a promise that
             # generation is ready for real teachers there; a missing builder
             # means that promise wasn't kept, and that has to be loud.
-            custom_path = path.parent / f"{school_id}_builder.py"
-            if custom_path.is_file():
-                path = custom_path
-            elif school.get("builder_status") == "verified":
+            if school.get("builder_status") == "verified":
                 # No hand-written file, but a generated layout spec for this
                 # school has been verified — either an admin explicitly
                 # approved it (db.approve_builder_codegen_job), or it
@@ -180,40 +192,14 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
                     return _generated_spec_builder(school_id, layout_spec)
                 log.error(
                     "school=%s is builder_status='verified' but no layout spec could be "
-                    "loaded; falling back to the default builder. Check "
+                    "loaded; using the neutral fallback. Check "
                     "builder_codegen_jobs for this school.",
                     school_id,
                 )
-            else:
-                log.error(
-                    "school=%s has template_status='active' but no builder of its own "
-                    "(no {school_id}_builder.py, no verified layout spec); falling back "
-                    "to the default builder. Its template was approved but nothing "
-                    "generated a builder for it.",
-                    school_id,
-                )
-            # Both branches fall through to `path` (build_lesson_plan.py).
-            #
-            # This used to raise builder_missing_for_school, on the reasoning
-            # that a school marked active is a promise generation is ready
-            # there, and a broken promise should be loud rather than silently
-            # rendering someone else's layout. The loudness was right; making
-            # it a raise was not. builder_status is a SEPARATE, asynchronous,
-            # best-effort axis from template_status (migration 52): codegen can
-            # be turned off in config, skipped by its daily cap, or exhaust its
-            # attempt budget. Any of those leaves a school 'active' with no
-            # builder, and then every download 409s — forever, while the
-            # teacher is told "the plan itself is safe, rebuild it"
-            # (routes/plans.py), advice that can never succeed. A teacher who
-            # uploaded her district's template got a worse outcome than one who
-            # never uploaded anything, since a 'pending' school has always
-            # fallen through to exactly this default.
-            #
-            # So: same fallback as 'pending', and the loudness moves to where
-            # it can actually be acted on — this log for whoever operates the
-            # app, and the banner for the teacher (bulk_builder_readiness still
-            # reports 'blocked' for this state, distinct from 'pending'). A
-            # document in the wrong layout is recoverable; no document is not.
+                return _neutral_builder(school_id)
+        elif school_id != settings.default_builder_school_id:
+            log.warning("school=%s has no verified district builder; using neutral fallback", school_id)
+            return _neutral_builder(school_id)
 
     if not path.is_file():
         raise AppError(
@@ -229,10 +215,10 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
     return mod
 
 
-def builder_template() -> str:
-    """Read the template id out of the builder's docstring, e.g. florence-docx-v2."""
-    doc = builder().__doc__ or ""
-    m = re.search(r"template\s+(florence-docx-v\d+)", doc)
+def builder_template(school_id: str | None = None) -> str:
+    """Read the selected builder's identifier for a plan's own school."""
+    doc = builder(school_id).__doc__ or ""
+    m = re.search(r"template\s+([a-z0-9-]+(?:-v\d+)?)", doc)
     return m.group(1) if m else "unknown"
 
 

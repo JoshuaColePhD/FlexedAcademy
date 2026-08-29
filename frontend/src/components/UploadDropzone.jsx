@@ -25,6 +25,9 @@ export function UploadDropzone({
   url,
   onUrlChange,
   onUrlSubmit,
+  templateUpload = false,
+  blankTemplateAttested = false,
+  onBlankTemplateAttestedChange,
 }) {
   const fileRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -63,10 +66,20 @@ export function UploadDropzone({
           </p>
         </div>
       ) : null}
+      {templateUpload ? (
+        <div className="rounded-md border border-amber-500/30 bg-amber-50/70 px-2.5 py-2 text-xs text-amber-900 sm:col-span-2">
+          <p className="font-semibold">Upload the blank, reusable district form only.</p>
+          <p className="mt-0.5">Keep labels, colors, tables, and formatting. Remove teacher/student names, dates, standards, activities, and completed weekday cells.</p>
+          <label className="mt-2 flex cursor-pointer items-start gap-2 font-medium text-ink">
+            <input type="checkbox" checked={blankTemplateAttested} onChange={(e) => onBlankTemplateAttestedChange?.(e.target.checked)} />
+            <span>I confirm this is a blank reusable template, not a completed example or packet.</span>
+          </label>
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
-        disabled={uploading}
+        disabled={uploading || (templateUpload && !blankTemplateAttested)}
         className="neo-raised inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-inset disabled:opacity-50"
       >
         {uploading ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />}
@@ -98,7 +111,7 @@ export function UploadDropzone({
               onUrlSubmit()
             }
           }}
-          disabled={uploading}
+          disabled={uploading || (templateUpload && !blankTemplateAttested)}
           className="w-full rounded-lg border border-edge bg-paper py-2 pl-7 pr-3 text-sm text-ink outline-none transition-colors focus:border-accent placeholder:text-ink-subtle disabled:opacity-50"
         />
       </div>
@@ -106,7 +119,7 @@ export function UploadDropzone({
         <button
           type="button"
           onClick={onUrlSubmit}
-          disabled={uploading}
+          disabled={uploading || (templateUpload && !blankTemplateAttested)}
           className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
         >
           Use link

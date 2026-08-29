@@ -201,6 +201,34 @@ def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
 DOCX_FAILED = "The document could not be built from this plan. Rebuild it to try again."
 
 
+def repair_weeden_documents() -> int:
+    """Replace the test school's Florence-shaped artifacts after deployment.
+
+    The query is idempotent and only selects the erroneous stored template id.
+    It runs from the deployed app so its output paths and durable-storage
+    mirror are the same ones normal plan generation uses.
+    """
+    school_id = "weeden-elementary-school"
+    repaired = 0
+    for row in db.list_plans_for_school_template_repair(school_id, "florence-docx-v2"):
+        plan = row.get("plan_json") or {}
+        out_path = docx_build.plan_output_path(plan, row["id"])
+        try:
+            docx_build.build_docx(plan, out_path, school_id)
+            storage.mirror_file(out_path)
+            db.update_plan(
+                row["user_id"], row["id"],
+                docx_path=str(out_path),
+                template=docx_build.builder_template(school_id),
+            )
+            repaired += 1
+        except Exception:
+            log.exception("failed to repair Weeden plan_id=%s", row["id"])
+    if repaired:
+        log.info("rebuilt %d Weeden document(s) with the district form", repaired)
+    return repaired
+
+
 def finalize(
     *,
     user_id: str,
@@ -309,7 +337,7 @@ def finalize(
         retrieved_ids=sorted(result.codes),
         warnings=warnings,
         chat_id=chat_id,
-        template=docx_build.builder_template(),
+        template=docx_build.builder_template(school_id),
         class_id=class_id,
         week_number=week_number,
     )

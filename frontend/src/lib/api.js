@@ -567,10 +567,11 @@ export const api = {
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/confirm`, { method: 'POST' }),
   rejectSchoolCalendar: (submissionId) =>
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/reject`, { method: 'POST' }),
-  uploadSchoolTemplate: (schoolId, { file, sourceUrl, signal } = {}) => {
+  uploadSchoolTemplate: (schoolId, { file, sourceUrl, blankTemplateAttested = false, signal } = {}) => {
     const fd = new FormData()
     if (file) fd.append('file', file)
     if (sourceUrl) fd.append('source_url', sourceUrl)
+    fd.append('blank_template_attested', String(blankTemplateAttested))
     return upload(`/api/school-calendars/${encodeURIComponent(schoolId)}/template`, fd, { signal })
   },
   listClasses: ({ include_archived, signal } = {}) => request(`/api/classes${include_archived ? '?include_archived=true' : ''}`, { signal }),

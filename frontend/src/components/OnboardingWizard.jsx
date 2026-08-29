@@ -137,6 +137,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const [school, setSchool] = useState(cls?.school || '')
   const [templateFile, setTemplateFile] = useState(null)
   const [templateUrl, setTemplateUrl] = useState('')
+  const [blankTemplateAttested, setBlankTemplateAttested] = useState(false)
   const [savingSchool, setSavingSchool] = useState(false)
 
   // Confirm-class step
@@ -261,7 +262,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
         qc.invalidateQueries({ queryKey: qk.classes })
       }
       if ((templateFile || templateUrl.trim()) && school) {
-        await api.uploadSchoolTemplate(school, { file: templateFile, sourceUrl: templateUrl.trim() || undefined })
+        await api.uploadSchoolTemplate(school, { file: templateFile, sourceUrl: templateUrl.trim() || undefined, blankTemplateAttested })
         qc.invalidateQueries({ queryKey: qk.schools })
         toast.success('Template submitted', 'We’ll train the AI on your school’s format.')
       }
@@ -548,6 +549,9 @@ function SchoolStep({
               setTemplateUrl(v)
               if (v) setTemplateFile(null)
             }}
+            templateUpload
+            blankTemplateAttested={blankTemplateAttested}
+            onBlankTemplateAttestedChange={setBlankTemplateAttested}
           />
         </motion.div>
       ) : null}

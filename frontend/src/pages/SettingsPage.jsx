@@ -395,12 +395,13 @@ function SchoolPicker({ value, onSaved }) {
   // either place is processed identically.
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const [templateUrl, setTemplateUrl] = useState('')
+  const [blankTemplateAttested, setBlankTemplateAttested] = useState(false)
 
   const submitTemplate = async ({ file, url }) => {
     if ((!file && !url) || !selected) return
     setUploadingTemplate(true)
     try {
-      await api.uploadSchoolTemplate(selected.id, { file, sourceUrl: file ? undefined : url })
+      await api.uploadSchoolTemplate(selected.id, { file, sourceUrl: file ? undefined : url, blankTemplateAttested })
       toast.success('Template submitted', 'We’ll have it ready shortly.')
       schoolsState.refetch()
     } catch (err) {
@@ -408,6 +409,7 @@ function SchoolPicker({ value, onSaved }) {
     } finally {
       setUploadingTemplate(false)
       setTemplateUrl('')
+      setBlankTemplateAttested(false)
     }
   }
   const uploadTemplate = (file) => submitTemplate({ file })
@@ -500,6 +502,9 @@ function SchoolPicker({ value, onSaved }) {
             url={templateUrl}
             onUrlChange={setTemplateUrl}
             onUrlSubmit={submitTemplateUrl}
+            templateUpload
+            blankTemplateAttested={blankTemplateAttested}
+            onBlankTemplateAttestedChange={setBlankTemplateAttested}
           />
         </div>
       ) : null}

@@ -47,7 +47,17 @@ SINGLE_LINE_FIELDS = ("learning_targets", "standards", "act_alignment")
 # Fields the builder splits on newlines.
 MULTILINE_FIELDS = ("do_now", "during", "assessment")
 
-DAY_CONTENT_FIELDS = SINGLE_LINE_FIELDS + ("engagement_strategy",) + MULTILINE_FIELDS
+# These are required for newly generated plans so templates which need the
+# fuller Weeden form have real content for every row.  They remain safely
+# optional for plans created before this addition; normalize_day() supplies an
+# empty value for those legacy documents before validation.
+WEEDEN_SECTION_FIELDS = (
+    "vocabulary",
+    "reteach_small_groups",
+    "cross_curricular_connection",
+)
+
+DAY_CONTENT_FIELDS = SINGLE_LINE_FIELDS + ("engagement_strategy",) + MULTILINE_FIELDS + WEEDEN_SECTION_FIELDS
 
 # Identity fields are injected server-side from the settings record, never
 # authored by the model. See prompts.py.
@@ -100,6 +110,18 @@ DAY_JSON_SCHEMA = {
             "description": "Full instructional narrative for the period: explicit instruction, group work, independent work. No sub-labels.",
         },
         "assessment": {"type": "string", "description": "The evidence or artifact produced."},
+        "vocabulary": {
+            "type": "string",
+            "description": "Key vocabulary students will explicitly learn, practice, or apply. Use 'N/A' only when no vocabulary instruction fits.",
+        },
+        "reteach_small_groups": {
+            "type": "string",
+            "description": "Targeted reteach, intervention, or small-group support based on likely misconceptions or formative evidence.",
+        },
+        "cross_curricular_connection": {
+            "type": "string",
+            "description": "A meaningful connection to another subject, real-world application, or integrated literacy/science/social-studies task.",
+        },
     },
     # Structured Outputs' strict mode requires every declared property to be
     # required, so `title` is required OF THE MODEL. validate_day still treats
@@ -681,6 +703,12 @@ def normalize_day(day: dict, warnings: list[str] | None = None) -> dict:
     warnings = warnings if warnings is not None else []
     d = dict(day)
     name = d.get("name", "?")
+
+    # New plans have these fields because the strict response schema requires
+    # them.  Old saved plans predate them and must still open, revise, and
+    # rebuild without a migration of every historical JSON payload.
+    for field in WEEDEN_SECTION_FIELDS:
+        d.setdefault(field, "")
 
     strategies = d.get("engagement_strategy")
     if isinstance(strategies, str):
