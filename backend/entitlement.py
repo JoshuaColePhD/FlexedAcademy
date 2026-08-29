@@ -84,6 +84,24 @@ TRIAL_ENFORCEMENT_START = datetime(2026, 8, 28, tzinfo=UTC)
 BURST_WINDOW_HOURS = 24
 BURST_FRACTION = 0.35
 
+# ...but never below the cost of ONE lesson plan, which is the whole reason
+# this floor exists. The fraction alone assumes the weekly cap is large
+# relative to a single operation; at the free tier it isn't. Measured against
+# production usage_events: a single "build me a week" turn runs ~11-14k tokens
+# (stream_plan alone averages 10.1k and peaks at 15k, plus expand_query, the
+# chat reply, decisions and the title). Against a 20,000 free cap, 35% is
+# 7,000 — LESS than one plan. The burst check runs before generating, so the
+# first plan was permitted and then every subsequent action was refused for a
+# full 24 hours: a rate limiter tighter than the thing it is rating stops
+# limiting the rate and just becomes a wall.
+#
+# 20,000 clears the observed worst case (15k) with room for the rest of the
+# turn. Where the fraction is already larger this changes nothing — at the
+# 200,000 subscriber cap the burst stays 70,000 — so this only ever lifts a
+# floor that had fallen below one unit of real work, and never loosens the
+# ceiling for the accounts the burst rule was written to catch.
+MIN_BURST_TOKENS = 20_000
+
 
 @dataclass(frozen=True)
 class Entitlement:
@@ -218,6 +236,28 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
             else:
                 trial_days_remaining = max(0, (trial_ends - now_utc).days)
 
+    # Inside an active trial, and this account has never been a paying
+    # customer — which is what earns the SUBSCRIBER cap below rather than the
+    # free one.
+    #
+    # The landing page has always promised "Get N days of Premium
+    # automatically" (LandingPage.jsx), and until now nothing implemented it:
+    # a trialing account was simply unsubscribed, so it got
+    # free_weekly_token_cap. In production that is 20,000 tokens against a
+    # ~11-14k single lesson plan, so the advertised week of Premium was one
+    # plan and then a wall.
+    #
+    # This is NOT the old "reverse trial" this module removed. That one keyed
+    # off signup date alone and applied to EVERY non-subscribed status, so a
+    # lapsed subscriber who cancelled near their signup date got subscriber
+    # caps back for a week — the exact bug rule 5 (and eval/test_entitlement's
+    # promise 5) forbids. The stripe_customer_id check is what keeps that from
+    # coming back: anyone who has ever checked out has a customer id forever,
+    # so 'canceled' and 'incomplete_expired' can never re-enter a trial. It is
+    # the same "already been a customer once doesn't get a second trial" rule
+    # routes/billing.py already applies to Stripe's own trial eligibility.
+    in_trial = trial_days_remaining is not None and not user.get("stripe_customer_id")
+
     if trial_expired:
         return Entitlement(
             may_generate=False,
@@ -267,11 +307,22 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
     # after any cancellation near their signup date. Caught by
     # eval/test_entitlement.py once it actually ran in CI again; the module's
     # documented contract (and that test) never described this exception.
+    #
+    # `in_trial` (above) is the narrow, deliberately-different replacement: it
+    # is gated on the same TRIAL_ENFORCEMENT_START window that cuts the trial
+    # off, AND on never having been a Stripe customer, so it cannot reach a
+    # lapsed subscriber the way the old one did. An admin's custom_cap still
+    # wins over both — a cap set on THIS account is more specific than a tier.
     cap = custom_cap if custom_cap is not None else (
-        caps["subscriber_weekly_token_cap"] if subscribed else caps["free_weekly_token_cap"]
+        caps["subscriber_weekly_token_cap"]
+        if (subscribed or in_trial)
+        else caps["free_weekly_token_cap"]
     )
 
-    burst_cap = int(cap * BURST_FRACTION)
+    # Never below one plan's cost, and never above the weekly cap itself —
+    # see MIN_BURST_TOKENS. The min() matters for a small custom_cap an admin
+    # set deliberately: the burst must not quietly grant more than the week.
+    burst_cap = min(cap, max(int(cap * BURST_FRACTION), MIN_BURST_TOKENS))
 
     may_generate = not settings.billing_enabled or (tokens_used < cap and tokens_used_recent < burst_cap)
     return Entitlement(
