@@ -192,10 +192,10 @@ function RouteTransition({ children }) {
       <motion.div
         key={transitionKey}
         className="route-stage"
-        initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: -4 }}
-        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.26, ease: [0.22, 0.8, 0.24, 1] }}
+        exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: -2 }}
+        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 0.8, 0.24, 1] }}
       >
         {children}
       </motion.div>
@@ -272,6 +272,7 @@ function Gate() {
     }
     return (
       <Suspense fallback={<div className="flex h-app w-full bg-paper" />}>
+        <RouteTransition>
         <Routes>
           {/* The public front door. There wasn't one: every anonymous visitor,
               including someone arriving from a link who had never seen the
@@ -306,6 +307,7 @@ function Gate() {
           }
         />
         </Routes>
+        </RouteTransition>
       </Suspense>
     )
   }

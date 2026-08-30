@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { api } from '../lib/api'
+import { handleViewTransitionNavigation } from '../lib/viewTransitions'
 import { SignInForm } from '../components/SignInForm'
 
 /* The public front door — a verification seal on violet, not a bordered grid.
@@ -357,6 +358,7 @@ function SignInPopover() {
 
 export function LandingPage() {
   useDocumentTitle('Lesson plans, cited to the standard')
+  const navigate = useNavigate()
   const [pricing, setPricing] = useState(null)
   const [proofRef, proofInView] = useInView()
   const [pipelineRef, pipelineInView] = useInView()
@@ -429,7 +431,11 @@ export function LandingPage() {
           memory of it. Downloads as your district's own .docx.
         </p>
         <div className="land-actions">
-          <Link to="/signup" className="land-cta">
+          <Link
+            to="/signup"
+            className="land-cta"
+            onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
+          >
             Start a week free
             <ArrowIcon />
           </Link>
@@ -536,7 +542,11 @@ export function LandingPage() {
       </section>
 
       <footer className="land-foot">
-        <Link to="/signup" className="land-foot-cta">
+        <Link
+          to="/signup"
+          className="land-foot-cta"
+          onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
+        >
           Start a week free
           <ArrowIcon />
         </Link>

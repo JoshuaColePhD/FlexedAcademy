@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, FileText, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X, Database } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Database, FileText, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
@@ -314,6 +314,8 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   // Only one row's swipe strip open at a time — opening a second one closes
   // whichever was already open, same as every native swipe-action list.
   const [swipeOpenId, setSwipeOpenId] = useState(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchInputRef = useRef(null)
   // Always called (Rules of Hooks) but only wired up when spacious — see the
   // scroller div below. Harmless unused otherwise: the hook no-ops until its
   // containerRef is actually attached to an element.
@@ -334,6 +336,27 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   const [chatSearch, setChatSearch] = useState('')
   const chatSearchQuery = chatSearch.trim().toLowerCase()
   const searchFilter = (c) => !chatSearchQuery || c.title?.toLowerCase().includes(chatSearchQuery)
+
+  useEffect(() => {
+    if (!searchOpen) return undefined
+    const frame = requestAnimationFrame(() => searchInputRef.current?.focus())
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        setChatSearch('')
+        setSearchOpen(false)
+      }
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [searchOpen])
+
+  const closeSearch = () => {
+    setChatSearch('')
+    setSearchOpen(false)
+  }
 
   const pinnedChats = (chats?.filter((c) => c.is_pinned) || []).filter(searchFilter)
   const recentChats = (chats?.filter((c) => !c.is_pinned) || []).filter(searchFilter)
@@ -437,42 +460,72 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
             warm note. Solid fill now, not a pastel tint — the one button in
             the rail that should read as unmistakably "press me." */}
         <motion.div whileHover={{ scale: 1.02, y: -1 }} className={collapsed ? 'flex justify-center' : ''}>
-          <Link
-            to={classPath}
-            onClick={onNavigate}
-            title={collapsed ? 'New plan' : undefined}
-            className={`fa-press neo-raised btn-blob flex items-center rounded-md font-medium text-ink transition-all duration-300 overflow-hidden whitespace-nowrap ${
-              collapsed
-                ? 'justify-center w-10 h-10 px-0 text-sm'
-                : spacious
-                  ? 'gap-2 px-3.5 py-3 min-h-[52px] w-full text-base'
-                  : 'gap-2 px-3 py-1.5 min-h-[32px] w-full text-sm'
-            }`}
-          >
-            <Plus size={spacious ? 18 : 15} aria-hidden="true" className="shrink-0" />
-            {collapsed ? null : (
-              <>
-                <span className="flex-1 overflow-hidden text-ellipsis">New plan</span>
-                <kbd className="font-mono text-2xs shrink-0">⌘K</kbd>
-              </>
-            )}
-          </Link>
+          {collapsed ? (
+            <Link
+              to={classPath}
+              onClick={onNavigate}
+              title="New plan"
+              className="fa-press neo-raised btn-blob flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium text-ink transition-all duration-300"
+            >
+              <Plus size={spacious ? 18 : 15} aria-hidden="true" className="shrink-0" />
+            </Link>
+          ) : (
+            <motion.div layout className="rail-new-plan-row">
+              <AnimatePresence initial={false} mode="wait">
+                {searchOpen ? (
+                  <motion.div
+                    key="chat-search"
+                    className={`rail-quick-search${spacious ? ' is-spacious' : ''}`}
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={{ duration: 0.16, ease: 'easeOut' }}
+                  >
+                    <Search size={14} aria-hidden="true" className="shrink-0 text-ink-muted" />
+                    <input
+                      ref={searchInputRef}
+                      type="search"
+                      value={chatSearch}
+                      onChange={(e) => setChatSearch(e.target.value)}
+                      placeholder="Search chats"
+                      aria-label="Search your chats"
+                      className="rail-quick-search-input"
+                    />
+                    <button type="button" className="btn-icon shrink-0" onClick={closeSearch} aria-label="Close chat search" title="Close search">
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </motion.div>
+                ) : (
+                  <motion.div key="new-plan" className="rail-new-plan-content" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.16, ease: 'easeOut' }}>
+                    <Link
+                      to={classPath}
+                      onClick={onNavigate}
+                      className={`fa-press neo-raised btn-blob flex min-w-0 flex-1 items-center rounded-l-md rounded-r-none font-medium text-ink transition-all duration-300 overflow-hidden whitespace-nowrap ${
+                        spacious ? 'gap-2 px-3.5 py-3 min-h-[52px] text-base' : 'gap-2 px-3 py-1.5 min-h-[32px] text-sm'
+                      }`}
+                    >
+                      <Plus size={spacious ? 18 : 15} aria-hidden="true" className="shrink-0" />
+                      <span className="flex-1 overflow-hidden text-ellipsis">New plan</span>
+                    </Link>
+                    <button
+                      type="button"
+                      className={`rail-search-trigger fa-press neo-raised flex shrink-0 items-center justify-center rounded-r-md rounded-l-none text-ink-soft transition-colors hover:text-ink ${spacious ? 'min-h-[52px] w-12' : 'min-h-[32px] w-9'}`}
+                      onClick={() => setSearchOpen(true)}
+                      aria-label="Search chats"
+                      title="Search chats"
+                    >
+                      <Search size={spacious ? 17 : 14} aria-hidden="true" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          )}
         </motion.div>
       </div>
 
       {collapsed ? null : (
         <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
-          <div className={`relative pb-2 ${spacious ? 'px-4' : 'px-2'}`}>
-            <Search size={14} aria-hidden="true" className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-faint ${spacious ? 'left-6' : 'left-4'}`} />
-            <input
-              type="search"
-              value={chatSearch}
-              onChange={(e) => setChatSearch(e.target.value)}
-              placeholder="Search chats"
-              aria-label="Search your chats"
-              className={`input w-full pl-8 ${spacious ? 'py-2.5 text-base' : 'py-1.5 text-xs'}`}
-            />
-          </div>
           <div
             ref={spacious ? pullToRefresh.containerRef : undefined}
             // .scroll-y, not plain overflow-y-auto: without its
@@ -725,7 +778,7 @@ export function AppShell({ children }) {
         <motion.div
           initial={{ opacity: 0, scale: 0.96, y: 30 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+          transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1], delay: 0.04 }}
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
             width: railCollapsed ? '68px' : 'var(--sidebar-w)',

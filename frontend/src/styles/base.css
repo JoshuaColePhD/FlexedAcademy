@@ -126,6 +126,44 @@
     width: 100%;
     flex: 1;
     flex-direction: column;
+    isolation: isolate;
+  }
+
+  /* Native scene transitions are an enhancement over RouteTransition, not a
+     dependency. The shared route name lets supported browsers cross-fade the
+     public landing/auth surface while Framer Motion covers older browsers and
+     in-app webviews. */
+  @supports (view-transition-name: none) {
+    .route-stage {
+      view-transition-name: route-content;
+    }
+    .app-shell-main {
+      view-transition-name: app-shell;
+    }
+    ::view-transition-old(route-content),
+    ::view-transition-new(route-content) {
+      animation-duration: var(--t-base);
+      animation-timing-function: var(--ease-glide);
+    }
+  }
+
+  @keyframes view-route-old {
+    to {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+  }
+  @keyframes view-route-new {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  ::view-transition-old(route-content) {
+    animation-name: view-route-old;
+  }
+  ::view-transition-new(route-content) {
+    animation-name: view-route-new;
   }
   /* A quiet aside: smaller, softer, same face as everything else. This used to
      be an italic serif set in the margin of a ruled page. */
@@ -1507,12 +1545,14 @@
     border-radius: var(--r-sm);
     cursor: pointer;
     transition:
+      transform var(--t-fast) var(--ease-spring),
       color var(--t-fast) var(--ease),
       background-color var(--t-fast) var(--ease),
       border-color var(--t-fast) var(--ease),
       box-shadow var(--t-fast) var(--ease);
   }
   .btn-icon:hover:not(:disabled) {
+    transform: translateY(calc(var(--motion-lift) * -0.33));
     color: var(--ink);
     background: var(--paper-sunken);
     border-color: var(--edge);
@@ -1534,6 +1574,7 @@
       -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
   }
   .btn-icon:active:not(:disabled) {
+    transform: translateY(var(--motion-press)) scale(0.97);
     box-shadow:
       inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
       inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
@@ -1618,12 +1659,14 @@
     border-radius: var(--r-full);
     cursor: pointer;
     transition:
+      transform var(--t-fast) var(--ease-spring),
       background-color var(--t-fast) var(--ease),
       color var(--t-fast) var(--ease),
       box-shadow var(--t-fast) var(--ease),
       opacity var(--t-fast) var(--ease);
   }
   .btn-send:hover:not(:disabled) {
+    transform: translateY(calc(var(--motion-lift) * -0.33));
     background: var(--ink-soft);
   }
   .btn-send:disabled {
@@ -1636,6 +1679,7 @@
       -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
   }
   .btn-send:active:not(:disabled) {
+    transform: translateY(var(--motion-press)) scale(0.97);
     box-shadow:
       inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.55),
       inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8);
@@ -1663,11 +1707,14 @@
     border-radius: var(--r-sm);
     cursor: pointer;
     transition:
+      transform var(--t-fast) var(--ease-spring),
       color var(--t-fast) var(--ease),
       background var(--t-fast) var(--ease),
-      border-color var(--t-fast) var(--ease);
+      border-color var(--t-fast) var(--ease),
+      box-shadow var(--t-fast) var(--ease);
   }
   .btn:hover:not(:disabled) {
+    transform: translateY(calc(var(--motion-lift) * -0.33));
     color: var(--ink);
     background: var(--paper-sunken);
   }
@@ -1681,6 +1728,7 @@
       -4px -4px 9px rgb(var(--neo-light-rgb) / 0.8);
   }
   .btn:active:not(:disabled) {
+    transform: translateY(var(--motion-press)) scale(0.98);
     box-shadow:
       inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.55),
       inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.8);
@@ -1732,6 +1780,61 @@
     color: var(--ink);
     background: var(--paper-sunken);
     border-color: var(--edge-strong);
+  }
+
+  /* The rail keeps its primary action visible while the search affordance is
+     idle. When opened, the New plan row morphs in place instead of pushing a
+     large search field and every chat downward. The input owns the visible
+     outline; the two states share one footprint so the transition feels like
+     a control changing modes, not a new panel appearing. */
+  .rail-new-plan-row,
+  .rail-new-plan-content {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+  }
+  .rail-new-plan-row {
+    min-height: 32px;
+  }
+  .rail-quick-search {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 0 var(--sp-2) 0 var(--sp-3);
+    color: var(--ink-soft);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-md);
+    box-shadow:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.45),
+      -3px -3px 7px rgb(var(--neo-light-rgb) / 0.72);
+  }
+  .rail-quick-search.is-spacious {
+    min-height: 52px;
+  }
+  .rail-quick-search-input {
+    min-width: 0;
+    flex: 1;
+    height: 30px;
+    padding: 0;
+    color: var(--ink);
+    background: transparent;
+    border: 0;
+    outline: 0;
+    font-size: var(--fs-sm);
+  }
+  .rail-quick-search-input::placeholder {
+    color: var(--ink-muted);
+  }
+  .rail-quick-search-input:focus {
+    outline: 0;
+  }
+  .rail-search-trigger {
+    border: 0;
+    cursor: pointer;
   }
 
   /* ── page scaffold ───────────────────────────────────────────────────────
@@ -4828,6 +4931,7 @@
     font-weight: var(--fw-semibold);
     letter-spacing: var(--tracking-tight);
     color: var(--brand-ink);
+    view-transition-name: flexed-brand;
   }
   /* The favicon's own checkmark, reused as the wordmark's mark (on request)
      rather than a separate logo asset — same seal the proof section already
@@ -5608,6 +5712,10 @@
     --accent-text-rgb: 56 209 224;
     --mark-rgb: 255 138 128;
     --mark-tint-rgb: 46 20 20;
+  }
+
+  .auth-brand-link {
+    view-transition-name: flexed-brand;
   }
 
   /* ══ NEOMORPHISM ══════════════════════════════════════════════════════════

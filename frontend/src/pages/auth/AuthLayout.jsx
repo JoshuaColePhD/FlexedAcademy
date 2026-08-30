@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { handleViewTransitionNavigation } from '../../lib/viewTransitions'
 
 /* The frame both sign-in and sign-up render into.
  *
@@ -22,6 +23,8 @@ export const authInputClass =
   'block w-full rounded-lg border border-edge bg-paper-raised px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent neo-inset'
 
 export function AuthLayout({ title, subtitle, children, footer }) {
+  const navigate = useNavigate()
+
   return (
     // h-app, not min-h-app: index.html's <body> is overflow-hidden — every
     // other screen in the app manages its own scroll region instead of
@@ -34,8 +37,9 @@ export function AuthLayout({ title, subtitle, children, footer }) {
             the wordmark is where everyone looks for it, and it was inert. */}
         <Link
           to="/"
-          className="flex w-fit items-center gap-2.5 rounded-md transition-opacity hover:opacity-80"
+          className="auth-brand-link flex w-fit items-center gap-2.5 rounded-md transition-opacity hover:opacity-80"
           aria-label="FlexEd Academy — back to the home page"
+          onClick={(event) => handleViewTransitionNavigation(event, navigate, '/')}
         >
           <span className="text-sm font-semibold tracking-tight text-ink">FlexEd Academy</span>
         </Link>
