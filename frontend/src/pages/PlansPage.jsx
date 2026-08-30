@@ -45,22 +45,10 @@ function formatDate(iso) {
 
 function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, selected, onToggleSelect }) {
   const toast = useToast()
-  const [downloading, setDownloading] = useState(false)
   // Plans built before chat_id was tracked (or ever) have nowhere for a
   // click to go — same fallback ClassWeeks uses for an orphaned week.
   const openable = Boolean(plan.chat_id)
   const label = plan.week_label || 'Untitled week'
-  const downloadDocx = async () => {
-    if (downloading) return
-    setDownloading(true)
-    try {
-      await api.downloadPlanDocx(plan.id, { filename: `${label}.docx` })
-    } catch (err) {
-      toast.apiError('Could not download the DOCX', err)
-    } finally {
-      setDownloading(false)
-    }
-  }
 
   const content = (
     <>
@@ -127,16 +115,15 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
         </button>
-        <button
-          type="button"
+        <a
           className="p-1.5 text-ink-muted hover:text-ink hover:bg-paper rounded-md transition-colors shadow-sm border border-transparent hover:border-edge/20"
-          onClick={downloadDocx}
-          disabled={downloading}
-          title="Download as DOCX"
+          href={api.planDownloadUrl(plan.id)}
+          download
+          title="Download"
           aria-label="Download as DOCX"
         >
           <Download size={14} />
-        </button>
+        </a>
         <button
           type="button"
           className="p-1.5 text-ink-muted hover:text-mark hover:bg-mark-tint rounded-md transition-colors shadow-sm border border-transparent hover:border-mark/20"
@@ -178,20 +165,8 @@ function CardContent({ plan, label }) {
 
 function PlanCard({ plan, classId, onDelete, deleting, closing, selectionMode, selected, onToggleSelect }) {
   const toast = useToast()
-  const [downloading, setDownloading] = useState(false)
   const openable = Boolean(plan.chat_id)
   const label = plan.week_label || 'Untitled week'
-  const downloadDocx = async () => {
-    if (downloading) return
-    setDownloading(true)
-    try {
-      await api.downloadPlanDocx(plan.id, { filename: `${label}.docx` })
-    } catch (err) {
-      toast.apiError('Could not download the DOCX', err)
-    } finally {
-      setDownloading(false)
-    }
-  }
 
   return (
     <div className={`group relative flex flex-col rounded-xl border border-edge/30 bg-paper-sunken/40 p-4 transition-all hover:bg-paper-sunken hover:shadow-md hover:border-edge/50 ${closing ? 'fa-row-exit' : ''} ${selected ? 'ring-2 ring-accent border-accent/50 bg-accent/5' : ''}`}>
@@ -232,16 +207,15 @@ function PlanCard({ plan, classId, onDelete, deleting, closing, selectionMode, s
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
           </button>
-          <button
-            type="button"
+          <a
             className="p-1.5 text-ink-muted hover:text-ink hover:bg-paper rounded transition-colors"
-            onClick={downloadDocx}
-            disabled={downloading}
-            title="Download as DOCX"
+            href={api.planDownloadUrl(plan.id)}
+            download
+            title="Download"
             aria-label="Download as DOCX"
           >
             <Download size={14} />
-          </button>
+          </a>
           <button
             type="button"
             className="p-1.5 text-ink-muted hover:text-mark hover:bg-mark-tint rounded transition-colors"

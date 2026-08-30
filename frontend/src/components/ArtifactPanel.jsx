@@ -17,7 +17,6 @@ import { WeedenPlanDayCards } from './WeedenPlanDayCards'
 import { Marginalia } from './Marginalia'
 import { ShareDialog } from './ShareDialog'
 import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
-import { useToast } from '../lib/toastContext'
 
 /* The artifact, expanded into a working document.
  *
@@ -80,11 +79,9 @@ export function ArtifactPanel({
   mobileReader = false,
   readerMode = false,
 }) {
-  const toast = useToast()
   const [shareOpen, setShareOpen] = useState(false)
   const [completionPulse, setCompletionPulse] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [downloading, setDownloading] = useState(false)
   // .artifact-overlay (ChatPage.jsx) is the box that actually needs to grow —
   // see this effect's twin in ArtifactDetailPanel.jsx for why. Fires on both
   // ways isFullscreen can change (the button below, and the Escape handler
@@ -163,18 +160,6 @@ const location = useLocation()
   })
   const documentStatus = documentJob.data?.status || (planId ? 'queued' : 'ready')
   const downloadReady = documentStatus === 'ready'
-  const downloadDocx = async () => {
-    if (!planId || downloading) return
-    setDownloading(true)
-    try {
-      await api.downloadPlanDocx(planId, { filename: `${plan?.week_of || 'lesson-plan'}.docx` })
-    } catch (err) {
-      toast.apiError('Could not download the DOCX', err)
-      documentJob.refetch()
-    } finally {
-      setDownloading(false)
-    }
-  }
   const reportedDocumentStatus = useRef(null)
   useEffect(() => {
     if (!planId || reportedDocumentStatus.current === documentStatus) return
@@ -240,14 +225,13 @@ const location = useLocation()
                   (one half-rounded pill needs its other half); a single
                   control gets the plain, fully-rounded pill the failed-
                   build state already uses (ArtifactDetailPanel.jsx). */}
-              {downloadReady ? <button
+              {downloadReady ? <a
                 key="document-ready"
-                type="button"
+                href={planId ? api.planDownloadUrl(planId) : undefined}
+                download
                 className="doc-download fa-press fa-context-pop flex items-center gap-1.5"
                 aria-label="Download as DOCX"
                 title="Download as DOCX"
-                onClick={downloadDocx}
-                disabled={downloading}
               >
                 {isPendingTemplate ? (
                   <Tooltip content="Your district form is still awaiting verification. This plan downloads in a clearly labeled neutral format, never another district's template." position="bottom-right">
@@ -255,8 +239,8 @@ const location = useLocation()
                   </Tooltip>
                 ) : null}
                 <Download size={14} aria-hidden="true" className="text-ink-muted" />
-                <span className="font-medium">{downloading ? 'Downloading…' : 'Download as DOCX'}</span>
-              </button> : (
+                <span className="font-medium">Download as DOCX</span>
+              </a> : (
                 <button
                   key={`document-${documentStatus}`}
                   type="button"

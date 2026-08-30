@@ -150,125 +150,6 @@ async function upload(path, formData, { signal } = {}) {
   return res.json()
 }
 
-const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-const DOCX_POLL_ATTEMPTS = 8
-const DOCX_POLL_DELAY_MS = 450
-
-function downloadFilename(contentDisposition, fallback) {
-  const encoded = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
-  if (encoded) {
-    try {
-      return decodeURIComponent(encoded)
-    } catch {
-      // Fall through to the regular filename when a proxy sent malformed
-      // percent encoding.
-    }
-  }
-  return contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1] || fallback
-}
-
-/* iPadOS Safari often reports itself as desktop Safari and does not reliably
- * save a Blob URL created after an async fetch. A real navigation to the
- * server's attachment response is the native download path on iPadOS, while
- * the user gesture is still active. maxTouchPoints catches iPadOS's desktop
- * mode, where the user agent says MacIntel instead of iPad. */
-function isAppleMobileBrowser() {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-}
-
-/** Fetch and validate a generated DOCX before asking the browser to save it.
- * A raw `<a download>` cannot distinguish a real file from FastAPI's JSON
- * error envelope, which Chrome used to save as `download.json`. DOCX is a ZIP
- * container, so the signature is the final guard even if a proxy changes the
- * Content-Type header. */
-async function downloadDocx(path, { filename = 'lesson-plan.docx', signal } = {}) {
-  if (isAppleMobileBrowser()) {
-    // The endpoint returns a real DOCX with Content-Disposition: attachment.
-    // Navigating to it lets Safari hand the file to its Downloads/Files flow;
-    // fetch → Blob → a.click() is the path that silently fails on iPadOS.
-    window.location.assign(`${API_BASE}${path}`)
-    return
-  }
-
-  let res
-  let lastPendingError = null
-  for (let attempt = 0; attempt < DOCX_POLL_ATTEMPTS; attempt += 1) {
-    const timeoutController = new AbortController()
-    const timeoutId = setTimeout(() => timeoutController.abort(), 10000)
-    const combinedSignal = signal
-      ? AbortSignal.any([signal, timeoutController.signal])
-      : timeoutController.signal
-    try {
-      res = await fetch(`${API_BASE}${path}`, { credentials: 'include', signal: combinedSignal })
-    } catch (err) {
-      if (err.name === 'AbortError' && signal?.aborted) throw err
-      if (err.name === 'AbortError') {
-        throw new ApiError('The document took too long to download.', { code: 'timeout' })
-      }
-      if (attempt < DOCX_POLL_ATTEMPTS - 1) {
-        await sleep(DOCX_POLL_DELAY_MS * (attempt + 1))
-        continue
-      }
-      throw new ApiError('Can’t reach the document server.', {
-        code: 'network_error',
-        hint: 'Check your connection and try again.',
-      })
-    } finally {
-      clearTimeout(timeoutId)
-    }
-
-    if (!res.ok) {
-      let body = null
-      try {
-        body = await res.clone().json()
-      } catch {
-        // Let the shared error envelope handle non-JSON responses below.
-      }
-      const pending = body?.error?.code === 'docx_pending' || res.status === 202
-      if (pending && attempt < DOCX_POLL_ATTEMPTS - 1) {
-        lastPendingError = apiErrorFromBody(body, res.status)
-        await sleep(DOCX_POLL_DELAY_MS * (attempt + 1))
-        continue
-      }
-      throw await toError(res)
-    }
-
-    const contentType = (res.headers.get('content-type') || '').split(';', 1)[0].toLowerCase()
-    const blob = await res.blob()
-    const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
-    const isZip = header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04
-    if (contentType.includes('json') || !isZip) {
-      // Never hand an error envelope to the browser's download manager. A
-      // transient 200/JSON response can happen while a proxy or worker is
-      // catching up, so give the document job a few chances to become a real
-      // ZIP before surfacing a visible error.
-      lastPendingError = new ApiError('The DOCX is not ready yet.', {
-        code: 'docx_invalid_response',
-        hint: 'Wait a moment and try again.',
-        status: res.status,
-      })
-      if (attempt < DOCX_POLL_ATTEMPTS - 1) {
-        await sleep(DOCX_POLL_DELAY_MS * (attempt + 1))
-        continue
-      }
-      throw lastPendingError
-    }
-
-    const objectUrl = URL.createObjectURL(new Blob([blob], { type: DOCX_MIME }))
-    const link = document.createElement('a')
-    link.href = objectUrl
-    link.download = downloadFilename(res.headers.get('content-disposition'), filename)
-    link.style.display = 'none'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-    return
-  }
-  throw lastPendingError || new ApiError('The DOCX is not ready yet.', { code: 'docx_pending' })
-}
-
 export const api = {
   health: ({ signal } = {}) => request('/api/health', { signal }),
 
@@ -389,7 +270,6 @@ export const api = {
   listPlanShares: (planId, { signal } = {}) =>
     request(`/api/plans/${planId}/shares`, { signal }),
   planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,
-  downloadPlanDocx: (id, options = {}) => downloadDocx(`/api/plans/${id}/download`, options),
   /* A plan can have several quizzes (backend db.py migration 26) — each ask
    *  for one ("make a matching quiz") is its own row, never overwriting an
    *  earlier one. `questionTypes` is a real array (['multiple_choice']),
