@@ -45,7 +45,12 @@ def _names_from_structure(structure: dict | None) -> list[str] | None:
     return None
 
 
-def day_names_for_school(school_id: str | None) -> list[str]:
+def day_names_for_school(
+    school_id: str | None,
+    *,
+    template_id: str | None = None,
+    user_id: str | None = None,
+) -> list[str]:
     """Return the selected template's known day columns.
 
     DB/template reads are best-effort. Missing template analysis must not make
@@ -55,15 +60,19 @@ def day_names_for_school(school_id: str | None) -> list[str]:
     if not school_id or school_id == NO_CALENDAR_SCHOOL_ID:
         return list(DAY_NAMES)
 
+    selected = template_id
     try:
-        names = _names_from_layout_spec(db.get_school_builder_spec(school_id))
+        if not selected and user_id:
+            preferred = db.get_preferred_school_template(user_id, school_id)
+            selected = preferred.get("id") if preferred else None
+        names = _names_from_layout_spec(db.get_school_builder_spec(school_id, selected))
         if names:
             return names
     except Exception:
         log.debug("could not read builder layout spec for school %s", school_id, exc_info=True)
 
     try:
-        template = db.get_latest_school_template(school_id)
+        template = db.get_school_template(selected) if selected else db.get_latest_school_template(school_id)
         structure = json.loads(template["structure_json"]) if template and template.get("structure_json") else None
         names = _names_from_structure(structure)
         if names:
@@ -74,9 +83,14 @@ def day_names_for_school(school_id: str | None) -> list[str]:
     return list(DAY_NAMES)
 
 
-def weekly_template_context(school_id: str | None) -> str:
+def weekly_template_context(
+    school_id: str | None,
+    *,
+    template_id: str | None = None,
+    user_id: str | None = None,
+) -> str:
     """Return prompt-ready context for the fixed day axis."""
-    names = day_names_for_school(school_id)
+    names = day_names_for_school(school_id, template_id=template_id, user_id=user_id)
     axis = (
         "complete five-day Monday-Friday structure"
         if names == DAY_NAMES

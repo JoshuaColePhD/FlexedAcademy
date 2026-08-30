@@ -3211,6 +3211,67 @@ MIGRATIONS: list[str] = [
        SET template_status = 'active'
      WHERE id = 'weeden-elementary-school';
     """,
+    # ── 63: versioned school templates and teacher-specific defaults ─────────
+    # A file uploaded by one teacher must not silently become the format every
+    # teacher at that school receives. `template_scope` records whether the
+    # upload was intended for one teacher or submitted as a school-level
+    # candidate; `is_school_default` is set only by an explicit activation.
+    # A separate preference table lets each teacher choose a different valid
+    # version without mutating the school's default or anyone else's plans.
+    # `plans.template_id` snapshots the exact format used for a document, so
+    # historical plans remain reproducible after a preference changes.
+    """
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS template_scope TEXT NOT NULL DEFAULT 'school_candidate';
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS is_school_default BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS academic_year TEXT;
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS approved_at TEXT;
+    ALTER TABLE school_templates ADD COLUMN IF NOT EXISTS retired_at TEXT;
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS template_id TEXT REFERENCES school_templates(id) ON DELETE SET NULL;
+
+    CREATE TABLE IF NOT EXISTS user_school_template_preferences (
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        school_id   TEXT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+        template_id TEXT NOT NULL REFERENCES school_templates(id) ON DELETE CASCADE,
+        selected_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, school_id)
+    );
+    ALTER TABLE user_school_template_preferences ENABLE ROW LEVEL SECURITY;
+    CREATE INDEX IF NOT EXISTS idx_school_templates_default
+        ON school_templates(school_id, is_school_default, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_template_preferences_template
+        ON user_school_template_preferences(template_id);
+
+    -- Existing approved uploads are the least surprising school defaults.
+    -- Built-in builders have no row here and continue to work unchanged.
+    UPDATE school_templates st
+       SET is_school_default = true,
+           approved_at = COALESCE(st.approved_at, st.created_at),
+           template_scope = 'school_candidate'
+     WHERE st.auto_activated = true
+       AND NOT EXISTS (
+           SELECT 1 FROM school_templates current
+           WHERE current.school_id = st.school_id
+             AND current.is_school_default = true
+       );
+    UPDATE school_templates st
+       SET is_school_default = true,
+           approved_at = COALESCE(st.approved_at, st.created_at),
+           template_scope = 'school_candidate'
+     WHERE st.id = (
+         SELECT newest.id
+         FROM school_templates newest
+         JOIN schools newest_school ON newest_school.id = newest.school_id
+         WHERE newest.school_id = st.school_id
+           AND newest_school.template_status = 'active'
+         ORDER BY newest.created_at DESC
+         LIMIT 1
+     )
+       AND NOT EXISTS (
+           SELECT 1 FROM school_templates current
+           WHERE current.school_id = st.school_id
+             AND current.is_school_default = true
+       );
+    """,
 ]
 
 
@@ -3741,16 +3802,131 @@ def update_school_template_status(school_id: str, status: str) -> bool:
         docx_build.builder.cache_clear()
     return changed
 
-def create_school_template(school_id: str, uploaded_by: str, filename: str, file_path: str) -> dict:
+def create_school_template(
+    school_id: str,
+    uploaded_by: str,
+    filename: str,
+    file_path: str,
+    *,
+    template_scope: str = "personal",
+) -> dict:
     template_id = new_id()
     _write(
         """
-        INSERT INTO school_templates (id, school_id, uploaded_by, filename, file_path, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO school_templates
+            (id, school_id, uploaded_by, filename, file_path, created_at, template_scope)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (template_id, school_id, uploaded_by, filename, file_path, now())
+        (template_id, school_id, uploaded_by, filename, file_path, now(), template_scope)
     )
     return _row("SELECT * FROM school_templates WHERE id = ?", (template_id,))  # type: ignore[return-value]
+
+
+def list_school_templates_for_user(school_id: str, user_id: str) -> list[dict]:
+    """Return a teacher-safe registry for one school.
+
+    Uploader identity is intentionally absent from this projection. A school
+    can have several legitimate formats, and the UI should communicate scope,
+    status, and dates without turning template choice into a public attribution
+    trail.
+    """
+    return _rows(
+        """
+        SELECT st.id, st.school_id, st.filename, st.created_at,
+               st.template_scope, st.is_school_default, st.academic_year,
+               st.approved_at, st.retired_at, st.analysis_status,
+               st.analyzed_at, st.analysis_error,
+               CASE WHEN usp.template_id IS NOT NULL THEN true ELSE false END AS is_personal_default,
+               CASE WHEN bc.status = 'succeeded' AND bc.layout_spec_json IS NOT NULL
+                    THEN true ELSE false END AS builder_ready
+        FROM school_templates st
+        LEFT JOIN user_school_template_preferences usp
+          ON usp.template_id = st.id
+         AND usp.user_id = ?
+         AND usp.school_id = ?
+        LEFT JOIN LATERAL (
+          SELECT status, layout_spec_json
+          FROM builder_codegen_jobs
+          WHERE template_id = st.id
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) bc ON true
+        WHERE st.school_id = ? AND st.retired_at IS NULL
+          AND (st.template_scope = 'school_candidate' OR st.uploaded_by = ?)
+        ORDER BY st.is_school_default DESC, st.created_at DESC
+        """,
+        (user_id, school_id, school_id, user_id),
+    )
+
+
+def set_personal_school_template(user_id: str, school_id: str, template_id: str) -> dict | None:
+    """Make one analyzed template this teacher's default for one school."""
+    template = _row(
+        """
+        SELECT * FROM school_templates
+        WHERE id = ? AND school_id = ? AND retired_at IS NULL
+          AND analysis_status IN ('analyzed', 'analyzed_with_warnings')
+        """,
+        (template_id, school_id),
+    )
+    if not template:
+        return None
+    _write(
+        """
+        INSERT INTO user_school_template_preferences (user_id, school_id, template_id, selected_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (user_id, school_id) DO UPDATE SET
+          template_id = EXCLUDED.template_id,
+          selected_at = EXCLUDED.selected_at
+        """,
+        (user_id, school_id, template_id, now()),
+    )
+    return template
+
+
+def get_preferred_school_template(user_id: str, school_id: str) -> dict | None:
+    """Resolve personal default first, then the explicit school default."""
+    return _row(
+        """
+        SELECT st.*
+        FROM school_templates st
+        JOIN user_school_template_preferences usp ON usp.template_id = st.id
+        WHERE usp.user_id = ? AND usp.school_id = ?
+          AND st.school_id = usp.school_id AND st.retired_at IS NULL
+        UNION ALL
+        SELECT st.*
+        FROM school_templates st
+        WHERE st.school_id = ? AND st.is_school_default = true AND st.retired_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM user_school_template_preferences usp
+            WHERE usp.user_id = ? AND usp.school_id = ?
+          )
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (user_id, school_id, school_id, user_id, school_id),
+    )
+
+
+def activate_school_template(school_id: str, template_id: str) -> dict | None:
+    """Atomically-ish promote one exact candidate; never selects 'latest'."""
+    template = _row(
+        "SELECT * FROM school_templates WHERE id = ? AND school_id = ? AND retired_at IS NULL",
+        (template_id, school_id),
+    )
+    if not template:
+        return None
+    _write("UPDATE school_templates SET is_school_default = false WHERE school_id = ?", (school_id,))
+    _write(
+        """
+        UPDATE school_templates
+        SET is_school_default = true, template_scope = 'school_candidate', approved_at = ?
+        WHERE id = ? AND school_id = ?
+        """,
+        (now(), template_id, school_id),
+    )
+    update_school_template_status(school_id, "active")
+    return get_school_template(template_id)
 
 def list_pending_school_templates() -> list[dict]:
     return _rows(
@@ -3759,7 +3935,8 @@ def list_pending_school_templates() -> list[dict]:
         FROM school_templates st
         JOIN schools s ON st.school_id = s.id
         LEFT JOIN users u ON st.uploaded_by = u.id
-        WHERE s.template_status = 'pending'
+        WHERE st.template_scope = 'school_candidate'
+          AND st.is_school_default = false
         ORDER BY st.created_at DESC
         """
     )
@@ -3949,8 +4126,29 @@ def get_builder_codegen_job(job_id: str) -> dict | None:
 
 def get_builder_codegen_job_for_school(school_id: str) -> dict | None:
     return _row(
-        "SELECT * FROM builder_codegen_jobs WHERE school_id = ? ORDER BY created_at DESC LIMIT 1",
+        """
+        SELECT j.*
+        FROM builder_codegen_jobs j
+        JOIN school_templates st ON st.id = j.template_id
+        WHERE j.school_id = ?
+          AND (st.is_school_default = true OR st.template_scope = 'school_candidate')
+        ORDER BY st.is_school_default DESC, j.created_at DESC
+        LIMIT 1
+        """,
         (school_id,),
+    )
+
+
+def get_builder_codegen_job_for_template(template_id: str) -> dict | None:
+    """Return the newest successful renderer for one exact template version."""
+    return _row(
+        """
+        SELECT * FROM builder_codegen_jobs
+        WHERE template_id = ? AND status = 'succeeded' AND layout_spec_json IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (template_id,),
     )
 
 
@@ -3982,7 +4180,9 @@ def list_builder_codegen_jobs_pending_review() -> list[dict]:
         SELECT j.*, s.name AS school_name, s.builder_status AS school_builder_status
         FROM builder_codegen_jobs j
         JOIN schools s ON s.id = j.school_id
+        JOIN school_templates st ON st.id = j.template_id
         WHERE j.status IN ('failed_needs_human', 'succeeded')
+          AND st.template_scope != 'personal'
           AND s.builder_status != 'verified'
         ORDER BY j.created_at DESC
         """
@@ -4064,7 +4264,9 @@ def approve_builder_codegen_job(job_id: str) -> dict | None:
     job = get_builder_codegen_job(job_id)
     if not job or not job.get("layout_spec_json"):
         return None
-    _write("UPDATE schools SET builder_status = 'verified' WHERE id = ?", (job["school_id"],))
+    template = get_school_template(job["template_id"])
+    if not template or template.get("template_scope") != "personal":
+        _write("UPDATE schools SET builder_status = 'verified' WHERE id = ?", (job["school_id"],))
     _write("UPDATE builder_codegen_jobs SET verified_at = ? WHERE id = ?", (now(), job_id))
     # See update_school_template_status's own comment — docx_build.builder()
     # caches per school_id and never re-checks builder_status on its own.
@@ -4086,7 +4288,9 @@ def mark_builder_codegen_job_auto_verified(job_id: str) -> dict | None:
     if not job or not job.get("layout_spec_json"):
         return None
     ts = now()
-    _write("UPDATE schools SET builder_status = 'verified' WHERE id = ?", (job["school_id"],))
+    template = get_school_template(job["template_id"])
+    if not template or template.get("template_scope") != "personal":
+        _write("UPDATE schools SET builder_status = 'verified' WHERE id = ?", (job["school_id"],))
     _write(
         "UPDATE builder_codegen_jobs SET auto_verified = true, verified_at = ? WHERE id = ?",
         (ts, job_id),
@@ -4118,14 +4322,26 @@ def list_auto_verified_builder_jobs(limit: int = 20) -> list[dict]:
     )
 
 
-def get_school_builder_spec(school_id: str) -> dict | None:
-    """The winning layout spec for a school whose builder_status is
-    'verified' — docx_build.builder() reads this directly rather than
-    materializing a generated .py file on disk."""
+def get_school_builder_spec(school_id: str, template_id: str | None = None) -> dict | None:
+    """Return a school's verified layout spec, or an exact template version.
+
+    The exact-template path intentionally works before school-wide approval so
+    a teacher can use a private, analyzed template without changing the
+    renderer used by anyone else. The school-level path still requires the
+    shared builder status to be verified.
+    """
     school = get_school(school_id)
-    if not school or school.get("builder_status") != "verified":
+    if not school:
         return None
-    job = get_builder_codegen_job_for_school(school_id)
+    if template_id:
+        template = get_school_template(template_id)
+        if not template or template.get("school_id") != school_id:
+            return None
+        job = get_builder_codegen_job_for_template(template_id)
+    else:
+        if school.get("builder_status") != "verified":
+            return None
+        job = get_builder_codegen_job_for_school(school_id)
     if not job or not job.get("layout_spec_json"):
         return None
     return json.loads(job["layout_spec_json"])
@@ -4243,6 +4459,7 @@ def create_plan(
     warnings: list[str],
     chat_id: str | None,
     template: str,
+    template_id: str | None = None,
     class_id: str | None = None,
     week_number: int | None = None,
 ) -> dict:
@@ -4255,9 +4472,9 @@ def create_plan(
 
     _write(
         """INSERT INTO plans (id, user_id, created_at, course, week_label, unit, query, plan_json,
-                              docx_path, retrieved_ids, warnings, chat_id, template, class_id,
-                              week_number)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                              docx_path, retrieved_ids, warnings, chat_id, template, template_id,
+                              class_id, week_number)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             plan_id,
             user_id,
@@ -4272,6 +4489,7 @@ def create_plan(
             json.dumps(warnings),
             chat_id,
             template,
+            template_id,
             class_id,
             wk,
         ),
@@ -4288,7 +4506,7 @@ def _hydrate_plan(row: dict) -> dict:
     return d
 
 
-_PLAN_LIST_COLUMNS = "id, created_at, course, week_label, unit, query, docx_path, retrieved_ids, warnings, chat_id, template, user_id, class_id, week_number, drive_file_id, drive_web_link, is_public, shared_at"
+_PLAN_LIST_COLUMNS = "id, created_at, course, week_label, unit, query, docx_path, retrieved_ids, warnings, chat_id, template, template_id, user_id, class_id, week_number, drive_file_id, drive_web_link, is_public, shared_at"
 
 
 def _hydrate_plan_list(row: dict) -> dict:

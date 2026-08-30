@@ -170,6 +170,13 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
 from fastapi import BackgroundTasks
 
 
+def _build_docx_for_template(plan: dict, out_path: Path, school_id: str | None, template_id: str | None = None):
+    """Keep legacy builder test doubles and old plans compatible."""
+    if template_id:
+        return docx_build.build_docx(plan, out_path, school_id, template_id)
+    return docx_build.build_docx(plan, out_path, school_id)
+
+
 def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
     # FastAPI background work is not durable across a deploy or process restart.
     # Keep this compatibility entry point, but make it only enqueue work in the
@@ -187,7 +194,7 @@ def run_document_build_job(job: dict) -> None:
     try:
         cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
         out_path = docx_build.plan_output_path(row["plan_json"], plan_id)
-        docx_build.build_docx(row["plan_json"], out_path, cls.get("school") if cls else None)
+        _build_docx_for_template(row["plan_json"], out_path, cls.get("school") if cls else None, row.get("template_id"))
         storage.mirror_file(out_path)
         db.update_plan(user_id, plan_id, docx_path=str(out_path))
         db.finish_document_build(plan_id, user_id)
@@ -279,7 +286,7 @@ def repair_weeden_missing_sections() -> int:
             # call leaves the original record untouched for the next startup.
             updated, _ = schema.validate_plan(updated, require_weeden_sections=True)
             out_path = docx_build.plan_output_path(updated, row["id"])
-            docx_build.build_docx(updated, out_path, school_id)
+            _build_docx_for_template(updated, out_path, school_id, row.get("template_id"))
             storage.mirror_file(out_path)
             db.update_plan(
                 row["user_id"], row["id"],
@@ -349,7 +356,15 @@ def finalize(
     # permits an empty string.
     resolved_school_id = school_id or (cls or {}).get("school")
     uses_weeden_template = resolved_school_id == "weeden-elementary-school"
-    template_days = day_names_for_school(resolved_school_id)
+    preferred_template = (
+        db.get_preferred_school_template(user_id, resolved_school_id)
+        if resolved_school_id and resolved_school_id != "generic"
+        else None
+    )
+    selected_template_id = preferred_template.get("id") if preferred_template else None
+    template_days = day_names_for_school(
+        resolved_school_id, template_id=selected_template_id, user_id=user_id
+    )
     plan, warnings = schema.validate_plan(
         plan_raw, require_weeden_sections=uses_weeden_template, day_names=template_days
     )
@@ -387,7 +402,7 @@ def finalize(
         bg_tasks.add_task(_build_docx_bg, user_id, plan, out_path, plan_id)
         docx_path_val = None
     else:
-        docx_build.build_docx(plan, out_path, school_id)
+        _build_docx_for_template(plan, out_path, resolved_school_id, selected_template_id)
         storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
@@ -419,7 +434,8 @@ def finalize(
         retrieved_ids=sorted(result.codes),
         warnings=warnings,
         chat_id=chat_id,
-        template=docx_build.builder_template(school_id),
+        template=docx_build.builder_template(resolved_school_id, selected_template_id),
+        template_id=selected_template_id,
         class_id=class_id,
         week_number=week_number,
     )
@@ -527,7 +543,7 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
         return db.get_plan(user_id, plan_id)  # type: ignore[return-value]
     else:
         cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-        docx_build.build_docx(plan, out_path, cls.get("school") if cls else None)
+        _build_docx_for_template(plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
         return db.update_plan(user_id, plan_id, docx_path=str(out_path))  # type: ignore[return-value]
 
 
@@ -615,7 +631,12 @@ def revise_day(
             user_id, original, feedback, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
         )
         row_class = db.get_class(user_id, row.get("class_id")) if row.get("class_id") else None
-        template_days = day_names_for_school(db.class_school(row_class, user_id))
+        school_for_revision = (
+            db.class_school(row_class, user_id)
+            if hasattr(db, "class_school")
+            else (row_class or {}).get("school")
+        )
+        template_days = day_names_for_school(school_for_revision, user_id=user_id)
         updated, warnings = schema.validate_day(
             updated_raw, path=f"days[{day_index}]", day_names=template_days
         )
@@ -638,7 +659,12 @@ def revise_day(
         # a scoped rewrite can just as easily return a learning target that
         # doesn't start with "I can" or an off-list engagement strategy.
         row_class = db.get_class(user_id, row.get("class_id")) if row.get("class_id") else None
-        template_days = day_names_for_school(db.class_school(row_class, user_id))
+        school_for_revision = (
+            db.class_school(row_class, user_id)
+            if hasattr(db, "class_school")
+            else (row_class or {}).get("school")
+        )
+        template_days = day_names_for_school(school_for_revision, user_id=user_id)
         updated, warnings = schema.validate_day(
             merged, path=f"days[{day_index}]", day_names=template_days
         )
@@ -668,7 +694,7 @@ def revise_day(
         bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
         docx_path_val = None
     else:
-        docx_build.build_docx(new_plan, out_path, cls.get("school") if cls else None)
+        _build_docx_for_template(new_plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
         storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
@@ -764,7 +790,7 @@ def set_day_field(
         bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
         docx_path_val = None
     else:
-        docx_build.build_docx(new_plan, out_path, cls.get("school") if cls else None)
+        _build_docx_for_template(new_plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
         storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 
@@ -878,7 +904,7 @@ def revise_days(
         bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
         docx_path_val = None
     else:
-        docx_build.build_docx(new_plan, out_path, cls.get("school") if cls else None)
+        _build_docx_for_template(new_plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
         storage.mirror_file(out_path)
         docx_path_val = str(out_path)
 

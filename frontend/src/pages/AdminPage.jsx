@@ -1015,8 +1015,8 @@ function PendingSchoolTemplates() {
   const activate = async (template) => {
     setActivatingId(template.id)
     try {
-      await api.adminActivateTemplate(template.school_id)
-      toast.success(`${template.school_name} marked as active`)
+      await api.adminActivateTemplate(template.school_id, template.id)
+      toast.success(`${template.school_name} template marked as the school default`)
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['admin', 'schoolTemplates', 'pending'] }),
         qc.invalidateQueries({ queryKey: qk.schools }),
@@ -1045,8 +1045,7 @@ function PendingSchoolTemplates() {
                   <span className="font-medium text-ink">{t.school_name}</span>{' '}
                   <TemplateStatusBadge status={t.analysis_status} />{' '}
                   <span className="text-2xs text-ink-muted">
-                    uploaded by {t.uploader_name || t.uploader_email || t.uploaded_by} on{' '}
-                    {new Date(t.created_at).toLocaleDateString()}
+                    submitted · {new Date(t.created_at).toLocaleDateString()}
                   </span>
                 </div>
                 <div className="flex gap-2">
@@ -1066,7 +1065,7 @@ function PendingSchoolTemplates() {
                     onClick={() => activate(t)}
                     className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Mark Active
+                    Make School Default
                   </button>
                 </div>
               </div>
@@ -1115,7 +1114,7 @@ function AutoActivatedTemplates() {
             <div>
               <span className="font-medium text-ink">{t.school_name}</span>{' '}
               <span className="text-2xs text-ink-muted">
-                uploaded by {t.uploader_name || t.uploader_email || t.uploaded_by} · activated{' '}
+                activated ·{' '}
                 {new Date(t.analyzed_at || t.created_at).toLocaleDateString()}
               </span>
             </div>

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ArrowRight,
+  CheckCircle2,
   Loader2,
   Mic,
   PartyPopper,
@@ -160,6 +161,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     staleTime: Infinity,
     enabled: open,
   })
+  const { data: schoolTemplatesData, isLoading: schoolTemplatesLoading } = useQuery({
+    queryKey: ['school-templates', school],
+    queryFn: () => api.listSchoolTemplates(school),
+    enabled: open && hasChosenSchool(school),
+  })
+  const schoolTemplates = schoolTemplatesData?.templates || []
+  const [selectingTemplateId, setSelectingTemplateId] = useState(null)
 
   // Reset to a clean first step every time this opens on a (possibly
   // different) class, rather than resuming wherever a previous open left off.
@@ -169,6 +177,9 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setDirection(1)
     setSchool(cls?.school || '')
     setTemplateFile(null)
+    setTemplateUrl('')
+    setBlankTemplateAttested(false)
+    setSelectingTemplateId(null)
     setSubject(cls?.subject || '')
     setGrade(gradeSelectValue(cls?.grade))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -193,6 +204,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   // format, not when the review status happens to lag behind the builder.
   const schoolHasUsableTemplate = hasUsableSchoolTemplate(selectedSchool)
   const schoolNeedsTemplate = chosenSchool && selectedSchool && !schoolHasUsableTemplate
+  const schoolHasMultipleTemplates = schoolTemplates.length > 1
+  const schoolTemplateSelectionStep = chosenSchool && (schoolTemplatesLoading || schoolHasMultipleTemplates)
 
   /* Which steps this account actually has to sit through.
    *
@@ -220,11 +233,11 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
    * a count. */
   const livePlan = useMemo(() => {
     const next = ['welcome']
-    if (!chosenSchool || schoolNeedsTemplate) next.push('school')
+    if (!chosenSchool || schoolNeedsTemplate || schoolTemplateSelectionStep) next.push('school')
     if (!subject) next.push('class')
     next.push('documents', 'tips', 'done')
     return next
-  }, [chosenSchool, schoolNeedsTemplate, subject])
+  }, [chosenSchool, schoolNeedsTemplate, schoolTemplateSelectionStep, subject])
 
   /* Frozen the moment the teacher leaves welcome — once they've started
    * moving through the flow, the shape must not shift under them even if
@@ -262,13 +275,25 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const saveSchool = async () => {
     setSavingSchool(true)
     try {
+      // Keep the account-level school in sync with the class selection. This
+      // also authorizes the just-selected teacher to upload a personal
+      // template for that school after choosing it in onboarding.
+      if (school && school !== user?.school) {
+        await api.updateMe({ school })
+      }
       if (school !== (cls?.school || '')) {
         await api.updateClass(cls.id, { school })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
-      if ((templateFile || templateUrl.trim()) && school && !schoolHasUsableTemplate) {
-        await api.uploadSchoolTemplate(school, { file: templateFile, sourceUrl: templateUrl.trim() || undefined, blankTemplateAttested })
+      if ((templateFile || templateUrl.trim()) && school) {
+        await api.uploadSchoolTemplate(school, {
+          file: templateFile,
+          sourceUrl: templateUrl.trim() || undefined,
+          blankTemplateAttested,
+          templateScope: schoolTemplates.length ? 'personal' : 'school_candidate',
+        })
         qc.invalidateQueries({ queryKey: qk.schools })
+        qc.invalidateQueries({ queryKey: ['school-templates', school] })
         toast.success('Template submitted', 'We’ll train the AI on your school’s format.')
       }
       goNext()
@@ -276,6 +301,19 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       toast.apiError('Could not save that', err)
     } finally {
       setSavingSchool(false)
+    }
+  }
+
+  const selectOnboardingTemplate = async (template) => {
+    setSelectingTemplateId(template.id)
+    try {
+      await api.selectSchoolTemplate(school, template.id)
+      await qc.invalidateQueries({ queryKey: ['school-templates', school] })
+      toast.success('Template selected', 'This format will be used for your lesson plans.')
+    } catch (err) {
+      toast.apiError('Could not select that template', err)
+    } finally {
+      setSelectingTemplateId(null)
     }
   }
 
@@ -361,10 +399,19 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
               <SchoolStep
                 eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
                 school={school}
-                setSchool={setSchool}
+                onSchoolChange={(value) => {
+                  setSchool(value)
+                  setTemplateFile(null)
+                  setTemplateUrl('')
+                  setBlankTemplateAttested(false)
+                  setSelectingTemplateId(null)
+                }}
                 schools={schools}
+                templates={schoolTemplates}
+                templatesLoading={schoolTemplatesLoading}
+                selectingTemplateId={selectingTemplateId}
+                onSelectTemplate={selectOnboardingTemplate}
                 schoolNeedsTemplate={schoolNeedsTemplate}
-                schoolHasUsableTemplate={schoolHasUsableTemplate}
                 templateFile={templateFile}
                 setTemplateFile={setTemplateFile}
                 templateUrl={templateUrl}
@@ -506,10 +553,13 @@ function SchoolStep({
   currentStep,
   totalSteps,
   school,
-  setSchool,
+  onSchoolChange,
   schools,
+  templates,
+  templatesLoading,
+  selectingTemplateId,
+  onSelectTemplate,
   schoolNeedsTemplate,
-  schoolHasUsableTemplate,
   templateFile,
   setTemplateFile,
   templateUrl,
@@ -532,25 +582,38 @@ function SchoolStep({
         id="onboarding-school"
         schools={schools}
         value={school}
-        onChange={setSchool}
+        onChange={onSchoolChange}
         emptyOption={{ value: '', label: 'Choose a school' }}
         inputClassName="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
       />
       {school ? (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-lg border border-edge bg-paper-sunken p-4 text-sm text-ink-soft">
-          {schoolNeedsTemplate ? (
+          {templates.length > 1 ? (
+            <p>
+              <span className="font-medium text-ink">This school has several saved lesson-plan formats.</span> Choose the one you want to use, or upload a new personal format for your own plans.
+            </p>
+          ) : schoolNeedsTemplate ? (
             <p>
               <span className="font-medium text-ink">Got a rigid district lesson plan format?</span> Toss it here, and the AI will handle the formatting for you.
             </p>
           ) : (
             <p>
               <span className="font-medium text-ink">A standard lesson-plan template is already on file</span> for this
-              school. You will automatically use this standard template for your classes.
+              school. You can use it as-is or add a personal version below.
             </p>
           )}
-          {!schoolHasUsableTemplate ? (
+          {templates.length || templatesLoading ? (
+            <OnboardingTemplateChoices
+              templates={templates}
+              loading={templatesLoading}
+              selectingTemplateId={selectingTemplateId}
+              onSelect={onSelectTemplate}
+            />
+          ) : null}
+          <div className="mt-3 border-t border-edge/70 pt-3">
+            <p className="mb-2 text-xs font-medium text-ink">{templates.length ? 'Upload a new personal format' : 'Upload a template'}</p>
             <UploadDropzone
-              label="Upload file"
+              label="Choose file"
               selectedFileName={templateFile?.name}
               onFile={(file) => {
                 setTemplateFile(file)
@@ -565,7 +628,7 @@ function SchoolStep({
               blankTemplateAttested={blankTemplateAttested}
               onBlankTemplateAttestedChange={setBlankTemplateAttested}
             />
-          ) : null}
+          </div>
         </motion.div>
       ) : null}
       
@@ -589,6 +652,60 @@ function SchoolStep({
           {saving ? 'Saving…' : 'Continue'}
         </motion.button>
       </div>
+    </div>
+  )
+}
+
+function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, onSelect }) {
+  if (loading) {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-ink-muted" role="status">
+        <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+        Loading saved formats…
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-xs font-medium text-ink">Choose your starting format</p>
+      {templates.map((template) => {
+        const ready = ['analyzed', 'analyzed_with_warnings'].includes(template.analysis_status)
+        const selected = Boolean(template.is_personal_default)
+        const label = selected
+          ? 'Your default'
+          : template.is_school_default
+            ? 'School default'
+            : template.template_scope === 'school_candidate'
+              ? 'School candidate'
+              : 'Personal template'
+        const date = template.approved_at || template.created_at
+        return (
+          <div key={template.id} className="flex items-center justify-between gap-3 rounded-md border border-edge bg-paper-raised px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-ink">{template.filename}</p>
+              <p className="mt-0.5 text-2xs text-ink-muted">
+                {label} · {template.approved_at ? 'Approved' : 'Added'} · {date ? new Date(date).toLocaleDateString() : 'date pending'}
+              </p>
+            </div>
+            {selected ? (
+              <span className="inline-flex shrink-0 items-center gap-1 text-2xs font-medium text-emerald-700">
+                <CheckCircle2 size={13} aria-hidden="true" /> In use
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="btn shrink-0"
+                disabled={!ready || selectingTemplateId === template.id}
+                onClick={() => onSelect(template)}
+              >
+                {selectingTemplateId === template.id ? <Loader2 size={12} className="mr-1 animate-spin" aria-hidden="true" /> : null}
+                {ready ? 'Use for my plans' : 'Preparing…'}
+              </button>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

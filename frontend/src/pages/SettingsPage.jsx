@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Download, FileText, HardDrive, Loader2, Settings, Sparkles, User } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, CreditCard, Download, FileText, HardDrive, Loader2, Settings, Sparkles, User } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -340,9 +340,101 @@ function CustomInstructions({ value, onSaved }) {
    Reads from the `schools` table (db.py migration 23) via GET /api/schools,
    the same curated, admin-added list onboarding's own picker uses — not a
    hardcoded dict, so a school added there just appears here too. */
+function TemplateRegistry({ school }) {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const [selectingId, setSelectingId] = useState(null)
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['school-templates', school?.id],
+    queryFn: () => api.listSchoolTemplates(school.id),
+    enabled: Boolean(school?.id),
+  })
+  const templates = data?.templates || []
+
+  const selectTemplate = async (template) => {
+    setSelectingId(template.id)
+    try {
+      await api.selectSchoolTemplate(school.id, template.id)
+      await qc.invalidateQueries({ queryKey: ['school-templates', school.id] })
+      toast.success('Your template is now the default', 'This changes only your lesson plans.')
+    } catch (err) {
+      toast.apiError('Could not select that template', err)
+    } finally {
+      setSelectingId(null)
+    }
+  }
+
+  if (isLoading || isError) return null
+
+  if (!templates.length) {
+    return school.builder_readiness === 'ready' || school.builder_readiness === 'ready_unverified' ? (
+      <div className="mt-3 rounded-lg border border-edge bg-paper-raised p-3">
+        <h3 className="text-xs font-semibold text-ink">Your template library</h3>
+        <div className="mt-2 rounded-md border border-edge/70 bg-paper-sunken px-2.5 py-2">
+          <p className="text-xs font-medium text-ink">{school.name} school format</p>
+          <p className="mt-0.5 text-2xs text-ink-muted">School default · Current format</p>
+        </div>
+      </div>
+    ) : null
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-edge bg-paper-raised p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-semibold text-ink">Your template library</h3>
+          <p className="mt-0.5 text-2xs text-ink-muted">
+            Choose your own format without changing what anyone else at {school.name} uses.
+          </p>
+        </div>
+        <span className="shrink-0 text-2xs text-ink-muted">{templates.length} saved</span>
+      </div>
+      <ul className="mt-2 space-y-2">
+        {templates.map((template) => {
+          const isSelected = Boolean(template.is_personal_default)
+          const isSchoolDefault = Boolean(template.is_school_default)
+          const ready = ['analyzed', 'analyzed_with_warnings'].includes(template.analysis_status)
+          const label = isSelected
+            ? 'Your default'
+            : isSchoolDefault
+              ? 'School default'
+              : template.template_scope === 'school_candidate'
+                ? 'School candidate'
+                : 'Personal template'
+          return (
+            <li key={template.id} className="flex items-center justify-between gap-3 rounded-md border border-edge/70 bg-paper-sunken px-2.5 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-ink">{template.filename}</p>
+                <p className="mt-0.5 text-2xs text-ink-muted">
+                  {label} · {template.approved_at ? `Approved · ${new Date(template.approved_at).toLocaleDateString()}` : `Added · ${new Date(template.created_at).toLocaleDateString()}`}
+                </p>
+              </div>
+              {isSelected ? (
+                <span className="inline-flex shrink-0 items-center gap-1 text-2xs font-medium text-emerald-700">
+                  <CheckCircle2 size={13} aria-hidden="true" /> In use
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!ready || selectingId === template.id}
+                  onClick={() => selectTemplate(template)}
+                  className="btn shrink-0 text-2xs disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {selectingId === template.id ? 'Selecting…' : ready ? 'Use for my plans' : 'Preparing…'}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 function SchoolPicker({ value, onSaved }) {
   const toast = useToast()
   const schoolsState = useQuery({ queryKey: qk.schools, queryFn: () => api.listSchools() })
+  const qc = useQueryClient()
   const [saving, setSaving] = useState(false)
   const schools = schoolsState.data || []
   const selected = schools.find((s) => s.id === value) || null
@@ -403,8 +495,9 @@ function SchoolPicker({ value, onSaved }) {
     if ((!file && !url) || !selected) return
     setUploadingTemplate(true)
     try {
-      await api.uploadSchoolTemplate(selected.id, { file, sourceUrl: file ? undefined : url, blankTemplateAttested })
-      toast.success('Template submitted', 'We’ll have it ready shortly.')
+      await api.uploadSchoolTemplate(selected.id, { file, sourceUrl: file ? undefined : url, blankTemplateAttested, templateScope: 'personal' })
+      toast.success('Personal template submitted', 'It will be available in your template library after analysis.')
+      await qc.invalidateQueries({ queryKey: ['school-templates', selected.id] })
       schoolsState.refetch()
     } catch (err) {
       toast.apiError('Could not upload the template', err)
@@ -488,18 +581,18 @@ function SchoolPicker({ value, onSaved }) {
         <div className="mt-2 max-w-sm rounded-lg border border-edge bg-paper-sunken p-3">
           <p className="text-xs text-ink-soft">
             {selected.template_status === 'active'
-              ? `${selected.name}'s lesson-plan format is on file. Upload a new one below to replace it.`
+              ? `${selected.name}'s school format is available. Add a personal format below if you prefer a different version.`
               : selected.builder_readiness === 'in_progress'
                 ? `We're drafting an AI version of ${selected.name}'s format right now — usually just a few minutes. No need to upload again.`
                 : selected.builder_readiness === 'ready_unverified'
                   ? `${selected.name}'s AI-drafted format is already in use while we finish reviewing it — upload a corrected one below if something looks off.`
                   : selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
-                    ? `${selected.name}'s own lesson-plan format is still being learned — upload it again below if this one was wrong, or if you'd rather submit your own.`
-                    : `Got ${selected.name}'s own lesson-plan format? Upload it and the AI will match it going forward.`}
+                    ? `${selected.name}'s own lesson-plan format is still being learned — you can also add a personal version below.`
+                    : `Add a personal lesson-plan format and choose it from your template library after the AI finishes analyzing it.`}
           </p>
           <UploadDropzone
             uploading={uploadingTemplate}
-            label={selected.template_status === 'active' ? 'Replace Template' : 'Upload Template'}
+            label="Add Personal Template"
             onFile={uploadTemplate}
             url={templateUrl}
             onUrlChange={setTemplateUrl}
@@ -510,6 +603,7 @@ function SchoolPicker({ value, onSaved }) {
           />
         </div>
       ) : null}
+      {selected ? <TemplateRegistry school={selected} /> : null}
       {/* A school's row and its calendar are added in different places on
           purpose (see GET /api/schools) — so one can exist with no year
           behind it, and choosing it silently empties the week board, the

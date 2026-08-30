@@ -28,7 +28,7 @@ from .schema import ENGAGEMENT_OPTIONS
 log = logging.getLogger("flexedacademy.docx")
 
 
-def _generated_spec_builder(school_id: str, layout_spec: dict) -> SimpleNamespace:
+def _generated_spec_builder(school_id: str, layout_spec: dict, template_id: str | None = None) -> SimpleNamespace:
     """A module-shaped wrapper (matches the same build(data, out_path)
     contract assert_builder_contract() checks) around a school's verified,
     automated-codegen layout spec, rendered through the one shared
@@ -43,7 +43,8 @@ def _generated_spec_builder(school_id: str, layout_spec: dict) -> SimpleNamespac
     def build(data: dict, out_path: str) -> None:
         _render(layout_spec, data, out_path)
 
-    return SimpleNamespace(build=build, __doc__=f"Generated builder spec for {school_id} (template unknown)")
+    suffix = f", template {template_id}" if template_id else ""
+    return SimpleNamespace(build=build, __doc__=f"Generated builder spec for {school_id}{suffix}")
 
 
 def _neutral_builder(school_id: str) -> SimpleNamespace:
@@ -134,9 +135,25 @@ def bulk_builder_readiness(school_rows: list[dict]) -> dict[str, str]:
     return out
 
 
-@lru_cache(maxsize=128)
-def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
+@lru_cache(maxsize=256)
+def builder(school_id: str | None = None, template_id: str | None = None) -> ModuleType | SimpleNamespace:
     from . import db
+
+    # A teacher may select a personal template. Resolve that exact version's
+    # verified renderer first; never substitute the school's latest renderer,
+    # because that would make two teachers' documents disagree with the
+    # template shown in their settings. While its renderer is still being
+    # prepared, the explicit neutral output is safer than borrowing another
+    # teacher's or the school's format.
+    if school_id and template_id:
+        selected_template = db.get_school_template(template_id)
+        if not selected_template or selected_template.get("school_id") != school_id:
+            return _neutral_builder(school_id)
+        template_job = db.get_builder_codegen_job_for_template(template_id)
+        if template_job and template_job.get("layout_spec_json"):
+            import json
+            return _generated_spec_builder(school_id, json.loads(template_job["layout_spec_json"]), template_id)
+        return _neutral_builder(school_id)
 
     path = Path(settings.builder_path)
     # Every school resolves its own builder first. Florence's builder is the
@@ -215,9 +232,9 @@ def builder(school_id: str | None = None) -> ModuleType | SimpleNamespace:
     return mod
 
 
-def builder_template(school_id: str | None = None) -> str:
+def builder_template(school_id: str | None = None, template_id: str | None = None) -> str:
     """Read the selected builder's identifier for a plan's own school."""
-    doc = builder(school_id).__doc__ or ""
+    doc = builder(school_id, template_id).__doc__ or ""
     m = re.search(r"template\s+([a-z0-9-]+(?:-v\d+)?)", doc)
     return m.group(1) if m else "unknown"
 
@@ -273,10 +290,10 @@ def plan_output_path(plan: dict, plan_id: str) -> Path:
     return Path(settings.plans_dir) / course / f"{week}__{plan_id[:8]}.docx"
 
 
-def build_docx(plan: dict, out_path: Path, school_id: str | None = None) -> Path:
+def build_docx(plan: dict, out_path: Path, school_id: str | None = None, template_id: str | None = None) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        builder(school_id).build(plan, str(out_path))
+        builder(school_id, template_id).build(plan, str(out_path))
     except AppError:
         raise
     except Exception as e:  # the builder's own failure, with its real message

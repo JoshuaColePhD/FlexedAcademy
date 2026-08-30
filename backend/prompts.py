@@ -243,9 +243,10 @@ def week_system_prompt(
     class_custom_instructions: str | None = None,
     school_id: str = "florence-high-school",
     output_length: str = "medium",
+    user_id: str | None = None,
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
-    template_days = day_names_for_school(school_id)
+    template_days = day_names_for_school(school_id, user_id=user_id)
 
     blocks = [
         (f"You are an expert {subject} curriculum designer and master "
@@ -261,7 +262,7 @@ def week_system_prompt(
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
         "date or a school year.\n\n" + calendar_context(school_id),
         "SELECTED SCHOOL TEMPLATE — this is the source of truth for the weekly "
-        "day axis.\n\n" + weekly_template_context(school_id),
+        "day axis.\n\n" + weekly_template_context(school_id, user_id=user_id),
         "TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — align this week's unit, "
         "sequencing, and any texts or milestones it names. Still cite standards "
         "ONLY from the Retrieved standards block below; this document has no "

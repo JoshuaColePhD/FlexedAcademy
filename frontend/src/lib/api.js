@@ -432,8 +432,8 @@ export const api = {
     request('/api/admin/school-templates/pending', { signal }),
   listAutoActivatedTemplates: ({ signal } = {}) =>
     request('/api/admin/school-templates/auto-activated', { signal }),
-  adminActivateTemplate: (schoolId) =>
-    request(`/api/admin/schools/${schoolId}/activate-template`, { method: 'POST' }),
+  adminActivateTemplate: (schoolId, templateId) =>
+    request(`/api/admin/schools/${schoolId}/activate-template${templateId ? `?template_id=${encodeURIComponent(templateId)}` : ''}`, { method: 'POST' }),
   templateDownloadUrl: (templateId) => `/api/admin/school-templates/${templateId}/download`,
   getTemplateAnalysis: (templateId, { signal } = {}) =>
     request(`/api/admin/school-templates/${encodeURIComponent(templateId)}/analysis`, { signal }),
@@ -650,11 +650,16 @@ export const api = {
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/confirm`, { method: 'POST' }),
   rejectSchoolCalendar: (submissionId) =>
     request(`/api/school-calendars/${encodeURIComponent(submissionId)}/reject`, { method: 'POST' }),
-  uploadSchoolTemplate: (schoolId, { file, sourceUrl, blankTemplateAttested = false, signal } = {}) => {
+  listSchoolTemplates: (schoolId, { signal } = {}) =>
+    request(`/api/school-calendars/${encodeURIComponent(schoolId)}/templates`, { signal }),
+  selectSchoolTemplate: (schoolId, templateId) =>
+    request(`/api/school-calendars/${encodeURIComponent(schoolId)}/templates/${encodeURIComponent(templateId)}/select`, { method: 'POST' }),
+  uploadSchoolTemplate: (schoolId, { file, sourceUrl, blankTemplateAttested = false, templateScope = 'personal', signal } = {}) => {
     const fd = new FormData()
     if (file) fd.append('file', file)
     if (sourceUrl) fd.append('source_url', sourceUrl)
     fd.append('blank_template_attested', String(blankTemplateAttested))
+    fd.append('template_scope', templateScope)
     return upload(`/api/school-calendars/${encodeURIComponent(schoolId)}/template`, fd, { signal })
   },
   listClasses: ({ include_archived, signal } = {}) => request(`/api/classes${include_archived ? '?include_archived=true' : ''}`, { signal }),

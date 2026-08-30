@@ -288,14 +288,26 @@ def list_pending_school_templates_route(_admin: str = Depends(get_current_admin)
 
 
 @router.post("/schools/{school_id}/activate-template")
-def activate_school_template_route(school_id: str, _admin: str = Depends(get_current_admin)):
+def activate_school_template_route(
+    school_id: str,
+    template_id: str | None = None,
+    _admin: str = Depends(get_current_admin),
+):
     school = db.get_school(school_id)
     if not school:
         raise AppError("not_found", "School not found.", status=404)
         
-    db.update_school_template_status(school_id, "active")
+    # Older clients omitted template_id and are kept working by selecting the
+    # current latest candidate. The admin UI always sends the exact row now,
+    # so a newer upload can never win merely because it arrived later.
+    selected = db.get_school_template(template_id) if template_id else db.get_latest_school_template(school_id)
+    if not selected or selected.get("school_id") != school_id:
+        raise AppError("template_not_found", "That school template was not found.", status=404)
+    activated = db.activate_school_template(school_id, selected["id"])
+    if not activated:
+        raise AppError("template_not_found", "That school template was not found.", status=404)
 
-    latest_template = db.get_latest_school_template(school_id)
+    latest_template = activated
     if latest_template and latest_template.get("uploader_email"):
         mail.send_template_active_email(
             to=latest_template["uploader_email"],

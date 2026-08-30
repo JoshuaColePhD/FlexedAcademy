@@ -317,7 +317,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     account default — a class at a different school than the account default
     would otherwise get the wrong one named in its own prompt."""
     subject, grade = _prompt_subject_grade(user_id, class_id)
-    template_days = day_names_for_school(school_id)
+    template_days = day_names_for_school(school_id, user_id=user_id)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
     content = _cached_completion(
@@ -339,6 +339,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,
                     output_length=output_length,
+                    user_id=user_id,
                 ),
             },
             {"role": "user", "content": query},
@@ -353,7 +354,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
     See generate_plan's own docstring for why `school_id` is a parameter
     rather than resolved internally."""
     subject, grade = _prompt_subject_grade(user_id, class_id)
-    template_days = day_names_for_school(school_id)
+    template_days = day_names_for_school(school_id, user_id=user_id)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
     stream = client().chat.completions.create(
@@ -373,6 +374,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,
                     output_length=output_length,
+                    user_id=user_id,
                 ),
             },
             {"role": "user", "content": query},

@@ -149,6 +149,7 @@ def upload_school_template(
     file: UploadFile | None = File(default=None),
     source_url: str | None = Form(default=None),
     blank_template_attested: bool = Form(default=False),
+    template_scope: str = Form(default="personal"),
     user_id: str = Depends(get_current_user),
 ):
     """Upload a blank lesson plan template for a school that doesn't have a
@@ -173,6 +174,8 @@ def upload_school_template(
         raise AppError("bad_request", "Please provide either a file or a Google Doc link.", status=400)
     if not blank_template_attested:
         raise AppError("blank_template_confirmation_required", "Confirm that this is a blank, reusable district template before uploading.", status=400)
+    if template_scope not in {"personal", "school_candidate"}:
+        raise AppError("bad_template_scope", "Choose either a personal template or a school-level candidate.", status=400)
 
     if source_url:
         if "docs.google.com/document/d/" not in source_url:
@@ -200,10 +203,41 @@ def upload_school_template(
     finally:
         spooled.unlink(missing_ok=True)  # no-op once moved away; cleans up on any raise before that
 
-    row = db.create_school_template(school_id, user_id, filename, str(dest))
+    row = db.create_school_template(
+        school_id, user_id, filename, str(dest), template_scope=template_scope
+    )
     return template_intake.run_and_persist(
         user_id=user_id, template_id=row["id"], school_id=school_id, dest_path=dest, claimed_ext=ext
     )
+
+
+@router.get("/{school_id}/templates")
+def list_school_templates(school_id: str, user_id: str = Depends(get_current_user)):
+    """Show the teacher-safe version registry during school selection.
+
+    The school catalog is already visible in the authenticated picker. This
+    projection exposes only filenames, status, scope, and dates, never an
+    uploader identity or file contents, so a teacher can choose a format
+    before onboarding has saved their new school membership.
+    """
+    if not db.get_school(school_id):
+        raise AppError("not_found", "School not found.", status=404)
+    return {"templates": db.list_school_templates_for_user(school_id, user_id)}
+
+
+@router.post("/{school_id}/templates/{template_id}/select")
+def select_school_template(school_id: str, template_id: str, user_id: str = Depends(get_current_user)):
+    """Set a teacher's private default; this never changes school state."""
+    if not db.get_school(school_id):
+        raise AppError("not_found", "School not found.", status=404)
+    template = db.set_personal_school_template(user_id, school_id, template_id)
+    if not template:
+        raise AppError(
+            "template_not_ready",
+            "That template is not available yet. Wait for analysis to finish, then try again.",
+            status=409,
+        )
+    return {"status": "ok", "template_id": template_id}
 
 @router.get("/confirmed/{school_id}")
 def get_confirmed_calendar_route(school_id: str, _user_id: str = Depends(get_current_user)):
