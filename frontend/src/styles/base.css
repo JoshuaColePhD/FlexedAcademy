@@ -2315,7 +2315,6 @@
      transcript's scroll position. */
   .plan-peek {
     --plan-peek-drag: 0px;
-    --plan-peek-progress: 0;
     position: static;
     display: flex;
     min-width: 0;
@@ -2432,8 +2431,11 @@
      blank tray before content has arrived. */
   .plan-peek.is-drag-preview .plan-peek-body {
     visibility: visible;
-    opacity: var(--plan-peek-progress);
-    transform: translateY(calc((1 - var(--plan-peek-progress)) * 6px));
+    /* Keep the document painted throughout the pull. Fading it according to
+       drag distance made a downward gesture reveal an empty white band before
+       the sheet had actually closed, which felt like the plan disappeared. */
+    opacity: 1;
+    transform: none;
     pointer-events: none;
     transition: none;
   }
@@ -2503,15 +2505,15 @@
     border-top: 1px solid transparent;
   }
   .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body {
-    max-height: min(54dvh, 560px);
+    max-height: min(76dvh, 720px);
     border-top-color: var(--edge);
   }
   .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body-inner,
   .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body-inner > .doc-shell {
-    max-height: min(54dvh, 560px);
+    max-height: min(76dvh, 720px);
   }
   .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek.is-drag-preview .plan-peek-body {
-    max-height: max(0px, calc(min(54dvh, 560px) - var(--plan-peek-drag)));
+    max-height: max(0px, calc(min(76dvh, 720px) - var(--plan-peek-drag)));
   }
   .mobile-composer-plan-sheet.has-plan:not(.is-plan-open) .plan-peek.is-drag-preview .plan-peek-body {
     max-height: var(--plan-peek-drag);

@@ -28,13 +28,9 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
 
   // Pointer moves can arrive at 120Hz on current phones. Updating React state
   // for every pixel forced the full document tree to re-render under the
-  // finger; write the two paint-only CSS variables directly instead.
+  // finger; write the paint-only CSS variable directly instead.
   const setPreview = (distance) => {
-    const progress = open
-      ? Math.max(0, 1 - distance / CLOSE_DRAG_DISTANCE)
-      : Math.min(1, distance / OPEN_DRAG_DISTANCE)
     sheetRef.current?.style.setProperty('--plan-peek-drag', `${distance}px`)
-    sheetRef.current?.style.setProperty('--plan-peek-progress', progress)
     if (distance > 0 && !previewRef.current) {
       previewRef.current = true
       setPreviewing(true)
@@ -66,7 +62,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     // A quick, confident flick snaps the sheet even before it crosses the
     // distance threshold. A slow gesture has to travel far enough to make the
     // intended resting point unambiguous.
-    if (open && (delta > CLOSE_DRAG_DISTANCE * 0.42 || velocity > 0.5)) onToggle(false)
+    if (open && (delta > CLOSE_DRAG_DISTANCE * 0.7 || velocity > 0.7)) onToggle(false)
     else if (!open && (-delta > OPEN_DRAG_DISTANCE * 0.36 || velocity < -0.5)) onToggle(true)
   }
 
