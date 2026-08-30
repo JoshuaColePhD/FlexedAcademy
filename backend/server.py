@@ -88,11 +88,24 @@ async def _builder_codegen_worker_loop() -> None:
 
 async def _document_build_worker_loop() -> None:
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, db.reset_stale_document_builds)
+    # Do not let a transient database/DNS failure during startup kill the
+    # worker task. The app intentionally stays up when Supabase is briefly
+    # unreachable so /api/health can report the problem; the document worker
+    # must follow the same policy and keep retrying until the database returns.
+    try:
+        reset = await loop.run_in_executor(None, db.reset_stale_document_builds)
+        if reset:
+            log.warning("document build worker: reset %d stale job(s) at boot", reset)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception("document build worker: startup database sweep failed; will retry")
+    log.info("document build worker loop started")
     while True:
         try:
             job = await loop.run_in_executor(None, db.claim_next_document_build)
             if job:
+                log.info("document build worker: claimed plan_id=%s", job["plan_id"])
                 await loop.run_in_executor(None, service.run_document_build_job, job)
                 continue
         except asyncio.CancelledError:
