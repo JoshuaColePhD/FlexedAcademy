@@ -2304,12 +2304,12 @@
   .plan-peek-handle {
     position: relative;
     display: flex;
-    min-height: 52px;
+    min-height: 46px;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
     gap: var(--sp-2);
-    padding: 10px var(--gutter) 4px;
+    padding: 8px var(--gutter) 2px;
     color: var(--ink-muted);
     background: var(--paper-raised);
     border: 0;
@@ -2321,10 +2321,10 @@
   }
   .plan-peek-handle::before {
     position: absolute;
-    top: 7px;
+    top: 5px;
     left: 50%;
-    width: 34px;
-    height: 4px;
+    width: 30px;
+    height: 3px;
     border-radius: var(--r-full);
     background: var(--edge-strong);
     content: '';
@@ -4223,24 +4223,27 @@
        sits behind that background inside the isolated stacking context, which
        made the tail technically present but invisible on mobile and desktop. */
     z-index: 0;
-    width: 13px;
-    height: 10px;
+    width: 16px;
+    height: 11px;
     background: rgb(var(--msg-user-bg-rgb) / 0.15);
-    border-radius: 0 0 9px 0;
     filter: drop-shadow(1px 1px 1.5px rgb(var(--neo-dark-rgb) / 0.16));
     content: '';
+    clip-path: polygon(0 0, 30% 5%, 62% 18%, 86% 42%, 100% 75%, 100% 100%, 58% 90%, 25% 72%, 0 56%);
+    /* Modern Safari/Chromium get the smoother Bézier version; the polygon
+       above remains a safe fallback for older embedded WebViews. */
+    -webkit-clip-path: path("M 0 0 C 5 0.5 11 5 16 10 C 11 10 5 9 0 6 Z");
+    clip-path: path("M 0 0 C 5 0.5 11 5 16 10 C 11 10 5 9 0 6 Z");
     pointer-events: none;
   }
   .msg-bubble-user::after {
-    right: -4px;
-    transform: skewX(-20deg) rotate(-4deg);
+    right: -6px;
   }
   .msg-bubble-assistant::after {
-    left: -4px;
+    left: -6px;
     background: var(--paper-raised);
-    border-radius: 0 0 0 9px;
     filter: drop-shadow(-1px 1px 1.5px rgb(var(--neo-dark-rgb) / 0.14));
-    transform: skewX(20deg) rotate(4deg);
+    -webkit-clip-path: path("M 16 0 C 11 0.5 5 5 0 10 C 5 10 11 9 16 6 Z");
+    clip-path: path("M 16 0 C 11 0.5 5 5 0 10 C 5 10 11 9 16 6 Z");
   }
   /* Error messages have their own left marker and asymmetric radius; adding a
      second visual pointer would compete with that warning treatment. */
