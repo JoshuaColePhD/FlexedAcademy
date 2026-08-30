@@ -17,7 +17,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { api } from '../lib/api'
-import { GRADES, DEFAULT_GRADE, gradeLabel } from '../lib/grades'
+import { GRADES, DEFAULT_GRADE, gradeLabel, gradeSelectValue } from '../lib/grades'
 
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
@@ -329,20 +329,26 @@ export function GlobalDocuments() {
 function EditClassSettings({ cls, frameworks, onChanged }) {
   const toast = useToast()
   const [subject, setSubject] = useState(cls.subject)
+  const [grade, setGrade] = useState(gradeSelectValue(cls.grade))
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setSubject(cls.subject)
+    setGrade(gradeSelectValue(cls.grade))
+  }, [cls.id, cls.subject, cls.grade])
 
   const selectedFramework = findFramework(frameworks, subject)
   const generatedName = selectedFramework
-    ? `${shortLabel(selectedFramework)} · ${gradeLabel(cls.grade)}`
+    ? `${shortLabel(selectedFramework)} · ${gradeLabel(grade)}`
     : subject || cls.name || 'Choose a course of study'
-  const isChanged = subject !== cls.subject
+  const isChanged = subject !== cls.subject || grade !== gradeSelectValue(cls.grade)
 
   const submit = async (e) => {
     e.preventDefault()
     if (!isChanged) return
     setSaving(true)
     try {
-      const updated = await api.updateClass(cls.id, { subject })
+      const updated = await api.updateClass(cls.id, { subject, grade })
       toast.success('Class updated')
       onChanged?.(updated)
     } catch (err) {
@@ -367,6 +373,26 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
           onChange={setSubject}
           id="edit-class-framework"
         />
+      </div>
+      <div className="flex flex-col gap-2">
+        <label htmlFor="edit-class-grade" className="text-sm font-medium text-ink">
+          Grade Level
+        </label>
+        <select
+          id="edit-class-grade"
+          value={grade}
+          onChange={(e) => setGrade(e.target.value)}
+          className="neo-select neo-inset w-full rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink transition-shadow"
+        >
+          {GRADES.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-ink-muted">
+          This sets the grade-specific standards used for the class.
+        </p>
       </div>
       <div className="flex flex-col gap-2">
         <span className="text-sm font-medium text-ink">Class Name</span>
