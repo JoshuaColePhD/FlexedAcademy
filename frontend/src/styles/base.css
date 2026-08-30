@@ -2004,13 +2004,13 @@
      above the stack, which is the common case. Spacing lives on the toast
      itself instead; an empty region is then a 0-height box that costs nothing.
 
-     z-index 95 puts these ABOVE the dialog scrim at 90, on purpose: an error is
-     never worth burying under a modal. */
+     z-index 320 puts these ABOVE the dialog scrim at 310, on purpose: an error
+     is never worth burying under a modal. */
   .toasts {
     position: fixed;
     right: var(--sp-4);
     bottom: var(--sp-4);
-    z-index: 95;
+    z-index: 320;
     display: flex;
     width: min(380px, calc(100vw - var(--sp-8)));
     flex-direction: column;
@@ -2174,16 +2174,17 @@
 
   /* ── confirm dialog ─────────────────────────────────────────────────────
      Above every app surface, including the document/composer portal hosts.
-     Those hosts intentionally sit at z-index 100 so their controls can float
-     over the chat; a dialog opened from one of them must sit above that layer
-     or it exists in the DOM while remaining invisible behind the plan. The
+     Those hosts intentionally sit at z-index 100/200 so their controls can
+     float over the chat; a dialog opened from one of them must sit above both
+     layers or it exists in the DOM while remaining invisible behind the plan
+     or its bottom actions are covered by the composer. The
      scrim uses --scrim rather than a fixed black so it darkens the right
      amount in both themes (0.28 → 0.55). Padding keeps the card off the edge
      on a phone and is still the scrim for the mousedown-to-dismiss test. */
   .dialog-scrim {
     position: fixed;
     inset: 0;
-    z-index: 110;
+    z-index: 310;
     display: flex;
     align-items: center;
     justify-content: center;
