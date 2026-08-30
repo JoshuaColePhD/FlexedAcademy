@@ -4715,7 +4715,12 @@ def get_document_build_status(plan_id: str, user_id: str) -> dict | None:
 
 
 def claim_next_document_build() -> dict | None:
-    return _row(
+    # This is an UPDATE ... RETURNING, not a read.  Using _row here leaves the
+    # claim transaction uncommitted, so the worker can receive a job in memory
+    # while the rest of the app still sees it as queued (and the row lock can
+    # block the worker's later status update).  Commit the claim before handing
+    # it to the document builder.
+    return _write_returning(
         """
         UPDATE document_build_jobs SET status = 'building', attempts = attempts + 1, updated_at = ?
         WHERE plan_id = (
