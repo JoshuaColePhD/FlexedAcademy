@@ -2271,7 +2271,7 @@
     border-top: 1px solid var(--edge);
     background: var(--paper-raised);
     box-shadow: 0 -6px 16px rgb(var(--neo-dark-rgb) / 0.2);
-    transition: transform var(--t-base) var(--ease-glide), box-shadow var(--t-base) var(--ease-glide);
+    transition: box-shadow var(--t-base) var(--ease-glide), border-color var(--t-base) var(--ease-glide);
   }
   /* A collapsed drawer is a handle, not an invisible second panel. Hiding
      the body outright avoids iOS/WebKit preserving the doc header's intrinsic
@@ -2285,19 +2285,31 @@
   .plan-peek:not(.is-open) .plan-peek-body {
     display: none;
   }
+  .plan-peek.is-drag-preview .plan-peek-body {
+    display: block;
+    max-height: var(--plan-peek-drag);
+    transition: none;
+  }
+  .plan-peek.is-drag-preview .plan-peek-body-inner {
+    max-height: var(--plan-peek-drag);
+  }
+  .plan-peek.is-dragging .plan-peek-handle {
+    cursor: grabbing;
+  }
   .plan-peek-latest {
     display: flex;
     justify-content: center;
     margin-bottom: var(--sp-2);
   }
   .plan-peek-handle {
+    position: relative;
     display: flex;
-    min-height: 44px;
+    min-height: 52px;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
     gap: var(--sp-2);
-    padding: 0 var(--gutter);
+    padding: 10px var(--gutter) 4px;
     color: var(--ink-muted);
     background: var(--paper-raised);
     border: 0;
@@ -2305,6 +2317,23 @@
     touch-action: pan-y;
     user-select: none;
     border-radius: var(--r-lg) var(--r-lg) 0 0;
+    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .plan-peek-handle::before {
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    width: 34px;
+    height: 4px;
+    border-radius: var(--r-full);
+    background: var(--edge-strong);
+    content: '';
+    transform: translateX(-50%);
+  }
+  .plan-peek-grabber {
+    width: 0;
+    height: 0;
+    overflow: hidden;
   }
   .plan-peek-handle:active {
     cursor: grabbing;
@@ -2330,11 +2359,20 @@
   .plan-peek-body {
     display: grid;
     min-height: 0;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows var(--t-base) var(--ease-glide);
+    max-height: 0;
+    overflow: hidden;
+    grid-template-rows: 1fr;
+    transition: max-height var(--t-slow) var(--ease-glide);
   }
   .plan-peek.is-open .plan-peek-body {
-    grid-template-rows: 1fr;
+    max-height: min(68vh, 620px);
+  }
+  /* While an already-open sheet is being pulled down, the drag preview must
+     win over the open-state height above. The handle and its content then
+     recede together under the thumb instead of leaving a full-height panel
+     behind until pointer-up. */
+  .plan-peek.is-open.is-drag-preview .plan-peek-body {
+    max-height: max(0px, calc(min(68vh, 620px) - var(--plan-peek-drag)));
   }
   .plan-peek-body-inner {
     min-height: 0;
@@ -4171,39 +4209,38 @@
   }
   /* Traditional chat-bubble tails, kept small and softly embossed so they
      belong to FlexEd's metamorphic paper surfaces instead of becoming cartoon
-     speech balloons. This is a short, rounded fold at the lower corner rather
-     than a detached triangle: the slanted edge carries the bubble's surface
-     out by a few pixels, and the rounded end keeps it from reading like a
-     cursor or a stray pointer on a phone. */
+     speech balloons. The tail is a curved, tapered continuation of the lower
+     corner; it overlaps the bubble by half its width so there is no visible
+     seam or floating arrow. */
   .msg-bubble {
     position: relative;
     isolation: isolate;
   }
   .msg-bubble::after {
     position: absolute;
-    bottom: -1px;
+    bottom: 0;
     /* Keep the pointer above the bubble's own background. A negative layer
        sits behind that background inside the isolated stacking context, which
        made the tail technically present but invisible on mobile and desktop. */
     z-index: 0;
-    width: 15px;
-    height: 12px;
+    width: 13px;
+    height: 10px;
     background: rgb(var(--msg-user-bg-rgb) / 0.15);
-    border-radius: 0 0 10px 0;
-    filter: drop-shadow(1px 1px 2px rgb(var(--neo-dark-rgb) / 0.18));
+    border-radius: 0 0 9px 0;
+    filter: drop-shadow(1px 1px 1.5px rgb(var(--neo-dark-rgb) / 0.16));
     content: '';
     pointer-events: none;
   }
   .msg-bubble-user::after {
-    right: -5px;
-    transform: skewX(-24deg);
+    right: -4px;
+    transform: skewX(-20deg) rotate(-4deg);
   }
   .msg-bubble-assistant::after {
-    left: -5px;
+    left: -4px;
     background: var(--paper-raised);
-    border-radius: 0 0 0 10px;
-    filter: drop-shadow(-1px 1px 2px rgb(var(--neo-dark-rgb) / 0.15));
-    transform: skewX(24deg);
+    border-radius: 0 0 0 9px;
+    filter: drop-shadow(-1px 1px 1.5px rgb(var(--neo-dark-rgb) / 0.14));
+    transform: skewX(20deg) rotate(4deg);
   }
   /* Error messages have their own left marker and asymmetric radius; adding a
      second visual pointer would compete with that warning treatment. */
