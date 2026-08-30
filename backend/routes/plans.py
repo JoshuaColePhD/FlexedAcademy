@@ -147,13 +147,51 @@ def get_plan(plan_id: str, user_id: str = Depends(get_current_user)):
     return _require_plan(user_id, plan_id)
 
 
+def _queue_docx_recovery(plan_id: str, user_id: str, row: dict, bg_tasks: BackgroundTasks) -> dict:
+    """Put a recoverable plan back into the durable build queue."""
+    if not row.get("plan_json"):
+        return {
+            "plan_id": plan_id,
+            "status": "failed",
+            "error_message": "This plan has no saved content to rebuild.",
+            "recoverable": False,
+        }
+    # service.rebuild sanitizes the saved JSON and clears an old failure marker
+    # before queuing. The worker then has one authoritative path to build and
+    # mirror the replacement, even if the web process restarts immediately.
+    service.rebuild(user_id, plan_id, bg_tasks=bg_tasks)
+    return db.get_document_build_status(plan_id, user_id) or {
+        "plan_id": plan_id,
+        "status": "queued",
+    }
+
+
 @router.get("/{plan_id}/document-status")
-def document_status(plan_id: str, user_id: str = Depends(get_current_user)):
+def document_status(
+    plan_id: str,
+    bg_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
     row = _require_plan(user_id, plan_id)
     job = db.get_document_build_status(plan_id, user_id)
     if job:
+        if job.get("status") == "ready":
+            try:
+                _require_docx_path(row)
+            except AppError as exc:
+                if exc.code in {"docx_missing", "docx_invalid"}:
+                    return _queue_docx_recovery(plan_id, user_id, row, bg_tasks)
+                return {**job, "status": "failed", "error_message": exc.detail, "recoverable": False}
         return job
-    return {"plan_id": plan_id, "status": "ready" if row.get("docx_path") else "queued"}
+    if row.get("docx_path"):
+        try:
+            _require_docx_path(row)
+        except AppError as exc:
+            if exc.code in {"docx_missing", "docx_invalid"}:
+                return _queue_docx_recovery(plan_id, user_id, row, bg_tasks)
+            return {"plan_id": plan_id, "status": "failed", "error_message": exc.detail, "recoverable": False}
+        return {"plan_id": plan_id, "status": "ready"}
+    return _queue_docx_recovery(plan_id, user_id, row, bg_tasks)
 
 
 @router.get("/public/{plan_id}")
@@ -439,20 +477,47 @@ def _require_docx_path(row: dict) -> Path:
             hint="Please wait a moment and try again.",
         )
     p = Path(path_str).resolve()
-    if not p.is_relative_to(Path(settings.plans_dir).resolve()) or not storage.ensure_local(p):
+    if not p.is_relative_to(Path(settings.plans_dir).resolve()):
+        raise AppError(
+            "docx_invalid_path",
+            "The document path for this plan is invalid.",
+            status=500,
+            hint="Rebuild the document from the stored plan.",
+        )
+    if not storage.ensure_local(p):
         raise AppError(
             "docx_missing",
             "The document for this plan is missing.",
             status=404,
             hint="Rebuild it from the stored plan — the content is safe in the database.",
         )
+    if not docx_build.is_valid_docx(p):
+        raise AppError(
+            "docx_invalid",
+            "The saved document is not a valid Word file.",
+            status=409,
+            hint="Rebuild it from the stored plan — the content is safe in the database.",
+        )
     return p
+
+
+def _docx_for_plan(user_id: str, row: dict) -> Path:
+    """Return a verified DOCX, rebuilding a stale artifact once if needed."""
+    try:
+        return _require_docx_path(row)
+    except AppError as exc:
+        if exc.code not in {"docx_missing", "docx_invalid"} or not row.get("plan_json"):
+            raise
+        plan_id = row["id"]
+        log.info("recovering stale DOCX plan_id=%s", plan_id)
+        rebuilt = service.rebuild(user_id, plan_id)
+        return _require_docx_path(rebuilt)
 
 
 @router.get("/{plan_id}/download")
 def download_plan(plan_id: str, user_id: str = Depends(get_current_user)):
     row = _require_plan(user_id, plan_id)
-    p = _require_docx_path(row)
+    p = _docx_for_plan(user_id, row)
     return FileResponse(
         path=str(p),
         filename=f"{docx_build.safe_filename(row['week_label'])}.docx",
@@ -480,7 +545,7 @@ def share_plan(plan_id: str, body: SharePlan, user_id: str = Depends(get_current
     access_token = get_valid_access_token(user_id)
 
     if not row.get("drive_file_id"):
-        p = _require_docx_path(row)
+        p = _docx_for_plan(user_id, row)
         result = google_drive.upload_as_google_doc(
             access_token,
             filename=docx_build.safe_filename(row["week_label"]),

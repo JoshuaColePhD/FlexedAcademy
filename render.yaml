@@ -115,14 +115,13 @@ services:
       # link is on its way. For an email+password account there is no other
       # recovery path, so the account is simply lost.
       #
-      # EMAIL_FROM matters as much as the key: it defaults to Resend's sandbox
-      # sender, which by design only delivers to the inbox that owns the API
-      # key — so with the key set and this unset, reset mail reaches nobody but
-      # you. Use an address on a domain verified with Resend.
+      # EMAIL_FROM matters as much as the key: it must use the domain verified
+      # in Resend. The application default is no-reply@flexedacademy.com, but
+      # set this explicitly if Resend is verified on a different sender domain.
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
-        sync: false
+        value: "FlexEd Academy <no-reply@flexedacademy.com>"
 
       # ── error tracking (Sentry) ──────────────────────────────────────────
       # server.py only calls sentry_sdk.init if this is set (backend/config.py

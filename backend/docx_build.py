@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import re
+import zipfile
 from functools import lru_cache
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -290,6 +291,22 @@ def plan_output_path(plan: dict, plan_id: str) -> Path:
     return Path(settings.plans_dir) / course / f"{week}__{plan_id[:8]}.docx"
 
 
+def is_valid_docx(path: Path) -> bool:
+    """Return true only for a readable Office Open XML Word package."""
+    if not path.is_file():
+        return False
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = set(archive.namelist())
+            return (
+                "[Content_Types].xml" in names
+                and "word/document.xml" in names
+                and archive.testzip() is None
+            )
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+
 def build_docx(plan: dict, out_path: Path, school_id: str | None = None, template_id: str | None = None) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -304,4 +321,10 @@ def build_docx(plan: dict, out_path: Path, school_id: str | None = None, templat
         ) from e
     if not out_path.is_file():
         raise AppError("docx_not_created", "The builder ran but produced no file.")
+    if not is_valid_docx(out_path):
+        raise AppError(
+            "docx_invalid",
+            "The builder produced an invalid Word document.",
+            hint="The lesson plan is saved; try rebuilding the document.",
+        )
     return out_path

@@ -22,6 +22,7 @@ import { classColor } from '../lib/classColor'
 import { shortDateTime } from '../lib/dates'
 import { AccordionPanel } from './AccordionPanel'
 import { ShareDialog } from './ShareDialog'
+import { DocxDownloadButton } from './DocxDownloadButton'
 
 const RailGroup = ({ title, defaultOpen, forceOpen, isBar, children }) => {
   if (isBar) {
@@ -347,15 +348,14 @@ export function ArtifactRail({
               <ChevronRight className="rail-reader-chevron" size={16} aria-hidden="true" />
             </button>
             <span className="rail-actions flex items-center">
-              <a
-                href={api.planDownloadUrl(planId)}
-                download
+              <DocxDownloadButton
+                planId={planId}
                 className="rail-open fa-press"
                 aria-label="Download as DOCX"
                 title="Download as DOCX"
               >
                 <Download size={13} aria-hidden="true" />
-              </a>
+              </DocxDownloadButton>
             </span>
           </div>
         ) : busy ? (

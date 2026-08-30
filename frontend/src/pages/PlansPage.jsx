@@ -2,7 +2,6 @@ import { SplitLayout } from "../components/SplitLayout"
 import { Fragment, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Download, FileText, Search, Trash2, CheckSquare, Square, LayoutGrid, List as ListIcon } from 'lucide-react'
-import { api } from '../lib/api'
 import { copyPlanShareLink } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -11,6 +10,7 @@ import { errorParts } from '../lib/apiError'
 import { SkeletonText } from '../components/Skeleton'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { ContextualSuggestionList } from '../components/ContextualSuggestionList'
+import { DocxDownloadButton } from '../components/DocxDownloadButton'
 
 /* Every plan this class has ever produced, in one place — one card per
  * calendar week, not one row per raw generation.
@@ -115,15 +115,14 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
         </button>
-        <a
+        <DocxDownloadButton
+          planId={plan.id}
           className="p-1.5 text-ink-muted hover:text-ink hover:bg-paper rounded-md transition-colors shadow-sm border border-transparent hover:border-edge/20"
-          href={api.planDownloadUrl(plan.id)}
-          download
           title="Download"
           aria-label="Download as DOCX"
         >
           <Download size={14} />
-        </a>
+        </DocxDownloadButton>
         <button
           type="button"
           className="p-1.5 text-ink-muted hover:text-mark hover:bg-mark-tint rounded-md transition-colors shadow-sm border border-transparent hover:border-mark/20"
@@ -207,15 +206,14 @@ function PlanCard({ plan, classId, onDelete, deleting, closing, selectionMode, s
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
           </button>
-          <a
+          <DocxDownloadButton
+            planId={plan.id}
             className="p-1.5 text-ink-muted hover:text-ink hover:bg-paper rounded transition-colors"
-            href={api.planDownloadUrl(plan.id)}
-            download
             title="Download"
             aria-label="Download as DOCX"
           >
             <Download size={14} />
-          </a>
+          </DocxDownloadButton>
           <button
             type="button"
             className="p-1.5 text-ink-muted hover:text-mark hover:bg-mark-tint rounded transition-colors"

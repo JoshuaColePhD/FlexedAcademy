@@ -76,10 +76,12 @@ class Settings(BaseSettings):
     # "no email actually sent" (logged, not raised) rather than a 500 — the
     # same inert-until-configured shape Stripe uses below.
     resend_api_key: str = ""
-    # Resend's own sandbox address. Works with zero setup, but only delivers
-    # to the inbox that owns the API key until a real sending domain is
-    # verified in the Resend dashboard and this is pointed at it.
-    email_from: str = "FlexEd Academy <onboarding@resend.dev>"
+    # Use the product's verified domain by default. Resend's sandbox sender
+    # (onboarding@resend.dev) only delivers to the inbox that owns the API key,
+    # which made production password-reset mail appear to succeed while never
+    # reaching a teacher. Override this in EMAIL_FROM if the verified sender
+    # address changes.
+    email_from: str = "FlexEd Academy <no-reply@flexedacademy.com>"
 
     # ── billing ──────────────────────────────────────────────────────────────
     # Unlimited plans; the free tier is capped on actual API spend instead. The

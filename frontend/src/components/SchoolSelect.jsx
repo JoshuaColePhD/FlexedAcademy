@@ -26,7 +26,7 @@ const MAX_RESULTS = 8
 export function SchoolSelect({
   id,
   ariaLabel,
-  schools,
+  schools = [],
   value,
   onChange,
   genericLabel = "My school isn't listed yet",

@@ -36,6 +36,12 @@ def send(*, to: str, subject: str, html: str) -> bool:
         )
         resp.raise_for_status()
         return True
+    except requests.HTTPError:
+        # Keep the response body out of logs — provider errors can echo
+        # addresses or request details — but preserve the status so a failed
+        # DNS/domain setup is distinguishable from a timeout or network outage.
+        log.exception("Resend rejected %r with HTTP %s", subject, resp.status_code)
+        return False
     except requests.RequestException:
         log.exception("failed to send %r to %s", subject, to)
         return False

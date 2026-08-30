@@ -637,7 +637,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
               <NavLink
                 to={`${classPath}/standards`}
                 onClick={onNavigate}
-                title="Standards Browser"
+                title="Standards"
                 className={({ isActive }) =>
                   `flex items-center gap-2.5 rounded-md transition-all duration-300 ${
                     collapsed ? 'justify-center w-10 h-10 text-sm' : spacious ? 'px-3 py-3 min-h-[48px] text-base' : 'px-2 py-1.5 text-sm'
@@ -647,7 +647,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 }
               >
                 <Database size={spacious ? 19 : 17} aria-hidden="true" />
-                {collapsed ? null : <span>Standards Browser</span>}
+                {collapsed ? null : <span>Standards</span>}
               </NavLink>
             </li>
             <li>

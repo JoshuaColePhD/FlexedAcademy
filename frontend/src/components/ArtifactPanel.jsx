@@ -16,6 +16,7 @@ import { WeedenLessonPlanTable } from './WeedenLessonPlanTable'
 import { WeedenPlanDayCards } from './WeedenPlanDayCards'
 import { Marginalia } from './Marginalia'
 import { ShareDialog } from './ShareDialog'
+import { DocxDownloadButton } from './DocxDownloadButton'
 import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
 
 /* The artifact, expanded into a working document.
@@ -225,10 +226,9 @@ const location = useLocation()
                   (one half-rounded pill needs its other half); a single
                   control gets the plain, fully-rounded pill the failed-
                   build state already uses (ArtifactDetailPanel.jsx). */}
-              {downloadReady ? <a
+              {downloadReady ? <DocxDownloadButton
                 key="document-ready"
-                href={planId ? api.planDownloadUrl(planId) : undefined}
-                download
+                planId={planId}
                 className="doc-download fa-press fa-context-pop flex items-center gap-1.5"
                 aria-label="Download as DOCX"
                 title="Download as DOCX"
@@ -240,7 +240,7 @@ const location = useLocation()
                 ) : null}
                 <Download size={14} aria-hidden="true" className="text-ink-muted" />
                 <span className="font-medium">Download as DOCX</span>
-              </a> : (
+              </DocxDownloadButton> : (
                 <button
                   key={`document-${documentStatus}`}
                   type="button"

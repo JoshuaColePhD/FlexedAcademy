@@ -6,7 +6,7 @@ import { WeekStrip } from './WeekStrip'
 import { DecisionStack } from './DecisionStack'
 import { SmoothHeight } from './OnboardingWizard'
 import { splitDecisions } from '../lib/decisionChecklist'
-import { api } from '../lib/api'
+import { DocxDownloadButton } from './DocxDownloadButton'
 
 const isBareOther = (option) => option.trim().toLowerCase() === 'other'
 
@@ -85,9 +85,9 @@ function BuiltPlanCard({ builtPlan, onClose }) {
     <div className="neo-panel fa-shadow-lift flex flex-wrap items-center gap-3 rounded-[28px] bg-paper-raised p-4">
       <span className="neo-inset grid h-9 w-9 place-items-center rounded-full text-ink"><Check size={16} strokeWidth={3} /></span>
       <div className="min-w-0 flex-1"><p className="eyebrow">Built</p><p className="text-sm font-medium text-ink">{builtPlan.weekLabel || 'This week'}</p></div>
-      <a href={api.planDownloadUrl(builtPlan.planId)} download className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-ink" aria-label="Download as DOCX">
+      <DocxDownloadButton planId={builtPlan.planId} className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-ink" aria-label="Download as DOCX">
         <Download size={12} />Download
-      </a>
+      </DocxDownloadButton>
       <button type="button" onClick={onClose} className="text-xs font-medium text-ink-soft">Done</button>
     </div>
   )

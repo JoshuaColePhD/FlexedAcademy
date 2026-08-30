@@ -177,6 +177,23 @@ def _build_docx_for_template(plan: dict, out_path: Path, school_id: str | None, 
     return docx_build.build_docx(plan, out_path, school_id)
 
 
+def _persist_docx(out_path: Path) -> None:
+    """Refuse to mark a DOCX ready until its bytes are durable."""
+    if not docx_build.is_valid_docx(out_path):
+        raise AppError(
+            "docx_invalid",
+            "The builder did not produce a valid Word document.",
+            hint="The lesson plan is saved; try rebuilding the document.",
+        )
+    if not storage.mirror_file(out_path):
+        raise AppError(
+            "docx_not_persisted",
+            "The Word document was built but could not be saved safely.",
+            status=503,
+            hint="The plan is safe. Try the download again in a moment.",
+        )
+
+
 def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
     # FastAPI background work is not durable across a deploy or process restart.
     # Keep this compatibility entry point, but make it only enqueue work in the
@@ -195,7 +212,7 @@ def run_document_build_job(job: dict) -> None:
         cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
         out_path = docx_build.plan_output_path(row["plan_json"], plan_id)
         _build_docx_for_template(row["plan_json"], out_path, cls.get("school") if cls else None, row.get("template_id"))
-        storage.mirror_file(out_path)
+        _persist_docx(out_path)
         db.update_plan(user_id, plan_id, docx_path=str(out_path))
         db.finish_document_build(plan_id, user_id)
         log.info("document build ready plan_id=%s", plan_id)
@@ -224,7 +241,7 @@ def repair_weeden_documents() -> int:
         out_path = docx_build.plan_output_path(plan, row["id"])
         try:
             docx_build.build_docx(plan, out_path, school_id)
-            storage.mirror_file(out_path)
+            _persist_docx(out_path)
             db.update_plan(
                 row["user_id"], row["id"],
                 docx_path=str(out_path),
@@ -287,7 +304,7 @@ def repair_weeden_missing_sections() -> int:
             updated, _ = schema.validate_plan(updated, require_weeden_sections=True)
             out_path = docx_build.plan_output_path(updated, row["id"])
             _build_docx_for_template(updated, out_path, school_id, row.get("template_id"))
-            storage.mirror_file(out_path)
+            _persist_docx(out_path)
             db.update_plan(
                 row["user_id"], row["id"],
                 plan_json=updated,
@@ -403,7 +420,7 @@ def finalize(
         docx_path_val = None
     else:
         _build_docx_for_template(plan, out_path, resolved_school_id, selected_template_id)
-        storage.mirror_file(out_path)
+        _persist_docx(out_path)
         docx_path_val = str(out_path)
 
     if class_id is None:
@@ -544,7 +561,13 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
     else:
         cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
         _build_docx_for_template(plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
-        return db.update_plan(user_id, plan_id, docx_path=str(out_path))  # type: ignore[return-value]
+        _persist_docx(out_path)
+        return db.update_plan(
+            user_id,
+            plan_id,
+            docx_path=str(out_path),
+            warnings=[w for w in (row.get("warnings") or []) if w != DOCX_FAILED],
+        )  # type: ignore[return-value]
 
 
 def revise_day(
@@ -695,7 +718,7 @@ def revise_day(
         docx_path_val = None
     else:
         _build_docx_for_template(new_plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
-        storage.mirror_file(out_path)
+        _persist_docx(out_path)
         docx_path_val = str(out_path)
 
     updated_row = db.update_plan(
@@ -791,7 +814,7 @@ def set_day_field(
         docx_path_val = None
     else:
         _build_docx_for_template(new_plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
-        storage.mirror_file(out_path)
+        _persist_docx(out_path)
         docx_path_val = str(out_path)
 
     updated_row = db.update_plan(
@@ -905,7 +928,7 @@ def revise_days(
         docx_path_val = None
     else:
         _build_docx_for_template(new_plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
-        storage.mirror_file(out_path)
+        _persist_docx(out_path)
         docx_path_val = str(out_path)
 
     updated_row = db.update_plan(

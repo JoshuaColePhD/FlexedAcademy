@@ -37,10 +37,19 @@ def _headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "apikey": token}
 
 
-def mirror_file(path: Path) -> None:
-    """Best-effort upload; local persistence remains the immediate fallback."""
-    if not configured() or not path.is_file():
-        return
+def mirror_file(path: Path) -> bool:
+    """Mirror a generated file and report whether it is safely persisted.
+
+    Local development has no remote bucket, so an existing local file is the
+    complete persistence story there. In production, a successful HTTP upload
+    is required before callers mark an artifact as ready; silently accepting a
+    failed mirror is what made old Render rows point at files that vanished on
+    restart.
+    """
+    if not path.is_file():
+        return False
+    if not configured():
+        return True
     try:
         response = requests.post(
             _url(path),
@@ -53,8 +62,10 @@ def mirror_file(path: Path) -> None:
             timeout=30,
         )
         response.raise_for_status()
+        return True
     except Exception as exc:  # noqa: BLE001
         log.warning("could not mirror %s to durable storage: %s", _key(path), exc)
+        return False
 
 
 def ensure_local(path: Path) -> bool:

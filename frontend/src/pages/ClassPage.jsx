@@ -610,7 +610,7 @@ function ClassDetail({ cls, frameworks, onChanged }) {
 }
 
 
-function DashboardClassRow({ cls, frameworks, selected, onToggle, onUpdate, onNavigate }) {
+function DashboardClassRow({ cls, frameworks, schools, selected, onToggle, onUpdate, onNavigate }) {
   const [subject, setSubject] = useState(cls.subject || '')
   const [grade, setGrade] = useState(cls.grade || '')
   const [school, setSchool] = useState(cls.school || '')
@@ -694,6 +694,7 @@ function DashboardClassRow({ cls, frameworks, selected, onToggle, onUpdate, onNa
       
       <td className="px-4 py-3 min-w-[160px]">
         <SchoolSelect
+          schools={schools}
           value={school}
           onChange={(val) => handleUpdate('school', val)}
         />
@@ -714,9 +715,15 @@ function DashboardClassRow({ cls, frameworks, selected, onToggle, onUpdate, onNa
 function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
   const toast = useToast()
   const navigate = useNavigate()
+  const schoolsState = useQuery({
+    queryKey: qk.schools,
+    queryFn: ({ signal }) => api.listSchools({ signal }),
+    staleTime: 5 * 60_000,
+  })
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [archiving, setArchiving] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const schools = schoolsState.data || []
 
   const activeClasses = classes.filter((c) => !c.archived)
   const archivedClasses = classes.filter((c) => c.archived)
@@ -845,6 +852,7 @@ function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
                     key={c.id}
                     cls={c}
                     frameworks={frameworks}
+                    schools={schools}
                     selected={selectedIds.has(c.id)}
                     onToggle={() => toggleSelect(c.id)}
                     onUpdate={onUpdated}

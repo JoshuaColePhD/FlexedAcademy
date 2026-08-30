@@ -1,315 +1,265 @@
-import { SplitLayout } from "../components/SplitLayout"
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { ArrowLeft, BookOpen, Check, Loader2, Plus, Search, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Loader2, Database, BookOpen, ChevronDown, Plus, FileText } from 'lucide-react'
 import { api } from '../lib/api'
 import { useActiveClass } from '../hooks/useAppData'
-import { useNavigate, Link } from 'react-router-dom'
 import { useToast } from '../lib/toastContext'
 
 const EMPTY_STANDARDS = []
 
-function StandardRow({ s, classId, subject: _subject, coverageCount }) {
-  const [expanded, setExpanded] = useState(false)
+function standardCategory(standard) {
+  const strand = standard.strand?.trim()
+  if (!strand) return standard.domain?.trim() || 'Other'
+  if (/^unit\s+\d+/i.test(strand)) return 'Units'
+  if (/^big idea\s*:/i.test(strand)) return 'Big Ideas'
+  if (strand.includes(' – ') || strand.includes(' — ')) return 'Course skills'
+  return strand.split(/\s+[–—-]\s+/)[0].trim()
+}
+
+function StandardRow({ standard, classId, coverageCount }) {
   const navigate = useNavigate()
   const toast = useToast()
+  const [expanded, setExpanded] = useState(false)
 
-  const handleQuickAdd = (e) => {
-    e.stopPropagation()
-    const text = `Focus this lesson on ${s.code}: ${s.description}`
+  const addToPlan = (event) => {
+    event.stopPropagation()
+    const text = `Focus this lesson on ${standard.code}: ${standard.description}`
     navigate(`/c/${classId}?prefill=${encodeURIComponent(text)}`)
     toast({ title: 'Added to chat', type: 'success' })
   }
 
-  const { data: lessons, isLoading: lessonsLoading } = useQuery({
-    queryKey: ['standards', s.code, 'lessons', classId],
-    queryFn: () => api.getStandardLessons(s.code, classId),
-    enabled: expanded && !!classId,
-    staleTime: Infinity
-  })
-
-  const isChild = !!s.parent_code
+  const detailsLabel = expanded ? `Hide details for ${standard.code}` : `Show details for ${standard.code}`
 
   return (
-    <div 
-      className={`flex flex-col gap-2 rounded-xl bg-paper/40 hover:bg-paper/60 backdrop-blur-md p-4 transition-colors border border-white/5 shadow-sm cursor-pointer ${isChild ? 'ml-6 border-l-4 border-l-edge/50 rounded-l-none' : ''}`}
-      onClick={() => setExpanded(!expanded)}
-    >
-      <div className="flex items-start gap-4">
-        <div className="flex flex-col gap-2 shrink-0 pt-0.5">
-          <span className="rounded-md bg-paper-sunken px-2.5 py-1 text-sm font-mono font-medium text-ink border border-edge/30">
-            {s.code}
+    <article className="overflow-hidden rounded-2xl border border-edge bg-paper-raised shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-start gap-3 p-4">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+          aria-label={detailsLabel}
+        >
+          <span className="shrink-0 rounded-lg bg-paper-sunken px-2.5 py-1.5 font-mono text-sm font-semibold text-ink">
+            {standard.code}
           </span>
+          <span className="min-w-0 pt-1 text-sm leading-relaxed text-ink">
+            {standard.description}
+          </span>
+        </button>
+
+        <div className="flex shrink-0 items-center gap-2">
           {coverageCount > 0 ? (
-            <span className="text-[10px] font-semibold uppercase tracking-wide bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full text-center border border-emerald-500/20">
-              Used {coverageCount}x
+            <span className="hidden rounded-full bg-ok-tint px-2 py-1 text-2xs font-semibold text-ok sm:inline-flex">
+              Used {coverageCount}×
             </span>
-          ) : (
-            <span className="text-[10px] font-semibold uppercase tracking-wide bg-ink/5 text-ink-muted px-2 py-0.5 rounded-full text-center border border-ink/10">
-              0x Taught
-            </span>
-          )}
-        </div>
-        
-        <div className="flex-1 min-w-0 pt-1.5">
-          {s.parent_code && expanded && (
-            <p className="text-xs text-ink-muted mb-1 font-medium">{s.parent_text}</p>
-          )}
-          <p className={`text-sm text-ink ${expanded ? '' : 'truncate'}`}>
-            {s.description}
-          </p>
-        </div>
-        
-        <div className="shrink-0 flex items-center gap-2 pt-1">
-          <button 
-            onClick={handleQuickAdd}
-            className="hidden md:flex items-center gap-1.5 text-xs font-medium text-ink-muted hover:text-accent bg-paper-sunken hover:bg-accent/10 px-2.5 py-1.5 rounded-md transition-colors border border-edge/30 hover:border-accent/30"
-            title="Add to active lesson plan"
+          ) : null}
+          <button
+            type="button"
+            className="btn-icon fa-press"
+            onClick={addToPlan}
+            aria-label={`Add ${standard.code} to the lesson plan`}
+            title="Add to plan"
           >
-            <Plus size={14} /> Add to Plan
+            <Plus size={16} aria-hidden="true" />
           </button>
-          
-          <div className="w-8 h-8 flex items-center justify-center">
-            <ChevronDown 
-              size={16} 
-              className={`text-ink-muted transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} 
-            />
-          </div>
         </div>
       </div>
-      
-      {expanded && (
-        <div className="mt-2 pl-4 border-l-2 border-accent/30 flex flex-col gap-4">
-          <div className="flex flex-wrap gap-2 mt-1">
-            {s.grade && (
-              <span className="text-[10px] font-semibold uppercase tracking-wide bg-accent/10 text-accent px-2 py-0.5 rounded-full">
-                Grade {s.grade}
-              </span>
-            )}
-            {s.strand && (
-              <span className="text-[10px] font-semibold uppercase tracking-wide bg-ink/5 text-ink-muted px-2 py-0.5 rounded-full border border-ink/5">
-                {s.strand}
-              </span>
-            )}
-            {s.domain && (
-              <span className="text-[10px] font-semibold uppercase tracking-wide bg-ink/5 text-ink-muted px-2 py-0.5 rounded-full border border-ink/5">
-                {s.domain}
-              </span>
-            )}
+
+      {expanded ? (
+        <div className="border-t border-edge bg-paper-sunken/50 px-4 pb-4 pt-3">
+          <div className="flex flex-wrap items-center gap-2 text-2xs font-semibold uppercase tracking-wider text-ink-muted">
+            {standard.strand ? <span>{standard.strand}</span> : null}
+            {standard.domain ? <span>· {standard.domain}</span> : null}
+            {coverageCount > 0 ? <span>· Used {coverageCount} times</span> : <span>· Not used yet</span>}
           </div>
-          
-          {/* Past Lessons Integration */}
-          <div className="mt-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">Past Lessons Taught</p>
-            {lessonsLoading ? (
-              <div className="flex items-center gap-2 text-sm text-ink-faint">
-                <Loader2 size={14} className="animate-spin" /> Loading past lessons...
-              </div>
-            ) : lessons && lessons.length > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                {lessons.map(lesson => (
-                  <Link 
-                    key={lesson.id} 
-                    to={`/c/${classId}/history`} 
-                    className="flex items-center gap-2 text-sm text-accent hover:underline w-fit"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <FileText size={14} />
-                    {lesson.title || 'Untitled Lesson'}
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-ink-faint">You haven't used this standard in a plan yet.</p>
-            )}
-          </div>
+          <button type="button" className="btn mt-3" onClick={addToPlan}>
+            <Plus size={14} className="mr-1.5" aria-hidden="true" /> Add to plan
+          </button>
         </div>
-      )}
-    </div>
+      ) : null}
+    </article>
   )
 }
 
 export function StandardsPage() {
+  const navigate = useNavigate()
   const { activeClass, classId } = useActiveClass()
   const subject = activeClass?.subject
   const grade = activeClass?.grade
-
   const [search, setSearch] = useState('')
-  const [selectedStrand, setSelectedStrand] = useState('All')
+  const [selectedCategory, setSelectedCategory] = useState('all')
 
-  const [viewMode, setViewMode] = useState('list') // 'list' | 'heatmap'
-
-  // Fetch standards
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['standards', subject, grade],
     queryFn: () => api.listStandards({ subject, grade }),
     staleTime: Infinity,
     enabled: !!subject && grade !== undefined,
   })
 
-  // Fetch coverage heatmap
   const { data: coverageData } = useQuery({
     queryKey: ['standards', 'coverage', classId],
     queryFn: () => api.getStandardsCoverage(classId),
     staleTime: Infinity,
-    enabled: !!classId
+    enabled: !!classId,
   })
+
+  const standards = useMemo(() => {
+    const seen = new Set()
+    return (data?.items || EMPTY_STANDARDS).filter((standard) => {
+      if (seen.has(standard.code)) return false
+      seen.add(standard.code)
+      return true
+    })
+  }, [data])
   const coverage = coverageData || {}
 
-  const standards = data?.items || EMPTY_STANDARDS
-
-  // Extract unique strands
-  const strands = useMemo(() => {
-    const set = new Set()
-    for (const s of standards) {
-      if (s.strand) set.add(s.strand)
+  const categories = useMemo(() => {
+    const counts = new Map()
+    for (const standard of standards) {
+      const category = standardCategory(standard)
+      counts.set(category, (counts.get(category) || 0) + 1)
     }
-    const list = Array.from(set).sort()
-    return ['All', ...list]
+    return Array.from(counts, ([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [standards])
 
-  // Reset selected strand if it disappears due to class change
-  useEffect(() => {
-    if (selectedStrand !== 'All' && !strands.includes(selectedStrand)) {
-      setSelectedStrand('All')
-    }
-  }, [strands, selectedStrand])
+  const activeCategory = selectedCategory === 'all' || categories.some(({ name }) => name === selectedCategory)
+    ? selectedCategory
+    : 'all'
 
   const filtered = useMemo(() => {
-    let result = standards
+    const query = search.trim().toLowerCase()
+    return standards.filter((standard) => {
+      if (activeCategory !== 'all' && standardCategory(standard) !== activeCategory) return false
+      if (!query) return true
+      return [standard.code, standard.description, standard.strand, standard.domain]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(query))
+    })
+  }, [activeCategory, search, standards])
 
-    if (selectedStrand !== 'All') {
-      result = result.filter(s => s.strand === selectedStrand)
-    }
+  const categoryButtons = [
+    { name: 'all', label: 'All standards', count: standards.length },
+    ...categories,
+  ]
 
-    const q = search.toLowerCase().trim()
-    if (q) {
-      result = result.filter(
-        (s) =>
-          s.code.toLowerCase().includes(q) ||
-          (s.description || '').toLowerCase().includes(q) ||
-          (s.strand || '').toLowerCase().includes(q)
-      )
-    }
-    return result
-  }, [standards, search, selectedStrand])
+  const selectCategory = (category) => {
+    setSelectedCategory(category)
+  }
 
-  const tabs = strands.map(strand => ({
-    id: strand,
-    label: strand === 'All' ? 'All Standards' : strand,
-  }))
+  const matchingLabel = search ? `Matching “${search}”` : null
 
   return (
-    <SplitLayout
-      title="Standards Browser"
-      icon={Database}
-      tabs={tabs}
-      activeTab={selectedStrand}
-      onTabChange={setSelectedStrand}
-      backPath="/"
-    >
-      <div className="flex flex-col gap-6 w-full max-w-7xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-2xl font-bold text-ink">Standards Browser</h1>
-              {activeClass && (
-                <span className="rounded-full bg-paper-sunken px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-ink border border-edge/30">
-                  {activeClass.name}
-                </span>
-              )}
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/40 backdrop-blur-3xl saturate-[1.2] glass-panel border border-white/5">
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-4xl px-4 py-5 pb-28 sm:px-6 md:px-10 md:py-10">
+          <header className="mb-8 flex items-start gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              aria-label="Back"
+              className="btn-icon fa-press mt-0.5 shrink-0"
+            >
+              <ArrowLeft size={17} aria-hidden="true" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.16em] text-ink-muted">
+                <BookOpen size={14} aria-hidden="true" /> Standards
+              </div>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
+                {activeClass ? `${activeClass.name} standards` : 'Standards'}
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">
+                Search the standards for this course, then add one directly to your lesson plan.
+              </p>
             </div>
-            <p className="text-sm text-ink-muted">
-              Browse, track, and add curriculum standards to your active lesson plans.
-            </p>
-          </div>
-          
-          {/* View Toggle */}
-          <div className="flex items-center bg-paper-sunken p-1 rounded-lg border border-edge/30 shrink-0 w-fit">
-            <button 
-              onClick={() => setViewMode('list')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'list' ? 'bg-paper shadow-sm text-ink' : 'text-ink-muted hover:text-ink'}`}
-            >
-              List View
-            </button>
-            <button 
-              onClick={() => setViewMode('heatmap')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'heatmap' ? 'bg-paper shadow-sm text-ink' : 'text-ink-muted hover:text-ink'}`}
-            >
-              Visual Heatmap
-            </button>
-          </div>
-        </div>
+          </header>
 
-        {/* Right Content - Standards List */}
-        <div className="flex-1 flex flex-col">
-          <div className="flex w-full items-center gap-3 rounded-xl bg-paper/50 backdrop-blur-md px-4 py-3 shadow-inner ring-1 ring-white/10 focus-within:ring-accent transition-all mb-6">
-            <Search size={20} className="text-ink-muted shrink-0" />
+          <label className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-edge bg-paper-raised px-4 shadow-sm transition-shadow focus-within:shadow-md">
+            <Search size={19} className="shrink-0 text-ink-muted" aria-hidden="true" />
+            <span className="sr-only">Search standards</span>
             <input
-              type="text"
-              placeholder="Search standards by code or keyword..."
+              type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-transparent text-base text-ink outline-none placeholder:text-ink-faint"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by code or keyword"
+              className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-faint"
             />
+            {search ? (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="btn-icon h-8 w-8 shrink-0"
+                aria-label="Clear standards search"
+              >
+                <X size={15} aria-hidden="true" />
+              </button>
+            ) : null}
+          </label>
+
+          <div className="mt-4 -mx-1 overflow-x-auto px-1 pb-1" role="group" aria-label="Filter standards by category">
+            <div className="flex min-w-max items-center gap-2">
+              {categoryButtons.map(({ name, label = name, count }) => {
+                const selected = activeCategory === name
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => selectCategory(name)}
+                    aria-pressed={selected}
+                    className={`fa-press tap-target inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      selected
+                        ? 'border-accent bg-accent text-accent-on shadow-sm'
+                        : 'border-edge bg-paper-raised text-ink-muted hover:border-accent/50 hover:text-ink'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className={selected ? 'text-accent-on/75' : 'text-ink-faint'}>{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between gap-3 px-1 text-xs text-ink-muted" aria-live="polite">
+            <span>
+              {isLoading ? 'Loading standards…' : `${filtered.length} ${filtered.length === 1 ? 'standard' : 'standards'}`}
+            </span>
+            {matchingLabel ? <span>{matchingLabel}</span> : null}
           </div>
 
           {isLoading ? (
-            <div className="flex mt-20 flex-col items-center justify-center text-ink-muted gap-3">
-              <Loader2 size={32} className="animate-spin text-accent" />
-              <p className="text-sm font-medium">Loading standards...</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-24 text-ink-muted">
+              <Loader2 size={24} className="animate-spin text-accent" aria-hidden="true" />
+              <p className="text-sm">Loading standards…</p>
+            </div>
+          ) : isError ? (
+            <div className="py-24 text-center">
+              <p className="text-base font-medium text-ink">Standards couldn’t load.</p>
+              <p className="mt-1 text-sm text-ink-muted">Try refreshing the page.</p>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex mt-20 flex-col items-center justify-center text-center text-ink-muted">
-              <BookOpen size={48} className="mb-4 opacity-20" />
-              <p className="text-lg font-medium text-ink">No standards found</p>
-              <p className="text-sm mt-1">Try adjusting your search query or category.</p>
+            <div className="py-24 text-center">
+              <Check size={28} className="mx-auto text-ink-faint" aria-hidden="true" />
+              <p className="mt-3 text-base font-medium text-ink">No matching standards</p>
+              <p className="mt-1 text-sm text-ink-muted">Try a different code or keyword.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 pb-20">
-              <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2 px-2 flex justify-between">
-                <span>{selectedStrand === 'All' ? 'All Standards' : selectedStrand}</span>
-                <span>{filtered.length} {filtered.length === 1 ? 'result' : 'results'}</span>
-              </div>
-              
-              {viewMode === 'heatmap' ? (
-                <div className="flex flex-wrap gap-3 mt-4">
-                  {filtered.map(s => {
-                    const count = coverage[s.code] || 0
-                    let bgColor = 'bg-paper-sunken border-edge/30 text-ink-muted hover:bg-paper hover:border-edge/60'
-                    if (count > 0) bgColor = 'bg-emerald-500/20 border-emerald-500/40 text-emerald-700 hover:bg-emerald-500/30'
-                    if (count > 2) bgColor = 'bg-emerald-500/40 border-emerald-500/60 text-emerald-800 hover:bg-emerald-500/50'
-                    if (count > 5) bgColor = 'bg-emerald-500/80 border-emerald-500 text-white hover:bg-emerald-500'
-                    
-                    return (
-                      <div 
-                        key={s.code} 
-                        title={`${s.code}\n${s.description}\nUsed ${count}x`} 
-                        className={`flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-colors cursor-help w-20 h-20 ${bgColor}`}
-                      >
-                        <span className="text-[11px] font-bold text-center leading-tight truncate w-full px-1">{s.code.split('.').pop()}</span>
-                        <span className="text-[10px] opacity-75 mt-1 font-mono bg-black/5 px-1.5 rounded-sm">{count}x</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {filtered.map((s, i) => (
-                    <StandardRow 
-                      key={`${s.code}-${i}`} 
-                      s={s} 
-                      classId={classId} 
-                      subject={subject} 
-                      coverageCount={coverage[s.code] || 0}
-                    />
-                  ))}
-                </div>
-              )}
+            <div className="mt-3 flex flex-col gap-2">
+              {filtered.map((standard) => (
+                <StandardRow
+                  key={standard.code}
+                  standard={standard}
+                  classId={classId}
+                  coverageCount={coverage[standard.code] || 0}
+                />
+              ))}
             </div>
           )}
         </div>
-      </div>
-    </SplitLayout>
+      </main>
+    </div>
   )
 }

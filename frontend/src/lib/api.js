@@ -150,6 +150,111 @@ async function upload(path, formData, { signal } = {}) {
   return res.json()
 }
 
+function filenameFromDisposition(header, fallback) {
+  if (!header) return fallback
+  const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const plain = header.match(/filename="?([^";]+)"?/i)?.[1]
+  const candidate = utf8 || plain
+  if (!candidate) return fallback
+  try {
+    return decodeURIComponent(candidate).replace(/[\\/]/g, '_') || fallback
+  } catch {
+    return candidate.replace(/[\\/]/g, '_') || fallback
+  }
+}
+
+function docxFilename(name) {
+  const cleaned = String(name || 'lesson-plan').replace(/[\\/]/g, '_')
+  return cleaned.toLowerCase().endsWith('.docx')
+    ? cleaned
+    : `${cleaned.replace(/\.[^.]+$/, '')}.docx`
+}
+
+async function isDocxPayload(blob) {
+  if (!blob.size) return false
+  const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+  // DOCX is a ZIP package. Checking the signature catches a JSON error body
+  // even when a proxy mistakenly responds with HTTP 200 or octet-stream.
+  return header[0] === 0x50 && header[1] === 0x4b
+}
+
+async function downloadFile(url, { signal, fallbackName = 'lesson-plan.docx' } = {}) {
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), 60000)
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
+
+  let res
+  try {
+    res = await fetch(url, { signal: combinedSignal, credentials: 'include' })
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      if (signal?.aborted) throw err
+      throw new ApiError('The document took too long to prepare.', { code: 'timeout' })
+    }
+    throw new ApiError('Can’t reach the document service.', { code: 'network_error' })
+  }
+
+  if (!res.ok) {
+    try {
+      throw await toError(res)
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
+  const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+  let blob
+  try {
+    blob = await res.blob()
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      if (signal?.aborted) throw err
+      throw new ApiError('The document took too long to prepare.', { code: 'timeout' })
+    }
+    throw new ApiError('The document response could not be read.', { code: 'network_error' })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+  if (contentType.includes('json') || !(await isDocxPayload(blob))) {
+    let body = null
+    try {
+      body = JSON.parse(await blob.text())
+    } catch {
+      // The response was neither a DOCX nor a readable API error envelope.
+    }
+    if (body?.error) throw apiErrorFromBody(body, res.status)
+    throw new ApiError('The server did not return a valid DOCX file.', {
+      code: 'invalid_document_response',
+      status: res.status,
+      hint: 'Try downloading again. If it continues, rebuild the lesson plan.',
+    })
+  }
+
+  const filename = docxFilename(filenameFromDisposition(
+    res.headers.get('content-disposition'),
+    fallbackName.endsWith('.docx') ? fallbackName : `${fallbackName}.docx`,
+  ))
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = filename
+  anchor.rel = 'noopener'
+  document.body.appendChild(anchor)
+  if ('download' in anchor) {
+    anchor.click()
+  } else {
+    // Older iPad Safari can omit support for the download attribute. Opening
+    // the already-validated Blob is safe and lets Safari's share sheet save it.
+    const opened = window.open(objectUrl, '_blank', 'noopener,noreferrer')
+    if (!opened) window.location.href = objectUrl
+  }
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  return { filename: anchor.download }
+}
+
 export const api = {
   health: ({ signal } = {}) => request('/api/health', { signal }),
 
@@ -275,6 +380,11 @@ export const api = {
   listPlanShares: (planId, { signal } = {}) =>
     request(`/api/plans/${planId}/shares`, { signal }),
   planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,
+  // Never use a native <a download> for a generated document. If the server
+  // returns its JSON error envelope, browsers otherwise save that JSON as
+  // `download.json`, which is especially confusing on iPad Safari.
+  downloadPlan: (id, options = {}) =>
+    downloadFile(`${API_BASE}/api/plans/${encodeURIComponent(id)}/download`, options),
   /* A plan can have several quizzes (backend db.py migration 26) — each ask
    *  for one ("make a matching quiz") is its own row, never overwriting an
    *  earlier one. `questionTypes` is a real array (['multiple_choice']),
