@@ -15,6 +15,7 @@ import {
   Sparkles,
   AlertTriangle,
   Zap,
+  Plus,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { GRADES, DEFAULT_GRADE, gradeLabel, gradeSelectValue } from '../lib/grades'
@@ -22,11 +23,12 @@ import { GRADES, DEFAULT_GRADE, gradeLabel, gradeSelectValue } from '../lib/grad
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
 import { useActiveClass } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
+import { ClassSwitcher } from '../components/ClassSwitcher'
 import { SkeletonText } from '../components/Skeleton'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { classColor } from '../lib/classColor'
@@ -125,14 +127,14 @@ function ClassCustomInstructions({ cls, onChanged }) {
   )
 }
 
-/* ── add a class: one pick, inline ──────────────────────────────────────────
-   The name is derived and shown so it can be corrected, not demanded up front.
-   Grade level isn't asked here — it's set to DEFAULT_GRADE and can be
-   corrected later if it ever matters for a given class (see grades.js). */
+/* ── add a class ────────────────────────────────────────────────────────────
+   A class is defined by its course of study and grade. The generated name is
+   previewed so the teacher understands what will be created without typing a
+   second, potentially conflicting name. */
 function ClassSetup({ frameworks, onCreated, onCancel }) {
   const toast = useToast()
   const [subject, setSubject] = useState('')
-  const grade = DEFAULT_GRADE
+  const [grade, setGrade] = useState(DEFAULT_GRADE)
   const [saving, setSaving] = useState(false)
 
   const fw = findFramework(frameworks, subject)
@@ -156,11 +158,17 @@ function ClassSetup({ frameworks, onCreated, onCancel }) {
   return (
     <div className="flex h-full w-full items-center justify-center p-4 sm:p-8">
       <div className="w-full max-w-md">
-        <h2 className="mb-6 text-2xl font-semibold tracking-tight text-ink">Set up a new class</h2>
+        <div className="mb-6">
+          <p className="eyebrow mb-2">Class management</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-ink">Add a class</h2>
+          <p className="mt-2 text-sm leading-6 text-ink-muted">
+            Choose the course and grade you teach. FlexEd will load the matching standards and name the class for you.
+          </p>
+        </div>
         <form onSubmit={submit} className="flex flex-col gap-6 rounded-2xl bg-paper-sunken p-6 sm:p-8 shadow-sm">
           <div className="flex flex-col gap-2">
             <label htmlFor="new-class-framework" className="text-sm font-medium text-ink">
-              Subject
+              Course of Study
             </label>
             <FrameworkPicker
               frameworks={frameworks}
@@ -168,6 +176,22 @@ function ClassSetup({ frameworks, onCreated, onCancel }) {
               onChange={setSubject}
               id="new-class-framework"
             />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label htmlFor="new-class-grade" className="text-sm font-medium text-ink">
+              Grade Level
+            </label>
+            <select
+              id="new-class-grade"
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+              className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-3 pr-8 text-sm text-ink"
+            >
+              {GRADES.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
           </div>
           
           <div className="mt-2 flex items-center justify-end gap-3 pt-4 border-t border-edge">
@@ -419,6 +443,38 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
         </button>
       </div>
     </form>
+  )
+}
+
+function ClassManagementBar({ classes, activeClass, classId }) {
+  return (
+    <section
+      className="mb-8 flex max-w-5xl flex-col gap-4 rounded-2xl border border-edge/60 bg-paper-raised/40 p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between sm:p-5"
+      aria-label="Class management"
+    >
+      <div className="min-w-0">
+        <p className="eyebrow mb-1">Class management</p>
+        <h2 className="text-lg font-semibold text-ink">Choose the class you’re managing</h2>
+        <p className="mt-1 max-w-xl text-sm leading-6 text-ink-muted">
+          Switch between your classes here, or add another course and grade level.
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-col gap-2 sm:min-w-[18rem]">
+        <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Current class</span>
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <ClassSwitcher classes={classes} activeClass={activeClass} classPath={`/c/${classId}`} />
+          </div>
+          <Link
+            to="/c/new/class"
+            className="fa-press neo-raised inline-flex min-h-touch shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent/90"
+          >
+            <Plus size={15} aria-hidden="true" />
+            Add a class
+          </Link>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -708,6 +764,13 @@ function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
           <p className="text-sm text-ink-muted mt-1">Manage all your classes and assignments from one place.</p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            to="/c/new/class"
+            className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-accent/90"
+          >
+            <Plus size={14} aria-hidden="true" />
+            Add a class
+          </Link>
           {selectedIds.size > 0 && (
             <button
               type="button"
@@ -871,6 +934,7 @@ export function ClassPage() {
       tabs={CLASS_TABS}
       backPath="/"
     >
+      <ClassManagementBar classes={classes} activeClass={activeClass} classId={classId} />
       <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
     </SplitLayout>
   )

@@ -21,7 +21,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
    reserves blue for "something is waiting for you"; the class you are already
    looking at is not waiting for anything, and spending accent here is part of
    why the blue had stopped meaning anything. */
-export function ClassSwitcher({ classes, activeClass, classPath, inline = false }) {
+export function ClassSwitcher({ classes, activeClass, inline = false }) {
   const [open, setOpen] = useState(false)
   // The menu used to unmount the instant `open` went false — a hard cut, the
   // one thing every other neo-panel overlay in the app (toasts, the confirm
@@ -226,7 +226,7 @@ export function ClassSwitcher({ classes, activeClass, classPath, inline = false 
           ))}
           <li>
             <Link
-              to={`${classPath}/class`}
+              to="/c/new/class"
               onClick={() => setOpen(false)}
               className="flex min-h-touch items-center gap-2 border-t border-edge px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
             >
