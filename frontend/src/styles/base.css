@@ -2273,6 +2273,23 @@
     box-shadow: 0 -6px 16px rgb(var(--neo-dark-rgb) / 0.2);
     transition: transform var(--t-base) var(--ease-glide), box-shadow var(--t-base) var(--ease-glide);
   }
+  /* A collapsed drawer is a handle, not an invisible second panel. Hiding
+     the body outright avoids iOS/WebKit preserving the doc header's intrinsic
+     height inside the 0fr grid row, which showed up as a blank band above the
+     handle on phones. */
+  .plan-peek:not(.is-open) {
+    border-top-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+  .plan-peek:not(.is-open) .plan-peek-body {
+    display: none;
+  }
+  .plan-peek-latest {
+    display: flex;
+    justify-content: center;
+    margin-bottom: var(--sp-2);
+  }
   .plan-peek-handle {
     display: flex;
     min-height: 44px;
@@ -2287,6 +2304,7 @@
     cursor: grab;
     touch-action: pan-y;
     user-select: none;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
   }
   .plan-peek-handle:active {
     cursor: grabbing;
