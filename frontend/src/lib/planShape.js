@@ -40,7 +40,7 @@ export const ROWS = [
   { label: 'Learning Targets', key: 'learning_targets' },
   { label: 'Standards', key: 'standards', cited: true },
   { label: 'ACT Alignment', key: 'act_alignment', cited: true },
-  { label: 'Engagement Strategy', key: 'engagement_strategy', tags: true },
+  { label: 'Engagement Strategy', key: 'engagement_strategy' },
   { label: 'Lesson', key: null },
 ]
 
@@ -70,7 +70,7 @@ export const FIELD_LABELS = {
  * Deliberate. Do not "fix" this back to ROWS order. */
 export const CARD_SECONDARY = [
   { label: 'ACT Alignment', key: 'act_alignment', cited: true },
-  { label: 'Engagement Strategy', key: 'engagement_strategy', tags: true },
+  { label: 'Engagement Strategy', key: 'engagement_strategy' },
 ]
 
 /** What to render for a weekday the plan has no entry for. Three states, not

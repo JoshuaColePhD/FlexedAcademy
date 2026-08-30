@@ -2,8 +2,8 @@
 
 `response_format={"type": "json_schema", "strict": True}` removes an entire class
 of bug the old code handled by hoping: markdown fences (stripped in four
-separate copy-pasted places), missing keys, and `engagement_strategy` arriving as
-a comma string instead of a list.
+separate copy-pasted places), missing keys, and `engagement_strategy` arriving in
+the wrong shape instead of as one dropdown value.
 
 What strict mode does NOT give us, and why validate_plan() is still mandatory:
 minItems/maxItems are unsupported, so "exactly five days, correctly named" is not
@@ -675,8 +675,8 @@ def rewrite_day(
     """Revise one day. Emits the SAME schema as generate_plan's days.
 
     Previously this returned split do_now/during/assessment with
-    engagement_strategy as an array while generate emitted a flat `lesson`
-    string — so a rewritten day could not be merged back into the week.
+    engagement_strategy as a multi-value array while the district form expects
+    one dropdown value — so a rewritten day could reintroduce multiple choices.
     """
     subject, grade = _prompt_subject_grade(user_id, class_id)
     cls = db.get_class(user_id, class_id) if class_id else None

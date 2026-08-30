@@ -10,9 +10,9 @@ like?"). v2 is 7 rows x 6 cols and has neither. Build against the script.
 Three constraints below are not obvious from the JSON and were read out of the
 builder's own code:
 
-1. `engagement_strategy` must be a LIST. The builder renders it as a Word
-   dropdown content control (`w:dropDownList`) whose selected value must match
-   one of ENGAGEMENT_OPTIONS, or Word shows an off-list value.
+1. `engagement_strategy` must be a SINGLE STRING. The builder renders it as a
+   Word dropdown content control (`w:dropDownList`) whose selected value must
+   match one of ENGAGEMENT_OPTIONS, or Word shows an off-list value.
 2. `learning_targets` / `standards` / `act_alignment` go through the builder's
    `write_plain()`, which emits a SINGLE paragraph. Embedded newlines are
    silently discarded by python-docx. Only do_now/during/assessment are split on
@@ -101,9 +101,9 @@ DAY_JSON_SCHEMA = {
             "description": "ACT English/Writing code(s), e.g. 'TOD 502; ORG 403'. Single line. Empty string if none grounded.",
         },
         "engagement_strategy": {
-            "type": "array",
-            "items": {"type": "string", "enum": ENGAGEMENT_OPTIONS},
-            "description": "One or more strategies from the fixed district list.",
+            "type": "string",
+            "enum": ENGAGEMENT_OPTIONS,
+            "description": "Exactly one strategy from the fixed district list.",
         },
         "do_now": {"type": "string", "description": "Bell work, ~5 minutes."},
         "during": {
@@ -735,14 +735,32 @@ def normalize_day(day: dict, warnings: list[str] | None = None) -> dict:
     for field in WEEDEN_SECTION_FIELDS:
         d.setdefault(field, "")
 
-    strategies = d.get("engagement_strategy")
-    if isinstance(strategies, str):
-        # v1 emitted a comma-joined string. Split it back apart rather than
-        # handing the builder a value its dropdown can't match.
-        d["engagement_strategy"] = [s.strip() for s in strategies.split(",") if s.strip()]
-        warnings.append(f"{name}: engagement_strategy was a string; split into a list.")
-    elif strategies is None:
-        d["engagement_strategy"] = []
+    strategy = d.get("engagement_strategy")
+    if isinstance(strategy, list):
+        # Older plans stored this single-choice field as a list. Keep them
+        # readable and rebuildable, but migrate the value to the first choice
+        # so a legacy plan cannot keep producing multiple selections.
+        choices = [s.strip() for s in strategy if isinstance(s, str) and s.strip()]
+        d["engagement_strategy"] = choices[0] if choices else ""
+        if len(choices) > 1:
+            warnings.append(
+                f"{name}: legacy engagement_strategy had {len(choices)} choices; "
+                f"kept only {choices[0]!r}."
+            )
+        elif choices:
+            warnings.append(f"{name}: legacy engagement_strategy list migrated to one choice.")
+    elif isinstance(strategy, str):
+        # v1 also emitted a comma-joined string. Keep only its first choice;
+        # this field is a dropdown, not a multi-select.
+        choices = [s.strip() for s in strategy.split(",") if s.strip()]
+        d["engagement_strategy"] = choices[0] if choices else ""
+        if len(choices) > 1:
+            warnings.append(
+                f"{name}: legacy comma-joined engagement_strategy had multiple "
+                f"choices; kept only {choices[0]!r}."
+            )
+    elif strategy is None:
+        d["engagement_strategy"] = ""
 
     for field in SINGLE_LINE_FIELDS:
         val = d.get(field)
@@ -834,14 +852,14 @@ def validate_day(
             hint="The district template requires it.",
         )
 
-    strategies = d["engagement_strategy"]
-    if not isinstance(strategies, list) or not all(isinstance(s, str) for s in strategies):
+    strategy = d["engagement_strategy"]
+    if not isinstance(strategy, str):
         raise SchemaError(
-            "engagement_not_list",
-            f"{name}'s engagement_strategy must be a list of strings.",
+            "engagement_not_string",
+            f"{name}'s engagement_strategy must be one string.",
             path=f"{path}.engagement_strategy",
         )
-    if not strategies:
+    if not strategy.strip():
         raise SchemaError(
             "engagement_empty",
             f"{name} has no engagement strategy; the district template marks that field required.",
@@ -849,11 +867,10 @@ def validate_day(
         )
     # Off-list values are a warning, not an error — the doc still builds, the
     # Word dropdown just shows a value that isn't in its list.
-    unknown = [s for s in strategies if s not in ENGAGEMENT_OPTIONS]
-    if unknown:
+    if strategy not in ENGAGEMENT_OPTIONS:
         warnings.append(
-            f"{name}: engagement strategy {', '.join(repr(u) for u in unknown)} "
-            f"is not in the district dropdown list; Word will show it as an off-list value."
+            f"{name}: engagement strategy {strategy!r} is not in the district dropdown "
+            "list; Word will show it as an off-list value."
         )
 
     d["no_school"] = False

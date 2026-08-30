@@ -29,7 +29,7 @@ def synthetic_week_fixture(analysis: dict | None = None) -> dict:
             "learning_targets": f"I can identify the {tag}-LEARNING-TARGET-TEST skill.",
             "standards": f"{tag}-STANDARDS-TEST",
             "act_alignment": f"{tag}-ACT-TEST",
-            "engagement_strategy": [ENGAGEMENT_OPTIONS[DAY_NAMES.index(day_name) % len(ENGAGEMENT_OPTIONS)]],
+            "engagement_strategy": ENGAGEMENT_OPTIONS[DAY_NAMES.index(day_name) % len(ENGAGEMENT_OPTIONS)],
             "do_now": f"{tag}-DO-NOW-TEST: bell-ringer placeholder for {day_name}.",
             "during": f"{tag}-DURING-TEST: main-instruction placeholder for {day_name}.",
             "assessment": f"{tag}-ASSESSMENT-TEST: exit-ticket placeholder for {day_name}.",

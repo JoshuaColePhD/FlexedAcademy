@@ -32,9 +32,8 @@ const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' })
  * OWN openTweak/draft state, not a second one, so the table and the deck can
  * never disagree about which field is open. `current` is the plain-text
  * value CellTweak shows in its "current" preview and is what gets sent as
- * the revision's baseline — for a tags field (engagement_strategy) that's
- * the joined string, not the array, matching what the district table's own
- * tags branch already sends. */
+ * the revision's baseline — engagement_strategy is a single string, matching
+ * the district table and Word dropdown. */
 function Field({ label, field, dayIndex, dayName, current, kit, children }) {
   if (kit?.isOpen(dayIndex, field)) {
     return (
@@ -141,13 +140,10 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
         <details>
           <summary>ACT alignment &amp; engagement</summary>
           <div className="flex flex-col gap-3 pt-3">
-            {CARD_SECONDARY.map(({ label, key, cited, tags }) => {
+            {CARD_SECONDARY.map(({ label, key, cited }) => {
               if (!day[key]) return null
-              // Matches the district table's own tags branch: CellTweak needs
-              // a plain string for its "current" preview and as the
-              // revision's baseline, not the raw array.
-              const current = tags
-                ? (Array.isArray(day[key]) ? day[key] : []).join(', ')
+              const displayValue = Array.isArray(day[key])
+                ? day[key][0] || ''
                 : day[key]
               return (
                 <Field
@@ -156,13 +152,13 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
                   field={key}
                   dayIndex={index}
                   dayName={day.name}
-                  current={current}
+                  current={displayValue}
                   kit={kit}
                 >
                   {cited ? (
                     <CitedText text={day[key]} groundedCodes={groundedCodes} subject={subject} />
                   ) : (
-                    day[key]
+                    displayValue
                   )}
                 </Field>
               )

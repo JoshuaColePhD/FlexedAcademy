@@ -57,7 +57,8 @@ identify → apply → analyze → evaluate.
 
 ## Engagement strategies
 
-The district form renders this field as a fixed dropdown. Use only these values:
+The district form renders this field as a single-choice fixed dropdown. Choose
+exactly one value per teaching day, using only these values:
 
 `Cold Call`, `Equity Sticks`, `Think/Pair/Share`, `Small Groups`,
 `A/B Partners`, `Write 1st, Talk 2nd`, `Gallery Walk`, `Rally Coach`

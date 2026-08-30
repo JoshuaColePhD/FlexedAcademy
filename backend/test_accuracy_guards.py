@@ -39,7 +39,7 @@ def _full_day(**overrides) -> dict:
         "learning_targets": "I can analyze rhetoric.",
         "standards": "RHS-1A",
         "act_alignment": "",
-        "engagement_strategy": ["Think-Pair-Share"],
+        "engagement_strategy": "Think-Pair-Share",
         "do_now": "Warm-up question",
         "during": "Main activity",
         "assessment": "Exit ticket",
@@ -70,6 +70,25 @@ def test_validate_day_still_allows_blank_act_alignment():
     course-blind check here would wrongly reject it. See act_alignment's own
     exclusion comment in validate_day."""
     schema.validate_day(_full_day(act_alignment=""))
+
+
+def test_engagement_strategy_is_one_dropdown_choice():
+    assert schema.DAY_JSON_SCHEMA["properties"]["engagement_strategy"] == {
+        "type": "string",
+        "enum": schema.ENGAGEMENT_OPTIONS,
+        "description": "Exactly one strategy from the fixed district list.",
+    }
+    normalized, _ = schema.validate_day(
+        _full_day(engagement_strategy=["Small Groups", "Gallery Walk"])
+    )
+    assert normalized["engagement_strategy"] == "Small Groups"
+
+
+def test_legacy_comma_joined_engagement_strategy_is_collapsed():
+    normalized, _ = schema.validate_day(
+        _full_day(engagement_strategy="Small Groups, Gallery Walk")
+    )
+    assert normalized["engagement_strategy"] == "Small Groups"
 
 
 @pytest.mark.parametrize("field", schema.WEEDEN_SECTION_FIELDS)
