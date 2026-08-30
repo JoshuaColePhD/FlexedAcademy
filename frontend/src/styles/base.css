@@ -4171,36 +4171,39 @@
   }
   /* Traditional chat-bubble tails, kept small and softly embossed so they
      belong to FlexEd's metamorphic paper surfaces instead of becoming cartoon
-     speech balloons. A clipped lower-corner triangle reads as an intentional
-     attachment to the bubble; the old rotated square only exposed its tip and
-     looked like a stray dot on the phone layout. */
+     speech balloons. This is a short, rounded fold at the lower corner rather
+     than a detached triangle: the slanted edge carries the bubble's surface
+     out by a few pixels, and the rounded end keeps it from reading like a
+     cursor or a stray pointer on a phone. */
   .msg-bubble {
     position: relative;
     isolation: isolate;
   }
   .msg-bubble::after {
     position: absolute;
-    bottom: 2px;
+    bottom: -1px;
     /* Keep the pointer above the bubble's own background. A negative layer
        sits behind that background inside the isolated stacking context, which
        made the tail technically present but invisible on mobile and desktop. */
     z-index: 0;
     width: 15px;
-    height: 15px;
+    height: 12px;
     background: rgb(var(--msg-user-bg-rgb) / 0.15);
+    border-radius: 0 0 10px 0;
     filter: drop-shadow(1px 1px 2px rgb(var(--neo-dark-rgb) / 0.18));
     content: '';
-    clip-path: polygon(0 0, 100% 100%, 0 100%);
     pointer-events: none;
   }
   .msg-bubble-user::after {
-    right: -8px;
+    right: -5px;
+    transform: skewX(-24deg);
   }
   .msg-bubble-assistant::after {
-    left: -8px;
+    left: -5px;
     background: var(--paper-raised);
+    border-radius: 0 0 0 10px;
     filter: drop-shadow(-1px 1px 2px rgb(var(--neo-dark-rgb) / 0.15));
-    clip-path: polygon(100% 0, 0 100%, 100% 100%);
+    transform: skewX(24deg);
   }
   /* Error messages have their own left marker and asymmetric radius; adding a
      second visual pointer would compete with that warning treatment. */
