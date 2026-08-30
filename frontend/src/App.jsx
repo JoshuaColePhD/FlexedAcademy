@@ -186,7 +186,6 @@ function RememberClass() {
 function ClassRoutes() {
   const { user } = useAuth()
   const { classId } = useParams()
-  const routeLocation = useLocation()
   // First run, enforced here rather than trusted to whichever page linked in:
   // WelcomePage sends a brand-new account straight to .../onboarding, but
   // RootRedirect and AfterAuthRedirect both land on plain `/c/:classId` for
@@ -209,7 +208,12 @@ function ClassRoutes() {
       <AppShell>
         <RouteTransition>
           <Suspense fallback={<BootScreen label="Loading workspace…" />}>
-            <Routes location={routeLocation}>
+            {/* Let the nested router read the current location from context.
+                Passing the parent render's location here became stale while
+                RouteTransition kept the previous class screen mounted for
+                its exit animation, which made React Router reject a pathname
+                from the old class under the new class match. */}
+            <Routes>
           {/* A new plan IS the home screen. There is no calendar route: the
               school calendar still shapes every generation, from
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
