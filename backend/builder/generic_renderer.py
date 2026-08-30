@@ -104,10 +104,9 @@ def _render_body_cell_content(cell, row_spec: dict, day: dict, day_index: int, d
         value = _day_value(day, field)
         if row_spec.get("control_type") == "dropdown":
             options = dropdown_options or []
-            # A dropdown has one selected value. Older plans may still carry
-            # the former list shape, so keep only its first choice rather than
-            # rendering a comma-separated multi-selection.
-            text = str(value[0]) if isinstance(value, list) and value else str(value or "")
+            # This dropdown supports one or two selected values. Cap legacy
+            # input here too, since codegen fixtures can bypass validation.
+            text = ", ".join(str(s) for s in value[:2]) if isinstance(value, list) else str(value or "")
             write_dropdown(
                 cell, text, options,
                 control_id=row_spec.get("dropdown_control_base_id", -1823567252) + day_index,

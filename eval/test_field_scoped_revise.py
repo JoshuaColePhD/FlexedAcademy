@@ -41,7 +41,7 @@ WEDNESDAY = {
     "learning_targets": "I can trace dramatic irony across a narrative.",
     "standards": "ELA21.11.R2 -- Analyze how an author develops a point of view",
     "act_alignment": "TOD 502",
-    "engagement_strategy": "Think/Pair/Share",
+    "engagement_strategy": ["Think/Pair/Share"],
     "do_now": "What does Fortunato think is happening?",
     "during": "Jigsaw the middle section; each group tracks one ironic reversal.",
     "assessment": "Exit ticket: one reversal, cited.",
@@ -195,7 +195,7 @@ check("no audit", calls.audited == 0, f"audited {calls.audited}x")
 check("scoped call made", calls.scoped == ["do_now"], str(calls.scoped))
 
 for field in ("learning_targets", "during", "assessment", "engagement_strategy"):
-    value = "Cold Call" if field == "engagement_strategy" else "I can do the new thing." if field == "learning_targets" else "New text."
+    value = ["Cold Call"] if field == "engagement_strategy" else "I can do the new thing." if field == "learning_targets" else "New text."
     c = revise(field, new_value=value)
     check(f"{field}: no retrieval", c.retrieved == 0)
     check(f"{field}: no audit", c.audited == 0)

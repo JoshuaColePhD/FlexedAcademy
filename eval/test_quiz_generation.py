@@ -63,7 +63,7 @@ SAMPLE_PLAN = {
             "learning_targets": "I can identify verbal, situational, and dramatic irony in a text.",
             "standards": "RHS-2.C — Explain how word choice conveys tone through irony.",
             "act_alignment": "TOD 502",
-            "engagement_strategy": "Think/Pair/Share",
+            "engagement_strategy": ["Think/Pair/Share"],
             "do_now": "Read the opening of 'The Cask of Amontillado.'",
             "during": "Annotate each ironic statement Montresor makes.",
             "assessment": "Exit ticket: one example of dramatic irony, cited.",

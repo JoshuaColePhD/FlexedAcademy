@@ -285,9 +285,8 @@ def week_system_prompt(
 Design a cohesive arc across the template-defined day axis, {' -> '.join(template_days)}. Scaffold the learning
 targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For EVERY teaching day, you must identify the closest-fitting primary standard from the "--- PRIMARY COURSE STANDARDS ---" block. HOWEVER, if no primary course standards are provided (e.g. for a Pre-AP class), you MUST leave the `standards` field blank. NEVER put ACT standards in the `standards` field.
 Also complete `vocabulary`, `reteach_small_groups`, and `cross_curricular_connection` for every teaching day. These are printed in school templates that require each section; make them specific to that day's lesson instead of repeating generic filler.
-For `engagement_strategy`, choose exactly ONE value from the fixed district
-dropdown list. It is a single-choice field, never an array or a comma-separated
-list of strategies.
+For `engagement_strategy`, choose ONE or TWO values from the fixed district
+dropdown list. It is limited to two strategies, never three or more.
 THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, `act_alignment`
 is MANDATORY on every teaching day — pick the closest-fitting companion ACT
 standard from that block for EACH day, even if it's a broader skill than the
@@ -367,9 +366,8 @@ blank just because nothing matches perfectly. Only leave it empty if that
 block is absent entirely. Every code you cite must come from the retrieved
 standards block.
 
-If the field is `engagement_strategy`, return exactly one strategy from the
-fixed district dropdown list — never multiple strategies, an array, or a
-comma-separated list.
+If the field is `engagement_strategy`, return one or two strategies from the
+fixed district dropdown list — never more than two.
 
 Return JSON for that one day matching this schema exactly:
 

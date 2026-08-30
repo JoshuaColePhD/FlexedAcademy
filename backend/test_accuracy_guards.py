@@ -39,7 +39,7 @@ def _full_day(**overrides) -> dict:
         "learning_targets": "I can analyze rhetoric.",
         "standards": "RHS-1A",
         "act_alignment": "",
-        "engagement_strategy": "Think-Pair-Share",
+        "engagement_strategy": ["Think-Pair-Share"],
         "do_now": "Warm-up question",
         "during": "Main activity",
         "assessment": "Exit ticket",
@@ -72,23 +72,28 @@ def test_validate_day_still_allows_blank_act_alignment():
     schema.validate_day(_full_day(act_alignment=""))
 
 
-def test_engagement_strategy_is_one_dropdown_choice():
+def test_engagement_strategy_allows_one_or_two_dropdown_choices():
     assert schema.DAY_JSON_SCHEMA["properties"]["engagement_strategy"] == {
-        "type": "string",
-        "enum": schema.ENGAGEMENT_OPTIONS,
-        "description": "Exactly one strategy from the fixed district list.",
+        "type": "array",
+        "items": {"type": "string", "enum": schema.ENGAGEMENT_OPTIONS},
+        "description": "One or two strategies from the fixed district list.",
     }
-    normalized, _ = schema.validate_day(
-        _full_day(engagement_strategy=["Small Groups", "Gallery Walk"])
-    )
-    assert normalized["engagement_strategy"] == "Small Groups"
+    normalized, _ = schema.validate_day(_full_day(engagement_strategy=["Small Groups", "Gallery Walk"]))
+    assert normalized["engagement_strategy"] == ["Small Groups", "Gallery Walk"]
 
 
-def test_legacy_comma_joined_engagement_strategy_is_collapsed():
+def test_legacy_comma_joined_engagement_strategy_is_migrated():
     normalized, _ = schema.validate_day(
         _full_day(engagement_strategy="Small Groups, Gallery Walk")
     )
-    assert normalized["engagement_strategy"] == "Small Groups"
+    assert normalized["engagement_strategy"] == ["Small Groups", "Gallery Walk"]
+
+
+def test_engagement_strategy_caps_legacy_values_at_two():
+    normalized, _ = schema.validate_day(
+        _full_day(engagement_strategy=["Small Groups", "Gallery Walk", "Rally Coach"])
+    )
+    assert normalized["engagement_strategy"] == ["Small Groups", "Gallery Walk"]
 
 
 @pytest.mark.parametrize("field", schema.WEEDEN_SECTION_FIELDS)

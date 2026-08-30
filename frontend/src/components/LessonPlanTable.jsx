@@ -461,8 +461,8 @@ function PlanTable({
                   }
 
                   if (isOpen(dayIndex, row.key)) {
-                    const current = Array.isArray(day[row.key])
-                      ? day[row.key][0] || ''
+                    const current = row.tags
+                      ? (Array.isArray(day[row.key]) ? day[row.key] : [day[row.key]]).filter(Boolean).join(', ')
                       : day[row.key]
                     return (
                       <td key={day.name} className="is-tweaking">
@@ -471,14 +471,20 @@ function PlanTable({
                     )
                   }
 
-                  if (row.key === 'engagement_strategy') {
-                    const strategy = Array.isArray(day[row.key])
-                      ? day[row.key][0] || ''
+                  if (row.tags) {
+                    const list = Array.isArray(day[row.key])
+                      ? day[row.key]
                       : day[row.key]
+                        ? [day[row.key]]
+                        : []
                     return (
                       <td key={day.name} {...editableProps(dayIndex, row.key)}>
                         <div className="strategy-tags">
-                          {strategy ? <span className="strategy-tag">{strategy}</span> : null}
+                          {list.slice(0, 2).map((s) => (
+                            <span className="strategy-tag" key={s}>
+                              {s}
+                            </span>
+                          ))}
                         </div>
                         <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
                       </td>

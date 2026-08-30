@@ -17,7 +17,7 @@ Input JSON schema (see example-week.json):
       "standards": "2.A",                        # course/content standard code(s)
       "act_alignment": "TOD 502, ORG 403",        # ACT English code(s), see act-english-standards.md
       "learning_targets": "I can ...",            # must start with "I can…"
-      "engagement_strategy": "Think/Pair/Share",  # one dropdown selection
+      "engagement_strategy": ["Think/Pair/Share", "Cold Call"],  # one or two dropdown selections
       "do_now": "...",                            # bell work, ~5 min
       "during": "...",                            # full instructional narrative, no sub-labels
       "assessment": "..."                         # the evidence/artifact produced
@@ -184,10 +184,13 @@ def build(data, out_path):
                 build_lesson_cell(cell, d)
             elif key == "engagement_strategy":
                 strategy = d.get("engagement_strategy", "")
-                # Legacy plans may reach the standalone builder without first
-                # passing through schema.normalize_day(). A dropdown has one
-                # selected value, so never join an old list into the cell.
-                text = str(strategy[0]) if isinstance(strategy, list) and strategy else str(strategy)
+                # Keep the standalone builder safe for legacy/malformed input:
+                # this field supports at most two selected values.
+                text = (
+                    ", ".join(str(s) for s in strategy[:2])
+                    if isinstance(strategy, list)
+                    else str(strategy)
+                )
                 # Large negative int32s, mirroring what Google Docs itself
                 # emits; must be unique per control.
                 write_dropdown(cell, text, ENGAGEMENT_OPTIONS,
