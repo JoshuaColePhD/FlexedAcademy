@@ -338,9 +338,10 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
   }, [cls.id, cls.subject, cls.grade])
 
   const selectedFramework = findFramework(frameworks, subject)
-  const generatedName = selectedFramework
-    ? `${shortLabel(selectedFramework)} · ${gradeLabel(grade)}`
-    : subject || cls.name || 'Choose a course of study'
+  const courseLabel = selectedFramework ? shortLabel(selectedFramework) : shortLabel(null, subject)
+  const generatedName = courseLabel && gradeLabel(grade)
+    ? `${courseLabel} · ${gradeLabel(grade)}`
+    : courseLabel || cls.name || 'Choose a course of study'
   const isChanged = subject !== cls.subject || grade !== gradeSelectValue(cls.grade)
 
   const submit = async (e) => {
