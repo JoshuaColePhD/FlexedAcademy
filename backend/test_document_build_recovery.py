@@ -5,8 +5,8 @@ inspectable contract in db.py and exercised in integration once DATABASE_URL
 is available. They protect the critical promise that transient build failures
 are retried automatically but cannot loop forever.
 """
-from pathlib import Path
 
+from pathlib import Path
 
 DB_SOURCE = Path(__file__).with_name("db.py").read_text()
 

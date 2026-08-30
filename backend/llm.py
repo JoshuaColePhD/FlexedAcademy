@@ -27,7 +27,12 @@ from . import curriculum, db
 from .config import settings
 from .embeddings import embed_query
 from .errors import AppError
-from .prompts import day_field_system_prompt, day_system_prompt, output_length_block, week_system_prompt
+from .prompts import (
+    day_field_system_prompt,
+    day_system_prompt,
+    output_length_block,
+    week_system_prompt,
+)
 from .retrieval import RetrievalResult
 from .schema import (
     BUILDER_LAYOUT_JSON_SCHEMA,
@@ -201,7 +206,11 @@ def output_length_for(user_id: str) -> str:
     value = str(user.get("output_length") or "").strip().lower()
     if value in _OUTPUT_LENGTH_VALUES:
         return value
-    match = re.search(r"\[response length:\s*(short|medium|long)\]", user.get("custom_instructions") or "", re.I)
+    match = re.search(
+        r"\[response length:\s*(short|medium|long)\]",
+        user.get("custom_instructions") or "",
+        re.IGNORECASE,
+    )
     return match.group(1).lower() if match else "medium"
 
 
