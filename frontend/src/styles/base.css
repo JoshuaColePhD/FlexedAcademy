@@ -4270,47 +4270,50 @@
     border-left: 3px solid var(--mark);
     border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
   }
-  /* iMessage-style tails. The speaking-side lower corner tightens, then a
-     short curved teardrop continues from that corner. Keeping the whole tail
-     as one same-colour surface means it remains clean over FlexEd's soft
-     gradient instead of requiring a fake rectangular "cutout" behind it. */
+  /* iMessage-style tails. A tail belongs only to the final bubble in a run;
+     it is a small continuation of the tightened lower corner, not a second
+     decorative triangle floating beside every message. */
   .msg-bubble {
     position: relative;
-    isolation: isolate;
   }
   .msg-bubble::after {
+    display: none;
     position: absolute;
-    bottom: -1px;
-    /* A negative layer sits behind the bubble's own background inside the
-       isolated stacking context, which made the tail invisible on phone and
-       desktop. Keep it at the bubble layer, safely outside the text area. */
+    bottom: 0;
+    /* This tiny curved wedge overlaps the bubble by a pixel. That overlap is
+       what makes it read as one continuous silhouette rather than a loose
+       triangle attached at the edge. */
     z-index: 0;
-    width: 18px;
-    height: 16px;
+    width: 11px;
+    height: 11px;
     background: rgb(var(--msg-user-bg-rgb) / 0.15);
-    filter: drop-shadow(1px 1px 1px rgb(var(--neo-dark-rgb) / 0.13));
     content: '';
-    /* The polygon is a conservative fallback for older embedded WebViews.
-       Modern Safari and Chromium get the exact curved iMessage-like form. */
-    clip-path: polygon(0 0, 22% 14%, 48% 44%, 100% 88%, 72% 100%, 28% 94%, 0 78%);
-    -webkit-clip-path: path("M 0 0 C 4 3 8 10 18 14 C 12 16 5 15 0 12 Z");
-    clip-path: path("M 0 0 C 4 3 8 10 18 14 C 12 16 5 15 0 12 Z");
+    -webkit-clip-path: path("M 0 0 C 1 4 4 8 11 11 C 6 11 2 11 0 10 Z");
+    clip-path: path("M 0 0 C 1 4 4 8 11 11 C 6 11 2 11 0 10 Z");
     pointer-events: none;
   }
+  .msg-bubble.has-tail::after {
+    display: block;
+  }
   .msg-bubble-user::after {
-    right: -8px;
+    right: -5px;
   }
   .msg-bubble-user {
+    border-bottom-right-radius: var(--r-lg);
+  }
+  .msg-bubble-user.has-tail {
     border-bottom-right-radius: 5px;
   }
   .msg-bubble-assistant::after {
-    left: -8px;
+    left: -5px;
     background: var(--paper-raised);
-    filter: drop-shadow(-1px 1px 1px rgb(var(--neo-dark-rgb) / 0.12));
-    -webkit-clip-path: path("M 18 0 C 14 3 10 10 0 14 C 6 16 13 15 18 12 Z");
-    clip-path: path("M 18 0 C 14 3 10 10 0 14 C 6 16 13 15 18 12 Z");
+    -webkit-clip-path: path("M 11 0 C 10 4 7 8 0 11 C 5 11 9 11 11 10 Z");
+    clip-path: path("M 11 0 C 10 4 7 8 0 11 C 5 11 9 11 11 10 Z");
   }
   .msg-bubble-assistant {
+    border-bottom-left-radius: var(--r-lg);
+  }
+  .msg-bubble-assistant.has-tail {
     border-bottom-left-radius: 5px;
   }
   /* Error messages have their own left marker and asymmetric radius; adding a

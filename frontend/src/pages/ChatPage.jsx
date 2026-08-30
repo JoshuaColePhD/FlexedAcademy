@@ -3276,6 +3276,7 @@ export function ChatPage() {
                       hideWeekStrip={!isPhone}
                       voiceOpen={voiceOpen}
                       showTimestamp={groupEnd}
+                      showTail={groupEnd}
                     />
                   </div>
                 </div>
