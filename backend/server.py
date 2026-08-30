@@ -322,6 +322,11 @@ if os.path.isdir(dist_dir):
 
     # Resolved once, and every candidate path has to stay underneath it.
     dist_root = os.path.realpath(dist_dir)
+    # The hashed files under /assets are safe to cache, but index.html names
+    # the current bundle. Caching it lets a deployed SPA keep pointing at the
+    # previous bundle until a manual refresh, which is exactly the blank-route
+    # failure seen when clicking a workspace link after a deploy.
+    spa_index_headers = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
@@ -346,7 +351,7 @@ if os.path.isdir(dist_dir):
         """
         index = os.path.join(dist_root, "index.html")
         if not full_path:
-            return FileResponse(index)
+            return FileResponse(index, headers=spa_index_headers)
         candidate = os.path.realpath(os.path.join(dist_root, full_path))
         # os.path.commonpath, not startswith: "/a/dist-secrets" startswith
         # "/a/dist" is True, and realpath resolves symlinks out of the way first.
@@ -356,7 +361,7 @@ if os.path.isdir(dist_dir):
         # Anything outside the build directory is not "forbidden", it is simply
         # not a file this app serves — so it falls through to the SPA exactly
         # like any other unknown client-side route.
-        return FileResponse(index)
+        return FileResponse(index, headers=spa_index_headers)
 else:
     @app.get("/")
     def root():
