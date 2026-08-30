@@ -925,6 +925,11 @@ export function ChatPage() {
     () => (calendar?.weeks || []).find((w) => w.week === conversationWeek) || null,
     [calendar, conversationWeek]
   )
+  /* A missing school calendar is the calendar equivalent of a missing pacing
+     guide: the school can still be selected, but the week control cannot be
+     trusted until the source file is uploaded. Keep this as one derived fact
+     so every header layout shows the same state. */
+  const calendarMissing = Boolean(calendar?.school && calendar.school.has_calendar === false)
   /* Every week worth offering: never a week the school is shut, never one
      already behind us — EXCEPT the one this chat is already pinned to, which
      stays listed however old it is. Dropping it would leave the select with
@@ -3187,6 +3192,13 @@ export function ChatPage() {
               {!hasPacingGuide ? (
                 <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden="true" />
               ) : null}
+              {calendarMissing ? (
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-red-500"
+                  aria-label="School calendar needs to be uploaded"
+                  title="School calendar needs to be uploaded"
+                />
+              ) : null}
               <ChevronDown size={14} aria-hidden="true" className="shrink-0 text-ink-faint" />
             </button>
           </>
@@ -3244,8 +3256,8 @@ export function ChatPage() {
           </div>
         )}
         <div className="ml-auto flex min-w-0 items-center gap-3">
-          {!isPhone && classId && classId !== 'default' && classes.length > 0 ? (
-            <div className="min-w-0 shrink">
+          {!isPhone && !isLandscapePhone && classId && classId !== 'default' && classes.length > 0 ? (
+            <div className="flex min-w-0 shrink items-center gap-1.5">
               <WeekPicker
                 options={weekOptions}
                 value={conversationWeek}
@@ -3253,40 +3265,35 @@ export function ChatPage() {
                 schoolName={calendar?.school?.name}
                 disabled={busy}
               />
+              {calendarMissing ? (
+                <Tooltip
+                  interactive
+                  position="bottom-left"
+                  content={
+                    <span>
+                      No calendar on file.{' '}
+                      <Link
+                        to={`/c/${classId}/settings#section-school-calendar`}
+                        className="underline transition-colors hover:text-white"
+                      >
+                        Upload one in settings
+                      </Link>
+                    </span>
+                  }
+                >
+                  <Link
+                    to={`/c/${classId}/settings#section-school-calendar`}
+                    className="tap-target block h-2 w-2 shrink-0 rounded-full bg-red-500"
+                    aria-label="No school calendar on file — tap to upload one"
+                  />
+                </Tooltip>
+              ) : null}
             </div>
           ) : null}
-          {!isPhone && calendar?.school?.name ? (
-            !calendar.school.has_calendar ? (
-              <Tooltip
-                interactive
-                position="bottom-left"
-                content={
-                  <span>
-                    No calendar on file.{' '}
-                    <Link
-                      to={`/c/${classId}/settings#section-school-calendar`}
-                      className="underline transition-colors hover:text-white"
-                    >
-                      Upload one in settings
-                    </Link>
-                  </span>
-                }
-              >
-                <div className="hidden min-w-0 cursor-default items-center gap-2 md:flex">
-                  <span className="truncate text-xs font-medium text-ink-muted">
-                    {calendar.school.name}
-                  </span>
-                  <div
-                    className="h-2 w-2 shrink-0 rounded-full bg-red-500"
-                    aria-hidden="true"
-                  />
-                </div>
-              </Tooltip>
-            ) : (
-              <span className="hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
-                {calendar.school.name}
-              </span>
-            )
+          {!isPhone && !isLandscapePhone && calendar?.school?.name ? (
+            <span className="hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
+              {calendar.school.name}
+            </span>
           ) : null}
           {hasArtifact ? (
             <button
