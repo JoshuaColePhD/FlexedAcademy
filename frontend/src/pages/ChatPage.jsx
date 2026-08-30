@@ -3323,7 +3323,7 @@ export function ChatPage() {
         </div>
       </div>
 
-      {isPhone ? (
+      {isPhone || isLandscapePhone ? (
         <ChatHeaderSheet
           open={headerSheetOpen}
           onClose={() => setHeaderSheetOpen(false)}
@@ -3363,7 +3363,7 @@ export function ChatPage() {
         />
       ) : (
         <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
-          <div className={`chat-column mx-auto flex w-full flex-col px-gutter py-8 transition-all duration-500 ease-out ${
+          <div className={`chat-transcript-column chat-column mx-auto flex w-full flex-col px-gutter py-8 transition-all duration-500 ease-out ${
             voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
           }`}>
             {messages.map((m, i) => {
@@ -3565,7 +3565,7 @@ export function ChatPage() {
       {/* The dock. Composer stays in the SAME slot of the same parent across
           empty/non-empty transitions, preserving focus, the recorder, and the
           fixed-shape input shell. Only the wrapper's className may change. */}
-      <div className="shrink-0 bg-transparent pb-5 pt-3">
+      <div className="composer-dock-surface shrink-0 bg-transparent pb-5 pt-3">
         <div className="relative mx-auto w-full max-w-4xl px-gutter">
           {/* Latest is an anchored affordance, not another composer row. It
               sits above the dock without contributing height, so following a

@@ -2827,6 +2827,41 @@
      width by default, while an opened rail remains useful instead of taking
      a desktop-sized bite out of the conversation. */
   @media (min-width: 768px) and (max-width: 1023.98px) and (orientation: landscape) and (max-height: 520px) {
+    /* Safari reports an iPhone in landscape as a tablet-width viewport. Give
+       that short viewport an app-like edge-to-edge frame and spend its scarce
+       height on the transcript and composer instead of decorative margins. */
+    .app-shell-frame {
+      padding: 0 !important;
+      gap: 0 !important;
+    }
+    .app-shell-main {
+      border-radius: 0 !important;
+    }
+    .chat-banner-reveal > div > div {
+      padding-block: 4px;
+    }
+    .chat-banner-reveal > div > div p {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .chat-context-strip {
+      min-height: 24px;
+      padding-inline: 0.75rem;
+    }
+    .chat-context-strip > span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .chat-transcript-column {
+      padding-top: var(--sp-3) !important;
+      padding-bottom: var(--sp-3) !important;
+    }
+    .composer-dock-surface {
+      padding-top: 6px !important;
+      padding-bottom: max(6px, var(--safe-b)) !important;
+    }
     .artifact-drawer.is-open {
       width: min(232px, 29vw);
     }
@@ -4496,6 +4531,15 @@
     background: var(--mark-tint);
     border-left: 3px solid var(--mark);
     border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
+  }
+  /* Message bubbles sit directly on the transcript, so the raised surface's
+     full white upper-left highlight reads as an unintended white outline
+     around the lavender user bubble (especially on narrow screens). Keep a
+     restrained lower-right lift for separation, but let the bubble's own
+     fill—not a bright halo—define its edge. The composer and controls keep
+     the full .neo-raised treatment. */
+  .msg-bubble.neo-raised {
+    box-shadow: 4px 5px 12px rgb(var(--neo-dark-rgb) / 0.26);
   }
   /* Consecutive messages still nest visually through their corner radii, but
      the decorative speech-bubble tails are intentionally gone. */

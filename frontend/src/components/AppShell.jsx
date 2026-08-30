@@ -711,7 +711,7 @@ export function AppShell({ children }) {
   }
 
   return (
-    <div className="flex h-full w-full overflow-hidden p-2 gap-2 relative z-10">
+    <div className="app-shell-frame flex h-full w-full overflow-hidden p-2 gap-2 relative z-10">
       <div className="app-blob" aria-hidden="true" />
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
@@ -782,7 +782,7 @@ export function AppShell({ children }) {
         initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.32, ease: [0.22, 0.8, 0.24, 1] }}
-        className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
+        className="app-shell-main relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
         id="main"
       >
         <OnboardingWizardHost />
