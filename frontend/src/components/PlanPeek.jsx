@@ -11,7 +11,9 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 export function PlanPeek({ open, onToggle, weekLabel, children }) {
   const pointerRef = useRef(null)
   const suppressClickRef = useRef(false)
-  const [dragDistance, setDragDistance] = useState(0)
+  const sheetRef = useRef(null)
+  const previewRef = useRef(false)
+  const [previewing, setPreviewing] = useState(false)
   const [dragging, setDragging] = useState(false)
 
   // These are intentionally short: the sheet should feel like a deliberate
@@ -24,6 +26,24 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     event.currentTarget.releasePointerCapture?.(event.pointerId)
   }
 
+  // Pointer moves can arrive at 120Hz on current phones. Updating React state
+  // for every pixel forced the full document tree to re-render under the
+  // finger; write the two paint-only CSS variables directly instead.
+  const setPreview = (distance) => {
+    const progress = open
+      ? Math.max(0, 1 - distance / CLOSE_DRAG_DISTANCE)
+      : Math.min(1, distance / OPEN_DRAG_DISTANCE)
+    sheetRef.current?.style.setProperty('--plan-peek-drag', `${distance}px`)
+    sheetRef.current?.style.setProperty('--plan-peek-progress', progress)
+    if (distance > 0 && !previewRef.current) {
+      previewRef.current = true
+      setPreviewing(true)
+    } else if (distance === 0 && previewRef.current) {
+      previewRef.current = false
+      setPreviewing(false)
+    }
+  }
+
   const finishPointer = (event) => {
     const start = pointerRef.current
     if (!start) return
@@ -32,7 +52,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     const velocity = delta / elapsed
     pointerRef.current = null
     setDragging(false)
-    setDragDistance(0)
+    setPreview(0)
     releasePointer(event)
 
     // A deliberate drag should not also fire the button's synthetic click.
@@ -54,7 +74,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     pointerRef.current = { y: event.clientY, at: performance.now() }
     setDragging(true)
-    setDragDistance(0)
+    setPreview(0)
     event.currentTarget.setPointerCapture?.(event.pointerId)
     if (event.cancelable) event.preventDefault()
   }
@@ -70,7 +90,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     const next = open
       ? Math.min(CLOSE_DRAG_DISTANCE, Math.max(0, delta))
       : Math.min(OPEN_DRAG_DISTANCE, Math.max(0, -delta))
-    setDragDistance(next)
+    setPreview(next)
     if (event.cancelable) event.preventDefault()
   }
 
@@ -78,7 +98,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     if (!pointerRef.current) return
     pointerRef.current = null
     setDragging(false)
-    setDragDistance(0)
+    setPreview(0)
     releasePointer(event)
   }
 
@@ -87,17 +107,10 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     onToggle(!open)
   }
 
-  const revealProgress = open
-    ? Math.max(0, 1 - dragDistance / CLOSE_DRAG_DISTANCE)
-    : Math.min(1, dragDistance / OPEN_DRAG_DISTANCE)
-
   return (
     <section
-      className={`plan-peek${open ? ' is-open' : ''}${dragging ? ' is-dragging' : ''}${dragDistance ? ' is-drag-preview' : ''}`}
-      style={{
-        '--plan-peek-drag': `${dragDistance}px`,
-        '--plan-peek-progress': revealProgress,
-      }}
+      ref={sheetRef}
+      className={`plan-peek${open ? ' is-open' : ''}${dragging ? ' is-dragging' : ''}${previewing ? ' is-drag-preview' : ''}`}
       aria-label="Lesson plan preview"
     >
       <button

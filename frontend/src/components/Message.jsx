@@ -202,13 +202,13 @@ function MessageImpl({
   return (
     <motion.div
       className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
-      initial={isUser ? { opacity: 0, scale: 0.97, y: 6 } : { opacity: 0, y: 10 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={
-        isUser
-          ? { type: 'spring', stiffness: 420, damping: 28 }
-          : { type: 'spring', stiffness: 220, damping: 24 }
-      }
+      initial={isUser ? { opacity: 0, y: 5 } : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      /* Springs were applied to every transcript turn, including streamed
+         replies that were already changing height. A short transform/opacity
+         tween is composited, predictable, and does not overshoot while text
+         arrives. */
+      transition={{ duration: isUser ? 0.18 : 0.22, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className={`flex max-w-full flex-col ${isUser ? 'items-end' : 'w-full items-start'}`}>
         {/* Thinking dots and the real reply used to be two entirely separate
@@ -236,12 +236,10 @@ function MessageImpl({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              // layout: as streamed markdown grows or reflows (a list or
-              // heading forming mid-reply), the bubble's own height changes
-              // — without this it just snaps to the new size every chunk.
-              // Framer animates the size change itself (FLIP), so growth
-              // reads as the bubble easing open rather than jumping.
-              layout="size"
+              // Do not FLIP-animate a streaming bubble's height. Every token
+              // changed layout and forced a second measurement of the entire
+              // transcript, which was the most visible source of hitching on
+              // phones. Its content simply flows while this wrapper fades in.
             >
               {/* An error reply used to render as ordinary assistant body copy, on
                   the same ruled lines as a real plan — `isError` only tinted the

@@ -2701,13 +2701,16 @@ export function ChatPage() {
       setArtifactContentReady(true)
       return undefined
     }
-    let raf2 = null
+    let timer = null
     const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setArtifactContentReady(true))
+      // Let the overlay claim a few compositor frames before mounting its
+      // dense document table. Rendering the table during the first transform
+      // frame is what made otherwise-smooth panel motion stutter on desktop.
+      timer = window.setTimeout(() => setArtifactContentReady(true), 120)
     })
     return () => {
       cancelAnimationFrame(raf1)
-      if (raf2 != null) cancelAnimationFrame(raf2)
+      if (timer != null) window.clearTimeout(timer)
     }
   }, [overlayOpen, isPhone, tabletLandscapePlanOpen])
   /* While the document overlay covers the transcript, a reply has nowhere

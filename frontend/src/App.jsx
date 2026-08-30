@@ -481,10 +481,34 @@ function BootMessage() {
   )
 }
 
+/* Motion has to degrade as a system, not one component at a time. Coarse
+ * touch hardware pays the highest price for nested backdrop filters, animated
+ * shadows, and ambient gradient repaints; flag it once so CSS can retain
+ * meaningful transform motion while dropping that decorative work. */
+function MotionProfile() {
+  useEffect(() => {
+    const coarse = window.matchMedia('(hover: none) and (pointer: coarse)')
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => {
+      const constrained = reduced.matches || coarse.matches || navigator.connection?.saveData || (navigator.hardwareConcurrency || 8) <= 4
+      document.documentElement.dataset.motion = constrained ? 'lite' : 'full'
+    }
+    update()
+    coarse.addEventListener('change', update)
+    reduced.addEventListener('change', update)
+    return () => {
+      coarse.removeEventListener('change', update)
+      reduced.removeEventListener('change', update)
+    }
+  }, [])
+  return null
+}
+
 export default function App() {
   return (
     <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
       <MotionConfig reducedMotion="user">
+        <MotionProfile />
         <ErrorBoundary>
           <QueryClientProvider client={queryClient}>
             <BrowserRouter>

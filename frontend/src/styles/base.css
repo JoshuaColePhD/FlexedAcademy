@@ -91,6 +91,31 @@
       scroll-behavior: auto !important;
     }
   }
+
+  /* Mobile and lower-power devices retain the app's purposeful movement, but
+     drop the expensive decoration underneath it. Blur and animated shadow
+     rasters are the usual cause of a transform that looks smooth in DevTools
+     but hitches on a real phone. */
+  :root[data-motion='lite'] .app-blob,
+  :root[data-motion='lite'] .onboarding-blob,
+  :root[data-motion='lite'] .btn-blob::before {
+    animation-play-state: paused !important;
+  }
+  :root[data-motion='lite'] .glass-panel,
+  :root[data-motion='lite'] .artifact-overlay,
+  :root[data-motion='lite'] .btn-blob::after {
+    background-image: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  :root[data-motion='lite'] .glass-panel {
+    background-color: var(--paper-raised) !important;
+  }
+  :root[data-motion='lite'] .neo-raised,
+  :root[data-motion='lite'] .composer-shell,
+  :root[data-motion='lite'] .mobile-composer-plan-sheet {
+    transition-property: transform, opacity, border-color !important;
+  }
 }
 
 @layer components {
@@ -840,12 +865,11 @@
        .artifact-overlay's own rounded ones (border-radius alone doesn't
        clip children; it just draws the outer edge). */
     overflow: hidden;
-    background-color: rgba(255, 255, 255, 0.22);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-    background-size: 120px 120px, auto;
-    backdrop-filter: blur(26px) saturate(160%);
-    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    /* The document is a reading surface. A static translucent material is
+       calmer than animating a 26px backdrop blur across a live transcript,
+       and avoids a full repaint behind the panel on every frame. */
+    background-color: rgb(var(--paper-raised-rgb) / 0.96);
+    background-image: none;
     border: 1px solid rgba(255, 255, 255, 0.55);
     box-shadow:
       inset 0 1px 1px rgba(255, 255, 255, 0.7),
@@ -862,7 +886,7 @@
        to its own compositor layer BEFORE the animation starts rather than
        on the first frame of it, so that promotion cost doesn't show up as
        a hitch at the start of the very motion this is trying to smooth. */
-    will-change: transform;
+    will-change: auto;
     animation: artifact-slide-in 520ms var(--ease-glide) both;
     /* All four corners (Josh's own ask, 2026-08-27 — the right two read as
        harsh, square-cut against the rest of this app's rounded-corner
@@ -2290,6 +2314,8 @@
      internal scroll region so swiping through a long plan never steals the
      transcript's scroll position. */
   .plan-peek {
+    --plan-peek-drag: 0px;
+    --plan-peek-progress: 0;
     position: static;
     display: flex;
     min-width: 0;
@@ -5871,14 +5897,14 @@
      without a diff view. Everything else is entry and touch feedback. All of it
      is already gated by the prefers-reduced-motion block in @layer base. */
   .fa-rise {
-    animation: fa-rise 500ms var(--ease-out) both;
+    animation: fa-rise var(--t-enter) var(--ease-glide) both;
   }
   /* Lists enter as one coordinated handoff instead of every row arriving on
      the exact same frame. The short stagger is deliberately capped so a long
      history never feels like it is still loading; rows with their own exit
      animation keep that removal motion intact. */
   .fa-list-stagger > :not(.fa-row-exit) {
-    animation: fa-rise 360ms var(--ease-out) both;
+    animation: fa-rise var(--t-enter) var(--ease-glide) both;
   }
   .fa-list-stagger > :nth-child(2) { animation-delay: 28ms; }
   .fa-list-stagger > :nth-child(3) { animation-delay: 56ms; }
@@ -5899,7 +5925,7 @@
      comment). Same rise motion, same duration, just transform instead of
      opacity+transform. */
   .fa-rise-panel {
-    animation: fa-rise-panel 500ms var(--ease-out) both;
+    animation: fa-rise-panel var(--t-panel) var(--ease-glide) both;
   }
   .fa-lift {
     transition: transform var(--t-base) var(--ease);
@@ -5916,7 +5942,7 @@
      quieter than fa-pop: the content is already present, so the motion only
      confirms that it has settled into place. */
   .fa-settle {
-    animation: fa-settle 360ms var(--ease-spring) both;
+    animation: fa-settle var(--t-enter) var(--ease-glide) both;
   }
   .fa-shadow-lift {
     animation: fa-shadow-lift 360ms var(--ease-out) both;
@@ -5931,7 +5957,7 @@
     animation: fa-input-flash 450ms var(--ease-out) both;
   }
   .fa-ready-pop {
-    animation: fa-ready-pop 320ms var(--ease-spring) both;
+    animation: fa-ready-pop var(--t-enter) var(--ease-glide) both;
   }
   .fa-progress-sweep {
     animation: fa-progress-sweep 1.8s var(--ease) infinite;
@@ -6560,12 +6586,12 @@
      plastic" — frosted glass has a physical grain to it, a flat blur alone
      doesn't. */
   .glass-panel {
-    background-color: rgba(255, 255, 255, 0.22) !important;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E") !important;
-    background-repeat: repeat !important;
-    background-size: 120px 120px, auto !important;
-    backdrop-filter: blur(26px) saturate(160%) !important;
-    -webkit-backdrop-filter: blur(26px) saturate(160%) !important;
+    /* A modest static glass layer keeps the atmosphere without forcing each
+       full-screen route or message transition to recomposite a 26px blur. */
+    background-color: rgb(var(--paper-raised-rgb) / 0.72) !important;
+    background-image: none !important;
+    backdrop-filter: blur(10px) saturate(125%) !important;
+    -webkit-backdrop-filter: blur(10px) saturate(125%) !important;
     border: 1px solid rgba(255, 255, 255, 0.55) !important;
     box-shadow:
       inset 0 1px 1px rgba(255, 255, 255, 0.7),
