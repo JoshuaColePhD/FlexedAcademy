@@ -2173,14 +2173,17 @@
   }
 
   /* ── confirm dialog ─────────────────────────────────────────────────────
-     Below the toasts, above everything else. The scrim uses --scrim rather than
-     a fixed black so it darkens the right amount in both themes (0.28 → 0.55).
-     Padding on the scrim keeps the card off the edge on a phone and is still
-     scrim for the mousedown-to-dismiss test. */
+     Above every app surface, including the document/composer portal hosts.
+     Those hosts intentionally sit at z-index 100 so their controls can float
+     over the chat; a dialog opened from one of them must sit above that layer
+     or it exists in the DOM while remaining invisible behind the plan. The
+     scrim uses --scrim rather than a fixed black so it darkens the right
+     amount in both themes (0.28 → 0.55). Padding keeps the card off the edge
+     on a phone and is still the scrim for the mousedown-to-dismiss test. */
   .dialog-scrim {
     position: fixed;
     inset: 0;
-    z-index: 90;
+    z-index: 110;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2221,8 +2224,8 @@
   /* The nav drawer's scrim and the artifact overlay's scrim were each a bare
      Tailwind arbitrary-value string (bg-[var(--scrim)]) with no fade at
      all — not even on the way in, let alone out. One shared class, animated
-     both directions, for both. z-40 — one tier below .dialog-scrim's 90,
-     since a dialog opened from inside a panel has to sit above it. */
+     both directions, for both. z-40 — well below .dialog-scrim's 110, since
+     a dialog opened from inside a panel has to sit above it. */
   .panel-scrim {
     /* absolute, not fixed — see .artifact-overlay's own comment: both now
        live inside overlayPortalHost (ChatPage.jsx), which is the

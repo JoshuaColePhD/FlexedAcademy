@@ -167,12 +167,30 @@ function downloadFilename(contentDisposition, fallback) {
   return contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1] || fallback
 }
 
+/* iPadOS Safari often reports itself as desktop Safari and does not reliably
+ * save a Blob URL created after an async fetch. A real navigation to the
+ * server's attachment response is the native download path on iPadOS, while
+ * the user gesture is still active. maxTouchPoints catches iPadOS's desktop
+ * mode, where the user agent says MacIntel instead of iPad. */
+function isAppleMobileBrowser() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
 /** Fetch and validate a generated DOCX before asking the browser to save it.
  * A raw `<a download>` cannot distinguish a real file from FastAPI's JSON
  * error envelope, which Chrome used to save as `download.json`. DOCX is a ZIP
  * container, so the signature is the final guard even if a proxy changes the
  * Content-Type header. */
 async function downloadDocx(path, { filename = 'lesson-plan.docx', signal } = {}) {
+  if (isAppleMobileBrowser()) {
+    // The endpoint returns a real DOCX with Content-Disposition: attachment.
+    // Navigating to it lets Safari hand the file to its Downloads/Files flow;
+    // fetch → Blob → a.click() is the path that silently fails on iPadOS.
+    window.location.assign(`${API_BASE}${path}`)
+    return
+  }
+
   let res
   let lastPendingError = null
   for (let attempt = 0; attempt < DOCX_POLL_ATTEMPTS; attempt += 1) {
