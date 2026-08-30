@@ -2309,6 +2309,172 @@
     animation: voice-dock-body-out var(--t-fast) var(--ease) both;
   }
 
+  /* Lesson-plan generation is anchored to the composer rather than left as
+     a transient line in the transcript. The tray grows upward because the
+     composer is the page's stable working surface; the input/Stop control
+     remains at the bottom while this list advances through the five days. */
+  .lesson-plan-progress-tray {
+    display: grid;
+    min-width: 0;
+    margin-bottom: var(--sp-2);
+  }
+  .lesson-plan-progress-expanded,
+  .lesson-plan-progress-collapsed {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid rgb(var(--accent-rgb) / 0.2);
+    background: var(--paper-raised);
+    box-shadow:
+      3px 4px 12px rgb(var(--neo-dark-rgb) / 0.2),
+      -3px -3px 10px rgb(var(--neo-light-rgb) / 0.58);
+  }
+  .lesson-plan-progress-expanded {
+    border-radius: 16px;
+  }
+  .lesson-plan-progress-collapsed {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    padding: 10px 12px;
+    color: var(--ink-soft);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--r-lg);
+    transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+  }
+  .lesson-plan-progress-collapsed:hover,
+  .lesson-plan-progress-collapsed:focus-visible {
+    border-color: rgb(var(--accent-rgb) / 0.42);
+    background: var(--accent-tint);
+    outline: none;
+  }
+  .lesson-plan-progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: 11px 12px 9px;
+    border-bottom: 1px solid var(--edge);
+  }
+  .lesson-plan-progress-icon,
+  .lesson-plan-progress-pulse {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    color: var(--accent-text);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+  }
+  .lesson-plan-progress-pulse {
+    width: 25px;
+    height: 25px;
+    animation: fa-progress-sweep 1.8s var(--ease) infinite;
+  }
+  .lesson-plan-progress-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: min(45vh, 250px);
+    margin: 0;
+    padding: 7px 8px;
+    overflow-y: auto;
+    list-style: none;
+    overscroll-behavior: contain;
+  }
+  .lesson-plan-progress-row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 32px;
+    padding: 3px 7px;
+    color: var(--ink-faint);
+    border-radius: var(--r-md);
+    transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+  }
+  .lesson-plan-progress-row.is-complete {
+    color: var(--ink-soft);
+  }
+  .lesson-plan-progress-row.is-writing {
+    color: var(--accent-text);
+    background: rgb(var(--accent-rgb) / 0.1);
+  }
+  .lesson-plan-progress-row.is-writing .lesson-plan-progress-status {
+    color: var(--accent-text);
+    background: var(--paper-raised);
+  }
+  .lesson-plan-progress-row.is-pending {
+    opacity: 0.72;
+  }
+  .lesson-plan-progress-status {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    color: var(--ink-faint);
+    background: var(--paper-sunken);
+    border-radius: var(--r-full);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+  }
+  .lesson-plan-progress-row.is-complete .lesson-plan-progress-status {
+    color: var(--accent-text);
+    background: var(--accent-tint);
+  }
+  .lesson-plan-progress-row > :last-child {
+    color: var(--ink-muted);
+  }
+  .lesson-plan-progress-row.is-writing > :last-child {
+    color: var(--accent-text);
+    font-weight: var(--fw-semibold);
+  }
+  .lesson-plan-progress-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: 8px 12px 10px;
+    color: var(--ink-muted);
+    border-top: 1px solid var(--edge);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.02em;
+  }
+  .lesson-plan-progress-stop {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 7px;
+    color: var(--mark);
+    border-radius: var(--r-sm);
+    transition: background-color var(--t-fast) var(--ease);
+  }
+  .lesson-plan-progress-stop:hover,
+  .lesson-plan-progress-stop:focus-visible {
+    background: var(--mark-tint);
+    outline: none;
+  }
+  .lesson-plan-progress-stop-icon {
+    display: grid;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+  }
+  .lesson-plan-progress-stop-icon span {
+    width: 5px;
+    height: 5px;
+    background: currentColor;
+    border-radius: 1px;
+  }
+
   /* The phone plan peek grows out of the same dock as the composer. The
      handle remains visible while collapsed, and the body owns the only
      internal scroll region so swiping through a long plan never steals the

@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 import importlib.util
 
-# We use gpt-4o for superior reasoning and pedagogical nuance.
-MODEL_NAME = "gpt-4o"
+# Keep this standalone generator on the same text model as the application.
+MODEL_NAME = "gpt-5.6-luna"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -104,8 +104,7 @@ def generate_lesson_plan(query: str, top_k: int = 5) -> str:
     print(f"Generating lesson plan with {MODEL_NAME}...")
     response = client.chat.completions.create(
         model=MODEL_NAME,
-        max_tokens=2500,
-        temperature=0.2, # Low temperature to keep it focused and grounded
+        max_completion_tokens=2500,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
@@ -184,8 +183,7 @@ def generate_lesson_plan_stream(query: str, top_k: int = 5):
     
     response = client.chat.completions.create(
         model=MODEL_NAME,
-        max_tokens=2500,
-        temperature=0.2,
+        max_completion_tokens=2500,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
@@ -245,8 +243,7 @@ def rewrite_lesson_day(day_json: str, feedback: str, full_plan_context: str) -> 
     
     response = client.chat.completions.create(
         model=MODEL_NAME,
-        max_tokens=1000,
-        temperature=0.3,
+        max_completion_tokens=1000,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}

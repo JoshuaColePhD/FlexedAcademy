@@ -60,6 +60,8 @@ services:
         value: "flexed-academy"
       - key: OPENAI_API_KEY
         sync: false
+      - key: OPENAI_MODEL
+        value: "gpt-5.6-luna"
       - key: COMMON_STANDARDS_API_KEY
         sync: false
       # Not secrets, so tracked directly here rather than left to the
@@ -147,9 +149,10 @@ services:
       #
       # The webhook endpoint is https://<host>/api/billing/webhook and must be
       # subscribed to: checkout.session.completed, customer.subscription.created,
-      # customer.subscription.updated, customer.subscription.deleted. Without
-      # the subscription events a cancellation never reaches this app and the
-      # account stays entitled forever.
+      # customer.subscription.updated, customer.subscription.deleted,
+      # customer.subscription.paused, customer.subscription.resumed. Without
+      # the subscription events a cancellation or pause never reaches this app
+      # and the account stays entitled forever.
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_PRICE_ID

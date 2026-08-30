@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -11,6 +11,7 @@ import { useToast } from '../../lib/toastContext'
 import { FrameworkPicker } from '../../components/FrameworkPicker'
 import { inferGradeFromQuery, matchesFramework } from '../../lib/frameworks'
 import { GRADES, gradeLabel } from '../../lib/grades'
+import { safeReturnTo, withReturnTo } from '../../lib/returnTo'
 /* The one grade vocabulary. This file used to declare its own copy, with a
    comment explaining that the VALUE and the LABEL must stay apart because
    sending '11th' where '11' belongs made the first class a teacher ever
@@ -70,8 +71,10 @@ const ALL_GRADES = 'all'
 export function WelcomePage() {
   const { user, refresh } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const qc = useQueryClient()
   const toast = useToast()
+  const returnTo = safeReturnTo(params.get('next'))
 
   const [subject, setSubject] = useState('')
   const [grade, setGrade] = useState(ALL_GRADES)
@@ -176,7 +179,7 @@ export function WelcomePage() {
          app shell off screen until that's done. (App.jsx's ClassRoutes guard
          would bounce here anyway if this went straight to `/c/:classId`, but
          landing directly skips that extra redirect.) */
-      navigate(`/c/${created.id}/onboarding`, { replace: true })
+      navigate(withReturnTo(`/c/${created.id}/onboarding`, returnTo), { replace: true })
     } catch (err) {
       toast.apiError('Could not set that up', err)
       setSaving(false)

@@ -48,7 +48,8 @@ import { findFramework, verifiedPct } from '../lib/frameworks'
  */
 
 
-import { ClassDocuments, KIND_LABEL } from '../components/ClassDocuments.jsx'
+import { ClassDocuments } from '../components/ClassDocuments.jsx'
+import { KIND_LABEL } from '../components/documentKinds'
 
 /** Framework label without its adoption year — right in a picker, noise in a
  *  class name. */

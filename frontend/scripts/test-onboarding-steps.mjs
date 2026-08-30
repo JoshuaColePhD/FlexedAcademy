@@ -14,7 +14,7 @@
  * pin the predicate the gate depends on, and the plan derivation itself.
  */
 import assert from 'node:assert/strict'
-import { GENERIC_SCHOOL, hasChosenSchool } from '../src/lib/schools.js'
+import { GENERIC_SCHOOL, hasChosenSchool, hasUsableSchoolTemplate } from '../src/lib/schools.js'
 
 // ── the predicate ─────────────────────────────────────────────────────────
 assert.equal(hasChosenSchool(GENERIC_SCHOOL), false, "'generic' is a placeholder, not a choice")
@@ -30,8 +30,8 @@ assert.equal(hasChosenSchool('weeden-elementary-school'), true, 'any real school
 function planFor({ school, schools = [], subject }) {
   const chosenSchool = hasChosenSchool(school)
   const selectedSchool = schools.find((s) => s.id === school)
-  const schoolNeedsTemplate =
-    chosenSchool && selectedSchool && selectedSchool.template_status !== 'active'
+  const schoolHasUsableTemplate = hasUsableSchoolTemplate(selectedSchool)
+  const schoolNeedsTemplate = chosenSchool && selectedSchool && !schoolHasUsableTemplate
   const next = ['welcome']
   if (!chosenSchool || schoolNeedsTemplate) next.push('school')
   if (!subject) next.push('class')
@@ -40,8 +40,9 @@ function planFor({ school, schools = [], subject }) {
 }
 
 const SCHOOLS = [
-  { id: 'florence-high-school', template_status: 'active' },
-  { id: 'weeden-elementary-school', template_status: 'pending' },
+  { id: 'florence-high-school', template_status: 'active', builder_readiness: 'ready' },
+  { id: 'weeden-elementary-school', template_status: 'active', builder_readiness: 'ready' },
+  { id: 'another-ingested-school', template_status: 'pending', builder_readiness: 'ready_unverified' },
 ]
 
 // The regression itself: a brand-new account, holding the default 'generic',
@@ -61,10 +62,17 @@ assert.ok(
   !planFor({ school: 'florence-high-school', schools: SCHOOLS, subject: 'ELA' }).includes('school'),
   'a school with an active template does not re-ask'
 )
-// ...but one still awaiting a template does — that half must keep working.
+// ...but one with no usable template still does — that half must keep working.
 assert.ok(
-  planFor({ school: 'weeden-elementary-school', schools: SCHOOLS, subject: 'ELA' }).includes('school'),
-  'a school still awaiting its template is asked for one'
+  planFor({ school: 'unconfigured-school', schools: [{ id: 'unconfigured-school', template_status: 'pending', builder_readiness: 'pending' }], subject: 'ELA' }).includes('school'),
+  'a school with no usable template is asked for one'
+)
+
+// A usable built-in or verified builder is enough, even while separate
+// template-content review is still pending.
+assert.ok(
+  !planFor({ school: 'another-ingested-school', schools: SCHOOLS, subject: 'ELA' }).includes('school'),
+  'any school with a usable builder is not asked for a duplicate template'
 )
 
 // The class step is independent of any of this.

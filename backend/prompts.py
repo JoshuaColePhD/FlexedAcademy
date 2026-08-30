@@ -18,6 +18,7 @@ from .config import settings
 from .retrieval import UNGROUNDABLE_FAMILIES, RetrievalResult, format_context
 from .schema import DAY_NAMES, day_schema_snippet, field_json_schema, plan_schema_snippet
 from .schoolcal import NO_CALENDAR_SCHOOL_ID
+from .template_context import weekly_template_context
 
 log = logging.getLogger("flexedacademy.prompts")
 
@@ -167,10 +168,11 @@ def _class_custom_instructions_block(class_custom_instructions: str | None) -> s
 def output_length_block(output_length: str = "medium") -> str:
     """Give the model a calibrated target without weakening required fields.
 
-    The API also enforces the matching completion ceiling. This wording keeps
-    the model from treating a lower ceiling as permission to omit required
-    day fields or standards. Medium is calibrated from the latest Florence
-    plans: 1,493–2,097 raw JSON tokens, median 1,793.
+    The API leaves a generous safety ceiling above this target. This wording
+    keeps the model from treating a shorter preference as permission to omit
+    required day fields or standards. Medium is calibrated from the latest Florence
+    plans: 1,493–2,097 raw JSON tokens, median 1,793, and should aim for
+    roughly 2,000–2,200 tokens without treating that target as a hard limit.
     """
     level = str(output_length or "medium").strip().lower()
     if level == "short":
@@ -185,8 +187,9 @@ def output_length_block(output_length: str = "medium") -> str:
         )
     else:
         target = (
-            "Aim for the normal Florence lesson-plan size: about 1,750–1,900 completion "
-            "tokens for the structured plan, with practical detail and no filler."
+            "Aim for about 2,000–2,200 completion tokens for the structured plan, with "
+            "practical detail and no filler. This is a target, not a hard limit; complete "
+            "every required field even if the plan needs more space."
         )
     return (
         "OUTPUT LENGTH PREFERENCE — this is a response-size target, not permission to "
@@ -204,6 +207,31 @@ def _coverage_notice(result: RetrievalResult) -> str:
             f"teaching day. Do not pad the week with codes you remember."
         )
     return ""
+
+
+def _standard_variety_instruction(result: RetrievalResult) -> str:
+    """Tell the planner how to cover retrieved standards without forcing fit."""
+    primary_codes: list[str] = []
+    for chunk in result.chunks:
+        metadata = chunk.get("metadata") or {}
+        if metadata.get("source_type") == "act_standards":
+            continue
+        code = str(metadata.get("code") or chunk.get("id") or "").strip()
+        if code and code not in primary_codes:
+            primary_codes.append(code)
+
+    if len(primary_codes) <= 1:
+        return ""
+
+    return (
+        "STANDARD COVERAGE AND VARIETY: The retrieved block contains "
+        f"{len(primary_codes)} distinct primary course standards. Use the best-fitting "
+        "standard for each day and cover as many distinct standards as the week "
+        "actually supports. Do not repeat a primary standard until every relevant "
+        "available primary standard has been used once; if fewer than five relevant "
+        "standards exist, repeat only after exhausting them. Never assign a standard "
+        "to a day merely to create variety if it does not fit that day's lesson."
+    )
 
 
 def week_system_prompt(
@@ -231,6 +259,8 @@ def week_system_prompt(
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
         "date or a school year.\n\n" + calendar_context(school_id),
+        "SELECTED SCHOOL TEMPLATE — this is the source of truth for the weekly "
+        "day axis.\n\n" + weekly_template_context(school_id),
         "TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — align this week's unit, "
         "sequencing, and any texts or milestones it names. Still cite standards "
         "ONLY from the Retrieved standards block below; this document has no "
@@ -247,9 +277,10 @@ def week_system_prompt(
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         _coverage_notice(result),
+        _standard_variety_instruction(result),
         f"""TASK:
 
-Design a cohesive five-day arc, {' -> '.join(DAY_NAMES)}. Scaffold the learning
+Design a cohesive arc across the template-defined day axis, {' -> '.join(DAY_NAMES)}. Scaffold the learning
 targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For EVERY teaching day, you must identify the closest-fitting primary standard from the "--- PRIMARY COURSE STANDARDS ---" block. HOWEVER, if no primary course standards are provided (e.g. for a Pre-AP class), you MUST leave the `standards` field blank. NEVER put ACT standards in the `standards` field.
 Also complete `vocabulary`, `reteach_small_groups`, and `cross_curricular_connection` for every teaching day. These are printed in school templates that require each section; make them specific to that day's lesson instead of repeating generic filler.
 THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, `act_alignment`
@@ -463,7 +494,8 @@ def voice_prompt() -> str:
         "otherwise) and WHAT THE WEEK IS ABOUT — an anchor text, a skill, or a specific "
         "focus. If that's genuinely missing, ask for it instead of building. Building a week "
         "off a one-line request wastes the teacher's time correcting a plan they never "
-        "described.\n\n"
+        "described. The weekly structure is already fixed by the selected school template "
+        "and its day axis is given above; never ask how many days or what duration to use.\n\n"
         "Once a plan exists and the teacher names ONE day and ONE part of it to change — "
         "\"redo Thursday's warm-up,\" \"make Monday's assessment harder\" — call "
         "`update_lesson_day` instead of rebuilding the whole week; it changes only that "

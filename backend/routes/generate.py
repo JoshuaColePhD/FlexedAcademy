@@ -16,6 +16,7 @@ from ..entitlement import require_entitlement
 from ..errors import AppError
 from ..ratelimit import limiter
 from ..schema import SchemaError
+from ..template_context import weekly_template_context
 
 log = logging.getLogger("flexedacademy.generate")
 router = APIRouter(prefix="/api", tags=["generate"])
@@ -406,6 +407,15 @@ def _build_chat_system_prompt(
     else:
         system_prompt += "The teacher is preparing to generate or revise a weekly lesson plan.\n\n"
 
+    system_prompt += (
+        "\n\nFIXED WEEKLY PLAN STRUCTURE: The selected school's weekly lesson-plan format is already "
+        "configured in the app. " + weekly_template_context(school_id) + " "
+        "For a normal new plan, use the template-defined weekdays automatically; use the school calendar to mark "
+        "holidays or no-school days. Never ask the teacher how many days the plan should run, whether it "
+        "is a one-, two-, three-, four-, or five-day week, or what duration to use. Clarifying questions should instead "
+        "narrow the anchor text or topic, skill, throughline, or student task."
+    )
+
     week_row = None
     if week_number is not None:
         week_row = next(
@@ -762,6 +772,8 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
                     "Hold the line on having an actual plan before you build one: `generate_lesson_plan` needs "
                     "WHICH WEEK OR UNIT and WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
                     "focus). If the week/unit was already named for you above, treat that half as settled — "
+                    "the plan itself is always the complete structure from the selected school "
+                    "template, so never ask how many days it should run. "
                     "don't ask about it again unless the teacher's own message clearly points at a different "
                     "week. WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
                     "you; missing that, ask rather than build — a week generated from a one-line request "

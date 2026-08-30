@@ -36,18 +36,26 @@ export function onOpenOnboardingWizard(handler) {
  */
 const DEFERRED_KEY = 'aplang:onboardingDeferred'
 
-export function deferOnboarding() {
+function keyFor(accountId) {
+  return accountId ? `${DEFERRED_KEY}:${encodeURIComponent(String(accountId))}` : null
+}
+
+export function deferOnboarding(accountId) {
+  const key = keyFor(accountId)
+  if (!key) return
   try {
-    sessionStorage.setItem(DEFERRED_KEY, '1')
+    sessionStorage.setItem(key, '1')
   } catch {
     /* Private mode with storage disabled. The teacher is no worse off than
        before this existed, and the toast still explains what happened. */
   }
 }
 
-export function onboardingDeferred() {
+export function onboardingDeferred(accountId) {
+  const key = keyFor(accountId)
+  if (!key) return false
   try {
-    return sessionStorage.getItem(DEFERRED_KEY) === '1'
+    return sessionStorage.getItem(key) === '1'
   } catch {
     return false
   }

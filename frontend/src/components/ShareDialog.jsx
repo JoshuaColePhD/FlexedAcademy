@@ -145,7 +145,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
     setSubmitting(true)
     try {
       await api.exportQuizToCanvas(planId, quizId)
-      toast.success('Synced to Canvas', `${documentName || 'The quiz'} has been pushed to your Canvas courses.`)
+      toast.success('Canvas export previewed', `${documentName || 'The quiz'} was not sent to a live Canvas course.`)
       onClose()
     } catch (err) {
       toast.apiError('Could not sync to Canvas', err)
@@ -260,12 +260,12 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
             for the plan branch below, wrong for this one: a quiz never
             gets a drive_file_id (no backend route for it), and the section
             underneath this heading has always shown a Canvas push instead. */}
-        <h3 className="text-sm font-medium mb-3">{isQuiz ? 'Push to Canvas' : 'Save to Google Drive'}</h3>
+        <h3 className="text-sm font-medium mb-3">{isQuiz ? 'Canvas export preview' : 'Save to Google Drive'}</h3>
 
         {isQuiz ? (
           <>
             <p className="text-sm text-ink-soft mb-4">
-              Since your school doesn't use the Canvas API yet, we've set up a test environment where you can preview how this 1-click sync would work!
+              Canvas is not connected for this school yet. This preview exercises the export flow but does not change a live Canvas course.
             </p>
             <button 
               type="button" 
@@ -274,7 +274,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
               disabled={submitting}
             >
               {submitting ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : <Upload size={14} className="mr-1.5" aria-hidden="true" />}
-              {submitting ? 'Pushing to Canvas…' : 'Push to Canvas'}
+              {submitting ? 'Preparing preview…' : 'Preview Canvas export'}
             </button>
           </>
         ) : status === 'loading' ? (

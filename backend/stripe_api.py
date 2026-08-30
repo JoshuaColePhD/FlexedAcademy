@@ -21,6 +21,7 @@ import hmac
 import json
 import logging
 import time
+from urllib.parse import urlencode
 
 import requests
 
@@ -55,7 +56,25 @@ def _call(method: str, path: str, data: dict | None = None) -> dict:
             status=502,
             hint="Try again in a moment — nothing was charged.",
         ) from e
-    body = res.json() if res.content else {}
+    invalid_json = False
+    try:
+        body = res.json() if res.content else {}
+    except (ValueError, TypeError):
+        # Stripe normally returns JSON, but a proxy/upstream failure can return
+        # HTML or an empty body. Keep that from turning a provider failure into
+        # an unhelpful app-level 500.
+        invalid_json = True
+        body = {}
+    if not isinstance(body, dict):
+        invalid_json = True
+        body = {}
+    if invalid_json and res.ok:
+        log.warning("stripe %s %s returned a non-JSON response", method, path)
+        raise AppError(
+            "billing_error",
+            "The payment provider returned an invalid response.",
+            status=502,
+        )
     if not res.ok:
         # Stripe's message is written for the person paying, so it is safe and
         # useful to pass through ("Your card was declined."). The type/code go
@@ -127,6 +146,11 @@ def create_checkout_session(*, price_id: str, customer_id: str | None, email: st
         "line_items": [{"price": price_id, "quantity": 1}],
         "success_url": success_url,
         "cancel_url": cancel_url,
+        # Keep the account id on the session too. This makes Dashboard
+        # reconciliation and recovery from a missing client_reference_id
+        # straightforward; the subscription metadata below remains the source
+        # used by later subscription webhooks.
+        "metadata": {"user_id": user_id},
         # Both, deliberately. `client_reference_id` survives on the session;
         # the subscription metadata is what later invoice webhooks carry, and
         # those are the ones that arrive months from now at renewal time.
@@ -168,7 +192,8 @@ def cancel_subscriptions_for_customer(customer_id: str) -> None:
     # A GET's filters are query params, not a form body — every other _call
     # site here is either a bodyless GET or a POST, so this is the one place
     # that needs to build the querystring itself.
-    subs = _call("GET", f"/subscriptions?customer={customer_id}&status=all")
+    query = urlencode({"customer": customer_id, "status": "all"})
+    subs = _call("GET", f"/subscriptions?{query}")
     for sub in subs.get("data", []):
         if sub.get("status") in ("canceled", "incomplete_expired"):
             continue
@@ -177,11 +202,20 @@ def cancel_subscriptions_for_customer(customer_id: str) -> None:
 
 def verify_webhook(payload: bytes, sig_header: str, secret: str) -> dict:
     """Return the parsed event, or raise. Never trust an unverified body."""
-    parts = dict(
-        piece.split("=", 1) for piece in (sig_header or "").split(",") if "=" in piece
-    )
-    timestamp, signature = parts.get("t"), parts.get("v1")
-    if not timestamp or not signature:
+    timestamp = None
+    signatures = []
+    for piece in (sig_header or "").split(","):
+        key, separator, value = piece.strip().partition("=")
+        if not separator:
+            continue
+        if key == "t" and timestamp is None:
+            timestamp = value
+        elif key == "v1" and value:
+            # Stripe can include more than one v1 signature during endpoint
+            # secret rotation. Accept any valid one, rather than letting a
+            # still-valid webhook fail while the old secret is being retired.
+            signatures.append(value)
+    if not timestamp or not signatures:
         raise AppError("bad_signature", "Unsigned webhook.", status=400)
     try:
         age = time.time() - int(timestamp)
@@ -193,9 +227,12 @@ def verify_webhook(payload: bytes, sig_header: str, secret: str) -> dict:
     expected = hmac.new(
         secret.encode(), f"{timestamp}.".encode() + payload, hashlib.sha256
     ).hexdigest()
-    if not hmac.compare_digest(expected, signature):
+    if not any(hmac.compare_digest(expected, signature) for signature in signatures):
         raise AppError("bad_signature", "Bad webhook signature.", status=400)
     try:
-        return json.loads(payload)
+        event = json.loads(payload)
     except json.JSONDecodeError:
         raise AppError("bad_signature", "Unparseable webhook body.", status=400) from None
+    if not isinstance(event, dict):
+        raise AppError("bad_signature", "Unparseable webhook body.", status=400)
+    return event

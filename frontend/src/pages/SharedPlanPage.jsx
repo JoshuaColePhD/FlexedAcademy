@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
+import { withReturnTo } from '../lib/returnTo'
 import { LessonPlanTable } from '../components/LessonPlanTable'
 
 export function SharedPlanPage() {
@@ -49,13 +50,15 @@ export function SharedPlanPage() {
     
     setForking(true)
     try {
-      const newPlan = await api.forkSharedPlan(id, targetClassId || null)
+      await api.forkSharedPlan(id, targetClassId || null)
       
       toast.success('Plan duplicated', 'The plan has been copied to your account.')
       
       // Navigate to the newly forked plan
       if (targetClassId) {
-        navigate(`/c/${targetClassId}/plans/${newPlan.id}`)
+        // There is no nested plan-detail route; PlansPage lists the newly
+        // duplicated artifact and keeps the URL within the supported router.
+        navigate(`/c/${targetClassId}/plans`)
       } else {
         // If no class, just go to home or some library page
         navigate(`/`)
@@ -128,7 +131,7 @@ export function SharedPlanPage() {
             </div>
           ) : (
             <button
-              onClick={() => navigate('/login', { state: { returnTo: `/shared/${id}` } })}
+              onClick={() => navigate(withReturnTo('/login', `/shared/${id}`))}
               className="btn btn-primary flex items-center gap-2 px-2 md:px-3"
             >
               <span className="hidden sm:inline">Sign in to duplicate</span>

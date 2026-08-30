@@ -1,7 +1,7 @@
-"""Teacher-submitted school calendars, pending a second teacher's confirmation.
+"""Teacher-submitted school calendars, pending administrator confirmation.
 
 The upload/parse/sanity-check pipeline lives in calendar_intake.py; this file
-is just the HTTP surface over it plus the peer-confirmation state machine.
+is just the HTTP surface over it plus the administrator approval state machine.
 See schoolcal.py's own comment on how a confirmed (or, provisionally, a
 pending) submission slots in ahead of the hand-curated file path.
 """
@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from .. import calendar_intake, db, storage, template_intake
 from ..config import settings
-from ..deps import get_current_user
+from ..deps import get_current_admin, get_current_user
 from ..errors import AppError
 from .misc import _spool
 
@@ -40,6 +40,23 @@ def _resolve_school(school_name: str) -> dict:
     return db.create_school(school_id, school_name)
 
 
+def _require_school_access(user_id: str, school_id: str) -> dict:
+    """Return a school only when the caller belongs to it or is an admin.
+
+    School calendars are shared school resources, but the route still must not
+    let a caller enumerate or mutate another school's submission by placing an
+    arbitrary school ID in the URL. A 404 for both "unknown" and "not yours"
+    keeps that distinction from becoming an existence oracle.
+    """
+    school = db.get_school(school_id)
+    if not school:
+        raise AppError("not_found", "School not found.", status=404)
+    user = db.get_user_by_id(user_id)
+    if not user or (not db.is_admin(user_id) and user.get("school") != school_id):
+        raise AppError("not_found", "School not found.", status=404)
+    return school
+
+
 # Deliberately `def`, not `async def` — nothing in the body is awaitable, and
 # it does slow blocking work (file/network IO, PDF+LLM parsing). Under
 # `--workers 1` (Dockerfile) an async version ran that on the event loop and
@@ -54,8 +71,23 @@ def upload_calendar(
     """Upload a PDF/Word doc, or provide a link, for the teacher's own
     school's real calendar. Runs extract -> parse -> sanity-check -> saves
     as `pending` — usable immediately by the submitter, but not treated as
-    trusted anywhere else until a second teacher (or an admin) confirms it."""
-    school = _resolve_school(school_name)
+    trusted anywhere else until an administrator confirms it."""
+    requested_school_id = _slugify(school_name)
+    existing = db.get_school(requested_school_id)
+    if existing:
+        school = _require_school_access(user_id, requested_school_id)
+    else:
+        # Creating a new shared school and attaching a calendar to it is an
+        # administrative change. A normal teacher may submit a correction for
+        # their own registered school, but cannot create a new school resource
+        # that other accounts will later inherit.
+        if not db.is_admin(user_id):
+            raise AppError(
+                "school_admin_required",
+                "A school calendar can only be added by an administrator.",
+                status=403,
+            )
+        school = _resolve_school(school_name)
 
     text = calendar_intake.extract_calendar_text(upload=file, url=source_url)
     weeks = calendar_intake.parse_and_validate(user_id, text)
@@ -72,6 +104,7 @@ def upload_calendar(
 
 @router.get("/pending")
 def get_pending_calendar(school_id: str, _user_id: str = Depends(get_current_user)):
+    _require_school_access(_user_id, school_id)
     submission = db.get_pending_calendar_submission(school_id)
     if not submission:
         raise AppError("not_found", "No pending calendar for that school.", status=404)
@@ -79,26 +112,25 @@ def get_pending_calendar(school_id: str, _user_id: str = Depends(get_current_use
 
 
 @router.post("/{submission_id}/confirm")
-def confirm_calendar(submission_id: str, user_id: str = Depends(get_current_user)):
+def confirm_calendar(submission_id: str, admin_id: str = Depends(get_current_admin)):
+    """Apply a calendar change only after an administrator approves it.
+
+    Teachers can submit a proposal for their own school, but school-wide
+    calendar state is an administrative resource. The admin namespace below
+    remains the UI's normal approval path; this legacy-shaped endpoint is kept
+    only as a compatibility alias with the same admin gate.
+    """
     submission = db.get_calendar_submission(submission_id)
     if not submission:
         raise AppError("not_found", "That submission doesn't exist.", status=404)
     if submission["status"] != "pending":
         raise AppError("not_pending", "That submission has already been decided.", status=409)
-    if submission["submitted_by"] == user_id:
-        raise AppError(
-            "self_confirmation",
-            "You submitted this calendar — a different teacher needs to confirm it.",
-            status=403,
-        )
-    return db.confirm_calendar_submission(submission_id, user_id)
+    return db.confirm_calendar_submission(submission_id, admin_id)
 
 
 @router.post("/{submission_id}/reject")
-def reject_calendar(submission_id: str, _user_id: str = Depends(get_current_user)):
-    """Any logged-in teacher can flag a wrong submission (not just the
-    submitter or a peer confirming it) — it just goes away, and the school
-    is back to "isn't listed yet" until someone re-uploads."""
+def reject_calendar(submission_id: str, _admin_id: str = Depends(get_current_admin)):
+    """Reject a school-calendar proposal as an administrator."""
     submission = db.get_calendar_submission(submission_id)
     if not submission:
         raise AppError("not_found", "That submission doesn't exist.", status=404)
@@ -135,6 +167,7 @@ def upload_school_template(
     school = db.get_school(school_id)
     if not school:
         raise AppError("not_found", "School not found.", status=404)
+    _require_school_access(user_id, school_id)
 
     if not file and not source_url:
         raise AppError("bad_request", "Please provide either a file or a Google Doc link.", status=400)
@@ -175,6 +208,7 @@ def upload_school_template(
 @router.get("/confirmed/{school_id}")
 def get_confirmed_calendar_route(school_id: str, _user_id: str = Depends(get_current_user)):
     from .. import schoolcal
+    _require_school_access(_user_id, school_id)
     weeks = schoolcal.school_weeks(school_id)
     if not weeks:
         raise HTTPException(status_code=404, detail="No calendar found")

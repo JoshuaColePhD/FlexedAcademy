@@ -51,7 +51,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["httpx", "ruff"]
+dev = ["httpx", "pytest", "ruff"]
 
 [tool.setuptools]
 packages = ["backend", "backend.routes"]

@@ -38,6 +38,8 @@ _SUB_EVENTS = {
     "customer.subscription.created",
     "customer.subscription.updated",
     "customer.subscription.deleted",
+    "customer.subscription.paused",
+    "customer.subscription.resumed",
 }
 
 
@@ -263,13 +265,51 @@ def _handle_webhook_event(payload: bytes, signature: str) -> dict:
     event = stripe_api.verify_webhook(payload, signature, settings.stripe_webhook_secret)
     kind = event.get("type")
     obj = (event.get("data") or {}).get("object") or {}
+    event_id = event.get("id")
+    if not isinstance(event_id, str) or not event_id:
+        raise AppError("bad_signature", "Webhook is missing its event id.", status=400)
+    if not isinstance(kind, str) or not kind:
+        raise AppError("bad_signature", "Webhook is missing its event type.", status=400)
+
+    # Stripe retries deliveries, and its docs explicitly make no ordering
+    # guarantee. Apply only a successfully recorded event once, and ignore a
+    # late event for the same Stripe object after a newer one was applied.
+    # Recording happens after the state write below, so a transient DB failure
+    # leaves the event retryable; reapplying a successful state write is safe.
+    if db.stripe_webhook_event_processed(event_id):
+        return {"received": True, "duplicate": True}
+
+    event_created_at = event.get("created")
+    try:
+        event_created_at = int(event_created_at) if event_created_at is not None else None
+    except (TypeError, ValueError):
+        event_created_at = None
+
+    object_id = obj.get("id") if isinstance(obj, dict) else None
+    if kind == "checkout.session.completed":
+        object_id = obj.get("subscription") or object_id
+    if (
+        (kind in _SUB_EVENTS or kind == "checkout.session.completed")
+        and isinstance(object_id, str)
+        and event_created_at is not None
+        and not db.stripe_object_event_is_newer(object_id, event_created_at)
+    ):
+        db.record_stripe_webhook_event(event_id, kind, object_id, event_created_at)
+        log.info("ignored stale Stripe event=%s type=%s object=%s", event_id, kind, object_id)
+        return {"received": True, "stale": True}
 
     if kind == "checkout.session.completed":
         user_id = obj.get("client_reference_id")
         customer = obj.get("customer")
+        if isinstance(customer, dict):
+            customer = customer.get("id")
+        if not user_id and customer:
+            row = db.get_user_by_stripe_customer(customer)
+            user_id = row["id"] if row else None
         sub_id = obj.get("subscription")
         if not user_id:
             log.warning("checkout.session.completed with no client_reference_id")
+            db.record_stripe_webhook_event(event_id, kind, object_id, event_created_at)
             return {"received": True}
         # The session says "paid"; the subscription says what they actually
         # have and until when. Ask the subscription.
@@ -279,8 +319,13 @@ def _handle_webhook_event(payload: bytes, signature: str) -> dict:
                 sub = stripe_api.get_subscription(sub_id)
                 status = sub.get("status") or "active"
                 period_end = _period_end(sub)
-            except AppError:
-                log.warning("could not read subscription %s; assuming active", sub_id)
+            except AppError as e:
+                # Do not grant access based on a session alone if the
+                # authoritative subscription lookup failed. Raising makes
+                # Stripe retry the signed event instead of leaving a paid
+                # account in a misleading state or granting a false one.
+                log.warning("could not read subscription %s; retrying webhook: %s", sub_id, e)
+                raise
         db.set_subscription(user_id, customer_id=customer, status=status, period_end=period_end)
         log.info("subscription started user=%s status=%s", user_id, status)
 
@@ -288,6 +333,7 @@ def _handle_webhook_event(payload: bytes, signature: str) -> dict:
         user_id = _resolve_user(obj)
         if not user_id:
             log.warning("%s could not be matched to a user", kind)
+            db.record_stripe_webhook_event(event_id, kind, object_id, event_created_at)
             return {"received": True}
         status = "canceled" if kind.endswith("deleted") else (obj.get("status") or "active")
         customer = obj.get("customer")
@@ -301,4 +347,5 @@ def _handle_webhook_event(payload: bytes, signature: str) -> dict:
 
     # Everything else is acknowledged and ignored. Returning 2xx is what stops
     # Stripe retrying an event we were never going to act on.
+    db.record_stripe_webhook_event(event_id, kind, object_id, event_created_at)
     return {"received": True}

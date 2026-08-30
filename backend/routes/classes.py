@@ -117,9 +117,13 @@ class MeBody(BaseModel):
 
 
 @router.get("/schools")
-def list_schools_route() -> list[dict]:
-    """No auth needed — same reasoning as GET /api/frameworks (misc.py):
-    this is a fixed lookup table for a dropdown, not account data.
+def list_schools_route(_user_id: str = Depends(get_current_user)) -> list[dict]:
+    """Return the school picker only to an authenticated account.
+
+    The school names are a shared catalog, but the calendar and builder
+    readiness fields include workflow state that should not be exposed to an
+    anonymous caller. It is also only used by signed-in onboarding/settings
+    surfaces, so requiring the same session as those surfaces costs nothing.
 
     `has_calendar` rides along because the two halves of a school live in
     different places on purpose: the row here, and the year itself as either

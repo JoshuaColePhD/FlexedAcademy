@@ -253,6 +253,37 @@ class ConditionalGZipMiddleware:
         return await self._gzip(scope, receive, send)
 
 
+class PrivateApiCacheMiddleware:
+    """Keep API responses out of browser and intermediary caches.
+
+    Most API responses are account-scoped, and a cache hit after logout or a
+    shared-device account switch is a privacy failure even when every route's
+    database query is correctly scoped. Applying the header to the complete
+    `/api/` surface also covers authenticated error responses and future routes
+    without relying on each handler remembering a response option.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or not scope.get("path", "").startswith("/api/"):
+            return await self.app(scope, receive, send)
+
+        async def send_with_private_cache(message):
+            if message.get("type") == "http.response.start":
+                headers = [
+                    (key, value)
+                    for key, value in message.get("headers", [])
+                    if key.lower() != b"cache-control"
+                ]
+                headers.append((b"cache-control", b"private, no-store"))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_private_cache)
+
+
 app = FastAPI(title="FlexEd Academy", version="2.0.0", lifespan=lifespan)
 
 app.state.limiter = limiter
@@ -272,6 +303,7 @@ app.add_middleware(SlowAPIMiddleware)
 # in gzip makes tokens land in bursts instead of arriving as they're produced:
 # the generation is exactly as fast, and visibly feels worse.
 app.add_middleware(ConditionalGZipMiddleware, minimum_size=1024)
+app.add_middleware(PrivateApiCacheMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

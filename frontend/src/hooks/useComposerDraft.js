@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useDebouncedValue } from './useDebouncedValue'
+import { accountStorageKey } from '../lib/accountStorage'
 
-const PREFIX = 'composer-draft:'
+const PREFIX = 'composer-draft'
 
 /* Backs the composer's typed text to localStorage, keyed per chat — so
  * navigating away mid-sentence, or a refresh, doesn't just lose it. Text
@@ -21,7 +22,7 @@ const PREFIX = 'composer-draft:'
  * Clearing on an actual send is the caller's job (see clearComposerDraft,
  * used from ChatPage's submit()) — this hook only reacts to `value` itself
  * going empty, which is one render behind a fresh send. */
-export function useComposerDraft(key, value, setValue) {
+export function useComposerDraft(key, value, setValue, accountId) {
   // useDebouncedValue's own `debounced` state initializes to whatever
   // `value` IS on this hook's first call for a given mount — '' at that
   // point, since the restore effect below hasn't run yet. Without this
@@ -35,10 +36,11 @@ export function useComposerDraft(key, value, setValue) {
 
   useEffect(() => {
     skipNextWriteRef.current = true
-    if (!key) return
+    const storageKey = accountStorageKey(PREFIX, accountId, key)
+    if (!storageKey) return
     let saved = ''
     try {
-      saved = localStorage.getItem(PREFIX + key) || ''
+      saved = localStorage.getItem(storageKey) || ''
     } catch {
       // localStorage blocked (private mode, storage full) — draft recovery
       // just doesn't happen; nothing else here depends on it.
@@ -48,22 +50,23 @@ export function useComposerDraft(key, value, setValue) {
     // would fight the user's own typing by resetting it back to whatever
     // was last saved.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
+  }, [key, accountId])
 
   const debouncedValue = useDebouncedValue(value, 400)
   useEffect(() => {
-    if (!key) return
+    const storageKey = accountStorageKey(PREFIX, accountId, key)
+    if (!storageKey) return
     if (skipNextWriteRef.current) {
       skipNextWriteRef.current = false
       return
     }
     try {
-      if (debouncedValue) localStorage.setItem(PREFIX + key, debouncedValue)
-      else localStorage.removeItem(PREFIX + key)
+      if (debouncedValue) localStorage.setItem(storageKey, debouncedValue)
+      else localStorage.removeItem(storageKey)
     } catch {
       // ignore — see above
     }
-  }, [key, debouncedValue])
+  }, [key, accountId, debouncedValue])
 }
 
 /** Explicit clear at the moment a message actually sends — a message that
@@ -71,10 +74,11 @@ export function useComposerDraft(key, value, setValue) {
  *  visit, and waiting for the debounced write-back above to notice `value`
  *  went empty would leave a ~400ms window where a refresh mid-send restores
  *  text that was already sent. */
-export function clearComposerDraft(key) {
-  if (!key) return
+export function clearComposerDraft(key, accountId) {
+  const storageKey = accountStorageKey(PREFIX, accountId, key)
+  if (!storageKey) return
   try {
-    localStorage.removeItem(PREFIX + key)
+    localStorage.removeItem(storageKey)
   } catch {
     // ignore
   }

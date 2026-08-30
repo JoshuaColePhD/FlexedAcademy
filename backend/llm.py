@@ -45,6 +45,7 @@ from .schema import (
     REVISABLE_FIELDS,
     TEMPLATE_ANALYSIS_JSON_SCHEMA,
     TEMPLATE_VERIFICATION_JSON_SCHEMA,
+    SchemaError,
     field_json_schema,
     loads_lenient,
 )
@@ -60,18 +61,24 @@ _REQUEST_TIMEOUT_S = 30.0
 
 # The latest twelve Florence plans (Aug 21–27, 2026) used 1,493–2,097 raw
 # completion tokens, with a median of 1,793 and a mean of 1,791. Medium is
-# therefore a 2,200-token ceiling: it contains the observed normal range plus
-# modest room for a longer week without returning to the old 4,000-token cap.
-# Short and Long are intentionally separated enough to be perceptible while
-# leaving room for the strict five-day JSON shape. Short stays just above the
-# shortest observed valid Florence plan so reducing verbosity cannot make the
-# structured response fail JSON validation.
+# therefore a 2,200-token preference for normal conversational and revision
+# responses: it contains the observed range plus modest room for a longer week.
+# Full five-day plans use the generous PLAN_COMPLETION_CEILING below, because
+# the preference is a target rather than a hard stop and the strict structured
+# shape must always be allowed to close. Short, Medium, and Long remain
+# intentionally separated in the prompt itself.
 OUTPUT_LENGTH_BUDGETS = {
     "short": 1_600,
     "medium": 2_200,
     "long": 3_600,
 }
 _OUTPUT_LENGTH_VALUES = frozenset(OUTPUT_LENGTH_BUDGETS)
+
+# A weekly plan has five days and twelve required fields per day. This is a
+# safety ceiling, not a response-size target: output_length_block() tells the
+# model how much to aim for, while this leaves enough room for a longer week or
+# a school template with additional required sections to finish valid JSON.
+PLAN_COMPLETION_CEILING = 8_000
 
 # retrieve_map_context is a nice-to-have supplement, not something the teacher
 # is aware is even running — it must never be the reason a chat reply is slow
@@ -218,6 +225,16 @@ def output_length_tokens_for(user_id: str) -> int:
     return OUTPUT_LENGTH_BUDGETS[output_length_for(user_id)]
 
 
+def plan_completion_tokens_for(user_id: str) -> int:
+    """Return the generous safety ceiling for a complete five-day plan.
+
+    The account's response-length preference is a target in the prompt, not a
+    max-token setting. Keeping this independent of ``user_id`` makes that
+    distinction explicit and prevents Medium from truncating valid JSON.
+    """
+    return PLAN_COMPLETION_CEILING
+
+
 def class_custom_instructions_for(user_id: str, class_id: str | None) -> str | None:
     """The per-class layer on top of custom_instructions_for — one column on
     `classes` (migration 44), additive to the account-wide instructions
@@ -242,6 +259,7 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
         "temperature": temperature,
         "messages": messages,
         "response_format": response_format,
+        "reasoning_effort": kwargs.get("reasoning_effort"),
         # The same prompt under Short/Medium/Long must not share a cached
         # completion. This was omitted when output length was only prose and
         # made a later budget change appear to do nothing for cached prompts.
@@ -255,13 +273,36 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
         return cached
 
     resp = client().chat.completions.create(**kwargs)
-    msg = resp.choices[0].message
+    choice = resp.choices[0]
+    if getattr(choice, "finish_reason", None) == "length":
+        raise SchemaError(
+            "truncated_json",
+            "The model stopped before finishing the structured JSON response.",
+            hint="The response was cut off. Try again.",
+        )
+    msg = choice.message
     _check_refusal(msg)
     _record(user_id, kind, resp.usage)
     
     if msg.content:
         db.set_llm_cache(hash_key, msg.content)
     return msg.content
+
+
+def _prompt_subject_grade(user_id: str, class_id: str | None) -> tuple[str, str]:
+    """Resolve the subject/grade for the prompt from the active class.
+
+    Retrieval already scopes itself from the selected class in service.prepare,
+    so the generation prompt must use that same source. Reading the most
+    recently updated settings row here could describe one class while the
+    retrieved standards belong to another.
+    """
+    if class_id:
+        cls = db.get_class(user_id, class_id)
+        if cls:
+            return str(cls.get("subject") or "AP Language & Composition"), str(cls.get("grade") or "11")
+    s = db.get_settings_row(user_id)
+    return str(s.get("subject") or "AP Language & Composition"), str(s.get("grade") or "11")
 
 
 def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str, class_id: str | None = None) -> dict:
@@ -272,22 +313,23 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     own class's school (db.class_school, migration 25) instead of always the
     account default — a class at a different school than the account default
     would otherwise get the wrong one named in its own prompt."""
-    s = db.get_settings_row(user_id)
-    map_context = map_context_for(user_id, s["subject"], query, class_id=class_id)
+    subject, grade = _prompt_subject_grade(user_id, class_id)
+    map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
     content = _cached_completion(
         user_id,
         "generate_plan",
         model=settings.openai_model,
-        max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
+        max_completion_tokens=plan_completion_tokens_for(user_id),
+        reasoning_effort="none",
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
                 "role": "system",
                 "content": week_system_prompt(
                     result,
-                    subject=s["subject"],
-                    grade=s["grade"],
+                    subject=subject,
+                    grade=grade,
                     map_context=map_context,
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
@@ -306,20 +348,21 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
 
     See generate_plan's own docstring for why `school_id` is a parameter
     rather than resolved internally."""
-    s = db.get_settings_row(user_id)
-    map_context = map_context_for(user_id, s["subject"], query, class_id=class_id)
+    subject, grade = _prompt_subject_grade(user_id, class_id)
+    map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
     stream = client().chat.completions.create(
         model=settings.openai_model,
-        max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
+        max_completion_tokens=plan_completion_tokens_for(user_id),
+        reasoning_effort="none",
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
                 "role": "system",
                 "content": week_system_prompt(
                     result,
-                    subject=s["subject"],
-                    grade=s["grade"],
+                    subject=subject,
+                    grade=grade,
                     map_context=map_context,
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
@@ -338,12 +381,14 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
         # first.
         stream_options={"include_usage": True},
     )
+    finish_reason = None
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
                 _record(user_id, "stream_plan", chunk.usage)
             if not chunk.choices:
                 continue
+            finish_reason = getattr(chunk.choices[0], "finish_reason", None) or finish_reason
             delta = chunk.choices[0].delta
             if getattr(delta, "refusal", None):
                 raise AppError(
@@ -351,6 +396,12 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
                 )
             if delta.content:
                 yield delta.content
+        if finish_reason == "length":
+            raise SchemaError(
+                "truncated_json",
+                "The model stopped before finishing the structured lesson-plan JSON.",
+                hint="The response was cut off. Try again.",
+            )
     finally:
         # Releases the underlying HTTP connection if the caller stops
         # iterating early (Stop clicked mid-stream) rather than leaving it to
@@ -529,7 +580,7 @@ def rewrite_day(
     engagement_strategy as an array while generate emitted a flat `lesson`
     string — so a rewritten day could not be merged back into the week.
     """
-    s = db.get_settings_row(user_id)
+    subject, grade = _prompt_subject_grade(user_id, class_id)
     output_length = output_length_for(user_id)
     content = _cached_completion(
         user_id,
@@ -543,8 +594,8 @@ def rewrite_day(
                 "content": day_system_prompt(
                     result,
                     full_plan_context,
-                    subject=s["subject"],
-                    grade=s["grade"],
+                    subject=subject,
+                    grade=grade,
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     output_length=output_length,
@@ -582,7 +633,7 @@ def rewrite_day_field(
     `field` MUST already be validated against schema.REVISABLE_FIELDS — it is
     interpolated into the prompt and the response schema as a key name.
     """
-    s = db.get_settings_row(user_id)
+    subject, grade = _prompt_subject_grade(user_id, class_id)
     content = _cached_completion(
         user_id,
         "rewrite_day_field",
@@ -596,8 +647,8 @@ def rewrite_day_field(
                     result,
                     full_plan_context,
                     field,
-                    subject=s["subject"],
-                    grade=s["grade"],
+                    subject=subject,
+                    grade=grade,
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                 ),
@@ -663,7 +714,8 @@ def critique_and_revise(
         user_id,
         "critique_and_revise",
         model=settings.openai_model,
-        max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
+        max_completion_tokens=plan_completion_tokens_for(user_id),
+        reasoning_effort="none",
         response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
         messages=[
             {
@@ -724,7 +776,7 @@ def expand_query(user_id: str, query: str) -> list[str]:
         content = _cached_completion(
             user_id,
             "expand_query",
-            model="gpt-5.6-luna",
+            model=settings.openai_model,
             max_completion_tokens=300,
             response_format=_response_format("expanded_queries", QUERY_EXPANSION_SCHEMA),
             messages=[
@@ -777,7 +829,7 @@ def generate_chat_title(user_id: str, message: str) -> str:
         content = _cached_completion(
             user_id,
             "generate_chat_title",
-            model="gpt-5.6-luna",
+            model=settings.openai_model,
             max_completion_tokens=60,
             response_format=_response_format("chat_title", TITLE_SCHEMA),
             messages=[
@@ -999,7 +1051,7 @@ def judge_builder_render(
         content_parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img}"}})
 
     resp = client().chat.completions.create(
-        model=settings.vision_model,
+        model=settings.openai_model,
         max_completion_tokens=2000,
         response_format=_response_format("builder_render_judge", BUILDER_RENDER_JUDGE_JSON_SCHEMA),
         messages=[
@@ -1066,7 +1118,7 @@ def extract_decisions(user_id: str, messages: list[dict]) -> list[dict]:
         content = _cached_completion(
             user_id,
             "extract_decisions",
-            model="gpt-5.6-luna",
+            model=settings.openai_model,
             max_completion_tokens=400,
             response_format=_response_format("decisions", DECISIONS_SCHEMA),
             messages=[
@@ -1158,7 +1210,7 @@ def generate_week_suggestion(
         content = _cached_completion(
             user_id,
             "week_suggestion",
-            model="gpt-5.6-luna",
+            model=settings.openai_model,
             max_completion_tokens=160,
             response_format=_response_format("suggestion", SUGGESTION_SCHEMA),
             messages=[
@@ -1222,7 +1274,7 @@ def generate_bell_ringer(user_id: str, subject: str, grade: str, topic: str | No
     if topic and topic.strip():
         user_line += f" Today's topic or skill: {topic.strip()[:200]}"
     resp = client().chat.completions.create(
-        model="gpt-5.6-luna",
+        model=settings.openai_model,
         max_completion_tokens=300,
         response_format=_response_format("bell_ringer", BELL_RINGER_SCHEMA),
         messages=[
@@ -1388,12 +1440,16 @@ CHAT_TOOLS = [
             "description": (
                 "Trigger the generation or revision of the lesson plan artifact — but only once the "
                 "conversation already has enough to build FROM, not merely a general idea. That means a "
-                "named text/topic AND a rough shape: what the week should focus on, roughly how long "
-                "(a day count, a duration, or an explicit scope like 'just Friday'), or which specific "
-                "change to make on a revision. A request that only gestures at a topic ('something about "
+                "named text/topic AND a rough instructional shape: what the week should focus on, its "
+                "throughline, or which specific change to make on a revision. A normal new weekly plan "
+                "is always the complete week defined by the selected school's format; do not require "
+                "or ask for a day count or duration. Use the school calendar for holidays and no-school "
+                "days. A request that only gestures at a topic ('something about "
                 "Gatsby's symbolism', 'make it more engaging') is NOT enough — call ask_clarifying_questions "
                 "instead of guessing at the missing shape yourself. When the conversation already has enough, "
-                "call this immediately; don't ask a question just to double-check something already answered."
+                "call this immediately; don't ask a question just to double-check something already answered. "
+                "If the teacher explicitly narrows a revision to one day, honor that scope, but never make "
+                "them choose 1, 2, 3, 4, or 5 days for a new weekly plan."
             ),
         },
     },
@@ -1460,7 +1516,10 @@ CHAT_TOOLS = [
                 "quiz request that doesn't already say which question type(s) and roughly how many. Ask "
                 "2-4 short, concrete questions, each with a few clickable options, so the teacher can tap "
                 "through rather than type a paragraph. Don't ask again about something they already "
-                "answered or already specified."
+                "answered or already specified. For a new weekly lesson plan, the week is already a "
+                "complete structure from the selected school's template, so never ask "
+                "how many days or what duration; use questions to narrow the topic, text, skill, or "
+                "student task instead."
             ),
             "parameters": {
                 "type": "object",
@@ -1492,6 +1551,57 @@ CHAT_TOOLS = [
 ]
 
 
+_DAY_SHAPE_QUESTION = re.compile(
+    r"(?:weekly\s+shape|week(?:ly)?\s+(?:length|duration|format)|"
+    r"what\s+(?:kind|type)\s+of\s+week|how\s+long\s+(?:should|must)\s+the\s+(?:week|plan)|"
+    r"how\s+many\s+(?:instructional|teaching|school|lesson)?\s*days?|"
+    r"number\s+of\s+(?:instructional|teaching|school|lesson)?\s*days?|"
+    r"(?:one|two|three|four|five|1|2|3|4|5)[- ]day\s+(?:week|plan))",
+    re.IGNORECASE,
+)
+
+
+def _is_day_shape_question(question: dict) -> bool:
+    """Recognize the redundant day-count question at the API boundary."""
+    text = " ".join(str(question.get(key) or "") for key in ("id", "text"))
+    options = question.get("options") or []
+    text += " " + " ".join(str(option) for option in options)
+    if _DAY_SHAPE_QUESTION.search(text):
+        return True
+    # Covers the exact failure shown in the report even if the model changes
+    # the question wording while keeping the same menu of lesson-count shapes.
+    shape_options = sum(
+        bool(re.search(
+            r"\b(?:full\s+instructional\s+days?|lessons?\s+plus|modified\s+week|shorter\s+week)\b",
+            str(option),
+            re.IGNORECASE,
+        ))
+        for option in options
+    )
+    return shape_options >= 2 or ("week" in text.casefold() and shape_options >= 1)
+
+
+def sanitize_clarifying_questions(questions: list[dict]) -> list[dict]:
+    """Drop questions the selected template has already answered.
+
+    If the model returned only the invalid day-shape question, provide a
+    useful focus question so the teacher is never left with a dead card.
+    """
+    usable = [q for q in questions if isinstance(q, dict) and not _is_day_shape_question(q)]
+    if usable:
+        return usable
+    return [{
+        "id": "lesson_focus",
+        "text": "What should this week focus on?",
+        "options": [
+            "A specific text or chapter",
+            "A skill or standard",
+            "A unit topic",
+            "A project or assessment",
+        ],
+    }]
+
+
 def realtime_tool_defs() -> list[dict]:
     """CHAT_TOOLS, translated to the Realtime API's flat tool shape.
 
@@ -1521,18 +1631,16 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     """
 
     stream = client().chat.completions.create(
-        model=settings.voice_chat_model if voice else settings.openai_model,
+        model=settings.openai_model,
         # Required, not tuning: the configured model rejects function tools
         # outright in /v1/chat/completions unless reasoning is off —
         # "Function tools with reasoning_effort are not supported ... set
         # reasoning_effort to 'none'". Both tools below are the entire
         # mechanism of this conversation (build the plan / ask instead), so
         # without this every chat turn, typed or spoken, 400s.
-        # gpt-5-mini (the voice path) rejects "none" itself — "Unsupported
-        # value: 'reasoning_effort' does not support 'none' with this model" —
-        # and only accepts minimal/low/medium/high, so every hands-free turn
-        # 400'd. "minimal" is the lowest tier it does accept.
-        reasoning_effort="minimal" if voice else "none",
+        # Voice turns use the same Luna model as every other text turn; the
+        # low reasoning setting keeps spoken responses quick and concise.
+        reasoning_effort="low" if voice else "none",
         # Voice replies stay deliberately short. Written chat follows the
         # same persisted preference as lesson-plan generation, so this setting
         # is no longer a prompt-only suggestion on either surface.
@@ -1610,6 +1718,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                         status=502,
                         hint="Try sending that again.",
                     )
+                questions = sanitize_clarifying_questions(questions)
                 yielded_anything = True
                 yield {"tool_call": "ask_clarifying_questions", "questions": questions}
                 break
@@ -1732,7 +1841,7 @@ def deconstruct_standard(user_id: str, standard_code: str, standard_description:
     res = _cached_completion(
         user_id,
         "deconstruct_standard",
-        model="gpt-4o-mini",
+        model=settings.openai_model,
         messages=[
             {
                 "role": "system",
@@ -1743,7 +1852,6 @@ def deconstruct_standard(user_id: str, standard_code: str, standard_description:
                 "content": f"Standard {standard_code}: {standard_description}"
             }
         ],
-        temperature=0.7,
-        max_tokens=100,
+        max_completion_tokens=100,
     )
     return res.choices[0].message.content.strip()

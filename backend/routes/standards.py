@@ -239,14 +239,25 @@ def get_standards_batch(codes: str = Query(..., max_length=4000), subject: str |
     return {code: retrieval.chunk_for_code(code, subject_code=subject) for code in requested}
 
 @router.get("/coverage")
-def get_coverage(class_id: str = Query(...)):
-    """Returns a mapping of standard code to citation count for the given class."""
+def get_coverage(class_id: str = Query(...), user_id: str = Depends(get_current_user)):
+    """Returns a mapping of standard code to citation count for the caller's class.
+
+    `class_id` is a browser-visible identifier, not an authorization proof. The
+    ownership check has to happen before the class-scoped query so a teacher
+    cannot use the coverage endpoint as a cross-account oracle.
+    """
+    if not db.get_class(user_id, class_id):
+        raise AppError("class_not_found", "That class doesn't exist.", status=404)
     return db.get_standards_coverage(class_id)
 
 
 @router.get("/{code:path}/lessons")
-def get_standard_lessons(code: str, class_id: str = Query(...)):
-    """Returns past lessons where this standard was cited."""
+def get_standard_lessons(
+    code: str, class_id: str = Query(...), user_id: str = Depends(get_current_user)
+):
+    """Returns past lessons where this standard was cited in the caller's class."""
+    if not db.get_class(user_id, class_id):
+        raise AppError("class_not_found", "That class doesn't exist.", status=404)
     return db.get_standard_lessons(class_id, code)
 
 

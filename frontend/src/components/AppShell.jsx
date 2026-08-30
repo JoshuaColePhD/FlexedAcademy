@@ -15,6 +15,7 @@ import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
 import { OnboardingWizard } from './OnboardingWizard'
 import { onOpenOnboardingWizard } from '../lib/onboardingWizardBus'
+import { readAccountStorage, writeAccountStorage } from '../lib/accountStorage'
 
 /* The frame. A chat client's shape, which is what this is now.
  *
@@ -700,22 +701,22 @@ export function AppShell({ children }) {
      reload instead of springing back open every visit. */
   const location = useLocation()
   const isFocusMode = false // We now want the sidebar to be permanent across all pages
+  const { user } = useAuth()
 
   const [railCollapsed, setRailCollapsed] = useState(() => {
     try {
-      return localStorage.getItem('aplang.railCollapsed') === '1'
+      return readAccountStorage('rail-collapsed', user?.id) === '1'
     } catch {
       return false
     }
   })
+  useEffect(() => {
+    setRailCollapsed(readAccountStorage('rail-collapsed', user?.id) === '1')
+  }, [user?.id])
   const toggleRailCollapsed = () => {
     setRailCollapsed((collapsed) => {
       const next = !collapsed
-      try {
-        localStorage.setItem('aplang.railCollapsed', next ? '1' : '0')
-      } catch {
-        /* not persisted */
-      }
+      writeAccountStorage('rail-collapsed', user?.id, '', next ? '1' : '0')
       return next
     })
   }

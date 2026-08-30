@@ -101,13 +101,12 @@ def main():
 
         print("  Calling OpenAI...")
         completion = client.beta.chat.completions.parse(
-            model="gpt-4o",
+            model="gpt-5.6-luna",
             messages=[
                 {"role": "system", "content": "You are a precise data extraction tool."},
                 {"role": "user", "content": prompt},
             ],
             response_format=StandardsExtraction,
-            temperature=0.0
         )
 
         extraction = completion.choices[0].message.parsed

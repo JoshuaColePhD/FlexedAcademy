@@ -1,10 +1,5 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import { qk } from '../lib/queryKeys'
-import { useAuth } from '../lib/authContext'
-import { useToast } from '../lib/toastContext'
 import { CalendarPreview } from './CalendarPreview'
 
 /* A school with a pending (unconfirmed) teacher-submitted calendar — the
@@ -14,11 +9,7 @@ import { CalendarPreview } from './CalendarPreview'
  * at it. Shown wherever a school picker surfaces has_pending_calendar
  * (SettingsPage, ClassPage) — never auto-confirmed by just picking it.
  */
-export function PendingCalendarReview({ schoolId, onDecided }) {
-  const { user } = useAuth()
-  const toast = useToast()
-  const qc = useQueryClient()
-  const [deciding, setDeciding] = useState(false)
+export function PendingCalendarReview({ schoolId }) {
   const { data: submission, isLoading } = useQuery({
     queryKey: ['schoolCalendarPending', schoolId],
     queryFn: () => api.getPendingSchoolCalendar(schoolId),
@@ -29,65 +20,16 @@ export function PendingCalendarReview({ schoolId, onDecided }) {
   if (isLoading) return <p className="mt-2 text-xs text-ink-muted">Loading…</p>
   if (!submission) return null
 
-  const isSubmitter = submission.submitted_by === user?.id
-
-  const decide = async (action) => {
-    setDeciding(true)
-    try {
-      if (action === 'confirm') {
-        await api.confirmSchoolCalendar(submission.id)
-        toast.success('Calendar confirmed', "It now counts as this school's real calendar.")
-      } else {
-        await api.rejectSchoolCalendar(submission.id)
-        toast.success('Submission rejected')
-      }
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: qk.schools }),
-        qc.invalidateQueries({ queryKey: ['schoolCalendarPending', schoolId] }),
-      ])
-      onDecided?.()
-    } catch (err) {
-      toast.apiError('Could not save that', err)
-    } finally {
-      setDeciding(false)
-    }
-  }
-
   return (
     <div className="mt-2 max-w-sm rounded-lg bg-flag-tint p-3 text-xs">
       <p className="font-medium text-flag">Pending confirmation</p>
       <p className="mt-1 text-ink-soft">
-        {isSubmitter
-          ? "You submitted this calendar — a colleague at your school needs to confirm it before it's fully trusted."
-          : 'A colleague submitted this calendar. Take a look and confirm it if it matches your school.'}
+        This school calendar is awaiting administrator review. It will not become the trusted
+        calendar for the school until an administrator approves it.
       </p>
       <div className="mt-2">
         <CalendarPreview weeks={submission.weeks} />
       </div>
-      {!isSubmitter ? (
-        <div className="mt-3 flex gap-2">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            type="button"
-            disabled={deciding}
-            onClick={() => decide('confirm')}
-            className="btn btn-primary text-2xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
-          >
-            Looks right
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            type="button"
-            disabled={deciding}
-            onClick={() => decide('reject')}
-            className="btn text-2xs disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Doesn't match
-          </motion.button>
-        </div>
-      ) : null}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, Loa
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
+import { readAccountStorage, writeAccountStorage, accountStorageKey } from '../lib/accountStorage'
 import { useBilling } from '../lib/billingContext'
 import { useVoice } from '../lib/voiceContext'
 import { useLessonStream } from '../hooks/useLessonStream'
@@ -20,6 +21,7 @@ import { questionTypesProse } from '../lib/quizShape'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
+import * as perf from '../lib/performanceMetrics'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
@@ -37,7 +39,7 @@ import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { PlanPeek } from '../components/PlanPeek'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
-import { WeekStrip } from '../components/WeekStrip'
+import { LessonPlanProgressTray } from '../components/LessonPlanProgressTray'
 import { Greeting } from '../components/Greeting'
 import { MobileChatHome } from '../components/MobileChatHome'
 import { ChatHeaderSheet } from '../components/ChatHeaderSheet'
@@ -74,6 +76,35 @@ let idSeq = 0
 const nextId = () => `m${++idSeq}`
 
 const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
+
+/* A fully specified first request does not need a model call just to decide
+ * that it is a lesson-plan request. Keep this intentionally conservative: a
+ * vague "make a lesson plan" still goes through the question path, while a
+ * request that names both a subject/text and an instructional focus can go
+ * straight to the grounded generator. This removes one complete model
+ * round-trip from the common, ready-to-build path without changing the
+ * backend's validation or the clarification behavior. */
+function isClearlySpecifiedPlanRequest(text) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim()
+  if (normalized.length < 24 || normalized.length > 12000) return false
+
+  const asksForPlan =
+    /\b(?:make|create|build|generate|design|prepare|plan)\b/i.test(normalized) &&
+    /\b(?:lesson plan|weekly plan|plan for the week|week of lessons?)\b/i.test(normalized)
+  if (!asksForPlan) return false
+
+  const namesTopic =
+    /\b(?:on|about|around|covering|focused? on|using|through|for)\s+(?!(?:a|an|the|my|this|students?|learners?)\b)[a-z0-9]/i.test(
+      normalized
+    ) ||
+    /\b(?:chapter|unit|novel|article|matter|properties|argument|grammar|fractions?|ecosystems?)\b/i.test(normalized)
+  const namesLearningWork =
+    /\b(?:focus(?:ed|ing)?|students?\s+(?:will|should|need)|practice|apply|analy[sz]|read|write|discuss|compare|skill|standard|objective|assessment|quiz|project)\b/i.test(
+      normalized
+    )
+
+  return namesTopic && namesLearningWork
+}
 
 /* A running transcript reopened days later used to read as one unbroken
  * column — nothing marked where "last Tuesday" ended and "just now" began.
@@ -219,6 +250,7 @@ function BannerReveal({ open, children }) {
 
 function TemplateBanner() {
   const { classId } = useParams()
+  const { user } = useAuth()
   const { data: schools = [] } = useQuery({
     queryKey: qk.schools,
     queryFn: () => api.listSchools(),
@@ -241,7 +273,9 @@ function TemplateBanner() {
   const Icon = copy?.icon
   // A status change is new information, so its dismissal must not suppress a
   // later state (for example, "reviewing" should not hide "needs attention").
-  const dismissalKey = school && copy ? `fa.templateBannerDismissed:${school.id}:${school.builder_readiness}` : ''
+  const dismissalKey = school && copy
+    ? accountStorageKey('template-banner-dismissed', user?.id, `${school.id}:${school.builder_readiness}`)
+    : null
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
@@ -257,11 +291,7 @@ function TemplateBanner() {
   }, [dismissalKey])
 
   const dismiss = () => {
-    try {
-      localStorage.setItem(dismissalKey, '1')
-    } catch {
-      /* The banner can still be dismissed for this visit. */
-    }
+    if (dismissalKey) writeAccountStorage('template-banner-dismissed', user?.id, `${school.id}:${school.builder_readiness}`, '1')
     setDismissed(true)
   }
 
@@ -290,19 +320,19 @@ const TRIAL_BANNER_THRESHOLD_DAYS = 2
 // left" shouldn't also swallow "1 day left" tomorrow, or the countdown
 // silently stops warning anyone right when it matters most. localStorage
 // (not state) so it survives the reload a real day boundary implies.
-const TRIAL_BANNER_DISMISSED_KEY = 'fa.trialBannerDismissedAt'
-
 // The grid-based BannerReveal keeps this mounted long enough to recede instead
 // of vanishing outright the instant a webhook resolves the status.
 function TrialBanner() {
   const { entitlement, openPaywall } = useBilling()
+  const { user } = useAuth()
+  const dismissalKey = accountStorageKey('trial-banner-dismissed', user?.id)
   const [dismissed, setDismissed] = useState(() => {
-    try {
-      return typeof localStorage !== 'undefined' ? localStorage.getItem(TRIAL_BANNER_DISMISSED_KEY) : null
-    } catch {
-      return null
-    }
+    return readAccountStorage('trial-banner-dismissed', user?.id)
   })
+
+  useEffect(() => {
+    setDismissed(readAccountStorage('trial-banner-dismissed', user?.id))
+  }, [user?.id])
 
   const expired = !!entitlement?.trial_expired
   const daysLeft = entitlement?.trial_days_remaining
@@ -310,7 +340,7 @@ function TrialBanner() {
 
   const dismissCountdown = () => {
     try {
-      localStorage.setItem(TRIAL_BANNER_DISMISSED_KEY, String(daysLeft))
+      if (dismissalKey) writeAccountStorage('trial-banner-dismissed', user?.id, '', String(daysLeft))
     } catch {
       /* dismissal just won't survive a reload — not worth failing over */
     }
@@ -435,7 +465,7 @@ export function ChatPage() {
   )
   const qc = useQueryClient()
   const isOnline = useOnlineStatus()
-  const { refresh: refreshAuth } = useAuth()
+  const { user, refresh: refreshAuth } = useAuth()
   const { mayGenerate, entitlement, openPaywall } = useBilling()
   const voice = useVoice()
   const mode = useLayoutMode()
@@ -534,7 +564,7 @@ export function ChatPage() {
   // See useComposerDraft's own comment for why this re-syncs on every KEY
   // change (switching chats), not just once on mount.
   const draftKey = chatId || (classId ? `new:${classId}` : null)
-  useComposerDraft(draftKey, query, setQuery)
+  useComposerDraft(draftKey, query, setQuery, user?.id)
   /* ArtifactRail's empty-state starter cards (Week Overview / Materials /
      Assessments) hand their prompt here rather than submitting straight
      away — same "fill, don't fire" convention as everywhere else a click
@@ -750,22 +780,21 @@ export function ChatPage() {
     // sync below) — this is a fallback for the first paint, before that sync
     // has run once, so an unstyled 0x0-but-static div can't eat a click.
     el.style.pointerEvents = 'none'
-    // left/width, not top: opening the document unmounts ArtifactDrawer
-    // (see its own comment near chatPane's return), which widens the chat
-    // pane — and this anchor along with it — in the SAME instant the
-    // overlay starts its own slide. Without a transition here that read as
-    // the composer visibly changing shape a beat before the glass panel
-    // caught up to explain why, instead of the "floating, unmoved" feel a
-    // portaled dock is supposed to give (Josh's own ask, 2026-08-27). Same
-    // 520ms/--ease-glide as .artifact-overlay's own entrance (base.css) —
-    // matching curves is what makes these read as one motion instead of
-    // two unrelated things that happen to start at the same time. top is
-    // left alone on purpose — that one only changes from the composer's
+    // left/width are normally animated when the chat rail changes, but the
+    // sync effect below freezes that geometry while the lesson-plan overlay
+    // is open so the composer remains visually anchored over the same spot.
+    // top is left alone on purpose — that one only changes from the composer's
     // OWN content growing (an attachment chip, the textarea autosizing),
     // where instant is what typing should feel like.
     el.style.transition = `left 520ms var(--ease-glide), width 520ms var(--ease-glide)`
     return el
   })
+  /* The document opens over the chat, so its mount must not reflow the
+     composer's horizontal position. Keep the last normal chat rect and hold
+     it while the saved lesson-plan viewer is open; closing the viewer resumes
+     live anchoring so resize and rail changes work normally again. */
+  const composerRectRef = useRef(null)
+  const composerOverDocument = Boolean(expanded && artifact?.planId && artifact?.plan?.days?.length)
   useEffect(() => {
     document.body.appendChild(portalHost)
     return () => document.body.removeChild(portalHost)
@@ -784,7 +813,15 @@ export function ChatPage() {
     const anchor = composerAnchorRef.current
     if (!anchor) return
     const sync = () => {
+      if (composerOverDocument && composerRectRef.current) {
+        const saved = composerRectRef.current
+        portalHost.style.left = `${saved.left}px`
+        portalHost.style.top = `${saved.top}px`
+        portalHost.style.width = `${saved.width}px`
+        return
+      }
       const r = anchor.getBoundingClientRect()
+      composerRectRef.current = { left: r.left, top: r.top, width: r.width }
       portalHost.style.left = `${r.left}px`
       portalHost.style.top = `${r.top}px`
       portalHost.style.width = `${r.width}px`
@@ -797,7 +834,7 @@ export function ChatPage() {
       ro.disconnect()
       window.removeEventListener('resize', sync)
     }
-  }, [portalHost])
+  }, [composerOverDocument, portalHost])
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
   // needs — otherwise the transcript would sit a fixed guess-height short of
@@ -812,26 +849,11 @@ export function ChatPage() {
 
   const scrollRef = useRef(null)
   const endRef = useRef(null)
-  // Every rendered message's own DOM node, by id — see the ref callback on
-  // each row below and pinToTopIdRef's own comment just under this.
-  const messageRefs = useRef(new Map())
-  /* Set the moment a new turn's own user message is pushed (see submit()) —
-     the scroll effect below reads it once, scrolls THAT message's top to
-     the top of the transcript, then clears it. Was: every new chunk of a
-     streaming reply re-snapped the view to the very BOTTOM of everything
-     (endRef), which for any reply longer than one screen meant finishing
-     already scrolled past its own opening line — reading it back required
-     scrolling back up by hand every single time. Pinning the NEW message's
-     top instead means the exchange starts exactly where a teacher would
-     look for it, and the reply just grows into the room below rather than
-     dragging the viewport down after it. */
-  const pinToTopIdRef = useRef(null)
-  // 'bottom' (chase the very end, e.g. an existing conversation just
-  // loaded) or 'pinned' (a turn's start is pinned; don't chase anything
-  // until the next one begins). Reset to 'bottom' wherever `messages` is
-  // replaced wholesale rather than appended to — see the chat-load effect.
-  const scrollModeRef = useRef('bottom')
-
+  /* Set when a new turn's user message is pushed (see submit()). The scroll
+     effect reads it once, follows the transcript's end, then clears it. This
+     makes the response visible immediately and keeps streaming replies in
+     view until the teacher deliberately scrolls upward. */
+  const followLatestIdRef = useRef(null)
   const activeChat = chats.find((c) => c.id === chatId)
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
 
@@ -1022,7 +1044,6 @@ export function ChatPage() {
       stream.stop()
       chatStream.stop()
       setMessages([])
-      scrollModeRef.current = 'bottom'
       setArtifact(null)
       setArtifactLoadError(false)
       setExpanded(false)
@@ -1096,7 +1117,6 @@ export function ChatPage() {
           created_at: m.created_at || null,
         }))
         setMessages(loaded)
-        scrollModeRef.current = 'bottom'
         localFor.current = chatId
         lastSpokenRef.current = loaded.length ? loaded[loaded.length - 1].id : null
         const last = [...loaded].reverse().find((m) => m.planId)
@@ -1649,13 +1669,14 @@ export function ChatPage() {
       // sends — the send button was already enabled for that and did nothing.
       const voiceTurn = Boolean(options.voiceTurn)
       if (!content.trim() || (busy && !voiceTurn)) return
+      perf.mark('turn:submit')
       setPreparing(true)
       setQuery('')
       // A sent message shouldn't leave a stale draft behind to reappear on
       // the next visit — see clearComposerDraft's own comment for why this
       // can't just wait on the debounced write-back noticing `query` went
       // empty.
-      clearComposerDraft(draftKey)
+      clearComposerDraft(draftKey, user?.id)
       // The chip has to clear here, before any request goes out — the sent
       // files are captured in `content` below and folded into this turn's
       // payload; leaving the chip pinned implied they were still in context
@@ -1663,10 +1684,11 @@ export function ChatPage() {
       setAttachments([])
       const newUserMessage = { id: nextId(), role: 'user', content: typed || `Sent ${atts.length} file(s)` }
       const nextMessages = [...messages, newUserMessage]
-      // See pinToTopIdRef's own comment — the scroll effect reads this once
+      // The scroll effect reads this once and follows the latest transcript
+      // content instead of leaving the new turn above the visible area.
       // and clears it, so the reply that's about to arrive doesn't drag the
       // view any further than this turn's own opening line.
-      pinToTopIdRef.current = newUserMessage.id
+      followLatestIdRef.current = newUserMessage.id
 
       setMessages(nextMessages)
 
@@ -1769,19 +1791,12 @@ export function ChatPage() {
         }
       }
 
-      /* No plan in this chat yet -> build one. Used to skip chat_stream
-         entirely and go straight to generation (see git history: "intent
-         routing is deliberately dumb" — reintroducing a model choice here
-         once regressed a fully-specified prompt into "want me to proceed?"
-         instead of the week the composer promised). Reintroduced now, on
-         request, but narrower than that earlier version: the model has
-         exactly two ways to respond to a first message, generate_lesson_plan
-         or ask_clarifying_questions (see backend/llm.py), and the system
-         prompt is explicit that a request which already names a text/topic
-         and a rough shape has enough to build from immediately — the same
-         speed as before for anything specific enough to deserve it. Only a
-         genuinely vague message ("I want to make a lesson") should ever see
-         the clarifying-questions branch below instead of a plan appearing. */
+      /* No plan in this chat yet -> build one. A clearly specified request
+         goes straight to the grounded generator; a genuinely vague message
+         still takes the chat_stream path so the model can ask its focused
+         clarifying questions. The direct check is deliberately conservative
+         (see isClearlySpecifiedPlanRequest above), so this removes a full
+         routing round-trip without changing the answer for uncertain input. */
       if (!artifact?.planId) {
         /* The paywall, asked before the wait rather than after it. The
            server enforces the same rule (entitlement.require_entitlement,
@@ -1817,6 +1832,21 @@ export function ChatPage() {
           ...messages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
           { role: 'user', content },
         ]
+
+        if (isClearlySpecifiedPlanRequest(typed)) {
+          setPreparing(false)
+          const directHistory = [
+            ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+            `USER: ${content}`,
+          ].join('\n\n')
+          if (voiceOpen) voice.speak(VOICE_BUILDING)
+          // No chat placeholder is needed here: the progress tray is the
+          // live response surface, and the completed-plan callback adds the
+          // assistant handoff when the document is ready.
+          stream.start(directHistory, { chatId: activeChatId, weekNumber: effectiveWeek, classId }).catch(() => {})
+          return
+        }
+
         setPreparing(false)
         liveMessageIdRef.current = nextId()
         setMessages((prev) => [
@@ -2097,7 +2127,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, draftKey, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
+    [query, attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2128,13 +2158,13 @@ export function ChatPage() {
       if (busy) {
         setQueuedMessage({ text: typed, attachments })
         setQuery('')
-        clearComposerDraft(draftKey)
+        clearComposerDraft(draftKey, user?.id)
         setAttachments([])
         return
       }
       submit(text)
     },
-    [busy, query, submit, attachments, draftKey]
+    [busy, query, submit, attachments, draftKey, user?.id]
   )
   useEffect(() => {
     if (busy || !queuedMessage) return
@@ -2163,7 +2193,7 @@ export function ChatPage() {
       const label = field ? `${day.name}’s ${FIELD_LABELS[field] || field}` : day.name
       const ask = `Revise ${label}: ${feedback}`
       const askId = nextId()
-      pinToTopIdRef.current = askId
+      followLatestIdRef.current = askId
       setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       // Persisted for the same reason as the composer's own messages: a cell
       // tweak is a real edit to the week, and the transcript is meant to be a
@@ -2236,7 +2266,7 @@ export function ChatPage() {
       const label = `${FIELD_LABELS[field] || field} across ${dayIndices.length} days`
       const ask = `Revise ${label}: ${feedback}`
       const askId = nextId()
-      pinToTopIdRef.current = askId
+      followLatestIdRef.current = askId
       setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       const saveTo = localFor.current
       if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
@@ -2299,7 +2329,7 @@ export function ChatPage() {
       const label = `${day.name}’s ${FIELD_LABELS[field] || field}`
       const ask = `Set ${label} to ${code}.`
       const askId = nextId()
-      pinToTopIdRef.current = askId
+      followLatestIdRef.current = askId
       setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       const saveTo = localFor.current
       if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
@@ -2397,23 +2427,6 @@ export function ChatPage() {
      this can be one shared callback rather than one closure per row. */
   const handleEditMessage = useCallback((_m, next) => submit(next), [submit])
 
-  /* One ref callback per message id, cached, so the same identity comes back
-     on every render. An inline `ref={(el) => …}` is a NEW function each time,
-     which React treats as a different ref: it calls the old one with null and
-     the new one with the node on every single render, churning this Map
-     constantly for no reason. */
-  const messageRefCallbacks = useRef(new Map())
-  const registerMessageRef = useCallback((id) => {
-    const cached = messageRefCallbacks.current.get(id)
-    if (cached) return cached
-    const fn = (el) => {
-      if (el) messageRefs.current.set(id, el)
-      else messageRefs.current.delete(id)
-    }
-    messageRefCallbacks.current.set(id, fn)
-    return fn
-  }, [])
-
   // Auto-retry once on reconnect: a message that failed while the device
   // was genuinely offline (see the offline-aware hint above) shouldn't need
   // a teacher to notice wifi came back AND remember to tap Retry — the
@@ -2491,15 +2504,9 @@ export function ChatPage() {
     if (!el) return
     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120)
   }
-  // Two very different jobs, picked apart by scrollModeRef (see its own
-  // comment above): 'bottom' chases the very end — right for a
-  // conversation that just loaded, where the latest exchange IS the thing
-  // to land on. 'pinned' means a turn already anchored its own start
-  // (pinToTopIdRef fired below) and nothing should drag the view further
-  // while the reply grows underneath it — that dragging, once per SSE
-  // chunk, was the whole "why do I have to scroll back up" complaint: for
-  // any reply longer than one screen, chasing its bottom scrolls straight
-  // past its own opening line.
+  // Follow the latest content while the teacher remains at the bottom. A
+  // deliberate upward scroll flips atBottom false, so streaming does not
+  // wrestle the viewport back under the teacher's cursor.
   // Was requestAnimationFrame, to coalesce several SSE chunks landing in the
   // same frame into one scroll call — but rAF is throttled to roughly
   // nothing the moment a tab is backgrounded (switching tabs while the AI
@@ -2509,30 +2516,19 @@ export function ChatPage() {
   // (mode flips to 'pinned' and everything after returns early), so there
   // was nothing left to actually coalesce.
   useEffect(() => {
-    const pinId = pinToTopIdRef.current
-    if (pinId) {
-      pinToTopIdRef.current = null
-      scrollModeRef.current = 'pinned'
-      // Instant, not smooth — smooth scrolling is itself an animation the
-      // browser is free to throttle or stall exactly when a tab is
-      // backgrounded (switching tabs while a reply is still being written
-      // is ordinary), and this is a hard "you're on a new turn now"
-      // repositioning, not a decorative flourish worth the risk of it
-      // silently never finishing.
-      messageRefs.current.get(pinId)?.scrollIntoView({ block: 'start' })
+    const followId = followLatestIdRef.current
+    if (followId) {
+      followLatestIdRef.current = null
+      endRef.current?.scrollIntoView({ block: 'end' })
       return
     }
-    if (scrollModeRef.current === 'pinned') return
     if (!atBottom) return
     // chatStream.text (the live reply streaming in below, before it lands in
-    // `messages`) and stream.preview (the plan-building WeekStrip filling in
-    // day by day) both grow the transcript's height without changing
-    // `messages` itself — without them here, an existing conversation a
-    // teacher is already at the bottom of wouldn't follow-scroll until the
-    // whole generation finished. Irrelevant once a turn is 'pinned' above:
-    // that branch already returns before this runs.
+    // `messages`) grows the transcript's height without changing `messages`
+    // itself. Plan preview now lives in the composer progress tray, so it
+    // must not wake this scroll effect on every partial-JSON update.
     endRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, atBottom, chatStream.text, stream.preview])
+  }, [messages, atBottom, chatStream.text])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
      effect watching `messages` catches every assistant reply this component
@@ -2580,7 +2576,8 @@ export function ChatPage() {
      that already has an artifact would just be wasted calls for a card
      stack nothing displays anymore. */
   useEffect(() => {
-    if (artifact?.planId || messages.length === 0) return undefined
+    const lastMessage = messages[messages.length - 1]
+    if (artifact?.planId || messages.length === 0 || busy || lastMessage?.streaming) return undefined
     let cancelled = false
     api
       .getDecisions(messages.map((m) => ({ role: m.role, content: m.content })))
@@ -2591,7 +2588,7 @@ export function ChatPage() {
     return () => {
       cancelled = true
     }
-  }, [messages, artifact?.planId])
+  }, [messages, artifact?.planId, busy])
 
 
   /* Voice has one submit path. Realtime emits a completed transcription;
@@ -3251,15 +3248,7 @@ export function ChatPage() {
                       <DaySeparator label={dayLabel(m.created_at)} />
                     </div>
                   ) : null}
-                  {/* The wrapper, not Message itself, carries the scroll ref —
-                      Message is a plain function component, not forwardRef, and
-                      wrapping costs nothing layout-wise (a bare block div around
-                      what's already a block-level flex item). See messageRefs and
-                      pinToTopIdRef's own comment below for what this ref is for. */}
-                  <div
-                    className={i === 0 || daySep ? '' : grouped ? 'mt-2' : 'mt-7'}
-                    ref={registerMessageRef(m.id)}
-                  >
+                  <div className={i === 0 || daySep ? '' : grouped ? 'mt-2' : 'mt-7'}>
                     <Message
                       message={m}
                       subject={activeClass?.subject}
@@ -3345,14 +3334,7 @@ export function ChatPage() {
                 the eyebrow label here; isPhone still gets the full list,
                 since phone has no rail to carry it. */}
             {stream.isStreaming ? (
-              <div className="w-full">
-                <p className="eyebrow mb-2">
-                  {stream.preview?.days?.length ? 'Writing the week' : 'Retrieving standards'}
-                </p>
-                {isPhone ? (
-                  <WeekStrip days={stream.preview?.days} writing loose className="max-w-xs" />
-                ) : null}
-              </div>
+              <p className="eyebrow">{stream.preview?.days?.length ? 'Writing the week' : 'Retrieving standards'}</p>
             ) : revising ? (
               <p className="eyebrow">Revising…</p>
             ) : preparing ? (
@@ -3439,9 +3421,7 @@ export function ChatPage() {
           ResizeObserver and an autosized inline height, all of which die on
           remount. Only the wrapper's className may change. */}
       <div className="shrink-0 bg-transparent pb-5 pt-3">
-        <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
-          voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
-        }`}>
+        <div className="mx-auto w-full max-w-4xl px-gutter">
           {/* navigator.onLine, not a failed request — this is proactive
               (shown the instant a device loses its link, before a teacher
               even tries to send anything) rather than reactive to one
@@ -3529,6 +3509,12 @@ export function ChatPage() {
                 mobileReader
               />
             </PlanPeek>
+          ) : null}
+          {stream.isStreaming ? (
+            <LessonPlanProgressTray
+              days={stream.preview?.days}
+              onStop={stopGenerating}
+            />
           ) : null}
           <Composer
             value={query}

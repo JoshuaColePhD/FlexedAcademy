@@ -6,13 +6,7 @@ import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { qk } from '../lib/queryKeys'
 import { errorParts } from '../lib/apiError'
-
-export const KIND_LABEL = {
-  pacing_guide: 'Pacing guide',
-  syllabus: 'Syllabus',
-  curriculum_map: 'Curriculum map',
-  other: 'Other',
-}
+import { KIND_LABEL } from './documentKinds'
 
 /* ── documents for one class ───────────────────────────────────────────────
    A class holds several: the old table allowed exactly one per framework, so

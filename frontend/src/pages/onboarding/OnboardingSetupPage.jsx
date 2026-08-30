@@ -1,10 +1,11 @@
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { qk } from '../../lib/queryKeys'
 import { useClasses } from '../../hooks/useAppData'
 import { OnboardingWizard } from '../../components/OnboardingWizard'
 import { BootScreen } from '../../components/BootScreen'
+import { safeReturnTo } from '../../lib/returnTo'
 
 /* Route: /c/:classId/onboarding — rendered on its own, outside AppShell, so a
  * brand-new account never sees the sidebar/rail ("the IDE") behind a modal
@@ -20,6 +21,8 @@ import { BootScreen } from '../../components/BootScreen'
 export function OnboardingSetupPage() {
   const { classId } = useParams()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const returnTo = safeReturnTo(params.get('next'))
   const { data: classes = [], isLoading } = useClasses()
   /* Prefetched here, not just inside OnboardingWizard: the wizard's own
    * WelcomeStep counts "N quick things" from whether the teacher's school
@@ -51,7 +54,7 @@ export function OnboardingSetupPage() {
       variant="page"
       open
       cls={cls}
-      onClose={() => navigate(`/c/${cls.id}`, { replace: true })}
+      onClose={() => navigate(returnTo || `/c/${cls.id}`, { replace: true })}
     />
   )
 }

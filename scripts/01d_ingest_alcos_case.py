@@ -12,7 +12,7 @@ of Education itself, at alabamastandards.org — the site ALEX embeds under its
 exact PDF it was cut from, which is what lets the two be cross-checked.
 
 That matters because of the rule in the README: nothing in this pipeline rewords a
-standard. Running a 300-page PDF through gpt-4o (as `01_parse_universal.py` does
+standard. Running a 300-page PDF through gpt-5.6-luna (as `01_parse_universal.py` does
 for small targeted PDFs) puts a paraphrase risk on every one of ~8,000 standards
 and costs real money per rebuild. The CASE feed is the state's own structured
 copy of the same text — no model in the loop at all — so the standard text here

@@ -355,12 +355,6 @@ def delete_chat(chat_id: str, user_id: str = Depends(get_current_user)):
         raise AppError("chat_not_found", "No such chat.", status=404)
 
 
-@router.post("/chats/import")
-def import_chats(payload: list[dict], user_id: str = Depends(get_current_user)):
-    """One-time migration of the old localStorage['lesson_chats'] array."""
-    return db.import_chats(user_id, payload)
-
-
 # ---------------------------------------------------------------------------
 # File intake
 # ---------------------------------------------------------------------------

@@ -22,6 +22,8 @@ PY = sys.executable
 # (script, needs_corpus) — needs_corpus means it queries the live DB + embeddings.
 SUITES: list[tuple[str, bool]] = [
     ("test_grounding_audit.py", False),
+    ("test_generation_context_and_variety.py", False),
+    ("test_template_day_shape_guard.py", False),
     ("test_field_scoped_revise.py", False),
     ("test_entitlement.py", False),
     # Lives in backend/builder/ (it's a regression test on generic_renderer.py,

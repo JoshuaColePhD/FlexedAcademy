@@ -1,6 +1,7 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
 import { parsePartialJson, usablePlan } from '../lib/partialJson'
+import * as perf from '../lib/performanceMetrics'
 
 /* All the streaming logic, in one place.
 
@@ -59,6 +60,65 @@ export function useLessonStream({ onDone, onError } = {}) {
   // mid-stream is not visible to the closure that started the stream.
   const groundingRef = useRef(null)
 
+  /* Plan JSON is much larger than a normal chat reply, and the partial parser
+     scans the whole accumulated document. The server can deliver several SSE
+     chunks between paints, so parsing and setting React state for every chunk
+     made the lesson-plan path do work the browser could not display. Keep the
+     latest text, paint at most once per frame, and inspect the partial JSON at
+     a modest cadence. The final flush below always parses the complete plan. */
+  const pendingTextRef = useRef(null)
+  const pendingPreviewRef = useRef(undefined)
+  const previewRafRef = useRef(null)
+  const lastPreviewParseAtRef = useRef(0)
+  const PREVIEW_PARSE_INTERVAL_MS = 100
+
+  const flushPlanUpdate = useCallback((finalText = null) => {
+    if (previewRafRef.current != null) {
+      cancelAnimationFrame(previewRafRef.current)
+      previewRafRef.current = null
+    }
+    const textToPaint = finalText ?? pendingTextRef.current
+    if (textToPaint != null) setText(textToPaint)
+    if (finalText != null) {
+      const parsed = usablePlan(parsePartialJson(finalText))
+      if (parsed) setPreview(parsed)
+    } else if (pendingPreviewRef.current !== undefined) {
+      setPreview(pendingPreviewRef.current)
+    }
+    pendingTextRef.current = null
+    pendingPreviewRef.current = undefined
+  }, [])
+
+  const queuePlanUpdate = useCallback((value) => {
+    pendingTextRef.current = value
+    const now = performance.now()
+    if (now - lastPreviewParseAtRef.current >= PREVIEW_PARSE_INTERVAL_MS) {
+      const parsed = usablePlan(parsePartialJson(value))
+      if (parsed) pendingPreviewRef.current = parsed
+      lastPreviewParseAtRef.current = now
+    }
+    if (previewRafRef.current != null) return
+    previewRafRef.current = requestAnimationFrame(() => {
+      previewRafRef.current = null
+      if (pendingTextRef.current == null) return
+      setText(pendingTextRef.current)
+      if (pendingPreviewRef.current !== undefined) setPreview(pendingPreviewRef.current)
+      pendingTextRef.current = null
+      pendingPreviewRef.current = undefined
+    })
+  }, [])
+
+  const cancelQueuedPlan = useCallback(() => {
+    if (previewRafRef.current != null) {
+      cancelAnimationFrame(previewRafRef.current)
+      previewRafRef.current = null
+    }
+    pendingTextRef.current = null
+    pendingPreviewRef.current = undefined
+  }, [])
+
+  useEffect(() => cancelQueuedPlan, [cancelQueuedPlan])
+
   // Latest callbacks without making them dependencies of `start`.
   const onDoneRef = useRef(onDone)
   const onErrorRef = useRef(onError)
@@ -79,28 +139,32 @@ export function useLessonStream({ onDone, onError } = {}) {
   const stop = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
+    cancelQueuedPlan()
     setIsStreaming(false)
     setText('')
     setPreview(null)
     setGrounding(null)
     groundingRef.current = null
-  }, [])
+  }, [cancelQueuedPlan])
 
   const reset = useCallback(() => {
+    cancelQueuedPlan()
     setText('')
     setPreview(null)
     setGrounding(null)
     groundingRef.current = null
-  }, [])
+  }, [cancelQueuedPlan])
 
   // One attempt: opens the SSE connection and either returns the finished
   // result or throws. Retrying lives in `start`, not here — see useChatStream
   // for why that split matters (onDone must fire at most once per call).
   const attempt = useCallback(async (query, { chatId, weekNumber, classId, controller }) => {
+    cancelQueuedPlan()
     setText('')
     setPreview(null)
     setGrounding(null)
     groundingRef.current = null
+    perf.mark('lesson-stream:start')
 
     let accumulated = ''
 
@@ -170,9 +234,15 @@ export function useLessonStream({ onDone, onError } = {}) {
           }
           if (event.chunk) {
             accumulated += event.chunk
-            setText(accumulated)
-            const parsed = usablePlan(parsePartialJson(accumulated))
-            if (parsed) setPreview(parsed)
+            if (accumulated === event.chunk) {
+              perf.mark('lesson-stream:first-token')
+              perf.measure(
+                'lesson-stream:time-to-first-token',
+                'lesson-stream:start',
+                'lesson-stream:first-token'
+              )
+            }
+            queuePlanUpdate(accumulated)
           }
           if (event.done) {
             finished = event
@@ -189,11 +259,14 @@ export function useLessonStream({ onDone, onError } = {}) {
       })
     }
 
+    flushPlanUpdate(accumulated)
     setPreview(finished.plan ?? null)
+    perf.mark('lesson-stream:end')
+    perf.measure('lesson-stream:duration', 'lesson-stream:start', 'lesson-stream:end')
     // Grounding rides along, because `finished` (the done event) has none and
     // the caller's `stream.grounding` is a stale read.
     return { ...finished, grounding: groundingRef.current }
-  }, [])
+  }, [cancelQueuedPlan, flushPlanUpdate, queuePlanUpdate])
 
   const start = useCallback(
     async (query, { chatId, weekNumber, classId } = {}) => {

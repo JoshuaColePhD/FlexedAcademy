@@ -211,7 +211,6 @@ export const api = {
   deleteChat: (id) => request(`/api/chats/${id}`, { method: 'DELETE' }),
   addMessage: (chatId, msg) =>
     request(`/api/chats/${chatId}/messages`, { method: 'POST', body: msg }),
-  importChats: (payload) => request('/api/chats/import', { method: 'POST', body: payload }),
 
   // `signal` is destructured out so it is never serialised into the query string.
   listPlans: ({ signal, ...params } = {}) => {

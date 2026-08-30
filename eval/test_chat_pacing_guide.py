@@ -37,6 +37,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from backend import db, llm  # noqa: E402
 from backend.deps import get_current_user  # noqa: E402
+from backend.routes import generate  # noqa: E402
 from backend.server import app  # noqa: E402
 
 FAILURES: list[str] = []
@@ -51,12 +52,19 @@ def check(label: str, ok: bool, detail: str = "") -> None:
 def main() -> int:
     captured: dict[str, object] = {}
 
-    real_settings, real_map_context, real_stream_chat, real_get_chat, real_get_class = (
+    real_settings, real_map_context, real_stream_chat, real_output_length, real_custom_instructions, real_get_chat, real_get_class = (
         db.get_settings_row,
         llm.map_context_for,
         llm.stream_chat,
+        llm.output_length_for,
+        llm.custom_instructions_for,
         db.get_chat,
         db.get_class,
+    )
+    real_get_user_school, real_list_plans, real_require_entitlement = (
+        db.get_user_school,
+        db.list_plans,
+        generate.require_entitlement,
     )
     db.get_settings_row = lambda _uid: {"subject": "AP Language & Composition", "grade": "11"}
 
@@ -68,7 +76,14 @@ def main() -> int:
     # class_id through to map_context_for — a stub missing it surfaces as a
     # KeyError deep in production code, not a clean assertion failure.
     db.get_class = lambda _uid, class_id: (
-        {"id": "eng101", "subject": "English Language Arts", "grade": "10"} if class_id == "eng101" else None
+        {
+            "id": "eng101",
+            "subject": "English Language Arts",
+            "grade": "10",
+            "school": "another-ingested-school",
+        }
+        if class_id == "eng101"
+        else None
     )
 
     def fake_map_context(user_id, subject, query, *, class_id=None):
@@ -83,6 +98,14 @@ def main() -> int:
 
     llm.map_context_for = fake_map_context
     llm.stream_chat = fake_stream_chat
+    llm.output_length_for = lambda _uid: "medium"
+    llm.custom_instructions_for = lambda _uid: None
+    db.get_user_school = lambda _uid: "weeden-elementary-school"
+    db.list_plans = lambda _uid, **_kwargs: {"items": []}
+    # This script tests prompt assembly only. The endpoint's entitlement gate
+    # is tested elsewhere; leaving it live here makes an otherwise hermetic
+    # eval attempt to connect to the production database.
+    generate.require_entitlement = lambda _uid: None
     app.dependency_overrides[get_current_user] = lambda: "u1"
 
     try:
@@ -156,6 +179,15 @@ def main() -> int:
             "map_context_for was scoped to the chat's own class_id, not None",
             captured.get("map_context_class_id") == "eng101",
         )
+        check(
+            "every school chat names its configured five-day structure",
+            "selected school's weekly lesson-plan format is already configured" in prompt
+            and "complete five-day Monday-Friday structure" in prompt,
+        )
+        check(
+            "every school chat forbids day-count clarifying questions",
+            "Never ask the teacher how many days" in prompt,
+        )
 
         print("\n5. A chat with no resolvable class still falls back to settings")
         captured.clear()
@@ -173,8 +205,13 @@ def main() -> int:
         db.get_settings_row = real_settings
         llm.map_context_for = real_map_context
         llm.stream_chat = real_stream_chat
+        llm.output_length_for = real_output_length
+        llm.custom_instructions_for = real_custom_instructions
         db.get_chat = real_get_chat
         db.get_class = real_get_class
+        db.get_user_school = real_get_user_school
+        db.list_plans = real_list_plans
+        generate.require_entitlement = real_require_entitlement
         app.dependency_overrides.pop(get_current_user, None)
 
     print()

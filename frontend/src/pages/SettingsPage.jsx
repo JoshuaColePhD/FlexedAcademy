@@ -371,7 +371,7 @@ function SchoolPicker({ value, onSaved }) {
     setUploading(true)
     try {
       await api.uploadSchoolCalendar(selected.name, { file, sourceUrl: file ? undefined : url })
-      toast.success('Calendar submitted', 'It is now applied to this school.')
+      toast.success('Calendar submitted', 'An administrator will review it before it becomes the school calendar.')
       schoolsState.refetch()
     } catch (err) {
       toast.apiError('Could not upload the calendar', err)

@@ -59,12 +59,12 @@ ENTITLED_STATUSES = frozenset({"active", "trialing", "past_due", "comped"})
 USAGE_WINDOW_DAYS = 7
 
 # The hard trial cutoff, added after this file's own "reverse trial" removal
-# above. That removal was correct — trial_period_days was Stripe's card-
-# required trial (config.py), and a *second* time-boxed grant reusing the
-# same setting for every unsubscribed status was a bug, not a feature. This
-# is a different thing: a free tier that used to run at the usage cap
-# forever now expires trial_period_days after signup, at which point
-# unsubscribed access stops outright rather than just staying capped.
+# above. That removal was correct — a second time-boxed grant reusing the
+# signup window for every unsubscribed status was a bug, not a feature. This
+# is a different thing: a free tier that used to run at the usage cap forever
+# now expires trial_period_days after signup, at which point unsubscribed
+# access stops outright rather than just staying capped. Checkout then starts
+# the recurring subscription with no additional Stripe trial.
 #
 # Grandfathered by date rather than applied retroactively: an account
 # created before this shipped signed up under "capped, but no expiry" and
@@ -295,12 +295,10 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
 
     # A "reverse trial" (subscriber-tier caps for any unsubscribed account
     # within trial_period_days of signup, no matter its status) used to live
-    # here. Removed: trial_period_days is documented in config.py as the
-    # Stripe-side, card-required trial (subscription_data.trial_period_days
-    # on the Checkout Session) — that comment says outright "no other code
-    # needed a trial to exist" before it was added, because ENTITLED_STATUSES
-    # already grants full entitlement to Stripe's own 'trialing' status. This
-    # second, reused-the-same-setting-for-something-else implementation
+    # here. Removed: reusing the signup trial window for this separate
+    # subscriber-tier grant was a bug, not a Stripe trial — Checkout sends no
+    # subscription_data.trial_period_days because the app's free week has
+    # already happened. This second, reused-the-same-setting-for-something-else implementation
     # applied to EVERY non-subscribed status, including 'canceled' and
     # 'incomplete_expired' — which rule 5 above says explicitly must NOT
     # entitle — so a lapsed subscriber got subscriber-tier caps for a week

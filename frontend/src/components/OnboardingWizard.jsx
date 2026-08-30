@@ -14,7 +14,7 @@ import {
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { deferOnboarding } from '../lib/onboardingWizardBus'
-import { hasChosenSchool } from '../lib/schools'
+import { hasChosenSchool, hasUsableSchoolTemplate } from '../lib/schools'
 import { useAuth } from '../lib/authContext'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -117,7 +117,7 @@ export function SmoothHeight({ children }) {
 export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const toast = useToast()
   const qc = useQueryClient()
-  const { refresh } = useAuth()
+  const { user, refresh } = useAuth()
   const { mounted, closing } = useExitTransition(open, 220)
   const dialogRef = useRef(null)
 
@@ -187,7 +187,12 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
      the default school's layout on every download with nothing saying so. */
   const chosenSchool = hasChosenSchool(school)
   const selectedSchool = schools.find((s) => s.id === school)
-  const schoolNeedsTemplate = chosenSchool && selectedSchool && selectedSchool.template_status !== 'active'
+  // A school can have a usable hand-written or verified generated builder
+  // while its separate template-content review is still pending. Onboarding
+  // should ask for a file only when downloads genuinely have no usable school
+  // format, not when the review status happens to lag behind the builder.
+  const schoolHasUsableTemplate = hasUsableSchoolTemplate(selectedSchool)
+  const schoolNeedsTemplate = chosenSchool && selectedSchool && !schoolHasUsableTemplate
 
   /* Which steps this account actually has to sit through.
    *
@@ -261,7 +266,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
         await api.updateClass(cls.id, { school })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
-      if ((templateFile || templateUrl.trim()) && school) {
+      if ((templateFile || templateUrl.trim()) && school && !schoolHasUsableTemplate) {
         await api.uploadSchoolTemplate(school, { file: templateFile, sourceUrl: templateUrl.trim() || undefined, blankTemplateAttested })
         qc.invalidateQueries({ queryKey: qk.schools })
         toast.success('Template submitted', 'We’ll train the AI on your school’s format.')
@@ -319,7 +324,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
          included. Offline or a 500 meant the teacher could not get into the
          app at all. Deferring for this session lets them past; the flag is
          sessionStorage, so the wizard genuinely does return next login. */
-      deferOnboarding()
+      deferOnboarding(user?.id)
       toast.apiError("Couldn't save your setup progress", err)
     } finally {
       setFinishing(false)
@@ -359,6 +364,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 setSchool={setSchool}
                 schools={schools}
                 schoolNeedsTemplate={schoolNeedsTemplate}
+                schoolHasUsableTemplate={schoolHasUsableTemplate}
                 templateFile={templateFile}
                 setTemplateFile={setTemplateFile}
                 templateUrl={templateUrl}
@@ -503,6 +509,7 @@ function SchoolStep({
   setSchool,
   schools,
   schoolNeedsTemplate,
+  schoolHasUsableTemplate,
   templateFile,
   setTemplateFile,
   templateUrl,
@@ -538,25 +545,27 @@ function SchoolStep({
           ) : (
             <p>
               <span className="font-medium text-ink">A standard lesson-plan template is already on file</span> for this
-              school. You will automatically use this standard template, but you can upload your own below to override it for your classes.
+              school. You will automatically use this standard template for your classes.
             </p>
           )}
-          <UploadDropzone
-            label="Upload file"
-            selectedFileName={templateFile?.name}
-            onFile={(file) => {
-              setTemplateFile(file)
-              setTemplateUrl('')
-            }}
-            url={templateUrl}
-            onUrlChange={(v) => {
-              setTemplateUrl(v)
-              if (v) setTemplateFile(null)
-            }}
-            templateUpload
-            blankTemplateAttested={blankTemplateAttested}
-            onBlankTemplateAttestedChange={setBlankTemplateAttested}
-          />
+          {!schoolHasUsableTemplate ? (
+            <UploadDropzone
+              label="Upload file"
+              selectedFileName={templateFile?.name}
+              onFile={(file) => {
+                setTemplateFile(file)
+                setTemplateUrl('')
+              }}
+              url={templateUrl}
+              onUrlChange={(v) => {
+                setTemplateUrl(v)
+                if (v) setTemplateFile(null)
+              }}
+              templateUpload
+              blankTemplateAttested={blankTemplateAttested}
+              onBlankTemplateAttestedChange={setBlankTemplateAttested}
+            />
+          ) : null}
         </motion.div>
       ) : null}
       

@@ -58,10 +58,9 @@ def main():
             
             try:
                 resp = client().chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=settings.openai_model,
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.7,
-                    max_tokens=50
+                    max_completion_tokens=50
                 )
                 query = resp.choices[0].message.content.strip().strip('"')
                 print(f"[{course}] {code} -> {query}")

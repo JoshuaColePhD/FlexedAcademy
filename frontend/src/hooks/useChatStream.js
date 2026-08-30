@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
 import * as metrics from '../lib/voiceMetrics'
+import * as perf from '../lib/performanceMetrics'
 
 const SSE_PREFIX = 'data:'
 
@@ -28,6 +29,25 @@ const MAX_AUTO_RETRIES = 1
 const RETRY_DELAY_MS = 600
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// The backend removes this at the normal tool boundary. Keep the same small
+// guard here for the defensive path below, where a model occasionally writes
+// the tool JSON as literal text and the browser parses it itself.
+function isDayShapeQuestion(question) {
+  const text = `${question?.id || ''} ${question?.text || ''} ${(question?.options || []).join(' ')}`
+  if (/(weekly\s+shape|week(?:ly)?\s+(?:length|duration|format)|what\s+(?:kind|type)\s+of\s+week|how\s+long\s+(?:should|must)\s+the\s+(?:week|plan)|how\s+many\s+(?:instructional|teaching|school|lesson)?\s*days?|number\s+of\s+(?:instructional|teaching|school|lesson)?\s*days?)/i.test(text)) return true
+  const shapeOptions = (question?.options || []).filter((option) => /\b(?:full\s+instructional\s+days?|lessons?\s+plus|modified\s+week|shorter\s+week)\b/i.test(option)).length
+  return shapeOptions >= 2 || (/\bweek\b/i.test(text) && shapeOptions >= 1)
+}
+
+function sanitizeClarifyingQuestions(questions) {
+  const usable = (questions || []).filter((question) => question && !isDayShapeQuestion(question))
+  return usable.length ? usable : [{
+    id: 'lesson_focus',
+    text: 'What should this week focus on?',
+    options: ['A specific text or chapter', 'A skill or standard', 'A unit topic', 'A project or assessment'],
+  }]
+}
 
 /* Index just past the last point in `s` that a sentence demonstrably ended.
  *
@@ -334,7 +354,11 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
             // Time-to-first-token, the middle third of the latency budget.
             // No-op outside voice mode (the metrics module only records while a
             // turn is open, and only VoiceModePanel opens one).
-            if (!accumulated) metrics.firstToken()
+            if (!accumulated) {
+              metrics.firstToken()
+              perf.mark('chat-stream:first-token')
+              perf.measure('chat-stream:time-to-first-token', 'chat-stream:start', 'chat-stream:first-token')
+            }
             accumulated += event.chunk
             queueText(accumulated)
             emitSentences(false)
@@ -353,6 +377,8 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
        (see queueText) — without this the final few tokens of every reply
        stayed pending forever. */
     flushText()
+    perf.mark('chat-stream:end')
+    perf.measure('chat-stream:duration', 'chat-stream:start', 'chat-stream:end')
 
     if (!finished && !toolCalled) {
       throw new ApiError('The connection closed unexpectedly.', {
@@ -379,7 +405,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         try {
           const parsed = JSON.parse(trimmed)
           if (Array.isArray(parsed.questions) && parsed.questions.length) {
-            questions = parsed.questions
+            questions = sanitizeClarifyingQuestions(parsed.questions)
             accumulated = ''
           }
         } catch {
@@ -413,6 +439,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       abortRef.current = controller
 
       setIsStreaming(true)
+      perf.mark('chat-stream:start')
 
       try {
         let lastErr = null

@@ -468,7 +468,13 @@ def generate(
     result = prepare(user_id, query, cls=cls)
     return finalize(
         user_id=user_id,
-        plan_raw=llm.generate_plan(user_id, query, result, school_id=school_id or db.get_user_school(user_id), class_id=class_id),
+        plan_raw=llm.generate_plan(
+            user_id,
+            query,
+            result,
+            school_id=school_id or db.get_user_school(user_id),
+            class_id=class_id,
+        ),
         query=query,
         result=result,
         chat_id=chat_id,

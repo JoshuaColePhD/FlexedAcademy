@@ -1,11 +1,13 @@
 import { SplitLayout } from "../components/SplitLayout"
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, Loader2, Database, BookOpen, ChevronDown, Plus, FileText } from 'lucide-react'
 import { api } from '../lib/api'
 import { useActiveClass } from '../hooks/useAppData'
 import { useNavigate, Link } from 'react-router-dom'
 import { useToast } from '../lib/toastContext'
+
+const EMPTY_STANDARDS = []
 
 function StandardRow({ s, classId, subject: _subject, coverageCount }) {
   const [expanded, setExpanded] = useState(false)
@@ -154,7 +156,7 @@ export function StandardsPage() {
   })
   const coverage = coverageData || {}
 
-  const standards = data?.items || []
+  const standards = data?.items || EMPTY_STANDARDS
 
   // Extract unique strands
   const strands = useMemo(() => {
@@ -167,7 +169,7 @@ export function StandardsPage() {
   }, [standards])
 
   // Reset selected strand if it disappears due to class change
-  useMemo(() => {
+  useEffect(() => {
     if (selectedStrand !== 'All' && !strands.includes(selectedStrand)) {
       setSelectedStrand('All')
     }
@@ -311,4 +313,3 @@ export function StandardsPage() {
     </SplitLayout>
   )
 }
-

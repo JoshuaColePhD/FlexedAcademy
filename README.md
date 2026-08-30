@@ -146,7 +146,7 @@ record. They are also published as CASE 1.0 packages by ALSDE itself at
 `alabamastandards.org` (the site ALEX embeds under "Standards"), and each
 package's `officialSourceURL` names the PDF it was cut from.
 
-Feeding 300-page PDFs to gpt-4o — as `01_parse_universal.py` does for small
+Feeding 300-page PDFs to gpt-5.6-luna — as `01_parse_universal.py` does for small
 targeted documents — would put a paraphrase risk on every one of ~7,500 standards
 and cost real money on every rebuild. The CASE feed is the state's own structured
 copy of the same text with no model in the loop, so the standard text is

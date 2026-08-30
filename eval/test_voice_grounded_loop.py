@@ -94,8 +94,8 @@ def main() -> int:
         assert "interrupted" in provider and "Stopped — listening to you." in panel
         assert "Needs attention" in panel and "Hands-free" in panel
         assert "onInterrupt" not in source and "onFalseInterrupt" not in source
-        assert "model=settings.voice_chat_model if voice else settings.openai_model" in llm
-        assert "voice_chat_model: str = \"gpt-5-mini\"" in config
+        assert "model=settings.openai_model" in llm
+        assert "voice_chat_model" not in config
         assert "CONVERSATION HISTORY" not in generate._build_chat_system_prompt.__code__.co_consts
         print("PASSED — Realtime is transport-only and voice turns use ChatPage submit.")
         return 0

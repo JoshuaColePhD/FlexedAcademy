@@ -406,7 +406,7 @@ export function Composer({
         setIsAttaching(false)
       }
     },
-    [toast, triggerShake]
+    [toast, triggerShake, setAttachments]
   )
 
   const handleFile = (e) => {

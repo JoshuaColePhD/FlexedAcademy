@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { FIELD_LABELS } from '../lib/planShape'
+import { CHIPS } from './cellTweakConfig'
 
 /* One implementation of "what a clickable cell is", shared by the district
  * table (LessonPlanTable.jsx) and the phone day-card deck (PlanDayCards.jsx).
@@ -13,23 +14,6 @@ import { FIELD_LABELS } from '../lib/planShape'
 /** Suggested tweaks, per field. A chip fills the input rather than firing the
  *  revision outright: a stray click on a compliance document should not cost a
  *  model call and a rebuilt .docx. */
-export const CHIPS = {
-  learning_targets: ['Shorter', 'Lower the DOK', 'Make the verb measurable'],
-  standards: ['Use a different standard', 'Add a second code'],
-  act_alignment: ['Use a different ACT code', 'Leave it empty'],
-  engagement_strategy: ['Something more active', 'Fewer strategies'],
-  do_now: ['Shorter', 'More rigorous', 'Make it a quickwrite'],
-  during: ['Shorter', 'More rigorous', 'Add a group activity'],
-  assessment: ['Shorter', 'More rigorous', 'Make it written'],
-}
-
-export const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
-
-// The two fields a real standard code can live in — matches backend/schema.py's
-// CODE_BEARING_FIELDS. Only these get the picker; every other field has
-// nothing in retrieval's retrieved set that could ever belong in it.
-const CODE_FIELDS = new Set(['standards', 'act_alignment'])
-
 /** The editor, rendered where the text was. */
 export function CellTweak({
   field,
@@ -169,78 +153,4 @@ export function CellTweak({
       </div>
     </div>
   )
-}
-
-/** Builds the shared open/close/flash/keyboard-trigger behaviour for a set of
- *  tweakable cells. Both LessonPlanTable's PlanTable and PlanDayCards call
- *  this with the SAME state (owned by LessonPlanTable) so the two views can
- *  never disagree about which cell is open. */
-export function cellKit({
-  busy,
-  flashCells,
-  canTweak,
-  openTweak,
-  openCell,
-  closeCell,
-  applyTweak,
-  pickStandard,
-  standardsByCode,
-  draft,
-  setDraft,
-  scope,
-  setScope,
-  weekDayCount,
-}) {
-  const isOpen = (dayIndex, field) =>
-    openTweak?.dayIndex === dayIndex && openTweak?.field === field
-  const flashed = (dayIndex, field) => flashCells?.has(cellKey(dayIndex, field))
-
-  /* Deliberately NOT role="button" + tabIndex on the cell. Two consumers put
-     <Cite> buttons inside it, and a button inside a button is a real
-     screen-reader failure, not a lint nit. The pointer affordance is the
-     cell; the keyboard affordance is the Trigger, which is off-screen until
-     focused. */
-  const editableProps = (dayIndex, field) =>
-    canTweak
-      ? {
-          className: `is-editable${flashed(dayIndex, field) ? ' fa-flash' : ''}`,
-          onClick: () => openCell(dayIndex, field),
-        }
-      : { className: flashed(dayIndex, field) ? 'fa-flash' : undefined }
-
-  /** The keyboard path into a cell tweak. Invisible until it has focus, at
-   *  which point it becomes a visible pill — so tabbing through the document
-   *  never lands on something a sighted keyboard user cannot see. */
-  const Trigger = ({ dayIndex, field, dayName }) =>
-    canTweak ? (
-      <button
-        type="button"
-        className="cell-tweak-trigger"
-        onClick={(e) => {
-          e.stopPropagation()
-          openCell(dayIndex, field)
-        }}
-      >
-        Tweak {dayName}’s {FIELD_LABELS[field] || field}
-      </button>
-    ) : null
-
-  const tweakBody = (dayIndex, field, current) => (
-    <CellTweak
-      field={field}
-      current={current}
-      draft={draft}
-      setDraft={setDraft}
-      onApply={applyTweak}
-      onCancel={closeCell}
-      busy={busy}
-      scope={scope}
-      setScope={setScope}
-      weekDayCount={weekDayCount}
-      options={CODE_FIELDS.has(field) ? Object.values(standardsByCode || {}).filter(Boolean) : null}
-      onPick={pickStandard ? (code) => pickStandard(dayIndex, field, code) : null}
-    />
-  )
-
-  return { canTweak, isOpen, flashed, editableProps, Trigger, tweakBody }
 }

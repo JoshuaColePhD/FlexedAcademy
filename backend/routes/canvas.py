@@ -13,10 +13,11 @@ async def export_quiz(
     user_id: str = Depends(get_current_user)
 ):
     """
-    Mock endpoint for pushing a quiz to Canvas.
-    Since the school doesn't use the Canvas API yet, this simulates a successful API call.
+    Preview endpoint for the future Canvas integration.
+    The school does not use the Canvas API yet, so this deliberately does not
+    mutate a live Canvas course.
     """
-    # Simulate a 2.5 second network delay to Canvas API
+    # Simulate a 2.5 second network delay to the future Canvas API
     await asyncio.sleep(2.5)
     
-    return {"status": "success", "message": "Quiz successfully synced to Canvas!"}
+    return {"status": "preview", "message": "Canvas export preview completed; no live course was changed."}

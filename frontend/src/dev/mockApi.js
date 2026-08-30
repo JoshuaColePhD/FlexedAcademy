@@ -73,6 +73,8 @@ const makePlan = (label) => ({
 
 const RETRIEVED = ['ELA21.11.R2', 'RHS-2', 'CLE-4', 'R.TST.701', 'ORG 403']
 const WARNINGS = ['Wednesday cites 4.C, which retrieval never supplied — swap in a grounded code.']
+const previewParams = new URLSearchParams(window.location.search)
+const previewAnonymous = previewParams.has('anon')
 
 /* Keyed by the same normalized form Citation.jsx uses (lib/codes.js) — one
    entry per RETRIEVED code, each with its own real-looking text. This used to
@@ -119,10 +121,12 @@ let seq = 0
 const uid = (p) => `${p}_${++seq}`
 
 const state = {
+  authenticated: !previewAnonymous,
+  credentials: { email: 'jc@x.org', password: 'demo-password' },
   // onboarding_seen_at set (unlike a brand-new account) so preview.html lands
   // on the real app shell — App.jsx's ClassRoutes redirects to the onboarding
   // wizard for as long as this is unset, and nothing in this mock ever set it.
-  me: { name: 'Josh Cole', custom_instructions: '', output_length: 'medium', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00' },
+  me: { id: 'u1', name: 'Josh Cole', email: 'jc@x.org', custom_instructions: '', output_length: 'medium', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00' },
   // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
@@ -261,6 +265,8 @@ const state = {
   },
   plans: { plan1: makePlan('Week 03 — Aug 17-21, 2026'), planOrphan: makePlan('Week 12 — Oct 19-23, 2026') },
   planChat: { plan1: 'seed1', planOrphan: 'stranded' },
+  ownedPlanIds: ['plan1', 'planOrphan'],
+  publicPlans: { plan1: true },
   // quizzes[planId] is an array — a plan can have several (db.py migration
   // 26). plan1 seeds with one already built, so ArtifactRail's quiz list has
   // something to render without needing to drive the chat_stream tool-call
@@ -421,24 +427,76 @@ export function installMockApi() {
     const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
     calls.push({ path, method, at: performance.now() })
 
+    const currentUser = () => ({
+      id: state.me.id,
+      name: state.me.name,
+      email: state.me.email,
+      is_admin: state.me.id === 'u1',
+      has_password: Boolean(state.credentials?.password),
+      custom_instructions: state.me.custom_instructions,
+      output_length: state.me.output_length,
+      school: state.me.school,
+      onboarding_seen_at: state.me.onboarding_seen_at,
+      entitlement: state.entitlement,
+    })
+
+    const resetForNewAccount = (name, email) => {
+      state.authenticated = true
+      state.me = {
+        ...state.me,
+        id: 'new-user',
+        name: name || 'New Teacher',
+        email: email || 'new.teacher@example.com',
+        school: 'generic',
+        onboarding_seen_at: null,
+      }
+      state.credentials = { email: state.me.email, password: body?.password || 'demo-password' }
+      state.classes = []
+      state.chats = []
+      state.messages = {}
+      state.planChat = {}
+      state.ownedPlanIds = []
+    }
+
     /* The entitlement rides on /me exactly as it does in production, so the
        paywall can be driven here. Tune it live:
          window.__mock.state.entitlement = { may_generate: false, subscribed: false,
            status: null, plans_used: 4, tokens_used: 150000, token_cap: 150000,
            tokens_remaining: 0, usage_window_days: 7, billing_enabled: true } */
-    if (path === '/api/auth/me')
-      return json({
-        id: 'u1',
-        name: state.me.name,
-        email: 'jc@x.org',
-        is_admin: true,
-        has_password: true,
-        custom_instructions: state.me.custom_instructions,
-        output_length: state.me.output_length,
-        school: state.me.school,
-        onboarding_seen_at: state.me.onboarding_seen_at,
-        entitlement: state.entitlement,
-      })
+    if (path === '/api/auth/me') {
+      if (!state.authenticated) return new Response('{}', { status: 401 })
+      return json(currentUser())
+    }
+    if (path === '/api/auth/signup' && method === 'POST') {
+      if (!body?.name || !body?.email || !body?.password || body.password.length < 8) {
+        return new Response(JSON.stringify({ error: { code: 'invalid_request', message: 'Please complete all fields.' } }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+      }
+      resetForNewAccount(body.name.trim(), body.email.trim())
+      return json(currentUser())
+    }
+    if (path === '/api/auth/login' && method === 'POST') {
+      if (!body?.email || !body?.password) {
+        return new Response(JSON.stringify({ error: { code: 'invalid_credentials', message: 'Incorrect email or password.' } }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+      }
+      state.authenticated = true
+      return json(currentUser())
+    }
+    if (path === '/api/auth/google' && method === 'POST') {
+      state.authenticated = true
+      return json(currentUser())
+    }
+    if (path === '/api/auth/logout' && method === 'POST') {
+      state.authenticated = false
+      return json({ ok: true })
+    }
+    if (path === '/api/auth/sign_out_everywhere' && method === 'POST') {
+      state.authenticated = false
+      return json({ ok: true })
+    }
+    if (path === '/api/auth/onboarding-seen' && method === 'POST') {
+      state.me.onboarding_seen_at = new Date().toISOString()
+      return json(currentUser())
+    }
     if (path === '/api/auth/forgot-password') return json({ ok: true })
     if (path === '/api/auth/reset-password') return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', is_admin: true, has_password: true, entitlement: state.entitlement })
     if (path === '/api/auth/change-password') return json({ ok: true })
@@ -451,11 +509,15 @@ export function installMockApi() {
     }
     if (path === '/api/billing/price')
       return json({
-        price: { amount: 1000, currency: 'USD', interval: 'month', interval_count: 1 },
+        // Keep the public landing quote identical to /api/billing and the
+        // backend's pre-Stripe fallback. Divergent fixtures made a teacher
+        // see one price before signup and another at the paywall.
+        price: { amount: 1199, currency: 'USD', interval: 'month', interval_count: 1 },
         free_weekly_token_cap: 150_000,
+        trial_period_days: 7,
       })
     if (path === '/api/billing')
-      return json({ ...state.entitlement, price: { amount: 1200, currency: 'USD', interval: 'month', interval_count: 1 } })
+      return json({ ...state.entitlement, price: { amount: 1199, currency: 'USD', interval: 'month', interval_count: 1 }, trial_period_days: 7 })
     if (path === '/api/billing/checkout' || path === '/api/billing/portal') {
       // Stripe redirects the browser, so the app reloads and this module's
       // state is rebuilt from scratch — the way it would be in production,
@@ -513,8 +575,8 @@ export function installMockApi() {
       // own lookup field, lib/frameworks.js) — matching /api/routes/misc.py's
       // real shape, not the `subject` name a class row carries.
       return json([
-        { id: 'AP_Lang', label: 'AP English Language and Composition (2019)', chunks: 59, verbatim_ok: 59 },
-        { id: 'ELA', label: 'Alabama Course of Study: ELA (2021)', chunks: 1240, verbatim_ok: 1180 },
+        { id: 'AP_Lang', label: 'AP English Language and Composition (2019)', grades: [10, 11, 12], chunks: 59, verbatim_ok: 59 },
+        { id: 'ELA', label: 'Alabama Course of Study: ELA (2021)', grades: [9, 10, 11, 12], chunks: 1240, verbatim_ok: 1180 },
       ])
     if (path === '/api/classes' && method === 'POST') {
       await wait(200)
@@ -722,9 +784,29 @@ export function installMockApi() {
     if (path === '/api/plans' && method === 'GET') {
       await wait(latency.getPlan)
       const chatId = new URL(url, location.origin).searchParams.get('chat_id')
-      const ids = Object.keys(state.plans).filter((id) => !chatId || state.planChat[id] === chatId)
+      const ids = state.ownedPlanIds.filter((id) => !chatId || state.planChat[id] === chatId)
       // Mirrors db.list_plans: the list view drops plan_json.
       return json({ items: ids.map((id) => ({ id, week_label: state.plans[id].week_of })), total: ids.length })
+    }
+
+    if (path === '/api/plans/weeks' && method === 'GET') {
+      const weeks = state.ownedPlanIds.map((id) => {
+        const plan = state.plans[id]
+        if (!plan) return null
+        return {
+          week_number: id === 'plan1' ? 3 : null,
+          latest: {
+            id,
+            week_label: plan.week_of,
+            unit: 'Unit 2 · weeks 3–6',
+            course: plan.course,
+            created_at: '2026-08-17T00:00:00+00:00',
+            chat_id: state.planChat[id] || null,
+          },
+          revisions: [],
+        }
+      }).filter(Boolean)
+      return json({ weeks })
     }
 
     /* ── plans ───────────────────────────────────────────────────────────── */
@@ -740,7 +822,42 @@ export function installMockApi() {
         retrieved_ids: RETRIEVED,
         unit: 'Unit 2 · weeks 3–6',
         week_label: p.week_of,
+        is_public: !!state.publicPlans[planMatch[1]],
       })
+    }
+
+    const publicPlanMatch = path.match(/^\/api\/plans\/public\/([^/]+)$/)
+    if (publicPlanMatch && method === 'GET') {
+      await wait(latency.getPlan)
+      const planId = publicPlanMatch[1]
+      const p = state.plans[planId]
+      if (!p || !state.publicPlans[planId]) return new Response('{}', { status: 404 })
+      return json({ id: planId, plan_json: p, course: p.course, week_label: p.week_of })
+    }
+
+    const documentStatusMatch = path.match(/^\/api\/plans\/([^/]+)\/document-status$/)
+    if (documentStatusMatch && method === 'GET') {
+      await wait(100)
+      return json({ plan_id: documentStatusMatch[1], status: 'ready' })
+    }
+
+    const publicLinkMatch = path.match(/^\/api\/plans\/([^/]+)\/public_link$/)
+    if (publicLinkMatch && method === 'POST') {
+      const planId = publicLinkMatch[1]
+      if (!state.plans[planId]) return new Response('{}', { status: 404 })
+      state.publicPlans[planId] = body?.public !== false
+      return json({ public: state.publicPlans[planId] })
+    }
+
+    const forkMatch = path.match(/^\/api\/plans\/([^/]+)\/fork$/)
+    if (forkMatch && method === 'POST') {
+      const source = state.plans[forkMatch[1]]
+      if (!source || !state.publicPlans[forkMatch[1]]) return new Response('{}', { status: 404 })
+      const id = uid('plan')
+      state.plans[id] = structuredClone(source)
+      state.planChat[id] = null
+      state.ownedPlanIds.push(id)
+      return json({ id, plan_json: state.plans[id], week_label: state.plans[id].week_of })
     }
 
     const quizListMatch = path.match(/^\/api\/plans\/([^/]+)\/quizzes$/)
@@ -782,6 +899,11 @@ export function installMockApi() {
       return json({ enabled: true, connected: state.drive.connected })
     }
 
+    if (path === '/api/canvas/export_quiz' && method === 'POST') {
+      await wait(500)
+      return json({ status: 'preview', message: 'Canvas export preview completed; no live course was changed.' })
+    }
+
     const shareListMatch = path.match(/^\/api\/plans\/([^/]+)\/shares$/)
     if (shareListMatch && method === 'GET') {
       await wait(150)
@@ -812,6 +934,7 @@ export function installMockApi() {
       const planId = uid('plan')
       const label = `Week ${String(seq).padStart(2, '0')} — Aug 17-21, 2026`
       state.plans[planId] = makePlan(label)
+      state.ownedPlanIds.push(planId)
       return sse([
         [{ grounding: { codes: RETRIEVED, thin: false, count: 5, floor: 0.65 } }, 200],
         [{ chunk: '{"week_of":"' + label + '","days":[' }, latency.stream / 3],
@@ -870,7 +993,6 @@ export function installMockApi() {
               [{ tool_call: 'ask_clarifying_questions', questions: [
                 { id: 'text', text: 'What are you teaching this week?', options: ['A text we’re reading', 'A skill, no text yet', 'Test/exam prep'] },
                 { id: 'skill', text: 'What should the week build toward?', options: ['Rhetorical analysis', 'Argument & evidence', 'Close reading', 'Writing craft'] },
-                { id: 'length', text: 'How many teaching days do you have?', options: ['5', '4', '3'] },
               ] }, 300],
               [{ done: true }, 60],
             ]
@@ -911,6 +1033,17 @@ export function installMockApi() {
       })
     }
 
+    if (path === '/api/standards' && method === 'GET') {
+      const items = Object.entries(STANDARDS).map(([code, value]) => ({ code, ...value, strand: code.startsWith('ELA') ? 'Reading' : 'Rhetoric', grade: 11 }))
+      return json({ items, total: items.length })
+    }
+    if (path === '/api/standards/coverage' && method === 'GET') {
+      return json({ 'ELA21.11.R2': 2, 'RHS-2': 1, 'CLE-4': 1, 'R.TST.701': 2, 'ORG 403': 1 })
+    }
+    const lessonsMatch = path.match(/^\/api\/standards\/([^/]+)\/lessons$/)
+    if (lessonsMatch && method === 'GET') {
+      return json([{ id: 'seed1', title: 'Week 03 — voice and tone' }])
+    }
     if (path.startsWith('/api/standards/') && path !== '/api/standards/stats') {
       const code = decodeURIComponent(path.slice('/api/standards/'.length)).replace(/\s+/g, ' ').trim().toUpperCase()
       const record = STANDARDS[code]

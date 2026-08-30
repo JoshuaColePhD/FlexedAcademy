@@ -7,7 +7,7 @@ import { LESSON_PARTS, ROWS, dayState, orderedDays } from '../lib/planShape'
 import { CitedText } from './Citation'
 import { PlanDayCards } from './PlanDayCards'
 import { SkeletonText } from './Skeleton'
-import { cellKit } from './CellTweak'
+import { cellKit } from './cellTweakKit'
 
 /* Mirrors template florence-docx-v2 — the table the district actually gets.
 
@@ -506,4 +506,3 @@ function PlanTable({
     </div>
   )
 }
-

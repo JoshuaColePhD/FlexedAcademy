@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CitedText } from './Citation'
 import { SkeletonText } from './Skeleton'
-import { cellKit } from './CellTweak'
+import { cellKit } from './cellTweakKit'
 import {
   CARD_SECONDARY,
   LESSON_PARTS,

@@ -3182,6 +3182,35 @@ MIGRATIONS: list[str] = [
     ALTER TABLE users ADD CONSTRAINT users_output_length_check
       CHECK (output_length IN ('short', 'medium', 'long'));
     """,
+    # ── 61: Stripe webhook delivery ledger ───────────────────────────────────
+    # Stripe may retry the same event and does not guarantee delivery order.
+    # Keep the event id so a successful retry is a no-op, and keep the event's
+    # object/timestamp so an older subscription update cannot overwrite a
+    # newer one when it arrives late. Rows are tiny and Stripe's resend window
+    # is short; the ledger is intentionally append-only for auditability.
+    """
+    CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+      id                TEXT PRIMARY KEY,
+      event_type        TEXT NOT NULL,
+      object_id         TEXT,
+      event_created_at  BIGINT,
+      processed_at      TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_stripe_events_object
+      ON stripe_webhook_events(object_id, event_created_at DESC);
+    ALTER TABLE stripe_webhook_events ENABLE ROW LEVEL SECURITY;
+    """,
+    # ── 62: recognize the built-in Weeden template ──────────────────────────
+    # Migration 50 correctly marked bulk-seeded schools as pending, because
+    # they had no district builder. Weeden is the exception: its approved
+    # hand-authored builder is checked into backend/builder, so new teachers
+    # must not be sent through the upload-template step for a format the app
+    # already knows and uses.
+    """
+    UPDATE schools
+       SET template_status = 'active'
+     WHERE id = 'weeden-elementary-school';
+    """,
 ]
 
 
@@ -5244,28 +5273,6 @@ def list_messages(chat_id: str) -> list[dict]:
     ]
 
 
-def import_chats(user_id: str, payload: list[dict]) -> dict:
-    """Idempotent import of the old localStorage['lesson_chats'] array.
-
-    The frontend clears localStorage only after this returns 200, so a failed
-    import is never data loss.
-    """
-    imported = skipped = 0
-    for chat in payload:
-        cid = str(chat.get("id") or new_id())
-        if _row("SELECT id FROM chats WHERE id = ?", (cid,)):
-            skipped += 1
-            continue
-        create_chat(user_id, str(chat.get("title") or "Imported chat"), chat_id=cid)
-        for msg in chat.get("messages") or []:
-            role = msg.get("role")
-            if role not in ("user", "assistant", "system"):
-                continue
-            add_message(cid, role, str(msg.get("content") or ""))
-        imported += 1
-    return {"imported": imported, "skipped": skipped}
-
-
 # ---------------------------------------------------------------------------
 # Users (accounts)
 # ---------------------------------------------------------------------------
@@ -5530,6 +5537,42 @@ def clear_subscription_status(user_id: str) -> None:
 
 def get_user_by_stripe_customer(customer_id: str) -> dict | None:
     return _row("SELECT * FROM users WHERE stripe_customer_id = ?", (customer_id,))
+
+
+def stripe_webhook_event_processed(event_id: str) -> bool:
+    """Whether this exact signed Stripe event was already applied."""
+    return _row("SELECT 1 AS found FROM stripe_webhook_events WHERE id = ?", (event_id,)) is not None
+
+
+def stripe_object_event_is_newer(object_id: str, event_created_at: int) -> bool:
+    """Whether an event for this Stripe object is newer than the last one.
+
+    Stripe documents that event delivery order is not guaranteed. A strict
+    comparison intentionally allows two distinct events created in the same
+    second; the exact event-id check handles retries of the same event.
+    """
+    row = _row(
+        "SELECT MAX(event_created_at) AS latest FROM stripe_webhook_events "
+        "WHERE object_id = ?",
+        (object_id,),
+    )
+    latest = row.get("latest") if row else None
+    return latest is None or int(event_created_at) > int(latest)
+
+
+def record_stripe_webhook_event(
+    event_id: str, event_type: str, object_id: str | None, event_created_at: int | None
+) -> None:
+    """Record a successfully handled event; duplicate inserts are harmless."""
+    _write(
+        """
+        INSERT INTO stripe_webhook_events
+          (id, event_type, object_id, event_created_at, processed_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (id) DO NOTHING
+        """,
+        (event_id, event_type, object_id, event_created_at, now()),
+    )
 
 
 def set_drive_tokens(

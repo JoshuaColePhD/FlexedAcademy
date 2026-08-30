@@ -10,9 +10,7 @@ import {
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { motion, AnimatePresence, MotionConfig, useReducedMotion } from 'framer-motion'
-import { api } from './lib/api'
 import { onboardingDeferred } from './lib/onboardingWizardBus'
-import { useToast } from './lib/toastContext'
 import { ToastProvider } from './components/ToastProvider'
 import { ConfirmProvider } from './components/ConfirmProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -20,6 +18,8 @@ import { AuthProvider } from './components/AuthProvider'
 import { BillingProvider } from './components/BillingProvider'
 import { VoiceProvider } from './components/VoiceProvider'
 import { useAuth, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from './lib/authContext'
+import { safeReturnTo, withReturnTo } from './lib/returnTo'
+import { readAccountStorage, writeAccountStorage } from './lib/accountStorage'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
 import { CommandPalette } from './components/CommandPalette'
@@ -46,7 +46,6 @@ const BetaPage = lazyNamed(() => import('./pages/legal/BetaPage.jsx'), 'BetaPage
 const SharedPlanPage = lazyNamed(() => import('./pages/SharedPlanPage.jsx'), 'SharedPlanPage')
 const NotFoundPage = lazyNamed(() => import('./pages/NotFoundPage.jsx'), 'NotFoundPage')
 
-const LEGACY_KEY = 'lesson_chats'
 const LAST_CLASS_KEY = 'aplang.lastClassId'
 
 /* Shell() is gone.
@@ -62,58 +61,6 @@ const LAST_CLASS_KEY = 'aplang.lastClassId'
  * has one writer, it is linkable, and the back button undoes a class switch.
  */
 
-/** One-time migration of the old localStorage chats into the database.
- *  localStorage is cleared only after the import succeeds, so a failure is never
- *  data loss. */
-function useLegacyImport() {
-  const toast = useToast()
-  useEffect(() => {
-    let raw
-    try {
-      raw = localStorage.getItem(LEGACY_KEY)
-    } catch {
-      return
-    }
-    if (!raw) return
-
-    let parsed
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      // A corrupt entry used to white-screen the app permanently on boot.
-      try {
-        localStorage.removeItem(LEGACY_KEY)
-      } catch {
-        /* nothing more to do */
-      }
-      return
-    }
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      try {
-        localStorage.removeItem(LEGACY_KEY)
-      } catch {
-        /* ignore */
-      }
-      return
-    }
-
-    api
-      .importChats(parsed)
-      .then((res) => {
-        localStorage.removeItem(LEGACY_KEY)
-        if (res.imported) {
-          toast.success(
-            `Moved ${res.imported} conversation${res.imported === 1 ? '' : 's'} to the server`,
-            'They were only in this browser before.'
-          )
-        }
-      })
-      .catch(() => {
-        // Leave localStorage intact and try again next load.
-      })
-  }, [toast])
-}
-
 /** Where "/" goes.
  *
  *  The last class is a hint read ONCE, here, and never during render — which is
@@ -122,7 +69,7 @@ function useLegacyImport() {
  *  rendering an empty year for a deleted prep. */
 function RootRedirect() {
   const { data: classes = [], isLoading, isError } = useClasses()
-  useLegacyImport()
+  const { user } = useAuth()
 
   if (isLoading) return <BootScreen />
   /* "The request failed" is not "you have no classes". useClasses has
@@ -150,12 +97,7 @@ function RootRedirect() {
   }
   if (!classes.length) return <Navigate to="/welcome" replace />
 
-  let hint = null
-  try {
-    hint = localStorage.getItem(LAST_CLASS_KEY)
-  } catch {
-    /* not available */
-  }
+  const hint = readAccountStorage(LAST_CLASS_KEY, user?.id)
   const target = classes.find((c) => c.id === hint) || classes[0]
   return <Navigate to={`/c/${target.id}`} replace />
 }
@@ -165,14 +107,11 @@ function RootRedirect() {
  *  RootRedirect, once. */
 function RememberClass() {
   const { classId } = useParams()
+  const { user } = useAuth()
   useEffect(() => {
-    if (!classId) return
-    try {
-      localStorage.setItem(LAST_CLASS_KEY, classId)
-    } catch {
-      /* not persisted */
-    }
-  }, [classId])
+    if (!classId || !user?.id) return
+    writeAccountStorage(LAST_CLASS_KEY, user.id, '', classId)
+  }, [classId, user?.id])
   return null
 }
 
@@ -199,7 +138,7 @@ function ClassRoutes() {
   // the redirect fires again immediately and there is no way into the app —
   // see deferOnboarding() in lib/onboardingWizardBus.js. Session-scoped, so
   // the wizard still returns next login; it is not a way to opt out.
-  if (user && !user.onboarding_seen_at && !onboardingDeferred()) {
+  if (user && !user.onboarding_seen_at && !onboardingDeferred(user.id)) {
     return <Navigate to={`/c/${classId}/onboarding`} replace />
   }
   return (
@@ -351,7 +290,7 @@ function Gate() {
                   ? '/'
                   : isAuthRoute
                     ? '/login'
-                    : `/login?next=${encodeURIComponent(here)}`
+                    : withReturnTo('/login', here)
               }
               replace
             />
@@ -420,13 +359,12 @@ function AfterAuthRedirect() {
   // bug it cites (a single blip once sent a five-class teacher to "Let's set
   // up your year"). On error, fall through to the ordinary next/'/' redirect
   // below rather than guessing either way.
-  if (!isError && !classes.length) return <Navigate to="/welcome" replace />
-
-  const next = new URLSearchParams(location.search).get('next')
-  // Only same-origin paths, so a crafted ?next=https://… can't turn the login
-  // screen into an open redirect.
-  const safe = next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
-  return <Navigate to={safe} replace />
+  const next = safeReturnTo(new URLSearchParams(location.search).get('next'))
+  // A brand-new recipient still needs to create a class and complete setup.
+  // Carry the shared destination through both first-run screens so the link
+  // remains useful after onboarding instead of silently disappearing.
+  if (!isError && !classes.length) return <Navigate to={withReturnTo('/welcome', next)} replace />
+  return <Navigate to={next || '/'} replace />
 }
 
 // Replaced by CommandPalette
@@ -488,7 +426,7 @@ export default function App() {
         <MotionProfile />
         <ErrorBoundary>
           <QueryClientProvider client={queryClient}>
-            <BrowserRouter>
+            <BrowserRouter basename={window.__previewBase || undefined}>
               <ToastProvider>
                 <ConfirmProvider>
                   <AuthProvider>

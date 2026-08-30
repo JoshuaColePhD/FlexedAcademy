@@ -43,10 +43,6 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-luna"
-    # Voice chat is a short intent/conversation turn. Keep plan generation on
-    # the configured quality model, but allow the spoken routing path to use a
-    # faster model without changing the grounded build/revision calls.
-    voice_chat_model: str = "gpt-5-mini"
     common_standards_api_key: str = ""
 
     # ── voice replies ────────────────────────────────────────────────────────
@@ -103,14 +99,12 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     # Where Stripe sends them back to. Empty = derive from the request.
     billing_return_url: str = ""
-    # How long a new (unsubscribed) account may use the app, free, no card,
-    # before entitlement.py's trial_expired cuts it off and Checkout becomes
-    # the only way back in. Enforced app-side, by comparing this against
-    # users.created_at (entitlement.py, TRIAL_ENFORCEMENT_START) — not by
-    # Stripe. routes/billing.py's checkout() always passes trial_days=0 to
-    # Stripe itself, deliberately: the free week already happened before
-    # they ever reach Checkout, so a *second*, card-required Stripe trial on
-    # top of it would just delay the first real charge for no reason.
+    # How long a new account may use the app for free, with no card, before
+    # entitlement.py's trial_expired cuts it off and Checkout becomes the only
+    # way back in. This is enforced app-side from users.created_at, not by
+    # Stripe. Checkout deliberately sends no Stripe trial: the free week has
+    # already happened, so the first successful subscription payment is due
+    # immediately.
     trial_period_days: int = 7
 
     # ── Google Drive sharing ─────────────────────────────────────────────────
@@ -213,10 +207,6 @@ class Settings(BaseSettings):
     # behind mandatory admin approval before any generated spec reaches a
     # teacher (routes/admin.py's /builder-codegen/{job_id}/approve).
     builder_codegen_enabled: bool = True
-    # A vision-capable model, distinct from openai_model (text-only) — used
-    # only by llm.judge_builder_render to compare a generated render against
-    # the real uploaded template.
-    vision_model: str = "gpt-5.6-luna"
     # Generous enough for a real spec to converge after review feedback,
     # small enough to bound cost — this runs once per school onboarding, not
     # per document generation, so a few minutes of wall-clock is acceptable.
