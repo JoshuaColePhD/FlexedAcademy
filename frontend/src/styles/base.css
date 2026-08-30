@@ -4362,60 +4362,11 @@
     border-left: 3px solid var(--mark);
     border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
   }
-  /* iMessage-style tails use two curves, never a triangle: `::before` is the
-     bubble-coloured curl and `::after` cuts its outer edge back to the local
-     conversation canvas. Group position controls the speaking-side radii;
-     only a standalone or final bubble owns a tail. */
-  .msg-bubble {
-    position: relative;
-    isolation: isolate;
-    --bubble-tail-cutout: var(--paper-sunken);
-  }
-  .msg-bubble > * {
-    position: relative;
-    z-index: 1;
-  }
-  .msg-bubble::before,
-  .msg-bubble::after {
-    display: none;
-    position: absolute;
-    bottom: 0;
-    width: 20px;
-    height: 24px;
-    z-index: 0;
-    background: rgb(var(--msg-user-bg-rgb) / 0.15);
-    content: '';
-    pointer-events: none;
-  }
-  .msg-bubble.has-tail::before,
-  .msg-bubble.has-tail::after {
-    display: block;
-  }
-  .msg-bubble-user::before {
-    right: -5px;
-    border-bottom-left-radius: 16px 14px;
-  }
-  .msg-bubble-user::after {
-    right: -25px;
-    width: 26px;
-    background: var(--bubble-tail-cutout);
-    border-bottom-left-radius: 11px;
-  }
-  .msg-bubble-assistant::before {
-    left: -5px;
-    background: var(--paper-raised);
-    border-bottom-right-radius: 16px 14px;
-  }
-  .msg-bubble-assistant::after {
-    left: -25px;
-    width: 26px;
-    background: var(--bubble-tail-cutout);
-    border-bottom-right-radius: 11px;
-  }
+  /* Consecutive messages still nest visually through their corner radii, but
+     the decorative speech-bubble tails are intentionally gone. */
   .msg-bubble-user.is-group-first,
   .msg-bubble-user.is-group-middle,
-  .msg-bubble-user.is-group-last,
-  .msg-bubble-user.has-tail {
+  .msg-bubble-user.is-group-last {
     border-bottom-right-radius: 5px;
   }
   .msg-bubble-user.is-group-middle,
@@ -4424,20 +4375,13 @@
   }
   .msg-bubble-assistant.is-group-first,
   .msg-bubble-assistant.is-group-middle,
-  .msg-bubble-assistant.is-group-last,
-  .msg-bubble-assistant.has-tail {
+  .msg-bubble-assistant.is-group-last {
     border-bottom-left-radius: 5px;
   }
   .msg-bubble-assistant.is-group-middle,
   .msg-bubble-assistant.is-group-last {
     border-top-left-radius: 5px;
   }
-  /* Error messages have their own left marker and asymmetric radius; adding a
-     second visual pointer would compete with that warning treatment. */
-  .msg-error::after {
-    display: none;
-  }
-
   /* The assistant's own words, not a plan cell — the model writes markdown
      (bold day labels, numbered lists) and it used to render as literal
      asterisks because nothing parsed it. */

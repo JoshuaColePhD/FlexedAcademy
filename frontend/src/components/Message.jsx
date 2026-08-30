@@ -64,9 +64,6 @@ function MessageImpl({
   // bubble it actually ended at, not one per line fighting the same-role
   // spacing that's supposed to read as "one thought, several lines."
   showTimestamp = true,
-  // iMessage only gives the final bubble in a consecutive run a tail. Doing
-  // it for every card made the transcript look like a row of speech balloons.
-  showTail = true,
   bubbleGroup = 'single',
 }) {
   const { copied, copy } = useCopy()
@@ -254,7 +251,7 @@ function MessageImpl({
                          bubble rather than cut into it. Used to use bg-accent-tint
                          but now uses the logo's purple (brand) for a distinct voice
                          that does not shift with the selected class. */
-                      `msg-bubble msg-bubble-user is-group-${bubbleGroup}${showTail ? ' has-tail' : ''} neo-raised rounded-2xl px-4 py-3 text-[0.9375rem] leading-relaxed`
+                      `msg-bubble msg-bubble-user is-group-${bubbleGroup} neo-raised rounded-2xl px-4 py-3 text-[0.9375rem] leading-relaxed`
                     : message.isError
                       ? 'msg-error text-[0.9375rem] leading-relaxed'
                       : /* Same neo-raised box as the teacher's own bubble, but
@@ -262,7 +259,7 @@ function MessageImpl({
                            existing neutral "card" surface (see DecisionStack,
                            VoiceModePanel), not a colored one, so the two turns are
                            still visually distinct while both read as boxed. */
-                        `msg-bubble msg-bubble-assistant is-group-${bubbleGroup}${showTail ? ' has-tail' : ''} neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink${assistantSettled ? ' fa-settle' : ''}`
+                        `msg-bubble msg-bubble-assistant is-group-${bubbleGroup} neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink${assistantSettled ? ' fa-settle' : ''}`
                 }
                 /* Token, not a raw rgba() literal — the literal never adapted in
                    dark mode, so the teacher's own bubble stayed the same light
