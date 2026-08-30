@@ -77,6 +77,7 @@ export function ArtifactPanel({
   openTweak,
   setOpenTweak,
   mobileReader = false,
+  readerMode = false,
 }) {
   const [shareOpen, setShareOpen] = useState(false)
   const [completionPulse, setCompletionPulse] = useState(false)
@@ -122,7 +123,7 @@ const location = useLocation()
   // Phone plans are rendered as a destination in the app, rather than a
   // dialog layered over chat. That keeps the reader's semantics and scroll
   // behavior honest without changing the desktop document surface.
-  const isOverlay = !mobileReader
+  const isOverlay = !mobileReader && !readerMode
   const isPhone = useLayoutMode() === 'phone'
 
   // Days is the phone shape — the district table has a min-width and a
@@ -137,7 +138,7 @@ const location = useLocation()
      down in the input is already too late. Cancelling a two-word tweak used to
      throw away the whole document you were working in. */
   useFocusTrap(panelRef, {
-    active: !mobileReader,
+    active: !mobileReader && !readerMode,
     trap: isOverlay,
     initialFocus: titleRef,
     onEscape: () => {
@@ -181,7 +182,7 @@ const location = useLocation()
 
   return (
     <section
-      className={`doc-shell${completionPulse ? ' fa-shadow-lift' : ''}${isFullscreen ? ' is-fullscreen' : ''}${mobileReader ? ' is-mobile-reader' : ''}`}
+      className={`doc-shell${completionPulse ? ' fa-shadow-lift' : ''}${isFullscreen ? ' is-fullscreen' : ''}${mobileReader ? ' is-mobile-reader' : ''}${readerMode ? ' is-tablet-reader' : ''}`}
       aria-label="Generated lesson plan"
       ref={panelRef}
       tabIndex={-1}
@@ -263,7 +264,7 @@ const location = useLocation()
             </span>
           )}
 
-          {!mobileReader ? (
+          {!mobileReader && !readerMode ? (
             <button
               type="button"
               className="btn-icon fa-press ml-1"

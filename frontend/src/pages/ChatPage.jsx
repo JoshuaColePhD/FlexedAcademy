@@ -10,7 +10,7 @@ import { useBilling } from '../lib/billingContext'
 import { useVoice } from '../lib/voiceContext'
 import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
-import { useLayoutMode } from '../hooks/useMediaQuery'
+import { useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useCalendar, useChats, useClasses } from '../hooks/useAppData'
 import { DAYS, FIELD_LABELS, SHORT_DAY, dayTitle, unitSuffix } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
@@ -440,6 +440,8 @@ export function ChatPage() {
   const voice = useVoice()
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
+  const isTablet = mode === 'tablet'
+  const tabletPortrait = useMediaQuery('(orientation: portrait)')
   /* A phone must land in a ready-to-type conversation. The old default sent
      every no-chat route to MobileChatHome, which rendered the rail but not
      the Composer — exactly the moment a teacher needs to start a plan. The
@@ -2657,6 +2659,10 @@ export function ChatPage() {
   const overlayOpen = expanded && hasArtifact
   const overlayExit = useExitTransition(overlayOpen, 130)
   const mobileReaderOpen = isPhone && viewKind === 'plan' && overlayExit.mounted
+  // Tablets have enough room to stop pretending that the document is a phone
+  // sheet. Portrait preserves chat focus with a right-hand side sheet; in
+  // landscape the plan earns a stable pane beside the conversation.
+  const tabletLandscapePlanOpen = isTablet && !tabletPortrait && overlayOpen && viewKind === 'plan'
   // See overlayPortalHost's own creation comment: this host spans the full
   // viewport (or the docked box) at all times, so it must stop intercepting
   // clicks the instant there's nothing shown inside it, not just while it's
@@ -2664,8 +2670,8 @@ export function ChatPage() {
   useEffect(() => {
     // The phone reader lives in ChatPage's normal tree. Its unused desktop
     // portal must remain inert or it can sit above the reader and eat taps.
-    overlayPortalHost.style.pointerEvents = overlayExit.mounted && !mobileReaderOpen ? 'auto' : 'none'
-  }, [mobileReaderOpen, overlayExit.mounted, overlayPortalHost])
+    overlayPortalHost.style.pointerEvents = overlayExit.mounted && !mobileReaderOpen && !tabletLandscapePlanOpen ? 'auto' : 'none'
+  }, [mobileReaderOpen, overlayExit.mounted, overlayPortalHost, tabletLandscapePlanOpen])
   /* Measured live (rAF timestamps during the slide-in): the animation
      itself was a rock-solid ~13ms/frame for its whole duration, EXCEPT the
      first two frames (26.7ms, then 39.9ms) — that's not the CSS transform
@@ -2691,7 +2697,7 @@ export function ChatPage() {
     // that makes its slide-in look smoother. On a phone that delay can leave a
     // full-screen, focus-trapping sheet with no document in it while Safari is
     // also recompositing its blur. Mount the already-available plan directly.
-    if (isPhone) {
+    if (isPhone || tabletLandscapePlanOpen) {
       setArtifactContentReady(true)
       return undefined
     }
@@ -2703,7 +2709,7 @@ export function ChatPage() {
       cancelAnimationFrame(raf1)
       if (raf2 != null) cancelAnimationFrame(raf2)
     }
-  }, [overlayOpen, isPhone])
+  }, [overlayOpen, isPhone, tabletLandscapePlanOpen])
   /* While the document overlay covers the transcript, a reply has nowhere
      visible to land — so it surfaces as a toast instead. Watches the last
      message rather than hooking every place this file appends one (there
@@ -2969,6 +2975,7 @@ export function ChatPage() {
         flashCells={flashCells}
         onFullscreenChange={setArtifactFullscreen}
         mobileReader={isPhone && viewKind === 'plan'}
+        readerMode={tabletLandscapePlanOpen}
       />
     ) : (
       <ArtifactDetailPanel
@@ -3731,6 +3738,12 @@ export function ChatPage() {
         />
       ) : null}
 
+      {tabletLandscapePlanOpen ? (
+        <aside className="tablet-plan-pane" aria-label="Lesson plan">
+          {artifactEl}
+        </aside>
+      ) : null}
+
       {/* The document always opens as a full glass overlay (2026-08-27) —
           there is no more docked side-by-side mode at any width, so this is
           the only way `artifactEl` ever renders. On desktop it goes
@@ -3756,7 +3769,7 @@ export function ChatPage() {
           itself is resized to either #main's own box (docked) or the true
           viewport (fullscreen), so .artifact-overlay's own offsets
           (base.css) keep working unchanged either way. */}
-      {overlayExit.mounted && !mobileReaderOpen
+      {overlayExit.mounted && !mobileReaderOpen && !tabletLandscapePlanOpen
         ? createPortal(
             <>
               <button
@@ -3766,7 +3779,7 @@ export function ChatPage() {
                 onClick={collapse}
               />
               <div
-                className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}`}
+                className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${isTablet && tabletPortrait ? ' is-tablet-side-sheet' : ''}`}
                 style={{ '--composer-h': `${composerDockH}px` }}
               >
                 {/* artifactContentReady: see its own comment near overlayOpen —

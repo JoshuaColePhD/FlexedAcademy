@@ -893,6 +893,25 @@
     }
   }
 
+  /* iPad portrait is still a conversation-first canvas. The plan slides in
+     from the right as a true side sheet, leaving a deliberate sliver of chat
+     visible instead of covering the entire app like a large phone modal. */
+  @media (min-width: 768px) and (max-width: 1023.98px) and (orientation: portrait) {
+    .artifact-overlay.is-tablet-side-sheet {
+      top: var(--sp-3);
+      right: var(--sp-3);
+      bottom: var(--sp-3);
+      left: auto;
+      width: min(82vw, 680px);
+      border-radius: var(--r-xl);
+      animation-name: artifact-tablet-sheet-in;
+      animation-duration: var(--t-slow);
+    }
+    .artifact-overlay.is-tablet-side-sheet.is-closing {
+      animation-name: artifact-tablet-sheet-out;
+    }
+  }
+
   /* A phone gets a bottom sheet. A right-hand drawer at 375px is a full-screen
      takeover wearing a scrim nobody can see — that is a modal pretending to be
      a panel, and it loses the "the plan is over there" spatial cue that makes
@@ -978,6 +997,14 @@
   @keyframes artifact-sheet-in {
     from { transform: translateY(16px); }
     to { transform: none; }
+  }
+  @keyframes artifact-tablet-sheet-in {
+    from { transform: translateX(28px); }
+    to { transform: none; }
+  }
+  @keyframes artifact-tablet-sheet-out {
+    from { transform: none; }
+    to { transform: translateX(28px); }
   }
 
   /* The mirror of the two entrances above — every overlay in this app
@@ -3069,6 +3096,26 @@
     border: none;
     border-radius: 0;
     box-shadow: none;
+  }
+  /* A landscape iPad has enough width to keep the lesson plan visible beside
+     chat. This is intentionally a real flex pane—not another overlay—so the
+     document preserves its scroll position while the teacher keeps typing. */
+  .tablet-plan-pane {
+    display: flex;
+    width: clamp(390px, 43vw, 560px);
+    min-width: 0;
+    min-height: 0;
+    flex: 0 0 clamp(390px, 43vw, 560px);
+    overflow: hidden;
+    background: var(--paper-sunken);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-panel);
+  }
+  .tablet-plan-pane .doc-shell {
+    border-left: none;
+    box-shadow: none;
+    animation: none;
   }
   /* In the overlay form it IS the panel, so it fills it and drops the rule
      AND the shadow — there's no adjacent chat pane for the step-down to
