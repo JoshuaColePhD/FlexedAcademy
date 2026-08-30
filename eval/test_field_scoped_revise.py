@@ -141,6 +141,10 @@ def install_stubs(calls: Calls, new_value):
         def plan_output_path(plan, plan_id):
             return Path("/dev/null")
 
+        @staticmethod
+        def is_valid_docx(path):
+            return True
+
         # Mirrors docx_build.build_docx's real signature — school_id (added
         # when per-school templates landed) is optional there, but every
         # service.py caller passes it positionally, so a two-parameter stub
@@ -151,10 +155,16 @@ def install_stubs(calls: Calls, new_value):
         def build_docx(plan, out_path, school_id=None):
             return None
 
+    class FakeStorage:
+        @staticmethod
+        def mirror_file(path):
+            return True
+
     service.db = FakeDb
     service.retrieval = FakeRetrieval
     service.llm = FakeLlm
     service.docx_build = FakeDocx
+    service.storage = FakeStorage
 
 
 def revise(field, feedback="Make it a two-minute quickwrite instead", new_value="A two-minute quickwrite on Fortunato's blind spot."):
