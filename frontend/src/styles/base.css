@@ -2273,25 +2273,13 @@
     box-shadow: 0 -6px 16px rgb(var(--neo-dark-rgb) / 0.2);
     transition: box-shadow var(--t-base) var(--ease-glide), border-color var(--t-base) var(--ease-glide);
   }
-  /* A collapsed drawer is a handle, not an invisible second panel. Hiding
-     the body outright avoids iOS/WebKit preserving the doc header's intrinsic
-     height inside the 0fr grid row, which showed up as a blank band above the
-     handle on phones. */
+  /* The body remains mounted at zero height. Switching it with display:none
+     made WebKit skip the first part of the opening transition, which is why
+     the old drawer appeared to pop out from under the composer. */
   .plan-peek:not(.is-open) {
     border-top-color: transparent;
     background: transparent;
     box-shadow: none;
-  }
-  .plan-peek:not(.is-open) .plan-peek-body {
-    display: none;
-  }
-  .plan-peek.is-drag-preview .plan-peek-body {
-    display: block;
-    max-height: var(--plan-peek-drag);
-    transition: none;
-  }
-  .plan-peek.is-drag-preview .plan-peek-body-inner {
-    max-height: var(--plan-peek-drag);
   }
   .plan-peek.is-dragging .plan-peek-handle {
     cursor: grabbing;
@@ -2314,8 +2302,13 @@
     background: var(--paper-raised);
     border: 0;
     cursor: grab;
-    touch-action: pan-y;
+    /* This narrow handle owns vertical pointer motion. The document body
+       below it still scrolls normally, but iOS cannot steal a drawer gesture
+       for browser/page scrolling halfway through a pull. */
+    touch-action: none;
+    overscroll-behavior: contain;
     user-select: none;
+    -webkit-user-select: none;
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
   }
@@ -2361,16 +2354,39 @@
     min-height: 0;
     max-height: 0;
     overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+    opacity: 0;
     grid-template-rows: 1fr;
-    transition: max-height var(--t-slow) var(--ease-glide);
+    transform: translateY(6px);
+    will-change: max-height, opacity, transform;
+    transition:
+      max-height var(--t-slow) var(--ease-glide),
+      opacity var(--t-fast) var(--ease),
+      transform var(--t-base) var(--ease-glide),
+      visibility 0s linear var(--t-slow);
   }
   .plan-peek.is-open .plan-peek-body {
     max-height: min(68vh, 620px);
+    visibility: visible;
+    pointer-events: auto;
+    opacity: 1;
+    transform: translateY(0);
+    transition-delay: 0s;
   }
-  /* While an already-open sheet is being pulled down, the drag preview must
-     win over the open-state height above. The handle and its content then
-     recede together under the thumb instead of leaving a full-height panel
-     behind until pointer-up. */
+  /* While dragging, opacity and height use the same progress value. This
+     keeps the plan physically attached to the handle instead of exposing a
+     blank tray before content has arrived. */
+  .plan-peek.is-drag-preview .plan-peek-body {
+    visibility: visible;
+    opacity: var(--plan-peek-progress);
+    transform: translateY(calc((1 - var(--plan-peek-progress)) * 6px));
+    pointer-events: none;
+    transition: none;
+  }
+  .plan-peek:not(.is-open).is-drag-preview .plan-peek-body {
+    max-height: var(--plan-peek-drag);
+  }
   .plan-peek.is-open.is-drag-preview .plan-peek-body {
     max-height: max(0px, calc(min(68vh, 620px) - var(--plan-peek-drag)));
   }
