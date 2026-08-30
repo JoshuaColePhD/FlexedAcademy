@@ -274,10 +274,16 @@ export const api = {
    *  title this has no business inventing. */
   setChatWeek: (id, weekNumber) =>
     request(`/api/chats/${id}/week`, { method: 'PATCH', body: { week_number: weekNumber } }),
+  setChatMode: (id, mode) =>
+    request(`/api/chats/${id}/mode`, { method: 'PATCH', body: { mode } }),
   suggestChatTitle: (message) => request('/api/chats/title', { method: 'POST', body: { message } }),
   deleteChat: (id) => request(`/api/chats/${id}`, { method: 'DELETE' }),
   addMessage: (chatId, msg) =>
     request(`/api/chats/${chatId}/messages`, { method: 'POST', body: msg }),
+  getCoachingProfile: () => request('/api/coaching/profile'),
+  updateCoachingProfile: (payload) => request('/api/coaching/profile', { method: 'PATCH', body: payload }),
+  listCoachingMemories: () => request('/api/coaching/memories'),
+  deleteCoachingMemory: (id) => request(`/api/coaching/memories/${id}`, { method: 'DELETE' }),
 
   // `signal` is destructured out so it is never serialised into the query string.
   listPlans: ({ signal, ...params } = {}) => {

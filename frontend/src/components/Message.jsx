@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Check, Copy, Pencil, RotateCcw } from 'lucide-react'
+import { ArrowUpRight, Check, Copy, Pencil, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { scanGrounding } from '../lib/grounding'
 import { dayTitle, orderedDays } from '../lib/planShape'
@@ -24,6 +24,11 @@ function copyableText(message, grounded, ungrounded) {
   if (grounded?.length) parts.push('', `Grounded: ${grounded.join(', ')}`)
   if (ungrounded?.length) {
     parts.push(`Not retrieved: ${ungrounded.map((u) => `${u.code} (${u.dayName})`).join(', ')}`)
+  }
+  if (message.researchSources?.length) {
+    parts.push('', 'Research sources:', ...message.researchSources.map((source, index) =>
+      `[${index + 1}] ${source.title || 'Untitled'}${source.url ? ` — ${source.url}` : ''}`
+    ))
   }
   return parts.join('\n')
 }
@@ -64,6 +69,7 @@ function MessageImpl({
   // spacing that's supposed to read as "one thought, several lines."
   showTimestamp = true,
   bubbleGroup = 'single',
+  onApplyAdvice,
 }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
@@ -305,6 +311,46 @@ function MessageImpl({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {!isUser && assistantSettled && message.researchSources?.length ? (
+          <div className="mt-3 w-full rounded-xl border border-edge bg-paper-sunken/60 p-3">
+            <p className="eyebrow mb-2 text-ink-faint">Research sources</p>
+            <div className="flex flex-col gap-1.5">
+              {message.researchSources.map((source, index) => (
+                <a
+                  key={`${source.url || source.title}-${index}`}
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="group flex min-w-0 items-start gap-2 rounded-lg px-2 py-1.5 text-xs text-ink-soft transition-colors hover:bg-paper-inset hover:text-ink"
+                >
+                  <span className="shrink-0 font-semibold text-accent">[{index + 1}]</span>
+                  <span className="min-w-0 flex-1 truncate">{source.title}</span>
+                  <span className="shrink-0 text-ink-faint">{source.year || 'n.d.'}</span>
+                  <ArrowUpRight size={13} className="shrink-0 opacity-50 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+                </a>
+              ))}
+            </div>
+            {onApplyAdvice ? (
+              <button
+                type="button"
+                className="fa-press mt-2 rounded-lg px-2 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent-tint"
+                onClick={() => onApplyAdvice(message)}
+              >
+                Apply this advice to my plan
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {!isUser && assistantSettled && onApplyAdvice && !message.researchSources?.length && message.content?.trim() ? (
+          <button
+            type="button"
+            className="fa-press mt-2 rounded-lg px-2 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent-tint"
+            onClick={() => onApplyAdvice(message)}
+          >
+            Apply this advice to my plan
+          </button>
+        ) : null}
 
         {/* The guided alternative to typing — see LessonQuestions, which now
             renders in a dock above the composer (ChatPage's pendingQuestions)

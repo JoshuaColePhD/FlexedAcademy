@@ -128,6 +128,8 @@ export function Composer({
   // persistent input shell; the two never show at once, since voice mode
   // surfaces its own questions through voicePanel.
   questionsPanel = null,
+  mode = 'brainstorm',
+  onModeChange,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
@@ -415,6 +417,11 @@ export function Composer({
   }, [handleGlobalDrop])
 
   const hasContent = value.trim().length > 0 || attachments.length > 0
+  const modeOptions = [
+    { value: 'brainstorm', label: 'Coach', description: 'Talk it through with a veteran teacher' },
+    { value: 'build', label: 'Build', description: 'Turn the idea into a plan quickly' },
+    { value: 'research', label: 'Research', description: 'Use current scholarly sources' },
+  ]
 
   // isStreaming no longer gates this: a teacher thinking of a follow-up
   // while the current reply is still generating can now type it and hit
@@ -536,7 +543,7 @@ export function Composer({
       ) : null}
 
       <div
-        className={`composer-shell relative flex h-14 min-h-14 max-h-14 w-full flex-col overflow-hidden border border-edge bg-paper-raised ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
+        className={`composer-shell relative flex h-14 min-h-14 max-h-14 w-full flex-col border border-edge bg-paper-raised ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
       >
         {isDragging ? createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/60 backdrop-blur-md">
@@ -733,7 +740,7 @@ export function Composer({
               />
             </button>
 
-            {onOpenVoice && !voiceModeActive && !isStreaming ? (
+            {(onOpenVoice || onModeChange) && !voiceModeActive && !isStreaming ? (
               <button
                 type="button"
                 className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9 ${toolsOpen ? 'bg-paper-sunken text-ink' : ''}`}
@@ -747,6 +754,40 @@ export function Composer({
             ) : null}
             {toolsOpen ? (
               <div className="composer-tools-menu" role="menu">
+                {onModeChange ? (
+                  <div className="border-b border-edge px-2 py-2" role="group" aria-label="Conversation mode">
+                    <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Mode</p>
+                    {modeOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={mode === option.value}
+                        className={`composer-tools-item fa-press w-full ${mode === option.value ? 'bg-paper-sunken text-ink' : ''}`}
+                        onPointerDown={(event) => {
+                          // Select on pointer-down so the menu feels immediate
+                          // even when a surrounding focus/blur handler is
+                          // running. Keyboard activation remains supported by
+                          // the explicit key handler below.
+                          event.preventDefault()
+                          onModeChange(option.value)
+                          setToolsOpen(false)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' && event.key !== ' ') return
+                          event.preventDefault()
+                          onModeChange(option.value)
+                          setToolsOpen(false)
+                        }}
+                        title={option.description}
+                      >
+                        <span className="w-14 text-left font-semibold">{option.label}</span>
+                        <span className="truncate text-xs text-ink-muted">{option.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {onOpenVoice ? (
                 <button
                   type="button"
                   role="menuitem"
@@ -760,6 +801,7 @@ export function Composer({
                   <AudioLines size={16} aria-hidden="true" />
                   <span>Talk instead of type</span>
                 </button>
+                ) : null}
               </div>
             ) : null}
             <button

@@ -244,6 +244,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     let finished = null
     let toolCalled = false
     let questions = null
+    let researchSources = null
     // The generate_quiz alternative — see backend/llm.py's tool declaration.
     // A SEPARATE field from `toolCalled`/`questions`, not folded into either:
     // toolCalled means "go build the plan," and a caller checking only that
@@ -359,6 +360,10 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
             questions = event.questions || []
           }
 
+          if (event.research_sources) {
+            researchSources = Array.isArray(event.research_sources) ? event.research_sources : []
+          }
+
           // Its own arguments are the entire payload too, same reasoning as
           // ask_clarifying_questions just above.
           if (event.tool_call === 'generate_quiz') {
@@ -456,6 +461,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       questions,
       quizRequested,
       dayRevisionRequested,
+      researchSources,
       spokeStream: emittedTo > 0,
     }
     // All three are useCallback'd with empty deps (they only touch refs), so

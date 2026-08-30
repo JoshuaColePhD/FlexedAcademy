@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, CreditCard, Download, FileText, HardDrive, Loader2, Settings, Sparkles, User } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, CreditCard, Download, FileText, HardDrive, Loader2, Save, Settings, Sparkles, Trash2, User } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -41,6 +41,91 @@ const TABS = [
   { id: 'billing', label: 'Billing' },
   { id: 'advanced', label: 'Advanced' },
 ]
+
+function CoachingProfileSection() {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const profileQuery = useQuery({ queryKey: ['coaching-profile'], queryFn: () => api.getCoachingProfile() })
+  const memoriesQuery = useQuery({ queryKey: ['coaching-memories'], queryFn: () => api.listCoachingMemories() })
+  const [fields, setFields] = useState({ teaching_context: '', strengths: '', challenges: '', preferences: '', goals: '' })
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (profileQuery.data) {
+      setFields((current) => Object.fromEntries(Object.keys(current).map((key) => [key, profileQuery.data[key] || ''])))
+    }
+  }, [profileQuery.data])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await api.updateCoachingProfile(fields)
+      toast.success('Coaching profile saved')
+      qc.invalidateQueries({ queryKey: ['coaching-profile'] })
+    } catch (err) {
+      toast.apiError('Could not save your coaching profile', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const labels = {
+    teaching_context: ['Teaching context', 'Grade levels, courses, or recurring classroom context'],
+    strengths: ['Strengths', 'What already works well in your teaching'],
+    challenges: ['Current challenges', 'The kinds of situations where coaching helps most'],
+    preferences: ['Coaching preferences', 'How you want feedback, ideas, and recommendations delivered'],
+    goals: ['Professional goals', 'Longer-term instructional goals you want to keep in view'],
+  }
+  return (
+    <section className="mb-8">
+      <div className="border-b border-edge pb-2 mb-4">
+        <h3 className="text-sm font-semibold text-ink">Coaching profile</h3>
+        <p className="text-xs text-ink-muted">Give the teacher coach durable context so advice becomes more personal over time. You can edit or clear it anytime.</p>
+      </div>
+      <div className="flex max-w-xl flex-col gap-3">
+        {Object.entries(labels).map(([key, [label, hint]]) => (
+          <label key={key} className="block">
+            <span className="mb-1 block text-xs font-medium text-ink">{label}</span>
+            <span className="mb-1 block text-xs text-ink-muted">{hint}</span>
+            <textarea
+              value={fields[key]}
+              onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))}
+              rows={2}
+              maxLength={2000}
+              className="neo-inset w-full resize-y rounded-lg bg-paper-raised/60 px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+            />
+          </label>
+        ))}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-ink-faint">FlexEd learns only teacher-level preferences—not student names, diagnoses, grades, or scores.</p>
+          <button type="button" onClick={save} disabled={saving} className="fa-press flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-on disabled:opacity-50">
+            <Save size={14} aria-hidden="true" /> {saving ? 'Saving…' : 'Save profile'}
+          </button>
+        </div>
+      </div>
+      {memoriesQuery.data?.items?.length ? (
+        <div className="mt-6 max-w-xl rounded-xl border border-edge bg-paper-raised/40 p-3">
+          <p className="mb-2 text-xs font-semibold text-ink">Learned from conversations</p>
+          <div className="flex flex-col gap-2">
+            {memoriesQuery.data.items.map((memory) => (
+              <div key={memory.id} className="flex items-start gap-2 rounded-lg bg-paper-sunken/50 px-3 py-2 text-xs text-ink-soft">
+                <span className="min-w-0 flex-1">{memory.memory}</span>
+                <button type="button" className="fa-press shrink-0 rounded p-1 text-ink-muted hover:text-mark" aria-label="Forget this coaching memory" onClick={async () => {
+                  try {
+                    await api.deleteCoachingMemory(memory.id)
+                    qc.invalidateQueries({ queryKey: ['coaching-memories'] })
+                  } catch (err) { toast.apiError('Could not forget that memory', err) }
+                }}>
+                  <Trash2 size={13} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
 
 /* The neomorphic/skeuomorphic toggle (useDesignSkin.js) — added after the
  * sign-in form's own contrast problems traced back to neomorphism's core
@@ -1405,6 +1490,8 @@ export function SettingsPage() {
                   onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
                 />
               </section>
+
+              <CoachingProfileSection />
 
               <section className="mb-8">
                 <div className="border-b border-edge pb-2 mb-4">

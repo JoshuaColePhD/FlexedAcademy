@@ -440,6 +440,14 @@ function speakableQuestions(intro, questions) {
   return [intro, ...questions.map((q) => q.text)].filter(Boolean).join(' ')
 }
 
+function normalizeChatMode(mode) {
+  if (mode === 'research' || mode === 'build' || mode === 'brainstorm') return mode
+  // Preserve links from the older interview/standard entry points while
+  // presenting the simpler three-mode vocabulary in the composer.
+  if (mode === 'standard') return 'build'
+  return 'brainstorm'
+}
+
 export function ChatPage() {
   const { classId, chatId } = useParams()
   const navigate = useNavigate()
@@ -560,6 +568,17 @@ export function ChatPage() {
   // request calls for.
   const [artifactRetryTick, setArtifactRetryTick] = useState(0)
   const [query, setQuery] = useState('')
+  const [chatMode, setChatMode] = useState(() => normalizeChatMode(location.state?.mode))
+  const changeChatMode = useCallback(async (nextMode) => {
+    setChatMode(nextMode)
+    if (!chatId) return
+    try {
+      await api.setChatMode(chatId, nextMode)
+      qc.invalidateQueries({ queryKey: ['chats'] })
+    } catch (err) {
+      toast.apiError('Could not save that conversation mode', err)
+    }
+  }, [chatId, qc, toast])
   // chatId once one exists, else a per-class placeholder — so a draft
   // started before the first message creates the chat isn't lost either.
   // See useComposerDraft's own comment for why this re-syncs on every KEY
@@ -1130,10 +1149,15 @@ export function ChatPage() {
       .getChat(chatId)
       .then(async (row) => {
         if (cancelled) return
+        setChatMode(normalizeChatMode(row.mode))
         const loaded = (row.messages || []).map((m) => ({
           id: nextId(),
           role: m.role,
           content: m.content,
+          researchSources: (() => {
+            if (Array.isArray(m.research_sources_json)) return m.research_sources_json
+            try { return m.research_sources_json ? JSON.parse(m.research_sources_json) : null } catch { return null }
+          })(),
           planId: m.plan_id || null,
           created_at: m.created_at || null,
         }))
@@ -1486,6 +1510,7 @@ export function ChatPage() {
         settle({
           role: 'assistant',
           content: result.text,
+          researchSources: result.researchSources || null,
           // Already read aloud a sentence at a time as it streamed — the
           // auto-speak effect below skips it rather than saying the whole
           // reply a second time.
@@ -1493,7 +1518,11 @@ export function ChatPage() {
         })
         const saveTo = localFor.current
         if (saveTo) {
-          void persistMessage(saveTo, { role: 'assistant', content: result.text })
+          void persistMessage(saveTo, {
+            role: 'assistant',
+            content: result.text,
+            ...(result.researchSources?.length ? { research_sources: result.researchSources } : {}),
+          })
         }
         qc.invalidateQueries({ queryKey: ['chats'] })
         return
@@ -1745,7 +1774,7 @@ export function ChatPage() {
                 (typed || atts[0]?.filename || 'New plan').slice(0, 80),
                 classId,
                 effectiveWeek,
-                location.state?.mode
+                chatMode
               )
               break
             } catch (err) {
@@ -1909,6 +1938,7 @@ export function ChatPage() {
           chatId: activeChatId,
           classId,
           voice: voiceOpen,
+          mode: chatMode,
           weekNumber: effectiveWeek,
         })
 
@@ -1976,6 +2006,7 @@ export function ChatPage() {
         chatId: activeChatId,
         classId,
         voice: voiceOpen,
+        mode: chatMode,
         weekNumber: conversationWeek,
       })
 
@@ -2176,7 +2207,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2477,6 +2508,13 @@ export function ChatPage() {
      Message ignores its first argument (it passes its own `message` back), so
      this can be one shared callback rather than one closure per row. */
   const handleEditMessage = useCallback((_m, next) => submit(next), [submit])
+  const handleApplyAdvice = useCallback((message) => {
+    const prefix = artifact?.planId
+      ? 'Apply this coaching advice to the current plan:\n\n'
+      : 'Use this coaching advice to help me plan the week:\n\n'
+    setQuery(`${prefix}${message.content}`.slice(0, 5000))
+    requestAnimationFrame(() => document.getElementById('composer-input')?.focus())
+  }, [artifact?.planId])
 
   // Auto-retry once on reconnect: a message that failed while the device
   // was genuinely offline (see the offline-aware hint above) shouldn't need
@@ -3360,6 +3398,7 @@ export function ChatPage() {
                          here every render would defeat that for every bubble in the
                          thread — which is the whole cost this memo exists to avoid. */
                       onEdit={m.role === 'user' && !busy ? handleEditMessage : undefined}
+                      onApplyAdvice={m.role === 'assistant' && !m.planId && (m.researchSources?.length || chatMode === 'research') ? handleApplyAdvice : undefined}
                       /* The day-by-day breakdown moved into ArtifactRail's own
                          "This week" section on desktop, which sits right next to
                          the plan it describes instead of scrolling away with the
@@ -3636,6 +3675,8 @@ export function ChatPage() {
             onOpenVoice={betaFeaturesEnabled ? openVoice : undefined}
             voiceModeActive={voiceOpen}
             suggestions={composerSuggestions}
+            mode={chatMode}
+            onModeChange={changeChatMode}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
                 <div className={`questions-dock${pendingQuestions ? ' is-open' : ''}`}>

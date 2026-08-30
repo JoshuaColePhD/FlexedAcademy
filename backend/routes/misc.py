@@ -336,6 +336,18 @@ class ChatWeekBody(BaseModel):
     week_number: int = Field(ge=1, le=52)
 
 
+class ChatModeBody(BaseModel):
+    mode: str = Field(pattern=r"^(brainstorm|build|research|interview|standards|sub_plan)$")
+
+
+@router.patch("/chats/{chat_id}/mode")
+def set_chat_mode(chat_id: str, body: ChatModeBody, user_id: str = Depends(get_current_user)):
+    chat = db.set_chat_mode(user_id, chat_id, body.mode)
+    if not chat:
+        raise AppError("chat_not_found", "No such chat.", status=404)
+    return chat
+
+
 @router.patch("/chats/{chat_id}/week")
 def set_chat_week(chat_id: str, body: ChatWeekBody, user_id: str = Depends(get_current_user)):
     """Re-point an existing conversation at a different week — the composer's

@@ -30,6 +30,7 @@ from .routes import (
     billing,
     canvas,
     classes,
+    coaching,
     curriculum,
     drive,
     generate,
@@ -342,6 +343,7 @@ app.include_router(account.router)
 app.include_router(drive.router)
 app.include_router(canvas.router)
 app.include_router(bell_ringer.router)
+app.include_router(coaching.router)
 import os
 
 from fastapi.responses import FileResponse

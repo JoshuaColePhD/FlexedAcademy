@@ -3272,6 +3272,37 @@ MIGRATIONS: list[str] = [
              AND current.is_school_default = true
        );
     """,
+    # ── 64: coaching context and source-backed chat replies ──────────────────
+    # Keep this information separate from the transcript body.  Research
+    # citations belong to the assistant turn that used them, while coaching
+    # context is teacher-owned, editable memory rather than an opaque prompt.
+    """
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS research_sources_json TEXT;
+    CREATE TABLE IF NOT EXISTS teacher_coaching_profiles (
+      user_id          TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      teaching_context TEXT,
+      strengths        TEXT,
+      challenges       TEXT,
+      preferences      TEXT,
+      goals            TEXT,
+      updated_at       TEXT NOT NULL
+    );
+    ALTER TABLE teacher_coaching_profiles ENABLE ROW LEVEL SECURITY;
+    CREATE TABLE IF NOT EXISTS teacher_coaching_memories (
+      id             TEXT PRIMARY KEY,
+      user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      category       TEXT NOT NULL,
+      memory         TEXT NOT NULL,
+      source_chat_id TEXT,
+      confidence     REAL NOT NULL DEFAULT 0.7,
+      created_at     TEXT NOT NULL,
+      last_used_at   TEXT,
+      is_active      BOOLEAN NOT NULL DEFAULT true
+    );
+    CREATE INDEX IF NOT EXISTS idx_coaching_memories_user
+      ON teacher_coaching_memories(user_id, is_active, created_at DESC);
+    ALTER TABLE teacher_coaching_memories ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -5427,6 +5458,14 @@ def set_chat_week(user_id: str, chat_id: str, week_number: int) -> dict | None:
     return get_chat(user_id, chat_id)
 
 
+def set_chat_mode(user_id: str, chat_id: str, mode: str) -> dict | None:
+    _write(
+        "UPDATE chats SET mode = ? WHERE id = ? AND user_id = ?",
+        (mode[:20], chat_id, user_id),
+    )
+    return get_chat(user_id, chat_id)
+
+
 def delete_chat(user_id: str, chat_id: str) -> bool:
     return _write("DELETE FROM chats WHERE id = ? AND user_id = ?", (chat_id, user_id)) > 0
 
@@ -5438,6 +5477,7 @@ def add_message(
     plan_id: str | None = None,
     client_id: str | None = None,
     source: str | None = None,
+    research_sources: list[dict] | None = None,
 ) -> dict:
     """Not user-scoped: callers must already have verified (via get_chat) that
     this chat belongs to the requesting user. Messages have no user_id column
@@ -5449,33 +5489,34 @@ def add_message(
     plausibly less edited/considered than something a teacher typed and
     reread, so this exists to let retention or export policy treat the two
     differently later, without having to guess after the fact."""
+    sources_json = json.dumps(research_sources, ensure_ascii=False) if research_sources else None
     with borrow() as conn:
         with conn.cursor() as cur:
             if client_id:
                 cur.execute(
                     """
-                    INSERT INTO messages (chat_id, role, content, plan_id, client_id, source, created_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    INSERT INTO messages (chat_id, role, content, plan_id, client_id, source, research_sources_json, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (chat_id, client_id) WHERE client_id IS NOT NULL DO NOTHING
-                    RETURNING id, chat_id, role, content, plan_id, client_id, source, created_at
+                    RETURNING id, chat_id, role, content, plan_id, client_id, source, research_sources_json, created_at
                     """,
-                    (chat_id, role, content, plan_id, client_id[:128], source, now()),
+                    (chat_id, role, content, plan_id, client_id[:128], source, sources_json, now()),
                 )
                 row = cur.fetchone()
                 if row is None:
                     cur.execute(
-                        "SELECT id, chat_id, role, content, plan_id, client_id, source, created_at FROM messages WHERE chat_id = %s AND client_id = %s",
+                        "SELECT id, chat_id, role, content, plan_id, client_id, source, research_sources_json, created_at FROM messages WHERE chat_id = %s AND client_id = %s",
                         (chat_id, client_id[:128]),
                     )
                     row = cur.fetchone()
             else:
                 cur.execute(
                     """
-                    INSERT INTO messages (chat_id, role, content, plan_id, source, created_at)
-                    VALUES (%s,%s,%s,%s,%s,%s)
-                    RETURNING id, chat_id, role, content, plan_id, client_id, source, created_at
+                    INSERT INTO messages (chat_id, role, content, plan_id, source, research_sources_json, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING id, chat_id, role, content, plan_id, client_id, source, research_sources_json, created_at
                     """,
-                    (chat_id, role, content, plan_id, source, now()),
+                    (chat_id, role, content, plan_id, source, sources_json, now()),
                 )
                 row = cur.fetchone()
             cur.execute("UPDATE chats SET updated_at = %s WHERE id = %s", (now(), chat_id))
@@ -5489,6 +5530,70 @@ def list_messages(chat_id: str) -> list[dict]:
         dict(r)
         for r in _rows("SELECT * FROM messages WHERE chat_id = ? ORDER BY id", (chat_id,))
     ]
+
+
+def get_coaching_profile(user_id: str) -> dict:
+    row = _row("SELECT * FROM teacher_coaching_profiles WHERE user_id = ?", (user_id,))
+    return dict(row) if row else {
+        "user_id": user_id,
+        "teaching_context": "",
+        "strengths": "",
+        "challenges": "",
+        "preferences": "",
+        "goals": "",
+    }
+
+
+def upsert_coaching_profile(user_id: str, fields: dict[str, str]) -> dict:
+    allowed = {"teaching_context", "strengths", "challenges", "preferences", "goals"}
+    clean = {key: str(value or "").strip()[:2000] for key, value in fields.items() if key in allowed}
+    if clean:
+        columns = ["user_id", *clean.keys(), "updated_at"]
+        values = [user_id, *clean.values(), now()]
+        placeholders = ", ".join("?" for _ in columns)
+        updates = ", ".join(f"{key} = excluded.{key}" for key in clean)
+        _write(
+            f"INSERT INTO teacher_coaching_profiles ({', '.join(columns)}) VALUES ({placeholders}) "
+            f"ON CONFLICT (user_id) DO UPDATE SET {updates}, updated_at = excluded.updated_at",
+            tuple(values),
+        )
+    return get_coaching_profile(user_id)
+
+
+def list_coaching_memories(user_id: str, limit: int = 12) -> list[dict]:
+    return _rows(
+        "SELECT id, category, memory, confidence, created_at, last_used_at "
+        "FROM teacher_coaching_memories WHERE user_id = ? AND is_active = true "
+        "ORDER BY created_at DESC LIMIT ?",
+        (user_id, min(max(limit, 1), 50)),
+    )
+
+
+def add_coaching_memories(user_id: str, memories: list[dict], source_chat_id: str | None = None) -> None:
+    existing = {str(row["memory"]).strip().casefold() for row in list_coaching_memories(user_id, 50)}
+    for item in memories[:3]:
+        memory = str(item.get("memory") or "").strip()[:500]
+        category = str(item.get("category") or "preference").strip()[:40]
+        if not memory or memory.casefold() in existing:
+            continue
+        try:
+            confidence = min(max(float(item.get("confidence", 0.7)), 0.4), 1.0)
+        except (TypeError, ValueError):
+            confidence = 0.7
+        _write(
+            "INSERT INTO teacher_coaching_memories "
+            "(id, user_id, category, memory, source_chat_id, confidence, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (new_id(), user_id, category, memory, source_chat_id, confidence, now()),
+        )
+        existing.add(memory.casefold())
+
+
+def delete_coaching_memory(user_id: str, memory_id: str) -> bool:
+    return _write(
+        "DELETE FROM teacher_coaching_memories WHERE id = ? AND user_id = ?",
+        (memory_id, user_id),
+    ) > 0
 
 
 # ---------------------------------------------------------------------------
