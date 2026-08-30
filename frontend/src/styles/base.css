@@ -2441,6 +2441,70 @@
     to { opacity: 1; transform: none; }
   }
 
+  /* The phone plan no longer lives in a separate tray above the input. The
+     composer itself becomes the sheet: its grabber is the top edge, the plan
+     grows upward inside it, and the typing row remains physically connected
+     at the bottom. That single silhouette is the difference between an app
+     drawer and the old floating white band. */
+  .mobile-composer-plan-sheet.has-plan {
+    overflow: hidden;
+    background: var(--paper-raised);
+    border: 1px solid var(--edge);
+    border-radius: 30px;
+    box-shadow:
+      6px 6px 14px rgb(var(--neo-dark-rgb) / 0.6),
+      -6px -6px 14px rgb(var(--neo-light-rgb) / 0.85);
+    transition: border-radius var(--t-base) var(--ease-glide), box-shadow var(--t-fast) var(--ease);
+  }
+  .mobile-composer-plan-sheet.has-plan .plan-peek {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle {
+    min-height: 34px;
+    padding: 7px var(--gutter) 1px;
+    background: transparent;
+    border-radius: 30px 30px 0 0;
+  }
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle::before {
+    top: 6px;
+  }
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle-label {
+    font-size: var(--fs-2xs);
+  }
+  .mobile-composer-plan-sheet.has-plan .plan-peek-body {
+    border-top: 1px solid transparent;
+  }
+  .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body {
+    max-height: min(54dvh, 560px);
+    border-top-color: var(--edge);
+  }
+  .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body-inner,
+  .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body-inner > .doc-shell {
+    max-height: min(54dvh, 560px);
+  }
+  .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek.is-drag-preview .plan-peek-body {
+    max-height: max(0px, calc(min(54dvh, 560px) - var(--plan-peek-drag)));
+  }
+  .mobile-composer-plan-sheet.has-plan:not(.is-plan-open) .plan-peek.is-drag-preview .plan-peek-body {
+    max-height: var(--plan-peek-drag);
+  }
+  .mobile-composer-plan-sheet.has-plan .composer-shell {
+    border: 0;
+    border-top: 1px solid var(--edge);
+    border-radius: 0 0 30px 30px;
+    background: transparent;
+    box-shadow: none;
+  }
+  .mobile-composer-plan-sheet.has-plan .composer-shell:focus-within {
+    border-color: rgb(var(--accent-rgb) / 0.5);
+    box-shadow: inset 0 1px 0 rgb(var(--accent-rgb) / 0.1);
+  }
+  .mobile-composer-plan-sheet.has-plan.is-plan-open {
+    border-radius: var(--r-xl);
+  }
+
   /* VoiceModePanel's own caption line — what's currently being said, above
      the checklist. Always mounted now (it used to mount/unmount outright),
      so this 0fr/1fr grid row (the same technique .voice-dock uses for its

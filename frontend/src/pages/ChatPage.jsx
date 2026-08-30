@@ -3427,39 +3427,11 @@ export function ChatPage() {
         </div>
       ) : null}
 
-      {artifact?.planId && hasArtifact && isPhone && !expanded ? (
-        <PlanPeek
-          open={planPeekOpen}
-          onToggle={setPlanPeekOpen}
-          weekLabel={livePlan?.week_of}
-        >
-          <ArtifactPanel
-            artifact={{ ...liveArtifact, plan: livePlan }}
-            classId={classId}
-            subject={activeClass?.subject}
-            missingDays="no_school"
-            onCollapse={() => setPlanPeekOpen(false)}
-            onReviseDay={reviseDay}
-            onReviseDays={reviseDays}
-            onPickStandard={pickStandard}
-            onPlanRevised={onPlanRevised}
-            busy={busy}
-            preparing={preparing}
-            streamingText={stream.text}
-            openTweak={openTweak}
-            setOpenTweak={setOpenTweak}
-            flashCells={flashCells}
-            onFullscreenChange={() => {}}
-            mobileReader
-          />
-        </PlanPeek>
-      ) : null}
-
       {/* The dock. Composer must stay in the SAME slot of the same parent across
           the empty/non-empty transition — it owns a MediaRecorder, a
           ResizeObserver and an autosized inline height, all of which die on
           remount. Only the wrapper's className may change. */}
-      <div className={`shrink-0 bg-transparent pb-5 ${hasArtifact && isPhone && !expanded ? 'pt-2' : 'pt-3'}`}>
+      <div className="shrink-0 bg-transparent pb-5 pt-3">
         <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
           voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
         }`}>
@@ -3522,6 +3494,34 @@ export function ChatPage() {
                 <X size={13} aria-hidden="true" />
               </button>
             </div>
+          ) : null}
+          <div className={`mobile-composer-plan-sheet${artifact?.planId && hasArtifact && isPhone && !expanded ? ' has-plan' : ''}${planPeekOpen ? ' is-plan-open' : ''}`}>
+          {artifact?.planId && hasArtifact && isPhone && !expanded ? (
+            <PlanPeek
+              open={planPeekOpen}
+              onToggle={setPlanPeekOpen}
+              weekLabel={livePlan?.week_of}
+            >
+              <ArtifactPanel
+                artifact={{ ...liveArtifact, plan: livePlan }}
+                classId={classId}
+                subject={activeClass?.subject}
+                missingDays="no_school"
+                onCollapse={() => setPlanPeekOpen(false)}
+                onReviseDay={reviseDay}
+                onReviseDays={reviseDays}
+                onPickStandard={pickStandard}
+                onPlanRevised={onPlanRevised}
+                busy={busy}
+                preparing={preparing}
+                streamingText={stream.text}
+                openTweak={openTweak}
+                setOpenTweak={setOpenTweak}
+                flashCells={flashCells}
+                onFullscreenChange={() => {}}
+                mobileReader
+              />
+            </PlanPeek>
           ) : null}
           <Composer
             value={query}
@@ -3631,6 +3631,7 @@ export function ChatPage() {
             }
             sendLabel={artifact?.planId ? 'Revise the plan' : 'Build the lesson plan'}
           />
+          </div>
         </div>
       </div>
       </div>,
