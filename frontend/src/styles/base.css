@@ -1949,8 +1949,8 @@
     transition-duration: var(--t-enter), var(--t-enter);
   }
   .banner-dismiss {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     color: currentColor;
     background: rgb(var(--paper-rgb) / 0.5);
     border-color: rgb(var(--paper-rgb) / 0.55);
@@ -4055,13 +4055,13 @@
      the overhaul gets — .neo-world being global means this resolves
      everywhere, not just where it was written for. */
   .composer-shell {
-    /* A real pill end-cap (half the compact composer's 60px height), not an
-       unbounded `rounded-full`. See Composer.jsx: transitioning 9999px to a
-       card radius while a question dock grows made the first frame balloon. */
-    border-radius: 30px;
+    /* Keep the compact composer a soft rectangle rather than a full pill.
+       The smaller radius gives the field the same grounded shape as the rest
+       of the app while preserving comfortable, friendly corners. */
+    border-radius: 20px;
     box-shadow:
-      6px 6px 14px rgb(var(--neo-dark-rgb) / 0.6),
-      -6px -6px 14px rgb(var(--neo-light-rgb) / 0.85);
+      3px 4px 12px rgb(var(--neo-dark-rgb) / 0.3),
+      -3px -3px 10px rgb(var(--neo-light-rgb) / 0.7);
     transition:
       border-radius 220ms var(--ease-glide),
       border-color var(--t-fast) var(--ease),
@@ -4069,7 +4069,7 @@
       background-color 180ms var(--ease-out);
   }
   .composer-shell.is-expanded {
-    border-radius: 22px;
+    border-radius: 16px;
   }
   /* The signal that replaces it. A full tone step on the border, not a hairline
      nudge, because it is now the only non-caret indication that typing will go
@@ -4077,8 +4077,8 @@
   .composer-shell:focus-within {
     border-color: rgb(var(--accent-rgb) / 0.55);
     box-shadow:
-      6px 6px 14px rgb(var(--neo-dark-rgb) / 0.5),
-      -6px -6px 14px rgb(var(--neo-light-rgb) / 0.78),
+      3px 4px 12px rgb(var(--neo-dark-rgb) / 0.25),
+      -3px -3px 10px rgb(var(--neo-light-rgb) / 0.62),
       0 0 0 3px rgb(var(--accent-rgb) / 0.09);
   }
 
@@ -6405,21 +6405,16 @@
        real text is typed (autosize already sizes correctly for that case —
        only the placeholder-only state was ever wrong). */
     .composer-input {
-      min-height: 54px;
+      min-height: 48px;
     }
   }
 
-  /* ── ChatRow's pin/rename/delete cluster ─────────────────────────────────
-     Was plain Tailwind opacity-0 + group-hover:opacity-100 — a bare, ungated
-     :hover rule. That's invisible to touch anyway (there's no persistent
-     hover to reveal it), but worse: on iOS Safari, the mere PRESENCE of a
-     :hover rule tied to this row makes the first tap simulate :hover instead
-     of firing the click — a real chat needed two taps to open from
-     MobileChatHome, the one screen this app now lands a phone on. Wrapping
-     the rule in (hover: hover) removes it from touch's stylesheet entirely,
-     so there is nothing left for Safari to hover-simulate on tap 1, and the
-     cluster shows unconditionally on touch instead (it was unreachable there
-     before this anyway, same fix either way). */
+  /* ── ChatRow's compact action menu ───────────────────────────────────────
+     Desktop/tablet rows expose one trigger instead of reserving room for
+     three buttons. The actions still appear on hover/focus, while touch
+     keeps the trigger visible because there is no hover state to reveal it.
+     MobileChatHome uses the separate swipe-reveal strip above, so this menu
+     never competes with the larger phone row layout. */
   @media (hover: hover) {
     .chat-row-actions {
       opacity: 0;
@@ -6429,6 +6424,42 @@
     .chat-row-actions:focus-within {
       opacity: 1;
     }
+  }
+  .chat-row-actions.is-open {
+    opacity: 1;
+  }
+  .chat-row-menu {
+    position: absolute;
+    top: calc(100% + var(--sp-1));
+    right: 0;
+    z-index: 20;
+    min-width: 132px;
+    padding: var(--sp-1);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+  }
+  .chat-row-menu-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 32px;
+    padding: 0 var(--sp-2);
+    color: var(--ink-soft);
+    font-size: var(--fs-xs);
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+  }
+  .chat-row-menu-item:hover,
+  .chat-row-menu-item:focus-visible {
+    color: var(--ink);
+    background: var(--paper-sunken);
+    outline: none;
   }
 
   /* ── touch targets ────────────────────────────────────────────────────────

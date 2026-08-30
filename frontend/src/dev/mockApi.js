@@ -523,8 +523,7 @@ export function installMockApi() {
       const n = Number(body.grade)
       const name = `${body.subject} · ${Number.isFinite(n) ? `${n}th` : `${body.grade}th`}`
       const sort_order = Math.max(-1, ...state.classes.map((c) => c.sort_order)) + 1
-      // Stamped with the account's current default, same as db.create_class
-      // — a fresh class starts with an honest answer, editable after.
+      // Stamped with the account's current default, same as db.create_class.
       const created = { id, name, subject: body.subject, grade: body.grade, sort_order, school: state.me.school }
       state.classes.push(created)
       return json(created)
@@ -540,6 +539,19 @@ export function installMockApi() {
         )
       }
       Object.assign(cls, body)
+      // Mirrors routes/classes.py: changing the subject or grade also
+      // regenerates the class name, so the preview cannot drift from the API.
+      if (body.subject !== undefined || body.grade !== undefined) {
+        const labels = {
+          AP_Lang: 'AP English Language and Composition',
+          ELA: 'Alabama Course of Study: ELA',
+        }
+        const label = (labels[cls.subject] || cls.subject || '').split(' (')[0].trim()
+        const grade = String(cls.grade || '').trim()
+        const numericGrade = Number(grade)
+        const gradeLabel = grade === '0' ? 'K' : Number.isFinite(numericGrade) ? `${numericGrade}th` : grade
+        cls.name = `${label} · ${gradeLabel}`
+      }
       return json(cls)
     }
     if (classPatch && method === 'DELETE') {

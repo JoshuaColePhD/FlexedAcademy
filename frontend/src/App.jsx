@@ -23,15 +23,15 @@ import { useAuth, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from './lib/authConte
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
 import { CommandPalette } from './components/CommandPalette'
+import { ClassPage } from './pages/ClassPage.jsx'
+import { PlansPage } from './pages/PlansPage.jsx'
+import { StandardsPage } from './pages/StandardsPage.jsx'
 import { useClasses } from './hooks/useAppData'
 import './styles/base.css'
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })))
 const ChatPage = lazyNamed(() => import('./pages/ChatPage.jsx'), 'ChatPage')
-const ClassPage = lazyNamed(() => import('./pages/ClassPage.jsx'), 'ClassPage')
-const StandardsPage = lazyNamed(() => import('./pages/StandardsPage.jsx'), 'StandardsPage')
 const SettingsPage = lazyNamed(() => import('./pages/SettingsPage.jsx'), 'SettingsPage')
-const PlansPage = lazyNamed(() => import('./pages/PlansPage.jsx'), 'PlansPage')
 const HistoryPage = lazyNamed(() => import('./pages/HistoryPage.jsx'), 'HistoryPage')
 const WelcomePage = lazyNamed(() => import('./pages/onboarding/WelcomePage.jsx'), 'WelcomePage')
 const OnboardingSetupPage = lazyNamed(() => import('./pages/onboarding/OnboardingSetupPage.jsx'), 'OnboardingSetupPage')
@@ -208,7 +208,8 @@ function ClassRoutes() {
       <RememberClass />
       <AppShell>
         <RouteTransition>
-          <Routes location={routeLocation}>
+          <Suspense fallback={<BootScreen label="Loading workspace…" />}>
+            <Routes location={routeLocation}>
           {/* A new plan IS the home screen. There is no calendar route: the
               school calendar still shapes every generation, from
               backend/schoolcal.py, it just doesn't need a screen to do it. */}
@@ -221,7 +222,8 @@ function ClassRoutes() {
           <Route path="settings" element={<ErrorBoundary scope="settings" compact><SettingsPage /></ErrorBoundary>} />
           <Route path="admin" element={<ErrorBoundary scope="admin" compact><AdminPage /></ErrorBoundary>} />
             <Route path="*" element={<NotFoundPage />} />
-          </Routes>
+            </Routes>
+          </Suspense>
         </RouteTransition>
       </AppShell>
     </>

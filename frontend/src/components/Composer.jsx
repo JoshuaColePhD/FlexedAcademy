@@ -24,12 +24,11 @@ const MAX_ATTACH_BATCH = 5
 // than the suggestion it replaced (Josh's own "the text is not centered
 // when you type," 2026-08-27). One shared string both className templates
 // below pull from, so there's no second copy left to silently diverge.
-// The composer shell has an 8px bottom gutter for its action controls. Equal
-// textarea padding therefore looks optically high: its text is centered in
-// the textarea, but not in the composer as a whole. Keep the same total
-// padding (and therefore the same autosized height), with four pixels moved
-// from below the line to above it so the text's visual centre is the shell's.
-const COMPOSER_TEXT_METRICS = 'px-0 pt-[0.9375rem] pb-[0.8125rem] text-[0.9375rem] leading-relaxed'
+// Keep the textarea's line box aligned with the shell's centered control row.
+// Equal vertical padding is intentional here: the row no longer has a
+// bottom-only action gutter, so the placeholder and typed text share the same
+// optical center instead of sitting a little high or low as the controls swap.
+const COMPOSER_TEXT_METRICS = 'px-0 py-3 text-[0.9375rem] leading-6'
 
 /* An attachment chip's own mount lifecycle — entrance was already implicit
  * (a plain array render, no fade), removal was a hard splice. This is
@@ -217,7 +216,14 @@ export function Composer({
   // rather than requiring a specific "prove it's stale" keystroke.
   const [dismissed, setDismissed] = useState(null)
   const isDismissed = dismissed && dismissed.key === suggestionKey && dismissed.value === value
-  const completion = activeSuggestion && !isDismissed ? suggestionCompletion(value, activeSuggestion) : ''
+  // An empty composer already presents the suggestion as the visible chip
+  // above the field. Showing the same sentence a second time as ghost text
+  // inside the empty input made the idle state feel duplicated and visually
+  // noisy. Ghost completion becomes useful only after the teacher starts a
+  // matching phrase; until then, the real placeholder owns the field.
+  const completion = value.trim() && activeSuggestion && !isDismissed
+    ? suggestionCompletion(value, activeSuggestion)
+    : ''
 
   // Safe to pick up newer wording now — nothing frozen is currently visible.
   if (!completion && textSuggestion && frozenRef.current.prompt !== textSuggestion.prompt) {
@@ -523,11 +529,9 @@ export function Composer({
     }
   }
 
-  // The compact composer is a 60px-tall pill, so its real end-cap is 30px —
-  // not Tailwind's `rounded-full` (9999px). Interpolating 9999px into a card
-  // radius while the questions panel grows is what caused the brief bubble
-  // shape at the beginning of this animation. The CSS classes below animate
-  // between two physically meaningful radii in sync with the dock.
+  // The compact composer uses a soft-rectangle radius rather than a full pill.
+  // The CSS below animates between two physically meaningful radii as the
+  // questions dock grows, keeping the field grounded instead of bubble-like.
   const isExpanded = Boolean(questionsPanel) || voiceModeActive
   return (
     <div className="relative w-full">
@@ -544,7 +548,7 @@ export function Composer({
         </div>
       ) : null}
       <div
-        className={`composer-shell ${isExpanded ? 'is-expanded' : ''} relative flex w-full flex-col overflow-hidden border border-edge bg-paper ${
+        className={`composer-shell ${isExpanded ? 'is-expanded' : ''} relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised ${
           !isExpanded ? 'shadow-sm' : ''
         } ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         ref={wrapperRef}
@@ -598,7 +602,7 @@ export function Composer({
         ) : null}
 
         <div
-          className={`relative flex min-h-[60px] items-end px-2 pb-2 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
+          className={`relative flex min-h-[56px] items-center px-3 py-1.5 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
         >
           {/* Was hardcoded to "Describe the week you want to plan" — missed
               when `placeholder`/`sendLabel` below were made props specifically
@@ -618,7 +622,7 @@ export function Composer({
               this makes the actual button that size instead of just its
               hit box. */}
           <label
-            className="fa-press tap-target relative mb-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:mb-2 md:h-9 md:w-9"
+            className="fa-press tap-target relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
             htmlFor="composer-file"
           >
             {/* Same stacked-icon cross-fade the send button uses (below) —
@@ -707,19 +711,14 @@ export function Composer({
                  replaces it the instant you start typing (Josh's own "the
                  text is not centered when you type," 2026-08-27). One
                  constant now, so there's no second copy left to diverge.
-                 On a phone this also fixed a second thing:
-                 .composer-input's own min-height: 54px (base.css, the iOS
-                 zoom fix) was taller than one line's worth of the old
-                 10px/10px padding + line-height, so the leftover space
-                 collected entirely below the text instead of splitting
-                 evenly — confirmed live (10px padding, 26px line-height,
-                 inside a forced 54px box, textarea content doesn't
-                 self-center). COMPOSER_TEXT_METRICS provides 30px total
-                 vertical padding (past the 54px floor with the line height)
-                 and biases 4px toward the top to account for the shell's
-                 bottom action gutter, so the text is centered in the
-                 visible composer rather than merely its textarea. */
-              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-faint transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+                 On a phone, the same centered row also keeps a wrapped draft
+                 balanced as the textarea grows: the control row and the text
+                 field share the shell's vertical rhythm instead of the old
+                 bottom-only gutter making the text look low. The shared
+                 COMPOSER_TEXT_METRICS keeps the ghost preview and real draft
+                 on the same line-height and padding so they never jump when
+                 typing starts. */
+              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}
@@ -738,7 +737,7 @@ export function Composer({
               button read as two disconnected controls rather than one
               cluster. A row keeps the bar's height constant regardless of
               which button is showing. */}
-          <div className="relative flex flex-row shrink-0 items-center gap-1.5 mb-1.5 md:mb-2 md:gap-1">
+          <div className="relative flex shrink-0 flex-row items-center gap-1.5 md:gap-1">
             {/* One persistent button now, not three swapped in and out —
                 a swapped-out button unmounts outright, so nothing about a
                 plain CSS transition could ever animate THAT change; only an

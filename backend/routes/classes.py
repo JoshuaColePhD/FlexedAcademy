@@ -9,7 +9,7 @@ import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .. import db
 from ..deps import get_current_user
@@ -22,25 +22,23 @@ router = APIRouter(prefix="/api", tags=["classes"])
 
 
 class ClassBody(BaseModel):
-    # `name` is optional on create: the client is expected to leave it empty and
-    # let the framework + grade name the class, which is the whole reason
-    # setting one up is two picks rather than four fields.
-    name: str | None = Field(default=None, max_length=120)
     subject: str = Field(min_length=1, max_length=120)
     grade: str = Field(default="11", max_length=8)
     state: str | None = Field(default=None, max_length=120)
 
 
 class ClassPatch(BaseModel):
-    name: str | None = Field(default=None, max_length=120)
+    # A class name is derived from subject + grade. Reject unknown fields so an
+    # API client cannot bypass that invariant with a direct rename.
+    model_config = ConfigDict(extra="forbid")
+
     subject: str | None = Field(default=None, max_length=120)
     grade: str | None = Field(default=None, max_length=8)
     sort_order: int | None = None
     # Which calendar this class follows (migration 25) — independent of the
     # account default (PATCH /api/me), and of every other class on it. Not on
     # ClassBody: a brand-new class is stamped with the account's current
-    # default at creation (db.create_class) and moved from here afterward,
-    # the same two-step "auto-set, then editable" shape as its name.
+    # default at creation (db.create_class) and moved from here afterward.
     school: str | None = Field(default=None)
     # The per-class layer on top of PATCH /api/me's account-wide
     # custom_instructions (migration 44) — same 2000-char cap as that field.
@@ -201,17 +199,16 @@ def list_classes_route(include_archived: bool = False, user_id: str = Depends(ge
 @router.post("/classes", status_code=201)
 def create_class_route(body: ClassBody, user_id: str = Depends(get_current_user)) -> dict:
     _validate_subject(body.subject)
-    name = (body.name or "").strip() or _auto_name(body.subject, body.grade)
+    name = _auto_name(body.subject, body.grade)
     # A real, production-found bug: a teacher (or an automated session acting
     # on her behalf) ended up with two classes both auto-named "English
     # Language Arts · 6th" — same subject, same grade, six minutes apart. The
     # class switcher had no way to show they were different, since nothing
     # about them WAS different, so switching between them looked like
-    # switching did nothing. Since ClassBody.name is normally left blank
-    # specifically so subject+grade names the class (this file's own comment
-    # above), two active classes ever landing on the identical name is never
-    # a teacher's deliberate choice — there's no field to name a second
-    # section distinctly today, only a collision to prevent. Checked
+    # switching did nothing. Since subject+grade names the class, two active
+    # classes ever landing on the identical name is never a teacher's deliberate
+    # choice — there's no field to name a second section distinctly today, only
+    # a collision to prevent. Checked
     # case/whitespace-insensitively, and only against classes still in use
     # (archived ones are done, not a name still claimed).
     normalized = name.strip().casefold()
@@ -248,7 +245,7 @@ def update_class_route(
             fields["name"] = _auto_name(subj, grd)
 
     # Same collision this file's own create_class_route guards against —
-    # a subject/grade change (or a direct rename) can land two classes on
+    # a subject/grade change can land two classes on
     # the identical name just as easily as creating one already-duplicated
     # can. Excludes this class's own current row, so setting a class to the
     # name it already has isn't flagged as colliding with itself.

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, FileText, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X, Database } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileText, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X, Database } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
@@ -30,6 +30,8 @@ const SWIPE_ACTIONS_WIDTH = 132
 function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOpen, onSwipeOpenChange }) {
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const actionsRef = useRef(null)
   const [draft, setDraft] = useState(chat.title)
   // Tracks which side of the reveal threshold the CURRENT drag gesture is
   // on, so the haptic tick below fires once per crossing instead of once
@@ -44,6 +46,22 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
     if (next && next !== chat.title) rename.mutate({ id: chat.id, title: next })
     else setDraft(chat.title)
   }
+
+  useEffect(() => {
+    if (!actionsOpen) return undefined
+    const closeOnOutsidePress = (event) => {
+      if (!actionsRef.current?.contains(event.target)) setActionsOpen(false)
+    }
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setActionsOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePress)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePress)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [actionsOpen])
 
   if (editing) {
     return (
@@ -222,31 +240,57 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
       exit={{ opacity: 0, height: 0, x: -20, transition: { duration: 0.2 } }}
     >
       {rowInner}
-      <span className="chat-row-actions absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-paper p-0.5 shadow-sm border border-edge/50">
-        <button
-          type="button"
-          className={`btn-icon ${chat.is_pinned ? 'text-amber-500' : ''}`}
-          aria-label={chat.is_pinned ? `Unpin ${chat.title}` : `Pin ${chat.title}`}
-          onClick={() => onPin(chat)}
-        >
-          <Pin size={13} aria-hidden="true" className={chat.is_pinned ? 'fill-amber-500' : ''} />
-        </button>
+      <span ref={actionsRef} className={`chat-row-actions absolute right-2 top-1/2 flex -translate-y-1/2 items-center${actionsOpen ? ' is-open' : ''}`}>
         <button
           type="button"
           className="btn-icon"
-          aria-label={`Rename ${chat.title}`}
-          onClick={() => setEditing(true)}
+          aria-label={`More actions for ${chat.title}`}
+          aria-haspopup="menu"
+          aria-expanded={actionsOpen}
+          onClick={() => setActionsOpen((open) => !open)}
         >
-          <Pencil size={13} aria-hidden="true" />
+          <MoreHorizontal size={16} aria-hidden="true" />
         </button>
-        <button
-          type="button"
-          className="btn-icon"
-          aria-label={`Delete ${chat.title}`}
-          onClick={() => onDelete(chat)}
-        >
-          <Trash2 size={13} aria-hidden="true" />
-        </button>
+        {actionsOpen ? (
+          <div className="chat-row-menu" role="menu" aria-label={`Actions for ${chat.title}`}>
+            <button
+              type="button"
+              role="menuitem"
+              className="chat-row-menu-item"
+              onClick={() => {
+                onPin(chat)
+                setActionsOpen(false)
+              }}
+            >
+              <Pin size={15} aria-hidden="true" className={chat.is_pinned ? 'fill-amber-500 text-amber-500' : ''} />
+              {chat.is_pinned ? 'Unpin' : 'Pin'}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="chat-row-menu-item"
+              onClick={() => {
+                setEditing(true)
+                setActionsOpen(false)
+              }}
+            >
+              <Pencil size={15} aria-hidden="true" />
+              Rename
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="chat-row-menu-item text-mark"
+              onClick={() => {
+                onDelete(chat)
+                setActionsOpen(false)
+              }}
+            >
+              <Trash2 size={15} aria-hidden="true" />
+              Delete
+            </button>
+          </div>
+        ) : null}
       </span>
     </motion.li>
   )

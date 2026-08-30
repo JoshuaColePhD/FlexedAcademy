@@ -268,10 +268,10 @@ function TemplateBanner() {
   return (
     <BannerReveal open={Boolean(copy) && !dismissed}>
       {copy && Icon ? (
-        <div className={`relative flex items-start gap-2 px-4 py-2 text-xs font-medium border-b shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}>
-          <Icon size={14} className={`mt-0.5 shrink-0 ${copy.iconClassName || ''}`} aria-hidden="true" />
-          <p className="min-w-0 flex-1 pr-8 text-center">{copy.text(school.name)}</p>
-          <button type="button" className="banner-dismiss btn-icon absolute right-3 top-2" onClick={dismiss} aria-label="Dismiss template status message" title="Dismiss">
+        <div className={`relative flex items-center gap-2 border-b px-4 py-1.5 text-xs font-medium shadow-sm ${TEMPLATE_BANNER_TONE_CLASSES[copy.tone]}`}>
+          <Icon size={14} className={`shrink-0 ${copy.iconClassName || ''}`} aria-hidden="true" />
+          <p className="min-w-0 flex-1 px-1 text-center">{copy.text(school.name)}</p>
+          <button type="button" className="banner-dismiss btn-icon shrink-0" onClick={dismiss} aria-label="Dismiss template status message" title="Dismiss">
             <X size={14} aria-hidden="true" />
           </button>
         </div>
@@ -354,7 +354,7 @@ function TrialBanner() {
             </p>
             <button
               type="button"
-              className="btn-icon shrink-0 -my-1"
+              className="banner-dismiss btn-icon shrink-0"
               aria-label="Dismiss"
               onClick={dismissCountdown}
             >

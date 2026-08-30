@@ -328,28 +328,21 @@ export function GlobalDocuments() {
 
 function EditClassSettings({ cls, frameworks, onChanged }) {
   const toast = useToast()
-  const [name, setName] = useState(cls.name || '')
   const [subject, setSubject] = useState(cls.subject)
   const [saving, setSaving] = useState(false)
 
-  const isChanged = subject !== cls.subject || name !== cls.name
-
-  const handleSubjectChange = (newSubject) => {
-    setSubject(newSubject)
-    const fw = findFramework(frameworks, newSubject)
-    if (fw) {
-      setName(`${shortLabel(fw)} · ${gradeLabel(cls.grade)}`)
-    } else {
-      setName(newSubject)
-    }
-  }
+  const selectedFramework = findFramework(frameworks, subject)
+  const generatedName = selectedFramework
+    ? `${shortLabel(selectedFramework)} · ${gradeLabel(cls.grade)}`
+    : subject || cls.name || 'Choose a course of study'
+  const isChanged = subject !== cls.subject
 
   const submit = async (e) => {
     e.preventDefault()
     if (!isChanged) return
     setSaving(true)
     try {
-      const updated = await api.updateClass(cls.id, { subject, name })
+      const updated = await api.updateClass(cls.id, { subject })
       toast.success('Class updated')
       onChanged?.(updated)
     } catch (err) {
@@ -362,27 +355,30 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <label htmlFor="edit-class-name" className="text-sm font-medium text-ink">
-          Class Name
-        </label>
-        <input
-          id="edit-class-name"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="neo-inset w-full rounded-lg bg-paper-sunken px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
-        />
-      </div>
-      <div className="flex flex-col gap-2">
         <label htmlFor="edit-class-framework" className="text-sm font-medium text-ink">
-          Subject
+          Course of Study
         </label>
+        <p className="text-xs text-ink-muted">
+          Choose the course you teach. Its standards and class name update together.
+        </p>
         <FrameworkPicker
           frameworks={frameworks}
           value={subject}
-          onChange={handleSubjectChange}
+          onChange={setSubject}
           id="edit-class-framework"
         />
+      </div>
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-ink">Class Name</span>
+        <div
+          aria-readonly="true"
+          className="neo-inset w-full rounded-lg bg-paper-sunken px-3 py-2 text-sm text-ink-muted"
+        >
+          {generatedName}
+        </div>
+        <p className="text-xs text-ink-muted">
+          The name is generated from the selected course of study and grade.
+        </p>
       </div>
 
       <div className="mt-2">
