@@ -8,7 +8,7 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from .. import db, docx_build, google_drive, llm, qti_build, schema, service, storage, units
 from ..config import settings
@@ -83,6 +83,16 @@ class SharePlan(BaseModel):
     # before they get to change it, and role is exactly the choice Drive's
     # own share dialog would offer.
     role: Literal["reader", "writer"] = "reader"
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def blank_email_is_no_recipient(cls, value):
+        # Older clients sent the empty form value for "Save to My Drive".
+        # Treat it like the omitted optional field while still rejecting any
+        # non-empty malformed address through EmailStr.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 def _require_id(plan_id: str) -> None:

@@ -262,11 +262,16 @@ export const api = {
   driveConnectUrl: (returnTo) =>
     `${API_BASE}/api/drive/connect?return_to=${encodeURIComponent(returnTo)}`,
   driveDisconnect: () => request('/api/drive/disconnect', { method: 'POST' }),
-  sharePlan: (planId, { email, role = 'reader' } = {}) =>
-    request(`/api/plans/${planId}/share`, {
+  sharePlan: (planId, { email, role = 'reader' } = {}) => {
+    // My Drive saves do not have a recipient. Do not serialize that empty
+    // form value as `email: ''`: the backend intentionally validates a
+    // present email as an EmailStr, and an omitted email means "no share".
+    const normalizedEmail = typeof email === 'string' ? email.trim() : email
+    return request(`/api/plans/${planId}/share`, {
       method: 'POST',
-      body: { email, role },
-    }),
+      body: { ...(normalizedEmail ? { email: normalizedEmail } : {}), role },
+    })
+  },
   listPlanShares: (planId, { signal } = {}) =>
     request(`/api/plans/${planId}/shares`, { signal }),
   planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,

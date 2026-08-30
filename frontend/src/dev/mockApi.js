@@ -921,8 +921,10 @@ export function installMockApi() {
       if (!state.planDriveFiles[planId]) {
         state.planDriveFiles[planId] = `https://docs.google.com/document/d/mock-${planId}/edit`
       }
-      const share = { email: body.email, role: body.role || 'reader', created_at: new Date().toISOString() }
-      state.planShares[planId] = [share, ...(state.planShares[planId] || [])]
+      if (body.email) {
+        const share = { email: body.email, role: body.role || 'reader', created_at: new Date().toISOString() }
+        state.planShares[planId] = [share, ...(state.planShares[planId] || [])]
+      }
       return json({ web_link: state.planDriveFiles[planId], shares: state.planShares[planId] })
     }
 
