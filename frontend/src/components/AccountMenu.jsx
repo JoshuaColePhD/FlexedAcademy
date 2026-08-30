@@ -6,6 +6,7 @@ import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
+import { SupportDialog } from './SupportDialog'
 
 /* The rail footer, and the home of the control that did not exist.
  *
@@ -130,6 +131,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
   const { user, logout } = useAuth()
   const { entitlement, openPaywall } = useBilling()
   const [open, setOpen] = useState(false)
+  const [supportOpen, setSupportOpen] = useState(false)
   // Sits right above the trigger (bottom-full) — mirrors ClassSwitcher's own
   // dropdown, closing shape and all, just growing up instead of dropping down.
   const { mounted, closing } = useExitTransition(open, 150)
@@ -246,13 +248,17 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           ) : null}
 
           <div className="mt-1 border-t border-hairline pt-1">
-            <a
-              href="mailto:joshuacolephd@gmail.com?subject=FlexEd%20Academy%20support"
-              onClick={() => setOpen(false)}
-              className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                setSupportOpen(true)
+              }}
+              title="Contact support"
+              className="flex min-h-touch min-w-0 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
             >
               <Mail size={14} aria-hidden="true" /> Contact support
-            </a>
+            </button>
             <Link
               to="/privacy"
               onClick={() => setOpen(false)}
@@ -289,6 +295,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           </div>
         </div>
       ) : null}
+      <SupportDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
     </div>
   )
 }

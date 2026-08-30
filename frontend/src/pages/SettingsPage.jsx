@@ -17,6 +17,7 @@ import { UploadDropzone } from '../components/UploadDropzone'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { Tooltip } from '../components/Tooltip'
 import { AccountMenu } from '../components/AccountMenu'
+import { SupportDialog } from '../components/SupportDialog'
 import { AVATAR_OPTIONS } from '../lib/avatars'
 
 import { openOnboardingWizard } from '../lib/onboardingWizardBus'
@@ -1309,6 +1310,7 @@ export function SettingsPage() {
   const { mode, setMode } = useTheme()
   const [fontSize, setFontSize] = useState('normal')
   const [highContrast, setHighContrast] = useState(false)
+  const [supportOpen, setSupportOpen] = useState(false)
 
   const scrollContainerRef = useRef(null)
 
@@ -1638,12 +1640,16 @@ export function SettingsPage() {
                 >
                   <Sparkles size={14} className="mr-1.5" aria-hidden="true" /> Take the tour again
                 </button>
-                <a
-                  href="mailto:joshuacolephd@gmail.com?subject=FlexEd%20Academy%20support"
+                <button
+                  type="button"
+                  onClick={() => setSupportOpen(true)}
                   className="btn ml-2"
                 >
                   <Mail size={14} className="mr-1.5" aria-hidden="true" /> Contact support
-                </a>
+                </button>
+                <p className="mt-2 text-xs text-ink-muted">
+                  Questions, comments, or ideas? Josh reads every note.
+                </p>
               </section>
             </div>
 
@@ -1739,6 +1745,7 @@ export function SettingsPage() {
         </div>
       </div>
 
+      <SupportDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
     </div>
   )
 }
