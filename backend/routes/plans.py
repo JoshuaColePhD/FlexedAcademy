@@ -179,17 +179,17 @@ def document_status(
             try:
                 _require_docx_path(row)
             except AppError as exc:
-                if exc.code in {"docx_missing", "docx_invalid"}:
+                if exc.code in {"docx_missing", "docx_invalid", "docx_invalid_path"}:
                     return _queue_docx_recovery(plan_id, user_id, row, bg_tasks)
-                return {**job, "status": "failed", "error_message": exc.detail, "recoverable": False}
+                return {**job, "status": "failed", "error_message": exc.message, "recoverable": False}
         return job
     if row.get("docx_path"):
         try:
             _require_docx_path(row)
         except AppError as exc:
-            if exc.code in {"docx_missing", "docx_invalid"}:
+            if exc.code in {"docx_missing", "docx_invalid", "docx_invalid_path"}:
                 return _queue_docx_recovery(plan_id, user_id, row, bg_tasks)
-            return {"plan_id": plan_id, "status": "failed", "error_message": exc.detail, "recoverable": False}
+            return {"plan_id": plan_id, "status": "failed", "error_message": exc.message, "recoverable": False}
         return {"plan_id": plan_id, "status": "ready"}
     return _queue_docx_recovery(plan_id, user_id, row, bg_tasks)
 
@@ -506,7 +506,7 @@ def _docx_for_plan(user_id: str, row: dict) -> Path:
     try:
         return _require_docx_path(row)
     except AppError as exc:
-        if exc.code not in {"docx_missing", "docx_invalid"} or not row.get("plan_json"):
+        if exc.code not in {"docx_missing", "docx_invalid", "docx_invalid_path"} or not row.get("plan_json"):
             raise
         plan_id = row["id"]
         log.info("recovering stale DOCX plan_id=%s", plan_id)

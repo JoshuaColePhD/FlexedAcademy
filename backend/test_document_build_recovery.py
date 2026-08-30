@@ -9,6 +9,7 @@ are retried automatically but cannot loop forever.
 from pathlib import Path
 
 DB_SOURCE = Path(__file__).with_name("db.py").read_text()
+PLANS_SOURCE = Path(__file__).with_name("routes").joinpath("plans.py").read_text()
 
 
 def test_document_jobs_have_a_scheduled_retry_column():
@@ -30,3 +31,19 @@ def test_document_job_claim_commits_the_update():
     claim_end = DB_SOURCE.index("def finish_document_build", claim_start)
     claim = DB_SOURCE[claim_start:claim_end]
     assert "return _write_returning(" in claim
+
+
+def test_document_status_recovers_stale_paths_and_reports_app_errors():
+    status_start = PLANS_SOURCE.index("def document_status")
+    status_end = PLANS_SOURCE.index('@router.get("/public/', status_start)
+    status = PLANS_SOURCE[status_start:status_end]
+    assert '"docx_invalid_path"' in status
+    assert "exc.message" in status
+    assert "exc.detail" not in status
+
+
+def test_download_recovers_stale_paths():
+    download_start = PLANS_SOURCE.index("def _docx_for_plan")
+    download_end = PLANS_SOURCE.index('@router.get("/{plan_id}/download")', download_start)
+    download = PLANS_SOURCE[download_start:download_end]
+    assert '"docx_invalid_path"' in download
