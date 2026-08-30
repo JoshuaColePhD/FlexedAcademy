@@ -3383,20 +3383,6 @@ export function ChatPage() {
       {!isPhone ? <div ref={composerAnchorRef} className="shrink-0" style={{ height: composerDockH || undefined }} aria-hidden="true" /> : null}
       {renderComposerDock(
         <div ref={composerDockRef} className="relative shrink-0 z-10" style={{ pointerEvents: 'auto' }}>
-        {latestPill.mounted ? (
-          <div className="pointer-events-none absolute bottom-full left-0 right-0 mb-4 flex justify-center">
-            <button
-              type="button"
-              className={`fa-rise fa-press pointer-events-auto flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
-              onClick={() => {
-                endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-              }}
-            >
-              <ArrowDown size={13} aria-hidden="true" /> Latest
-            </button>
-          </div>
-        ) : null}
-
       {/* While a plan is still being written, retain the compact progress row.
           Once the saved plan lands, PlanPeek replaces it so the same space
           becomes a thumb-driven reader rather than a second plan card. */}
@@ -3450,6 +3436,23 @@ export function ChatPage() {
         <div className={`mx-auto w-full px-gutter transition-all duration-500 ease-out ${
           voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
         }`}>
+          {/* Keep this jump control in normal flow. The previous absolute
+              placement was relative to the entire composer dock (including
+              the plan peek and artifact bar), so it could float over a chat
+              bubble instead of sitting just above the composer. */}
+          {latestPill.mounted ? (
+            <div className="mb-2 flex justify-center">
+              <button
+                type="button"
+                className={`fa-rise fa-press flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
+                onClick={() => {
+                  endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+                }}
+              >
+                <ArrowDown size={13} aria-hidden="true" /> Latest
+              </button>
+            </div>
+          ) : null}
           {/* navigator.onLine, not a failed request — this is proactive
               (shown the instant a device loses its link, before a teacher
               even tries to send anything) rather than reactive to one

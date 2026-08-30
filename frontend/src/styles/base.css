@@ -2263,6 +2263,7 @@
      internal scroll region so swiping through a long plan never steals the
      transcript's scroll position. */
   .plan-peek {
+    position: static;
     display: flex;
     min-width: 0;
     flex-shrink: 0;
@@ -4161,25 +4162,26 @@
   }
   .msg-bubble::after {
     position: absolute;
-    bottom: 6px;
+    bottom: 2px;
     /* Keep the pointer above the bubble's own background. A negative layer
        sits behind that background inside the isolated stacking context, which
        made the tail technically present but invisible on mobile and desktop. */
     z-index: 0;
-    width: 17px;
-    height: 17px;
-    background: inherit;
-    filter: drop-shadow(2px 2px 3px rgb(var(--neo-dark-rgb) / 0.24));
+    width: 15px;
+    height: 15px;
+    background: rgb(var(--msg-user-bg-rgb) / 0.15);
+    filter: drop-shadow(1px 1px 2px rgb(var(--neo-dark-rgb) / 0.18));
     content: '';
     clip-path: polygon(0 0, 100% 100%, 0 100%);
     pointer-events: none;
   }
   .msg-bubble-user::after {
-    right: -10px;
+    right: -8px;
   }
   .msg-bubble-assistant::after {
-    left: -10px;
-    filter: drop-shadow(-2px 2px 3px rgb(var(--neo-dark-rgb) / 0.18));
+    left: -8px;
+    background: var(--paper-raised);
+    filter: drop-shadow(-1px 1px 2px rgb(var(--neo-dark-rgb) / 0.15));
     clip-path: polygon(100% 0, 0 100%, 100% 100%);
   }
   /* Error messages have their own left marker and asymmetric radius; adding a
