@@ -4360,51 +4360,75 @@
     border-left: 3px solid var(--mark);
     border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
   }
-  /* iMessage-style tails. A tail belongs only to the final bubble in a run;
-     it is a small continuation of the tightened lower corner, not a second
-     decorative triangle floating beside every message. */
+  /* iMessage-style tails use two curves, never a triangle: `::before` is the
+     bubble-coloured curl and `::after` cuts its outer edge back to the local
+     conversation canvas. Group position controls the speaking-side radii;
+     only a standalone or final bubble owns a tail. */
   .msg-bubble {
     position: relative;
+    isolation: isolate;
+    --bubble-tail-cutout: var(--paper-sunken);
   }
+  .msg-bubble > * {
+    position: relative;
+    z-index: 1;
+  }
+  .msg-bubble::before,
   .msg-bubble::after {
     display: none;
     position: absolute;
     bottom: 0;
-    /* This tiny curved wedge overlaps the bubble by a pixel. That overlap is
-       what makes it read as one continuous silhouette rather than a loose
-       triangle attached at the edge. */
+    width: 20px;
+    height: 24px;
     z-index: 0;
-    width: 11px;
-    height: 11px;
     background: rgb(var(--msg-user-bg-rgb) / 0.15);
     content: '';
-    -webkit-clip-path: path("M 0 0 C 1 4 4 8 11 11 C 6 11 2 11 0 10 Z");
-    clip-path: path("M 0 0 C 1 4 4 8 11 11 C 6 11 2 11 0 10 Z");
     pointer-events: none;
   }
+  .msg-bubble.has-tail::before,
   .msg-bubble.has-tail::after {
     display: block;
   }
-  .msg-bubble-user::after {
+  .msg-bubble-user::before {
     right: -5px;
+    border-bottom-left-radius: 16px 14px;
   }
-  .msg-bubble-user {
-    border-bottom-right-radius: var(--r-lg);
+  .msg-bubble-user::after {
+    right: -25px;
+    width: 26px;
+    background: var(--bubble-tail-cutout);
+    border-bottom-left-radius: 11px;
   }
+  .msg-bubble-assistant::before {
+    left: -5px;
+    background: var(--paper-raised);
+    border-bottom-right-radius: 16px 14px;
+  }
+  .msg-bubble-assistant::after {
+    left: -25px;
+    width: 26px;
+    background: var(--bubble-tail-cutout);
+    border-bottom-right-radius: 11px;
+  }
+  .msg-bubble-user.is-group-first,
+  .msg-bubble-user.is-group-middle,
+  .msg-bubble-user.is-group-last,
   .msg-bubble-user.has-tail {
     border-bottom-right-radius: 5px;
   }
-  .msg-bubble-assistant::after {
-    left: -5px;
-    background: var(--paper-raised);
-    -webkit-clip-path: path("M 11 0 C 10 4 7 8 0 11 C 5 11 9 11 11 10 Z");
-    clip-path: path("M 11 0 C 10 4 7 8 0 11 C 5 11 9 11 11 10 Z");
+  .msg-bubble-user.is-group-middle,
+  .msg-bubble-user.is-group-last {
+    border-top-right-radius: 5px;
   }
-  .msg-bubble-assistant {
-    border-bottom-left-radius: var(--r-lg);
-  }
+  .msg-bubble-assistant.is-group-first,
+  .msg-bubble-assistant.is-group-middle,
+  .msg-bubble-assistant.is-group-last,
   .msg-bubble-assistant.has-tail {
     border-bottom-left-radius: 5px;
+  }
+  .msg-bubble-assistant.is-group-middle,
+  .msg-bubble-assistant.is-group-last {
+    border-top-left-radius: 5px;
   }
   /* Error messages have their own left marker and asymmetric radius; adding a
      second visual pointer would compete with that warning treatment. */

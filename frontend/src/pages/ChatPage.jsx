@@ -3241,6 +3241,9 @@ export function ChatPage() {
                 !nextMsg ||
                 nextMsg.role !== m.role ||
                 (nextMsg.created_at && m.created_at && !isSameDay(nextMsg.created_at, m.created_at))
+              const bubbleGroup = grouped
+                ? groupEnd ? 'last' : 'middle'
+                : groupEnd ? 'single' : 'first'
               return (
                 <div key={m.id}>
                   {daySep ? (
@@ -3280,6 +3283,7 @@ export function ChatPage() {
                       voiceOpen={voiceOpen}
                       showTimestamp={groupEnd}
                       showTail={groupEnd}
+                      bubbleGroup={bubbleGroup}
                     />
                   </div>
                 </div>
