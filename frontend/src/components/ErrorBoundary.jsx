@@ -2,6 +2,35 @@ import { Component } from 'react'
 import { RotateCcw } from 'lucide-react'
 import * as Sentry from '@sentry/react'
 
+const CHUNK_RELOAD_KEY = 'flexed.chunk-reload'
+const CHUNK_ERROR_RE = /failed to fetch dynamically imported module|imported module|loading (?:chunk|css chunk)|chunkloaderror/i
+
+/* A deploy replaces Vite's hashed route files. A tab that was open during the
+ * deploy can still have the old app shell in memory, so its next navigation
+ * asks the new server for a chunk that no longer exists. One automatic reload
+ * gets a fresh index and matching asset map; the session flag prevents a real
+ * network or code error from turning into an infinite reload loop. */
+function reloadForStaleChunk(error) {
+  if (typeof window === 'undefined' || !CHUNK_ERROR_RE.test(String(error?.message || error))) {
+    return false
+  }
+
+  try {
+    const previous = Number(window.sessionStorage.getItem(CHUNK_RELOAD_KEY))
+    if (Number.isFinite(previous) && Date.now() - previous < 10000) {
+      window.sessionStorage.removeItem(CHUNK_RELOAD_KEY)
+      return false
+    }
+    window.sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()))
+  } catch {
+    // If storage is unavailable, leave the normal error UI as the safe fallback.
+    return false
+  }
+
+  window.location.reload()
+  return true
+}
+
 /* There was no error boundary, so any render-time throw blanked the page with no
    way back — and a corrupt localStorage entry could put it in that state
    permanently. Offers a reset that clears local state, since that's the usual
@@ -17,6 +46,7 @@ export class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    if (reloadForStaleChunk(error)) return
     console.error('Unhandled UI error:', error, info)
     // A thrown value can include an API response or lesson text. Observability
     // needs the failure shape, not a teacher's content, so report a stable,
