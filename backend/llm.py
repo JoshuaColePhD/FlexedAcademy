@@ -46,9 +46,12 @@ from .schema import (
     TEMPLATE_ANALYSIS_JSON_SCHEMA,
     TEMPLATE_VERIFICATION_JSON_SCHEMA,
     SchemaError,
+    day_json_schema,
     field_json_schema,
     loads_lenient,
+    plan_json_schema,
 )
+from .template_context import day_names_for_school
 
 log = logging.getLogger("flexedacademy.llm")
 
@@ -314,6 +317,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     account default — a class at a different school than the account default
     would otherwise get the wrong one named in its own prompt."""
     subject, grade = _prompt_subject_grade(user_id, class_id)
+    template_days = day_names_for_school(school_id)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
     content = _cached_completion(
@@ -322,7 +326,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
         model=settings.openai_model,
         max_completion_tokens=plan_completion_tokens_for(user_id),
         reasoning_effort="none",
-        response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
+        response_format=_response_format("weekly_lesson_plan", plan_json_schema(template_days)),
         messages=[
             {
                 "role": "system",
@@ -349,13 +353,14 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
     See generate_plan's own docstring for why `school_id` is a parameter
     rather than resolved internally."""
     subject, grade = _prompt_subject_grade(user_id, class_id)
+    template_days = day_names_for_school(school_id)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
     stream = client().chat.completions.create(
         model=settings.openai_model,
         max_completion_tokens=plan_completion_tokens_for(user_id),
         reasoning_effort="none",
-        response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
+        response_format=_response_format("weekly_lesson_plan", plan_json_schema(template_days)),
         messages=[
             {
                 "role": "system",
@@ -581,13 +586,15 @@ def rewrite_day(
     string — so a rewritten day could not be merged back into the week.
     """
     subject, grade = _prompt_subject_grade(user_id, class_id)
+    cls = db.get_class(user_id, class_id) if class_id else None
+    template_days = day_names_for_school(db.class_school(cls, user_id))
     output_length = output_length_for(user_id)
     content = _cached_completion(
         user_id,
         "rewrite_day",
         model=settings.openai_model,
         max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
-        response_format=_response_format("lesson_plan_day", DAY_JSON_SCHEMA),
+        response_format=_response_format("lesson_plan_day", day_json_schema(template_days)),
         messages=[
             {
                 "role": "system",
@@ -599,6 +606,7 @@ def rewrite_day(
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     output_length=output_length,
+                    day_names=template_days,
                 ),
             },
             {
@@ -683,7 +691,8 @@ Provide a brief, stern critique, then rewrite the ENTIRE week's plan to fix the 
 """
 
 def critique_and_revise(
-    user_id: str, plan: dict, retrieved_context: str, feedback: str | None = None
+    user_id: str, plan: dict, retrieved_context: str, feedback: str | None = None,
+    school_id: str | None = None,
 ) -> dict:
     """Rewrites the whole plan — either on the teacher's instruction, or, with no
     instruction, as an autonomous self-critique.
@@ -710,13 +719,14 @@ def critique_and_revise(
     else:
         instruction = _CRITIQUE_PROMPT
 
+    template_days = day_names_for_school(school_id)
     content = _cached_completion(
         user_id,
         "critique_and_revise",
         model=settings.openai_model,
         max_completion_tokens=plan_completion_tokens_for(user_id),
         reasoning_effort="none",
-        response_format=_response_format("weekly_lesson_plan", PLAN_JSON_SCHEMA),
+        response_format=_response_format("weekly_lesson_plan", plan_json_schema(template_days)),
         messages=[
             {
                 "role": "system",

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
@@ -146,6 +147,30 @@ PLAN_JSON_SCHEMA = {
     },
     "required": ["week_of", "days"],
 }
+
+
+def day_json_schema(day_names: list[str] | tuple[str, ...] | None = None) -> dict:
+    """Return the day schema for a school's actual template axis.
+
+    The canonical five-day schema remains the shared object for compatibility;
+    uploaded school templates can provide a shorter or differently named axis
+    without teaching the model to ask the teacher to choose a duration.
+    """
+    names = list(day_names or DAY_NAMES)
+    if names == DAY_NAMES:
+        return DAY_JSON_SCHEMA
+    out = deepcopy(DAY_JSON_SCHEMA)
+    out["properties"]["name"]["enum"] = names
+    return out
+
+
+def plan_json_schema(day_names: list[str] | tuple[str, ...] | None = None) -> dict:
+    names = list(day_names or DAY_NAMES)
+    if names == DAY_NAMES:
+        return PLAN_JSON_SCHEMA
+    out = deepcopy(PLAN_JSON_SCHEMA)
+    out["properties"]["days"]["items"] = day_json_schema(names)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -632,7 +657,7 @@ REVISABLE_FIELDS = DAY_CONTENT_FIELDS + ("title",)
 CODE_BEARING_FIELDS = ("standards", "act_alignment")
 
 
-def field_json_schema(field: str) -> dict:
+def field_json_schema(field: str, day_names: list[str] | tuple[str, ...] | None = None) -> dict:
     """Structured-output schema for a single-field rewrite.
 
     Reuses the field's own definition out of DAY_JSON_SCHEMA rather than
@@ -642,17 +667,17 @@ def field_json_schema(field: str) -> dict:
     return {
         "type": "object",
         "additionalProperties": False,
-        "properties": {field: DAY_JSON_SCHEMA["properties"][field]},
+        "properties": {field: day_json_schema(day_names)["properties"][field]},
         "required": [field],
     }
 
 
-def plan_schema_snippet() -> str:
-    return json.dumps(PLAN_JSON_SCHEMA, indent=2)
+def plan_schema_snippet(day_names: list[str] | tuple[str, ...] | None = None) -> str:
+    return json.dumps(plan_json_schema(day_names), indent=2)
 
 
-def day_schema_snippet() -> str:
-    return json.dumps(DAY_JSON_SCHEMA, indent=2)
+def day_schema_snippet(day_names: list[str] | tuple[str, ...] | None = None) -> str:
+    return json.dumps(day_json_schema(day_names), indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -744,17 +769,19 @@ def normalize_day(day: dict, warnings: list[str] | None = None) -> dict:
 
 
 def validate_day(
-    day: object, *, path: str = "day", require_weeden_sections: bool = False
+    day: object, *, path: str = "day", require_weeden_sections: bool = False,
+    day_names: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[dict, list[str]]:
     """Validate one day. Returns (normalized_day, warnings)."""
     if not isinstance(day, dict):
         raise SchemaError("day_not_an_object", f"Expected an object at {path}.", path=path)
 
+    axis = list(day_names or DAY_NAMES)
     name = day.get("name")
-    if name not in DAY_NAMES:
+    if name not in axis:
         raise SchemaError(
             "day_bad_name",
-            f"Day name {name!r} is not one of {', '.join(DAY_NAMES)}.",
+            f"Day name {name!r} is not one of {', '.join(axis)}.",
             path=f"{path}.name",
             hint="A misspelled day silently renders as a blank 'No School' column, so this is rejected rather than built.",
         )
@@ -881,7 +908,8 @@ def _clean(obj):
 
 
 def validate_plan(
-    plan: object, *, require_weeden_sections: bool = False
+    plan: object, *, require_weeden_sections: bool = False,
+    day_names: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[dict, list[str]]:
     """Validate a whole week. Returns (normalized_plan, warnings).
 
@@ -902,10 +930,11 @@ def validate_plan(
     if not isinstance(days, list):
         raise SchemaError("days_not_a_list", "'days' must be a list.", path="days")
 
-    if len(days) != len(DAY_NAMES):
+    axis = list(day_names or DAY_NAMES)
+    if len(days) != len(axis):
         raise SchemaError(
             "days_wrong_count",
-            f"Expected {len(DAY_NAMES)} days (Monday-Friday), got {len(days)}.",
+            f"Expected {len(axis)} template-defined days ({', '.join(axis)}), got {len(days)}.",
             path="days",
             hint="Regenerate — the model returned a partial week.",
         )
@@ -915,7 +944,7 @@ def validate_plan(
     seen: list[str] = []
     for i, raw in enumerate(days):
         d, w = validate_day(
-            raw, path=f"days[{i}]", require_weeden_sections=require_weeden_sections
+            raw, path=f"days[{i}]", require_weeden_sections=require_weeden_sections, day_names=axis
         )
         warnings.extend(w)
         if d["name"] in seen:
@@ -927,7 +956,7 @@ def validate_plan(
         seen.append(d["name"])
         out_days.append(d)
 
-    missing = [n for n in DAY_NAMES if n not in seen]
+    missing = [n for n in axis if n not in seen]
     if missing:
         raise SchemaError(
             "days_wrong_names",
@@ -938,7 +967,7 @@ def validate_plan(
 
     # Builder keys days by name, but keep them in weekday order anyway so the
     # stored plan_json reads correctly and the UI doesn't have to sort.
-    out_days.sort(key=lambda d: DAY_NAMES.index(d["name"]))
+    out_days.sort(key=lambda d: axis.index(d["name"]))
 
     normalized = {"week_of": str(plan["week_of"]).strip(), "days": out_days}
     # Pass through identity fields if a caller already injected them.

@@ -114,10 +114,13 @@ function openerCut(s) {
   return -1
 }
 
-export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onRetry } = {}) {
+export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onRetry, onStatus } = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [text, setText] = useState('')
+  const [status, setStatus] = useState(null)
   const abortRef = useRef(null)
+  const activeRequestRef = useRef(null)
+  const slowTimerRef = useRef(null)
 
   /* Chunk-to-render coalescing.
    *
@@ -165,23 +168,34 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     }
     pendingTextRef.current = null
   }, [])
-  useEffect(() => cancelQueuedText, [cancelQueuedText])
+  useEffect(() => () => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    activeRequestRef.current = null
+    window.clearTimeout(slowTimerRef.current)
+    cancelQueuedText()
+  }, [cancelQueuedText])
 
   const onDoneRef = useRef(onDone)
   const onErrorRef = useRef(onError)
   const onGeneratePlanRef = useRef(onGeneratePlan)
   const onSentenceRef = useRef(onSentence)
   const onRetryRef = useRef(onRetry)
+  const onStatusRef = useRef(onStatus)
   onDoneRef.current = onDone
   onErrorRef.current = onError
   onGeneratePlanRef.current = onGeneratePlan
   onSentenceRef.current = onSentence
   onRetryRef.current = onRetry
+  onStatusRef.current = onStatus
 
   const stop = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
+    activeRequestRef.current = null
+    window.clearTimeout(slowTimerRef.current)
     setIsStreaming(false)
+    setStatus({ code: 'cancelled', label: 'Stopped' })
     cancelQueuedText()
     setText('')
   }, [cancelQueuedText])
@@ -195,7 +209,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, controller }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, controller, requestId }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -210,6 +224,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         class_id: classId ?? null,
         voice: Boolean(voice),
         week_number: weekNumber ?? null,
+        request_id: requestId,
       }),
       signal: controller.signal,
       credentials: 'include',
@@ -307,12 +322,27 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
             continue
           }
 
+          // Fetch aborts are best-effort. Ignore a frame that was already
+          // queued by the browser after a newer send took ownership.
+          if (activeRequestRef.current !== requestId) continue
+
           if (event.error) {
             throw new ApiError(event.error.message || 'Generation failed.', {
               code: event.error.code || 'stream_error',
               hint: event.error.hint,
               extra: event.error,
             })
+          }
+
+          if (event.status || event.status_code) {
+            const nextStatus = {
+              code: event.status_code || event.status,
+              label: event.label || event.message || event.status_label || event.status,
+              requestId: event.request_id || requestId,
+            }
+            setStatus(nextStatus)
+            perf.mark(`chat-stream:status:${nextStatus.code}`)
+            onStatusRef.current?.(nextStatus)
           }
 
           if (event.tool_call === 'generate_lesson_plan') {
@@ -437,8 +467,22 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
+      const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      activeRequestRef.current = requestId
+      window.clearTimeout(slowTimerRef.current)
 
       setIsStreaming(true)
+      setStatus({ code: 'connecting', label: 'Connecting…', requestId })
+      perf.mark('chat-stream:status:connecting')
+      onStatusRef.current?.({ code: 'connecting', label: 'Connecting…', requestId })
+      slowTimerRef.current = window.setTimeout(() => {
+        if (activeRequestRef.current !== requestId) return
+        const slowStatus = { code: 'still_working', label: 'Still working…', requestId }
+        setStatus(slowStatus)
+        onStatusRef.current?.(slowStatus)
+      }, 7500)
       perf.mark('chat-stream:start')
 
       try {
@@ -446,8 +490,9 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
-            const result = await attempt(messages, { chatId, classId, mode, voice, weekNumber, controller })
+            const result = await attempt(messages, { chatId, classId, mode, voice, weekNumber, controller, requestId })
             onDoneRef.current?.(result)
+            setStatus({ code: 'complete', label: 'Ready', requestId })
             return result
           } catch (err) {
             if (err.name === 'AbortError') return null
@@ -459,17 +504,25 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
             // before retrying the model, otherwise the retry speaks the same
             // opening sentence twice.
             onRetryRef.current?.()
+            const retryStatus = { code: 'retrying', label: `Retrying… (${tryNum + 1}/${MAX_AUTO_RETRIES})`, requestId }
+            setStatus(retryStatus)
+            onStatusRef.current?.(retryStatus)
           }
         }
         onErrorRef.current?.(lastErr)
+        setStatus({ code: 'error', label: lastErr?.message || 'Something went wrong', requestId })
         throw lastErr
       } finally {
-        if (abortRef.current === controller) abortRef.current = null
-        setIsStreaming(false)
+        if (activeRequestRef.current === requestId) {
+          activeRequestRef.current = null
+          window.clearTimeout(slowTimerRef.current)
+          if (abortRef.current === controller) abortRef.current = null
+          setIsStreaming(false)
+        }
       }
     },
     [attempt]
   )
 
-  return { start, stop, reset, isStreaming, text }
+  return { start, stop, reset, isStreaming, text, status }
 }

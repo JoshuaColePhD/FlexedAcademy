@@ -178,10 +178,19 @@ function ClassRoutes() {
 function RouteTransition({ children }) {
   const location = useLocation()
   const prefersReducedMotion = useReducedMotion()
+  /* A new chat is a state change inside the same working surface, not a new
+     page. Keying the transition on the raw pathname unmounted ChatPage when
+     submit() navigated from `/c/:classId` to `/c/:classId/chat/:id`, which
+     could discard the live turn during its first response. Normalize those
+     two routes to one transition key while keeping genuine destinations
+     (plans, settings, standards) animated normally. */
+  const transitionKey = location.pathname
+    .replace(/\/chat(?:\/[^/]+)?$/, '/chat')
+    .replace(/^(\/c\/[^/]+)$/, '$1/chat')
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
-        key={location.pathname}
+        key={transitionKey}
         className="route-stage"
         initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}

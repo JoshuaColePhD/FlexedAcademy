@@ -158,6 +158,11 @@ def render(layout_spec: dict, plan: dict, out_path: str) -> None:
     sec.left_margin = sec.right_margin = Twips(margin)
 
     days_by_name = {d["name"]: d for d in plan.get("days", [])}
+    # The validated plan is the source of truth for the selected template's
+    # day axis. The old renderer always substituted Monday-Friday here, which
+    # made a valid three-day school template render the wrong columns.
+    plan_day_names = [d.get("name") for d in plan.get("days", []) if d.get("name")]
+    day_axis = plan_day_names or list(DAY_NAMES)
     identity = _identity_context(plan)
 
     table = doc.add_table(rows=0, cols=n_cols)
@@ -198,9 +203,9 @@ def render(layout_spec: dict, plan: dict, out_path: str) -> None:
                 continue
 
             day_index = col.get("day_index")
-            if day_index is None or not (0 <= day_index < len(DAY_NAMES)):
+            if day_index is None or not (0 <= day_index < len(day_axis)):
                 raise SpecRenderError(f"day column has invalid day_index: {day_index!r}")
-            day_name = DAY_NAMES[day_index]
+            day_name = day_axis[day_index]
             day = days_by_name.get(day_name, {"no_school": True})
             cell = cells[col_i]
 

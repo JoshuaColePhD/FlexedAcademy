@@ -113,4 +113,18 @@ assert.equal(suggestionCompletion('Help me', primary), primary.prompt.slice('Hel
 assert.equal(suggestionCompletion('unrelated', primary), '')
 assert.equal(suggestionCompletion('', primary), primary.prompt)
 
+const contextual = getContextualSuggestions({
+  ...base,
+  messages: [{ id: 'turn-1', role: 'user', content: 'Make a lesson plan about rhetorical analysis of Gatsby.' }],
+})
+assert.equal(contextual.length, 1)
+assert.equal(contextual[0].id, 'follow-up:turn-1')
+assert.equal(contextual[0].prompt, "Let's keep building the rhetorical analysis of Gatsby.")
+
+const nonPlanningFollowUp = getContextualSuggestions({
+  ...base,
+  messages: [{ id: 'turn-2', role: 'user', content: 'Count from 1 to 30.' }],
+})
+assert.equal(nonPlanningFollowUp[0].id, 'plan-current-week')
+
 console.log('contextual suggestion tests passed')

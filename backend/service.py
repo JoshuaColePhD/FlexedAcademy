@@ -14,6 +14,7 @@ from pathlib import Path
 from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, storage, units
 from .errors import AppError
 from .retrieval import RetrievalResult
+from .template_context import day_names_for_school
 
 log = logging.getLogger("flexedacademy.service")
 
@@ -348,8 +349,9 @@ def finalize(
     # permits an empty string.
     resolved_school_id = school_id or (cls or {}).get("school")
     uses_weeden_template = resolved_school_id == "weeden-elementary-school"
+    template_days = day_names_for_school(resolved_school_id)
     plan, warnings = schema.validate_plan(
-        plan_raw, require_weeden_sections=uses_weeden_template
+        plan_raw, require_weeden_sections=uses_weeden_template, day_names=template_days
     )
 
     identity = identity_for(user_id, cls)
@@ -612,7 +614,11 @@ def revise_day(
         updated_raw = llm.rewrite_day(
             user_id, original, feedback, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
         )
-        updated, warnings = schema.validate_day(updated_raw, path=f"days[{day_index}]")
+        row_class = db.get_class(user_id, row.get("class_id")) if row.get("class_id") else None
+        template_days = day_names_for_school(db.class_school(row_class, user_id))
+        updated, warnings = schema.validate_day(
+            updated_raw, path=f"days[{day_index}]", day_names=template_days
+        )
 
         if updated["name"] != original.get("name"):
             # Don't let a revision silently move a day to a different weekday.
@@ -631,7 +637,11 @@ def revise_day(
         # Still validated: the merged day is what the .docx builder receives, and
         # a scoped rewrite can just as easily return a learning target that
         # doesn't start with "I can" or an off-list engagement strategy.
-        updated, warnings = schema.validate_day(merged, path=f"days[{day_index}]")
+        row_class = db.get_class(user_id, row.get("class_id")) if row.get("class_id") else None
+        template_days = day_names_for_school(db.class_school(row_class, user_id))
+        updated, warnings = schema.validate_day(
+            merged, path=f"days[{day_index}]", day_names=template_days
+        )
         # validate_day normalizes (strips, collapses newlines), so re-assert the
         # promise on the fields the teacher did not touch.
         for key, was in original.items():

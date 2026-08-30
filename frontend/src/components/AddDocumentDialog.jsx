@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ClassDocuments } from './ClassDocuments.jsx'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+
+const ClassDocuments = lazy(() => import('./ClassDocuments.jsx').then((module) => ({ default: module.ClassDocuments })))
 
 // Mirrors ClassDocuments' own KIND_LABEL, but as a heading rather than a
 // dropdown option — "Add a syllabus" reads better than "Add a Syllabus
@@ -64,7 +65,9 @@ export function AddDocumentDialog({ open, onClose, cls, onChanged }) {
           Keeps {cls.name}'s plans grounded in your real sequence, not a generic pace.
         </p>
 
-        <ClassDocuments cls={cls} onChanged={onChanged} onKindChange={setKind} />
+        <Suspense fallback={<div className="py-8 text-sm text-ink-muted">Loading documents…</div>}>
+          <ClassDocuments cls={cls} onChanged={onChanged} onKindChange={setKind} />
+        </Suspense>
 
         <div className="dialog-actions mt-6">
           <button type="button" className="btn btn-primary fa-press" onClick={onClose}>

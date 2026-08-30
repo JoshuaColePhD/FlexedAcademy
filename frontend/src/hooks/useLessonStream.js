@@ -52,9 +52,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export function useLessonStream({ onDone, onError } = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
+  const [status, setStatus] = useState(null)
   const [text, setText] = useState('')
   const [preview, setPreview] = useState(null)
   const [grounding, setGrounding] = useState(null)
+  const [dayNames, setDayNames] = useState(null)
   const abortRef = useRef(null)
   // Mirrors the grounding state so the resolved value can carry it — state set
   // mid-stream is not visible to the closure that started the stream.
@@ -141,9 +143,11 @@ export function useLessonStream({ onDone, onError } = {}) {
     abortRef.current = null
     cancelQueuedPlan()
     setIsStreaming(false)
+    setStatus(null)
     setText('')
     setPreview(null)
     setGrounding(null)
+    setDayNames(null)
     groundingRef.current = null
   }, [cancelQueuedPlan])
 
@@ -152,7 +156,9 @@ export function useLessonStream({ onDone, onError } = {}) {
     setText('')
     setPreview(null)
     setGrounding(null)
+    setDayNames(null)
     groundingRef.current = null
+    setStatus(null)
   }, [cancelQueuedPlan])
 
   // One attempt: opens the SSE connection and either returns the finished
@@ -163,7 +169,9 @@ export function useLessonStream({ onDone, onError } = {}) {
     setText('')
     setPreview(null)
     setGrounding(null)
+    setDayNames(null)
     groundingRef.current = null
+    setStatus({ phase: 'accepted', label: 'Accepted' })
     perf.mark('lesson-stream:start')
 
     let accumulated = ''
@@ -232,6 +240,20 @@ export function useLessonStream({ onDone, onError } = {}) {
             setGrounding(event.grounding)
             groundingRef.current = event.grounding
           }
+          if (event.status) {
+            const labels = {
+              retrieving: 'Preparing your class context…',
+              thinking: 'Thinking…',
+              writing: 'Writing your lesson plan…',
+              accepted: 'Accepted',
+              context_ready: 'Class context ready',
+            }
+            const phase = typeof event.status === 'string' ? event.status : event.status.phase
+            setStatus({ phase, label: event.status.label || labels[phase] || phase })
+          }
+          if (Array.isArray(event.template_days) && event.template_days.length) {
+            setDayNames(event.template_days)
+          }
           if (event.chunk) {
             accumulated += event.chunk
             if (accumulated === event.chunk) {
@@ -261,6 +283,7 @@ export function useLessonStream({ onDone, onError } = {}) {
 
     flushPlanUpdate(accumulated)
     setPreview(finished.plan ?? null)
+    setStatus({ phase: 'complete', label: 'Complete' })
     perf.mark('lesson-stream:end')
     perf.measure('lesson-stream:duration', 'lesson-stream:start', 'lesson-stream:end')
     // Grounding rides along, because `finished` (the done event) has none and
@@ -275,6 +298,7 @@ export function useLessonStream({ onDone, onError } = {}) {
       abortRef.current = controller
 
       setIsStreaming(true)
+      setStatus({ phase: 'accepted', label: 'Accepted' })
 
       try {
         let lastErr = null
@@ -287,6 +311,7 @@ export function useLessonStream({ onDone, onError } = {}) {
           } catch (err) {
             if (err.name === 'AbortError') return null // user pressed Stop
             lastErr = err
+            setStatus({ phase: 'retrying', label: tryNum < MAX_AUTO_RETRIES ? 'Reconnecting…' : 'Could not finish' })
             const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
             if (!retryable || tryNum === MAX_AUTO_RETRIES) break
           }
@@ -301,5 +326,5 @@ export function useLessonStream({ onDone, onError } = {}) {
     [attempt]
   )
 
-  return { start, stop, reset, isStreaming, text, preview, grounding }
+  return { start, stop, reset, isStreaming, text, preview, grounding, status, dayNames }
 }

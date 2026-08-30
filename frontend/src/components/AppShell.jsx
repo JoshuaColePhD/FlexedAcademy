@@ -328,16 +328,11 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
     )
   }
 
-  // Local, spacious-only filter — HistoryPage.jsx already has a full search
-  // page (reachable from the "Edit" link below), but that's a navigation
-  // away from the one screen a phone actually lands on. Once a teacher has
-  // 50+ chats (already true in testing), scrolling past all of them to
-  // find one by eye doesn't scale — this is the same match-on-title logic
-  // HistoryPage uses, kept local rather than importing across pages since
-  // it's one line and the two lists (chats here vs. history's own query)
-  // aren't guaranteed to be the exact same shape.
+  // Local filter for every layout — HistoryPage remains the full management
+  // view, but searching in place is faster than leaving the conversation just
+  // to find an older plan. The sidebar and phone home use the same filter.
   const [chatSearch, setChatSearch] = useState('')
-  const chatSearchQuery = spacious ? chatSearch.trim().toLowerCase() : ''
+  const chatSearchQuery = chatSearch.trim().toLowerCase()
   const searchFilter = (c) => !chatSearchQuery || c.title?.toLowerCase().includes(chatSearchQuery)
 
   const pinnedChats = (chats?.filter((c) => c.is_pinned) || []).filter(searchFilter)
@@ -467,23 +462,17 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
 
       {collapsed ? null : (
         <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
-          {/* Spacious-only: a full search page already exists (History,
-              reached via "Edit" below), but that's a navigation away from
-              the one screen a phone actually lands on — this filters the
-              list already on screen, in place, as you type. */}
-          {spacious ? (
-            <div className="relative px-4 pb-2">
-              <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 text-ink-faint" />
-              <input
-                type="search"
-                value={chatSearch}
-                onChange={(e) => setChatSearch(e.target.value)}
-                placeholder="Search your chats"
-                aria-label="Search your chats"
-                className="input w-full py-2.5 pl-8 text-base"
-              />
-            </div>
-          ) : null}
+          <div className={`relative pb-2 ${spacious ? 'px-4' : 'px-2'}`}>
+            <Search size={14} aria-hidden="true" className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-faint ${spacious ? 'left-6' : 'left-4'}`} />
+            <input
+              type="search"
+              value={chatSearch}
+              onChange={(e) => setChatSearch(e.target.value)}
+              placeholder="Search chats"
+              aria-label="Search your chats"
+              className={`input w-full pl-8 ${spacious ? 'py-2.5 text-base' : 'py-1.5 text-xs'}`}
+            />
+          </div>
           <div
             ref={spacious ? pullToRefresh.containerRef : undefined}
             // .scroll-y, not plain overflow-y-auto: without its

@@ -58,7 +58,6 @@ function MessageImpl({
   onEdit,
   isLast,
   hideWeekStrip = false,
-  voiceOpen = false,
   // False for every bubble but the last in a same-role run (ChatPage's own
   // grouping) — a tightly-stacked run only needs one timestamp, on the
   // bubble it actually ended at, not one per line fighting the same-role
@@ -174,13 +173,12 @@ function MessageImpl({
 
   /* The placeholder ChatPage pushes right before a reply starts streaming
      (see liveMessageIdRef in ChatPage.jsx) has nothing in it yet — a bare
-     blinking cursor on an empty line reads as "nothing is happening," not
-     "it's working." Voice mode's own status pill already says as much, so
-     showing this too would say it twice; the placeholder still exists there
-     (it becomes the real reply once one arrives), it just renders nothing
-     until it has something to show. */
+     assistant row reads as "nothing is happening," and it duplicates the
+     single progress line ChatPage renders directly above the composer. Keep
+     the placeholder in state so the real reply can take its place, but let
+     ChatPage's `Preparing…` / `Thinking…` status own the waiting state. */
   const isThinking = !isUser && message.streaming && !message.content?.trim()
-  if (isThinking && voiceOpen) return null
+  if (isThinking) return null
 
   /* fa-rise was written for exactly this and then never attached to anything,
      so every message simply appeared — which is most of why the transcript felt
@@ -199,7 +197,7 @@ function MessageImpl({
      thinking→content cross-fade below rather than popping in on top of it. */
   return (
     <motion.div
-      className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
+      className={`message-row group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
       initial={isUser ? { opacity: 0, y: 5 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       /* Springs were applied to every transcript turn, including streamed
@@ -271,7 +269,15 @@ function MessageImpl({
                   <p className="m-0 whitespace-pre-wrap">{message.content}</p>
                 ) : (
                   <div className="msg-markdown">
-                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                    {/* Partial markdown is expensive and unstable while the
+                        model is emitting tokens. Plain text keeps the live
+                        turn cheap and tactile; the full parser takes over
+                        once the message settles, when its layout is stable. */}
+                    {message.streaming ? (
+                      <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+                    ) : (
+                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                    )}
                     {message.streaming ? (
                       <span
                         className="fa-cursor ml-1 inline-block h-4 w-1.5 bg-accent align-middle"

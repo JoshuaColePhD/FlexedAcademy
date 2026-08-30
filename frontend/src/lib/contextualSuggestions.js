@@ -52,6 +52,53 @@ const hasRecentChat = (activeChat, messages) => {
   return Number.isFinite(age) && age < 14 * 24 * 60 * 60 * 1000
 }
 
+const planningLanguage = /\b(?:lesson|plan|planning|teach|teaching|week|unit|chapter|novel|text|standard|students?|assessment|class|rhetoric|essay|reading|activity)\b/i
+
+function lastTeacherPrompt(messages) {
+  return [...(messages || [])].reverse().find((message) => message?.role === 'user' && String(message.content || '').trim())
+}
+
+function topicFromPrompt(content) {
+  const clean = String(content || '')
+    .replace(/---[^\n]+---/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!clean) return ''
+
+  // Prefer the phrase the teacher supplied after a natural topic marker. It
+  // makes the completion feel like a continuation of their own sentence,
+  // rather than a new generic prompt pasted into the box.
+  const marked = clean.match(/\b(?:about|on|around|focused on|using|through)\s+(.+?)(?:[.!?]|$)/i)?.[1]
+  const topic = (marked || clean)
+    .replace(/^(?:help me|can you|please|i need|make|create|build|generate|design|prepare|let's|lets)\s+/i, '')
+    .replace(/^(?:a|an|the)\s+(?:lesson\s+)?plan\s+(?:for|on|about)\s+/i, '')
+    .replace(/\b(?:for|in)\s+week\s+\d+\b/gi, '')
+    .replace(/[.!?]+$/, '')
+    .trim()
+  return topic.length > 72 ? `${topic.slice(0, 69).trimEnd()}…` : topic
+}
+
+function followUpSuggestion(messages, artifact, targetWeek, activeClass, classCount) {
+  const previous = lastTeacherPrompt(messages)
+  const content = previous?.content || ''
+  if (!previous || !planningLanguage.test(content)) return null
+  const topic = topicFromPrompt(content)
+  const week = targetWeek ? weekLabel(targetWeek) : 'this week'
+  const focus = topic || 'this lesson plan'
+  return makeSuggestion({
+    id: `follow-up:${previous.id || content}`,
+    label: artifact ? 'Revise this direction' : 'Keep building this plan',
+    prompt: artifact
+      ? `Let's revise the ${focus} plan.`
+      : `Let's keep building the ${focus}.`,
+    reason: `Continues from your last message about ${week}.`,
+    priority: 1,
+    context: 'conversation-follow-up',
+    action: 'send-prompt',
+    contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
+  })
+}
+
 export function getContextualSuggestions(context = {}) {
   const {
     activeClass,
@@ -78,6 +125,13 @@ export function getContextualSuggestions(context = {}) {
   const nextUnplanned = weeks.find((week) => isOpenTeachingWeek(week) && !week.is_past && !hasPlan(week)) || null
   const className = activeClass?.name ? ` for ${activeClass.name}` : ''
   const suggestions = []
+
+  // Once the teacher has sent something, the next Tab completion should feel
+  // like the next line in this conversation. It is intentionally
+  // deterministic and local: the composer never waits for an LLM request just
+  // to decide what ghost text belongs under the teacher's last message.
+  const followUp = followUpSuggestion(messages, artifact, targetWeek, activeClass, classCount)
+  if (followUp) suggestions.push(followUp)
 
   // These two only ever reach the screen via the Greeting's own empty-state
   // hint (ChatPage's emptyStateHint) — the composer has no sentence to type

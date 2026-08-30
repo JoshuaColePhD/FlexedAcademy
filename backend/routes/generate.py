@@ -16,7 +16,7 @@ from ..entitlement import require_entitlement
 from ..errors import AppError
 from ..ratelimit import limiter
 from ..schema import SchemaError
-from ..template_context import weekly_template_context
+from ..template_context import day_names_for_school, weekly_template_context
 
 log = logging.getLogger("flexedacademy.generate")
 router = APIRouter(prefix="/api", tags=["generate"])
@@ -128,6 +128,10 @@ class ChatStreamRequest(BaseModel):
     # not just at the moment of building. See chat_stream below: the empty
     # chat's own greeting already states this week aloud to the teacher.
     week_number: int | None = None
+    # Client-generated identity for tracing and safe reconnects. It is echoed
+    # in lifecycle events so a delayed frame from an older attempt can never
+    # be mistaken for progress on the current turn.
+    request_id: str | None = None
 
 
 class DecisionsRequest(BaseModel):
@@ -263,6 +267,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     require_entitlement(user_id)
     cls = _request_class(user_id, req.class_id, req.chat_id)
     school_id = db.class_school(cls, user_id)
+    template_days = day_names_for_school(school_id)
     query = _with_week(req.query, req.week_number, school_id)
 
     def event_stream():
@@ -279,8 +284,9 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
             # Additive: useLessonStream.js only reads the keys it knows
             # (grounding/chunk/done/error) and ignores anything else, so an
             # older client is unaffected by a new frame type.
-            yield _sse({"status": "retrieving"})
+            yield _sse({"status": "retrieving", "template_days": template_days})
             result = service.prepare(user_id, query, cls=cls)
+            yield _sse({"status": "context_ready", "template_days": template_days})
             yield _sse(
                 {
                     "grounding": {
@@ -291,6 +297,8 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
                     }
                 }
             )
+            yield _sse({"status": "thinking", "template_days": template_days})
+            yield _sse({"status": "writing", "template_days": template_days})
             for delta in llm.stream_plan(user_id, query, result, school_id=school_id, class_id=cls["id"] if cls else None):
                 chunks.append(delta)
                 yield _sse({"chunk": delta})
@@ -337,7 +345,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
         # (ConditionalGZipMiddleware) exists to avoid — just one hop further
         # out, where it is invisible from here.
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
@@ -677,6 +685,22 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
 
     def event_stream():
         try:
+            request_id = req.request_id
+            # Send an acknowledgement before database lookups, template
+            # resolution, or retrieval. A browser should never have to infer
+            # that a click worked from the absence of a response.
+            yield _sse({
+                "status": "accepted",
+                "status_code": "accepted",
+                "label": "Request received",
+                "request_id": request_id,
+            })
+            yield _sse({
+                "status": "preparing_context",
+                "status_code": "preparing_context",
+                "label": "Preparing your class context…",
+                "request_id": request_id,
+            })
             plans_for_chat = db.list_plans(user_id, chat_id=req.chat_id, limit=1)["items"] if req.chat_id else []
             has_plan = bool(plans_for_chat)
             has_quiz = has_plan and bool(db.list_quizzes_for_plan(user_id, plans_for_chat[0]["id"]))
@@ -687,6 +711,12 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
             system_prompt = _build_chat_system_prompt(
                 user_id, req.chat_id, req.week_number, req.mode, last_user, class_id=req.class_id
             )
+            yield _sse({
+                "status": "context_ready",
+                "status_code": "context_ready",
+                "label": "Class context ready",
+                "request_id": request_id,
+            })
 
             # How many ask_clarifying_questions rounds have happened since the
             # last real commitment (a build/revision confirmation) — not a
@@ -843,22 +873,30 @@ def chat_stream(req: ChatStreamRequest, request: Request, user_id: str = Depends
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
 
+            yield _sse({
+                "status": "thinking",
+                "status_code": "thinking",
+                "label": "Thinking…",
+                "request_id": request_id,
+            })
             for event in llm.stream_chat(user_id, messages, voice=req.voice):
+                if isinstance(event, dict):
+                    event.setdefault("request_id", request_id)
                 yield _sse(event)
 
-            yield _sse({"done": True})
+            yield _sse({"done": True, "request_id": request_id})
         except (AppError, SchemaError) as e:
             log.warning("chat stream failed code=%s", e.code)
-            yield _sse({"error": e.payload().get("error", e.payload())})
+            yield _sse({"error": e.payload().get("error", e.payload()), "request_id": req.request_id})
         except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
-            yield _sse({"error": _openai_error_event(e)})
+            yield _sse({"error": _openai_error_event(e), "request_id": req.request_id})
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         # See the identical header block on /generate_stream above.
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },

@@ -19,12 +19,13 @@ import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
 import { splitDecisions } from '../lib/decisionChecklist'
-import { dayLabel, isSameDay } from '../lib/dates'
+import { dayLabel, isSameDay, shortRange } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import * as perf from '../lib/performanceMetrics'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { durableTurnSnapshot, readTurnOutbox, removeTurnOutbox, writeTurnOutbox } from '../lib/turnOutbox'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Composer } from '../components/Composer'
@@ -565,6 +566,24 @@ export function ChatPage() {
   // change (switching chats), not just once on mount.
   const draftKey = chatId || (classId ? `new:${classId}` : null)
   useComposerDraft(draftKey, query, setQuery, user?.id)
+  /* A follow-up typed and sent while the current turn is still busy—or a
+     send made while offline—lives here until it can be accepted by the
+     server. The matching local outbox below makes this survive a reload. */
+  const [queuedMessage, setQueuedMessage] = useState(null)
+  const [outboxRestored, setOutboxRestored] = useState(false)
+  const setQueuedTurn = useCallback((next) => {
+    setQueuedMessage(next)
+    if (!user?.id || !draftKey) return
+    if (next) writeTurnOutbox(user.id, draftKey, durableTurnSnapshot(next))
+    else removeTurnOutbox(user.id, draftKey)
+  }, [draftKey, user?.id])
+  useEffect(() => {
+    setQueuedMessage(null)
+    setOutboxRestored(false)
+    const saved = readTurnOutbox(user?.id, draftKey)
+    if (saved) setQueuedMessage(saved)
+    setOutboxRestored(true)
+  }, [draftKey, user?.id])
   /* ArtifactRail's empty-state starter cards (Week Overview / Materials /
      Assessments) hand their prompt here rather than submitting straight
      away — same "fill, don't fire" convention as everywhere else a click
@@ -574,12 +593,6 @@ export function ChatPage() {
     requestAnimationFrame(() => document.getElementById('composer-input')?.focus())
   }
   const [attachments, setAttachments] = useState([])
-  /* A follow-up typed and sent while the current turn is still busy — held
-     here rather than lost. Composer's Enter/Send no longer waits on `busy`
-     (see its own canSend comment); this is what it hands off to instead of
-     calling submit() directly while a reply is still in flight. Cleared and
-     actually sent the moment `busy` goes false — see the effect below. */
-  const [queuedMessage, setQueuedMessage] = useState(null)
   /* A transient "it's done" notice in the same slot as the queued-message
      pill above — set only on a SUCCESSFUL plan/quiz build (see onDone below
      and the quiz try-block), never on error, so it can't misreport a failed
@@ -834,7 +847,11 @@ export function ChatPage() {
       ro.disconnect()
       window.removeEventListener('resize', sync)
     }
-  }, [composerOverDocument, portalHost])
+  // `isPhone` is included deliberately: layout mode can settle after the
+  // first render when the browser reports its real viewport. The composer
+  // then moves between normal flow and the portal, so the anchor and portal
+  // geometry must be rebound instead of retaining the boot-time bounds.
+  }, [composerOverDocument, portalHost, isPhone])
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
   // needs — otherwise the transcript would sit a fixed guess-height short of
@@ -845,10 +862,14 @@ export function ChatPage() {
     const ro = new ResizeObserver(([entry]) => setComposerDockH(entry.contentRect.height))
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  // The ref points at a different DOM tree when responsive mode switches
+  // between in-flow phone layout and the desktop portal.
+  }, [isPhone])
 
   const scrollRef = useRef(null)
   const endRef = useRef(null)
+  const scrollRestoreKeyRef = useRef(null)
+  const scrollSaveTimerRef = useRef(null)
   /* Set when a new turn's user message is pushed (see submit()). The scroll
      effect reads it once, follows the transcript's end, then clears it. This
      makes the response visible immediately and keeps streaming replies in
@@ -1637,7 +1658,19 @@ export function ChatPage() {
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
     async (text, options = {}) => {
-      const typed = (text ?? query).trim()
+      // Composer passes its current draft snapshot. Avoid reading the parent
+      // query state here so this callback stays stable while a teacher types.
+      const typed = (text ?? '').trim()
+      // A retry reuses the original optimistic user turn. Re-appending that
+      // turn made a failed request look like a second teacher message and
+      // sent duplicate history to the model. Remove only the failed error row
+      // while preserving the original turn in place for a clean recovery.
+      const retryMessage = options.retryMessageId
+        ? messages.find((message) => message.id === options.retryMessageId && message.role === 'user')
+        : null
+      const historyMessages = retryMessage
+        ? messages.filter((message) => message.id !== retryMessage.id && message.id !== options.retryErrorId)
+        : messages
       // `attachmentsOverride` is what a queued follow-up sends through —
       // see queueOrSubmit's own comment. Without it, a message queued
       // while busy would flush against whatever attachments happen to be
@@ -1682,8 +1715,8 @@ export function ChatPage() {
       // payload; leaving the chip pinned implied they were still in context
       // for every later message, which was never true even before this fix.
       setAttachments([])
-      const newUserMessage = { id: nextId(), role: 'user', content: typed || `Sent ${atts.length} file(s)` }
-      const nextMessages = [...messages, newUserMessage]
+      const newUserMessage = retryMessage || { id: nextId(), role: 'user', content: typed || `Sent ${atts.length} file(s)` }
+      const nextMessages = retryMessage ? [...historyMessages, retryMessage] : [...messages, newUserMessage]
       // The scroll effect reads this once and follows the latest transcript
       // content instead of leaving the new turn above the visible area.
       // and clears it, so the reply that's about to arrive doesn't drag the
@@ -1692,6 +1725,7 @@ export function ChatPage() {
 
       setMessages(nextMessages)
 
+      const hadChatId = Boolean(chatId)
       let activeChatId = chatId
       if (!activeChatId) {
         try {
@@ -1776,18 +1810,33 @@ export function ChatPage() {
 
       const shown = typed || `Sent ${atts.length} file(s)`
       if (activeChatId) {
-        // See db.add_message's own docstring for what this is for — a
-        // spoken turn is plausibly less edited/considered than something
-        // typed and reread, so it's worth being able to tell the two apart
-        // later without having to guess after the fact.
-        const saved = await persistMessage(activeChatId, {
-          role: 'user',
-          content: shown,
-          ...(options.voiceTurn ? { source: 'voice' } : {}),
-        })
-        if (!saved) {
-          setPreparing(false)
-          return
+        // Persistence is deliberately decoupled from model startup. The
+        // message is already visible optimistically and the stream has all
+        // the context it needs in `payloadMessages`; waiting here made a
+        // healthy click look dead behind a database round trip. persistMessage
+        // still retries and reports a failure, while the teacher gets the
+        // immediate accepted/thinking lifecycle from chat_stream.
+        // A normal retry does not write the same user turn twice. The one
+        // exception is a retry after chat creation failed: there was no chat
+        // to persist into on the first attempt, so save it once the retry
+        // creates the conversation.
+        const shouldPersistUser = !retryMessage || !hadChatId || retryMessage.unsaved
+        if (shouldPersistUser) {
+          const clientId = nextId()
+          void persistMessage(activeChatId, {
+            role: 'user',
+            content: shown,
+            client_id: clientId,
+            ...(options.voiceTurn ? { source: 'voice' } : {}),
+          }).then((saved) => {
+            if (saved) return
+            // Keep the turn usable if storage is temporarily unavailable, but
+            // make the durability problem explicit instead of silently losing
+            // the teacher's prompt on the next reload.
+            setMessages((prev) => prev.map((message) => (
+              message.id === newUserMessage.id ? { ...message, unsaved: true } : message
+            )))
+          })
         }
       }
 
@@ -1829,14 +1878,14 @@ export function ChatPage() {
         }
 
         const firstPayload = [
-          ...messages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+          ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
           { role: 'user', content },
         ]
 
         if (isClearlySpecifiedPlanRequest(typed)) {
           setPreparing(false)
           const directHistory = [
-            ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+            ...historyMessages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
             `USER: ${content}`,
           ].join('\n\n')
           if (voiceOpen) voice.speak(VOICE_BUILDING)
@@ -1877,7 +1926,7 @@ export function ChatPage() {
         }
 
         let firstHistory = [
-          ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+          ...historyMessages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
           `USER: ${content}`,
         ].join('\n\n')
         if (firstResult.text?.trim()) {
@@ -1902,7 +1951,7 @@ export function ChatPage() {
       // the model to route, since a bare follow-up ("why Thursday?") shouldn't
       // silently rebuild the week.
       const payloadMessages = [
-        ...messages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+        ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
         { role: 'user', content },
       ]
       // Same handoff as above: chatStream.start() sets chatStream.isStreaming
@@ -2065,7 +2114,7 @@ export function ChatPage() {
       // so it's in the combined history. Same split as above: the last turn
       // carries the attachment text, everything before it is the transcript.
       let combinedHistory = [
-        ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+        ...historyMessages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
         `USER: ${content}`,
       ].join('\n\n')
       if (chatResult.text?.trim()) {
@@ -2127,7 +2176,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [query, attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, location.state?.mode, persistMessage, showReadyNotice]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2153,10 +2202,10 @@ export function ChatPage() {
      sent, not what was there when they hit Enter. */
   const queueOrSubmit = useCallback(
     (text) => {
-      const typed = (text ?? query).trim()
+      const typed = (text ?? '').trim()
       if (!typed && attachments.length === 0) return
-      if (busy) {
-        setQueuedMessage({ text: typed, attachments })
+      if (!isOnline || busy) {
+        setQueuedTurn({ id: nextId(), text: typed, attachments })
         setQuery('')
         clearComposerDraft(draftKey, user?.id)
         setAttachments([])
@@ -2164,12 +2213,12 @@ export function ChatPage() {
       }
       submit(text)
     },
-    [busy, query, submit, attachments, draftKey, user?.id]
+    [busy, isOnline, submit, attachments, draftKey, user?.id, setQueuedTurn]
   )
   useEffect(() => {
-    if (busy || !queuedMessage) return
+    if (!outboxRestored || !isOnline || busy || !queuedMessage) return
     const next = queuedMessage
-    setQueuedMessage(null)
+    setQueuedTurn(null)
     submit(next.text, { attachmentsOverride: next.attachments })
     // submit is intentionally excluded: it's recreated on every render (its
     // own dependency array above is enormous), and this only needs to run
@@ -2178,7 +2227,7 @@ export function ChatPage() {
     // harmless (queuedMessage is already null), so this is purely to avoid
     // re-checking on every unrelated render, not a correctness guard.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, queuedMessage])
+  }, [busy, isOnline, outboxRestored, queuedMessage, setQueuedTurn, submit])
 
   /* Per-cell revise, from clicking a cell in the document.
    *
@@ -2410,12 +2459,14 @@ export function ChatPage() {
     }
   }, [chatStream, persistMessage, finalizeLiveMessage])
 
-  /* Rebuild the last plan from the same prompt. `onRetry` and `isLast` were
-     declared on Message and never passed, so the retry button could not render
-     and the only recovery from a failed build was retyping the whole prompt. */
+  /* Rebuild the last turn from the same prompt. Keep the original user row and
+     remove only the terminal error row; retrying must not duplicate the prompt
+     in the transcript or in the model's history. */
   const retryLast = useCallback(() => {
+    const last = messages[messages.length - 1]
+    if (!last?.isError) return
     const lastAsk = [...messages].reverse().find((m) => m.role === 'user')
-    if (lastAsk) submit(lastAsk.content)
+    if (lastAsk) submit(lastAsk.content, { retryMessageId: lastAsk.id, retryErrorId: last.id })
   }, [messages, submit])
 
   /* Both of these exist to keep <Message>'s props referentially stable, which
@@ -2502,8 +2553,43 @@ export function ChatPage() {
   const onScroll = () => {
     const el = scrollRef.current
     if (!el) return
-    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120)
+    const nextAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    setAtBottom(nextAtBottom)
+    if (chatId && user?.id) {
+      window.clearTimeout(scrollSaveTimerRef.current)
+      scrollSaveTimerRef.current = window.setTimeout(() => {
+        writeAccountStorage(
+          'chat-scroll',
+          user.id,
+          encodeURIComponent(chatId),
+          JSON.stringify({ top: el.scrollTop, atBottom: nextAtBottom })
+        )
+      }, 120)
+    }
   }
+  /* Restore a teacher's reading position per chat. This is intentionally a
+     scroll offset, not a focus jump: reopening a long plan should return to
+     the paragraph they were reading while still allowing the normal
+     follow-latest behavior once they send a new turn. */
+  useEffect(() => {
+    const restoreKey = `${user?.id || ''}:${chatId || ''}`
+    if (!chatId || !user?.id || scrollRestoreKeyRef.current === restoreKey || !messages.length) return
+    const raw = readAccountStorage('chat-scroll', user.id, encodeURIComponent(chatId))
+    scrollRestoreKeyRef.current = restoreKey
+    if (!raw) return
+    try {
+      const saved = JSON.parse(raw)
+      requestAnimationFrame(() => {
+        const el = scrollRef.current
+        if (!el || typeof saved.top !== 'number') return
+        el.scrollTop = Math.max(0, Math.min(saved.top, el.scrollHeight - el.clientHeight))
+        setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120)
+      })
+    } catch {
+      /* A malformed position is disposable UI state; the transcript is not. */
+    }
+  }, [chatId, messages.length, user?.id])
+  useEffect(() => () => window.clearTimeout(scrollSaveTimerRef.current), [])
   // Follow the latest content while the teacher remains at the bottom. A
   // deliberate upward scroll flips atBottom false, so streaming does not
   // wrestle the viewport back under the teacher's cursor.
@@ -2757,7 +2843,8 @@ export function ChatPage() {
      are a small pill leaving the page, not a panel. */
   const latestPill = useExitTransition(!atBottom && !isEmpty, 150)
 
-  /* Auto-opens the drawer the moment a build starts or a plan exists; after
+  /* Opens the drawer after a plan actually exists; while a build starts, the
+     progress tray above the composer is the single live surface. After
      that it is the teacher's to open or close. Fires at most ONCE per chat
      (railAutoOpenedRef) — `busy` flips true and back false on every later
      turn too (a revision, a follow-up, a quiz), and without the guard each
@@ -2765,11 +2852,10 @@ export function ChatPage() {
      teacher had just closed. "The plan so far" now lives inline in the chat
      itself (see the decisions list rendered with the messages), not in the
      rail, so landing a decision no longer needs to pop the rail open on its
-     own — the rail has nothing to show for that case until a build
-     actually starts. */
+     own — the rail opens only once the saved artifact is useful to inspect. */
   useEffect(() => {
     if (railAutoOpenedRef.current) return
-    if (busy || hasArtifact) {
+    if (hasArtifact) {
       setRailOpen(true)
       railAutoOpenedRef.current = true
     }
@@ -3202,6 +3288,17 @@ export function ChatPage() {
       <TemplateBanner />
       <TrialBanner />
 
+      <div className="chat-context-strip" aria-label="Current plan context">
+        <span>
+          Using <strong>{activeClass?.name || 'this class'}</strong> template
+        </span>
+        <span className="chat-context-separator" aria-hidden="true">·</span>
+        <span>
+          {conversationWeek ? `Week ${conversationWeek}` : 'Week not set'}
+          {displayWeek?.start && displayWeek?.end ? ` · ${shortRange(displayWeek.start, displayWeek.end)}` : ''}
+        </span>
+      </div>
+
       {isEmpty ? (
         <Greeting
           className={activeClass?.name}
@@ -3333,10 +3430,18 @@ export function ChatPage() {
                 not scrolling away with the transcript — so this keeps only
                 the eyebrow label here; isPhone still gets the full list,
                 since phone has no rail to carry it. */}
-            {stream.isStreaming ? (
-              <p className="eyebrow">{stream.preview?.days?.length ? 'Writing the week' : 'Retrieving standards'}</p>
-            ) : revising ? (
+            {revising ? (
               <p className="eyebrow">Revising…</p>
+            ) : stream.isStreaming && stream.status?.label ? (
+              <p className="eyebrow chat-live-status" role="status" aria-live="polite">
+                <span className="chat-live-status-dot" aria-hidden="true" />
+                {stream.status.label}
+              </p>
+            ) : chatStream.isStreaming && chatStream.status?.label ? (
+              <p className="eyebrow chat-live-status" role="status" aria-live="polite">
+                <span className="chat-live-status-dot" aria-hidden="true" />
+                {chatStream.status.label}
+              </p>
             ) : preparing ? (
               // The gap this covers: submit()'s first await, for a brand-new
               // chat, is api.createChat — which can run long on a cold Render
@@ -3416,10 +3521,9 @@ export function ChatPage() {
         </div>
       ) : null}
 
-      {/* The dock. Composer must stay in the SAME slot of the same parent across
-          the empty/non-empty transition — it owns a MediaRecorder, a
-          ResizeObserver and an autosized inline height, all of which die on
-          remount. Only the wrapper's className may change. */}
+      {/* The dock. Composer stays in the SAME slot of the same parent across
+          empty/non-empty transitions, preserving focus, the recorder, and the
+          fixed-shape input shell. Only the wrapper's className may change. */}
       <div className="shrink-0 bg-transparent pb-5 pt-3">
         <div className="mx-auto w-full max-w-4xl px-gutter">
           {/* navigator.onLine, not a failed request — this is proactive
@@ -3475,7 +3579,7 @@ export function ChatPage() {
                 onClick={() => {
                   setQuery(queuedMessage.text)
                   setAttachments(queuedMessage.attachments)
-                  setQueuedMessage(null)
+                  setQueuedTurn(null)
                 }}
               >
                 <X size={13} aria-hidden="true" />
@@ -3513,6 +3617,7 @@ export function ChatPage() {
           {stream.isStreaming ? (
             <LessonPlanProgressTray
               days={stream.preview?.days}
+              dayNames={stream.dayNames}
               onStop={stopGenerating}
             />
           ) : null}

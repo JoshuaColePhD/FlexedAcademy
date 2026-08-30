@@ -1,5 +1,5 @@
 import { SplitLayout } from "../components/SplitLayout"
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import {
   Check,
   ArrowDown,
@@ -48,8 +48,9 @@ import { findFramework, verifiedPct } from '../lib/frameworks'
  */
 
 
-import { ClassDocuments } from '../components/ClassDocuments.jsx'
 import { KIND_LABEL } from '../components/documentKinds'
+
+const ClassDocuments = lazy(() => import('../components/ClassDocuments.jsx').then((module) => ({ default: module.ClassDocuments })))
 
 /** Framework label without its adoption year — right in a picker, noise in a
  *  class name. */
@@ -578,7 +579,9 @@ function ClassDetail({ cls, frameworks, onChanged }) {
             ) : null}
           </div>
           
-          <ClassDocuments cls={cls} onChanged={onChanged} />
+          <Suspense fallback={<div className="py-8 text-sm text-ink-muted">Loading documents…</div>}>
+            <ClassDocuments cls={cls} onChanged={onChanged} />
+          </Suspense>
         </div>
 
         {/* Danger Zone */}

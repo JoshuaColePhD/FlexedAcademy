@@ -2206,12 +2206,9 @@
 
   /* Voice mode's dock, above the composer (ChatPage.jsx) — it used to be a
      full-screen/dialog takeover with its own mount/unmount and no exit
-     animation at all. Now the chat box itself grows to make room for it:
-     the message list above compresses (ordinary flex layout — this sits
-     between it and the composer in the same flex column) while THIS
-     wrapper's own height animates from nothing up to its content's real
-     size, so the whole thing reads as the chat pane pushing up from the
-     bottom rather than a separate card dropping in on top of it.
+     animation at all. The dock now expands independently above the input;
+     the composer shell itself stays the same height and shape while the chat
+     pane makes room for this accessory surface.
 
      grid-template-rows: 0fr → 1fr, not a max-height guess: max-height has
      to animate toward some fixed number that either clips a taller panel
@@ -2283,11 +2280,10 @@
      class name, and conflating them would make "is voice mode open" and "is
      a question pending" the same flag by accident.
 
-     --t-slow, not --t-base: at --t-base (220ms) the row's own grow/shrink
-     read as an instant cut rather than a visible expand — on Josh's own
-     ask, slowed down so the composer visibly growing to make room (and
-     shrinking back after Skip/answer) is actually legible, not just felt as
-     a pop. */
+     --t-slow, not --t-base: at --t-base (220ms) the accessory row's
+     grow/shrink reads as an instant cut rather than a visible expand — this
+     keeps the question transition legible while the input shell below stays
+     fixed. */
   .questions-dock {
     display: grid;
     flex-shrink: 0;
@@ -2309,148 +2305,113 @@
     animation: voice-dock-body-out var(--t-fast) var(--ease) both;
   }
 
+  /* A clarification round is a conversation turn, not a form sliding into
+     view. Give it one readable order: prompt, choices, then the small footer
+     hint. The stagger is short enough to feel responsive and capped by the
+     number of choices, so the last row never appears late. */
+  .lesson-question-prompt {
+    animation: question-prompt-in 180ms var(--ease-out) both;
+  }
+  .lesson-question-options > * {
+    animation: question-option-in 220ms var(--ease-out) both;
+    animation-delay: 55ms;
+  }
+  .lesson-question-editor {
+    animation: question-option-in 220ms var(--ease-out) 55ms both;
+  }
+  .lesson-question-footer {
+    animation: question-footer-in 180ms var(--ease-out) 170ms both;
+  }
+
   /* Lesson-plan generation is anchored to the composer rather than left as
-     a transient line in the transcript. The tray grows upward because the
-     composer is the page's stable working surface; the input/Stop control
-     remains at the bottom while this list advances through the five days. */
+     a transient line in the transcript. Keep it to one stable row so the
+     composer never grows tall or shifts the teacher's reading position. */
   .lesson-plan-progress-tray {
-    display: grid;
+    display: block;
     min-width: 0;
     margin-bottom: var(--sp-2);
   }
-  .lesson-plan-progress-expanded,
-  .lesson-plan-progress-collapsed {
-    min-width: 0;
-    overflow: hidden;
-    border: 1px solid rgb(var(--accent-rgb) / 0.2);
-    background: var(--paper-raised);
-    box-shadow:
-      3px 4px 12px rgb(var(--neo-dark-rgb) / 0.2),
-      -3px -3px 10px rgb(var(--neo-light-rgb) / 0.58);
-  }
-  .lesson-plan-progress-expanded {
-    border-radius: 16px;
-  }
-  .lesson-plan-progress-collapsed {
+  .lesson-plan-progress-line {
     display: flex;
+    min-width: 0;
     align-items: center;
     gap: var(--sp-2);
-    width: 100%;
-    padding: 10px 12px;
+    min-height: 34px;
+    padding: 5px 9px;
+    overflow: hidden;
     color: var(--ink-soft);
     font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-align: left;
-    cursor: pointer;
+    border: 1px solid rgb(var(--accent-rgb) / 0.18);
     border-radius: var(--r-lg);
-    transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
-  }
-  .lesson-plan-progress-collapsed:hover,
-  .lesson-plan-progress-collapsed:focus-visible {
-    border-color: rgb(var(--accent-rgb) / 0.42);
-    background: var(--accent-tint);
-    outline: none;
-  }
-  .lesson-plan-progress-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-3);
-    padding: 11px 12px 9px;
-    border-bottom: 1px solid var(--edge);
-  }
-  .lesson-plan-progress-icon,
-  .lesson-plan-progress-pulse {
-    display: grid;
-    flex-shrink: 0;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    color: var(--accent-text);
-    background: var(--accent-tint);
-    border-radius: var(--r-full);
-  }
-  .lesson-plan-progress-pulse {
-    width: 25px;
-    height: 25px;
-    animation: fa-progress-sweep 1.8s var(--ease) infinite;
-  }
-  .lesson-plan-progress-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    max-height: min(45vh, 250px);
-    margin: 0;
-    padding: 7px 8px;
-    overflow-y: auto;
-    list-style: none;
-    overscroll-behavior: contain;
-  }
-  .lesson-plan-progress-row {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: var(--sp-2);
-    min-height: 32px;
-    padding: 3px 7px;
-    color: var(--ink-faint);
-    border-radius: var(--r-md);
-    transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
-  }
-  .lesson-plan-progress-row.is-complete {
-    color: var(--ink-soft);
-  }
-  .lesson-plan-progress-row.is-writing {
-    color: var(--accent-text);
-    background: rgb(var(--accent-rgb) / 0.1);
-  }
-  .lesson-plan-progress-row.is-writing .lesson-plan-progress-status {
-    color: var(--accent-text);
     background: var(--paper-raised);
+    box-shadow:
+      2px 3px 9px rgb(var(--neo-dark-rgb) / 0.14),
+      -2px -2px 8px rgb(var(--neo-light-rgb) / 0.5);
   }
-  .lesson-plan-progress-row.is-pending {
-    opacity: 0.72;
-  }
-  .lesson-plan-progress-status {
+  .lesson-plan-progress-line-icon {
     display: grid;
-    flex-shrink: 0;
+    flex: 0 0 auto;
     place-items: center;
-    width: 25px;
-    height: 25px;
-    color: var(--ink-faint);
-    background: var(--paper-sunken);
+    width: 22px;
+    height: 22px;
+    color: var(--accent-text);
     border-radius: var(--r-full);
-    font-size: var(--fs-2xs);
+    background: var(--accent-tint);
+  }
+  .lesson-plan-progress-line-label {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+  }
+  .lesson-plan-progress-line-status {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--accent-text);
+    font-weight: var(--fw-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lesson-plan-progress-days {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 3px;
+    margin-left: auto;
+  }
+  .lesson-plan-progress-day {
+    display: grid;
+    place-items: center;
+    width: 21px;
+    height: 21px;
+    color: var(--ink-faint);
+    border-radius: var(--r-full);
+    background: var(--paper-sunken);
+    font-size: 9px;
     font-weight: var(--fw-semibold);
   }
-  .lesson-plan-progress-row.is-complete .lesson-plan-progress-status {
+  .lesson-plan-progress-day.is-complete {
     color: var(--accent-text);
     background: var(--accent-tint);
   }
-  .lesson-plan-progress-row > :last-child {
-    color: var(--ink-muted);
-  }
-  .lesson-plan-progress-row.is-writing > :last-child {
+  .lesson-plan-progress-day.is-writing {
     color: var(--accent-text);
-    font-weight: var(--fw-semibold);
+    background: rgb(var(--accent-rgb) / 0.13);
+    box-shadow: 0 0 0 2px rgb(var(--accent-rgb) / 0.12);
   }
-  .lesson-plan-progress-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-3);
-    padding: 8px 12px 10px;
+  .lesson-plan-progress-line-count {
+    flex: 0 0 auto;
     color: var(--ink-muted);
-    border-top: 1px solid var(--edge);
     font-size: var(--fs-2xs);
     font-weight: var(--fw-semibold);
-    letter-spacing: 0.02em;
+    white-space: nowrap;
   }
   .lesson-plan-progress-stop {
     display: inline-flex;
+    flex: 0 0 auto;
     align-items: center;
-    gap: 6px;
-    padding: 4px 7px;
+    gap: 5px;
+    padding: 4px 6px;
     color: var(--mark);
     border-radius: var(--r-sm);
     transition: background-color var(--t-fast) var(--ease);
@@ -2463,8 +2424,8 @@
   .lesson-plan-progress-stop-icon {
     display: grid;
     place-items: center;
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
     border: 1px solid currentColor;
     border-radius: 4px;
   }
@@ -2474,6 +2435,13 @@
     background: currentColor;
     border-radius: 1px;
   }
+  /* Retain a little breathing room on a narrow phone while keeping one row. */
+  @media (max-width: 640px) {
+    .lesson-plan-progress-line-label { display: none; }
+    .lesson-plan-progress-line-status { flex: 1 1 auto; }
+    .lesson-plan-progress-days { margin-left: 0; }
+  }
+  /* The progress surface is intentionally not a drawer or expandable card. */
 
   /* The phone plan peek grows out of the same dock as the composer. The
      handle remains visible while collapsed, and the body owns the only
@@ -3049,11 +3017,12 @@
     border: 1px solid var(--edge);
     border-radius: var(--r-xl);
     cursor: default;
-    box-shadow: 2px 2px 6px rgb(var(--neo-dark-rgb) / 0.2), -2px -2px 6px rgb(var(--neo-light-rgb) / 0.5);
+    box-shadow: 1px 2px 5px rgb(var(--neo-dark-rgb) / 0.16), -1px -1px 5px rgb(var(--neo-light-rgb) / 0.42);
     transition: box-shadow var(--t-fast) var(--ease), border-color var(--t-fast);
   }
   .rail-card:hover {
     border-color: var(--edge-strong);
+    box-shadow: 2px 3px 7px rgb(var(--neo-dark-rgb) / 0.18), -1px -1px 5px rgb(var(--neo-light-rgb) / 0.44);
   }
   .rail-card:active {
     box-shadow: inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.3), inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.5);
@@ -4221,21 +4190,20 @@
      the overhaul gets — .neo-world being global means this resolves
      everywhere, not just where it was written for. */
   .composer-shell {
-    /* Keep the compact composer a soft rectangle rather than a full pill.
-       The smaller radius gives the field the same grounded shape as the rest
-       of the app while preserving comfortable, friendly corners. */
+    /* Keep one physical input surface. Drafts scroll inside the textarea and
+       accessory rows sit above this shell, so the border never grows or
+       morphs while the teacher types or a request changes state. */
     border-radius: 20px;
+    height: 56px;
+    min-height: 56px;
+    max-height: 56px;
     box-shadow:
       3px 4px 12px rgb(var(--neo-dark-rgb) / 0.3),
       -3px -3px 10px rgb(var(--neo-light-rgb) / 0.7);
     transition:
-      border-radius 220ms var(--ease-glide),
       border-color var(--t-fast) var(--ease),
       box-shadow 180ms var(--ease-out),
       background-color 180ms var(--ease-out);
-  }
-  .composer-shell.is-expanded {
-    border-radius: 16px;
   }
   /* The signal that replaces it. A full tone step on the border, not a hairline
      nudge, because it is now the only non-caret indication that typing will go
@@ -4248,48 +4216,6 @@
       0 0 0 3px rgb(var(--accent-rgb) / 0.09);
   }
 
-  /* One optional nudge before writing, outside the field rather than inside
-     it. This keeps the text surface calm and gives the chip a clear role:
-     fill the composer, then continue editing or send when ready. */
-  .composer-suggestion-tray {
-    display: flex;
-    min-width: 0;
-    margin: 0 0 var(--sp-2) var(--sp-2);
-    overflow: hidden;
-    animation: composer-suggestion-in 180ms var(--ease-out) both;
-  }
-  .composer-suggestion-chip {
-    display: inline-flex;
-    max-width: 100%;
-    align-items: center;
-    gap: var(--sp-2);
-    padding: 7px 11px;
-    color: var(--ink-soft);
-    background: rgb(var(--accent-rgb) / 0.08);
-    border: 1px solid rgb(var(--accent-rgb) / 0.18);
-    border-radius: var(--r-full);
-    text-align: left;
-    cursor: pointer;
-    transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
-  }
-  .composer-suggestion-chip:hover,
-  .composer-suggestion-chip:focus-visible {
-    background: rgb(var(--accent-rgb) / 0.13);
-    border-color: rgb(var(--accent-rgb) / 0.34);
-    outline: none;
-  }
-  .composer-suggestion-label {
-    flex-shrink: 0;
-    font-size: var(--fs-2xs);
-    font-weight: var(--fw-semibold);
-    color: var(--accent-text);
-  }
-  .composer-suggestion-text {
-    overflow: hidden;
-    font-size: var(--fs-xs);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .composer-tools-menu {
     position: absolute;
     right: 0;
@@ -4323,10 +4249,6 @@
     color: var(--ink);
     background: var(--paper-sunken);
     outline: none;
-  }
-  @keyframes composer-suggestion-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: none; }
   }
   @keyframes composer-tools-in {
     from { opacity: 0; transform: translateY(4px) scale(0.98); }
@@ -6301,6 +6223,34 @@
     transform: none;
   }
 }
+@keyframes question-prompt-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes question-option-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes question-footer-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 @keyframes fa-composer-accept {
   0% {
     box-shadow: inset 0 0 0 rgb(var(--accent-rgb) / 0);
@@ -6742,6 +6692,92 @@
 
 .animate-error-shake {
   animation: error-shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Chat responsiveness primitives. Keep the neo/glass language, but isolate
+   each transcript row so a long history does not force the browser to paint
+   every message during a live turn. content-visibility is especially useful
+   on phones where a teacher may have months of planning history in one chat. */
+.message-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+
+.chat-live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.chat-context-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 28px;
+  padding: 0 1rem;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: var(--fs-2xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chat-context-strip strong {
+  color: var(--ink-soft);
+  font-weight: var(--fw-semibold);
+}
+
+.chat-context-separator {
+  color: var(--ink-faint);
+}
+
+/* The empty reply state should feel like a quiet continuation of the
+   transcript, not a separate loading widget. Claude-like here means a small
+   muted label in the reply's own slot: no raised pill, bouncing dots, glow, or
+   layout shift when the first words arrive. */
+.chat-thinking-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  color: var(--ink-muted);
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+
+.chat-thinking-mark {
+  width: 0.42rem;
+  height: 0.42rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgb(var(--accent-rgb) / 0.72);
+}
+
+.chat-live-status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgb(var(--accent-rgb));
+  box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.35);
+  animation: chat-status-pulse 1.5s ease-out infinite;
+}
+
+@keyframes chat-status-pulse {
+  70% { box-shadow: 0 0 0 0.35rem rgb(var(--accent-rgb) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0); }
+}
+
+/* A single short press response makes controls feel physical without adding
+   layout work or a spring animation to every interaction. */
+.fa-press:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-live-status-dot { animation: none; }
+  .fa-press:active { transform: none; }
 }
 
   /* Thick Glass Effect — lets .app-blob's drifting orbs (AppShell.jsx) show

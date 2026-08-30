@@ -84,7 +84,7 @@ export function LessonQuestions({ questions, onSubmit }) {
     const t = setTimeout(() => {
       advance(advancePending)
       setAdvancePending(null)
-    }, 320)
+    }, 220)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [advancePending])
@@ -161,9 +161,12 @@ export function LessonQuestions({ questions, onSubmit }) {
         </div>
       ) : null}
 
-      <p key={`q-${q.id}`} className="fa-context-pop text-sm font-medium leading-snug text-ink">
+      <p key={`q-${q.id}`} className="lesson-question-prompt text-sm font-medium leading-snug text-ink">
         {q.text}
       </p>
+      <div className="visually-hidden" aria-live="polite" aria-atomic="true">
+        {advancePending ? `Selected ${advancePending[q.id]}. Moving to the next question.` : ''}
+      </div>
 
       {typingOther ? (
         // fa-context-pop, the same rise-up reveal the composer's own
@@ -171,7 +174,7 @@ export function LessonQuestions({ questions, onSubmit }) {
         // (or this editor swapping in for its options) is content arriving,
         // not a popover dropping down from an anchor above it, which is
         // what fa-card-drop communicates elsewhere.
-        <div className="fa-context-pop flex flex-col gap-2">
+        <div className="lesson-question-editor flex flex-col gap-2">
           <label className="visually-hidden" htmlFor="clarify-custom-input">
             Type your own answer instead
           </label>
@@ -210,7 +213,7 @@ export function LessonQuestions({ questions, onSubmit }) {
           </div>
         </div>
       ) : (
-        <div key={`opts-${q.id}`} className="fa-context-pop flex flex-col gap-1.5">
+        <div key={`opts-${q.id}`} className="lesson-question-options flex flex-col gap-1.5">
           {options.map((opt, i) => {
             const picked = answers[q.id] === opt
             return (
@@ -224,7 +227,8 @@ export function LessonQuestions({ questions, onSubmit }) {
                 // comment above); without this every option still looked equally
                 // choosable right up to the instant the next question replaced
                 // them, so the tap read as having done nothing.
-                className={`fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-all ${
+                style={{ animationDelay: `${Math.min(i, 4) * 32 + 55}ms` }}
+                className={`lesson-question-option fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-all ${
                   picked
                     ? 'neo-inset text-accent-text'
                     : advancePending
@@ -246,7 +250,8 @@ export function LessonQuestions({ questions, onSubmit }) {
             type="button"
             onClick={() => setTypingOther(true)}
             disabled={Boolean(advancePending)}
-            className={`fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken ${
+            style={{ animationDelay: `${Math.min(options.length, 4) * 32 + 55}ms` }}
+            className={`lesson-question-option fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken ${
               advancePending ? 'opacity-40' : ''
             }`}
           >
@@ -271,7 +276,7 @@ export function LessonQuestions({ questions, onSubmit }) {
           over again). Last question gets no preview — there's nothing
           after it but the answer being sent. */}
       {!typingOther ? (
-        <div className="flex items-center justify-between gap-3">
+        <div className="lesson-question-footer flex items-center justify-between gap-3">
           <button
             type="button"
             className="text-sm font-medium text-ink-muted hover:underline disabled:pointer-events-none disabled:opacity-40"

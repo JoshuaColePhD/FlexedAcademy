@@ -18,7 +18,7 @@ from .config import settings
 from .retrieval import UNGROUNDABLE_FAMILIES, RetrievalResult, format_context
 from .schema import DAY_NAMES, day_schema_snippet, field_json_schema, plan_schema_snippet
 from .schoolcal import NO_CALENDAR_SCHOOL_ID
-from .template_context import weekly_template_context
+from .template_context import day_names_for_school, weekly_template_context
 
 log = logging.getLogger("flexedacademy.prompts")
 
@@ -245,6 +245,7 @@ def week_system_prompt(
     output_length: str = "medium",
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
+    template_days = day_names_for_school(school_id)
 
     blocks = [
         (f"You are an expert {subject} curriculum designer and master "
@@ -280,7 +281,7 @@ def week_system_prompt(
         _standard_variety_instruction(result),
         f"""TASK:
 
-Design a cohesive arc across the template-defined day axis, {' -> '.join(DAY_NAMES)}. Scaffold the learning
+Design a cohesive arc across the template-defined day axis, {' -> '.join(template_days)}. Scaffold the learning
 targets so the week builds rather than repeating one skill five times. Each learning target MUST start with an "I can" statement using a Bloom's taxonomical verb appropriately matched to the Depth of Knowledge (DOK) of the task. For EVERY teaching day, you must identify the closest-fitting primary standard from the "--- PRIMARY COURSE STANDARDS ---" block. HOWEVER, if no primary course standards are provided (e.g. for a Pre-AP class), you MUST leave the `standards` field blank. NEVER put ACT standards in the `standards` field.
 Also complete `vocabulary`, `reteach_small_groups`, and `cross_curricular_connection` for every teaching day. These are printed in school templates that require each section; make them specific to that day's lesson instead of repeating generic filler.
 THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, `act_alignment`
@@ -294,11 +295,11 @@ Show how the activity actually fulfills the standards you cite.
 
 Return JSON matching this schema exactly:
 
-{plan_schema_snippet()}
+{plan_schema_snippet(template_days)}
 
 Do not include teacher, course, or period — those are filled in from the
-teacher's saved settings, not by you. Include exactly {len(DAY_NAMES)} days, one
-per weekday, named exactly as listed, each name used EXACTLY ONCE — never repeat
+teacher's saved settings, not by you. Include exactly {len(template_days)} days, one
+per template day, named exactly as listed, each name used EXACTLY ONCE — never repeat
 a weekday. If a day is a holiday or in-service, set `no_school` to true for it
 and leave its content fields as empty strings.
 
@@ -324,6 +325,7 @@ def day_system_prompt(
     custom_instructions: str | None = None,
     class_custom_instructions: str | None = None,
     output_length: str = "medium",
+    day_names: list[str] | tuple[str, ...] | None = None,
 ) -> str:
     rules = planning_rules() if subject == "AP Language & Composition" else ""
 
@@ -363,7 +365,7 @@ standards block.
 
 Return JSON for that one day matching this schema exactly:
 
-{day_schema_snippet()}""",
+{day_schema_snippet(day_names)}""",
     ]
     return "\n\n---\n\n".join(b for b in blocks if b.strip())
 

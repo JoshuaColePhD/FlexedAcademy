@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 // Upload is used by the drag-and-drop overlay below and was missing from this
 // list — the overlay only renders while a file is actually being dragged over
@@ -10,7 +10,6 @@ import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { suggestionCompletion } from '../lib/contextualSuggestions'
 
-const MAX_H = 220
 // A guardrail, not a technical ceiling — bounds how many extractText calls
 // one drop/pick can fire at once. See attachFiles' own comment for why the
 // overflow gets its own toast instead of just being quietly ignored.
@@ -124,9 +123,9 @@ export function Composer({
   voicePanel = null,
   // The text-mode twin of voicePanel — a clarification round docked above
   // the input instead of stuck mid-transcript (see ChatPage's
-  // questionsExit/lastQuestions and LessonQuestions). Same slot shape, same
-  // "the composer grows to make room for it" read; the two never show at
-  // once, since voice mode surfaces its own questions through voicePanel.
+  // questionsExit/lastQuestions and LessonQuestions). It lives above the
+  // persistent input shell; the two never show at once, since voice mode
+  // surfaces its own questions through voicePanel.
   questionsPanel = null,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
@@ -138,7 +137,6 @@ export function Composer({
 }) {
   const toast = useToast()
   const textareaRef = useRef(null)
-  const wrapperRef = useRef(null)
   const mediaRecorder = useRef(null)
   const audioChunks = useRef([])
   // Stamped onto each attachment as `_id` at attach-time — see Chip's own
@@ -188,9 +186,7 @@ export function Composer({
   // (add-pacing-guide, add-school-calendar) — those have no sentence to
   // type or send, so they're the Greeting's own inline hint instead (see
   // ChatPage's emptyStateHint). Whatever's here is always a real ghost-
-  // text candidate. When the composer is empty, that candidate also gets one
-  // quiet chip above the writing surface; it disappears at the first typed
-  // character, leaving the input itself free of competing UI.
+  // text candidate for the composer.
   const textSuggestion = candidateSuggestions[0] || null
   // A stable identity for "which suggestion is this" that survives the
   // LLM-grounding call swapping in better wording later (see ChatPage's
@@ -216,12 +212,11 @@ export function Composer({
   // rather than requiring a specific "prove it's stale" keystroke.
   const [dismissed, setDismissed] = useState(null)
   const isDismissed = dismissed && dismissed.key === suggestionKey && dismissed.value === value
-  // An empty composer already presents the suggestion as the visible chip
-  // above the field. Showing the same sentence a second time as ghost text
-  // inside the empty input made the idle state feel duplicated and visually
-  // noisy. Ghost completion becomes useful only after the teacher starts a
-  // matching phrase; until then, the real placeholder owns the field.
-  const completion = value.trim() && activeSuggestion && !isDismissed
+  // The suggestion is always an inline completion, including when the
+  // composer is empty. The real placeholder disappears while the ghost text
+  // is visible, so there is one sentence in the field and one interaction:
+  // press Tab to accept it, or keep typing to replace it.
+  const completion = activeSuggestion && !isDismissed
     ? suggestionCompletion(value, activeSuggestion)
     : ''
 
@@ -248,23 +243,6 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestionKey, Boolean(completion)])
 
-  // Whether the box is already at MAX_H and scrolling instead of still
-  // growing — the moment content FIRST crosses that line is the one point
-  // in typing (or pasting) a long prompt that's worth a signal; every
-  // keystroke after that is already scrolling and needs no repeat cue.
-  const wasCappedRef = useRef(false)
-  const autosize = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    const capped = el.scrollHeight > MAX_H
-    el.style.height = `${Math.min(el.scrollHeight, MAX_H)}px`
-    if (capped && !wasCappedRef.current) pulseMotion('capped', 450)
-    wasCappedRef.current = capped
-  }, [pulseMotion])
-
-  useLayoutEffect(autosize, [value, autosize])
-
   /* Only when asked. The composer is the primary control on an empty screen, so
      focusing it there is right; doing it unconditionally would steal focus every
      time the panel re-renders. */
@@ -272,19 +250,6 @@ export function Composer({
     if (focusOnMount) textareaRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Re-measure once webfonts land and whenever the width changes. Without this
-  // the first measurement happens while the fallback font is still in use — the
-  // placeholder wraps to far more lines, and the box gets stuck at max height
-  // because `value` never changes to trigger another pass.
-  useEffect(() => {
-    document.fonts?.ready.then(autosize)
-    // Observe the wrapper, not the textarea — autosize changes the textarea's own
-    // height, which would re-trigger an observer watching it.
-    const ro = new ResizeObserver(autosize)
-    if (wrapperRef.current) ro.observe(wrapperRef.current)
-    return () => ro.disconnect()
-  }, [autosize])
 
   const startRecording = async () => {
     try {
@@ -485,7 +450,11 @@ export function Composer({
      * The gesture requirement is satisfied where it belongs now: by the press
      * on the voice button itself, which is the only thing that opens a session. */
     pulseMotion('submit', 320)
-    onSubmit()
+    // Pass the current draft across the component boundary. Keeping the
+    // draft lookup inside ChatPage made its submit callback depend on the
+    // parent's `query` state, recreating transcript callbacks on every
+    // keystroke. The composer owns the interaction, so send its snapshot.
+    onSubmit(value)
   }
 
   const acceptSuggestion = (suggestionToAccept = activeSuggestion) => {
@@ -518,6 +487,14 @@ export function Composer({
       acceptSuggestion()
       return
     }
+    // Escape is the quickest way to stop an in-flight response when focus is
+    // still in the composer. Keep it ahead of ghost-text dismissal so the
+    // same key never merely hides the suggestion while a request continues.
+    if (e.key === 'Escape' && isStreaming && onStop) {
+      e.preventDefault()
+      onStop()
+      return
+    }
     if (e.key === 'Escape' && completion) {
       e.preventDefault()
       setDismissed({ key: suggestionKey, value })
@@ -529,29 +506,36 @@ export function Composer({
     }
   }
 
-  // The compact composer uses a soft-rectangle radius rather than a full pill.
-  // The CSS below animates between two physically meaningful radii as the
-  // questions dock grows, keeping the field grounded instead of bubble-like.
-  const isExpanded = Boolean(questionsPanel) || voiceModeActive
+  // The input surface is deliberately invariant: accessory panels and file
+  // chips live above it, while the textarea scrolls internally. This keeps a
+  // suggestion, a long draft, a clarification round, or a streaming state
+  // from changing the composer's outer shape under the teacher's cursor.
   return (
     <div className="relative w-full">
-      {activeSuggestion && !value && !isStreaming && !questionsPanel ? (
-        <div className="composer-suggestion-tray" aria-label="Suggested prompt">
-          <button
-            type="button"
-            className="composer-suggestion-chip fa-press"
-            onClick={() => acceptSuggestion(activeSuggestion)}
-          >
-            <span className="composer-suggestion-label">Try this</span>
-            <span className="composer-suggestion-text">{activeSuggestion.prompt}</span>
-          </button>
+      {voicePanel}
+      {questionsPanel}
+
+      {attachments.length > 0 ? (
+        <div className="composer-attachments flex flex-nowrap gap-2 overflow-x-auto px-3 pb-2" role="list" aria-label="Attached files">
+          {attachments.map((f) => (
+            <Chip
+              // Was `${f.filename}-${i}` — a removed chip only leaves the
+              // array once its own 150ms exit animation finishes, so stable
+              // attach-time ids prevent sibling removals from remounting a
+              // chip that is still animating out.
+              key={f._id}
+              file={f}
+              onRemove={() => setAttachments((prev) => prev.filter((x) => x !== f))}
+              onSaveAsDocument={
+                onSaveAttachmentAsDocument && f.file ? () => onSaveAttachmentAsDocument(f) : undefined
+              }
+            />
+          ))}
         </div>
       ) : null}
+
       <div
-        className={`composer-shell ${isExpanded ? 'is-expanded' : ''} relative flex w-full flex-col overflow-hidden border border-edge bg-paper-raised ${
-          !isExpanded ? 'shadow-sm' : ''
-        } ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
-        ref={wrapperRef}
+        className={`composer-shell relative flex h-14 min-h-14 max-h-14 w-full flex-col overflow-hidden border border-edge bg-paper-raised ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
       >
         {isDragging ? createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/60 backdrop-blur-md">
@@ -567,42 +551,8 @@ export function Composer({
           </div>,
           document.body
         ) : null}
-        {voicePanel}
-        {/* The one thing that visually opens the composer — an actual
-            clarifying-questions round (LessonQuestions, docked here by
-            ChatPage). A plain suggestion, however specific, never grows the
-            box any more; it's ghost text only (see `completion` below),
-            the same VS Code inline-completion contract: Tab to accept,
-            keep typing to ignore, nothing to click. */}
-        {questionsPanel}
-
-        {attachments.length > 0 ? (
-          <div className="flex flex-wrap gap-2 px-3 pt-2.5">
-            {attachments.map((f) => (
-              <Chip
-                // Was `${f.filename}-${i}` — a removed chip only leaves the
-                // array once its own 150ms exit animation finishes
-                // (useExitTransition below), so removing two chips within
-                // that window reindexes everything after the first one to
-                // finish. That changed a still-animating chip's key mid-exit,
-                // which React reads as an entirely new element: it remounted
-                // fresh (mounted: true, closing: false) and visibly snapped
-                // back to fully opaque instead of finishing its fade. `_id`
-                // is stamped once at attach time and never depends on
-                // position, so a sibling's removal can't touch it.
-                key={f._id}
-                file={f}
-                onRemove={() => setAttachments((prev) => prev.filter((x) => x !== f))}
-                onSaveAsDocument={
-                  onSaveAttachmentAsDocument && f.file ? () => onSaveAttachmentAsDocument(f) : undefined
-                }
-              />
-            ))}
-          </div>
-        ) : null}
-
         <div
-          className={`relative flex min-h-[56px] items-center px-3 py-1.5 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
+          className={`relative flex h-14 min-h-14 items-center px-3 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
         >
           {/* Was hardcoded to "Describe the week you want to plan" — missed
               when `placeholder`/`sendLabel` below were made props specifically
@@ -656,9 +606,7 @@ export function Composer({
           />
 
           <div
-            className={`relative min-w-0 flex-1 rounded-md ${
-              motionState === 'accept' || motionState === 'capped' ? 'fa-input-flash' : ''
-            }`}
+            className={`relative min-w-0 flex-1 rounded-md ${motionState === 'accept' ? 'fa-input-flash' : ''}`}
           >
             <span className="sr-only" role="status" aria-live="polite">
               {suggestionAnnouncement}
@@ -671,22 +619,16 @@ export function Composer({
                 // top-0/bottom-0 to match the (empty, one-line-tall)
                 // textarea behind it, with overflow-hidden on top of that —
                 // on a phone-width composer, a full untyped suggestion
-                // ("Let's review this plan.") routinely needs 2 lines,
-                // and the second one was getting silently clipped by the
-                // rounded pill's own bottom curve, right where "Tab ⇥"
-                // lives. A ghost preview is meant to be glanced at and
-                // accepted or ignored, not fully read multi-line — clip
-                // at the visible edge on one line (matching how VS Code's
-                // own inline completions behave) instead of wrapping into
-                // a line nothing can actually see.
+                // ("Let's review this plan.") routinely needs 2 lines.
+                // A ghost preview is meant to be glanced at and accepted or
+                // ignored, not fully read as a second block of UI — clip at
+                // the visible edge on one line, matching inline-completion
+                // behavior instead of wrapping the composer around it.
                 className={`pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-nowrap ${COMPOSER_TEXT_METRICS}`}
               >
                 <span className="text-ink">{value}</span>
                 <span className="composer-ghost animate-slide-in-right text-ink-faint">
                   {completion}
-                  <span className="ml-2 inline-flex items-center gap-1 rounded bg-paper-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted ring-1 ring-inset ring-edge">
-                    Tab ⇥
-                  </span>
                 </span>
               </div>
             ) : null}
@@ -702,6 +644,7 @@ export function Composer({
                * top of each other. */
               placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
+              aria-keyshortcuts="Tab, Escape, Enter"
               /* COMPOSER_TEXT_METRICS (module scope, top of file), not each
                  side hardcoding its own copy — that's what let the real
                  textarea (py-2.5/text-sm) and the ghost-completion overlay
@@ -711,14 +654,11 @@ export function Composer({
                  replaces it the instant you start typing (Josh's own "the
                  text is not centered when you type," 2026-08-27). One
                  constant now, so there's no second copy left to diverge.
-                 On a phone, the same centered row also keeps a wrapped draft
-                 balanced as the textarea grows: the control row and the text
-                 field share the shell's vertical rhythm instead of the old
-                 bottom-only gutter making the text look low. The shared
-                 COMPOSER_TEXT_METRICS keeps the ghost preview and real draft
-                 on the same line-height and padding so they never jump when
-                 typing starts. */
-              className={`composer-input max-h-[220px] w-full resize-none overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted transition-[height,color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+                 The input now remains one line tall and scrolls internally for
+                 a multiline draft. The shared COMPOSER_TEXT_METRICS keeps the
+                 ghost preview and real draft on the same line-height and
+                 padding so they never jump when typing starts. */
+              className={`composer-input h-12 min-h-12 max-h-12 w-full resize-none overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted transition-[color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}

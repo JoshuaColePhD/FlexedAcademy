@@ -15,6 +15,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..template_context import day_names_for_school
 from .drive import get_valid_access_token
 
 log = logging.getLogger("flexedacademy.routes.plans")
@@ -255,11 +256,12 @@ def patch_plan(plan_id: str, body: PatchPlan, bg_tasks: BackgroundTasks, user_id
     fields: dict = {}
 
     if body.plan_json is not None:
-        plan, warnings = schema.validate_plan(body.plan_json)
         # The plan's OWN class, not get_settings_row(user_id)'s account-wide
         # "most recently touched" row — same cross-class leak service.finalize
         # had (see service.identity_for).
         cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+        template_days = day_names_for_school(db.class_school(cls, user_id))
+        plan, warnings = schema.validate_plan(body.plan_json, day_names=template_days)
         identity = service.identity_for(user_id, cls)
         plan = schema.with_identity(
             plan, teacher=identity["teacher"], course=identity["course"], period=identity["period"]
@@ -352,14 +354,16 @@ def revise_whole_plan(
     )
     context = retrieval.format_context(res)
     
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    school_id = db.class_school(cls, user_id)
+
     # Generate critique and revised plan
     new_plan_json = llm.critique_and_revise(
-        user_id, row["plan_json"], context, feedback=(body.feedback if body else None)
+        user_id, row["plan_json"], context, feedback=(body.feedback if body else None), school_id=school_id
     )
     
     # Validate and save
-    plan, warnings = schema.validate_plan(new_plan_json)
-    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    plan, warnings = schema.validate_plan(new_plan_json, day_names=day_names_for_school(school_id))
     identity = service.identity_for(user_id, cls)
     plan = schema.with_identity(
         plan, teacher=identity["teacher"], course=identity["course"], period=identity["period"]
