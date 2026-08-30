@@ -2471,9 +2471,18 @@
     cursor: grabbing;
   }
   .plan-peek-latest {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + var(--sp-2));
+    left: 0;
+    z-index: 2;
     display: flex;
     justify-content: center;
-    margin-bottom: var(--sp-2);
+    margin: 0;
+    pointer-events: none;
+  }
+  .plan-peek-latest button {
+    pointer-events: auto;
   }
   .plan-peek-handle {
     position: relative;
@@ -2810,6 +2819,44 @@
        "Scho…" at ordinary laptop widths (15vw is under 220px from roughly
        1024–1466px wide, i.e. most laptops). */
     width: clamp(254px, 16vw, 320px);
+  }
+
+  /* Landscape iPhones report a tablet-width viewport but only leave roughly
+     390px of vertical space after Safari's chrome. Treat the materials rail
+     as an optional compact drawer at that shape: the chat gets the reading
+     width by default, while an opened rail remains useful instead of taking
+     a desktop-sized bite out of the conversation. */
+  @media (min-width: 768px) and (max-width: 1023.98px) and (orientation: landscape) and (max-height: 520px) {
+    .artifact-drawer.is-open {
+      width: min(232px, 29vw);
+    }
+    .artifact-rail {
+      padding: 8px 10px;
+    }
+    .artifact-rail .rail-group {
+      margin-bottom: 10px;
+    }
+    .artifact-rail .rail-card {
+      gap: 8px;
+      padding: 10px;
+    }
+    .artifact-rail .rail-tile {
+      width: 32px;
+      height: 32px;
+    }
+    .artifact-rail .rail-title {
+      font-size: var(--fs-xs);
+    }
+    .artifact-rail .rail-sub {
+      font-size: var(--fs-2xs);
+    }
+    .chat-head {
+      min-height: 44px;
+      padding: 0 10px;
+    }
+    .chat-context-strip {
+      min-height: 24px;
+    }
   }
   .artifact-drawer-handle {
     position: relative;

@@ -13,6 +13,7 @@
     "test:auth": "node scripts/test-auth-state.mjs",
     "test:return-to": "node scripts/test-return-to.mjs",
     "test:e2e": "playwright test",
+    "test:all": "npm run test:voice && npm run test:contextual && npm run test:onboarding && npm run test:auth && npm run test:return-to && npm run test:e2e",
     "check:tokens": "node scripts/check-tokens.mjs",
     "check:classes": "node scripts/check-classes.mjs",
     "check": "npm run lint && npm run check:tokens && npm run check:classes && npm run build",

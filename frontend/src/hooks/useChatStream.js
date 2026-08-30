@@ -19,6 +19,7 @@ const SSE_PREFIX = 'data:'
 // problem with the request, so a fresh sample often just works.
 const RETRYABLE_CODES = new Set([
   'stream_truncated',
+  'stream_connection_error',
   'upstream_timeout',
   'upstream_connection_error',
   'rate_limited',
@@ -214,21 +215,37 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     cancelQueuedText()
     setText('')
 
-    const res = await fetch(api.chatStreamUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages,
-        mode,
-        chat_id: chatId ?? null,
-        class_id: classId ?? null,
-        voice: Boolean(voice),
-        week_number: weekNumber ?? null,
-        request_id: requestId,
-      }),
-      signal: controller.signal,
-      credentials: 'include',
-    })
+    let res
+    try {
+      res = await fetch(api.chatStreamUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages,
+          mode,
+          chat_id: chatId ?? null,
+          class_id: classId ?? null,
+          voice: Boolean(voice),
+          week_number: weekNumber ?? null,
+          request_id: requestId,
+        }),
+        signal: controller.signal,
+        credentials: 'include',
+      })
+    } catch (err) {
+      if (err.name === 'AbortError') throw err
+      // Fetch rejects with a browser-specific TypeError when a proxy, wifi
+      // connection, or server disappears before the SSE response exists. A
+      // raw TypeError has no stable code, so use the same retryable envelope
+      // as a mid-stream disconnect. Without this, the teacher saw a failed
+      // turn even though the existing one-retry policy could have recovered
+      // it safely.
+      throw new ApiError('The connection dropped before the reply started.', {
+        code: 'stream_connection_error',
+        hint: 'Trying once more…',
+        extra: { retryable: true },
+      })
+    }
 
     if (!res.ok || !res.body) {
       let payload = null
@@ -305,7 +322,22 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     }
 
     for (;;) {
-      const { value, done } = await reader.read()
+      let next
+      try {
+        next = await reader.read()
+      } catch (err) {
+        if (err.name === 'AbortError') throw err
+        // A connection can disappear after accepted/context events but before
+        // the model finishes. Treat that exactly like the pre-response case:
+        // the caller can retry the same logical turn and the UI can keep its
+        // request id while replacing the incomplete stream.
+        throw new ApiError('The connection dropped while the reply was loading.', {
+          code: 'stream_connection_error',
+          hint: 'Trying once more…',
+          extra: { retryable: true },
+        })
+      }
+      const { value, done } = next
       if (value) {
         buffer += decoder.decode(value, { stream: !done })
 

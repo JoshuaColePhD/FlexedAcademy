@@ -350,9 +350,16 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 dist_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+assets_dir = os.path.join(dist_dir, "assets")
 
-if os.path.isdir(dist_dir):
-    app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
+if os.path.isfile(os.path.join(dist_dir, "index.html")):
+    # Backend-only test jobs and API deployments may intentionally omit the
+    # frontend build. Check for index.html (the actual SPA contract), not just
+    # the parent directory, and only mount assets when that directory exists.
+    # Otherwise importing `backend.server` fails during test collection before
+    # the API can even report a useful error.
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     # Resolved once, and every candidate path has to stay underneath it.
     dist_root = os.path.realpath(dist_dir)

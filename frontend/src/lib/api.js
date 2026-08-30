@@ -151,6 +151,8 @@ async function upload(path, formData, { signal } = {}) {
 }
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const DOCX_POLL_ATTEMPTS = 8
+const DOCX_POLL_DELAY_MS = 450
 
 function downloadFilename(contentDisposition, fallback) {
   const encoded = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
@@ -171,50 +173,82 @@ function downloadFilename(contentDisposition, fallback) {
  * container, so the signature is the final guard even if a proxy changes the
  * Content-Type header. */
 async function downloadDocx(path, { filename = 'lesson-plan.docx', signal } = {}) {
-  const timeoutController = new AbortController()
-  const timeoutId = setTimeout(() => timeoutController.abort(), 60000)
-  const combinedSignal = signal
-    ? AbortSignal.any([signal, timeoutController.signal])
-    : timeoutController.signal
   let res
-  try {
-    res = await fetch(`${API_BASE}${path}`, { credentials: 'include', signal: combinedSignal })
-  } catch (err) {
-    if (err.name === 'AbortError' && signal?.aborted) throw err
-    if (err.name === 'AbortError') {
-      throw new ApiError('The document took too long to download.', { code: 'timeout' })
+  let lastPendingError = null
+  for (let attempt = 0; attempt < DOCX_POLL_ATTEMPTS; attempt += 1) {
+    const timeoutController = new AbortController()
+    const timeoutId = setTimeout(() => timeoutController.abort(), 10000)
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, timeoutController.signal])
+      : timeoutController.signal
+    try {
+      res = await fetch(`${API_BASE}${path}`, { credentials: 'include', signal: combinedSignal })
+    } catch (err) {
+      if (err.name === 'AbortError' && signal?.aborted) throw err
+      if (err.name === 'AbortError') {
+        throw new ApiError('The document took too long to download.', { code: 'timeout' })
+      }
+      if (attempt < DOCX_POLL_ATTEMPTS - 1) {
+        await sleep(DOCX_POLL_DELAY_MS * (attempt + 1))
+        continue
+      }
+      throw new ApiError('Can’t reach the document server.', {
+        code: 'network_error',
+        hint: 'Check your connection and try again.',
+      })
+    } finally {
+      clearTimeout(timeoutId)
     }
-    throw new ApiError('Can’t reach the document server.', {
-      code: 'network_error',
-      hint: 'Check your connection and try again.',
-    })
-  } finally {
-    clearTimeout(timeoutId)
+
+    if (!res.ok) {
+      let body = null
+      try {
+        body = await res.clone().json()
+      } catch {
+        // Let the shared error envelope handle non-JSON responses below.
+      }
+      const pending = body?.error?.code === 'docx_pending' || res.status === 202
+      if (pending && attempt < DOCX_POLL_ATTEMPTS - 1) {
+        lastPendingError = apiErrorFromBody(body, res.status)
+        await sleep(DOCX_POLL_DELAY_MS * (attempt + 1))
+        continue
+      }
+      throw await toError(res)
+    }
+
+    const contentType = (res.headers.get('content-type') || '').split(';', 1)[0].toLowerCase()
+    const blob = await res.blob()
+    const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+    const isZip = header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04
+    if (contentType.includes('json') || !isZip) {
+      // Never hand an error envelope to the browser's download manager. A
+      // transient 200/JSON response can happen while a proxy or worker is
+      // catching up, so give the document job a few chances to become a real
+      // ZIP before surfacing a visible error.
+      lastPendingError = new ApiError('The DOCX is not ready yet.', {
+        code: 'docx_invalid_response',
+        hint: 'Wait a moment and try again.',
+        status: res.status,
+      })
+      if (attempt < DOCX_POLL_ATTEMPTS - 1) {
+        await sleep(DOCX_POLL_DELAY_MS * (attempt + 1))
+        continue
+      }
+      throw lastPendingError
+    }
+
+    const objectUrl = URL.createObjectURL(new Blob([blob], { type: DOCX_MIME }))
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = downloadFilename(res.headers.get('content-disposition'), filename)
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    return
   }
-
-  if (!res.ok) throw await toError(res)
-
-  const contentType = (res.headers.get('content-type') || '').split(';', 1)[0].toLowerCase()
-  const blob = await res.blob()
-  const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
-  const isZip = header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04
-  if (contentType.includes('json') || !isZip) {
-    throw new ApiError('The DOCX is not ready yet.', {
-      code: 'docx_invalid_response',
-      hint: 'Wait a moment and try again.',
-      status: res.status,
-    })
-  }
-
-  const objectUrl = URL.createObjectURL(new Blob([blob], { type: DOCX_MIME }))
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = downloadFilename(res.headers.get('content-disposition'), filename)
-  link.style.display = 'none'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  throw lastPendingError || new ApiError('The DOCX is not ready yet.', { code: 'docx_pending' })
 }
 
 export const api = {

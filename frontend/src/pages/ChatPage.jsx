@@ -481,6 +481,12 @@ export function ChatPage() {
   const isPhone = mode === 'phone'
   const isTablet = mode === 'tablet'
   const tabletPortrait = useMediaQuery('(orientation: portrait)')
+  /* An iPhone in landscape commonly reports a tablet-width CSS viewport. It
+     still has phone-height space, though, so the desktop header and an
+     auto-open materials drawer crowd out the actual conversation. Keep the
+     compact header vocabulary for this short landscape shape without
+     changing the tablet's document-reader behavior. */
+  const isLandscapePhone = isTablet && !tabletPortrait
   /* A phone must land in a ready-to-type conversation. The old default sent
      every no-chat route to MobileChatHome, which rendered the rail but not
      the Composer — exactly the moment a teacher needs to start a plan. The
@@ -2894,10 +2900,13 @@ export function ChatPage() {
   useEffect(() => {
     if (railAutoOpenedRef.current) return
     if (hasArtifact) {
-      setRailOpen(true)
+      /* Landscape phone has enough width for an optional rail, but not enough
+         height to justify opening it automatically. Leave its slim handle
+         available so the teacher can pull Materials in when wanted. */
+      setRailOpen(!isLandscapePhone)
       railAutoOpenedRef.current = true
     }
-  }, [busy, hasArtifact])
+  }, [busy, hasArtifact, isLandscapePhone])
 
   // Process autoPrompt from navigation (e.g. 5-Minute Sub Plan)
   useEffect(() => {
@@ -3146,7 +3155,7 @@ export function ChatPage() {
           it, not floating apart from the rest of the pane's own left
           margin. */}
       <div className="flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10">
-        {isPhone ? (
+        {isPhone || isLandscapePhone ? (
           /* The old dense row (ClassSwitcher + a pacing dot + WeekPicker + a
              calendar dot, all inline) doesn't fit a phone width without
              everything shrinking past readable — this is a back button (to
@@ -3546,25 +3555,27 @@ export function ChatPage() {
           the plan handle looked like it was floating in the middle of the
           composer. The drawer now remains the final surface above the input,
           while Latest clearly belongs to the transcript. */}
-      {latestPill.mounted ? (
-        <div className="plan-peek-latest">
-          <button
-            type="button"
-            className={`fa-rise fa-press flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
-            onClick={() => {
-              endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-            }}
-          >
-            <ArrowDown size={13} aria-hidden="true" /> Latest
-          </button>
-        </div>
-      ) : null}
-
       {/* The dock. Composer stays in the SAME slot of the same parent across
           empty/non-empty transitions, preserving focus, the recorder, and the
           fixed-shape input shell. Only the wrapper's className may change. */}
       <div className="shrink-0 bg-transparent pb-5 pt-3">
-        <div className="mx-auto w-full max-w-4xl px-gutter">
+        <div className="relative mx-auto w-full max-w-4xl px-gutter">
+          {/* Latest is an anchored affordance, not another composer row. It
+              sits above the dock without contributing height, so following a
+              long transcript never creates a white band or moves the input. */}
+          {latestPill.mounted ? (
+            <div className="plan-peek-latest">
+              <button
+                type="button"
+                className={`fa-rise fa-press flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
+                onClick={() => {
+                  endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+                }}
+              >
+                <ArrowDown size={13} aria-hidden="true" /> Latest
+              </button>
+            </div>
+          ) : null}
           {/* navigator.onLine, not a failed request — this is proactive
               (shown the instant a device loses its link, before a teacher
               even tries to send anything) rather than reactive to one

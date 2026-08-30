@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .config import settings
 from .retrieval import UNGROUNDABLE_FAMILIES, RetrievalResult, format_context
-from .schema import DAY_NAMES, day_schema_snippet, field_json_schema, plan_schema_snippet
+from .schema import day_schema_snippet, field_json_schema, plan_schema_snippet
 from .schoolcal import NO_CALENDAR_SCHOOL_ID
 from .template_context import day_names_for_school, weekly_template_context
 
