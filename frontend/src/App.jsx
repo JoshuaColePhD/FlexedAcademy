@@ -458,35 +458,6 @@ const queryClient = new QueryClient({
   },
 })
 
-function BootMessage() {
-  const { status } = useAuth()
-  const prefersReducedMotion = useReducedMotion()
-  return (
-    <AnimatePresence>
-      {status === 'loading' && (
-        <motion.div
-          className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none"
-          /* Only `exit` was ever set — with no `initial` to diverge from,
-             `animate` defaults to matching it, so this popped onto screen
-             at full opacity with no entrance at all, then took a full
-             1.2s (roughly 3x this app's own longest named duration,
-             --t-slow's 420ms) to fade back out — an unpolished, asymmetric
-             "instant in, sluggish out" that's exactly what "the loading
-             page needs to be much smoother" (2026-08-27) was describing.
-             Same --ease-glide curve used for the plan overlay's own
-             entrance a few commits ago (framer-motion needs the literal
-             cubic-bezier values, not the CSS var), both directions now. */
-          initial={prefersReducedMotion ? false : { opacity: 0 }}
-          animate={{ opacity: 1, transition: prefersReducedMotion ? { duration: 0 } : { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
-          exit={{ opacity: 0, transition: prefersReducedMotion ? { duration: 0 } : { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
-        >
-          <h1 className="text-4xl font-semibold tracking-tight text-ink/40">FlexEd Academy</h1>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-}
-
 /* Motion has to degrade as a system, not one component at a time. Coarse
  * touch hardware pays the highest price for nested backdrop filters, animated
  * shadows, and ambient gradient repaints; flag it once so CSS can retain
@@ -526,7 +497,6 @@ export default function App() {
                       <VoiceProvider>
                         <div className="app-texture neo-world flex h-app w-full overflow-hidden bg-paper-sunken font-sans text-ink relative">
                           <div className="app-blob absolute inset-0 z-0" aria-hidden="true" />
-                          <BootMessage />
                           <Suspense fallback={<BootScreen />}>
                             <CommandPalette />
                             <Gate />
