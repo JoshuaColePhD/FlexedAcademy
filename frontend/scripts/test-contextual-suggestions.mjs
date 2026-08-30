@@ -121,6 +121,28 @@ assert.equal(contextual.length, 1)
 assert.equal(contextual[0].id, 'follow-up:turn-1')
 assert.equal(contextual[0].prompt, "Let's keep building the rhetorical analysis of Gatsby.")
 
+const contextualRevision = getContextualSuggestions({
+  ...base,
+  artifact: { planId: 'plan-1' },
+  messages: [{ id: 'turn-revise', role: 'user', content: 'Make a lesson plan about rhetorical analysis of Gatsby.' }],
+})
+assert.equal(contextualRevision[0].prompt, "Let's revise the rhetorical analysis of Gatsby plan.")
+assert.ok(!contextualRevision[0].prompt.includes('plan plan'))
+
+// An accepted ghost completion is now part of history. It must not become
+// the topic of the next ghost completion or duplicate its own wrapper.
+const acceptedGhost = getContextualSuggestions({
+  ...base,
+  messages: [{
+    id: 'turn-3',
+    role: 'user',
+    content: "Let's keep building the Which specific essay should anchor the week? Use a commonly taught AP…",
+  }],
+})
+assert.equal(acceptedGhost.length, 1)
+assert.equal(acceptedGhost[0].prompt, "Let's keep building this lesson plan.")
+assert.ok(!acceptedGhost[0].prompt.includes('keep building the keep building'))
+
 const nonPlanningFollowUp = getContextualSuggestions({
   ...base,
   messages: [{ id: 'turn-2', role: 'user', content: 'Count from 1 to 30.' }],

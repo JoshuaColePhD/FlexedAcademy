@@ -28,6 +28,7 @@ const MAX_ATTACH_BATCH = 5
 // bottom-only action gutter, so the placeholder and typed text share the same
 // optical center instead of sitting a little high or low as the controls swap.
 const COMPOSER_TEXT_METRICS = 'px-0 py-3 text-[0.9375rem] leading-6'
+const COMPOSER_GHOST_METRICS = 'text-[0.9375rem] leading-6'
 
 /* An attachment chip's own mount lifecycle — entrance was already implicit
  * (a plain array render, no fade), removal was a hard splice. This is
@@ -615,19 +616,14 @@ export function Composer({
               <div
                 key={activeSuggestion?.id || 'none'}
                 aria-hidden="true"
-                // whitespace-nowrap, not pre-wrap: this overlay is pinned to
-                // top-0/bottom-0 to match the (empty, one-line-tall)
-                // textarea behind it, with overflow-hidden on top of that —
-                // on a phone-width composer, a full untyped suggestion
-                // ("Let's review this plan.") routinely needs 2 lines.
-                // A ghost preview is meant to be glanced at and accepted or
-                // ignored, not fully read as a second block of UI — clip at
-                // the visible edge on one line, matching inline-completion
-                // behavior instead of wrapping the composer around it.
-                className={`pointer-events-none absolute inset-x-2 top-0 bottom-0 overflow-hidden whitespace-nowrap ${COMPOSER_TEXT_METRICS}`}
+                // Keep the preview in the same centered, single-line row as
+                // the real input. Vertical padding here used to make the
+                // overlay's line box taller than the fixed composer and clip
+                // the bottom of long ghost text.
+                className={`composer-ghost-overlay pointer-events-none absolute inset-0 overflow-hidden ${COMPOSER_GHOST_METRICS}`}
               >
-                <span className="text-ink">{value}</span>
-                <span className="composer-ghost animate-slide-in-right text-ink-faint">
+                <span className="composer-ghost-prefix text-ink">{value}</span>
+                <span className="composer-ghost shrink-0 animate-slide-in-right text-ink-faint">
                   {completion}
                 </span>
               </div>
@@ -658,7 +654,7 @@ export function Composer({
                  a multiline draft. The shared COMPOSER_TEXT_METRICS keeps the
                  ghost preview and real draft on the same line-height and
                  padding so they never jump when typing starts. */
-              className={`composer-input h-12 min-h-12 max-h-12 w-full resize-none overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted transition-[color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+              className={`composer-input h-12 min-h-12 max-h-12 w-full resize-none overflow-x-auto overflow-y-hidden whitespace-nowrap border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted transition-[color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}

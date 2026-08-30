@@ -4,6 +4,23 @@ import { accountStorageKey } from '../lib/accountStorage'
 
 const PREFIX = 'composer-draft'
 
+// One narrow migration for drafts produced by the old contextual-completion
+// loop. Those drafts are recognizable because the generated wrapper appears
+// twice; repairing only that exact shape protects anything the teacher typed
+// intentionally while making an already-open chat recover on refresh.
+function repairLegacyGhostDraft(value) {
+  const saved = String(value || '')
+  const duplicate = saved.match(/^(let['’]?s\s+keep\s+building\s+the\s+)keep\s+building\s+the\s+/i)
+  if (!duplicate) return saved
+
+  const remainder = saved.slice(duplicate[0].length).trimStart()
+  // The remainder in the reported case is a generated question card, not a
+  // teacher-authored topic. Avoid restoring that long, truncated question
+  // into a fixed one-line composer.
+  if (/^(?:which|what|how|why|when|where)\b/i.test(remainder)) return "Let's keep building this lesson plan."
+  return `${duplicate[1]}${remainder}`
+}
+
 /* Backs the composer's typed text to localStorage, keyed per chat — so
  * navigating away mid-sentence, or a refresh, doesn't just lose it. Text
  * only: attachments are real File objects (not meaningfully serializable
@@ -45,7 +62,16 @@ export function useComposerDraft(key, value, setValue, accountId) {
       // localStorage blocked (private mode, storage full) — draft recovery
       // just doesn't happen; nothing else here depends on it.
     }
-    setValue(saved)
+    const repaired = repairLegacyGhostDraft(saved)
+    setValue(repaired)
+    if (repaired !== saved) {
+      try {
+        if (repaired) localStorage.setItem(storageKey, repaired)
+        else localStorage.removeItem(storageKey)
+      } catch {
+        // ignore — draft recovery remains best-effort in private mode.
+      }
+    }
     // Only re-run when the KEY changes — re-firing on every `value` change
     // would fight the user's own typing by resetting it back to whatever
     // was last saved.

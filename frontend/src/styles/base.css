@@ -6035,6 +6035,66 @@
   .composer-ghost {
     animation: composer-ghost-in 180ms var(--ease-out) both;
   }
+  .composer-ghost-overlay {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 0 0.5rem;
+    white-space: nowrap;
+  }
+  /* The attachment rail already gets its layout from the utility classes in
+     Composer; this named hook keeps the class checker aware of that surface
+     for future attachment-specific styling. */
+  .composer-attachments {
+    display: flex;
+  }
+  .share-destination {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    min-width: 0;
+    padding: 0.75rem;
+    border: 1px solid var(--edge);
+    border-radius: 0.75rem;
+    color: var(--ink-soft);
+    text-align: left;
+    transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out), color 160ms var(--ease-out), transform 160ms var(--ease-out);
+  }
+  .share-destination:hover {
+    border-color: var(--accent);
+    background: var(--paper-sunken);
+    color: var(--ink);
+  }
+  .share-destination:active {
+    transform: translateY(1px);
+  }
+  .share-destination.is-selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 9%, var(--paper-raised));
+    color: var(--ink);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  .share-destination > span {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .share-destination strong {
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .share-destination small {
+    color: var(--ink-muted);
+    font-size: 0.6875rem;
+    line-height: 1.25;
+  }
+  .composer-ghost-prefix {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   /* Toolbar text buttons grow a rule from the left rather than lighting up a
      background — quieter, and it keeps the header free of boxes. */
   .fa-tb {

@@ -7,6 +7,7 @@ import { DecisionStack } from './DecisionStack'
 import { SmoothHeight } from './OnboardingWizard'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { api } from '../lib/api'
+import { useToast } from '../lib/toastContext'
 
 const isBareOther = (option) => option.trim().toLowerCase() === 'other'
 
@@ -81,11 +82,27 @@ function BuildProgress({ days }) {
 }
 
 function BuiltPlanCard({ builtPlan, onClose }) {
+  const toast = useToast()
+  const [downloading, setDownloading] = useState(false)
+  const downloadDocx = async () => {
+    if (downloading) return
+    setDownloading(true)
+    try {
+      await api.downloadPlanDocx(builtPlan.planId, { filename: `${builtPlan.weekLabel || 'lesson-plan'}.docx` })
+    } catch (err) {
+      toast.apiError('Could not download the DOCX', err)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div className="neo-panel fa-shadow-lift flex flex-wrap items-center gap-3 rounded-[28px] bg-paper-raised p-4">
       <span className="neo-inset grid h-9 w-9 place-items-center rounded-full text-ink"><Check size={16} strokeWidth={3} /></span>
       <div className="min-w-0 flex-1"><p className="eyebrow">Built</p><p className="text-sm font-medium text-ink">{builtPlan.weekLabel || 'This week'}</p></div>
-      <a href={api.planDownloadUrl(builtPlan.planId)} download className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-ink"><Download size={12} />Download</a>
+      <button type="button" onClick={downloadDocx} disabled={downloading} className="neo-raised tap-target flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-ink" aria-label="Download as DOCX">
+        <Download size={12} />{downloading ? 'Downloading…' : 'Download'}
+      </button>
       <button type="button" onClick={onClose} className="text-xs font-medium text-ink-soft">Done</button>
     </div>
   )

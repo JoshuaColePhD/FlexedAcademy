@@ -258,7 +258,9 @@ export function ArtifactRail({
   // render that forgot to pass it.
   onRetryArtifact = () => window.location.reload(),
 }) {
+  const toast = useToast()
   const [shareTarget, setShareTarget] = useState(null)
+  const [downloading, setDownloading] = useState(false)
   // One-way: once a teacher taps through to see the older attempts, there's
   // no reason to hide them again for the rest of this rail's life, so this
   // is a reveal, not a toggle with its own collapsed-again affordance.
@@ -308,6 +310,18 @@ export function ArtifactRail({
     : []
   const teachingDays = 5 - closed.length
 
+  const downloadDocx = async () => {
+    if (!planId || downloading) return
+    setDownloading(true)
+    try {
+      await api.downloadPlanDocx(planId, { filename: `${plan?.week_of || 'lesson-plan'}.docx` })
+    } catch (err) {
+      toast.apiError('Could not download the DOCX', err)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Materials">
       {planId || busy || artifactLoadError ? (
@@ -347,15 +361,16 @@ export function ArtifactRail({
               <ChevronRight className="rail-reader-chevron" size={16} aria-hidden="true" />
             </button>
             <span className="rail-actions flex items-center">
-              <a
-                href={api.planDownloadUrl(planId)}
-                download
+              <button
+                type="button"
                 className="rail-open fa-press"
                 aria-label="Download as DOCX"
                 title="Download as DOCX"
+                onClick={downloadDocx}
+                disabled={downloading}
               >
                 <Download size={13} aria-hidden="true" />
-              </a>
+              </button>
             </span>
           </div>
         ) : busy ? (

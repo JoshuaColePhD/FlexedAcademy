@@ -71,10 +71,21 @@ function topicFromPrompt(content) {
   const marked = clean.match(/\b(?:about|on|around|focused on|using|through)\s+(.+?)(?:[.!?]|$)/i)?.[1]
   const topic = (marked || clean)
     .replace(/^(?:help me|can you|please|i need|make|create|build|generate|design|prepare|let's|lets)\s+/i, '')
+    // A previously accepted ghost completion can come back through the
+    // message history as the latest user turn. Strip its conversational
+    // wrapper before extracting the subject, or the next completion becomes
+    // "Let's keep building the keep building the …".
+    .replace(/^(?:keep|continue)\s+building(?:\s+(?:the|this))?\s+/i, '')
+    .replace(/^(?:revise|review|finish)\s+(?:the\s+)?(?:plan|lesson plan)(?:\s+(?:for|about|on))?\s*/i, '')
     .replace(/^(?:a|an|the)\s+(?:lesson\s+)?plan\s+(?:for|on|about)\s+/i, '')
     .replace(/\b(?:for|in)\s+week\s+\d+\b/gi, '')
     .replace(/[.!?]+$/, '')
     .trim()
+
+  // Question-card copy is context, not a stable subject to repeat in the
+  // next prompt. Falling back to the generic lesson-plan continuation keeps
+  // the completion useful without echoing a long or truncated question.
+  if (/^(?:which|what|how|why|when|where)\b/i.test(topic)) return ''
   return topic.length > 72 ? `${topic.slice(0, 69).trimEnd()}…` : topic
 }
 
@@ -84,13 +95,14 @@ function followUpSuggestion(messages, artifact, targetWeek, activeClass, classCo
   if (!previous || !planningLanguage.test(content)) return null
   const topic = topicFromPrompt(content)
   const week = targetWeek ? weekLabel(targetWeek) : 'this week'
-  const focus = topic || 'this lesson plan'
+  const focus = topic ? `the ${topic}` : 'this lesson plan'
+  const revisionFocus = topic ? `${focus} plan` : focus
   return makeSuggestion({
     id: `follow-up:${previous.id || content}`,
     label: artifact ? 'Revise this direction' : 'Keep building this plan',
     prompt: artifact
-      ? `Let's revise the ${focus} plan.`
-      : `Let's keep building the ${focus}.`,
+      ? `Let's revise ${revisionFocus}.`
+      : `Let's keep building ${focus}.`,
     reason: `Continues from your last message about ${week}.`,
     priority: 1,
     context: 'conversation-follow-up',

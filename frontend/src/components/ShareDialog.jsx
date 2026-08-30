@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ExternalLink, Loader2, Upload } from 'lucide-react'
+import { Check, ExternalLink, HardDrive, Loader2, Send, Upload } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyPlanShareLink, stopSharingPlan } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
@@ -33,6 +33,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
   const [webLink, setWebLink] = useState(null)
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('reader')
+  const [deliveryMode, setDeliveryMode] = useState('my-drive') // my-drive | another-account
   const [submitting, setSubmitting] = useState(false)
   /* Whether THIS plan's /shared/{id} link currently works — null while
    * unknown. This dialog used to show the link and the "Copy" button
@@ -52,6 +53,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
     setWebLink(null)
     setEmail('')
     setRole('reader')
+    setDeliveryMode('my-drive')
     setIsPublic(null)
   }, [open, planId])
 
@@ -126,13 +128,23 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
   const submit = async (e) => {
     e.preventDefault()
     if (submitting) return
+    const recipient = deliveryMode === 'another-account' ? email.trim() : ''
+    if (deliveryMode === 'another-account' && !recipient) return
     setSubmitting(true)
     try {
-      const result = await api.sharePlan(planId, { email: email.trim(), role })
+      // The API creates the Google Doc in the connected teacher account. An
+      // optional recipient then gets Drive permission on that same file; it
+      // does not create duplicate Docs for each person we share with.
+      const result = await api.sharePlan(planId, { email: recipient, role })
       setWebLink(result.web_link)
       setShares(result.shares || [])
       setEmail('')
-      toast.success('Saved to Drive', `${documentName || 'The plan'} is now in your Google Drive.`)
+      toast.success(
+        deliveryMode === 'another-account' ? 'Saved and shared' : 'Saved to Drive',
+        deliveryMode === 'another-account'
+          ? `${documentName || 'The plan'} is in your Drive and shared with ${recipient}.`
+          : `${documentName || 'The plan'} is now in your Google Drive.`,
+      )
     } catch (err) {
       toast.apiError('Could not save to Drive', err)
     } finally {
@@ -260,7 +272,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
             for the plan branch below, wrong for this one: a quiz never
             gets a drive_file_id (no backend route for it), and the section
             underneath this heading has always shown a Canvas push instead. */}
-        <h3 className="text-sm font-medium mb-3">{isQuiz ? 'Canvas export preview' : 'Save to Google Drive'}</h3>
+        <h3 className="text-sm font-medium mb-3">{isQuiz ? 'Canvas export preview' : 'Send this plan'}</h3>
 
         {isQuiz ? (
           <>
@@ -305,27 +317,68 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
         ) : (
           <form onSubmit={submit}>
             <p className="text-sm text-ink-soft">
-              Save the .docx to your Google Drive as a real, editable Google Doc. 
-              You can optionally share it with a colleague's Google account right now.
+              Choose where this editable Google Doc should go. It will be created once in your connected Drive and reused for later shares.
             </p>
-            <label className="mt-4 block">
-              <span className="mb-1 block text-xs text-ink-muted">Google account email (optional)</span>
-              <input
-                ref={emailRef}
-                type="email"
-                className="input w-full"
-                placeholder="name@school.org"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
-            <label className="mt-3 block">
-              <span className="mb-1 block text-xs text-ink-muted">Access</span>
-              <select className="input w-full" value={role} onChange={(e) => setRole(e.target.value)}>
-                <option value="reader">Can view</option>
-                <option value="writer">Can edit</option>
-              </select>
-            </label>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2" role="tablist" aria-label="Google Drive destination">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={deliveryMode === 'my-drive'}
+                className={`share-destination ${deliveryMode === 'my-drive' ? 'is-selected' : ''}`}
+                onClick={() => setDeliveryMode('my-drive')}
+              >
+                <HardDrive size={17} aria-hidden="true" />
+                <span>
+                  <strong>Save to My Drive</strong>
+                  <small>Your connected Google Drive</small>
+                </span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={deliveryMode === 'another-account'}
+                className={`share-destination ${deliveryMode === 'another-account' ? 'is-selected' : ''}`}
+                onClick={() => {
+                  setDeliveryMode('another-account')
+                  requestAnimationFrame(() => emailRef.current?.focus())
+                }}
+              >
+                <Send size={17} aria-hidden="true" />
+                <span>
+                  <strong>Share to another Drive</strong>
+                  <small>Send to a Google account</small>
+                </span>
+              </button>
+            </div>
+
+            {deliveryMode === 'another-account' ? (
+              <>
+                <label className="mt-4 block">
+                  <span className="mb-1 block text-xs text-ink-muted">Recipient’s Google account</span>
+                  <input
+                    ref={emailRef}
+                    type="email"
+                    required
+                    className="input w-full"
+                    placeholder="name@school.org"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </label>
+                <label className="mt-3 block">
+                  <span className="mb-1 block text-xs text-ink-muted">Access</span>
+                  <select className="input w-full" value={role} onChange={(e) => setRole(e.target.value)}>
+                    <option value="reader">Can view</option>
+                    <option value="writer">Can edit</option>
+                  </select>
+                </label>
+              </>
+            ) : (
+              <p className="mt-4 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-muted">
+                The document will be saved to the Google Drive account you already connected in FlexEd Academy.
+              </p>
+            )}
 
             {shares.length ? (
               <div className="mt-4">
@@ -361,7 +414,9 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
                 className="btn btn-primary fa-press"
                 disabled={submitting}
               >
-                {submitting ? 'Saving…' : email.trim() ? 'Save & Share' : 'Save to My Drive'}
+                {submitting
+                  ? deliveryMode === 'another-account' ? 'Saving & sharing…' : 'Saving…'
+                  : deliveryMode === 'another-account' ? 'Save & share' : 'Save to My Drive'}
               </button>
             </div>
           </form>

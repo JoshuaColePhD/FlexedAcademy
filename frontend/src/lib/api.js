@@ -150,6 +150,73 @@ async function upload(path, formData, { signal } = {}) {
   return res.json()
 }
 
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+function downloadFilename(contentDisposition, fallback) {
+  const encoded = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded)
+    } catch {
+      // Fall through to the regular filename when a proxy sent malformed
+      // percent encoding.
+    }
+  }
+  return contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1] || fallback
+}
+
+/** Fetch and validate a generated DOCX before asking the browser to save it.
+ * A raw `<a download>` cannot distinguish a real file from FastAPI's JSON
+ * error envelope, which Chrome used to save as `download.json`. DOCX is a ZIP
+ * container, so the signature is the final guard even if a proxy changes the
+ * Content-Type header. */
+async function downloadDocx(path, { filename = 'lesson-plan.docx', signal } = {}) {
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), 60000)
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
+  let res
+  try {
+    res = await fetch(`${API_BASE}${path}`, { credentials: 'include', signal: combinedSignal })
+  } catch (err) {
+    if (err.name === 'AbortError' && signal?.aborted) throw err
+    if (err.name === 'AbortError') {
+      throw new ApiError('The document took too long to download.', { code: 'timeout' })
+    }
+    throw new ApiError('Can’t reach the document server.', {
+      code: 'network_error',
+      hint: 'Check your connection and try again.',
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  if (!res.ok) throw await toError(res)
+
+  const contentType = (res.headers.get('content-type') || '').split(';', 1)[0].toLowerCase()
+  const blob = await res.blob()
+  const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+  const isZip = header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04
+  if (contentType.includes('json') || !isZip) {
+    throw new ApiError('The DOCX is not ready yet.', {
+      code: 'docx_invalid_response',
+      hint: 'Wait a moment and try again.',
+      status: res.status,
+    })
+  }
+
+  const objectUrl = URL.createObjectURL(new Blob([blob], { type: DOCX_MIME }))
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = downloadFilename(res.headers.get('content-disposition'), filename)
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
+
 export const api = {
   health: ({ signal } = {}) => request('/api/health', { signal }),
 
@@ -264,6 +331,7 @@ export const api = {
   listPlanShares: (planId, { signal } = {}) =>
     request(`/api/plans/${planId}/shares`, { signal }),
   planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,
+  downloadPlanDocx: (id, options = {}) => downloadDocx(`/api/plans/${id}/download`, options),
   /* A plan can have several quizzes (backend db.py migration 26) — each ask
    *  for one ("make a matching quiz") is its own row, never overwriting an
    *  earlier one. `questionTypes` is a real array (['multiple_choice']),
