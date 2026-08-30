@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronUp, Info, LogOut, Settings, ShieldCheck, User } from 'lucide-react'
+import { ChevronUp, Info, LogOut, Mail, Settings, ShieldCheck, User } from 'lucide-react'
 import { getAvatar } from '../lib/avatars'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
@@ -246,6 +246,13 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           ) : null}
 
           <div className="mt-1 border-t border-hairline pt-1">
+            <a
+              href="mailto:joshuacolephd@gmail.com?subject=FlexEd%20Academy%20support"
+              onClick={() => setOpen(false)}
+              className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+            >
+              <Mail size={14} aria-hidden="true" /> Contact support
+            </a>
             <Link
               to="/privacy"
               onClick={() => setOpen(false)}

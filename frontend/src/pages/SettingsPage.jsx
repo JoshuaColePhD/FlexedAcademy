@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, CreditCard, Download, FileText, HardDrive, Loader2, Save, Settings, Sparkles, Trash2, User } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, CreditCard, Download, FileText, HardDrive, Loader2, Mail, Save, Settings, Sparkles, Trash2, User } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -1638,6 +1638,12 @@ export function SettingsPage() {
                 >
                   <Sparkles size={14} className="mr-1.5" aria-hidden="true" /> Take the tour again
                 </button>
+                <a
+                  href="mailto:joshuacolephd@gmail.com?subject=FlexEd%20Academy%20support"
+                  className="btn ml-2"
+                >
+                  <Mail size={14} className="mr-1.5" aria-hidden="true" /> Contact support
+                </a>
               </section>
             </div>
 
