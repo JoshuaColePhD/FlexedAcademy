@@ -20,6 +20,13 @@ WORKDIR /app/frontend
 ARG VITE_GOOGLE_CLIENT_ID=""
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 
+# Vite inlines the public Turnstile site key into the signup bundle. Render
+# exposes service variables as Docker build args, so explicitly forward this
+# non-secret value into the frontend build. The Turnstile secret remains a
+# runtime-only backend variable and must never be added here.
+ARG VITE_TURNSTILE_SITE_KEY=""
+ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
+
 # Copy manifests first so `npm ci` is cached until dependencies actually change.
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci --no-audit --no-fund
