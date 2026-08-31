@@ -4651,6 +4651,88 @@ def list_plans(
     return {"items": items, "total": total}
 
 
+def list_admin_plans(
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    q: str | None = None,
+    user_id: str | None = None,
+) -> dict:
+    """Admin-wide plan history, with owner and class context.
+
+    Teacher-facing list_plans is intentionally scoped to one user. This is a
+    separate, explicitly admin-only query so broad visibility cannot happen by
+    accidentally adding a flag to a teacher route. The list omits plan_json;
+    the detail endpoint fetches one selected plan at a time.
+    """
+    where = ["1 = 1"]
+    params: list[Any] = []
+    if user_id:
+        where.append("p.user_id = ?")
+        params.append(user_id)
+    if q:
+        like = f"%{q.strip().lower()}%"
+        where.append(
+            "LOWER(COALESCE(p.week_label, '') || ' ' || COALESCE(p.course, '') || ' ' || "
+            "COALESCE(p.unit, '') || ' ' || COALESCE(p.query, '') || ' ' || "
+            "COALESCE(u.name, '') || ' ' || COALESCE(u.email, '') || ' ' || "
+            "COALESCE(c.name, '') || ' ' || COALESCE(s.name, '')) LIKE ?"
+        )
+        params.append(like)
+    where_sql = " AND ".join(where)
+    total = _row(
+        f"""
+        SELECT COUNT(*) AS n
+        FROM plans p
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN classes c ON c.id = p.class_id
+        LEFT JOIN schools s ON s.id = c.school
+        WHERE {where_sql}
+        """,
+        tuple(params),
+    )["n"]
+    rows = _rows(
+        f"""
+        SELECT p.id, p.created_at, p.course, p.week_label, p.unit, p.query,
+               p.template, p.template_id, p.user_id, p.class_id, p.week_number,
+               p.is_public, p.shared_at, u.name AS user_name, u.email AS user_email,
+               c.name AS class_name, c.school AS school_id, s.name AS school_name,
+               COALESCE(j.status, CASE WHEN p.docx_path IS NULL THEN 'not_ready' ELSE 'ready' END)
+                 AS document_status
+        FROM plans p
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN classes c ON c.id = p.class_id
+        LEFT JOIN schools s ON s.id = c.school
+        LEFT JOIN document_build_jobs j ON j.plan_id = p.id
+        WHERE {where_sql}
+        ORDER BY p.created_at DESC
+        LIMIT ? OFFSET ?
+        """,
+        tuple(params + [limit, offset]),
+    )
+    return {"items": [dict(row) for row in rows], "total": int(total)}
+
+
+def get_admin_plan(plan_id: str) -> dict | None:
+    """Return one plan with its full content and admin-facing context."""
+    row = _row(
+        """
+        SELECT p.*, u.name AS user_name, u.email AS user_email,
+               c.name AS class_name, c.school AS school_id, s.name AS school_name,
+               j.status AS document_status, j.attempts AS document_attempts,
+               j.error_message AS document_error
+        FROM plans p
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN classes c ON c.id = p.class_id
+        LEFT JOIN schools s ON s.id = c.school
+        LEFT JOIN document_build_jobs j ON j.plan_id = p.id
+        WHERE p.id = ?
+        """,
+        (plan_id,),
+    )
+    return _hydrate_plan(row) if row else None
+
+
 def list_plan_weeks(user_id: str, class_id: str) -> dict:
     """The Library, grouped by calendar week instead of raw generation history.
 
@@ -6026,8 +6108,10 @@ def list_accounts_with_stats() -> list[dict]:
     """Every account, its billing state, and what it's actually built.
 
     Exists so managing accounts is a page in the app rather than SQL run by
-    hand against production. One query, not N+1 — plans_built, last_plan_at
-    and tokens_used are all aggregated in the same round trip.
+    hand against production. Usage and plan counts are aggregated in one
+    query; the small set of learning-context queries below adds the same
+    account-level view for pacing guides and school calendars without doing
+    one query per account.
 
     tokens_used mirrors entitlement.py's own trailing-window usage figure —
     same 7-day literal, duplicated rather than imported (entitlement.py
@@ -6044,7 +6128,7 @@ def list_accounts_with_stats() -> list[dict]:
     since_burst = (datetime.now(UTC) - timedelta(hours=24)).isoformat(timespec="seconds")
     rows = _rows(
         """
-        SELECT u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
+        SELECT u.id, u.email, u.name, u.school, u.subscription_status, u.is_admin, u.created_at,
                u.custom_weekly_token_cap, u.beta_expires_at,
                COUNT(p.id) AS plans_built,
                MAX(p.created_at) AS last_plan_at,
@@ -6071,18 +6155,139 @@ def list_accounts_with_stats() -> list[dict]:
             WHERE created_at >= ?
             GROUP BY user_id
         ) ueburst ON ueburst.user_id = u.id
-        GROUP BY u.id, u.email, u.name, u.subscription_status, u.is_admin, u.created_at,
+        GROUP BY u.id, u.email, u.name, u.school, u.subscription_status, u.is_admin, u.created_at,
                  u.custom_weekly_token_cap, u.beta_expires_at, ue7.tokens, ue30.tokens, ueburst.tokens
         ORDER BY u.created_at DESC
         """,
         (since_7d, since_30d, since_burst),
     )
     res = []
+    learning_context = _admin_learning_context(rows)
     for r in rows:
         d = dict(r)
         d["tokens_avg_day_30d"] = int(d["tokens_30d"] / 30) if d.get("tokens_30d") else 0
+        d["learning_context"] = learning_context.get(d["id"], _empty_admin_learning_context())
         res.append(d)
     return res
+
+
+def _empty_admin_learning_context() -> dict:
+    """Stable empty shape for accounts that have not uploaded context yet."""
+    return {
+        "pacing_guides": {
+            "active_count": 0,
+            "active_class_count": 0,
+            "class_count": 0,
+            "superseded_count": 0,
+            "latest_uploaded_at": None,
+            "documents": [],
+        },
+        "calendar": {
+            "status": "none",
+            "source_name": None,
+            "submitted_at": None,
+            "confirmed_at": None,
+        },
+    }
+
+
+def _admin_learning_context(account_rows: list[dict]) -> dict[str, dict]:
+    """Build per-account pacing-guide and school-calendar status in three queries.
+
+    The admin account table needs to answer a practical support question:
+    "Does this teacher have the source context needed to generate a good
+    plan?" Pacing guides belong to a teacher and class, while calendars are
+    school-wide. We intentionally expose only filenames and dates here — not
+    the uploader identity — and keep the aggregation here so the frontend does
+    not need to fetch one resource endpoint per account.
+
+    The calendar row is the newest submission for the teacher's school. This
+    means a newly uploaded pending calendar correctly appears as pending even
+    when that school still has an older confirmed calendar in the database.
+    """
+    classes = _rows(
+        """
+        SELECT id, user_id, name
+          FROM classes
+         WHERE archived = 0
+         ORDER BY user_id, sort_order, created_at
+        """
+    )
+    pacing_rows = _rows(
+        """
+        SELECT user_id, class_id, subject, original_name, active, uploaded_at
+          FROM curriculum_maps
+         WHERE kind = 'pacing_guide'
+         ORDER BY uploaded_at DESC
+        """
+    )
+    calendar_rows = _rows(
+        """
+        SELECT school_id, submitted_at, source_name, status, confirmed_at
+          FROM school_calendar_submissions
+         ORDER BY submitted_at DESC
+        """
+    )
+
+    class_by_id = {row["id"]: row for row in classes}
+    classes_by_user: dict[str, list[dict]] = {}
+    for row in classes:
+        classes_by_user.setdefault(row["user_id"], []).append(row)
+
+    docs_by_user: dict[str, list[dict]] = {}
+    for row in pacing_rows:
+        class_id = row.get("class_id")
+        # Archived classes are intentionally not counted toward current
+        # coverage, but account-wide guides (class_id NULL) still count.
+        if class_id and class_id not in class_by_id:
+            continue
+        docs_by_user.setdefault(row["user_id"], []).append({
+            "class_id": class_id,
+            "class_name": class_by_id[class_id]["name"] if class_id else "Account-wide",
+            "subject": row.get("subject"),
+            "original_name": row.get("original_name") or "Pacing guide",
+            "active": bool(row.get("active")),
+            "uploaded_at": row.get("uploaded_at"),
+        })
+
+    # The query is newest-first, so the first row seen for a school is its
+    # current state. A teacher never needs to know who submitted it.
+    calendar_by_school: dict[str, dict] = {}
+    for row in calendar_rows:
+        calendar_by_school.setdefault(row["school_id"], {
+            "status": row.get("status") or "none",
+            "source_name": row.get("source_name"),
+            "submitted_at": row.get("submitted_at"),
+            "confirmed_at": row.get("confirmed_at"),
+        })
+
+    result: dict[str, dict] = {}
+    user_ids = set(classes_by_user) | set(docs_by_user)
+    for user_id in user_ids:
+        docs = docs_by_user.get(user_id, [])
+        active_docs = [doc for doc in docs if doc["active"]]
+        active_class_ids = {doc["class_id"] for doc in active_docs if doc["class_id"]}
+        class_count = len(classes_by_user.get(user_id, []))
+        result[user_id] = {
+            "pacing_guides": {
+                "active_count": len(active_docs),
+                "active_class_count": len(active_class_ids),
+                "class_count": class_count,
+                "superseded_count": sum(1 for doc in docs if not doc["active"]),
+                "latest_uploaded_at": docs[0]["uploaded_at"] if docs else None,
+                "documents": docs,
+            },
+            "calendar": {"status": "none", "source_name": None, "submitted_at": None, "confirmed_at": None},
+        }
+
+    # Attach calendar state to every account, including accounts with no class
+    # or guide yet. The account rows are already in memory, so this adds no
+    # fourth query as the table grows.
+    for row in account_rows:
+        context = result.setdefault(row["id"], _empty_admin_learning_context())
+        context["calendar"] = calendar_by_school.get(row.get("school"), context["calendar"])
+
+    return result
 
 
 def weekly_usage_series(weeks: int = 8) -> list[dict]:

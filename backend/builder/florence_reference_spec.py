@@ -13,7 +13,7 @@ way a snapshot test compares against a fixture.
 
 Field-for-field derivation from build_lesson_plan.py — see that file for the
 original OOXML calls this spec reproduces through the shared interpreter:
-  - Row 0: Teacher | Subject: English | Week, each merged across 2 of 6
+  - Row 0: Teacher | Subject | Week, each merged across 2 of 6
     columns, BLUE-shaded, bold.
   - Row 1: "Period(s): {period} ({course})" label + Monday..Friday, BLUE.
   - 5 body rows: Learning Targets / Standards / ACT Alignment (plain text),
@@ -47,7 +47,7 @@ FLORENCE_REFERENCE_SPEC = {
             {
                 "cells": [
                     {"text_template": "Teacher: {teacher}", "bold": True, "align": "left", "col_span": 2, "shade_hex": BLUE},
-                    {"text_template": "Subject: English", "bold": True, "align": "left", "col_span": 2, "shade_hex": BLUE},
+                    {"text_template": "Subject: {subject}", "bold": True, "align": "left", "col_span": 2, "shade_hex": BLUE},
                     {"text_template": "Week: {week_of}", "bold": True, "align": "left", "col_span": 2, "shade_hex": BLUE},
                 ],
             },

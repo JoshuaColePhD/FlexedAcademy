@@ -2,14 +2,27 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
+  Activity,
+  ArrowUpRight,
+  BarChart3,
+  BookOpen,
+  Building2,
+  CalendarCheck2,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CircleDollarSign,
+  Download,
+  FileText,
+  Loader2,
+  MoreHorizontal,
   Plus,
   RotateCcw,
   Search,
   ShieldCheck,
   Trash2,
+  UserRound,
+  Users,
   X,
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -24,8 +37,9 @@ import { useActiveClass } from '../hooks/useAppData'
  * This replaces exactly one workflow: "who's signed up, are they paying, and
  * give this one unlimited access" — the three questions that used to mean
  * either running SQL by hand against production or asking someone who could.
- * It is deliberately narrow. It does not manage classes, plans, or content —
- * those already have owners (the teacher who made them).
+ * It is deliberately narrow. It does not edit classes, plans, or content —
+ * teachers still own those records — but it does provide an admin-only,
+ * read-only plan history for support and product review.
  *
  * is_admin gates the route itself (see App.jsx) and every request the page
  * makes (see deps.get_current_admin) — a non-admin hitting /admin by URL sees
@@ -182,6 +196,68 @@ function StatusPill({ status }) {
     >
       {label}
     </span>
+  )
+}
+
+function resourcePillClass(tone) {
+  if (tone === 'ok') return 'bg-ok-tint text-ok'
+  if (tone === 'flag') return 'bg-flag-tint text-flag'
+  if (tone === 'mark') return 'bg-mark-tint text-mark'
+  return 'bg-paper-inset text-ink-muted'
+}
+
+/* Read-only context indicators for support. Pacing guides are teacher/class
+   resources; the calendar is deliberately labeled school-wide because one
+   confirmed calendar serves everyone at that school. The API returns dates
+   and filenames but never exposes the submitter's identity here. */
+function PlanningContext({ account }) {
+  const context = account.learning_context || {}
+  const pacing = context.pacing_guides || {}
+  const calendar = context.calendar || {}
+  const activeDocuments = pacing.documents?.filter((doc) => doc.active) || []
+  const guideLabel = pacing.active_count
+    ? pacing.class_count
+      ? `${pacing.active_class_count} of ${pacing.class_count} classes`
+      : 'Account-wide'
+    : pacing.superseded_count
+      ? 'Superseded only'
+      : 'Not uploaded'
+  const guideTone = pacing.active_count
+    ? pacing.class_count && pacing.active_class_count < pacing.class_count
+      ? 'flag'
+      : 'ok'
+    : pacing.superseded_count
+      ? 'flag'
+      : 'none'
+  const guideDetail = activeDocuments.length
+    ? `${activeDocuments[0].original_name}${activeDocuments.length > 1 ? ` +${activeDocuments.length - 1}` : ''}`
+    : pacing.superseded_count
+      ? `${pacing.superseded_count} superseded`
+      : 'No active guide'
+  const calendarLabels = {
+    confirmed: 'Confirmed',
+    pending: 'Pending review',
+    rejected: 'Rejected',
+    none: 'Not uploaded',
+  }
+  const calendarTone = calendar.status === 'confirmed' ? 'ok' : calendar.status === 'pending' ? 'flag' : calendar.status === 'rejected' ? 'mark' : 'none'
+  const calendarDetail = calendar.source_name || (calendar.status === 'none' ? 'No school calendar' : 'Needs attention')
+
+  return (
+    <div className="flex min-w-[210px] flex-col gap-1.5 text-2xs">
+      <div className="flex items-center gap-1.5" title={`${guideDetail}${pacing.latest_uploaded_at ? ` · ${new Date(pacing.latest_uploaded_at).toLocaleDateString()}` : ''}`}>
+        <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-medium ${resourcePillClass(guideTone)}`}>
+          Pacing: {guideLabel}
+        </span>
+        <span className="max-w-36 truncate text-ink-muted">{guideDetail}</span>
+      </div>
+      <div className="flex items-center gap-1.5" title={`${calendarDetail}${calendar.submitted_at ? ` · ${new Date(calendar.submitted_at).toLocaleDateString()}` : ''}`}>
+        <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-medium ${resourcePillClass(calendarTone)}`}>
+          Calendar: {calendarLabels[calendar.status] || 'Not uploaded'}
+        </span>
+        <span className="max-w-36 truncate text-ink-muted">{calendarDetail}</span>
+      </div>
+    </div>
   )
 }
 
@@ -498,43 +574,6 @@ function CustomCapEditor({ account }) {
   )
 }
 
-/* Four numbers worth seeing before scrolling into the table at all — how
-   many accounts exist, how many of those are real subscribers vs comped vs
-   just on the free week, and what the whole roster is costing right now.
-   Plain divs, not a chart: this is a glance, not an analysis. */
-function StatCard({ label, value }) {
-  return (
-    <div className="neo-world neo-panel rounded-xl p-3">
-      <p className="text-2xs font-medium uppercase tracking-wide text-ink-muted">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
-    </div>
-  )
-}
-
-function StatsCards({ accounts }) {
-  const stats = useMemo(() => {
-    let subscribed = 0
-    let comped = 0
-    let cost7d = 0
-    for (const a of accounts) {
-      const t = tier(a)
-      if (t === 'subscribed') subscribed += 1
-      else if (t === 'comped') comped += 1
-      cost7d += a.tokens_7d || 0
-    }
-    return { subscribed, comped, cost7d }
-  }, [accounts])
-
-  return (
-    <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <StatCard label="Accounts" value={accounts.length} />
-      <StatCard label="Subscribed" value={stats.subscribed} />
-      <StatCard label="Comped" value={stats.comped} />
-      <StatCard label="Est. cost, 7d" value={estCost(stats.cost7d)} />
-    </div>
-  )
-}
-
 /* A single 7-day snapshot per account says how much; it can't say whether
    usage is growing, flat, or falling off — the question that actually
    matters for "is the current pricing still working." Plain divs sized by
@@ -574,6 +613,220 @@ function UsageTrendChart() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+const ADMIN_PLAN_FIELDS = [
+  ['learning_targets', 'Learning targets'],
+  ['standards', 'Standards'],
+  ['act_alignment', 'ACT alignment'],
+  ['engagement_strategy', 'Engagement strategy'],
+  ['do_now', 'Do now'],
+  ['during', 'During'],
+  ['assessment', 'Assessment'],
+]
+
+function displayPlanValue(value) {
+  if (value == null || value === '') return ''
+  if (Array.isArray(value)) return value.join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function AdminDocxDownloadButton({ planId }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+
+  const download = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await api.adminDownloadPlan(planId)
+    } catch (err) {
+      toast.apiError('Could not download the DOCX', err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button type="button" className="btn inline-flex items-center gap-1.5 text-xs" onClick={download} disabled={busy}>
+      {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Download size={13} aria-hidden="true" />}
+      {busy ? 'Preparing…' : 'Download DOCX'}
+    </button>
+  )
+}
+
+function AdminPlanDetail({ planId, onClose }) {
+  const { data: plan, isLoading, isError } = useQuery({
+    queryKey: qk.adminPlan(planId),
+    queryFn: () => api.adminGetPlan(planId),
+    enabled: Boolean(planId),
+  })
+
+  if (isLoading) return <p className="mt-4 text-sm text-ink-muted">Loading plan…</p>
+  if (isError || !plan) return <p className="mt-4 text-sm text-mark">Could not load that lesson plan.</p>
+
+  const days = plan.plan_json?.days || []
+  return (
+    <div className="mt-5 rounded-xl border border-accent/30 bg-paper p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-edge pb-3">
+        <div>
+          <p className="text-lg font-semibold text-ink">{plan.week_label || 'Untitled lesson plan'}</p>
+          <p className="mt-1 text-xs text-ink-muted">
+            {plan.user_name || plan.user_email} · {plan.course || 'Course not recorded'}
+            {plan.school_name ? ` · ${plan.school_name}` : ''}
+          </p>
+          <p className="mt-1 text-2xs text-ink-faint">
+            Created {new Date(plan.created_at).toLocaleString()}
+            {plan.class_name ? ` · ${plan.class_name}` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <AdminDocxDownloadButton planId={plan.id} />
+          <button type="button" className="btn text-xs" onClick={onClose}>Close</button>
+        </div>
+      </div>
+
+      {plan.query ? (
+        <div className="mt-3 rounded-lg bg-paper-inset px-3 py-2 text-xs text-ink-soft">
+          <span className="font-medium text-ink">Original request:</span> {plan.query}
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {days.map((day, index) => (
+          <section key={`${day.name || 'day'}-${index}`} className="rounded-lg border border-edge bg-paper-sunken p-3">
+            <h3 className="text-sm font-semibold text-ink">{day.name || `Day ${index + 1}`}</h3>
+            <div className="mt-2 space-y-3">
+              {ADMIN_PLAN_FIELDS.map(([key, label]) => {
+                const value = displayPlanValue(day[key])
+                return value ? (
+                  <div key={key}>
+                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-muted">{label}</p>
+                    <p className="mt-0.5 whitespace-pre-wrap text-xs leading-5 text-ink-soft">{value}</p>
+                  </div>
+                ) : null
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AdminLessonPlans({ accounts }) {
+  const [search, setSearch] = useState('')
+  const [userFilter, setUserFilter] = useState('')
+  const [page, setPage] = useState(0)
+  const [selectedId, setSelectedId] = useState(null)
+  const limit = 50
+
+  useEffect(() => {
+    setPage(0)
+    setSelectedId(null)
+  }, [search, userFilter])
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: qk.adminPlans({ search, userFilter, page }),
+    queryFn: () => api.adminListPlans({
+      limit,
+      offset: page * limit,
+      q: search.trim() || undefined,
+      userId: userFilter || undefined,
+    }),
+  })
+  const plans = data?.items || []
+  const total = data?.total || 0
+  const pageCount = Math.max(1, Math.ceil(total / limit))
+
+  return (
+    <div className="neo-world neo-panel rounded-xl p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <BookOpen size={17} aria-hidden="true" className="mt-0.5 text-ink-muted" />
+          <div>
+            <h2 className="text-sm font-semibold text-ink">Lesson Plans</h2>
+            <p className="mt-1 text-2xs text-ink-muted">
+              Read-only history of plans produced by every account. Open one to review its full content or download its DOCX.
+            </p>
+          </div>
+        </div>
+        {total > 0 ? <span className="text-xs text-ink-muted">{total.toLocaleString()} total</span> : null}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <div className="relative min-w-56 flex-1">
+          <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search plans, users, schools, or courses…"
+            aria-label="Search lesson plans"
+            className="w-full rounded-lg border border-edge bg-paper py-2 pl-8 pr-3 text-sm text-ink outline-none focus:border-accent"
+          />
+        </div>
+        <select
+          value={userFilter}
+          onChange={(e) => setUserFilter(e.target.value)}
+          aria-label="Filter lesson plans by user"
+          className="min-w-52 rounded-lg border border-edge bg-paper px-2.5 py-2 text-sm text-ink outline-none focus:border-accent"
+        >
+          <option value="">All users</option>
+          {accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.email}</option>)}
+        </select>
+      </div>
+
+      {isLoading ? (
+        <p className="mt-4 text-sm text-ink-muted">Loading lesson plans…</p>
+      ) : isError ? (
+        <p className="mt-4 text-sm text-mark">Could not load lesson plans.</p>
+      ) : plans.length === 0 ? (
+        <p className="mt-4 text-sm text-ink-muted">No lesson plans match those filters.</p>
+      ) : (
+        <div className="mt-4 divide-y divide-edge rounded-lg border border-edge">
+          {plans.map((plan) => (
+            <div
+              key={plan.id}
+              className={`flex w-full flex-wrap items-center gap-3 px-3 py-3 transition-colors first:rounded-t-lg last:rounded-b-lg ${selectedId === plan.id ? 'bg-accent-tint' : 'bg-paper'}`}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedId(plan.id)}
+                className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                aria-label={`Open ${plan.week_label || 'untitled lesson plan'}`}
+              >
+                <span className="block truncate text-sm font-medium text-ink">{plan.week_label || 'Untitled lesson plan'}</span>
+                <span className="mt-0.5 block truncate text-xs text-ink-muted">
+                  {plan.user_name || plan.user_email} · {plan.course || 'Course not recorded'}
+                  {plan.school_name ? ` · ${plan.school_name}` : ''}
+                </span>
+              </button>
+              <span className="flex shrink-0 items-center gap-3 text-2xs text-ink-muted">
+                <span>{new Date(plan.created_at).toLocaleDateString()}</span>
+                <span className={plan.document_status === 'ready' ? 'text-ok' : plan.document_status === 'failed' ? 'text-mark' : 'text-ink-muted'}>
+                  {plan.document_status === 'ready' ? 'DOCX ready' : plan.document_status === 'not_ready' ? 'No DOCX' : plan.document_status}
+                </span>
+              </span>
+              <AdminDocxDownloadButton planId={plan.id} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectedId ? <AdminPlanDetail planId={selectedId} onClose={() => setSelectedId(null)} /> : null}
+
+      {pageCount > 1 ? (
+        <div className="mt-4 flex items-center justify-between text-xs text-ink-muted">
+          <span>Page {page + 1} of {pageCount}</span>
+          <div className="flex gap-2">
+            <button type="button" className="btn text-xs" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Previous</button>
+            <button type="button" className="btn text-xs" disabled={page + 1 >= pageCount} onClick={() => setPage((p) => p + 1)}>Next</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -1640,6 +1893,176 @@ function SettingsAdmin() {
   )
 }
 
+function AdminKpi({ label, value, detail, icon: Icon, tone = 'accent' }) {
+  const iconClass = tone === 'ok' ? 'bg-ok-tint text-ok' : tone === 'flag' ? 'bg-flag-tint text-flag' : tone === 'mark' ? 'bg-mark-tint text-mark' : 'bg-accent-tint text-accent-text'
+  return (
+    <div className="neo-world neo-panel rounded-2xl p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-ink-muted">{label}</p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-ink">{value}</p>
+          <p className="mt-1 text-xs text-ink-muted">{detail}</p>
+        </div>
+        <span className={`rounded-xl p-2 ${iconClass}`}><Icon size={17} aria-hidden="true" /></span>
+      </div>
+    </div>
+  )
+}
+
+function AdminOverview({ accounts, onNavigate }) {
+  const summary = useMemo(() => {
+    const activeThisWeek = accounts.filter((account) => {
+      if (!account.last_plan_at) return false
+      return Date.now() - new Date(account.last_plan_at).getTime() <= 7 * 86400000
+    }).length
+    const paying = accounts.filter((account) => tier(account) === 'subscribed').length
+    const contextReady = accounts.filter((account) => {
+      const context = account.learning_context || {}
+      return context.pacing_guides?.active_count > 0 || context.calendar?.status === 'confirmed'
+    }).length
+    const attention = accounts.filter((account) => {
+      const cap = capStatusFor(account)
+      const calendarStatus = account.learning_context?.calendar?.status
+      const pacingReady = account.learning_context?.pacing_guides?.active_count > 0
+      return cap.tone !== 'ok' || !pacingReady || calendarStatus === 'pending' || calendarStatus === 'rejected'
+    }).length
+    const tokens = accounts.reduce((sum, account) => sum + (account.tokens_7d || 0), 0)
+    const topAccounts = [...accounts].sort((a, b) => (b.tokens_7d || 0) - (a.tokens_7d || 0)).slice(0, 5)
+    return { activeThisWeek, paying, contextReady, attention, tokens, topAccounts }
+  }, [accounts])
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Operations center</p>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Good afternoon, Josh</h2>
+          <p className="mt-1 max-w-2xl text-sm text-ink-muted">A quick read on customers, usage, and the planning context that keeps lesson generation reliable.</p>
+        </div>
+        <div className="flex items-center gap-2 text-2xs text-ink-muted">
+          <span className="h-2 w-2 rounded-full bg-ok" /> Live account data
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <AdminKpi label="Customers" value={accounts.length} detail={`${summary.activeThisWeek} active this week`} icon={Users} />
+        <AdminKpi label="Paying customers" value={summary.paying} detail={accounts.length ? `${Math.round((summary.paying / accounts.length) * 100)}% of accounts` : 'No accounts yet'} icon={CircleDollarSign} tone="ok" />
+        <AdminKpi label="Planning context" value={summary.contextReady} detail="Have a guide or confirmed calendar" icon={FileText} tone="ok" />
+        <AdminKpi label="Needs attention" value={summary.attention} detail="Usage, billing, or context follow-up" icon={Activity} tone={summary.attention ? 'flag' : 'ok'} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-accent/20 bg-accent-tint/40 p-3">
+        <span className="mr-1 text-xs font-semibold text-ink">Jump to</span>
+        <button type="button" className="btn inline-flex items-center gap-1.5 text-xs" onClick={() => onNavigate('users')}><Users size={13} aria-hidden="true" /> Customers</button>
+        <button type="button" className="btn inline-flex items-center gap-1.5 text-xs" onClick={() => onNavigate('plans')}><BookOpen size={13} aria-hidden="true" /> Lesson plans</button>
+        <button type="button" className="btn inline-flex items-center gap-1.5 text-xs" onClick={() => onNavigate('schools')}><Building2 size={13} aria-hidden="true" /> Schools</button>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
+        <div className="neo-world neo-panel rounded-2xl p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2"><BarChart3 size={16} className="text-accent-text" aria-hidden="true" /><h3 className="text-sm font-semibold text-ink">Usage pulse</h3></div>
+              <p className="mt-1 text-2xs text-ink-muted">Token activity across the last seven days.</p>
+            </div>
+            <span className="font-mono text-sm text-ink-soft">{summary.tokens.toLocaleString()} tokens</span>
+          </div>
+          <div className="mt-4"><UsageTrendChart /></div>
+        </div>
+
+        <div className="neo-world neo-panel rounded-2xl p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2"><AlertTriangle size={16} className="text-flag" aria-hidden="true" /><h3 className="text-sm font-semibold text-ink">Needs attention</h3></div>
+              <p className="mt-1 text-2xs text-ink-muted">Accounts worth opening first.</p>
+            </div>
+            <button type="button" className="text-2xs font-medium text-accent-text hover:underline" onClick={() => onNavigate('users')}>View all <ArrowUpRight size={12} className="inline" aria-hidden="true" /></button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {accounts.filter((account) => {
+              const context = account.learning_context || {}
+              return capStatusFor(account).tone !== 'ok' || !context.pacing_guides?.active_count || ['pending', 'rejected'].includes(context.calendar?.status)
+            }).slice(0, 4).map((account) => (
+              <button key={account.id} type="button" onClick={() => onNavigate('users')} className="flex w-full items-center justify-between gap-3 rounded-xl border border-edge bg-paper-sunken px-3 py-2 text-left transition-colors hover:border-accent/40">
+                <span className="min-w-0"><span className="block truncate text-xs font-medium text-ink">{account.name || account.email}</span><span className="block truncate text-2xs text-ink-muted">{account.learning_context?.pacing_guides?.active_count ? 'Review usage' : 'Missing pacing guide'}</span></span>
+                <ArrowUpRight size={14} className="shrink-0 text-ink-faint" aria-hidden="true" />
+              </button>
+            ))}
+            {!summary.attention ? <p className="text-sm text-ok">Everything looks healthy.</p> : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="neo-world neo-panel rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-ink">Most active customers</h3><p className="mt-1 text-2xs text-ink-muted">Sorted by tokens used in the last seven days.</p></div><button type="button" className="text-2xs font-medium text-accent-text hover:underline" onClick={() => onNavigate('users')}>Open customer directory <ArrowUpRight size={12} className="inline" aria-hidden="true" /></button></div>
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+          {summary.topAccounts.map((account, index) => (
+            <button key={account.id} type="button" onClick={() => onNavigate('users')} className="rounded-xl border border-edge bg-paper-sunken p-3 text-left transition-colors hover:border-accent/40">
+              <div className="flex items-center justify-between gap-2"><span className="text-2xs font-mono text-ink-faint">0{index + 1}</span><span className="text-2xs font-mono text-ink-muted">{(account.tokens_7d || 0).toLocaleString()}</span></div>
+              <p className="mt-2 truncate text-xs font-medium text-ink">{account.name || account.email}</p>
+              <p className="mt-0.5 truncate text-2xs text-ink-muted">{account.email}</p>
+            </button>
+          ))}
+          {!summary.topAccounts.length ? <p className="text-sm text-ink-muted">No customer activity yet.</p> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CustomerDetail({ account, onClose, onToggleComp, pending }) {
+  return (
+    <aside className="mt-5 rounded-2xl border border-accent/30 bg-accent-tint/35 p-4" aria-label={`Customer profile for ${account.name || account.email}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-accent-contrast"><UserRound size={18} aria-hidden="true" /></span><div><p className="text-lg font-semibold text-ink">{account.name || 'Unnamed customer'}</p><p className="text-xs text-ink-muted">{account.email}{account.school ? ` · ${account.school}` : ''}</p><p className="mt-1 text-2xs text-ink-faint">Joined {relative(account.created_at)} · Last plan {relative(account.last_plan_at)}</p></div></div>
+        <button type="button" className="btn-icon" onClick={onClose} aria-label="Close customer profile"><X size={15} aria-hidden="true" /></button>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-4">
+        <div className="rounded-xl bg-paper/70 p-3"><p className="text-2xs text-ink-muted">Plans built</p><p className="mt-1 font-mono text-lg text-ink">{account.plans_built}</p></div>
+        <div className="rounded-xl bg-paper/70 p-3"><p className="text-2xs text-ink-muted">Tokens, 7d</p><p className="mt-1 font-mono text-lg text-ink">{(account.tokens_7d || 0).toLocaleString()}</p></div>
+        <div className="rounded-xl bg-paper/70 p-3"><p className="text-2xs text-ink-muted">Subscription</p><div className="mt-2"><StatusPill status={account.subscription_status} /></div></div>
+        <div className="rounded-xl bg-paper/70 p-3"><p className="text-2xs text-ink-muted">Capacity</p><div className="mt-2"><CapStatusBadge account={account} /></div></div>
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+        <div><p className="text-2xs font-semibold uppercase tracking-wide text-ink-muted">Planning context</p><div className="mt-2"><PlanningContext account={account} /></div><p className="mt-2 text-2xs text-ink-muted">Pacing guides are customer/class resources. The calendar status is shared at the school level.</p></div>
+        <div className="flex flex-wrap gap-2"><CustomCapEditor account={account} /><button type="button" className="btn text-xs" disabled={pending === account.id} onClick={() => onToggleComp(account)}>{account.subscription_status === 'comped' ? 'Revoke unlimited' : 'Grant unlimited'}</button></div>
+      </div>
+    </aside>
+  )
+}
+
+function AdminCustomers({ accounts, sorted, isLoading, isError, search, setSearch, statusFilter, setStatusFilter, contextFilter, setContextFilter, sort, onSort, selected, toggleSelect, allVisibleSelected, toggleSelectAllVisible, selectedCount, clearSelection, bulkBusy, bulkCap, setBulkCap, bulkComp, bulkSetCap, pending, toggleComp }) {
+  const [profileId, setProfileId] = useState(null)
+  const profile = accounts.find((account) => account.id === profileId)
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div><p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Customer relationship management</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Customers</h2><p className="mt-1 max-w-2xl text-sm text-ink-muted">Search the directory, open a customer profile, and see the context that affects their experience.</p></div>
+        <NewBetaAccountForm />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3"><AdminKpi label="Directory" value={accounts.length} detail="Total accounts" icon={Users} /><AdminKpi label="With pacing guides" value={accounts.filter((account) => account.learning_context?.pacing_guides?.active_count > 0).length} detail="At least one active guide" icon={FileText} tone="ok" /><AdminKpi label="School calendars" value={accounts.filter((account) => account.learning_context?.calendar?.status === 'confirmed').length} detail="Accounts in confirmed schools" icon={CalendarCheck2} tone="ok" /></div>
+
+      <div className="neo-world neo-panel rounded-2xl p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-56 flex-1"><Search size={15} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, or school…" aria-label="Search customers" className="w-full rounded-xl border border-edge bg-paper py-2.5 pl-9 pr-3 text-sm text-ink outline-none focus:border-accent" />{search ? <button type="button" onClick={() => setSearch('')} aria-label="Clear customer search" className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink"><X size={14} aria-hidden="true" /></button> : null}</div>
+          <select value={contextFilter} onChange={(e) => setContextFilter(e.target.value)} aria-label="Filter customer context" className="rounded-xl border border-edge bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"><option value="all">All context</option><option value="needs_attention">Needs attention</option><option value="pacing">Has pacing guide</option><option value="calendar">Confirmed calendar</option></select>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5"><span className="mr-1 text-2xs font-semibold uppercase tracking-wide text-ink-muted">Lifecycle</span>{STATUS_FILTERS.map((filter) => <button key={filter.key} type="button" onClick={() => setStatusFilter(filter.key)} aria-pressed={statusFilter === filter.key} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === filter.key ? 'bg-ink text-paper' : 'bg-paper-inset text-ink-muted hover:text-ink'}`}>{filter.label}</button>)}</div>
+      </div>
+
+      {selectedCount > 0 ? <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-accent/30 bg-accent-tint px-4 py-3"><span className="text-xs font-medium text-accent-text">{selectedCount} selected</span><button type="button" className="btn text-xs" disabled={bulkBusy} onClick={() => bulkComp(true)}>Grant unlimited</button><button type="button" className="btn text-xs" disabled={bulkBusy} onClick={() => bulkComp(false)}>Revoke unlimited</button><input type="number" min={0} step={1000} value={bulkCap} onChange={(e) => setBulkCap(e.target.value)} placeholder="tier default" aria-label="Custom weekly token cap" className="w-28 rounded-lg border border-edge bg-paper px-2 py-1.5 text-xs text-ink outline-none focus:border-accent" /><button type="button" className="btn text-xs" disabled={bulkBusy} onClick={bulkSetCap}>Set cap</button><button type="button" className="ml-auto text-xs text-ink-muted underline-offset-2 hover:text-ink hover:underline" onClick={clearSelection}>Clear</button></div> : null}
+
+      {isLoading ? <p className="text-sm text-ink-muted">Loading customers…</p> : isError ? <p className="text-sm text-mark">Could not load customers.</p> : sorted.length === 0 ? <div className="neo-world neo-panel rounded-2xl p-8 text-center"><Users size={24} className="mx-auto text-ink-faint" aria-hidden="true" /><p className="mt-2 text-sm font-medium text-ink">No customers match those filters.</p><p className="mt-1 text-xs text-ink-muted">Try clearing the search or choosing a different context.</p></div> : <>
+        <div className="hidden overflow-x-auto rounded-2xl border border-edge lg:block"><table className="w-full text-sm"><thead><tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted"><th className="w-10 px-3 py-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all visible customers" /></th><SortHeader label="Customer" sortKey="name" sort={sort} onSort={onSort} /><SortHeader label="Lifecycle" sortKey="status" sort={sort} onSort={onSort} /><SortHeader label="Activity" sortKey="tokens_7d" sort={sort} onSort={onSort} /><th className="px-3 py-3 font-medium">Planning context</th><th className="px-3 py-3 font-medium">Actions</th></tr></thead><tbody>{sorted.map((account) => <tr key={account.id} className="border-b border-edge last:border-0 hover:bg-paper-sunken/50"><td className="px-3 py-3"><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} aria-label={`Select ${account.email}`} /></td><td className="px-3 py-3"><button type="button" onClick={() => setProfileId(account.id)} className="text-left"><span className="block font-medium text-ink hover:text-accent-text">{account.name || 'Unnamed customer'}</span><span className="mt-0.5 block text-2xs text-ink-muted">{account.email}{account.school ? ` · ${account.school}` : ''}</span></button></td><td className="px-3 py-3"><div className="flex flex-col items-start gap-1"><StatusPill status={account.subscription_status} /><CapStatusBadge account={account} /></div></td><td className="px-3 py-3"><span className="block font-mono text-ink-soft">{(account.tokens_7d || 0).toLocaleString()} <span className="font-sans text-2xs text-ink-muted">tokens</span></span><span className="mt-0.5 block text-2xs text-ink-muted">{account.plans_built} plans · {relative(account.last_plan_at)}</span></td><td className="px-3 py-3"><PlanningContext account={account} /></td><td className="px-3 py-3"><div className="flex items-center gap-1.5"><button type="button" className="btn inline-flex items-center gap-1 text-xs" onClick={() => setProfileId(account.id)}><UserRound size={12} aria-hidden="true" /> Open</button><button type="button" className="btn-icon" aria-label={`More actions for ${account.email}`} title="More actions"><MoreHorizontal size={15} aria-hidden="true" /></button></div></td></tr>)}</tbody></table></div>
+        <ul className="flex flex-col gap-3 lg:hidden">{sorted.map((account) => <li key={account.id} className="neo-world neo-panel rounded-2xl p-4"><div className="flex items-start gap-3"><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} aria-label={`Select ${account.email}`} className="mt-1" /><button type="button" onClick={() => setProfileId(account.id)} className="min-w-0 flex-1 text-left"><span className="block truncate font-medium text-ink">{account.name || 'Unnamed customer'}</span><span className="mt-0.5 block truncate text-2xs text-ink-muted">{account.email}</span></button><StatusPill status={account.subscription_status} /></div><div className="mt-3"><PlanningContext account={account} /></div><div className="mt-3 flex items-center justify-between border-t border-edge pt-3"><span className="text-2xs text-ink-muted">{(account.tokens_7d || 0).toLocaleString()} tokens · {account.plans_built} plans</span><button type="button" className="btn text-xs" onClick={() => setProfileId(account.id)}>Open profile</button></div></li>)}</ul>
+      </>}
+      {profile ? <CustomerDetail account={profile} onClose={() => setProfileId(null)} onToggleComp={toggleComp} pending={pending} /> : null}
+    </div>
+  )
+}
+
 export function AdminPage() {
   const toast = useToast()
   const confirm = useConfirm()
@@ -1652,6 +2075,8 @@ export function AdminPage() {
   const [pending, setPending] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [contextFilter, setContextFilter] = useState('all')
+  const [activeTab, setActiveTab] = useState('overview')
   const [sort, setSort] = useState({ key: 'joined', dir: 'desc' })
   const [selected, setSelected] = useState(() => new Set())
   const [bulkCap, setBulkCap] = useState('')
@@ -1669,8 +2094,17 @@ export function AdminPage() {
 
   const q = search.trim().toLowerCase()
   const filtered = accounts
-    .filter((a) => (q ? a.name?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q) : true))
+    .filter((a) => (q ? [a.name, a.email, a.school].filter(Boolean).some((value) => value.toLowerCase().includes(q)) : true))
     .filter((a) => (statusFilter === 'all' ? true : tier(a) === statusFilter))
+    .filter((a) => {
+      const context = a.learning_context || {}
+      if (contextFilter === 'pacing') return context.pacing_guides?.active_count > 0
+      if (contextFilter === 'calendar') return context.calendar?.status === 'confirmed'
+      if (contextFilter === 'needs_attention') {
+        return capStatusFor(a).tone !== 'ok' || !context.pacing_guides?.active_count || ['pending', 'rejected'].includes(context.calendar?.status)
+      }
+      return true
+    })
   const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.joined
   const sorted = [...filtered].sort((a, b) => {
     const av = accessor(a)
@@ -1793,12 +2227,13 @@ export function AdminPage() {
   // -- Tabs --
   const TABS = React.useMemo(() => [
     { id: 'overview', label: 'Overview' },
-    { id: 'users', label: 'User Management' },
+    { id: 'users', label: 'Customers', count: accounts.length || undefined },
+    { id: 'plans', label: 'Lesson Plans' },
     { id: 'standards', label: 'Standards Check' },
     { id: 'schools', label: 'Schools' },
     { id: 'billing', label: 'Billing' },
     { id: 'settings', label: 'Settings' },
-  ], [])
+  ], [accounts.length])
 
   return (
     <SplitLayout
@@ -1807,26 +2242,56 @@ export function AdminPage() {
       tabs={TABS}
       backPath="/"
       contentMaxWidth="max-w-6xl"
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      mobileTabs={TABS}
     >
-      <div className="w-full max-w-6xl flex flex-col gap-16 pb-32">
+      <div className="w-full max-w-6xl pb-32">
             
             {/* Overview Section */}
-            <div id="section-overview" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Overview</h2>
+            <div id="section-overview" className={activeTab === 'overview' ? '' : 'hidden'}>
               {isLoading ? (
                 <p className="text-sm text-ink-muted">Loading…</p>
               ) : isError ? (
                 <p className="text-sm text-mark">{error?.message || 'Could not load accounts.'}</p>
               ) : (
-                <>
-                  <StatsCards accounts={accounts} />
-                  <UsageTrendChart />
-                </>
+                <AdminOverview accounts={accounts} onNavigate={setActiveTab} />
               )}
             </div>
 
+            {/* Customer directory */}
+            <div id="section-users" className={activeTab === 'users' ? '' : 'hidden'}>
+              <AdminCustomers
+                accounts={accounts}
+                sorted={sorted}
+                isLoading={isLoading}
+                isError={isError}
+                search={search}
+                setSearch={setSearch}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                contextFilter={contextFilter}
+                setContextFilter={setContextFilter}
+                sort={sort}
+                onSort={onSort}
+                selected={selected}
+                toggleSelect={toggleSelect}
+                allVisibleSelected={allVisibleSelected}
+                toggleSelectAllVisible={toggleSelectAllVisible}
+                selectedCount={selected.size}
+                clearSelection={clearSelection}
+                bulkBusy={bulkBusy}
+                bulkCap={bulkCap}
+                setBulkCap={setBulkCap}
+                bulkComp={bulkComp}
+                bulkSetCap={bulkSetCap}
+                pending={pending}
+                toggleComp={toggleComp}
+              />
+            </div>
+
             {/* Users Section */}
-            <div id="section-users" className="scroll-mt-8">
+            {activeTab === 'legacy' && <div className="hidden">
               <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xl font-bold text-ink">User Management</h2>
                 <NewBetaAccountForm />
@@ -1943,6 +2408,7 @@ export function AdminPage() {
                                 <SortHeader label="Avg/day (30d)" sortKey="avg_day" sort={sort} onSort={onSort} />
                                 <SortHeader label="Last active" sortKey="last_active" sort={sort} onSort={onSort} />
                                 <SortHeader label="Joined" sortKey="joined" sort={sort} onSort={onSort} />
+                                <th className="px-3 py-2 font-medium">Planning context</th>
                                 <th className="px-3 py-2 font-medium">Custom cap</th>
                                 <th className="px-3 py-2 font-medium" />
                               </tr>
@@ -1980,6 +2446,9 @@ export function AdminPage() {
                                   <td className="px-3 py-2 font-mono text-ink-soft">{(a.tokens_avg_day_30d || 0).toLocaleString()}</td>
                                   <td className="px-3 py-2 text-ink-soft">{relative(a.last_plan_at)}</td>
                                   <td className="px-3 py-2 text-ink-soft">{relative(a.created_at)}</td>
+                                  <td className="px-3 py-2">
+                                    <PlanningContext account={a} />
+                                  </td>
                                   <td className="px-3 py-2">
                                     <CustomCapEditor account={a} />
                                   </td>
@@ -2043,6 +2512,12 @@ export function AdminPage() {
                               <dt className="text-ink-muted">Joined</dt>
                               <dd className="text-right text-ink-soft">{relative(a.created_at)}</dd>
                             </dl>
+                            <div className="mt-3 border-t border-edge pt-3">
+                              <div className="mb-1.5 text-2xs font-medium uppercase tracking-wider text-ink-muted">
+                                Planning context
+                              </div>
+                              <PlanningContext account={a} />
+                            </div>
                             <div className="mt-3 flex flex-col gap-2 border-t border-edge pt-3">
                               <label className="text-2xs font-medium uppercase tracking-wider text-ink-muted">
                                 Custom weekly cap
@@ -2072,29 +2547,35 @@ export function AdminPage() {
                   </p>
                 </>
               )}
+            </div>}
+
+            {/* Lesson Plans Section */}
+            <div id="section-plans" className={activeTab === 'plans' ? '' : 'hidden'}>
+              <div className="mb-6"><p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Operations</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Lesson plans</h2><p className="mt-1 text-sm text-ink-muted">Review, search, and download the plans your customers have produced.</p></div>
+              <AdminLessonPlans accounts={accounts} />
             </div>
 
             {/* Standards Section */}
-            <div id="section-standards" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Standards Check</h2>
+            <div id="section-standards" className={activeTab === 'standards' ? '' : 'hidden'}>
+              <div className="mb-6"><p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Quality control</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Standards check</h2><p className="mt-1 text-sm text-ink-muted">Catch standards that do not match the plan’s course or grade before they become support issues.</p></div>
               <StandardsCheckSection />
             </div>
 
             {/* Schools Section */}
-            <div id="section-schools" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Schools & Calendars</h2>
+            <div id="section-schools" className={activeTab === 'schools' ? '' : 'hidden'}>
+              <div className="mb-6"><p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Workspace context</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Schools & calendars</h2><p className="mt-1 text-sm text-ink-muted">Manage school records, calendar submissions, and template processing queues.</p></div>
               <SchoolsAdmin />
             </div>
 
             {/* Billing Section */}
-            <div id="section-billing" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Billing</h2>
+            <div id="section-billing" className={activeTab === 'billing' ? '' : 'hidden'}>
+              <div className="mb-6"><p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Revenue operations</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Billing</h2><p className="mt-1 text-sm text-ink-muted">See revenue, subscription health, and payment risk in one place.</p></div>
               <BillingAdmin />
             </div>
 
             {/* Settings Section */}
-            <div id="section-settings" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Settings</h2>
+            <div id="section-settings" className={activeTab === 'settings' ? '' : 'hidden'}>
+              <div className="mb-6"><p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">System controls</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Settings</h2><p className="mt-1 text-sm text-ink-muted">Tune usage controls and review the admin audit trail.</p></div>
               <SettingsAdmin />
             </div>
 

@@ -1737,7 +1737,16 @@ export function ChatPage() {
         })
         .join('\n\n')
 
+      // Keep the actionable request separate from the context sent to the
+      // direct lesson-plan generator. This prevents a long PDF (or an older
+      // transcript) from tripping GenerateRequest.query's request limit and
+      // makes the document boundary explicit for prompt-injection safety.
+      const priorConversation = historyMessages
+        .map((m) => `${m.role.toUpperCase()}: ${m.content || m.planLabel || m.weekLabel || ''}`)
+        .join('\n\n')
+
       const content = docs ? `${docs}\n\n---\n\n${typed}` : typed
+      const chatUserContent = typed || (docs ? 'Please use the attached documents as reference for this request.' : '')
       // Guards on the COMBINED text, so an attachment with no typed message
       // sends — the send button was already enabled for that and did nothing.
       const voiceTurn = Boolean(options.voiceTurn)
@@ -1919,20 +1928,22 @@ export function ChatPage() {
 
         const firstPayload = [
           ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
-          { role: 'user', content },
+          { role: 'user', content: chatUserContent },
         ]
 
         if (isClearlySpecifiedPlanRequest(typed)) {
           setPreparing(false)
-          const directHistory = [
-            ...historyMessages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
-            `USER: ${content}`,
-          ].join('\n\n')
           if (voiceOpen) voice.speak(VOICE_BUILDING)
           // No chat placeholder is needed here: the progress tray is the
           // live response surface, and the completed-plan callback adds the
           // assistant handoff when the document is ready.
-          stream.start(directHistory, { chatId: activeChatId, weekNumber: effectiveWeek, classId }).catch(() => {})
+          stream.start(typed, {
+            chatId: activeChatId,
+            weekNumber: effectiveWeek,
+            classId,
+            conversationContext: priorConversation,
+            referenceContext: docs,
+          }).catch(() => {})
           return
         }
 
@@ -1951,6 +1962,7 @@ export function ChatPage() {
           voice: voiceOpen,
           mode: chatMode,
           weekNumber: effectiveWeek,
+          referenceContext: docs,
         })
 
         // Asked instead of building — onDone (above) already rendered the
@@ -1966,10 +1978,7 @@ export function ChatPage() {
           return
         }
 
-        let firstHistory = [
-          ...historyMessages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
-          `USER: ${content}`,
-        ].join('\n\n')
+        let firstHistory = priorConversation
         if (firstResult.text?.trim()) {
           firstHistory += `\n\nASSISTANT: ${firstResult.text}`
         }
@@ -1983,7 +1992,13 @@ export function ChatPage() {
         }
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
-        stream.start(firstHistory, { chatId: activeChatId, weekNumber: effectiveWeek, classId }).catch(() => {})
+        stream.start(typed, {
+          chatId: activeChatId,
+          weekNumber: effectiveWeek,
+          classId,
+          conversationContext: firstHistory,
+          referenceContext: docs,
+        }).catch(() => {})
         return
       }
 
@@ -1993,7 +2008,7 @@ export function ChatPage() {
       // silently rebuild the week.
       const payloadMessages = [
         ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
-        { role: 'user', content },
+        { role: 'user', content: chatUserContent },
       ]
       // Same handoff as above: chatStream.start() sets chatStream.isStreaming
       // synchronously, so busy stays continuously true across this call even
@@ -2019,6 +2034,7 @@ export function ChatPage() {
         voice: voiceOpen,
         mode: chatMode,
         weekNumber: conversationWeek,
+        referenceContext: docs,
       })
 
       // The generate_quiz alternative — a distinct request from
@@ -3675,7 +3691,6 @@ export function ChatPage() {
             <LessonPlanProgressTray
               days={stream.preview?.days}
               dayNames={stream.dayNames}
-              onStop={stopGenerating}
             />
           ) : null}
           <Composer

@@ -164,7 +164,7 @@ export function useLessonStream({ onDone, onError } = {}) {
   // One attempt: opens the SSE connection and either returns the finished
   // result or throws. Retrying lives in `start`, not here — see useChatStream
   // for why that split matters (onDone must fire at most once per call).
-  const attempt = useCallback(async (query, { chatId, weekNumber, classId, controller }) => {
+  const attempt = useCallback(async (query, { chatId, weekNumber, classId, conversationContext, referenceContext, controller }) => {
     cancelQueuedPlan()
     setText('')
     setPreview(null)
@@ -181,6 +181,8 @@ export function useLessonStream({ onDone, onError } = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query,
+        conversation_context: conversationContext || '',
+        reference_context: referenceContext || '',
         chat_id: chatId ?? null,
         week_number: weekNumber ?? null,
         // The page's own class (ChatPage's classId route param), not just
@@ -292,7 +294,7 @@ export function useLessonStream({ onDone, onError } = {}) {
   }, [cancelQueuedPlan, flushPlanUpdate, queuePlanUpdate])
 
   const start = useCallback(
-    async (query, { chatId, weekNumber, classId } = {}) => {
+    async (query, { chatId, weekNumber, classId, conversationContext = '', referenceContext = '' } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -305,7 +307,14 @@ export function useLessonStream({ onDone, onError } = {}) {
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
-            const result = await attempt(query, { chatId, weekNumber, classId, controller })
+            const result = await attempt(query, {
+              chatId,
+              weekNumber,
+              classId,
+              conversationContext,
+              referenceContext,
+              controller,
+            })
             onDoneRef.current?.(result)
             return result
           } catch (err) {

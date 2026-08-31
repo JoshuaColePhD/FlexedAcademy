@@ -11,7 +11,8 @@ export function SplitLayout({
   activeTab: controlledActiveTab,
   backPath = null,
   bottomAction = null,
-  contentMaxWidth = 'max-w-4xl'
+  contentMaxWidth = 'max-w-4xl',
+  mobileTabs = null,
 }) {
   const navigate = useNavigate()
   const scrollContainerRef = useRef(null)
@@ -136,6 +137,25 @@ export function SplitLayout({
             </button>
             <h1 className="text-xl font-bold text-ink">{title}</h1>
           </div>
+
+          {mobileTabs?.length ? (
+            <nav className="md:hidden mb-8 -mx-1 flex gap-1 overflow-x-auto pb-1" aria-label={`${title} sections`}>
+              {mobileTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => onTabChange?.(tab.id)}
+                  aria-current={activeTab === tab.id ? 'page' : undefined}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    activeTab === tab.id ? 'bg-ink text-paper' : 'bg-paper-inset text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  {tab.label}
+                  {tab.count !== undefined ? ` · ${tab.count}` : ''}
+                </button>
+              ))}
+            </nav>
+          ) : null}
           
           {children}
         </div>

@@ -469,6 +469,15 @@ export const api = {
      account gets the normal 403 envelope, not a hidden feature that merely
      isn't linked to. */
   adminListAccounts: ({ signal } = {}) => request('/api/admin/accounts', { signal }),
+  adminListPlans: ({ limit = 50, offset = 0, q, userId, signal } = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries({ limit, offset, q, user_id: userId }).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    )
+    return request(`/api/admin/plans?${qs}`, { signal })
+  },
+  adminGetPlan: (id, { signal } = {}) => request(`/api/admin/plans/${encodeURIComponent(id)}`, { signal }),
+  adminDownloadPlan: (id, options = {}) =>
+    downloadFile(`${API_BASE}/api/admin/plans/${encodeURIComponent(id)}/download`, options),
   adminUsageTrend: ({ signal } = {}) => request('/api/admin/usage-trend', { signal }),
   adminStandardsCheck: ({ signal } = {}) => request('/api/admin/qa/standards-check', { signal }),
   adminSetComped: (accountId, comped) =>

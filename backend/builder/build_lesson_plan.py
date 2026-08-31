@@ -129,14 +129,14 @@ def build(data, out_path):
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     fixed_layout(table)
 
-    # Row 0: Teacher | Subject: English | Week (each merged across 2 cols)
+    # Row 0: Teacher | Subject | Week (each merged across 2 cols)
     r0 = table.add_row().cells
     for i in range(0, 6, 2):
         set_width(r0[i], COL_DXA[i] if i == 0 else DAY_W)
         r0[i].merge(r0[i + 1])
     write_plain(r0[0], f"Teacher: {data.get('teacher', '')}", bold=True)
     shade(r0[0], BLUE)
-    write_plain(r0[2], "Subject: English", bold=True)
+    write_plain(r0[2], f"Subject: {data.get('subject') or data.get('course', '')}", bold=True)
     shade(r0[2], BLUE)
     write_plain(r0[4], f"Week: {data.get('week_of', '')}", bold=True)
     shade(r0[4], BLUE)

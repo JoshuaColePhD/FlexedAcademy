@@ -669,12 +669,11 @@
     gap: var(--sp-3);
     overflow-x: auto;
     scroll-snap-type: x mandatory;
-    /* A day card fills most of the phone sheet. Restricting it to pan-x
-       prevented a vertical drag that began on the card from reaching
-       .doc-body, leaving the rest of the lesson plan inaccessible. Native
-       scroll routing still sends horizontal motion to this rail and vertical
-       motion to the document body when both axes are permitted. */
-    touch-action: pan-x pan-y pinch-zoom;
+    /* The rail owns horizontal swipes; the document body owns vertical ones.
+       Allowing pan-y here makes a vertical gesture that starts on a card get
+       consumed by this nested scroll region even though it has no vertical
+       overflow, so the rest of a long lesson plan never moves. */
+    touch-action: pan-x pinch-zoom;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
   }
@@ -1145,6 +1144,10 @@
     background-color: var(--district-cell);
     background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
     background-attachment: local, local, scroll, scroll;
+    /* This is a horizontal rail inside the document's vertical scroller.
+       Keep vertical touch movement available to .doc-body instead of letting
+       the nested rail consume a gesture that cannot move it vertically. */
+    touch-action: pan-x pinch-zoom;
     border: 1px solid var(--edge);
     border-radius: var(--r-md);
   }
@@ -3701,6 +3704,15 @@
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     padding: 14px 26px 30px;
+  }
+  /* The composer is portaled above desktop/tablet document overlays, so it
+     visually covers the bottom of the reading surface while the overlay still
+     occupies the full height. Add that measured dock height to the scrollable
+     content rather than shortening the overlay: the final lesson-plan rows
+     can then be lifted fully above the composer. */
+  .artifact-overlay .doc-body {
+    padding-bottom: calc(30px + var(--composer-h, 0px));
+    scroll-padding-bottom: calc(30px + var(--composer-h, 0px));
   }
   /* ── dedicated phone plan reader ───────────────────────────────────────
      This intentionally is not an overlay. ChatPage swaps to this focused

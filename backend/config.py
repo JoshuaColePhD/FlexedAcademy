@@ -376,6 +376,11 @@ class Settings(BaseSettings):
     max_audio_bytes: int = 25 * 1024 * 1024  # Whisper's own cap
     max_doc_bytes: int = 10 * 1024 * 1024
     max_query_chars: int = 8000
+    # A lesson request and its supporting material are validated separately.
+    # The frontend currently clips each attached file to 12,000 characters,
+    # while prior conversation can add more context without making the
+    # teacher's actual request any longer.
+    max_generation_context_chars: int = 80000
 
     # Error tracking. Inert until set — same inert-until-configured shape as
     # Stripe and Resend above, since a dev machine shouldn't report its own

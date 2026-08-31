@@ -63,6 +63,7 @@ def _identity_context(plan: dict) -> dict:
         "teacher": str(plan.get("teacher", "") or ""),
         "course": str(plan.get("course", "") or ""),
         "period": str(plan.get("period", "") or ""),
+        "subject": str(plan.get("subject") or plan.get("course", "") or ""),
         "week_of": str(plan.get("week_of", "") or ""),
     }
 

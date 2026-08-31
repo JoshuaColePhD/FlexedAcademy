@@ -14,14 +14,16 @@ import secrets
 import string
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from .. import auth, db, mail, qa, storage, stripe_api, template_intake
+from .. import auth, db, docx_build, mail, qa, storage, stripe_api, template_intake
 from ..config import settings
 from ..deps import get_current_admin
 from ..entitlement import ENTITLED_STATUSES
 from ..errors import AppError
+from .plans import DOCX_MIME, _docx_for_plan
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -52,6 +54,44 @@ def _generate_password() -> str:
 @router.get("/accounts")
 def list_accounts(_admin: str = Depends(get_current_admin)):
     return {"accounts": db.list_accounts_with_stats()}
+
+
+@router.get("/plans")
+def list_plans(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    q: str | None = Query(default=None, max_length=200),
+    user_id: str | None = Query(default=None, max_length=64),
+    _admin: str = Depends(get_current_admin),
+):
+    """Admin-only lesson-plan history.
+
+    Metadata is paginated and searchable; full plan content is deliberately
+    fetched only for the one plan an admin opens. Neither endpoint is exposed
+    through the teacher-scoped /api/plans routes.
+    """
+    return db.list_admin_plans(limit=limit, offset=offset, q=q, user_id=user_id)
+
+
+@router.get("/plans/{plan_id}")
+def get_plan(plan_id: str, _admin: str = Depends(get_current_admin)):
+    plan = db.get_admin_plan(plan_id)
+    if not plan:
+        raise AppError("plan_not_found", "No lesson plan was found.", status=404)
+    return plan
+
+
+@router.get("/plans/{plan_id}/download")
+def download_plan(plan_id: str, _admin: str = Depends(get_current_admin)):
+    row = db.get_admin_plan(plan_id)
+    if not row:
+        raise AppError("plan_not_found", "No lesson plan was found.", status=404)
+    path = _docx_for_plan(row["user_id"], row)
+    return FileResponse(
+        path=str(path),
+        filename=f"{docx_build.safe_filename(row['week_label'])}.docx",
+        media_type=DOCX_MIME,
+    )
 
 
 @router.get("/usage-trend")

@@ -61,9 +61,11 @@ WEEDEN_SECTION_FIELDS = (
 
 DAY_CONTENT_FIELDS = SINGLE_LINE_FIELDS + ("engagement_strategy",) + MULTILINE_FIELDS + WEEDEN_SECTION_FIELDS
 
-# Identity fields are injected server-side from the settings record, never
-# authored by the model. See prompts.py.
-PLAN_IDENTITY_FIELDS = ("teacher", "course", "period")
+# Identity fields are injected server-side from the class/settings record,
+# never authored by the model. See prompts.py. `subject` was added after older
+# plans already existed, so validation preserves it when present while the
+# service backfills it for legacy rows before rendering a document.
+PLAN_IDENTITY_FIELDS = ("teacher", "course", "period", "subject")
 
 
 # ---------------------------------------------------------------------------
@@ -446,7 +448,7 @@ _BUILDER_HEADER_CELL_SCHEMA = {
         "text_template": {
             "type": "string",
             "description": (
-                "Literal text for this header cell. May reference {teacher}, {course}, {period}, or {week_of} "
+                "Literal text for this header cell. May reference {teacher}, {subject}, {course}, {period}, or {week_of} "
                 "using exactly that Python str.format() syntax — no other placeholders are supported."
             ),
         },
@@ -996,7 +998,14 @@ def validate_plan(
     return normalized, warnings
 
 
-def with_identity(plan: dict, *, teacher: str, course: str, period: str) -> dict:
+def with_identity(
+    plan: dict,
+    *,
+    teacher: str,
+    course: str,
+    period: str,
+    subject: str | None = None,
+) -> dict:
     """Stamp the teacher's identity onto a validated plan.
 
     The model does not author these — they came from the settings record. This
@@ -1007,6 +1016,8 @@ def with_identity(plan: dict, *, teacher: str, course: str, period: str) -> dict
     out["teacher"] = teacher
     out["course"] = course
     out["period"] = period
+    if subject:
+        out["subject"] = subject
     return out
 
 

@@ -369,7 +369,11 @@ def fork_plan(plan_id: str, body: ForkPlanBody, bg_tasks: BackgroundTasks, user_
     cls = db.get_class(user_id, body.class_id) if body.class_id else None
     identity = service.identity_for(user_id, cls)
     plan_data = schema.with_identity(
-        plan["plan_json"], teacher=identity["teacher"], course=identity["course"], period=identity["period"]
+        plan["plan_json"],
+        teacher=identity["teacher"],
+        course=identity["course"],
+        period=identity["period"],
+        subject=service.subject_label(cls["subject"]) if cls else None,
     )
     out_path = docx_build.plan_output_path(plan_data, new_id)
     bg_tasks.add_task(service._build_docx_bg, user_id, plan_data, out_path, new_id)
@@ -392,7 +396,11 @@ def patch_plan(plan_id: str, body: PatchPlan, bg_tasks: BackgroundTasks, user_id
         plan, warnings = schema.validate_plan(body.plan_json, day_names=template_days)
         identity = service.identity_for(user_id, cls)
         plan = schema.with_identity(
-            plan, teacher=identity["teacher"], course=identity["course"], period=identity["period"]
+            plan,
+            teacher=identity["teacher"],
+            course=identity["course"],
+            period=identity["period"],
+            subject=service.subject_label(cls["subject"]) if cls else None,
         )
         out_path = docx_build.plan_output_path(plan, plan_id)
         bg_tasks.add_task(service._build_docx_bg, user_id, plan, out_path, plan_id)
@@ -494,7 +502,11 @@ def revise_whole_plan(
     plan, warnings = schema.validate_plan(new_plan_json, day_names=day_names_for_school(school_id))
     identity = service.identity_for(user_id, cls)
     plan = schema.with_identity(
-        plan, teacher=identity["teacher"], course=identity["course"], period=identity["period"]
+        plan,
+        teacher=identity["teacher"],
+        course=identity["course"],
+        period=identity["period"],
+        subject=service.subject_label(cls["subject"]) if cls else None,
     )
     
     out_path = docx_build.plan_output_path(plan, plan_id)

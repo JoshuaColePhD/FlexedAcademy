@@ -4,7 +4,7 @@ import { DAYS, SHORT_DAY, dayTitle } from '../lib/planShape'
 /* Generation status stays above the composer as one compact line. It explains
  * the current day as it advances without opening a tall card or moving the
  * transcript out from under the teacher's cursor. */
-export function LessonPlanProgressTray({ days, dayNames = DAYS, onStop }) {
+export function LessonPlanProgressTray({ days, dayNames = DAYS }) {
   const byName = new Map((days || []).map((day) => [day.name, day]))
   const axis = dayNames?.length ? dayNames : DAYS
   const writtenCount = axis.filter((name) => byName.has(name)).length
@@ -41,12 +41,6 @@ export function LessonPlanProgressTray({ days, dayNames = DAYS, onStop }) {
           })}
         </span>
         <span className="lesson-plan-progress-line-count">{countLabel}</span>
-        {onStop ? (
-          <button type="button" className="lesson-plan-progress-stop fa-press" onClick={onStop}>
-            <span className="lesson-plan-progress-stop-icon" aria-hidden="true"><span /></span>
-            Stop
-          </button>
-        ) : null}
       </div>
     </div>
   )

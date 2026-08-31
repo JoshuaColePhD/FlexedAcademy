@@ -210,7 +210,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, controller, requestId }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, referenceContext, controller, requestId }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -222,6 +222,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages,
+          reference_context: referenceContext || '',
           mode,
           chat_id: chatId ?? null,
           class_id: classId ?? null,
@@ -501,7 +502,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   }, [cancelQueuedText, queueText, flushText])
 
   const start = useCallback(
-    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber } = {}) => {
+    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, referenceContext = '' } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -528,7 +529,16 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
-            const result = await attempt(messages, { chatId, classId, mode, voice, weekNumber, controller, requestId })
+            const result = await attempt(messages, {
+              chatId,
+              classId,
+              mode,
+              voice,
+              weekNumber,
+              referenceContext,
+              controller,
+              requestId,
+            })
             onDoneRef.current?.(result)
             setStatus({ code: 'complete', label: 'Ready', requestId })
             return result

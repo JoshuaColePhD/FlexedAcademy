@@ -73,6 +73,33 @@ def subject_code(subject: str) -> str:
 _subject_code = subject_code  # internal callers
 
 
+def subject_label(subject: str) -> str:
+    """Return the class subject as a human-readable document label.
+
+    Classes store a stable framework id (for example ``Math`` or ``AP_Lang``),
+    while the DOCX header should show the teacher-facing label. Adoption years
+    belong in the picker, not in a lesson-plan header.
+    """
+    from .routes.misc import SUBJECT_LABELS
+
+    raw = (subject or "").strip()
+    label = SUBJECT_LABELS.get(subject_code(raw), raw.replace("_", " "))
+    return label.split(" (", 1)[0].strip() or "English"
+
+
+def with_subject(plan: dict, *, cls: dict | None = None, subject: str | None = None) -> dict:
+    """Stamp the owning class's subject onto a plan before DOCX rendering.
+
+    The fallback to the stored course keeps legacy plans renderable when the
+    class was deleted or predates class-scoped identity fields.
+    """
+    out = dict(plan)
+    source = (cls or {}).get("subject") or subject or out.get("subject") or out.get("course")
+    if source:
+        out["subject"] = subject_label(str(source))
+    return out
+
+
 def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
     """(subject_code, grade) to retrieve and audit against — from the class's
     OWN subject/grade when given, else the account's most-recently-touched
@@ -172,6 +199,7 @@ from fastapi import BackgroundTasks
 
 def _build_docx_for_template(plan: dict, out_path: Path, school_id: str | None, template_id: str | None = None):
     """Keep legacy builder test doubles and old plans compatible."""
+    plan = with_subject(plan)
     if template_id:
         return docx_build.build_docx(plan, out_path, school_id, template_id)
     return docx_build.build_docx(plan, out_path, school_id)
@@ -210,8 +238,11 @@ def run_document_build_job(job: dict) -> None:
         return
     try:
         cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-        out_path = docx_build.plan_output_path(row["plan_json"], plan_id)
-        _build_docx_for_template(row["plan_json"], out_path, cls.get("school") if cls else None, row.get("template_id"))
+        plan = with_subject(row["plan_json"], cls=cls)
+        if plan != row["plan_json"]:
+            db.update_plan(user_id, plan_id, plan_json=plan)
+        out_path = docx_build.plan_output_path(plan, plan_id)
+        _build_docx_for_template(plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
         _persist_docx(out_path)
         db.update_plan(user_id, plan_id, docx_path=str(out_path))
         db.finish_document_build(plan_id, user_id)
@@ -413,6 +444,7 @@ def finalize(
                 unit = map_unit["unit"]
 
     plan_id = db.new_id()
+    plan = with_subject(plan, cls=cls, subject=subject_code)
     out_path = docx_build.plan_output_path(plan, plan_id)
 
     if bg_tasks is not None:
@@ -481,6 +513,7 @@ def generate(
     class_id: str | None = None,
     school_id: str | None = None,
     cls: dict | None = None,
+    retrieval_query: str | None = None,
 ) -> dict:
     """`class_id`/`school_id`, when the caller has them, are the chat's own
     class and its resolved school (routes/generate.py's _chat_class +
@@ -500,7 +533,9 @@ def generate(
     class_id AND cls looks redundant; it exists because finalize has only
     ever taken the id, and giving it the row instead everywhere else this
     function's called wasn't this fix's job."""
-    result = prepare(user_id, query, cls=cls)
+    # Supporting document/conversation context belongs in the model prompt,
+    # but the standards lookup should use only the teacher's actual request.
+    result = prepare(user_id, retrieval_query or query, cls=cls)
     return finalize(
         user_id=user_id,
         plan_raw=llm.generate_plan(
@@ -545,6 +580,10 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
         plan = cleaned
         db.update_plan(user_id, plan_id, plan_json=plan)
 
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    plan = with_subject(plan, cls=cls)
+    if plan != row["plan_json"]:
+        db.update_plan(user_id, plan_id, plan_json=plan)
     out_path = docx_build.plan_output_path(plan, plan_id)
 
     if bg_tasks is not None:
@@ -559,7 +598,6 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
         bg_tasks.add_task(_build_docx_bg, user_id, plan, out_path, plan_id)
         return db.get_plan(user_id, plan_id)  # type: ignore[return-value]
     else:
-        cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
         _build_docx_for_template(plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
         _persist_docx(out_path)
         return db.update_plan(
@@ -699,7 +737,7 @@ def revise_day(
 
     new_days = list(days)
     new_days[day_index] = updated
-    new_plan = {**plan, "days": new_days}
+    new_plan = with_subject({**plan, "days": new_days}, cls=cls, subject=subject_code)
 
     allowed = set(row.get("retrieved_ids") or []) | result.codes
     if needs_retrieval:
@@ -801,7 +839,7 @@ def set_day_field(
 
     new_days = list(days)
     new_days[day_index] = updated
-    new_plan = {**plan, "days": new_days}
+    new_plan = with_subject({**plan, "days": new_days}, cls=cls, subject=subject_code)
 
     allowed = set(row.get("retrieved_ids") or [])
     warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
