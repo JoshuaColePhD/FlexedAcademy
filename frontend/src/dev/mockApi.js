@@ -228,11 +228,11 @@ const state = {
     { id: 'springfield-ms', name: 'Springfield Middle School', created_at: '2026-01-02T00:00:00+00:00', has_calendar: false },
   ],
   accounts: [
-    { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true,
+    { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true, is_blocked: false,
       created_at: '2026-08-06T21:54:36+00:00', plans_built: 7, last_plan_at: '2026-08-08T01:44:46+00:00', tokens_used: 812_400 },
-    { id: 'u2', email: 'trial.teacher@example.com', name: 'Trial Teacher', subscription_status: null, is_admin: false,
+    { id: 'u2', email: 'trial.teacher@example.com', name: 'Trial Teacher', subscription_status: null, is_admin: false, is_blocked: false,
       created_at: '2026-08-07T12:00:00+00:00', plans_built: 1, last_plan_at: '2026-08-07T12:30:00+00:00', tokens_used: 148_900 },
-    { id: 'u3', email: 'paying.teacher@example.com', name: 'Paying Teacher', subscription_status: 'active', is_admin: false,
+    { id: 'u3', email: 'paying.teacher@example.com', name: 'Paying Teacher', subscription_status: 'active', is_admin: false, is_blocked: false,
       created_at: '2026-08-01T09:00:00+00:00', plans_built: 12, last_plan_at: '2026-08-08T08:00:00+00:00', tokens_used: 1_204_600 },
   ],
   chats: [
@@ -512,6 +512,12 @@ export function installMockApi() {
     if (compMatch && method === 'POST') {
       const acct = state.accounts.find((a) => a.id === compMatch[1])
       if (acct) acct.subscription_status = body?.comped ? 'comped' : null
+      return json({ account: acct || null })
+    }
+    const blockMatch = path.match(/^\/api\/admin\/accounts\/([^/]+)\/block$/)
+    if (blockMatch && method === 'POST') {
+      const acct = state.accounts.find((a) => a.id === blockMatch[1])
+      if (acct) acct.is_blocked = Boolean(body?.blocked)
       return json({ account: acct || null })
     }
     if (path === '/api/billing/price')

@@ -103,6 +103,8 @@ def _public_user(user: dict) -> dict:
 
 
 def _log_in(request: Request, response: Response, user: dict) -> dict:
+    if user.get("is_blocked"):
+        raise AppError("account_blocked", "This account has been blocked.", status=403)
     token = auth.create_session_token(user["id"], user.get("session_version", 0))
     response.set_cookie(COOKIE_NAME, token, **_cookie_kwargs(request))
     return _public_user(user)

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Activity,
   ArrowUpRight,
+  Ban,
   BarChart3,
   BookOpen,
   Building2,
@@ -195,6 +196,14 @@ function StatusPill({ status }) {
       }`}
     >
       {label}
+    </span>
+  )
+}
+
+function BlockedPill() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-mark-tint px-2 py-0.5 text-2xs font-medium text-mark">
+      <Ban size={10} aria-hidden="true" /> Blocked
     </span>
   )
 }
@@ -2010,11 +2019,11 @@ function AdminOverview({ accounts, onNavigate }) {
   )
 }
 
-function CustomerDetail({ account, onClose, onToggleComp, pending }) {
+function CustomerDetail({ account, onClose, onToggleComp, onToggleBlocked, pending }) {
   return (
     <aside className="mt-5 rounded-2xl border border-accent/30 bg-accent-tint/35 p-4" aria-label={`Customer profile for ${account.name || account.email}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-accent-contrast"><UserRound size={18} aria-hidden="true" /></span><div><p className="text-lg font-semibold text-ink">{account.name || 'Unnamed customer'}</p><p className="text-xs text-ink-muted">{account.email}{account.school ? ` · ${account.school}` : ''}</p><p className="mt-1 text-2xs text-ink-faint">Joined {relative(account.created_at)} · Last plan {relative(account.last_plan_at)}</p></div></div>
+        <div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-accent-contrast"><UserRound size={18} aria-hidden="true" /></span><div><div className="flex flex-wrap items-center gap-2"><p className="text-lg font-semibold text-ink">{account.name || 'Unnamed customer'}</p>{account.is_blocked ? <BlockedPill /> : null}</div><p className="text-xs text-ink-muted">{account.email}{account.school ? ` · ${account.school}` : ''}</p><p className="mt-1 text-2xs text-ink-faint">Joined {relative(account.created_at)} · Last plan {relative(account.last_plan_at)}</p></div></div>
         <button type="button" className="btn-icon" onClick={onClose} aria-label="Close customer profile"><X size={15} aria-hidden="true" /></button>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-4">
@@ -2025,13 +2034,14 @@ function CustomerDetail({ account, onClose, onToggleComp, pending }) {
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
         <div><p className="text-2xs font-semibold uppercase tracking-wide text-ink-muted">Planning context</p><div className="mt-2"><PlanningContext account={account} /></div><p className="mt-2 text-2xs text-ink-muted">Pacing guides are customer/class resources. The calendar status is shared at the school level.</p></div>
-        <div className="flex flex-wrap gap-2"><CustomCapEditor account={account} /><button type="button" className="btn text-xs" disabled={pending === account.id} onClick={() => onToggleComp(account)}>{account.subscription_status === 'comped' ? 'Revoke unlimited' : 'Grant unlimited'}</button></div>
+        <div className="flex flex-wrap gap-2"><CustomCapEditor account={account} /><button type="button" className="btn text-xs" disabled={pending === account.id} onClick={() => onToggleComp(account)}>{account.subscription_status === 'comped' ? 'Revoke unlimited' : 'Grant unlimited'}</button><button type="button" className={`btn text-xs ${account.is_blocked ? '' : 'text-mark'}`} disabled={pending === account.id} onClick={() => onToggleBlocked(account)}>{account.is_blocked ? 'Unblock account' : 'Block account'}</button></div>
       </div>
+      {account.is_blocked ? <p className="mt-3 flex items-center gap-1.5 text-2xs font-medium text-mark"><Ban size={12} aria-hidden="true" /> This account cannot log in or use the app. Blocking does not delete its data or cancel billing.</p> : null}
     </aside>
   )
 }
 
-function AdminCustomers({ accounts, sorted, isLoading, isError, search, setSearch, statusFilter, setStatusFilter, contextFilter, setContextFilter, sort, onSort, selected, toggleSelect, allVisibleSelected, toggleSelectAllVisible, selectedCount, clearSelection, bulkBusy, bulkCap, setBulkCap, bulkComp, bulkSetCap, pending, toggleComp }) {
+function AdminCustomers({ accounts, sorted, isLoading, isError, search, setSearch, statusFilter, setStatusFilter, contextFilter, setContextFilter, sort, onSort, selected, toggleSelect, allVisibleSelected, toggleSelectAllVisible, selectedCount, clearSelection, bulkBusy, bulkCap, setBulkCap, bulkComp, bulkSetCap, pending, toggleComp, toggleBlocked }) {
   const [profileId, setProfileId] = useState(null)
   const profile = accounts.find((account) => account.id === profileId)
 
@@ -2055,10 +2065,10 @@ function AdminCustomers({ accounts, sorted, isLoading, isError, search, setSearc
       {selectedCount > 0 ? <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-accent/30 bg-accent-tint px-4 py-3"><span className="text-xs font-medium text-accent-text">{selectedCount} selected</span><button type="button" className="btn text-xs" disabled={bulkBusy} onClick={() => bulkComp(true)}>Grant unlimited</button><button type="button" className="btn text-xs" disabled={bulkBusy} onClick={() => bulkComp(false)}>Revoke unlimited</button><input type="number" min={0} step={1000} value={bulkCap} onChange={(e) => setBulkCap(e.target.value)} placeholder="tier default" aria-label="Custom weekly token cap" className="w-28 rounded-lg border border-edge bg-paper px-2 py-1.5 text-xs text-ink outline-none focus:border-accent" /><button type="button" className="btn text-xs" disabled={bulkBusy} onClick={bulkSetCap}>Set cap</button><button type="button" className="ml-auto text-xs text-ink-muted underline-offset-2 hover:text-ink hover:underline" onClick={clearSelection}>Clear</button></div> : null}
 
       {isLoading ? <p className="text-sm text-ink-muted">Loading customers…</p> : isError ? <p className="text-sm text-mark">Could not load customers.</p> : sorted.length === 0 ? <div className="neo-world neo-panel rounded-2xl p-8 text-center"><Users size={24} className="mx-auto text-ink-faint" aria-hidden="true" /><p className="mt-2 text-sm font-medium text-ink">No customers match those filters.</p><p className="mt-1 text-xs text-ink-muted">Try clearing the search or choosing a different context.</p></div> : <>
-        <div className="hidden overflow-x-auto rounded-2xl border border-edge lg:block"><table className="w-full text-sm"><thead><tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted"><th className="w-10 px-3 py-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all visible customers" /></th><SortHeader label="Customer" sortKey="name" sort={sort} onSort={onSort} /><SortHeader label="Lifecycle" sortKey="status" sort={sort} onSort={onSort} /><SortHeader label="Activity" sortKey="tokens_7d" sort={sort} onSort={onSort} /><th className="px-3 py-3 font-medium">Planning context</th><th className="px-3 py-3 font-medium">Actions</th></tr></thead><tbody>{sorted.map((account) => <tr key={account.id} className="border-b border-edge last:border-0 hover:bg-paper-sunken/50"><td className="px-3 py-3"><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} aria-label={`Select ${account.email}`} /></td><td className="px-3 py-3"><button type="button" onClick={() => setProfileId(account.id)} className="text-left"><span className="block font-medium text-ink hover:text-accent-text">{account.name || 'Unnamed customer'}</span><span className="mt-0.5 block text-2xs text-ink-muted">{account.email}{account.school ? ` · ${account.school}` : ''}</span></button></td><td className="px-3 py-3"><div className="flex flex-col items-start gap-1"><StatusPill status={account.subscription_status} /><CapStatusBadge account={account} /></div></td><td className="px-3 py-3"><span className="block font-mono text-ink-soft">{(account.tokens_7d || 0).toLocaleString()} <span className="font-sans text-2xs text-ink-muted">tokens</span></span><span className="mt-0.5 block text-2xs text-ink-muted">{account.plans_built} plans · {relative(account.last_plan_at)}</span></td><td className="px-3 py-3"><PlanningContext account={account} /></td><td className="px-3 py-3"><div className="flex items-center gap-1.5"><button type="button" className="btn inline-flex items-center gap-1 text-xs" onClick={() => setProfileId(account.id)}><UserRound size={12} aria-hidden="true" /> Open</button><button type="button" className="btn-icon" aria-label={`More actions for ${account.email}`} title="More actions"><MoreHorizontal size={15} aria-hidden="true" /></button></div></td></tr>)}</tbody></table></div>
-        <ul className="flex flex-col gap-3 lg:hidden">{sorted.map((account) => <li key={account.id} className="neo-world neo-panel rounded-2xl p-4"><div className="flex items-start gap-3"><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} aria-label={`Select ${account.email}`} className="mt-1" /><button type="button" onClick={() => setProfileId(account.id)} className="min-w-0 flex-1 text-left"><span className="block truncate font-medium text-ink">{account.name || 'Unnamed customer'}</span><span className="mt-0.5 block truncate text-2xs text-ink-muted">{account.email}</span></button><StatusPill status={account.subscription_status} /></div><div className="mt-3"><PlanningContext account={account} /></div><div className="mt-3 flex items-center justify-between border-t border-edge pt-3"><span className="text-2xs text-ink-muted">{(account.tokens_7d || 0).toLocaleString()} tokens · {account.plans_built} plans</span><button type="button" className="btn text-xs" onClick={() => setProfileId(account.id)}>Open profile</button></div></li>)}</ul>
+      <div className="hidden overflow-x-auto rounded-2xl border border-edge lg:block"><table className="w-full text-sm"><thead><tr className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted"><th className="w-10 px-3 py-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all visible customers" /></th><SortHeader label="Customer" sortKey="name" sort={sort} onSort={onSort} /><SortHeader label="Lifecycle" sortKey="status" sort={sort} onSort={onSort} /><SortHeader label="Activity" sortKey="tokens_7d" sort={sort} onSort={onSort} /><th className="px-3 py-3 font-medium">Planning context</th><th className="px-3 py-3 font-medium">Actions</th></tr></thead><tbody>{sorted.map((account) => <tr key={account.id} className="border-b border-edge last:border-0 hover:bg-paper-sunken/50"><td className="px-3 py-3"><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} aria-label={`Select ${account.email}`} /></td><td className="px-3 py-3"><button type="button" onClick={() => setProfileId(account.id)} className="text-left"><span className="block font-medium text-ink hover:text-accent-text">{account.name || 'Unnamed customer'}</span><span className="mt-0.5 block text-2xs text-ink-muted">{account.email}{account.school ? ` · ${account.school}` : ''}</span></button></td><td className="px-3 py-3"><div className="flex flex-col items-start gap-1"><StatusPill status={account.subscription_status} />{account.is_blocked ? <BlockedPill /> : null}<CapStatusBadge account={account} /></div></td><td className="px-3 py-3"><span className="block font-mono text-ink-soft">{(account.tokens_7d || 0).toLocaleString()} <span className="font-sans text-2xs text-ink-muted">tokens</span></span><span className="mt-0.5 block text-2xs text-ink-muted">{account.plans_built} plans · {relative(account.last_plan_at)}</span></td><td className="px-3 py-3"><PlanningContext account={account} /></td><td className="px-3 py-3"><div className="flex items-center gap-1.5"><button type="button" className="btn inline-flex items-center gap-1 text-xs" onClick={() => setProfileId(account.id)}><UserRound size={12} aria-hidden="true" /> Open</button><button type="button" className="btn-icon" aria-label={`More actions for ${account.email}`} title="More actions"><MoreHorizontal size={15} aria-hidden="true" /></button></div></td></tr>)}</tbody></table></div>
+      <ul className="flex flex-col gap-3 lg:hidden">{sorted.map((account) => <li key={account.id} className="neo-world neo-panel rounded-2xl p-4"><div className="flex items-start gap-3"><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} aria-label={`Select ${account.email}`} className="mt-1" /><button type="button" onClick={() => setProfileId(account.id)} className="min-w-0 flex-1 text-left"><span className="block truncate font-medium text-ink">{account.name || 'Unnamed customer'}</span><span className="mt-0.5 block truncate text-2xs text-ink-muted">{account.email}</span></button><div className="flex shrink-0 flex-col items-end gap-1"><StatusPill status={account.subscription_status} />{account.is_blocked ? <BlockedPill /> : null}</div></div><div className="mt-3"><PlanningContext account={account} /></div><div className="mt-3 flex items-center justify-between border-t border-edge pt-3"><span className="text-2xs text-ink-muted">{(account.tokens_7d || 0).toLocaleString()} tokens · {account.plans_built} plans</span><button type="button" className="btn text-xs" onClick={() => setProfileId(account.id)}>Open profile</button></div></li>)}</ul>
       </>}
-      {profile ? <CustomerDetail account={profile} onClose={() => setProfileId(null)} onToggleComp={toggleComp} pending={pending} /> : null}
+      {profile ? <CustomerDetail account={profile} onClose={() => setProfileId(null)} onToggleComp={toggleComp} onToggleBlocked={toggleBlocked} pending={pending} /> : null}
     </div>
   )
 }
@@ -2154,6 +2164,29 @@ export function AdminPage() {
       toast.success(
         nextComped ? `${account.email} now has unlimited access` : `${account.email} back to the ordinary free week`
       )
+    } catch (err) {
+      toast.apiError("Couldn't update that account", err)
+    } finally {
+      setPending(null)
+    }
+  }
+
+  const toggleBlocked = async (account) => {
+    const nextBlocked = !account.is_blocked
+    const ok = await confirm({
+      title: nextBlocked ? `Block ${account.email}?` : `Unblock ${account.email}?`,
+      body: nextBlocked
+        ? 'They will be signed out of every device and will not be able to log in. Their data and billing remain unchanged.'
+        : 'They will be able to log in and use the app again. Their data and billing remain unchanged.',
+      confirmLabel: nextBlocked ? 'Block account' : 'Unblock account',
+      tone: nextBlocked ? 'danger' : 'default',
+    })
+    if (!ok) return
+    setPending(account.id)
+    try {
+      await api.adminSetBlocked(account.id, nextBlocked)
+      await qc.invalidateQueries({ queryKey: ['admin', 'accounts'] })
+      toast.success(nextBlocked ? `${account.email} is blocked` : `${account.email} is unblocked`)
     } catch (err) {
       toast.apiError("Couldn't update that account", err)
     } finally {
@@ -2287,6 +2320,7 @@ export function AdminPage() {
                 bulkSetCap={bulkSetCap}
                 pending={pending}
                 toggleComp={toggleComp}
+                toggleBlocked={toggleBlocked}
               />
             </div>
 

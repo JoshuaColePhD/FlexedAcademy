@@ -67,6 +67,7 @@ export function ArtifactPanel({
   onCollapse,
   onReviseDay,
   onReviseDays,
+  onEditDay,
   onPickStandard,
   onPlanRevised,
   onFullscreenChange,
@@ -196,7 +197,7 @@ const location = useLocation()
           <span className="doc-sub">
             {planId ? 'Saved' : busy ? 'Drafting…' : 'Preview'}
             {unitSuffix(artifact?.unit, ' · ')}
-            {planId && onReviseDay ? (view === 'days' ? ' · tap any field to tweak' : ' · click any cell to tweak') : ''}
+            {planId && onReviseDay ? (view === 'days' ? ' · tap any field to edit' : ' · click any cell to edit') : ''}
           </span>
         </span>
 
@@ -302,6 +303,7 @@ const location = useLocation()
               groundedCodes={grounded}
               onReviseDay={planId ? onReviseDay : undefined}
               onReviseDays={planId ? onReviseDays : undefined}
+              onEditDay={planId ? onEditDay : undefined}
               onPickStandard={planId ? onPickStandard : undefined}
               onPlanRevised={onPlanRevised}
               busy={busy}

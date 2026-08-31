@@ -58,24 +58,16 @@ class QuizRequest(BaseModel):
 
 
 class DayUpdateRequest(BaseModel):
-    field: str
-    content: str
+    field: str = Field(min_length=1, max_length=80)
+    content: str = Field(min_length=1, max_length=10000)
 
 @router.put("/{plan_id}/days/{day_index}")
 def update_day(
     plan_id: str, day_index: int, body: DayUpdateRequest, user_id: str = Depends(get_current_user)
 ):
-    plan = db.get_plan(user_id, plan_id)
-    if not plan:
-        raise AppError("plan_not_found", "Plan not found", status=404)
-    if day_index < 0 or day_index >= len(plan["days"]):
-        raise AppError("bad_index", "Invalid day index", status=400)
-        
-    plan["days"][day_index][body.field] = body.content
-    
-    # Needs to write back to db
-    db.update_plan(user_id, plan_id, days=plan["days"])
-    return plan
+    """Save one exact teacher edit and rebuild the matching document."""
+    require_entitlement(user_id)
+    return service.edit_day_field(user_id, plan_id, day_index, body.field, body.content)
 
 class QuizUpdateRequest(BaseModel):
     quiz_json: dict

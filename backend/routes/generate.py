@@ -821,6 +821,19 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 research_context=research.prompt_context(research_sources),
                 reference_context=req.reference_context,
             )
+            if has_plan:
+                system_prompt += (
+                    "\n\nA lesson plan is open in this conversation, and the global chat is its revision "
+                    "channel. When the teacher names one day and one specific part to change, call "
+                    "`update_lesson_day` immediately instead of replying with advice or asking them "
+                    "to use the cell editor. Infer the field from context: an activity or round-robin "
+                    "activity means `during`, a warm-up means `do_now`, an exit ticket or evidence of "
+                    "learning means `assessment`, a goal means `learning_targets`, and a named routine "
+                    "means `engagement_strategy`. For example, 'make Wednesday a round robin activity' "
+                    "means day `Wednesday`, field `during`, with the teacher's request as the feedback. "
+                    "Use `generate_lesson_plan` only for a whole-week revision or a change spanning several "
+                    "days.\n"
+                )
             yield _sse({
                 "status": "context_ready",
                 "status_code": "context_ready",

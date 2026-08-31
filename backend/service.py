@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -852,6 +853,111 @@ def set_day_field(
         docx_path_val = None
     else:
         _build_docx_for_template(new_plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
+        _persist_docx(out_path)
+        docx_path_val = str(out_path)
+
+    updated_row = db.update_plan(
+        user_id,
+        plan_id,
+        plan_json=new_plan,
+        docx_path=docx_path_val,
+        warnings=(row.get("warnings") or []) + warnings,
+    )
+    db.replace_plan_standards(
+        plan_id,
+        user_id,
+        class_id=row.get("class_id"),
+        subject=subject_code,
+        grade=str(grade),
+        entries=cited,
+    )
+    return updated_row  # type: ignore[return-value]
+
+
+def edit_day_field(
+    user_id: str,
+    plan_id: str,
+    day_index: int,
+    field: str,
+    content: str,
+    bg_tasks: BackgroundTasks | None = None,
+) -> dict:
+    """Save a teacher's direct edit to one cell without calling the LLM.
+
+    The in-cell editor is deliberately an exact text editor. AI rewrites belong
+    to the global composer; sending a teacher's hand-edited sentence through a
+    model would make a basic save unpredictable. The same day validation,
+    grounding audit, and document rebuild used by AI revisions still apply.
+    """
+    if field not in schema.REVISABLE_FIELDS:
+        raise AppError(
+            "bad_field",
+            f"{field!r} cannot be edited directly.",
+            status=400,
+            hint=f"Expected one of: {', '.join(schema.REVISABLE_FIELDS)}.",
+        )
+
+    text = str(content or "").strip()
+    if not text:
+        raise AppError("empty_content", "A cell cannot be saved empty.", status=400)
+
+    row = db.get_plan(user_id, plan_id)
+    if not row:
+        raise AppError("plan_not_found", "Plan not found", status=404)
+
+    plan = row["plan_json"]
+    days = plan.get("days", [])
+    if not 0 <= day_index < len(days):
+        raise AppError(
+            "day_out_of_range",
+            f"Day index {day_index} is outside this plan's {len(days)} days.",
+            status=400,
+        )
+
+    original = days[day_index]
+    value: object = text
+    if field == "engagement_strategy":
+        # The visual editor uses one line per strategy; commas are accepted too
+        # because they are natural when a teacher dictates a pair aloud.
+        value = [part.strip() for part in re.split(r"[\n,]+", text) if part.strip()]
+
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    row_class = cls
+    school_for_revision = (
+        db.class_school(row_class, user_id)
+        if hasattr(db, "class_school")
+        else (row_class or {}).get("school")
+    )
+    template_days = day_names_for_school(school_for_revision, user_id=user_id)
+
+    merged = {**original, field: value}
+    updated, warnings = schema.validate_day(
+        merged, path=f"days[{day_index}]", day_names=template_days
+    )
+    for key, was in original.items():
+        if key != field and key in updated:
+            updated[key] = was
+
+    new_days = list(days)
+    new_days[day_index] = updated
+    new_plan = with_subject({**plan, "days": new_days}, cls=cls, subject=subject_code)
+
+    allowed = set(row.get("retrieved_ids") or [])
+    warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
+    cited = retrieval.cited_standards(new_plan, allowed, subject_code=subject_code)
+
+    out_path = docx_build.plan_output_path(new_plan, plan_id)
+    if bg_tasks is not None:
+        bg_tasks.add_task(_build_docx_bg, user_id, new_plan, out_path, plan_id)
+        docx_path_val = None
+    else:
+        _build_docx_for_template(
+            new_plan,
+            out_path,
+            cls.get("school") if cls else None,
+            row.get("template_id"),
+        )
         _persist_docx(out_path)
         docx_path_val = str(out_path)
 

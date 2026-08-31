@@ -140,6 +140,27 @@ def set_comped(account_id: str, body: CompBody, _admin: str = Depends(get_curren
     )}
 
 
+class BlockBody(BaseModel):
+    blocked: bool
+
+
+@router.post("/accounts/{account_id}/block")
+def set_blocked(account_id: str, body: BlockBody, _admin: str = Depends(get_current_admin)):
+    """Block or unblock an account, invalidating its active sessions."""
+    if body.blocked and account_id == _admin:
+        raise AppError("cannot_block_self", "You cannot block your own admin account.", status=400)
+    if not db.get_user_by_id(account_id):
+        raise AppError("account_not_found", "That account does not exist.", status=404)
+    if not db.set_account_blocked(account_id, body.blocked, blocked_by=_admin):
+        raise AppError("account_not_found", "That account does not exist.", status=404)
+    action = "account_block" if body.blocked else "account_unblock"
+    db.log_admin_action(_admin, action, target=account_id)
+    db.record_audit_log(_admin, f"admin.{action}", target_user_id=account_id)
+    return {"account": next(
+        (a for a in db.list_accounts_with_stats() if a["id"] == account_id), None
+    )}
+
+
 class CapBody(BaseModel):
     # None clears the override back to "use the tier's own cap" — see
     # migration 28 / entitlement.py. A real 0 is legal too (fully throttle

@@ -482,6 +482,8 @@ export const api = {
   adminStandardsCheck: ({ signal } = {}) => request('/api/admin/qa/standards-check', { signal }),
   adminSetComped: (accountId, comped) =>
     request(`/api/admin/accounts/${accountId}/comp`, { method: 'POST', body: { comped } }),
+  adminSetBlocked: (accountId, blocked) =>
+    request(`/api/admin/accounts/${accountId}/block`, { method: 'POST', body: { blocked } }),
   // cap: null clears the override back to the account's ordinary tier cap.
   adminSetCustomCap: (accountId, cap) =>
     request(`/api/admin/accounts/${accountId}/cap`, { method: 'POST', body: { cap } }),
@@ -768,7 +770,7 @@ export const api = {
   getCurriculumProgress: (subject, { signal } = {}) =>
     request(`/api/curriculum_progress?subject=${encodeURIComponent(subject)}`, { signal }),
 
-  updateDay: (planId, dayIndex, body) => request(`/api/plans/${planId}/days/${dayIndex}`, { method: 'PUT', body: JSON.stringify(body) }),
+  updateDay: (planId, dayIndex, body) => request(`/api/plans/${planId}/days/${dayIndex}`, { method: 'PUT', body }),
 
   /** A standalone quick warm-up for a day with no built plan yet — see
    *  TodayPage and backend/routes/bell_ringer.py. */

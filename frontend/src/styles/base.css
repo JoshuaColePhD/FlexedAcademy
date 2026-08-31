@@ -4148,18 +4148,58 @@
   .plan-field.is-tweaking .eyebrow {
     color: var(--accent);
   }
+  /* Editing is document-like: the input replaces the cell's text in place,
+     keeps the surrounding table geometry, and saves when focus leaves it. */
+  .cell-inline-editor-input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 4.5rem;
+    margin: calc(var(--sp-3) * -1);
+    padding: var(--sp-3);
+    resize: none;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    cursor: text;
+    font: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    box-shadow: none;
+  }
+  .plan-lesson-part .cell-inline-editor-input {
+    margin: 0;
+    padding: 0;
+    min-height: 4.5rem;
+  }
+  .plan-field-value .cell-inline-editor-input {
+    margin: calc(var(--sp-1) * -1) calc(var(--sp-2) * -1);
+    padding: var(--sp-1) var(--sp-2);
+    min-height: 4.5rem;
+  }
+  .cell-inline-editor-input:focus { box-shadow: none; }
+  .cell-inline-editor-input::placeholder {
+    color: var(--ink-faint);
+  }
+  .plan-table td.is-selected,
+  .plan-lesson-part.is-selected,
+  .plan-field-value.is-selected {
+    background: rgb(var(--accent-rgb) / 0.1);
+    box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.55);
+  }
   /* No permanent per-cell chrome — the affordance is the hover tint and the
      cursor. A pencil in every cell would put 35 icons on the district table. */
   .plan-table th.is-tweaking {
     background: rgb(var(--accent-rgb) / 0.08);
-    border: 2px solid var(--accent);
-    border-right: 0;
+    color: var(--accent-text);
   }
   .plan-table td.is-tweaking {
-    padding: 0;
     background: rgb(var(--accent-rgb) / 0.04);
-    border: 2px solid var(--accent);
-    border-left: 0;
   }
   /* The keyboard path into a cell tweak.
      Clipped rather than display:none — display:none is not focusable, and a
@@ -4387,6 +4427,32 @@
     box-shadow: none;
     border-radius: 0;
   }
+  /* Give the dock its own recessed stage. The shell was already embossed, but
+     it sat directly on the same pale surface as the document, so the light and
+     dark shadows had almost nothing to separate from. */
+  .composer-dock-surface {
+    position: relative;
+    background: var(--paper-sunken);
+    border-top: 1px solid rgb(var(--edge-strong-rgb) / 0.45);
+    box-shadow:
+      inset 0 4px 12px rgb(var(--neo-dark-rgb) / 0.16),
+      inset 0 -2px 6px rgb(var(--neo-light-rgb) / 0.28);
+  }
+  .composer-dock-surface::before {
+    position: absolute;
+    top: 0;
+    right: 8%;
+    left: 8%;
+    height: 1px;
+    content: '';
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--neo-light-rgb) / 0.9) 18%,
+      rgb(var(--neo-light-rgb) / 0.9) 82%,
+      transparent
+    );
+  }
   /* The composer as its own raised surface, the same emboss every panel in
      the overhaul gets — .neo-world being global means this resolves
      everywhere, not just where it was written for. */
@@ -4398,9 +4464,17 @@
     height: 56px;
     min-height: 56px;
     max-height: 56px;
+    border-color: rgb(var(--edge-strong-rgb) / 0.72);
+    background: linear-gradient(
+      145deg,
+      rgb(var(--paper-raised-rgb) / 1),
+      rgb(var(--paper-raised-rgb) / 0.9)
+    );
     box-shadow:
-      3px 4px 12px rgb(var(--neo-dark-rgb) / 0.3),
-      -3px -3px 10px rgb(var(--neo-light-rgb) / 0.7);
+      8px 9px 20px rgb(var(--neo-dark-rgb) / 0.42),
+      -8px -8px 18px rgb(var(--neo-light-rgb) / 0.94),
+      inset 2px 2px 6px rgb(var(--neo-dark-rgb) / 0.18),
+      inset -2px -2px 6px rgb(var(--neo-light-rgb) / 0.86);
     transition:
       border-color var(--t-fast) var(--ease),
       box-shadow 180ms var(--ease-out),
@@ -4410,11 +4484,29 @@
      nudge, because it is now the only non-caret indication that typing will go
      here (WCAG 2.4.7). */
   .composer-shell:focus-within {
-    border-color: rgb(var(--accent-rgb) / 0.55);
+    border-color: rgb(var(--accent-rgb) / 0.72);
     box-shadow:
-      3px 4px 12px rgb(var(--neo-dark-rgb) / 0.25),
-      -3px -3px 10px rgb(var(--neo-light-rgb) / 0.62),
-      0 0 0 3px rgb(var(--accent-rgb) / 0.09);
+      8px 9px 20px rgb(var(--neo-dark-rgb) / 0.36),
+      -8px -8px 18px rgb(var(--neo-light-rgb) / 0.88),
+      inset 2px 2px 6px rgb(var(--neo-dark-rgb) / 0.2),
+      inset -2px -2px 6px rgb(var(--neo-light-rgb) / 0.84),
+      0 0 0 3px rgb(var(--accent-rgb) / 0.16);
+  }
+
+  /* The controls should feel attached to the same embossed surface instead
+     of floating as flat icons inside it. The pressed inset is especially
+     useful here because the composer has several similarly-sized actions. */
+  .composer-shell > div:first-of-type button,
+  .composer-shell > div:first-of-type label[for='composer-file'] {
+    box-shadow:
+      2px 2px 5px rgb(var(--neo-dark-rgb) / 0.28),
+      -2px -2px 5px rgb(var(--neo-light-rgb) / 0.72);
+  }
+  .composer-shell > div:first-of-type button:active,
+  .composer-shell > div:first-of-type label[for='composer-file']:active {
+    box-shadow:
+      inset 2px 2px 4px rgb(var(--neo-dark-rgb) / 0.38),
+      inset -2px -2px 4px rgb(var(--neo-light-rgb) / 0.68);
   }
 
   .composer-tools-menu {

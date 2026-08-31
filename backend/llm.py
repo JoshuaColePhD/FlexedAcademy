@@ -1519,7 +1519,7 @@ def stream_speech(user_id: str, text: str) -> Iterator[bytes]:
         yield from resp.iter_bytes(4096)
 
 
-# The three moves this conversation can make — shared between Chat
+# The four moves this conversation can make — shared between Chat
 # Completions (stream_chat below) and the Realtime API (realtime.py's
 # session config), which is why this lives at module scope instead of
 # inside stream_chat. Chat Completions and Realtime disagree on tool
@@ -1528,6 +1528,42 @@ def stream_speech(user_id: str, text: str) -> Iterator[bytes]:
 # the carefully-worded rules an earlier bug fix tuned — exist in exactly
 # one place rather than two copies drifting apart.
 CHAT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "update_lesson_day",
+            "description": (
+                "Revise exactly one field on exactly one day of the lesson plan already open in this conversation. "
+                "Use this instead of generate_lesson_plan when the teacher names one day and asks to change one "
+                "part of it. Infer the field from ordinary teacher language: an activity, lesson activity, or "
+                "round-robin activity belongs in `during`; a warm-up or bell ringer belongs in `do_now`; an exit "
+                "ticket or evidence of learning belongs in `assessment`; a learning goal belongs in "
+                "`learning_targets`; and a named engagement routine belongs in `engagement_strategy`. If the "
+                "teacher says only 'rewrite Wednesday' without saying what should change, ask a clarifying question. "
+                "Do not use this for a whole-week change or a change spanning several days."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "day": {
+                        "type": "string",
+                        "enum": DAY_NAMES,
+                        "description": "The one weekday to revise.",
+                    },
+                    "field": {
+                        "type": "string",
+                        "enum": list(REVISABLE_FIELDS),
+                        "description": "The one lesson-plan field to rewrite.",
+                    },
+                    "feedback": {
+                        "type": "string",
+                        "description": "The teacher's requested change, preserved as a concise instruction.",
+                    },
+                },
+                "required": ["day", "field", "feedback"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {

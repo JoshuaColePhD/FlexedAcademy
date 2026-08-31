@@ -3334,6 +3334,15 @@ MIGRATIONS: list[str] = [
         );
     EXCEPTION WHEN duplicate_object THEN null; END $$;
     """,
+    # ── 67: reversible account blocking ─────────────────────────────────────
+    # A blocked teacher must lose access immediately, including already-issued
+    # sessions. `session_version` is bumped by the admin action, while the
+    # blocked flag is checked by deps._verify_current on every request.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by TEXT;
+    """,
 ]
 
 
@@ -5772,6 +5781,21 @@ def bump_session_version(user_id: str) -> int:
     return int(row["session_version"]) if row else 0
 
 
+def set_account_blocked(user_id: str, blocked: bool, blocked_by: str | None = None) -> bool:
+    """Block or unblock one account and invalidate every existing session."""
+    _write(
+        """UPDATE users
+              SET is_blocked = ?,
+                  blocked_at = ?,
+                  blocked_by = ?,
+                  session_version = session_version + 1
+            WHERE id = ?""",
+        (blocked, now() if blocked else None, blocked_by if blocked else None, user_id),
+    )
+    row = _row("SELECT id FROM users WHERE id = ?", (user_id,))
+    return bool(row)
+
+
 def export_user_data(user_id: str) -> dict:
     """Everything this teacher put into the app, as one JSON-able dict — for
     self-service data export. Scoped to what they created, not internal
@@ -6128,7 +6152,8 @@ def list_accounts_with_stats() -> list[dict]:
     since_burst = (datetime.now(UTC) - timedelta(hours=24)).isoformat(timespec="seconds")
     rows = _rows(
         """
-        SELECT u.id, u.email, u.name, u.school, u.subscription_status, u.is_admin, u.created_at,
+        SELECT u.id, u.email, u.name, u.school, u.subscription_status, u.is_admin,
+               u.is_blocked, u.blocked_at, u.created_at,
                u.custom_weekly_token_cap, u.beta_expires_at,
                COUNT(p.id) AS plans_built,
                MAX(p.created_at) AS last_plan_at,
@@ -6155,7 +6180,8 @@ def list_accounts_with_stats() -> list[dict]:
             WHERE created_at >= ?
             GROUP BY user_id
         ) ueburst ON ueburst.user_id = u.id
-        GROUP BY u.id, u.email, u.name, u.school, u.subscription_status, u.is_admin, u.created_at,
+        GROUP BY u.id, u.email, u.name, u.school, u.subscription_status, u.is_admin,
+                 u.is_blocked, u.blocked_at, u.created_at,
                  u.custom_weekly_token_cap, u.beta_expires_at, ue7.tokens, ue30.tokens, ueburst.tokens
         ORDER BY u.created_at DESC
         """,

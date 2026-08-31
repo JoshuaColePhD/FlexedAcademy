@@ -27,34 +27,26 @@ import {
 
 const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' })
 
-/* Same tap-to-tweak affordance as the district table's cells (CellTweak.jsx's
- * cellKit) — `kit` is the SAME kit instance LessonPlanTable built from ITS
- * OWN openTweak/draft state, not a second one, so the table and the deck can
- * never disagree about which field is open. `current` is the plain-text
- * value CellTweak shows in its "current" preview and is what gets sent as
- * the revision's baseline — for a tags field (engagement_strategy) that's
- * the joined string, matching the district table and Word dropdown. */
-function Field({ label, field, dayIndex, dayName, current, kit, children }) {
-  if (kit?.isOpen(dayIndex, field)) {
-    return (
-      <div className="plan-field is-tweaking">
-        <span className="eyebrow">{label}</span>
-        {kit.tweakBody(dayIndex, field, current)}
-      </div>
-    )
-  }
-  const { className: editableClass, onClick } = kit
+/* Same tap-to-edit affordance as the district table's cells (CellTweak.jsx's
+ * cellKit) — `kit` is the SAME interaction model LessonPlanTable built from
+ * ITS OWN openTweak/draft state. The table and the deck can never disagree
+ * about which field is open. */
+function Field({ label, field, dayName, dayIndex, kit, children }) {
+  const isEditing = kit?.isOpen(dayIndex, field)
+  const editableProps = kit
     ? kit.editableProps(dayIndex, field)
-    : { className: undefined, onClick: undefined }
-  const valueClass = ['plan-field-value', 'text-sm', 'leading-relaxed', 'text-ink', editableClass]
+    : { className: undefined }
+  const valueClass = ['plan-field-value', 'text-sm', 'leading-relaxed', 'text-ink', isEditing ? 'is-selected' : editableProps.className]
     .filter(Boolean)
     .join(' ')
   return (
-    <div className="plan-field">
+    <div className={`plan-field${isEditing ? ' is-tweaking' : ''}`}>
       <span className="eyebrow">{label}</span>
-      <div className={valueClass} onClick={onClick}>
-        {children}
-        {kit ? <kit.Trigger dayIndex={dayIndex} field={field} dayName={dayName} /> : null}
+      <div
+        {...(isEditing ? {} : editableProps)}
+        className={valueClass}
+      >
+        {isEditing ? kit.tweakBody(dayIndex, field, dayName) : children}
       </div>
     </div>
   )
@@ -96,9 +88,8 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
         <Field
           label="Learning target"
           field="learning_targets"
-          dayIndex={index}
           dayName={day.name}
-          current={day.learning_targets}
+          dayIndex={index}
           kit={kit}
         >
           {day.learning_targets}
@@ -113,9 +104,8 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
             key={key}
             label={label}
             field={key}
-            dayIndex={index}
             dayName={day.name}
-            current={day[key]}
+            dayIndex={index}
             kit={kit}
           >
             {day[key]}
@@ -127,9 +117,8 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
         <Field
           label="Standards"
           field="standards"
-          dayIndex={index}
           dayName={day.name}
-          current={day.standards}
+          dayIndex={index}
           kit={kit}
         >
           <CitedText text={day.standards} groundedCodes={groundedCodes} subject={subject} />
@@ -145,15 +134,13 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
               const list = tags
                 ? (Array.isArray(day[key]) ? day[key] : [day[key]]).filter(Boolean).slice(0, 2)
                 : []
-              const current = tags ? list.join(', ') : day[key]
               return (
                 <Field
                   key={key}
                   label={label}
                   field={key}
-                  dayIndex={index}
                   dayName={day.name}
-                  current={current}
+                  dayIndex={index}
                   kit={kit}
                 >
                   {cited ? (
@@ -185,13 +172,8 @@ export function PlanDayCards({
   openCell,
   closeCell,
   applyTweak,
-  pickStandard,
-  standardsByCode,
   draft,
   setDraft,
-  scope,
-  setScope,
-  weekDayCount,
 }) {
   const days = orderedDays(plan, missingDays)
   const [active, setActive] = useState(() => initialDayIndex(days, TODAY_NAME))
@@ -211,13 +193,8 @@ export function PlanDayCards({
     openCell,
     closeCell,
     applyTweak,
-    pickStandard,
-    standardsByCode,
     draft,
     setDraft,
-    scope,
-    setScope,
-    weekDayCount,
   })
 
   /* Read the card's ACTUAL offset instead of computing i * clientWidth.

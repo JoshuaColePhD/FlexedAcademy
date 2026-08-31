@@ -1156,8 +1156,20 @@ export function ChatPage() {
       throw lastError
     }
 
-    api
-      .getChat(chatId)
+    const getChatWithRetry = async (id) => {
+      let lastError
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await api.getChat(id)
+        } catch (error) {
+          lastError = error
+          if (attempt < 2) await waitBeforeRetry(300 * (attempt + 1))
+        }
+      }
+      throw lastError
+    }
+
+    getChatWithRetry(chatId)
       .then(async (row) => {
         if (cancelled) return
         setChatMode(normalizeChatMode(row.mode))
@@ -2363,6 +2375,33 @@ export function ChatPage() {
   // plain assignment rather than a dependency-array entry.
   reviseDayRef.current = reviseDay
 
+  /* Direct cell edits are intentionally not sent through the model. The
+   * global composer is the AI surface; clicking a cell is the fast, exact
+   * human-edit path. */
+  const editDay = useCallback(
+    async (dayIndex, day, field, content) => {
+      if (!artifact?.planId || !content?.trim()) return
+      const label = `${day.name}’s ${FIELD_LABELS[field] || field}`
+      setRevising(true)
+      try {
+        const row = await api.updateDay(artifact.planId, dayIndex, { field, content })
+        setArtifact((a) => ({
+          ...a,
+          plan: row.plan_json,
+          warnings: row.warnings,
+          retrievedIds: row.retrieved_ids,
+        }))
+        flash([cellKey(dayIndex, field)])
+        toast.success('Saved', `${label} updated.`)
+      } catch (err) {
+        toast.apiError(`Could not save ${label}`, err)
+      } finally {
+        setRevising(false)
+      }
+    },
+    [artifact, toast, flash]
+  )
+
   /* The batch counterpart: one instruction, one field, applied to several days
      at once — what the tweak popover's "All N days" scope sends. Not reachable
      from submit()'s tool-call loop (there's no batch tool call), so unlike
@@ -3119,6 +3158,7 @@ export function ChatPage() {
         onCollapse={collapse}
         onReviseDay={artifact?.planId ? reviseDay : undefined}
         onReviseDays={artifact?.planId ? reviseDays : undefined}
+        onEditDay={artifact?.planId ? editDay : undefined}
         onPickStandard={artifact?.planId ? pickStandard : undefined}
         onPlanRevised={onPlanRevised}
         busy={busy}
@@ -3674,6 +3714,7 @@ export function ChatPage() {
                 onCollapse={() => setPlanPeekOpen(false)}
                 onReviseDay={reviseDay}
                 onReviseDays={reviseDays}
+                onEditDay={editDay}
                 onPickStandard={pickStandard}
                 onPlanRevised={onPlanRevised}
                 busy={busy}

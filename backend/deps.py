@@ -35,6 +35,8 @@ def _verify_current(aplang_session: str | None) -> str | None:
     user = db.get_user_by_id(payload["uid"])
     if not user or int(user.get("session_version", 0)) != payload["sv"]:
         return None
+    if user.get("is_blocked"):
+        return None
     # A time-boxed beta account (backend/routes/admin.py's
     # POST /beta-accounts, db.create_beta_account) stops authenticating the
     # moment its window passes — checked here, on every request, the same

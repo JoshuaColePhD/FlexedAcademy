@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useLayoutMode } from '../hooks/useMediaQuery'
-import { LESSON_PARTS, ROWS, dayState, orderedDays } from '../lib/planShape'
+import { LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
 import { CitedText } from './Citation'
 import { PlanDayCards } from './PlanDayCards'
 import { SkeletonText } from './Skeleton'
@@ -24,17 +24,9 @@ import { cellKit } from './cellTweakKit'
    Duplicating the three-state no_school/pending/incomplete reasoning into a
    second view is exactly how the two would drift. */
 
-/* ── in-cell revision ──────────────────────────────────────────────────────
-   What this replaces: a "Revise" row of Sparkles buttons under the table plus
-   one shared .revise-box below it. That worked, but every revision it could
-   express was scoped to a WHOLE DAY — so "shorten the Do Now" regenerated
-   Wednesday's standards and engagement tags too, and quietly re-decided the
-   grounding audit the app exists to guarantee.
-
-   Clicking the cell instead scopes the revision to a day AND a field, which is
-   the contract backend/service.py's merge-one-key path now honours. This is a
-   relocation of an existing feature, not a new one; the submit handler and the
-   guards are the same. */
+/* ── in-cell editing ───────────────────────────────────────────────────────
+   Cells are for quick, exact human edits. AI revisions stay in the global
+   composer, where the teacher can see the whole plan and conversation. */
 
 /* The plan document, in whichever form the screen can carry.
  *
@@ -49,9 +41,7 @@ export function LessonPlanTable({
   subject,
   groundedCodes,
   onReviseDay,
-  onReviseDays,
-  onPickStandard,
-  onPlanRevised,
+  onEditDay,
   busy,
   missingDays = 'no_school',
   /* 'days' | 'print'. The panel owns this now — see ArtifactPanel, which
@@ -63,51 +53,12 @@ export function LessonPlanTable({
   setOpenTweak,
 }) {
   const [draft, setDraft] = useState('')
-  // 'day' | 'week' — which days a tweak's instruction targets. Lives beside
-  // draft for the same reason: one open cell, one in-flight choice, reset
-  // together whenever a different cell opens.
-  const [scope, setScope] = useState('day')
   // null = not sent yet; true/false = which thumb was actually clicked, not
   // just "sent" — disabling both buttons on a plain boolean left no visible
   // trace of which one you'd picked, only a toast that had already faded.
   const [feedbackSent, setFeedbackSent] = useState(null)
-  const [revisingWholePlan, setRevisingWholePlan] = useState(false)
-  // code -> full standard record (description, source, verbatim_ok), for the
-  // Standards/ACT Alignment picker below — CitedText only ever needed the
-  // codes themselves (groundedCodes), not what they say, so this is new.
-  // Refetched whenever the retrieved set actually changes (a revision can
-  // widen it), not on every render.
-  const [standardsByCode, setStandardsByCode] = useState({})
   const mode = useLayoutMode()
   const toast = useToast()
-
-  useEffect(() => {
-    const codes = [...(groundedCodes || [])]
-    if (!codes.length) {
-      setStandardsByCode({})
-      return
-    }
-    let cancelled = false
-    const controller = new AbortController()
-    api
-      .getStandardsBatch(codes, { subject, signal: controller.signal })
-      .then((byCode) => {
-        if (!cancelled) setStandardsByCode(byCode || {})
-      })
-      .catch(() => {
-        // Best-effort: the picker just falls back to bare codes with no
-        // description if this fails, same as CitedText already does for an
-        // unresolved code. Not worth a toast — nothing the teacher did failed.
-      })
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
-    // groundedCodes is a fresh Set every render (ArtifactPanel builds it
-    // inline) — join() gives this effect a stable string to depend on
-    // instead of re-fetching every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [[...(groundedCodes || [])].sort().join(','), subject])
 
   /* Both of these used to be bare fetch() calls gated on `plan.id`. `plan` is
      plan_json, which has no id — the DB id arrives as `planId` — so the toolbar
@@ -127,24 +78,6 @@ export function LessonPlanTable({
     }
   }
 
-  const handleReviseWholePlan = async () => {
-    if (!planId || revisingWholePlan) return
-    setRevisingWholePlan(true)
-    try {
-      const row = await api.revisePlan(planId)
-      // The endpoint returns the updated row. Handing it upward is what replaces
-      // `alert('...please refresh the page')` — asking a teacher to reload as
-      // part of a normal, successful action is not a loading state, it's a bug
-      // with a dialog in front of it.
-      onPlanRevised?.(row)
-      toast.success('Revised', 'The week has been rewritten and the .docx rebuilt.')
-    } catch (e) {
-      toast.apiError("Couldn't revise the plan", e)
-    } finally {
-      setRevisingWholePlan(false)
-    }
-  }
-
   if (!plan?.days?.length) return null
 
   const ordered = orderedDays(plan, missingDays)
@@ -155,45 +88,28 @@ export function LessonPlanTable({
      phone between classes shouldn't have to find a laptop for it. The DAYS
      deck (below) now carries the same tap-to-tweak affordance the table
      already had from 768px up — see PlanDayCards' own Field component. */
-  const canTweak = Boolean(onReviseDay)
+  const canTweak = Boolean(onEditDay || onReviseDay)
 
   const openCell = (dayIndex, field) => {
     if (!canTweak) return
-    setDraft('')
-    setScope('day')
+    const current = ordered[dayIndex]?.[field]
+    setDraft(Array.isArray(current) ? current.join('\n') : String(current || ''))
     setOpenTweak({ dayIndex, field })
   }
 
   const closeCell = () => {
     setDraft('')
-    setScope('day')
     setOpenTweak(null)
   }
 
-  /** The picker's own apply: an exact code, not typed feedback — see
-   *  ChatPage's pickStandard for why this is a sibling of applyTweak
-   *  rather than a call to it. */
-  const pickStandard = (dayIndex, field, code) => {
-    onPickStandard?.(dayIndex, ordered[dayIndex], field, code)
-    closeCell()
-  }
-
-  // Every day actually taught this week — no_school/pending/incomplete days
-  // have nothing in this field to rewrite, so "All N days" only ever targets
-  // days that are really there, and N in its own label matches what happens.
-  const weekDayIndices = ordered.reduce(
-    (acc, d, i) => (dayState(d) === 'ok' ? [...acc, i] : acc),
-    []
-  )
-
-  const applyTweak = () => {
-    const feedback = draft.trim()
-    if (!feedback || !openTweak) return
+  const applyEdit = (nextContent = draft) => {
+    const content = nextContent.trim()
+    if (!content || !openTweak) return
     const { dayIndex, field } = openTweak
-    if (scope === 'week' && onReviseDays && weekDayIndices.length > 1) {
-      onReviseDays(weekDayIndices, feedback, field)
+    if (onEditDay) {
+      onEditDay(dayIndex, ordered[dayIndex], field, content)
     } else {
-      onReviseDay(dayIndex, ordered[dayIndex], feedback, field)
+      onReviseDay?.(dayIndex, ordered[dayIndex], content, field)
     }
     closeCell()
   }
@@ -204,14 +120,6 @@ export function LessonPlanTable({
         <h2>{plan.week_of || 'Untitled week'}</h2>
         {planId && mode !== 'phone' ? (
           <div className="plan-feedback">
-            <button
-              type="button"
-              className="btn"
-              disabled={revisingWholePlan || busy}
-              onClick={handleReviseWholePlan}
-            >
-              {revisingWholePlan ? 'Revising…' : 'AI review & revise'}
-            </button>
             <button
               type="button"
               className={`btn-icon${feedbackSent === true ? ' is-good' : ''}`}
@@ -284,14 +192,9 @@ export function LessonPlanTable({
             openTweak={canTweak ? openTweak : null}
             openCell={openCell}
             closeCell={closeCell}
-            applyTweak={applyTweak}
-            pickStandard={onPickStandard ? pickStandard : null}
-            standardsByCode={standardsByCode}
+            applyTweak={applyEdit}
             draft={draft}
             setDraft={setDraft}
-            scope={scope}
-            setScope={setScope}
-            weekDayCount={weekDayIndices.length}
           />
         ) : (
           <PlanTable
@@ -304,14 +207,9 @@ export function LessonPlanTable({
             openTweak={canTweak ? openTweak : null}
             openCell={openCell}
             closeCell={closeCell}
-            applyTweak={applyTweak}
-            pickStandard={onPickStandard ? pickStandard : null}
-            standardsByCode={standardsByCode}
+            applyTweak={applyEdit}
             draft={draft}
             setDraft={setDraft}
-            scope={scope}
-            setScope={setScope}
-            weekDayCount={weekDayIndices.length}
           />
         )}
       </div>
@@ -333,15 +231,10 @@ function PlanTable({
   openCell,
   closeCell,
   applyTweak,
-  pickStandard,
-  standardsByCode,
   draft,
   setDraft,
-  scope,
-  setScope,
-  weekDayCount,
 }) {
-  const { isOpen, flashed, editableProps, Trigger, tweakBody } = cellKit({
+  const { isOpen, flashed, editableProps, tweakBody } = cellKit({
     busy,
     flashCells,
     canTweak,
@@ -349,13 +242,8 @@ function PlanTable({
     openCell,
     closeCell,
     applyTweak,
-    pickStandard,
-    standardsByCode,
     draft,
     setDraft,
-    scope,
-    setScope,
-    weekDayCount,
   })
 
   return (
@@ -370,7 +258,7 @@ function PlanTable({
       <table className="plan-table">
         <caption className="visually-hidden">
           Weekly lesson plan, Monday to Friday, in the Florence City Schools template
-          {canTweak ? '. Click any cell to revise just that part of that day.' : ''}
+          {canTweak ? '. Click any cell to edit that part of the day.' : ''}
         </caption>
         <thead>
           <tr>
@@ -439,34 +327,31 @@ function PlanTable({
                     const openPart = LESSON_PARTS.find(([, key]) => isOpen(dayIndex, key))
                     return (
                       <td key={day.name} className={openPart ? 'is-tweaking' : undefined}>
-                        {LESSON_PARTS.map(([label, key]) =>
-                          isOpen(dayIndex, key) ? (
-                            <div key={key}>{tweakBody(dayIndex, key, day[key])}</div>
-                          ) : day[key] ? (
+                        {LESSON_PARTS.map(([label, key]) => {
+                          if (!day[key]) return null
+                          const editing = isOpen(dayIndex, key)
+                          return (
                             <div
                               className={`plan-lesson-part${
-                                canTweak ? ' is-editable' : ''
-                              }${flashed(dayIndex, key) ? ' fa-flash' : ''}`}
+                                canTweak && !editing ? ' is-editable' : ''
+                              }${flashed(dayIndex, key) ? ' fa-flash' : ''}${editing ? ' is-selected' : ''}`}
                               key={key}
-                              onClick={canTweak ? () => openCell(dayIndex, key) : undefined}
+                              onClick={canTweak && !editing ? () => openCell(dayIndex, key) : undefined}
+                              onKeyDown={canTweak && !editing ? (event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault()
+                                  openCell(dayIndex, key)
+                                }
+                              } : undefined}
+                              tabIndex={canTweak && !editing ? 0 : undefined}
+                              role={canTweak && !editing ? 'button' : undefined}
+                              aria-label={canTweak && !editing ? `Edit ${day.name} ${label}` : undefined}
                             >
                               <b>{label}:</b>
-                              {day[key]}
-                              <Trigger dayIndex={dayIndex} field={key} dayName={day.name} />
+                              {editing ? tweakBody(dayIndex, key, day.name) : day[key]}
                             </div>
-                          ) : null
-                        )}
-                      </td>
-                    )
-                  }
-
-                  if (isOpen(dayIndex, row.key)) {
-                    const current = row.tags
-                      ? (Array.isArray(day[row.key]) ? day[row.key] : [day[row.key]]).filter(Boolean).join(', ')
-                      : day[row.key]
-                    return (
-                      <td key={day.name} className="is-tweaking">
-                        {tweakBody(dayIndex, row.key, current)}
+                          )
+                        })}
                       </td>
                     )
                   }
@@ -477,28 +362,40 @@ function PlanTable({
                       : day[row.key]
                         ? [day[row.key]]
                         : []
+                    const cellProps = editableProps(dayIndex, row.key)
+                    const editing = isOpen(dayIndex, row.key)
                     return (
-                      <td key={day.name} {...editableProps(dayIndex, row.key)}>
-                        <div className="strategy-tags">
-                          {list.slice(0, 2).map((s) => (
-                            <span className="strategy-tag" key={s}>
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                        <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
+                      <td
+                        key={day.name}
+                        {...(editing ? {} : cellProps)}
+                        className={`${editing ? 'is-selected' : cellProps.className || ''}`}
+                      >
+                        {editing ? tweakBody(dayIndex, row.key, day.name) : (
+                          <div className="strategy-tags">
+                            {list.slice(0, 2).map((s) => (
+                              <span className="strategy-tag" key={s}>
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                     )
                   }
 
+                  const cellProps = editableProps(dayIndex, row.key)
+                  const editing = isOpen(dayIndex, row.key)
                   return (
-                    <td key={day.name} {...editableProps(dayIndex, row.key)}>
-                      {row.cited ? (
+                    <td
+                      key={day.name}
+                      {...(editing ? {} : cellProps)}
+                      className={`${editing ? 'is-selected' : cellProps.className || ''}`}
+                    >
+                      {editing ? tweakBody(dayIndex, row.key, day.name) : row.cited ? (
                         <CitedText text={day[row.key]} groundedCodes={groundedCodes} subject={subject} />
                       ) : (
                         day[row.key]
                       )}
-                      <Trigger dayIndex={dayIndex} field={row.key} dayName={day.name} />
                     </td>
                   )
                 })}
