@@ -411,6 +411,21 @@ export const api = {
       body: { feedback },
     }),
   quizDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download`,
+  quizDocxDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download-docx`,
+  downloadQuizDocx: (planId, quizId, options = {}) =>
+    downloadFile(`${API_BASE}/api/plans/${encodeURIComponent(planId)}/quizzes/${encodeURIComponent(quizId)}/download-docx`, {
+      ...options,
+      fallbackName: options.fallbackName || 'quiz.docx',
+    }),
+  shareQuiz: (planId, quizId, { email, role = 'reader' } = {}) => {
+    const normalizedEmail = typeof email === 'string' ? email.trim() : email
+    return request(`/api/plans/${planId}/quizzes/${quizId}/share`, {
+      method: 'POST',
+      body: { ...(normalizedEmail ? { email: normalizedEmail } : {}), role },
+    })
+  },
+  listQuizShares: (planId, quizId, { signal } = {}) =>
+    request(`/api/plans/${planId}/quizzes/${quizId}/shares`, { signal }),
   exportQuizToCanvas: (planId, quizId) =>
     request(`/api/canvas/export_quiz?plan_id=${planId}&quiz_id=${quizId}`, { method: 'POST' }),
   /* The two raw SSE endpoints. generate_stream drives useLessonStream and yields

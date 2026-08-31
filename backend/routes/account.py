@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/account", tags=["account"])
 @router.get("/export")
 def export_data(user_id: str = Depends(get_current_user)):
     """Every row this teacher created, as one downloadable JSON file — settings,
-    classes, plans and their feedback, chats and their messages, curriculum
+    classes, plans and their feedback, quizzes, chats and their messages, curriculum
     maps and their progress. See db.export_user_data for exactly what's
     included and why (and what's deliberately left out).
     """

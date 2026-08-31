@@ -3311,6 +3311,29 @@ MIGRATIONS: list[str] = [
     ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_cancel_at_period_end
       BOOLEAN NOT NULL DEFAULT false;
     """,
+    # ── 66: durable quiz artifacts and Drive shares ─────────────────────────
+    # The quiz JSON is the editable source of truth. DOCX and QTI are separate
+    # durable exports, each of which may be rebuilt independently.
+    """
+    ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS docx_path TEXT;
+    ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
+    ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS drive_web_link TEXT;
+
+    CREATE TABLE IF NOT EXISTS quiz_shares (
+        id         TEXT PRIMARY KEY,
+        quiz_id    TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+        email      TEXT NOT NULL,
+        role       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_quiz_shares_quiz ON quiz_shares(quiz_id);
+    ALTER TABLE quiz_shares ENABLE ROW LEVEL SECURITY;
+    DO $$ BEGIN
+        CREATE POLICY "Users can access shares of their own quizzes" ON quiz_shares USING (
+            quiz_id IN (SELECT id FROM quizzes WHERE user_id = current_setting('app.user_id', true))
+        );
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+    """,
 ]
 
 
@@ -4926,6 +4949,8 @@ def _hydrate_quiz(row: dict) -> dict:
     # rather than only offering to restore it once the user clicks Download.
     qti_path = d.get("qti_path")
     d["has_qti"] = bool(qti_path) and storage.ensure_local(Path(qti_path))
+    docx_path = d.get("docx_path")
+    d["has_docx"] = bool(docx_path) and storage.ensure_local(Path(docx_path))
     return d
 
 
@@ -4938,12 +4963,13 @@ def create_quiz(
     question_types: list[str],
     quiz_json: dict,
     qti_path: str | None,
+    docx_path: str | None,
     warnings: list[str],
 ) -> dict:
     _write(
         """INSERT INTO quizzes (id, user_id, plan_id, title, question_types, quiz_json,
-                                qti_path, warnings, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
+                                qti_path, docx_path, warnings, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
         (
             quiz_id,
             user_id,
@@ -4952,6 +4978,7 @@ def create_quiz(
             json.dumps(question_types),
             json.dumps(quiz_json),
             qti_path,
+            docx_path,
             json.dumps(warnings),
             now(),
         ),
@@ -4965,7 +4992,12 @@ def get_quiz(user_id: str, quiz_id: str) -> dict | None:
 
 
 def update_quiz(
-    user_id: str, quiz_id: str, quiz_json: dict, qti_path: str | None, warnings: list[str] | None = None
+    user_id: str,
+    quiz_id: str,
+    quiz_json: dict,
+    qti_path: str | None,
+    docx_path: str | None,
+    warnings: list[str] | None = None,
 ) -> dict | None:
     # warnings stays untouched (None) for the manual-edit PUT route, which
     # re-validates in place and has no fresh warnings to report; the
@@ -4973,13 +5005,13 @@ def update_quiz(
     # validation and passes its own list, even an empty one.
     if warnings is None:
         _write(
-            "UPDATE quizzes SET quiz_json = ?, qti_path = ? WHERE id = ? AND user_id = ?",
-            (json.dumps(quiz_json), qti_path, quiz_id, user_id),
+            "UPDATE quizzes SET quiz_json = ?, qti_path = ?, docx_path = ? WHERE id = ? AND user_id = ?",
+            (json.dumps(quiz_json), qti_path, docx_path, quiz_id, user_id),
         )
     else:
         _write(
-            "UPDATE quizzes SET quiz_json = ?, qti_path = ?, warnings = ? WHERE id = ? AND user_id = ?",
-            (json.dumps(quiz_json), qti_path, json.dumps(warnings), quiz_id, user_id),
+            "UPDATE quizzes SET quiz_json = ?, qti_path = ?, docx_path = ?, warnings = ? WHERE id = ? AND user_id = ?",
+            (json.dumps(quiz_json), qti_path, docx_path, json.dumps(warnings), quiz_id, user_id),
         )
     return get_quiz(user_id, quiz_id)
 
@@ -4994,6 +5026,28 @@ def list_quizzes_for_plan(user_id: str, plan_id: str) -> list[dict]:
 
 def delete_quiz(user_id: str, quiz_id: str) -> bool:
     return _write("DELETE FROM quizzes WHERE id = ? AND user_id = ?", (quiz_id, user_id)) > 0
+
+
+def set_quiz_drive_file(user_id: str, quiz_id: str, *, file_id: str, web_link: str) -> None:
+    _write(
+        "UPDATE quizzes SET drive_file_id = ?, drive_web_link = ? WHERE id = ? AND user_id = ?",
+        (file_id, web_link, quiz_id, user_id),
+    )
+
+
+def add_quiz_share(quiz_id: str, *, email: str, role: str) -> dict:
+    share_id = uuid.uuid4().hex
+    _write(
+        "INSERT INTO quiz_shares (id, quiz_id, email, role, created_at) VALUES (?,?,?,?,?)",
+        (share_id, quiz_id, email, role, now()),
+    )
+    return _row("SELECT * FROM quiz_shares WHERE id = ?", (share_id,))  # type: ignore[return-value]
+
+
+def list_quiz_shares(quiz_id: str) -> list[dict]:
+    return _rows(
+        "SELECT * FROM quiz_shares WHERE quiz_id = ? ORDER BY created_at DESC", (quiz_id,)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -5658,6 +5712,9 @@ def export_user_data(user_id: str) -> dict:
     classes = _rows("SELECT * FROM classes WHERE user_id = ? ORDER BY sort_order", (user_id,))
     settings = _rows("SELECT * FROM settings WHERE user_id = ?", (user_id,))
     curriculum_maps = _rows("SELECT * FROM curriculum_maps WHERE user_id = ? ORDER BY uploaded_at", (user_id,))
+    quizzes = _rows(
+        "SELECT * FROM quizzes WHERE user_id = ? ORDER BY created_at", (user_id,)
+    )
     curriculum_progress = _rows(
         "SELECT * FROM curriculum_progress WHERE user_id = ? ORDER BY subject, sort_order", (user_id,)
     )
@@ -5672,6 +5729,7 @@ def export_user_data(user_id: str) -> dict:
         "chats": chats,
         "messages": messages,
         "plans": plans,
+        "quizzes": quizzes,
         "plan_feedback": plan_feedback,
         "curriculum_maps": curriculum_maps,
         "curriculum_progress": curriculum_progress,
@@ -5703,16 +5761,19 @@ def delete_user_account(user_id: str) -> None:
     is why each removal is wrapped individually rather than trusted to
     storage.remove_file's own internal try/except alone."""
     docx_paths = [r["docx_path"] for r in _rows("SELECT docx_path FROM plans WHERE user_id = ? AND docx_path IS NOT NULL", (user_id,))]
-    qti_paths = [
-        r["qti_path"] for r in _rows(
-            "SELECT q.qti_path FROM quizzes q JOIN plans p ON p.id = q.plan_id "
-            "WHERE p.user_id = ? AND q.qti_path IS NOT NULL",
-            (user_id,),
-        )
+    quiz_paths = _rows(
+        "SELECT q.qti_path, q.docx_path FROM quizzes q WHERE q.user_id = ?",
+        (user_id,),
+    )
+    quiz_file_paths = [
+        path
+        for row in quiz_paths
+        for path in (row.get("qti_path"), row.get("docx_path"))
+        if path
     ]
     map_paths = [r["stored_path"] for r in _rows("SELECT stored_path FROM curriculum_maps WHERE user_id = ?", (user_id,))]
 
-    for path_str in [*docx_paths, *qti_paths, *map_paths]:
+    for path_str in [*docx_paths, *quiz_file_paths, *map_paths]:
         try:
             storage.remove_file(Path(path_str))
         except Exception:  # noqa: BLE001 — one bad path must not abort account deletion

@@ -44,8 +44,8 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
   const [isPublic, setIsPublic] = useState(null)
 
   // Reset to a clean loading state every time the dialog opens on a
-  // (possibly different) plan, rather than flashing the previous plan's
-  // shares for a frame before the fetch below replaces them.
+  // (possibly different) plan or quiz, rather than flashing the previous
+  // artifact's shares for a frame before the fetch below replaces them.
   useEffect(() => {
     if (!open) return
     setStatus('loading')
@@ -55,7 +55,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
     setRole('reader')
     setDeliveryMode('my-drive')
     setIsPublic(null)
-  }, [open, planId])
+  }, [open, planId, quizId, isQuiz])
 
   // Independent of the Drive status effect below — the public link works
   // whether or not Drive is ever connected, so its state can't be gated
@@ -80,7 +80,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
   }, [open, planId, isQuiz])
 
   useEffect(() => {
-    if (!open || isQuiz) return undefined
+    if (!open) return undefined
     let cancelled = false
     ;(async () => {
       try {
@@ -88,7 +88,9 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
         if (cancelled) return
         if (!s.enabled) return setStatus('unconfigured')
         if (!s.connected) return setStatus('disconnected')
-        const { web_link, shares: existing } = await api.listPlanShares(planId)
+        const { web_link, shares: existing } = isQuiz
+          ? await api.listQuizShares(planId, quizId)
+          : await api.listPlanShares(planId)
         if (cancelled) return
         setWebLink(web_link || null)
         setShares(existing || [])
@@ -100,12 +102,12 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
     return () => {
       cancelled = true
     }
-  }, [open, planId, isQuiz])
+  }, [open, planId, quizId, isQuiz])
 
   useFocusTrap(dialogRef, {
     active: open,
     trap: true,
-    initialFocus: isQuiz ? undefined : status === 'connected' ? emailRef : undefined,
+    initialFocus: status === 'connected' ? emailRef : undefined,
     onEscape: onClose,
   })
 
@@ -135,15 +137,17 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
       // The API creates the Google Doc in the connected teacher account. An
       // optional recipient then gets Drive permission on that same file; it
       // does not create duplicate Docs for each person we share with.
-      const result = await api.sharePlan(planId, { email: recipient, role })
+      const result = isQuiz
+        ? await api.shareQuiz(planId, quizId, { email: recipient, role })
+        : await api.sharePlan(planId, { email: recipient, role })
       setWebLink(result.web_link)
       setShares(result.shares || [])
       setEmail('')
       toast.success(
         deliveryMode === 'another-account' ? 'Saved and shared' : 'Saved to Drive',
         deliveryMode === 'another-account'
-          ? `${documentName || 'The plan'} is in your Drive and shared with ${recipient}.`
-          : `${documentName || 'The plan'} is now in your Google Drive.`,
+          ? `${documentName || (isQuiz ? 'The quiz' : 'The plan')} is in your Drive and shared with ${recipient}.`
+          : `${documentName || (isQuiz ? 'The quiz' : 'The plan')} is now in your Google Drive.`,
       )
     } catch (err) {
       toast.apiError('Could not save to Drive', err)
@@ -268,28 +272,9 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
           </div>
         )}
 
-        {/* Was a static "Save to Google Drive" regardless of isQuiz — right
-            for the plan branch below, wrong for this one: a quiz never
-            gets a drive_file_id (no backend route for it), and the section
-            underneath this heading has always shown a Canvas push instead. */}
-        <h3 className="text-sm font-medium mb-3">{isQuiz ? 'Canvas export preview' : 'Send this plan'}</h3>
+        <h3 className="text-sm font-medium mb-3">{isQuiz ? 'Send this quiz' : 'Send this plan'}</h3>
 
-        {isQuiz ? (
-          <>
-            <p className="text-sm text-ink-soft mb-4">
-              Canvas is not connected for this school yet. This preview exercises the export flow but does not change a live Canvas course.
-            </p>
-            <button 
-              type="button" 
-              className="btn btn-primary w-full justify-center" 
-              onClick={uploadToCanvas}
-              disabled={submitting}
-            >
-              {submitting ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : <Upload size={14} className="mr-1.5" aria-hidden="true" />}
-              {submitting ? 'Preparing preview…' : 'Preview Canvas export'}
-            </button>
-          </>
-        ) : status === 'loading' ? (
+        {status === 'loading' ? (
           <p className="flex items-center gap-2 text-sm text-ink-soft">
             <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Checking Google Drive…
           </p>
@@ -304,7 +289,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
           </>
         ) : status === 'disconnected' ? (
           <>
-            <p className="text-sm text-ink-soft">Connect your Google account to share this week as a Google Doc.</p>
+            <p className="text-sm text-ink-soft">Connect your Google account to share this {isQuiz ? 'quiz' : 'week'} as a Google Doc.</p>
             <div className="dialog-actions mt-4">
               <button type="button" className="btn" onClick={onClose}>
                 Cancel
@@ -406,6 +391,17 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
             ) : null}
 
             <div className="dialog-actions mt-6">
+              {isQuiz ? (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={uploadToCanvas}
+                  disabled={submitting}
+                >
+                  {submitting ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : <Upload size={14} className="mr-1.5" aria-hidden="true" />}
+                  {submitting ? 'Preparing preview…' : 'Preview Canvas export'}
+                </button>
+              ) : null}
               <button type="button" className="btn" onClick={onClose}>
                 Close
               </button>

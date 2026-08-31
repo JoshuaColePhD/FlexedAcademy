@@ -2098,8 +2098,8 @@ export function ChatPage() {
               id: nextId(),
               role: 'assistant',
               content: revisingQuizId
-                ? `Updated "${quiz.title}." Download it from the plan panel — it imports into Canvas as a QTI package.`
-                : `Built "${quiz.title}." Download it from the plan panel — it imports into Canvas as a QTI package.`,
+                ? `Updated "${quiz.title}." Download the Word document or QTI package from the plan panel.`
+                : `Built "${quiz.title}." Download the Word document or QTI package from the plan panel.`,
             },
           ])
         } catch (err) {

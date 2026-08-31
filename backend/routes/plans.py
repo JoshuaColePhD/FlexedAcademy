@@ -10,7 +10,18 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from .. import db, docx_build, google_drive, llm, qti_build, schema, service, storage, units
+from .. import (
+    db,
+    docx_build,
+    google_drive,
+    llm,
+    qti_build,
+    quiz_docx,
+    schema,
+    service,
+    storage,
+    units,
+)
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
@@ -106,6 +117,75 @@ def _require_plan(user_id: str, plan_id: str) -> dict:
     if not row:
         raise AppError("plan_not_found", "No such plan.", status=404)
     return row
+
+
+def _require_quiz(user_id: str, plan_id: str, quiz_id: str) -> dict:
+    """Require a quiz owned by the caller and belonging to this plan."""
+    row = db.get_quiz(user_id, quiz_id)
+    if not row or row.get("plan_id") != plan_id:
+        raise AppError("quiz_not_found", "No such quiz.", status=404)
+    return row
+
+
+def _build_quiz_artifacts(quiz: dict, plan: dict, quiz_id: str) -> tuple[str | None, str | None, list[str]]:
+    """Build and durably mirror both quiz exports.
+
+    A local file is only recorded as ready when Supabase Storage accepted its
+    bytes. This matches the lesson-plan DOCX contract and protects quizzes on
+    ephemeral hosts such as Render.
+    """
+    warnings: list[str] = []
+    qti_path: str | None = None
+    docx_path: str | None = None
+
+    qti_out = qti_build.quiz_output_path(plan, quiz_id)
+    try:
+        qti_build.build_qti_zip(quiz, qti_out)
+        if storage.mirror_file(qti_out):
+            qti_path = str(qti_out)
+        else:
+            warnings.append("QTI file was built but could not be saved to durable storage.")
+    except Exception as exc:  # noqa: BLE001 - preserve the structured quiz row
+        warnings.append(f"QTI file could not be built: {exc}")
+
+    docx_out = quiz_docx.quiz_output_path(plan, quiz_id)
+    try:
+        quiz_docx.build_quiz_docx(quiz, docx_out)
+        if storage.mirror_file(docx_out):
+            docx_path = str(docx_out)
+        else:
+            warnings.append("Word file was built but could not be saved to durable storage.")
+    except Exception as exc:  # noqa: BLE001 - preserve the structured quiz row
+        warnings.append(f"Word file could not be built: {exc}")
+
+    return qti_path, docx_path, warnings
+
+
+def _quiz_docx_for(user_id: str, plan: dict, row: dict) -> Path:
+    """Return a verified quiz DOCX, rebuilding it from the saved JSON if needed."""
+    path_str = row.get("docx_path")
+    if path_str:
+        path = Path(path_str).resolve()
+        if path.is_relative_to(Path(settings.plans_dir).resolve()) and storage.ensure_local(path) and docx_build.is_valid_docx(path):
+            return path
+
+    quiz = row.get("quiz_json")
+    if not quiz:
+        raise AppError("quiz_docx_missing", "This quiz has no saved content to rebuild from.", status=409)
+    path = quiz_docx.quiz_output_path(plan, row["id"])
+    try:
+        quiz_docx.build_quiz_docx(quiz, path)
+    except Exception as exc:
+        raise AppError("quiz_docx_build_failed", f"The Word document could not be built: {exc}", status=409) from exc
+    if not storage.mirror_file(path):
+        raise AppError(
+            "quiz_docx_not_persisted",
+            "The Word document was built but could not be saved safely.",
+            status=503,
+            hint="The quiz content is safe. Try downloading again in a moment.",
+        )
+    db.update_quiz(user_id, row["id"], quiz, row.get("qti_path"), str(path), row.get("warnings") or [])
+    return path
 
 
 @router.get("")
@@ -584,10 +664,9 @@ def create_quiz(
     revise_day's own gate.
 
     Synchronous, unlike the plan's own docx build (which backgrounds):
-    generate_quiz is one non-streamed completion and build_qti_zip is a
-    local zip write with no external I/O, so there is nothing here slow
-    enough to justify the polling BuiltPlanCard's own has_docx dance exists
-    for.
+    generation plus the two local artifact writes are short enough to finish
+    in one request, while the structured quiz row is still saved if either
+    export fails.
     """
     row = _require_plan(user_id, plan_id)
     require_entitlement(user_id)
@@ -615,14 +694,8 @@ def create_quiz(
         ) from e
 
     quiz_id = db.new_id()
-    out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
-    try:
-        qti_build.build_qti_zip(quiz_raw, out_path)
-        storage.mirror_file(out_path)
-        qti_path = str(out_path)
-    except Exception as e:  # noqa: BLE001 - the quiz row is worth saving even if the zip failed
-        warnings = [*warnings, f"QTI file could not be built: {e}"]
-        qti_path = None
+    qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(quiz_raw, row["plan_json"], quiz_id)
+    warnings = [*warnings, *artifact_warnings]
 
     return db.create_quiz(
         quiz_id=quiz_id,
@@ -632,6 +705,7 @@ def create_quiz(
         question_types=body.question_types,
         quiz_json=quiz_raw,
         qti_path=qti_path,
+        docx_path=docx_path,
         warnings=warnings,
     )
 
@@ -648,9 +722,7 @@ def revise_quiz_route(
     """
     row = _require_plan(user_id, plan_id)
     require_entitlement(user_id)
-    quiz_row = db.get_quiz(user_id, quiz_id)
-    if not quiz_row:
-        raise AppError("quiz_not_found", "No such quiz.", status=404)
+    quiz_row = _require_quiz(user_id, plan_id, quiz_id)
 
     quiz_raw = llm.revise_quiz(
         user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback, class_id=row.get("class_id")
@@ -665,20 +737,15 @@ def revise_quiz_route(
             hint="Try asking for the revision again — this is a one-sample formatting slip, not a structural problem.",
         ) from e
 
-    out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
-    try:
-        qti_build.build_qti_zip(quiz_raw, out_path)
-        storage.mirror_file(out_path)
-        qti_path = str(out_path)
-    except Exception as e:  # noqa: BLE001 - the quiz row is worth saving even if the zip failed
-        warnings = [*warnings, f"QTI file could not be built: {e}"]
-        qti_path = None
+    qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(quiz_raw, row["plan_json"], quiz_id)
+    warnings = [*warnings, *artifact_warnings]
 
     return db.update_quiz(
         user_id=user_id,
         quiz_id=quiz_id,
         quiz_json=quiz_raw,
         qti_path=qti_path,
+        docx_path=docx_path,
         warnings=warnings,
     )
 
@@ -688,34 +755,35 @@ def update_quiz(
     plan_id: str, quiz_id: str, body: QuizUpdateRequest, user_id: str = Depends(get_current_user)
 ) -> dict:
     row = _require_plan(user_id, plan_id)
-    quiz_row = db.get_quiz(user_id, quiz_id)
-    if not quiz_row:
-        raise AppError("quiz_not_found", "No such quiz.", status=404)
+    _require_quiz(user_id, plan_id, quiz_id)
 
-    out_path = qti_build.quiz_output_path(row["plan_json"], quiz_id)
     try:
-        qti_build.build_qti_zip(body.quiz_json, out_path)
-        storage.mirror_file(out_path)
-        qti_path = str(out_path)
-    except Exception:
-        log.warning("could not build QTI zip for quiz_id=%s", quiz_id, exc_info=True)
-        qti_path = None
+        warnings = schema.validate_quiz(body.quiz_json)
+    except schema.QuizSchemaError as exc:
+        raise AppError("quiz_schema_error", f"The edited quiz wasn't usable: {exc}", status=400) from exc
+
+    qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(body.quiz_json, row["plan_json"], quiz_id)
+    warnings = [*warnings, *artifact_warnings]
 
     return db.update_quiz(
         user_id=user_id,
         quiz_id=quiz_id,
         quiz_json=body.quiz_json,
         qti_path=qti_path,
+        docx_path=docx_path,
+        warnings=warnings,
     )
 
 @router.delete("/{plan_id}/quizzes/{quiz_id}", status_code=204)
 def delete_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_user)) -> None:
     _require_plan(user_id, plan_id)
-    row = db.get_quiz(user_id, quiz_id)
-    if row and row.get("qti_path"):
-        p = Path(row["qti_path"]).resolve()
-        if p.is_relative_to(Path(settings.plans_dir).resolve()):
-            storage.remove_file(p)
+    row = _require_quiz(user_id, plan_id, quiz_id)
+    if row:
+        for path_str in (row.get("qti_path"), row.get("docx_path")):
+            if path_str:
+                p = Path(path_str).resolve()
+                if p.is_relative_to(Path(settings.plans_dir).resolve()):
+                    storage.remove_file(p)
     if not db.delete_quiz(user_id, quiz_id):
         raise AppError("quiz_not_found", "No such quiz.", status=404)
 
@@ -723,9 +791,7 @@ def delete_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_u
 @router.get("/{plan_id}/quizzes/{quiz_id}/download")
 def download_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_user)):
     _require_plan(user_id, plan_id)
-    row = db.get_quiz(user_id, quiz_id)
-    if not row:
-        raise AppError("quiz_not_found", "No such quiz.", status=404)
+    row = _require_quiz(user_id, plan_id, quiz_id)
     path_str = row.get("qti_path")
     if not path_str:
         raise AppError(
@@ -747,3 +813,47 @@ def download_quiz(plan_id: str, quiz_id: str, user_id: str = Depends(get_current
         filename=f"{docx_build.safe_filename(row['title'])}.zip",
         media_type=qti_build.QTI_MIME,
     )
+
+
+@router.get("/{plan_id}/quizzes/{quiz_id}/download-docx")
+def download_quiz_docx(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_user)):
+    plan = _require_plan(user_id, plan_id)
+    row = _require_quiz(user_id, plan_id, quiz_id)
+    path = _quiz_docx_for(user_id, plan["plan_json"], row)
+    return FileResponse(
+        path=str(path),
+        filename=f"{docx_build.safe_filename(row['title'])}.docx",
+        media_type=quiz_docx.DOCX_MIME,
+    )
+
+
+@router.post("/{plan_id}/quizzes/{quiz_id}/share")
+def share_quiz(plan_id: str, quiz_id: str, body: SharePlan, user_id: str = Depends(get_current_user)) -> dict:
+    """Share the quiz's DOCX as one reusable native Google Doc."""
+    if not settings.drive_share_enabled:
+        raise AppError("drive_unconfigured", "Google Drive sharing isn't set up yet.", status=503)
+    plan = _require_plan(user_id, plan_id)
+    row = _require_quiz(user_id, plan_id, quiz_id)
+    access_token = get_valid_access_token(user_id)
+
+    if not row.get("drive_file_id"):
+        path = _quiz_docx_for(user_id, plan["plan_json"], row)
+        result = google_drive.upload_as_google_doc(
+            access_token,
+            filename=docx_build.safe_filename(row["title"]),
+            content=path.read_bytes(),
+            source_mime=quiz_docx.DOCX_MIME,
+        )
+        db.set_quiz_drive_file(user_id, quiz_id, file_id=result["id"], web_link=result["webViewLink"])
+        row = _require_quiz(user_id, plan_id, quiz_id)
+
+    if body.email:
+        google_drive.share_file(access_token, row["drive_file_id"], email=body.email, role=body.role)
+        db.add_quiz_share(quiz_id, email=body.email, role=body.role)
+    return {"web_link": row["drive_web_link"], "shares": db.list_quiz_shares(quiz_id)}
+
+
+@router.get("/{plan_id}/quizzes/{quiz_id}/shares")
+def get_quiz_shares(plan_id: str, quiz_id: str, user_id: str = Depends(get_current_user)) -> dict:
+    row = _require_quiz(user_id, plan_id, quiz_id)
+    return {"web_link": row.get("drive_web_link"), "shares": db.list_quiz_shares(quiz_id)}

@@ -281,6 +281,7 @@ const state = {
         title: 'Week 03 Quiz — Voice & Tone',
         question_types: ['multiple_choice', 'true_false', 'short_answer', 'matching'],
         has_qti: true,
+        has_docx: true,
         warnings: [],
         // Real shape (schema.QUESTION_JSON_SCHEMA) — quiz_json is what
         // ArtifactDetailPanel's quiz view actually renders, and list_quizzes
@@ -351,6 +352,9 @@ const state = {
   // db.list_plan_shares/plans.drive_web_link return for real.
   planShares: {},
   planDriveFiles: {},
+  // quizId -> [{email, role, created_at}], plus the native Google Doc link.
+  quizShares: {},
+  quizDriveFiles: {},
   // Flat array, filtered by class_id — see docList below. Seeded with one
   // document for c1 so the rail's "Built from" group has a row to open;
   // ArtifactDetailPanel's document view had no mock coverage before this,
@@ -891,6 +895,7 @@ export function installMockApi() {
         title: `${(state.plans[planId] || {}).week_of || 'Week'} Quiz`,
         question_types: types,
         has_qti: true,
+        has_docx: true,
         warnings: [],
       }
       state.quizzes[planId] = [quiz, ...(state.quizzes[planId] || [])]
@@ -903,6 +908,27 @@ export function installMockApi() {
       const [, planId, quizId] = quizDeleteMatch
       state.quizzes[planId] = (state.quizzes[planId] || []).filter((q) => q.id !== quizId)
       return new Response(null, { status: 204 })
+    }
+
+    const quizShareListMatch = path.match(/^\/api\/plans\/([^/]+)\/quizzes\/([^/]+)\/shares$/)
+    if (quizShareListMatch && method === 'GET') {
+      await wait(150)
+      const quizId = quizShareListMatch[2]
+      return json({ web_link: state.quizDriveFiles[quizId] || null, shares: state.quizShares[quizId] || [] })
+    }
+
+    const quizShareCreateMatch = path.match(/^\/api\/plans\/([^/]+)\/quizzes\/([^/]+)\/share$/)
+    if (quizShareCreateMatch && method === 'POST') {
+      await wait(800)
+      const quizId = quizShareCreateMatch[2]
+      if (!state.quizDriveFiles[quizId]) {
+        state.quizDriveFiles[quizId] = `https://docs.google.com/document/d/mock-quiz-${quizId}/edit`
+      }
+      if (body.email) {
+        const share = { email: body.email, role: body.role || 'reader', created_at: new Date().toISOString() }
+        state.quizShares[quizId] = [share, ...(state.quizShares[quizId] || [])]
+      }
+      return json({ web_link: state.quizDriveFiles[quizId], shares: state.quizShares[quizId] || [] })
     }
 
     if (path === '/api/drive/status') {

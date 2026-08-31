@@ -46,12 +46,14 @@ export function PrivacyPage() {
             <li>Your account: name, email, school, and a hashed password (or Google sign-in).</li>
             <li>Classes, lesson plans, quizzes, and chat history you create.</li>
             <li>Curriculum documents you upload, and text extracted from them for search.</li>
+            <li>Generated Word and QTI files are stored in Supabase Storage so they survive server restarts.</li>
             <li>Usage totals (token counts) used to apply the free-tier weekly limit.</li>
           </ul>
           <p className="text-sm text-ink-soft leading-relaxed mb-4">
             All of it lives in a single hosted PostgreSQL database (Supabase), encrypted in
             transit, with row-level security so one account's rows are not reachable through
-            another account's session.
+            another account's session. Generated files are stored in the app's private Supabase
+            Storage bucket and are served only through authenticated download routes.
           </p>
         </div>
 
@@ -61,7 +63,8 @@ export function PrivacyPage() {
             Generating a lesson plan, quiz, or chat reply sends the relevant prompt text (your
             request, retrieved curriculum context, and anything you typed) to OpenAI's API to
             produce the response. Voice features send audio or text to OpenAI's transcription and
-            speech endpoints. No other third party receives plan, chat, or curriculum content.
+            speech endpoints. If you choose Google Drive sharing, the generated Word file is
+            sent to the connected Google account and converted into an editable Google Doc.
             Billing, when enabled, is handled by Stripe and only sees what a payment requires
             (email, payment method) — never lesson or chat content.
           </p>

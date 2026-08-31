@@ -136,12 +136,14 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
   // "8 questions · Aug 22, 9:48 AM".
   const count = quiz.quiz_json?.questions?.length
   const built = shortDateTime(quiz.created_at)
+  const formats = [quiz.has_docx && 'Word', quiz.has_qti && 'QTI'].filter(Boolean).join(' · ') || 'no exports'
+  const missingFormats = [!quiz.has_docx && 'Word', !quiz.has_qti && 'QTI'].filter(Boolean).join(' and ')
   const subLine = (
     <>
       <span className="rail-sub">
-        Quiz · QTI · {questionTypesLabel(quiz.question_types)}
+        Quiz · {formats} · {questionTypesLabel(quiz.question_types)}
         {count ? ` · ${count} question${count === 1 ? '' : 's'}` : ''}
-        {quiz.has_qti ? '' : ' (failed to build, ask again)'}
+        {missingFormats ? ` (${missingFormats} export unavailable)` : ''}
       </span>
       {built ? <span className="rail-sub">{built}</span> : null}
     </>
@@ -182,7 +184,7 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
         )}
       </span>
       <span className="rail-actions flex items-center">
-        {quiz.has_qti ? (
+        {quiz.has_qti || quiz.has_docx ? (
           <button
             type="button"
             className="rail-open fa-press"
@@ -202,9 +204,9 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
             aria-disabled="true"
             onClick={(e) => {
               e.stopPropagation()
-              toast.apiError('Quiz file failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Canvas QTI file.'))
+              toast.apiError('Quiz exports failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Word and QTI files.'))
             }}
-            title="The file failed to build — ask again in chat to rebuild it"
+            title="The quiz exports failed to build — ask again in chat to rebuild them"
           >
             <Download size={13} aria-hidden="true" />
           </button>

@@ -10,6 +10,7 @@ import { longDay, monthKey, monthLabel, parseISO, todayISO } from '../lib/dates'
 import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
 import { Skeleton, SkeletonText } from './Skeleton'
 import { ShareDialog } from './ShareDialog'
+import { DocxDownloadButton } from './DocxDownloadButton'
 
 /* The same embossed shell ArtifactPanel uses for the lesson plan itself
  * (.doc-shell/.doc-head/.doc-body — see that component's own header
@@ -611,15 +612,10 @@ export function ArtifactDetailPanel({
 
         <div className="flex items-center gap-2">
           {kind === 'quiz' && planId ? (
-            quiz?.has_qti ? (
+            quiz ? (
               <>
-                {/* The one "more options" entry now — Canvas push moved
-                    into the dialog THIS opens (Josh's own ask: "the share
-                    link and drive should be in the cloud button" — same
-                    reasoning here even though a quiz's own version pushes
-                    to Canvas, not Drive). The dropdown chevron that used to
-                    sit beside Download is gone; nothing left for it once
-                    Download became a direct link and Canvas moved here. */}
+                {/* Cloud sharing and the Canvas preview live behind one
+                    export control; the two local formats remain explicit. */}
                 <button
                   type="button"
                   className="btn-icon fa-press"
@@ -630,42 +626,41 @@ export function ArtifactDetailPanel({
                   <Upload size={16} className="text-ink-muted" />
                 </button>
 
-                {/* .doc-download, not .doc-download-group/-main — see
-                    ArtifactPanel's own comment on the same change: that
-                    pairing only makes sense next to the dropdown it used
-                    to sit beside. */}
-                <a
-                  href={planId && quiz?.id ? api.quizDownloadUrl(planId, quiz.id) : undefined}
-                  download
+                <DocxDownloadButton
+                  planId={planId}
+                  downloadRequest={() => api.downloadQuizDocx(planId, quiz.id, { fallbackName: `${title}.docx` })}
                   className="doc-download fa-press flex items-center gap-1.5"
-                  aria-label="Download QTI .zip"
-                  title="Download QTI .zip"
+                  aria-label="Download Word document"
+                  title="Download Word document"
                 >
                   <Download size={14} aria-hidden="true" className="text-ink-muted" />
-                  <span className="font-medium">Download QTI</span>
-                </a>
+                  <span className="font-medium">Download Word</span>
+                </DocxDownloadButton>
+                {quiz?.has_qti ? (
+                  <a
+                    href={planId && quiz?.id ? api.quizDownloadUrl(planId, quiz.id) : undefined}
+                    download
+                    className="doc-download fa-press flex items-center gap-1.5"
+                    aria-label="Download QTI .zip"
+                    title="Download QTI .zip"
+                  >
+                    <Download size={14} aria-hidden="true" className="text-ink-muted" />
+                    <span className="font-medium">Download QTI</span>
+                  </a>
+                ) : null}
               </>
             ) : (
-              /* Was a <span aria-disabled="true"> with a real onClick — a
-                 genuine contradiction: aria-disabled tells assistive tech
-                 "present but inoperable," while the click handler right
-                 next to it does something (explains the failure via a
-                 toast). A span also isn't in the tab order at all and
-                 has no keyboard activation, so that explanation was
-                 mouse-only. A real <button>, muted only visually
-                 (opacity-45, unchanged), is focusable and Enter/Space-
-                 activates like every other control in this row. Also
-                 fixed the label — a quiz never downloads as .docx, only
-                 QTI, same mislabel fixed on the working button above. */
+              /* Both export artifacts failed; keep a keyboard-accessible
+                 explanation rather than presenting a dead download link. */
               <button
                 type="button"
                 className="doc-download opacity-45 flex items-center gap-1.5"
-                onClick={() => toast.apiError('Quiz file failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Canvas QTI file.'))}
-                aria-label="Quiz file failed to build — ask again in chat to rebuild it"
-                title="The file failed to build — ask again in chat to rebuild it"
+                onClick={() => toast.apiError('Quiz exports failed to build', new Error('Please ask the AI to generate this quiz again in the chat to rebuild the Word and QTI files.'))}
+                aria-label="Quiz exports failed to build — ask again in chat to rebuild them"
+                title="The quiz exports failed to build — ask again in chat to rebuild them"
               >
                 <Download size={14} aria-hidden="true" className="text-ink-muted" />
-                <span className="font-medium">Download QTI</span>
+                <span className="font-medium">Exports unavailable</span>
               </button>
             )
           ) : null}
