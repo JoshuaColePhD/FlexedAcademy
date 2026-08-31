@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import secrets
+from datetime import UTC, datetime, timedelta
 
 import psycopg2.errors
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from .. import auth, db, mail, stripe_api
+from .. import abuse, auth, db, mail, stripe_api, turnstile
 from ..config import settings
 from ..deps import COOKIE_NAME, get_current_user
 from ..entitlement import entitlement
@@ -45,6 +48,9 @@ def _frontend_url(request: Request) -> str:
     origin for local dev with nothing extra to set."""
     if settings.billing_return_url:
         return settings.billing_return_url.rstrip("/")
+    origin = request.headers.get("origin", "").rstrip("/")
+    if origin in settings.origins:
+        return origin
     return str(request.base_url).rstrip("/")
 
 
@@ -99,12 +105,25 @@ def _public_user(user: dict) -> dict:
         # WHERE user_id = ?) as db.count_plans that entitlement() already ran.
         # It was genuinely being executed twice on every single /api/auth/me.
         "generated_plan_count": ent.plans_used,
+        "email_verified": bool(user.get("email_verified_at")),
+        "trial_started_at": user.get("trial_started_at"),
     }
 
 
 def _log_in(request: Request, response: Response, user: dict) -> dict:
     if user.get("is_blocked"):
         raise AppError("account_blocked", "This account has been blocked.", status=403)
+    device_id = abuse.ensure_device_cookie(request, response)
+    if (
+        not user.get("stripe_customer_id")
+        and user.get("subscription_status") not in {"active", "trialing", "past_due", "comped"}
+    ):
+        user = db.start_verified_trial(
+            user["id"],
+            abuse.email_identity_hash(user["email"]),
+            ip_hash=abuse.signal_hash(abuse.client_ip(request), "signup-ip"),
+            device_hash=abuse.signal_hash(device_id, "signup-device"),
+        ) or user
     token = auth.create_session_token(user["id"], user.get("session_version", 0))
     response.set_cookie(COOKIE_NAME, token, **_cookie_kwargs(request))
     return _public_user(user)
@@ -114,6 +133,13 @@ class SignupBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=8, max_length=200)
+    turnstile_token: str | None = None
+    website: str | None = None
+    form_started_at_ms: float | None = None
+
+
+class ResendVerificationBody(BaseModel):
+    email: EmailStr
 
 
 class LoginBody(BaseModel):
@@ -127,10 +153,56 @@ class GoogleLoginBody(BaseModel):
 @router.post("/signup")
 @limiter.limit("5/minute")
 def signup(body: SignupBody, request: Request, response: Response):
+    turnstile.verify_signup(request, body.turnstile_token)
+    try:
+        abuse.validate_signup_form(body.website, body.form_started_at_ms)
+    except ValueError:
+        raise AppError("bot_check_failed", "Please try signing up again.", status=403) from None
+    if settings.cookie_secure and not settings.resend_api_key:
+        raise AppError(
+            "email_delivery_unavailable",
+            "Email verification is temporarily unavailable.",
+            hint="Please try again later.",
+            status=503,
+        )
+    device_id = abuse.ensure_device_cookie(request, response)
+    ip_hash = abuse.signal_hash(abuse.client_ip(request), "signup-ip")
+    if db.recent_signup_count(
+        ip_hash,
+        (datetime.now(UTC) - timedelta(hours=settings.trial_signup_ip_window_hours)).isoformat(timespec="seconds"),
+    ) >= settings.trial_signup_ip_limit:
+        raise AppError(
+            "signup_rate_limited",
+            "Too many new accounts were started from this network.",
+            hint="Please try again later or use Google sign-in.",
+            status=429,
+        )
     existing = db.get_user_by_email(body.email)
     if existing is None:
-        user = db.create_user(body.email, body.name, auth.hash_password(body.password))
-        return _log_in(request, response, user)
+        raw_token = secrets.token_urlsafe(32)
+        user = db.create_user(
+            body.email,
+            body.name,
+            auth.hash_password(body.password),
+            signup_ip_hash=ip_hash,
+            signup_device_hash=abuse.signal_hash(device_id, "signup-device"),
+        )
+        db.set_email_verification_token(user["id"], hashlib.sha256(raw_token.encode()).hexdigest(), db.now())
+        link = f"{_frontend_url(request)}/verify-email?token={raw_token}"
+        sent = mail.send(
+            to=user["email"],
+            subject="Verify your FlexEd Academy email",
+            html=(
+                f"<p>Hi {user['name']},</p><p><a href=\"{link}\">Verify your email and start your free week</a></p>"
+                f"<p>This link works for {settings.email_verification_hours} hours. If you did not create this account, you can ignore this message.</p>"
+            ),
+        )
+        result = {"verification_required": True, "email": user["email"], "email_sent": sent}
+        # A local developer without a mail provider still needs a way to test
+        # the flow. Never expose this escape hatch on a secure deployment.
+        if not settings.cookie_secure and not sent:
+            result["verification_url"] = link
+        return result
 
     # An existing email is ALWAYS a refusal now.
     #
@@ -178,6 +250,13 @@ def login(body: LoginBody, request: Request, response: Response):
     user = db.get_user_by_email(body.email)
     if not user or not user["password_hash"] or not auth.verify_password(body.password, user["password_hash"]):
         raise AppError("invalid_credentials", "Incorrect email or password.", status=401)
+    if user.get("email_verified_at") is None and user.get("email_verification_token_hash"):
+        raise AppError(
+            "email_not_verified",
+            "Verify your email before signing in.",
+            hint="Open the verification link we sent you, or request a new one.",
+            status=403,
+        )
     # Caught here too, not just in deps._verify_current — that check is what
     # actually enforces this on every later request, but without this the
     # correct password for an expired beta account would appear to log in
@@ -241,13 +320,22 @@ def google_login(body: GoogleLoginBody, request: Request, response: Response):
     if not user:
         user = db.get_user_by_email(email)
     if user:
+        if not user.get("email_verified_at"):
+            user = db.mark_email_verified(user["id"], db.now()) or user
         if sub and not user.get("google_sub"):
             db.link_google_sub(user["id"], sub)
     else:
         # No password_hash because they authenticate via Google. That state is
         # no longer claimable by signup() — see the comment there.
         try:
-            user = db.create_user(email, name, password_hash=None)
+            user = db.create_user(
+                email,
+                name,
+                password_hash=None,
+                email_verified_at=db.now(),
+                signup_ip_hash=abuse.signal_hash(abuse.client_ip(request), "signup-ip"),
+                signup_device_hash=abuse.signal_hash(abuse.ensure_device_cookie(request, response), "signup-device"),
+            )
         except psycopg2.errors.UniqueViolation:
             # Two first-time Google sign-ins for the same brand-new email,
             # close enough together that both passed the get_user_by_email
@@ -266,6 +354,50 @@ def google_login(body: GoogleLoginBody, request: Request, response: Response):
             db.link_google_sub(user["id"], sub)
 
     return _log_in(request, response, user)
+
+
+@router.get("/verify-email")
+@limiter.limit("20/minute")
+def verify_email(request: Request, response: Response, token: str = Query(min_length=20, max_length=256)):
+    """Consume a verification link and sign the teacher in."""
+    floor = (datetime.now(UTC) - timedelta(hours=settings.email_verification_hours)).isoformat(timespec="seconds")
+    user = db.consume_email_verification_token(hashlib.sha256(token.encode()).hexdigest(), floor, db.now())
+    if not user:
+        raise AppError(
+            "invalid_verification_token",
+            "That verification link is invalid or has expired.",
+            hint="Request a new verification email from the sign-in page.",
+            status=400,
+        )
+    return _log_in(request, response, user)
+
+
+@router.post("/resend-verification")
+@limiter.limit("3/hour")
+def resend_verification(body: ResendVerificationBody, request: Request, response: Response):
+    """Resend without revealing whether an address has an account."""
+    user = db.get_user_by_email(body.email)
+    if not user or user.get("email_verified_at") or not user.get("password_hash"):
+        return {"ok": True}
+    sent_at = user.get("email_verification_sent_at")
+    if sent_at:
+        try:
+            if datetime.now(UTC) - datetime.fromisoformat(sent_at) < timedelta(seconds=settings.email_verification_min_interval_seconds):
+                return {"ok": True}
+        except ValueError:
+            pass
+    raw_token = secrets.token_urlsafe(32)
+    db.set_email_verification_token(user["id"], hashlib.sha256(raw_token.encode()).hexdigest(), db.now())
+    link = f"{_frontend_url(request)}/verify-email?token={raw_token}"
+    sent = mail.send(
+        to=user["email"],
+        subject="Verify your FlexEd Academy email",
+        html=f"<p><a href=\"{link}\">Verify your email and start your free week</a></p><p>This link works for {settings.email_verification_hours} hours.</p>",
+    )
+    result = {"ok": True, "email_sent": sent}
+    if not settings.cookie_secure and not sent:
+        result["verification_url"] = link
+    return result
 
 
 @router.post("/logout")

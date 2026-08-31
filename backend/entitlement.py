@@ -133,6 +133,11 @@ class Entitlement:
     # None for subscribed/unlimited/grandfathered accounts, where a
     # countdown wouldn't mean anything.
     trial_days_remaining: int | None = None
+    trial_reused: bool = False
+    aggregate_tokens_used: int = 0
+    aggregate_token_cap: int | None = None
+    aggregate_ip_tokens_used: int = 0
+    aggregate_ip_token_cap: int | None = None
 
     @property
     def tokens_remaining(self) -> int | None:
@@ -148,6 +153,15 @@ class Entitlement:
         if self.unlimited or self.burst_cap is None:
             return False
         return self.tokens_used_recent >= self.burst_cap
+
+    @property
+    def aggregate_limited(self) -> bool:
+        return bool(
+            self.aggregate_token_cap is not None
+            and self.aggregate_tokens_used >= self.aggregate_token_cap
+            or self.aggregate_ip_token_cap is not None
+            and self.aggregate_ip_tokens_used >= self.aggregate_ip_token_cap
+        )
 
     def as_dict(self) -> dict:
         return {
@@ -166,6 +180,11 @@ class Entitlement:
             "unlimited": self.unlimited,
             "trial_expired": self.trial_expired,
             "trial_days_remaining": self.trial_days_remaining,
+            "trial_reused": self.trial_reused,
+            "aggregate_tokens_used": self.aggregate_tokens_used,
+            "aggregate_token_cap": self.aggregate_token_cap,
+            "aggregate_ip_tokens_used": self.aggregate_ip_tokens_used,
+            "aggregate_ip_token_cap": self.aggregate_ip_token_cap,
         }
 
 
@@ -223,21 +242,33 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
 
     # Only ever applies to unsubscribed accounts created on or after
     # TRIAL_ENFORCEMENT_START — see that constant's own comment for why
-    # grandfathering matters here. created_at is always set (db.py's own
-    # users table), so this only skips a genuinely pre-cutoff signup.
+    # grandfathering matters here. A new account's trial clock is anchored to
+    # its first verified login, not the moment an unverified signup row exists.
     trial_expired = False
+    trial_reused = False
     trial_days_remaining = None
     created_at = user.get("created_at")
+    trial_started_at = user.get("trial_started_at")
+    trial_eligible = user.get("trial_eligible") is not False
     if settings.billing_enabled and not subscribed and not unlimited and created_at:
-        signed_up = datetime.fromisoformat(created_at)
-        if signed_up.tzinfo is None:
-            signed_up = signed_up.replace(tzinfo=UTC)
-        if signed_up >= TRIAL_ENFORCEMENT_START:
-            trial_ends = signed_up + timedelta(days=settings.trial_period_days)
-            if now_utc >= trial_ends:
+        created = datetime.fromisoformat(created_at)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        if created >= TRIAL_ENFORCEMENT_START:
+            if not trial_eligible:
+                trial_expired = True
+                trial_reused = True
+            elif not trial_started_at:
                 trial_expired = True
             else:
-                trial_days_remaining = max(0, (trial_ends - now_utc).days)
+                signed_up = datetime.fromisoformat(trial_started_at)
+                if signed_up.tzinfo is None:
+                    signed_up = signed_up.replace(tzinfo=UTC)
+                trial_ends = signed_up + timedelta(days=settings.trial_period_days)
+                if now_utc >= trial_ends:
+                    trial_expired = True
+                else:
+                    trial_days_remaining = max(0, (trial_ends - now_utc).days)
 
     # Inside an active trial, and this account has never been a paying
     # customer — which is what earns the SUBSCRIBER cap below rather than the
@@ -259,7 +290,7 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
     # so 'canceled' and 'incomplete_expired' can never re-enter a trial. It is
     # the same "already been a customer once doesn't get a second trial" rule
     # routes/billing.py already applies to Stripe's own trial eligibility.
-    in_trial = trial_days_remaining is not None and not user.get("stripe_customer_id")
+    in_trial = trial_days_remaining is not None and not user.get("stripe_customer_id") and trial_eligible
 
     if trial_expired:
         return Entitlement(
@@ -274,6 +305,7 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
             cancel_at_period_end=cancel_at_period_end,
             burst_cap=None,
             trial_expired=True,
+            trial_reused=trial_reused,
         )
 
     if unlimited:
@@ -327,7 +359,28 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
     # set deliberately: the burst must not quietly grant more than the week.
     burst_cap = min(cap, max(int(cap * BURST_FRACTION), MIN_BURST_TOKENS))
 
-    may_generate = not settings.billing_enabled or (tokens_used < cap and tokens_used_recent < burst_cap)
+    aggregate_tokens_used = 0
+    aggregate_ip_tokens_used = 0
+    aggregate_token_cap = None
+    aggregate_ip_token_cap = None
+    if in_trial:
+        aggregate_tokens_used, aggregate_ip_tokens_used = db.trial_group_tokens_used(
+            user.get("signup_ip_hash"), user.get("signup_device_hash"),
+            (now_utc - timedelta(hours=settings.trial_aggregate_window_hours)).isoformat(timespec="seconds"),
+        )
+        aggregate_token_cap = settings.trial_aggregate_token_cap
+        aggregate_ip_token_cap = settings.trial_aggregate_ip_token_cap
+
+    aggregate_ok = (
+        not in_trial
+        or (
+            aggregate_tokens_used < aggregate_token_cap
+            and aggregate_ip_tokens_used < aggregate_ip_token_cap
+        )
+    )
+    may_generate = not settings.billing_enabled or (
+        tokens_used < cap and tokens_used_recent < burst_cap and aggregate_ok
+    )
     return Entitlement(
         may_generate=may_generate,
         subscribed=subscribed,
@@ -341,6 +394,11 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
         tokens_used_recent=tokens_used_recent,
         burst_cap=burst_cap,
         trial_days_remaining=trial_days_remaining,
+        trial_reused=trial_reused,
+        aggregate_tokens_used=aggregate_tokens_used,
+        aggregate_token_cap=aggregate_token_cap,
+        aggregate_ip_tokens_used=aggregate_ip_tokens_used,
+        aggregate_ip_token_cap=aggregate_ip_token_cap,
     )
 
 
@@ -366,11 +424,27 @@ def require_entitlement(user_id: str) -> None:
     # clears it. A trial that's over never resets — telling that teacher to
     # "wait it out" would be a straightforwardly false promise.
     if ent.trial_expired:
+        if ent.trial_reused:
+            raise AppError(
+                "subscription_required",
+                "This email has already used its free trial.",
+                status=402,
+                hint="Subscribe to keep building. Your account and any saved work remain available.",
+                extra={"entitlement": ent.as_dict()},
+            )
         raise AppError(
             "subscription_required",
             "Your free trial has ended.",
             status=402,
             hint="Subscribe to keep building — everything you’ve already made stays yours either way.",
+            extra={"entitlement": ent.as_dict()},
+        )
+    if ent.aggregate_limited:
+        raise AppError(
+            "subscription_required",
+            "Free-trial activity from this network has reached its daily limit.",
+            status=402,
+            hint="Try again tomorrow or subscribe for uninterrupted access.",
             extra={"entitlement": ent.as_dict()},
         )
     if ent.burst_limited:

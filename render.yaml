@@ -123,6 +123,21 @@ services:
       - key: EMAIL_FROM
         value: "FlexEd Academy <no-reply@flexedacademy.com>"
 
+      # Anonymous signup protection. Create a managed Turnstile widget for
+      # flexedacademy.com, set its site key before the frontend build, and keep
+      # its secret only in the backend service environment. Do not include
+      # localhost in this production hostname list.
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: VITE_TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET
+        sync: false
+      - key: TURNSTILE_HOSTNAMES
+        value: "flexedacademy.com"
+      - key: TURNSTILE_REQUIRED
+        value: "true"
+
       # ── error tracking (Sentry) ──────────────────────────────────────────
       # server.py only calls sentry_sdk.init if this is set (backend/config.py
       # defaults sentry_dsn to "", same inert-until-configured shape as

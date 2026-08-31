@@ -53,6 +53,9 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
   const [resetSent, setResetSent] = useState(false)
   const [resetError, setResetError] = useState(null)
   const [resetLoading, setResetLoading] = useState(false)
+  const [verificationNeeded, setVerificationNeeded] = useState(false)
+  const [verificationSent, setVerificationSent] = useState(false)
+  const [verificationLoading, setVerificationLoading] = useState(false)
 
   // Preserved across the round trip so a bookmarked /c/x/week/12 with an expired
   // cookie lands back on that week instead of dumping the teacher at the top.
@@ -66,13 +69,28 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
       return
     }
     setError(null)
+    setVerificationNeeded(false)
+    setVerificationSent(false)
     setLoading(true)
     try {
       await login(email, password)
     } catch (err) {
       setError(err.message || 'That email and password didn’t match an account.')
+      setVerificationNeeded(err?.code === 'email_not_verified')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    setVerificationLoading(true)
+    try {
+      await api.resendVerification(email)
+      setVerificationSent(true)
+    } catch (err) {
+      setError(err?.message || 'Could not resend the verification email.')
+    } finally {
+      setVerificationLoading(false)
     }
   }
 
@@ -159,6 +177,15 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
           >
             {error}
           </p>
+        ) : null}
+        {verificationNeeded ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+            {verificationSent ? 'A new verification link is on its way.' : (
+              <button type="button" className="font-medium underline underline-offset-2" disabled={verificationLoading} onClick={handleResendVerification}>
+                {verificationLoading ? 'Sending…' : 'Send the verification email again'}
+              </button>
+            )}
+          </div>
         ) : null}
 
         <div className="relative">

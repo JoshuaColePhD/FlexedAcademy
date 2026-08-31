@@ -126,7 +126,7 @@ const state = {
   // onboarding_seen_at set (unlike a brand-new account) so preview.html lands
   // on the real app shell — App.jsx's ClassRoutes redirects to the onboarding
   // wizard for as long as this is unset, and nothing in this mock ever set it.
-  me: { id: 'u1', name: 'Josh Cole', email: 'jc@x.org', custom_instructions: '', output_length: 'medium', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00' },
+  me: { id: 'u1', name: 'Josh Cole', email: 'jc@x.org', custom_instructions: '', output_length: 'medium', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00', email_verified: true, trial_started_at: '2026-01-01T00:00:00+00:00' },
   // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
@@ -444,11 +444,13 @@ export function installMockApi() {
       output_length: state.me.output_length,
       school: state.me.school,
       onboarding_seen_at: state.me.onboarding_seen_at,
+      email_verified: state.me.email_verified,
+      trial_started_at: state.me.trial_started_at,
       entitlement: state.entitlement,
     })
 
     const resetForNewAccount = (name, email) => {
-      state.authenticated = true
+      state.authenticated = false
       state.me = {
         ...state.me,
         id: 'new-user',
@@ -456,6 +458,8 @@ export function installMockApi() {
         email: email || 'new.teacher@example.com',
         school: 'generic',
         onboarding_seen_at: null,
+        email_verified: false,
+        trial_started_at: null,
       }
       state.credentials = { email: state.me.email, password: body?.password || 'demo-password' }
       state.classes = []
@@ -479,7 +483,16 @@ export function installMockApi() {
         return new Response(JSON.stringify({ error: { code: 'invalid_request', message: 'Please complete all fields.' } }), { status: 400, headers: { 'Content-Type': 'application/json' } })
       }
       resetForNewAccount(body.name.trim(), body.email.trim())
+      return json({ verification_required: true, email: state.me.email, email_sent: false, verification_url: '/verify-email?token=mock' })
+    }
+    if (path === '/api/auth/verify-email' && method === 'GET') {
+      state.authenticated = true
+      state.me.email_verified = true
+      state.me.trial_started_at = new Date().toISOString()
       return json(currentUser())
+    }
+    if (path === '/api/auth/resend-verification' && method === 'POST') {
+      return json({ ok: true, email_sent: false, verification_url: '/verify-email?token=mock' })
     }
     if (path === '/api/auth/login' && method === 'POST') {
       if (!body?.email || !body?.password) {

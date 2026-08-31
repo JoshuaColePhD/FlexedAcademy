@@ -170,7 +170,15 @@ export function AuthProvider({ children }) {
   )
 
   const signup = useCallback(
-    async (name, email, password) => applyIdentity(await api.signup(name, email, password)),
+    async (name, email, password, extra) => {
+      const result = await api.signup(name, email, password, extra)
+      return result?.verification_required ? result : applyIdentity(result)
+    },
+    [applyIdentity]
+  )
+
+  const verifyEmail = useCallback(
+    async (token) => applyIdentity(await api.verifyEmail(token)),
     [applyIdentity]
   )
 
@@ -247,6 +255,7 @@ export function AuthProvider({ children }) {
       login,
       loginWithGoogle,
       signup,
+      verifyEmail,
       resetPassword,
       logout,
       signOutEverywhere,
@@ -259,6 +268,7 @@ export function AuthProvider({ children }) {
       login,
       loginWithGoogle,
       signup,
+      verifyEmail,
       resetPassword,
       logout,
       signOutEverywhere,

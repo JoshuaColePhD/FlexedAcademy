@@ -40,6 +40,7 @@ const LandingPage = lazyNamed(() => import('./pages/LandingPage.jsx'), 'LandingP
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'))
 const SignupPage = lazy(() => import('./pages/auth/SignupPage.jsx'))
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage.jsx'))
+const VerifyEmailPage = lazy(() => import('./pages/auth/VerifyEmailPage.jsx'))
 const PrivacyPolicyPage = lazyNamed(() => import('./pages/legal/PrivacyPolicyPage.jsx'), 'PrivacyPolicyPage')
 const TermsPage = lazyNamed(() => import('./pages/legal/TermsPage.jsx'), 'TermsPage')
 const BetaPage = lazyNamed(() => import('./pages/legal/BetaPage.jsx'), 'BetaPage')
@@ -259,7 +260,8 @@ function Gate() {
     const isAuthRoute =
       location.pathname === '/login' ||
       location.pathname === '/signup' ||
-      location.pathname === '/reset-password'
+      location.pathname === '/reset-password' ||
+      location.pathname === '/verify-email'
     /* Explicit sign-out lands on the homepage, not back at a password field —
        AuthProvider.logout() sets this right before the status flip that gets
        us here. Anything else that reaches status==='anon' off an app URL (an
@@ -283,6 +285,7 @@ function Gate() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
         {/* Public regardless of sign-in state — a signed-in teacher can
             read these too, so they're declared identically in both trees
             rather than gated like /login et al. */}
@@ -332,6 +335,7 @@ function Gate() {
           unused. ResetPasswordPage works signed in or out by design — the token
           in the URL is the credential, not the cookie. */}
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/beta" element={<BetaPage />} />

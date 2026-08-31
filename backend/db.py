@@ -3343,6 +3343,33 @@ MIGRATIONS: list[str] = [
     ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by TEXT;
     """,
+    # ── 68: verified first trial and signup abuse signals ────────────────────
+    # Password signups no longer receive a session until their email is
+    # verified. The trial starts on that first verified login, and trial_claims
+    # survives account deletion so the same verified email cannot reclaim a
+    # second free week by creating a fresh row.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token_hash TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_sent_at TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_started_at TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_eligible BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ineligible_reason TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_ip_hash TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_device_hash TEXT;
+    CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(email_verification_token_hash);
+    CREATE INDEX IF NOT EXISTS idx_users_signup_ip ON users(signup_ip_hash, created_at);
+    CREATE INDEX IF NOT EXISTS idx_users_signup_device ON users(signup_device_hash, created_at);
+    CREATE TABLE IF NOT EXISTS trial_claims (
+      identity_hash TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      claimed_at TEXT NOT NULL,
+      ip_hash TEXT,
+      device_hash TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_trial_claims_user ON trial_claims(user_id);
+    ALTER TABLE trial_claims ENABLE ROW LEVEL SECURITY;
+    """,
 ]
 
 
@@ -5769,6 +5796,114 @@ def get_user_by_id(user_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def recent_signup_count(ip_hash: str, since_iso: str) -> int:
+    row = _row(
+        "SELECT COUNT(*) AS n FROM users WHERE signup_ip_hash = ? AND created_at >= ?",
+        (ip_hash, since_iso),
+    )
+    return int(row["n"]) if row else 0
+
+
+def set_email_verification_token(user_id: str, token_hash: str, sent_at: str) -> dict | None:
+    return _write_returning(
+        "UPDATE users SET email_verification_token_hash = ?, email_verification_sent_at = ? WHERE id = ? RETURNING *",
+        (token_hash, sent_at, user_id),
+    )
+
+
+def consume_email_verification_token(token_hash: str, sent_at_floor: str, verified_at: str) -> dict | None:
+    """Consume one unexpired token atomically and mark the email verified."""
+    return _write_returning(
+        """
+        UPDATE users
+        SET email_verified_at = ?,
+            email_verification_token_hash = NULL,
+            email_verification_sent_at = NULL
+        WHERE email_verification_token_hash = ?
+          AND email_verification_sent_at >= ?
+        RETURNING *
+        """,
+        (verified_at, token_hash, sent_at_floor),
+    )
+
+
+def mark_email_verified(user_id: str, verified_at: str) -> dict | None:
+    return _write_returning(
+        "UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ? RETURNING *",
+        (verified_at, user_id),
+    )
+
+
+def start_verified_trial(
+    user_id: str,
+    identity_hash: str,
+    *,
+    ip_hash: str | None = None,
+    device_hash: str | None = None,
+    started_at: str | None = None,
+) -> dict | None:
+    """Start one account's trial, or permanently decline a reused identity."""
+    user = get_user_by_id(user_id)
+    if not user or user.get("trial_started_at") or user.get("trial_eligible") is False:
+        return user
+    # Existing accounts were created before verified trials existed and remain
+    # grandfathered under entitlement.py's enforcement cutoff.
+    created_at = user.get("created_at", "")
+    if created_at and created_at < "2026-08-28T00:00:00+00:00":
+        return user
+    started_at = started_at or now()
+    # The unique identity row is the durable once-only grant. It intentionally
+    # is not deleted when the account is deleted.
+    claim = _write_returning(
+        """
+        INSERT INTO trial_claims (identity_hash, user_id, claimed_at, ip_hash, device_hash)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (identity_hash) DO NOTHING
+        RETURNING identity_hash
+        """,
+        (identity_hash, user_id, started_at, ip_hash, device_hash),
+    )
+    if claim:
+        _write("UPDATE users SET trial_started_at = ?, trial_eligible = true WHERE id = ?", (started_at, user_id))
+    else:
+        existing_claim = _row("SELECT user_id, claimed_at FROM trial_claims WHERE identity_hash = ?", (identity_hash,))
+        if existing_claim and existing_claim.get("user_id") == user_id:
+            _write(
+                "UPDATE users SET trial_started_at = ?, trial_eligible = true WHERE id = ?",
+                (existing_claim["claimed_at"], user_id),
+            )
+        else:
+            _write(
+                "UPDATE users SET trial_eligible = false, trial_ineligible_reason = ? WHERE id = ?",
+                ("trial_already_used", user_id),
+            )
+    return get_user_by_id(user_id)
+
+
+def trial_group_tokens_used(ip_hash: str | None, device_hash: str | None, since_iso: str) -> tuple[int, int]:
+    """Return (device-group tokens, IP-group tokens) for active free trials."""
+    if not ip_hash and not device_hash:
+        return 0, 0
+    row = _row(
+        """
+        SELECT
+          COALESCE(SUM(e.tokens_in + e.tokens_out) FILTER (WHERE u.signup_device_hash = ?), 0) AS device_tokens,
+          COALESCE(SUM(e.tokens_in + e.tokens_out) FILTER (WHERE u.signup_ip_hash = ?), 0) AS ip_tokens
+        FROM usage_events e
+        JOIN users u ON u.id = e.user_id
+        WHERE e.created_at >= ?
+          AND u.trial_started_at IS NOT NULL
+          AND u.trial_eligible = true
+          AND u.stripe_customer_id IS NULL
+          AND COALESCE(u.subscription_status, '') NOT IN ('active', 'trialing', 'past_due', 'comped')
+        """,
+        (device_hash, ip_hash, since_iso),
+    )
+    if not row:
+        return 0, 0
+    return int(row["device_tokens"]), int(row["ip_tokens"])
+
+
 def bump_session_version(user_id: str) -> int:
     """Sign out of every device at once, for this one account. See migration
     18: every session token carries the version it was issued under, and
@@ -6487,11 +6622,25 @@ def billing_summary() -> dict:
     }
 
 
-def create_user(email: str, name: str, password_hash: str) -> dict:
+def create_user(
+    email: str,
+    name: str,
+    password_hash: str | None,
+    *,
+    email_verified_at: str | None = None,
+    signup_ip_hash: str | None = None,
+    signup_device_hash: str | None = None,
+) -> dict:
     uid = new_id()
     _write(
-        "INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
-        (uid, email.strip().lower(), name.strip(), password_hash, now()),
+        """
+        INSERT INTO users (
+          id, email, name, password_hash, created_at, email_verified_at,
+          signup_ip_hash, signup_device_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (id) DO NOTHING
+        """,
+        (uid, email.strip().lower(), name.strip(), password_hash, now(), email_verified_at, signup_ip_hash, signup_device_hash),
     )
     return get_user_by_id(uid)  # type: ignore[return-value]
 

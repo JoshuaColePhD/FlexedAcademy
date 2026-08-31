@@ -82,6 +82,21 @@ class Settings(BaseSettings):
     # reaching a teacher. Override this in EMAIL_FROM if the verified sender
     # address changes.
     email_from: str = "FlexEd Academy <no-reply@flexedacademy.com>"
+    # Email verification is required before a password account can receive a
+    # session or spend any model tokens. The token lives in Postgres and the
+    # link is sent through the same Resend integration used for password reset.
+    email_verification_hours: int = 24
+    email_verification_min_interval_seconds: int = 60
+
+    # Bot protection is optional in local development and mandatory whenever
+    # TURNSTILE_REQUIRED=true (Render should set that explicitly). The sitekey
+    # is public and is inlined into the Vite build; the secret stays backend-
+    # only. Hostnames must be the exact frontend hostnames returned by
+    # Turnstile, and production must never include localhost.
+    turnstile_site_key: str = ""
+    turnstile_secret: str = ""
+    turnstile_hostnames: str = ""
+    turnstile_required: bool = False
 
     # ── billing ──────────────────────────────────────────────────────────────
     # Unlimited plans; the free tier is capped on actual API spend instead. The
@@ -169,6 +184,16 @@ class Settings(BaseSettings):
     # and this number together if the configured model's real per-token
     # price changes — the ratio is what matters, not the literal count.
     subscriber_weekly_token_cap: int = 200_000
+
+    # A second ceiling across trial accounts sharing a device/IP signal. This
+    # catches account-rotation abuse without making a shared school network a
+    # hard identity boundary: the device cap is tighter, the IP cap is a wider
+    # backstop, and paid/comped accounts are excluded.
+    trial_aggregate_token_cap: int = 50_000
+    trial_aggregate_ip_token_cap: int = 100_000
+    trial_aggregate_window_hours: int = 24
+    trial_signup_ip_window_hours: int = 24
+    trial_signup_ip_limit: int = 20
 
     database_url: str = ""
     # Optional Supabase Storage mirror for generated files and uploads. Local
@@ -367,7 +392,7 @@ class Settings(BaseSettings):
 
     google_client_id: str | None = None
 
-    allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5175,http://127.0.0.1:5175"
+    allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175"
     # 8000 is taken on this machine by the local oMLX LLM server, so the app
     # lives on 8010 by default.
     api_port: int = 8010
@@ -443,6 +468,14 @@ class Settings(BaseSettings):
         secret half of a real OAuth client is also configured.
         """
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def turnstile_configured(self) -> bool:
+        return bool(self.turnstile_site_key and self.turnstile_secret and self.turnstile_hostnames.strip())
+
+    @property
+    def turnstile_hostnames_list(self) -> list[str]:
+        return [hostname.strip() for hostname in self.turnstile_hostnames.split(",") if hostname.strip()]
 
     def floor_for(self, course: str | None) -> float:
         """The relevance floor for one course, falling back to the global one."""

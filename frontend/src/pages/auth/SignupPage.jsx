@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../lib/authContext'
 import { AuthLayout, authInputClass } from './AuthLayout'
 import { GoogleAuthButton } from '../../components/GoogleAuthButton'
+import { TurnstileWidget } from '../../components/TurnstileWidget'
 
 /* POST /api/auth/signup has existed since the multi-tenant work, api.signup has
  * existed, AuthProvider.signup has existed — and nothing called any of them.
@@ -16,6 +17,10 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [verification, setVerification] = useState(null)
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [website, setWebsite] = useState('')
+  const [formStartedAtMs] = useState(() => Date.now())
 
   const next = params.get('next')
   const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
@@ -29,7 +34,12 @@ export default function SignupPage() {
     setError(null)
     setLoading(true)
     try {
-      await signup(name.trim(), email.trim(), password)
+      const result = await signup(name.trim(), email.trim(), password, {
+        turnstileToken,
+        website,
+        formStartedAtMs,
+      })
+      if (result?.verification_required) setVerification(result)
     } catch (err) {
       setError(err.message || 'Could not create that account.')
     } finally {
@@ -48,6 +58,21 @@ export default function SignupPage() {
       setError(err.message || 'Google sign-in didn’t complete.')
       setLoading(false)
     }
+  }
+
+  if (verification) {
+    return (
+      <AuthLayout
+        title="Check your email"
+        subtitle={`We sent a verification link to ${verification.email}.`}
+        footer={<Link to={loginHref} className="font-medium text-accent-text underline underline-offset-4">Return to sign in</Link>}
+      >
+        <div className="mt-6 rounded-xl border border-accent/25 bg-accent-tint/40 p-4 text-sm text-ink-soft">
+          <p>Verify your email before generating anything. Your free week begins when you use that verified link.</p>
+          {!verification.email_sent && verification.verification_url ? <p className="mt-3"><a className="font-medium text-accent-text underline" href={verification.verification_url}>Open local verification link</a></p> : null}
+        </div>
+      </AuthLayout>
+    )
   }
 
   return (
@@ -132,6 +157,11 @@ export default function SignupPage() {
             className={authInputClass}
           />
         </div>
+        <div className="absolute -left-[10000px] h-px w-px overflow-hidden" aria-hidden="true">
+          <label htmlFor="signup-website">Website</label>
+          <input id="signup-website" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+        </div>
+        <TurnstileWidget action="signup" onToken={setTurnstileToken} onError={() => setError('Please complete the bot check and try again.')} />
 
         <p className="text-xs text-ink-muted">
           By creating an account, you agree to our{' '}

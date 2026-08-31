@@ -202,6 +202,12 @@ async def lifespan(app: FastAPI):
             "unmetered until STRIPE_SECRET_KEY, STRIPE_PRICE_ID, and "
             "STRIPE_WEBHOOK_SECRET are all set. Confirm this is intentional."
         )
+    if settings.turnstile_required and not settings.turnstile_configured:
+        log.error(
+            "TURNSTILE_REQUIRED=true but Turnstile is not fully configured; "
+            "anonymous password signups will fail closed until the site key, "
+            "secret, and hostnames are set."
+        )
     misc.purge_legacy_temp()
     # retrieval.chunk_for_code() — GET /api/standards/{code}, which both the
     # Standards rail panel and every chat citation hit — reads through

@@ -260,8 +260,20 @@ export const api = {
 
   me: ({ signal } = {}) => request('/api/auth/me', { signal }),
   updateAvatar: (avatar) => request('/api/auth/avatar', { method: 'PUT', body: { avatar } }),
-  signup: (name, email, password) =>
-    request('/api/auth/signup', { method: 'POST', body: { name, email, password } }),
+  signup: (name, email, password, extra = {}) =>
+    request('/api/auth/signup', {
+      method: 'POST',
+      body: {
+        name,
+        email,
+        password,
+        ...(extra.turnstileToken ? { turnstile_token: extra.turnstileToken } : {}),
+        website: extra.website || '',
+        form_started_at_ms: extra.formStartedAtMs,
+      },
+    }),
+  verifyEmail: (token) => request(`/api/auth/verify-email?token=${encodeURIComponent(token)}`),
+  resendVerification: (email) => request('/api/auth/resend-verification', { method: 'POST', body: { email } }),
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
   loginWithGoogle: (credential) => request('/api/auth/google', { method: 'POST', body: { credential } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
