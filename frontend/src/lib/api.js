@@ -518,6 +518,7 @@ export const api = {
   adminBilling: ({ signal } = {}) => request('/api/admin/billing', { signal }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
+  cancelSubscription: () => request('/api/billing/cancel', { method: 'POST' }),
 
   listStandards: ({ signal, ...params } = {}) => {
     const qs = new URLSearchParams(

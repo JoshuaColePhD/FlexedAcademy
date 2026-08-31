@@ -180,6 +180,32 @@ def get_subscription(subscription_id: str) -> dict:
     return _call("GET", f"/subscriptions/{subscription_id}")
 
 
+def cancel_subscriptions_at_period_end_for_customer(customer_id: str) -> list[dict]:
+    """Stop every live subscription for ``customer_id`` from renewing.
+
+    This schedules cancellation at the end of each current billing period
+    instead of deleting the subscription immediately. Stripe returns the
+    updated subscription so the caller can mirror the confirmed change.
+    """
+    query = urlencode({"customer": customer_id, "status": "all"})
+    subs = _call("GET", f"/subscriptions?{query}")
+    updated = []
+    for sub in subs.get("data", []):
+        if sub.get("status") in ("canceled", "incomplete_expired"):
+            continue
+        if sub.get("cancel_at_period_end"):
+            updated.append(sub)
+            continue
+        updated.append(
+            _call(
+                "POST",
+                f"/subscriptions/{sub['id']}",
+                {"cancel_at_period_end": True},
+            )
+        )
+    return updated
+
+
 def cancel_subscriptions_for_customer(customer_id: str) -> None:
     """Called right before deleting an account: a departed teacher should not
     keep being billed for access that no longer exists. There is no single

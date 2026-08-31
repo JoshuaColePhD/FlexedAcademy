@@ -3303,6 +3303,14 @@ MIGRATIONS: list[str] = [
       ON teacher_coaching_memories(user_id, is_active, created_at DESC);
     ALTER TABLE teacher_coaching_memories ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 65: scheduled subscription cancellations ─────────────────────────────
+    # Stripe keeps a subscription active until the already-paid period ends
+    # when cancel_at_period_end is true. Persist that flag so the app can say
+    # "ends" rather than "renews" immediately after the teacher cancels.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_cancel_at_period_end
+      BOOLEAN NOT NULL DEFAULT false;
+    """,
 ]
 
 
@@ -5839,7 +5847,8 @@ def tokens_used_two_windows(user_id: str, since_iso: str, burst_since_iso: str) 
 
 
 def set_subscription(user_id: str, *, customer_id: str | None = None, status: str | None = None,
-                     period_end: str | None = None) -> None:
+                     period_end: str | None = None,
+                     cancel_at_period_end: bool | None = None) -> None:
     """Write back whatever Stripe just told us. Only the fields provided, so a
     webhook carrying a status doesn't blank a customer id."""
     sets, params = [], []
@@ -5849,6 +5858,8 @@ def set_subscription(user_id: str, *, customer_id: str | None = None, status: st
         sets.append("subscription_status = ?"); params.append(status)
     if period_end is not None:
         sets.append("subscription_period_end = ?"); params.append(period_end)
+    if cancel_at_period_end is not None:
+        sets.append("subscription_cancel_at_period_end = ?"); params.append(bool(cancel_at_period_end))
     if not sets:
         return
     params.append(user_id)

@@ -150,6 +150,7 @@ const state = {
         usage_window_days: 7,
         billing_enabled: true,
         period_end: '2026-09-12T14:00:00+00:00',
+        cancel_at_period_end: false,
         trial_expired: false,
         trial_days_remaining: null,
       }
@@ -166,6 +167,7 @@ const state = {
         usage_window_days: 7,
         billing_enabled: true,
         period_end: null,
+        cancel_at_period_end: false,
         burst_limited: false,
         unlimited: false,
         trial_expired: true,
@@ -185,6 +187,7 @@ const state = {
         usage_window_days: 7,
         billing_enabled: true,
         period_end: null,
+        cancel_at_period_end: false,
         trial_expired: false,
         trial_days_remaining: days,
       }
@@ -518,6 +521,14 @@ export function installMockApi() {
       })
     if (path === '/api/billing')
       return json({ ...state.entitlement, price: { amount: 1199, currency: 'USD', interval: 'month', interval_count: 1 }, trial_period_days: 7 })
+    if (path === '/api/billing/cancel' && method === 'POST') {
+      state.entitlement.cancel_at_period_end = true
+      return json({
+        status: 'cancellation_scheduled',
+        period_end: state.entitlement.period_end,
+        entitlement: state.entitlement,
+      })
+    }
     if (path === '/api/billing/checkout' || path === '/api/billing/portal') {
       // Stripe redirects the browser, so the app reloads and this module's
       // state is rebuilt from scratch — the way it would be in production,

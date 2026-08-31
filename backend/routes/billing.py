@@ -326,7 +326,13 @@ def _handle_webhook_event(payload: bytes, signature: str) -> dict:
                 # account in a misleading state or granting a false one.
                 log.warning("could not read subscription %s; retrying webhook: %s", sub_id, e)
                 raise
-        db.set_subscription(user_id, customer_id=customer, status=status, period_end=period_end)
+        db.set_subscription(
+            user_id,
+            customer_id=customer,
+            status=status,
+            period_end=period_end,
+            cancel_at_period_end=bool(sub.get("cancel_at_period_end")) if sub_id else False,
+        )
         log.info("subscription started user=%s status=%s", user_id, status)
 
     elif kind in _SUB_EVENTS:
@@ -342,6 +348,7 @@ def _handle_webhook_event(payload: bytes, signature: str) -> dict:
             customer_id=customer if isinstance(customer, str) else None,
             status=status,
             period_end=_period_end(obj),
+            cancel_at_period_end=bool(obj.get("cancel_at_period_end")),
         )
         log.info("subscription %s user=%s status=%s", kind, user_id, status)
 
@@ -349,3 +356,46 @@ def _handle_webhook_event(payload: bytes, signature: str) -> dict:
     # Stripe retrying an event we were never going to act on.
     db.record_stripe_webhook_event(event_id, kind, object_id, event_created_at)
     return {"received": True}
+
+
+@router.post("/cancel")
+def cancel_subscription(user_id: str = Depends(get_current_user)) -> dict:
+    """Cancel the account's Stripe subscription at the current period end.
+
+    The Stripe update is the side effect; the local write mirrors that
+    successful response so the teacher immediately sees "ends" rather than
+    "renews". The signed webhook remains responsible for later changes,
+    especially the eventual ``customer.subscription.deleted`` transition.
+    """
+    if not settings.billing_enabled:
+        raise AppError("billing_unconfigured", "Billing isn’t set up yet.", status=503)
+    user = db.get_user_by_id(user_id) or {}
+    customer_id = user.get("stripe_customer_id")
+    if not customer_id:
+        raise AppError("no_subscription", "There’s no subscription on this account yet.", status=400)
+    try:
+        subscriptions = stripe_api.cancel_subscriptions_at_period_end_for_customer(customer_id)
+    except AppError as exc:
+        log.error("subscription cancellation failed for user=%s customer=%s: %s", user_id, customer_id, exc)
+        raise AppError(
+            "cancellation_unavailable",
+            "We couldn’t cancel the subscription just now. It has not changed.",
+            status=502,
+            hint="Try again in a moment. If it keeps failing, use the Stripe billing portal.",
+        ) from exc
+    if not subscriptions:
+        raise AppError("no_subscription", "There’s no active subscription on this account.", status=400)
+
+    latest = max(subscriptions, key=lambda sub: _period_end(sub) or "")
+    period_end = _period_end(latest) or user.get("subscription_period_end")
+    db.set_subscription(
+        user_id,
+        status=latest.get("status") or user.get("subscription_status") or "active",
+        period_end=period_end,
+        cancel_at_period_end=True,
+    )
+    return {
+        "status": "cancellation_scheduled",
+        "period_end": period_end,
+        "entitlement": entitlement(user_id).as_dict(),
+    }

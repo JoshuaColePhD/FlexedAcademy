@@ -845,7 +845,8 @@ function formatRenewal(iso) {
 /* Subscription state and usage. Hidden entirely while billing is unconfigured,
  * same reasoning as AccountMenu's own version. */
 function BillingSection() {
-  const { entitlement, billingEnabled, openPaywall, manage, busy } = useBilling()
+  const { entitlement, billingEnabled, openPaywall, manage, cancelSubscription, busy } = useBilling()
+  const confirm = useConfirm()
 
   if (!billingEnabled || !entitlement) return null
 
@@ -854,7 +855,19 @@ function BillingSection() {
   // settings page has to carry. The teacher's OWN usage now also shows in
   // the account menu popover (AccountMenu.jsx) — this section stays about
   // subscription status/renewal, not a second usage bar right below it.
-  const renews = entitlement.subscribed && entitlement.period_end ? formatRenewal(entitlement.period_end) : null
+  const periodEnd = entitlement.subscribed && entitlement.period_end ? formatRenewal(entitlement.period_end) : null
+  const cancellationScheduled = entitlement.subscribed && entitlement.cancel_at_period_end
+
+  const unsubscribe = async () => {
+    const ok = await confirm({
+      title: 'Unsubscribe from FlexEd Academy?',
+      body: `Your Stripe subscription will stop renewing at the end of the current billing period${periodEnd ? ` (${periodEnd})` : ''}. You’ll keep access until then.`,
+      confirmLabel: 'Unsubscribe',
+      tone: 'danger',
+    })
+    if (!ok) return
+    await cancelSubscription()
+  }
 
   return (
     <div className="neo-panel flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised/60 backdrop-blur-2xl p-3">
@@ -862,21 +875,29 @@ function BillingSection() {
         <p className="text-sm font-medium text-ink">
           {entitlement.subscribed ? 'Subscribed' : 'Free'}
         </p>
-        {renews ? <p className="text-xs text-ink-muted">Renews {renews}</p> : null}
+        {periodEnd ? <p className="text-xs text-ink-muted">{cancellationScheduled ? 'Ends' : 'Renews'} {periodEnd}</p> : null}
       </div>
-      <button
-        type="button"
-        onClick={entitlement.subscribed ? manage : openPaywall}
-        disabled={busy}
-        className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {entitlement.subscribed ? (
-          <CreditCard size={14} aria-hidden="true" />
-        ) : (
-          <Sparkles size={14} aria-hidden="true" />
-        )}
-        {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
-      </button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={entitlement.subscribed ? manage : openPaywall}
+          disabled={busy}
+          className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {entitlement.subscribed ? <CreditCard size={14} aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
+          {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
+        </button>
+        {entitlement.subscribed && !cancellationScheduled ? (
+          <button
+            type="button"
+            onClick={unsubscribe}
+            disabled={busy}
+            className="neo-raised rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Unsubscribe
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 }

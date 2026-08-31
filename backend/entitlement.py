@@ -113,6 +113,7 @@ class Entitlement:
     token_cap: int | None
     billing_enabled: bool
     period_end: str | None = None
+    cancel_at_period_end: bool = False
     # The burst side of the gate — see BURST_WINDOW_HOURS/BURST_FRACTION.
     # Carried on the entitlement (not just used internally) so a 402 raised
     # for burst specifically can say so, rather than pointing a teacher who
@@ -160,6 +161,7 @@ class Entitlement:
             "usage_window_days": USAGE_WINDOW_DAYS,
             "billing_enabled": self.billing_enabled,
             "period_end": self.period_end,
+            "cancel_at_period_end": self.cancel_at_period_end,
             "burst_limited": self.burst_limited,
             "unlimited": self.unlimited,
             "trial_expired": self.trial_expired,
@@ -182,6 +184,7 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
         user = db.get_user_by_id(user_id) or {}
     status = user.get("subscription_status")
     subscribed = status in ENTITLED_STATUSES
+    cancel_at_period_end = bool(user.get("subscription_cancel_at_period_end"))
 
     # Still worth knowing — the account menu shows it — just not what gates.
     plans_used = db.count_plans(user_id)
@@ -268,6 +271,7 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
             token_cap=None,
             billing_enabled=settings.billing_enabled,
             period_end=user.get("subscription_period_end"),
+            cancel_at_period_end=cancel_at_period_end,
             burst_cap=None,
             trial_expired=True,
         )
@@ -282,6 +286,7 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
             token_cap=None,
             billing_enabled=settings.billing_enabled,
             period_end=user.get("subscription_period_end"),
+            cancel_at_period_end=cancel_at_period_end,
             tokens_used_recent=0,
             burst_cap=None,
             unlimited=True,
@@ -332,6 +337,7 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
         token_cap=cap,
         billing_enabled=settings.billing_enabled,
         period_end=user.get("subscription_period_end"),
+        cancel_at_period_end=cancel_at_period_end,
         tokens_used_recent=tokens_used_recent,
         burst_cap=burst_cap,
         trial_days_remaining=trial_days_remaining,

@@ -73,6 +73,86 @@ def test_checkout_uses_recurring_price_without_a_second_trial(monkeypatch):
     assert "trial_period_days" not in captured["data"]["subscription_data"]
 
 
+def test_cancel_subscriptions_schedules_live_subscriptions(monkeypatch):
+    calls = []
+
+    def fake_call(method, path, data=None):
+        calls.append((method, path, data))
+        if method == "GET":
+            return {
+                "data": [
+                    {"id": "sub_live", "status": "active", "cancel_at_period_end": False},
+                    {"id": "sub_scheduled", "status": "active", "cancel_at_period_end": True},
+                    {"id": "sub_done", "status": "canceled", "cancel_at_period_end": True},
+                ]
+            }
+        return {"id": "sub_live", "status": "active", "cancel_at_period_end": True}
+
+    monkeypatch.setattr(stripe_api, "_call", fake_call)
+
+    result = stripe_api.cancel_subscriptions_at_period_end_for_customer("cus_123")
+
+    assert [call[0:2] for call in calls] == [
+        ("GET", "/subscriptions?customer=cus_123&status=all"),
+        ("POST", "/subscriptions/sub_live"),
+    ]
+    assert calls[1][2] == {"cancel_at_period_end": True}
+    assert [sub["id"] for sub in result] == ["sub_live", "sub_scheduled"]
+
+
+def test_cancel_route_mirrors_successful_stripe_cancellation(monkeypatch):
+    writes = []
+    subscription = {
+        "id": "sub_123",
+        "status": "active",
+        "cancel_at_period_end": True,
+        "current_period_end": 1_800_000_000,
+    }
+
+    monkeypatch.setattr(billing.settings, "stripe_secret_key", "sk_test")
+    monkeypatch.setattr(billing.settings, "stripe_price_id", "price_test")
+    monkeypatch.setattr(billing.settings, "stripe_webhook_secret", "whsec_test")
+    monkeypatch.setattr(
+        billing.db,
+        "get_user_by_id",
+        lambda user_id: {
+            "id": user_id,
+            "stripe_customer_id": "cus_123",
+            "subscription_status": "active",
+        },
+    )
+    monkeypatch.setattr(
+        billing.stripe_api,
+        "cancel_subscriptions_at_period_end_for_customer",
+        lambda customer_id: [subscription],
+    )
+    monkeypatch.setattr(
+        billing.db,
+        "set_subscription",
+        lambda user_id, **kwargs: writes.append((user_id, kwargs)),
+    )
+    monkeypatch.setattr(
+        billing,
+        "entitlement",
+        lambda user_id: type("EntitlementStub", (), {"as_dict": lambda self: {"subscribed": True}})(),
+    )
+
+    result = billing.cancel_subscription("user_1")
+
+    assert result["status"] == "cancellation_scheduled"
+    assert result["period_end"] is not None
+    assert writes == [
+        (
+            "user_1",
+            {
+                "status": "active",
+                "period_end": result["period_end"],
+                "cancel_at_period_end": True,
+            },
+        )
+    ]
+
+
 def _subscription_event(event_id: str, created: int, status: str = "active") -> dict:
     return {
         "id": event_id,
@@ -120,7 +200,17 @@ def test_webhook_deduplicates_and_ignores_late_subscription_events(monkeypatch):
     billing._handle_webhook_event(b"evt_new", "")
     billing._handle_webhook_event(b"evt_old", "")
 
-    assert writes == [("user_1", {"customer_id": "cus_123", "status": "active", "period_end": None})]
+    assert writes == [
+        (
+            "user_1",
+            {
+                "customer_id": "cus_123",
+                "status": "active",
+                "period_end": None,
+                "cancel_at_period_end": False,
+            },
+        )
+    ]
     assert [row[0] for row in recorded] == ["evt_new", "evt_old"]
 
 

@@ -103,6 +103,27 @@ export function BillingProvider({ children }) {
     }
   }, [toast])
 
+  const cancelSubscription = useCallback(async () => {
+    setBusy(true)
+    try {
+      const result = await api.cancelSubscription()
+      await refresh()
+      const end = result.period_end
+        ? new Date(result.period_end).toLocaleDateString()
+        : null
+      toast.success(
+        'Subscription canceled',
+        end ? `You’ll keep access through ${end}.` : 'It will not renew again.',
+      )
+      return result
+    } catch (err) {
+      toast.error(err.message || 'Couldn’t cancel the subscription.')
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }, [refresh, toast])
+
   // True unmount only — NOT "this effect's own deps changed," which is what
   // the poll effect below used to (mis)use a closure-local `cancelled` flag
   // for. See that effect's own comment for why the distinction matters.
@@ -186,7 +207,7 @@ export function BillingProvider({ children }) {
 
   return (
     <BillingContext.Provider
-      value={{ entitlement, mayGenerate, billingEnabled, openPaywall, subscribe, manage, busy }}
+      value={{ entitlement, mayGenerate, billingEnabled, openPaywall, subscribe, manage, cancelSubscription, busy }}
     >
       {children}
       {open ? (
