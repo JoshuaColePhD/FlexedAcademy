@@ -66,6 +66,37 @@ curl localhost:8010/api/health                # diagnose any misconfiguration
 curl localhost:8010/api/frameworks            # what subjects/grades are loaded
 ```
 
+Refresh the project snapshot in the Obsidian vault after meaningful work:
+
+```bash
+./venv/bin/python scripts/sync_obsidian_flexed.py
+```
+
+The sync exports Git status and recent commit history only. It does not copy
+source code, secrets, databases, logs, or generated binaries into Obsidian.
+
+Iris_OS-wide capture runs automatically in the background. The shared command
+is optional when you want an immediate or curated summary, decision, artifact,
+or next step:
+
+```bash
+python3 "../../Scripts/sync_iris_obsidian.py" \
+  --project flexed-academy \
+  --summary "Describe what changed and why" \
+  --next "State the next action"
+```
+
+The repository's tracked `.githooks/post-commit` hook also records each commit
+subject in the Obsidian activity log once hooks are enabled locally:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+This is connective metadata, not a second source tree: code, secrets, data,
+logs, and generated binaries stay in the repository or their appropriate
+external stores.
+
 Rebuilding the corpus from scratch:
 
 ```bash
