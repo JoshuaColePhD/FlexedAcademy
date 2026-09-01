@@ -834,16 +834,17 @@ export function ChatPage() {
     // left/width are normally animated when the chat rail changes, but the
     // sync effect below freezes that geometry while the lesson-plan overlay
     // is open so the composer remains visually anchored over the same spot.
-    // top is left alone on purpose — that one only changes from the composer's
-    // OWN content growing (an attachment chip, the textarea autosizing),
-    // where instant is what typing should feel like.
+    // In normal flow the top follows the anchor; while the lesson-plan
+    // overlay is open the sync effect re-anchors the bottom edge to the live
+    // viewport instead, so browser scaling cannot strand the dock below it.
     el.style.transition = `left 520ms var(--ease-glide), width 520ms var(--ease-glide)`
     return el
   })
   /* The document opens over the chat, so its mount must not reflow the
-     composer's horizontal position. Keep the last normal chat rect and hold
-     it while the saved lesson-plan viewer is open; closing the viewer resumes
-     live anchoring so resize and rail changes work normally again. */
+     composer's horizontal position. Keep the last normal chat rect's
+     left/width while the saved lesson-plan viewer is open; the vertical edge
+     is re-anchored to the live viewport so resize and browser scaling work.
+     Closing the viewer resumes live anchoring. */
   const composerRectRef = useRef(null)
   const composerOverDocument = Boolean(expanded && artifact?.planId && artifact?.plan?.days?.length)
   useEffect(() => {
@@ -854,8 +855,8 @@ export function ChatPage() {
   const composerAnchorRef = useRef(null)
   const composerDockRef = useRef(null)
   const [composerDockH, setComposerDockH] = useState(0)
-  // Keeps the host's left/top/width matched to the anchor's live rect — the
-  // anchor never moves for its OWN reasons (it's a plain shrink-0 flex
+  // Keeps the host's left/top/width matched to the anchor's live rect in the
+  // normal chat view — the anchor never moves for its OWN reasons (it's a plain shrink-0 flex
   // child), but the chat column it lives in resizes when the plans rail
   // toggles, the window resizes, or the composer's own content changes
   // height (attachments, the autosizing textarea, a banner) — anything that
@@ -866,9 +867,16 @@ export function ChatPage() {
     const sync = () => {
       if (composerOverDocument && composerRectRef.current) {
         const saved = composerRectRef.current
+        const dockHeight = composerDockRef.current?.getBoundingClientRect().height || composerDockH
         portalHost.style.left = `${saved.left}px`
-        portalHost.style.top = `${saved.top}px`
         portalHost.style.width = `${saved.width}px`
+        // Re-anchor from the live viewport after a browser scale/window
+        // change. Holding the old top coordinate let the fixed composer slip
+        // below the viewport while the lesson-plan overlay was open.
+        portalHost.style.top = `${Math.max(0, window.innerHeight - dockHeight)}px`
+        portalHost.style.bottom = 'auto'
+        portalHost.style.height = dockHeight ? `${dockHeight}px` : 'auto'
+        portalHost.style.transition = 'none'
         return
       }
       const r = anchor.getBoundingClientRect()
@@ -876,20 +884,25 @@ export function ChatPage() {
       portalHost.style.left = `${r.left}px`
       portalHost.style.top = `${r.top}px`
       portalHost.style.width = `${r.width}px`
+      portalHost.style.bottom = 'auto'
+      portalHost.style.height = 'auto'
+      portalHost.style.transition = `left 520ms var(--ease-glide), width 520ms var(--ease-glide)`
     }
     sync()
     const ro = new ResizeObserver(sync)
     ro.observe(anchor)
     window.addEventListener('resize', sync)
+    window.visualViewport?.addEventListener('resize', sync)
     return () => {
       ro.disconnect()
       window.removeEventListener('resize', sync)
+      window.visualViewport?.removeEventListener('resize', sync)
     }
   // `isPhone` is included deliberately: layout mode can settle after the
   // first render when the browser reports its real viewport. The composer
   // then moves between normal flow and the portal, so the anchor and portal
   // geometry must be rebound instead of retaining the boot-time bounds.
-  }, [composerOverDocument, portalHost, isPhone])
+  }, [composerDockH, composerOverDocument, portalHost, isPhone])
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
   // needs — otherwise the transcript would sit a fixed guess-height short of
