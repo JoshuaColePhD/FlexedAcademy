@@ -259,7 +259,7 @@ export function PlanDayCards({
               // The closed state was carried by a hatch pattern alone.
               aria-label={state === 'no_school' ? `${d.name} — no school` : d.name}
               onClick={() => goTo(i)}
-              className={`plan-deck-tab ${i === active ? 'is-active' : ''} ${
+              className={`plan-deck-tab ${i === active ? 'is-active' : ''} ${d.name === TODAY_NAME ? 'is-today' : ''} ${
                 state === 'no_school' ? 'is-closed' : ''
               }`}
             >

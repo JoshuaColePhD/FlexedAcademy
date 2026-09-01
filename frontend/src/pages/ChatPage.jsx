@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, Loader2, TriangleAlert, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, History, Loader2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -77,6 +77,11 @@ let idSeq = 0
 const nextId = () => `m${++idSeq}`
 
 const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
+
+// Revision snapshots are deliberately plain JSON: plan_json is the API's
+// persisted shape, and keeping a detached copy prevents a later React state
+// update from changing what Undo is meant to restore.
+const clonePlan = (plan) => (plan ? JSON.parse(JSON.stringify(plan)) : null)
 
 /* A fully specified first request does not need a model call just to decide
  * that it is a lesson-plan request. Keep this intentionally conservative: a
@@ -692,6 +697,14 @@ export function ChatPage() {
   const [planPeekOpen, setPlanPeekOpen] = useState(false)
   const planBuildStartedRef = useRef(false)
   const [revising, setRevising] = useState(false)
+  // The latest successful plan change stays actionable in the writing-status
+  // row above the composer. Keep a short in-session trail for the history
+  // popover; the server remains the source of truth when Undo is applied.
+  const [lastChange, setLastChange] = useState(null)
+  const [revisionHistory, setRevisionHistory] = useState([])
+  const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false)
+  const [planSaveState, setPlanSaveState] = useState('idle')
+  const [lastSavedLabel, setLastSavedLabel] = useState('Lesson plan saved')
   // A quiz build is its own busy state, not folded into `revising` — the
   // two can genuinely overlap (asking for a quiz while a revision request
   // from a moment ago is still finishing), and ArtifactRail needs to show
@@ -1343,9 +1356,68 @@ export function ChatPage() {
     setTimeout(() => setFlashCells(new Set()), 2400)
   }, [])
 
+  const recordRevision = useCallback((label, beforePlan) => {
+    const snapshot = clonePlan(beforePlan)
+    if (!snapshot) return
+    const revision = {
+      id: `revision-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      label,
+      changedAt: new Date().toISOString(),
+      beforePlan: snapshot,
+    }
+    setLastChange(revision)
+    setRevisionHistory((previous) => [revision, ...previous].slice(0, 8))
+    setPlanSaveState('saved')
+    setLastSavedLabel(`${label} saved`)
+  }, [])
+
+  // A revision snapshot belongs to one conversation. Do not offer an Undo
+  // from the previous week's plan after the teacher changes chats.
+  useEffect(() => {
+    setLastChange(null)
+    setRevisionHistory([])
+    setRevisionHistoryOpen(false)
+    setPlanSaveState('idle')
+    setLastSavedLabel('Lesson plan saved')
+  }, [chatId])
+
+  const undoLastChange = useCallback(async () => {
+    if (!lastChange?.beforePlan || !artifact?.planId || revising) return
+    setRevising(true)
+    setPlanSaveState('saving')
+    try {
+      const row = await api.patchPlan(artifact.planId, lastChange.beforePlan)
+      setArtifact((current) => ({
+        ...current,
+        plan: row.plan_json,
+        warnings: row.warnings,
+        retrievedIds: row.retrieved_ids,
+      }))
+      setRevisionHistory((previous) => previous.map((entry) => (
+        entry.id === lastChange.id ? { ...entry, undoneAt: new Date().toISOString() } : entry
+      )))
+      setLastChange(null)
+      setPlanSaveState('saved')
+      setLastSavedLabel('Previous version restored')
+      const reply = `Undid ${lastChange.label.toLowerCase()} and restored the previous version.`
+      setMessages((previous) => [...previous, { id: nextId(), role: 'assistant', content: reply }])
+      if (localFor.current) {
+        void persistMessage(localFor.current, { role: 'assistant', content: reply, plan_id: row.id })
+      }
+      toast.success('Last change undone', 'The previous lesson-plan version is restored.')
+    } catch (err) {
+      setPlanSaveState('error')
+      toast.apiError("Couldn't undo that change", err)
+    } finally {
+      setRevising(false)
+    }
+  }, [lastChange, artifact, revising, persistMessage, toast])
+
   const stream = useLessonStream({
     onDone: (done) => {
       showReadyNotice('Lesson plan ready')
+      setPlanSaveState('saved')
+      setLastSavedLabel('Lesson plan saved')
       setArtifact({
         planId: done.plan_id,
         plan: done.plan,
@@ -2208,7 +2280,9 @@ export function ChatPage() {
           { id: nextId(), role: 'assistant', content: 'Reworking the week now — one moment.' },
         ])
       }
+      const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
+      setPlanSaveState('saving')
       try {
         const row = await api.revisePlan(artifact.planId, combinedHistory)
         setArtifact((a) => ({
@@ -2236,7 +2310,9 @@ export function ChatPage() {
         if (activeChatId) {
           void persistMessage(activeChatId, { role: 'assistant', content: reply.content, plan_id: row.id })
         }
+        recordRevision('Lesson plan update', previousPlan)
       } catch (err) {
+        setPlanSaveState('error')
         setMessages((prev) => [
           ...prev,
           { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
@@ -2246,7 +2322,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2320,7 +2396,9 @@ export function ChatPage() {
       // only, so every in-cell revision vanished on reload.
       const saveTo = localFor.current
       if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
+      const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
+      setPlanSaveState('saving')
       try {
         const row = await api.reviseDay({
           plan_id: artifact.planId,
@@ -2352,6 +2430,7 @@ export function ChatPage() {
         if (saveTo) {
           void persistMessage(saveTo, { role: 'assistant', content: reply, created_at: new Date().toISOString(), plan_id: row.id })
         }
+        recordRevision(`${label} update`, previousPlan)
       } catch (err) {
         /* The "Revise Thursday's Do Now…" message above was appended AND
            persisted before the request. With only a toast here, a failure left
@@ -2365,11 +2444,12 @@ export function ChatPage() {
         ])
         if (saveTo) void persistMessage(saveTo, { role: 'assistant', content: failed })
         toast.apiError(`Could not revise ${label}`, err)
+        setPlanSaveState('error')
       } finally {
         setRevising(false)
       }
     },
-    [artifact, toast, flash, persistMessage]
+    [artifact, toast, flash, persistMessage, recordRevision]
   )
   // See reviseDayRef's own declaration, above submit(), for why this is a
   // plain assignment rather than a dependency-array entry.
@@ -2382,7 +2462,9 @@ export function ChatPage() {
     async (dayIndex, day, field, content) => {
       if (!artifact?.planId || !content?.trim()) return
       const label = `${day.name}’s ${FIELD_LABELS[field] || field}`
+      const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
+      setPlanSaveState('saving')
       try {
         const row = await api.updateDay(artifact.planId, dayIndex, { field, content })
         setArtifact((a) => ({
@@ -2393,13 +2475,15 @@ export function ChatPage() {
         }))
         flash([cellKey(dayIndex, field)])
         toast.success('Saved', `${label} updated.`)
+        recordRevision(`${label} update`, previousPlan)
       } catch (err) {
         toast.apiError(`Could not save ${label}`, err)
+        setPlanSaveState('error')
       } finally {
         setRevising(false)
       }
     },
-    [artifact, toast, flash]
+    [artifact, toast, flash, recordRevision]
   )
 
   /* The batch counterpart: one instruction, one field, applied to several days
@@ -2416,7 +2500,9 @@ export function ChatPage() {
       setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       const saveTo = localFor.current
       if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
+      const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
+      setPlanSaveState('saving')
       try {
         const row = await api.reviseDays({
           plan_id: artifact.planId,
@@ -2447,6 +2533,7 @@ export function ChatPage() {
         if (saveTo) {
           void persistMessage(saveTo, { role: 'assistant', content: reply, created_at: new Date().toISOString(), plan_id: row.id })
         }
+        recordRevision(`${label} update`, previousPlan)
       } catch (err) {
         const failed = `Couldn’t revise ${label}. ${err.message}`
         setMessages((prev) => [
@@ -2455,11 +2542,12 @@ export function ChatPage() {
         ])
         if (saveTo) void persistMessage(saveTo, { role: 'assistant', content: failed })
         toast.apiError(`Could not revise ${label}`, err)
+        setPlanSaveState('error')
       } finally {
         setRevising(false)
       }
     },
-    [artifact, toast, flash, persistMessage]
+    [artifact, toast, flash, persistMessage, recordRevision]
   )
 
   /* The standard picker's own write, from clicking one of the retrieved
@@ -2479,7 +2567,9 @@ export function ChatPage() {
       setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       const saveTo = localFor.current
       if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
+      const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
+      setPlanSaveState('saving')
       try {
         const row = await api.setDayField({
           plan_id: artifact.planId,
@@ -2510,6 +2600,7 @@ export function ChatPage() {
         if (saveTo) {
           void persistMessage(saveTo, { role: 'assistant', content: reply, created_at: new Date().toISOString(), plan_id: row.id })
         }
+        recordRevision(`${label} update`, previousPlan)
       } catch (err) {
         const failed = `Couldn’t update ${label}. ${err.message}`
         setMessages((prev) => [
@@ -2518,11 +2609,12 @@ export function ChatPage() {
         ])
         if (saveTo) void persistMessage(saveTo, { role: 'assistant', content: failed })
         toast.apiError(`Could not update ${label}`, err)
+        setPlanSaveState('error')
       } finally {
         setRevising(false)
       }
     },
-    [artifact, toast, flash, persistMessage]
+    [artifact, toast, flash, persistMessage, recordRevision]
   )
 
   /* Stopping used to say nothing at all: useLessonStream returns null on an
@@ -3163,6 +3255,7 @@ export function ChatPage() {
         onPlanRevised={onPlanRevised}
         busy={busy}
         preparing={preparing}
+        planSaveState={planSaveState}
         streamingText={stream.text}
         openTweak={openTweak}
         setOpenTweak={setOpenTweak}
@@ -3195,6 +3288,7 @@ export function ChatPage() {
   // anchor after a plan is built, putting its file controls over the header.
   // Keep the phone dock in the chat's normal flex flow instead.
   const renderComposerDock = (dock) => (isPhone ? dock : createPortal(dock, portalHost))
+  const writingInProgress = revising || (chatStream.isStreaming && !stream.isStreaming) || preparing
 
   const chatPane = (
     /* border-r-0, not a plain `border`: this pane's own background is only
@@ -3623,6 +3717,107 @@ export function ChatPage() {
           fixed-shape input shell. Only the wrapper's className may change. */}
       <div className="composer-dock-surface shrink-0 bg-transparent pb-5 pt-3">
         <div className="relative mx-auto w-full max-w-4xl px-gutter">
+          {writingInProgress ? (
+            <div
+              className="composer-writing-status mb-2"
+              role="status"
+              aria-live="polite"
+              aria-label={
+                revising
+                  ? 'Writing your lesson-plan update'
+                  : chatStream.isStreaming
+                    ? 'Thinking through your suggestion'
+                    : 'Sending your suggestion'
+              }
+            >
+              <span className="composer-writing-status-mark" aria-hidden="true">
+                <Loader2 size={14} className="animate-spin" />
+              </span>
+              <strong className="composer-writing-status-label">
+                {revising ? 'Updating your lesson plan' : 'Working on your suggestion'}
+              </strong>
+              <span className="composer-writing-status-status">
+                {revising
+                  ? 'Writing your update…'
+                  : chatStream.isStreaming
+                    ? 'Thinking…'
+                    : 'Sending…'}
+              </span>
+            </div>
+          ) : artifact?.planId && (planSaveState === 'saved' || planSaveState === 'error') ? (
+            <div
+              className={`composer-writing-status composer-save-status mb-2${planSaveState === 'error' ? ' is-error' : ' is-saved'}`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="composer-writing-status-mark" aria-hidden="true">
+                {planSaveState === 'error' ? (
+                  <TriangleAlert size={14} />
+                ) : (
+                  <CheckCircle2 size={14} />
+                )}
+              </span>
+              <strong className="composer-writing-status-label">
+                {planSaveState === 'error' ? 'Save failed' : 'Lesson plan saved'}
+              </strong>
+              <span className="composer-writing-status-status min-w-0 flex-1 truncate">
+                {planSaveState === 'error' ? 'Try the change again.' : lastSavedLabel}
+              </span>
+              {planSaveState === 'saved' && lastChange ? (
+                <button
+                  type="button"
+                  className="composer-status-action fa-press"
+                  onClick={undoLastChange}
+                  disabled={revising}
+                  aria-label="Undo last change"
+                  title="Restore the lesson plan before the last change"
+                >
+                  <Undo2 size={14} aria-hidden="true" />
+                  <span>Undo last change</span>
+                </button>
+              ) : null}
+              {revisionHistory.length ? (
+                <button
+                  type="button"
+                  className="composer-status-history fa-press"
+                  onClick={() => setRevisionHistoryOpen((open) => !open)}
+                  aria-expanded={revisionHistoryOpen}
+                  aria-label="Show recent changes"
+                  title="Show recent changes"
+                >
+                  <History size={14} aria-hidden="true" />
+                  <span>{revisionHistory.length}</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {revisionHistoryOpen && revisionHistory.length ? (
+            <div className="composer-revision-history mb-2" role="region" aria-label="Recent lesson-plan changes">
+              <div className="composer-revision-history-head">
+                <span>Recent changes</span>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  onClick={() => setRevisionHistoryOpen(false)}
+                  aria-label="Close recent changes"
+                >
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </div>
+              {revisionHistory.map((entry) => (
+                <div className="composer-revision-history-item" key={entry.id}>
+                  <History size={14} aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <strong>{entry.label}</strong>
+                    <small>{new Date(entry.changedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small>
+                  </span>
+                  <span className="composer-revision-history-state">
+                    {entry.undoneAt ? 'Undone' : entry.id === lastChange?.id ? 'Undo available' : 'Saved'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
           {/* Latest is an anchored affordance, not another composer row. It
               sits above the dock without contributing height, so following a
               long transcript never creates a white band or moves the input. */}
@@ -3719,6 +3914,7 @@ export function ChatPage() {
                 onPlanRevised={onPlanRevised}
                 busy={busy}
                 preparing={preparing}
+                planSaveState={planSaveState}
                 streamingText={stream.text}
                 openTweak={openTweak}
                 setOpenTweak={setOpenTweak}

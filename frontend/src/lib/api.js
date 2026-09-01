@@ -350,6 +350,13 @@ export const api = {
   getPlan: (id) => request(`/api/plans/${id}`),
   getDocumentStatus: (id) => request(`/api/plans/${id}/document-status`),
   rebuildPlan: (id) => request(`/api/plans/${id}/rebuild`, { method: 'POST' }),
+  // Restore a previously captured plan snapshot. The server validates the
+  // complete shape and queues a fresh document build, so undo is durable
+  // rather than merely changing the pixels in the current browser.
+  patchPlan: (id, planJson) => request(`/api/plans/${id}`, {
+    method: 'PATCH',
+    body: { plan_json: planJson },
+  }),
   deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),
   /* These two existed on the server and were called from LessonPlanTable with a
      bare fetch() — no credentials: 'include', so they would 401 the moment the

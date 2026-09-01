@@ -1538,7 +1538,11 @@ CHAT_TOOLS = [
                 "part of it. Infer the field from ordinary teacher language: an activity, lesson activity, or "
                 "round-robin activity belongs in `during`; a warm-up or bell ringer belongs in `do_now`; an exit "
                 "ticket or evidence of learning belongs in `assessment`; a learning goal belongs in "
-                "`learning_targets`; and a named engagement routine belongs in `engagement_strategy`. If the "
+                "`learning_targets`; a primary/course standard or different course standard belongs in `standards`; "
+                "and a named engagement routine belongs in `engagement_strategy`. If the "
+                "teacher asks to add, replace, choose, or fix an ACT standard, ACT alignment, ACT code, or ACT "
+                "skill — including pointing out that a day's ACT cell is blank — use `act_alignment`; populate it "
+                "with the closest grounded companion ACT standard instead of only acknowledging the gap. If the "
                 "teacher says only 'rewrite Wednesday' without saying what should change, ask a clarifying question. "
                 "Do not use this for a whole-week change or a change spanning several days."
             ),

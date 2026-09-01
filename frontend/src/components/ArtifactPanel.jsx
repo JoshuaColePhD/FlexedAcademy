@@ -73,6 +73,7 @@ export function ArtifactPanel({
   onFullscreenChange,
   busy,
   preparing,
+  planSaveState = 'idle',
   streamingText,
   missingDays,
   flashCells,
@@ -195,7 +196,15 @@ const location = useLocation()
         <span className="doc-titles" ref={titleRef} tabIndex={-1}>
           <strong className="doc-title">{plan?.week_of || 'Lesson plan'}</strong>
           <span className="doc-sub">
-            {planId ? 'Saved' : busy ? 'Drafting…' : 'Preview'}
+            {planId && planSaveState === 'saving'
+              ? 'Saving…'
+              : planId && planSaveState === 'error'
+                ? 'Save failed'
+                : planId
+                  ? 'Saved'
+                  : busy
+                    ? 'Drafting…'
+                    : 'Preview'}
             {unitSuffix(artifact?.unit, ' · ')}
             {planId && onReviseDay ? (view === 'days' ? ' · tap any field to edit' : ' · click any cell to edit') : ''}
           </span>

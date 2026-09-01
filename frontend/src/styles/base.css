@@ -651,6 +651,10 @@
     color: var(--ink-inverse);
     background: var(--ink);
   }
+  .plan-deck-tab.is-today:not(.is-active) {
+    color: var(--accent-text);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
   .plan-deck-tab.is-closed {
     color: var(--ink-faint);
     background: var(--paper-sunken);
@@ -1176,6 +1180,19 @@
        give near-black text on mid-blue in dark mode. */
     color: #fff;
     font-weight: var(--fw-semibold);
+  }
+  .plan-table thead th.is-today {
+    background: var(--accent);
+    box-shadow: inset 0 -3px 0 rgb(var(--accent-rgb) / 0.9);
+  }
+  .plan-table-today-label {
+    display: block;
+    margin-top: 0.15rem;
+    color: rgb(255 255 255 / 0.78);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
   }
   /* Pinned so the row's own label ("Do Now", "Homework"...) stays on screen
      while the rest of the row scrolls under a finger — without it, scrolling
@@ -4433,25 +4450,149 @@
   .composer-dock-surface {
     position: relative;
     background: var(--paper-sunken);
-    border-top: 1px solid rgb(var(--edge-strong-rgb) / 0.45);
     box-shadow:
-      inset 0 4px 12px rgb(var(--neo-dark-rgb) / 0.16),
       inset 0 -2px 6px rgb(var(--neo-light-rgb) / 0.28);
   }
-  .composer-dock-surface::before {
-    position: absolute;
-    top: 0;
-    right: 8%;
-    left: 8%;
-    height: 1px;
-    content: '';
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgb(var(--neo-light-rgb) / 0.9) 18%,
-      rgb(var(--neo-light-rgb) / 0.9) 82%,
-      transparent
-    );
+  /* The dock is a quiet continuation of the chat surface. Its former top
+     border and centered ::before highlight read as a floating horizontal rule
+     above the input, especially over the open lesson-plan document. */
+
+  .composer-writing-status {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 34px;
+    padding: 5px 9px;
+    overflow: hidden;
+    color: var(--accent-text);
+    font-size: var(--fs-xs);
+    border: 1px solid rgb(var(--accent-rgb) / 0.18);
+    border-radius: var(--r-lg);
+    background: var(--paper-raised);
+    box-shadow:
+      2px 3px 9px rgb(var(--neo-dark-rgb) / 0.14),
+      -2px -2px 8px rgb(var(--neo-light-rgb) / 0.5);
+    animation: composer-writing-in var(--t-fast) var(--ease-out) both;
+  }
+  .composer-writing-status-mark {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    color: var(--accent-text);
+    border-radius: var(--r-full);
+    background: var(--accent-tint);
+  }
+  .composer-writing-status-label {
+    flex: 0 1 auto;
+    min-width: 0;
+    color: var(--ink-soft);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+  }
+  .composer-writing-status-status {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--accent-text);
+    font-weight: var(--fw-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .composer-save-status {
+    color: var(--ok);
+    border-color: rgb(var(--ok-rgb) / 0.18);
+  }
+  .composer-save-status.is-error {
+    color: var(--flag);
+    border-color: rgb(var(--flag-rgb) / 0.2);
+  }
+  .composer-save-status .composer-writing-status-mark {
+    color: var(--ok);
+    background: var(--ok-tint);
+  }
+  .composer-save-status.is-error .composer-writing-status-mark {
+    color: var(--flag);
+    background: var(--flag-tint);
+  }
+  .composer-status-action,
+  .composer-status-history {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 24px;
+    border-radius: var(--r-sm);
+    color: inherit;
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+  }
+  .composer-status-action {
+    padding: 0.15rem 0.45rem;
+    background: rgb(var(--ok-rgb) / 0.12);
+  }
+  .composer-status-action:hover,
+  .composer-status-history:hover {
+    background: rgb(var(--ok-rgb) / 0.2);
+  }
+  .composer-status-action:disabled {
+    opacity: 0.55;
+  }
+  .composer-status-history {
+    padding: 0.15rem 0.35rem;
+  }
+  .composer-revision-history {
+    overflow: hidden;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.55);
+    border-radius: var(--r-lg);
+    background: var(--paper-raised);
+    box-shadow: 0 5px 14px rgb(var(--neo-dark-rgb) / 0.16);
+  }
+  .composer-revision-history-head,
+  .composer-revision-history-item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem 0.65rem;
+  }
+  .composer-revision-history-head {
+    justify-content: space-between;
+    color: var(--ink-soft);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    border-bottom: 1px solid var(--edge);
+  }
+  .composer-revision-history-item + .composer-revision-history-item {
+    border-top: 1px solid var(--edge);
+  }
+  .composer-revision-history-item > svg {
+    flex: 0 0 auto;
+    color: var(--accent-text);
+  }
+  .composer-revision-history-item strong,
+  .composer-revision-history-item small {
+    display: block;
+  }
+  .composer-revision-history-item strong {
+    overflow: hidden;
+    color: var(--ink);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .composer-revision-history-item small {
+    margin-top: 0.1rem;
+    color: var(--ink-faint);
+    font-size: var(--fs-2xs);
+  }
+  .composer-revision-history-state {
+    flex: 0 0 auto;
+    color: var(--ink-faint);
+    font-size: var(--fs-2xs);
+    white-space: nowrap;
   }
   /* The composer as its own raised surface, the same emboss every panel in
      the overhaul gets — .neo-world being global means this resolves
@@ -6674,6 +6815,10 @@
       -3px -3px 7px rgb(var(--neo-light-rgb) / 0.8),
       0 0 0 4px rgb(var(--accent-rgb) / 0.08);
   }
+}
+@keyframes composer-writing-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes composer-reason-in {
   from {

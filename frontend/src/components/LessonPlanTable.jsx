@@ -234,6 +234,7 @@ function PlanTable({
   draft,
   setDraft,
 }) {
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' })
   const { isOpen, flashed, editableProps, tweakBody } = cellKit({
     busy,
     flashCells,
@@ -266,8 +267,9 @@ function PlanTable({
               <span className="visually-hidden">Lesson plan component</span>
             </th>
             {ordered.map((d) => (
-              <th scope="col" key={d.name}>
-                {d.name}
+              <th scope="col" key={d.name} className={d.name === todayName ? 'is-today' : undefined}>
+                <span>{d.name}</span>
+                {d.name === todayName ? <small className="plan-table-today-label">Today</small> : null}
               </th>
             ))}
           </tr>
