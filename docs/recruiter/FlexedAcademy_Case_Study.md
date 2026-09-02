@@ -60,7 +60,7 @@ The system still depends on external model and embedding APIs, and a grounded ci
 
 - [Public GitHub repository](https://github.com/JoshuaColePhD/FlexedAcademy)
 - [Live product](https://flexedacademy.com)
-- [Product walkthrough video](./FlexedAcademy_Walkthrough.mp4)
+- [Product walkthrough GIF](./FlexedAcademy_Walkthrough.gif)
 - [Sample generated lesson plan](./FlexedAcademy_Sample_Lesson_Plan.docx)
 
 ## Optional live demo
