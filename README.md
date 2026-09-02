@@ -94,33 +94,17 @@ eval/          Regression and quality-test suites
 scripts/       Standards ingestion, embedding, audits, and release checks
 ```
 
-## Run locally
+## Explore the implementation
 
-Prerequisites:
+The deployed product is the primary way to experience FlexedAcademy. The repository is provided so technical reviewers can inspect the implementation, evaluation strategy, and engineering decisions without needing to reproduce the hosted environment.
 
-- Python 3.12+
-- Node.js and npm
-- A Postgres/Supabase database with pgvector for the full application
-- An OpenAI API key for embeddings and generation
+- [LLM orchestration and structured generation](backend/llm.py)
+- [Retrieval, relevance floors, and grounding audits](backend/retrieval.py)
+- [Generate → validate → persist pipeline](backend/service.py)
+- [Evaluation suite and retrieval baseline](eval/README.md)
+- [Deployment and production-readiness notes](DEPLOYING.md)
 
-Install dependencies and configure the environment:
-
-```bash
-python -m venv venv
-./venv/bin/pip install -r requirements.lock.txt
-cd frontend && npm ci && cd ..
-cp .env.example .env
-```
-
-Set `OPENAI_API_KEY` and the database settings in `.env`, then start the application:
-
-```bash
-./run.sh
-```
-
-The API serves the built frontend in production. For frontend development, run `npm run dev` from `frontend/` and use the configured Vite proxy.
-
-Never commit `.env`, API keys, database files, uploaded templates, generated plans, or local model caches. See `.env.example` for configuration options and `DEPLOYING.md` for deployment details.
+For developers who want to run the system locally, the full setup requires Python 3.12+, Node.js, Postgres/Supabase with pgvector, and an OpenAI API key. See [.env.example](.env.example), [DEPLOYING.md](DEPLOYING.md), and the scripts in `eval/` for configuration and validation details. Never commit `.env`, API keys, database files, uploaded templates, generated plans, or local model caches.
 
 ## Known limitations
 
