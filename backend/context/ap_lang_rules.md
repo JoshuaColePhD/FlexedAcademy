@@ -1,7 +1,7 @@
 # AP Lang planning rules (curated prompt context)
 
 Distilled from `Iris_OS/Skills/build-lesson-plan/SKILL.md` and the Florence High
-School workspace `CLAUDE.md`. The full SKILL.md is ~22KB and more than half of it
+School workspace `PROJECT_CONTEXT.md`. The full SKILL.md is ~22KB and more than half of it
 is Drive-upload procedure, Apps Script details, and slide-deck build steps that
 have nothing to do with producing lesson-plan JSON. Injecting it whole roughly
 doubled input tokens per request for no gain. This file is only the pedagogy the

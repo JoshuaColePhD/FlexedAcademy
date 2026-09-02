@@ -283,7 +283,7 @@ def safe_filename(text: str, fallback: str = "Lesson_Plan") -> str:
 def plan_output_path(plan: dict, plan_id: str) -> Path:
     """plans/<course-slug>/Week_11_Oct_19-23__<id8>.docx
 
-    Mirrors the CLAUDE.md naming convention (Week_XX_Mon_DD-DD.docx) with a
+    Mirrors the PROJECT_CONTEXT.md naming convention (Week_XX_Mon_DD-DD.docx) with a
     short id suffix, so regenerating a week doesn't clobber the earlier attempt.
     """
     course = safe_filename(str(plan.get("course") or "Course"), "Course")

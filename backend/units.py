@@ -1,6 +1,6 @@
 """AP Lang week -> unit routing, so a stored plan can say which unit it belongs to.
 
-Mirrors the 9-unit map in the Florence workspace CLAUDE.md. Used only to label
+Mirrors the 9-unit map in the Florence workspace PROJECT_CONTEXT.md. Used only to label
 plans in the library; nothing depends on it being exhaustive.
 """
 from __future__ import annotations

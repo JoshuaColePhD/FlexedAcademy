@@ -3,7 +3,7 @@ and the eval harness, so they cannot drift apart again.
 
 This mirrors template `florence-docx-v2`, which is what
 Skills/build-lesson-plan/scripts/build_lesson_plan.py actually reads. Note that
-the "Lesson Plan Template Spec" in the workspace CLAUDE.md documents the RETIRED
+the "Lesson Plan Template Spec" in the workspace PROJECT_CONTEXT.md documents the RETIRED
 v1 template (8 rows, with Curriculum/Resources and "What will learning look
 like?"). v2 is 7 rows x 6 cols and has neither. Build against the script.
 

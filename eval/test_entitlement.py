@@ -52,7 +52,7 @@ def check(label: str, got, want) -> None:
 
 def scenario(
     status, tokens_used, *, keys: bool, free_cap: int = 1000, sub_cap: int = 1_000_000, plans: int = 0, recent=None,
-    created_at=None, stripe_customer_id=None,
+    created_at=None, stripe_customer_id=None, trial_started_at=None,
 ):
     # created_at/stripe_customer_id default to None so every pre-existing case
     # above behaves exactly as it did: with no created_at the trial branch is
@@ -62,6 +62,7 @@ def scenario(
         "subscription_status": status,
         "created_at": created_at,
         "stripe_customer_id": stripe_customer_id,
+        "trial_started_at": trial_started_at,
     }
     # Still called (Entitlement.plans_used rides along for the account menu),
     # just no longer what gates — see promise 6.
@@ -191,13 +192,22 @@ def main() -> int:
         ).isoformat(timespec="seconds")
 
         # Brand new, never paid: over the free cap but inside Premium.
-        ent = scenario(None, 5000, keys=True, created_at=recent_signup)
+        ent = scenario(
+            None, 5000, keys=True, created_at=recent_signup, trial_started_at=recent_signup
+        )
         check("day-1 trial, over the free cap", ent.may_generate, True)
         check("day-1 trial is capped at the subscriber tier", ent.token_cap, 1_000_000)
 
         # The regression guard. Same window, but this account has checked out
         # before, so it is a lapsed subscriber and must stay on the free cap.
-        ent = scenario("canceled", 5000, keys=True, created_at=recent_signup, stripe_customer_id="cus_123")
+        ent = scenario(
+            "canceled",
+            5000,
+            keys=True,
+            created_at=recent_signup,
+            trial_started_at=recent_signup,
+            stripe_customer_id="cus_123",
+        )
         check("cancelled inside the window is NOT re-trialed", ent.may_generate, False)
         check("cancelled inside the window keeps the free cap", ent.token_cap, 1000)
 

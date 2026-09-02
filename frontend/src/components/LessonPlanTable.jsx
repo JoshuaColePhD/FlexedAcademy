@@ -14,7 +14,7 @@ import { cellKit } from './cellTweakKit'
    Rows: Learning Targets, Standards, ACT Alignment, Engagement Strategy, Lesson
    (with bold Do Now / During / Assessment sub-blocks). There is no
    Curriculum/Resources row and no "What will learning look like?" row; those
-   belong to the retired v1 template still described in the workspace CLAUDE.md.
+   belong to the retired v1 template still described in the workspace PROJECT_CONTEXT.md.
 
    A no-school day matches the builder exactly: "No School" centred in the first
    content row, the rest of that column blank and unshaded, and no revise button. */
