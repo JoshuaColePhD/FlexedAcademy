@@ -106,7 +106,11 @@ The deployed product is the primary way to experience FlexedAcademy. The reposit
 
 ## Recruiter package
 
+![FlexEd Academy walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.gif)
+
 - [Product walkthrough GIF](docs/recruiter/FlexedAcademy_Walkthrough.gif)
+- [Higher-quality MP4 walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.mp4)
+- [WebM walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.webm)
 - [Applied-AI case study](docs/recruiter/FlexedAcademy_Case_Study.md)
 - [Sample generated lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx)
 
