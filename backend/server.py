@@ -311,7 +311,7 @@ class PrivateApiCacheMiddleware:
 
 
 class ReadOnlyDemoMiddleware:
-    """Make the recruiter showcase read-only across the entire API surface.
+    """Make the public showcase read-only across the entire API surface.
 
     GET/HEAD remain available for browsing plans, citations, and downloads.
     Logout endpoints remain available so the demo is easy to exit; every other
@@ -345,7 +345,7 @@ class ReadOnlyDemoMiddleware:
                 "error": {
                     "code": "demo_read_only",
                     "message": (
-                        "This recruiter demo is read-only. You can browse the seeded "
+                        "This demo is read-only. You can browse the seeded "
                         "plans, citations, and artifacts, but changes, generation, "
                         "uploads, sharing, and billing are disabled."
                     ),

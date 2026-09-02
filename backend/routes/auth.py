@@ -166,19 +166,19 @@ def demo_availability():
 def demo_login(request: Request, response: Response):
     """Issue a session for the configured, seeded read-only showcase account."""
     if not settings.demo_account_enabled:
-        raise AppError("demo_unavailable", "The recruiter demo is not enabled.", status=404)
+        raise AppError("demo_unavailable", "The Explore demo is not enabled.", status=404)
     try:
         user = demo.ensure_demo_account()
     except (RuntimeError, ValueError) as exc:
         log.error("recruiter demo provisioning failed: %s", exc)
         raise AppError(
             "demo_unavailable",
-            "The recruiter demo is temporarily unavailable.",
+            "The demo is temporarily unavailable.",
             hint="Use the public walkthrough and GitHub package while it is being restored.",
             status=503,
         ) from exc
     if not user:
-        raise AppError("demo_unavailable", "The recruiter demo is not enabled.", status=404)
+        raise AppError("demo_unavailable", "The Explore demo is not enabled.", status=404)
     token = auth.create_session_token(user["id"], user.get("session_version", 0))
     response.set_cookie(COOKIE_NAME, token, **_cookie_kwargs(request))
     return _public_user(user)

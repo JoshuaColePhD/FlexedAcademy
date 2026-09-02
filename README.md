@@ -110,12 +110,13 @@ The deployed product is the primary way to experience FlexedAcademy. The reposit
 - [Applied-AI case study](docs/recruiter/FlexedAcademy_Case_Study.md)
 - [Sample generated lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx)
 
-### Optional recruiter demo
+### Optional demo access
 
-The deployed sign-in page can expose a one-click, read-only demo account. It
-uses the same application shell and seeded sample plan as the live product,
-but server-side enforcement disables generation, edits, uploads, sharing,
-billing, and other mutations. No payment or local setup is required.
+The deployed sign-in page can expose a one-click “Explore demo” account for
+recruiters and potential customers. It uses the same application shell and
+seeded sample plan as the live product, but server-side enforcement disables
+generation, edits, uploads, sharing, billing, and other mutations. No payment
+or local setup is required.
 
 To enable it, set `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` as secrets in
 the deployment environment, optionally set `DEMO_ACCOUNT_NAME`, and redeploy.

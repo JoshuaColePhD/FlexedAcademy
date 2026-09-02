@@ -65,7 +65,8 @@ The system still depends on external model and embedding APIs, and a grounded ci
 
 ## Optional live demo
 
-The deployed sign-in page can expose a free, read-only recruiter demo. It is
+The deployed sign-in page can expose a free, read-only “Explore demo” for
+recruiters and potential customers. It is
 configured with `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` in deployment
 secrets, then provisions a seeded AP Language example account. Recruiters can
 browse the application, plan history, citations, and document export without

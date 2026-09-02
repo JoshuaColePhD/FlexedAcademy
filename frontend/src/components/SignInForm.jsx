@@ -144,7 +144,7 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
     try {
       await loginDemo()
     } catch (err) {
-      setError(err.message || 'The recruiter demo is temporarily unavailable.')
+      setError(err.message || 'The demo is temporarily unavailable.')
     } finally {
       setDemoLoading(false)
     }
@@ -178,15 +178,15 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
 
       {demoEnabled ? (
         <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-3 text-sm text-blue-900">
-          <div className="font-semibold">Recruiter demo</div>
-          <p className="mt-0.5 text-blue-800">Browse seeded plans, citations, and exports with no payment or local setup.</p>
+          <div className="font-semibold">Explore demo</div>
+          <p className="mt-0.5 text-blue-800">See the product with seeded plans, citations, and exports—no payment or local setup required.</p>
           <button
             type="button"
             onClick={handleDemoLogin}
             disabled={demoLoading || loading}
             className="mt-2 min-h-touch w-full rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {demoLoading ? 'Opening demo…' : 'Explore recruiter demo (read-only)'}
+            {demoLoading ? 'Opening demo…' : 'Explore demo (read-only)'}
           </button>
         </div>
       ) : null}
