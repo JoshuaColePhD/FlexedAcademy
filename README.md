@@ -104,6 +104,12 @@ The deployed product is the primary way to experience FlexedAcademy. The reposit
 - [Evaluation suite and retrieval baseline](eval/README.md)
 - [Deployment and production-readiness notes](DEPLOYING.md)
 
+## Recruiter package
+
+- [Product walkthrough video](docs/recruiter/FlexedAcademy_Walkthrough.mp4)
+- [Applied-AI case study](docs/recruiter/FlexedAcademy_Case_Study.md)
+- [Sample generated lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx)
+
 For developers who want to run the system locally, the full setup requires Python 3.12+, Node.js, Postgres/Supabase with pgvector, and an OpenAI API key. See [.env.example](.env.example), [DEPLOYING.md](DEPLOYING.md), and the scripts in `eval/` for configuration and validation details. Never commit `.env`, API keys, database files, uploaded templates, generated plans, or local model caches.
 
 ## Known limitations
