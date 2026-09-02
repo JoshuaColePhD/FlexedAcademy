@@ -275,6 +275,8 @@ export const api = {
   verifyEmail: (token) => request(`/api/auth/verify-email?token=${encodeURIComponent(token)}`),
   resendVerification: (email) => request('/api/auth/resend-verification', { method: 'POST', body: { email } }),
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
+  demoAvailability: () => request('/api/auth/demo-availability'),
+  demoLogin: () => request('/api/auth/demo-login', { method: 'POST' }),
   loginWithGoogle: (credential) => request('/api/auth/google', { method: 'POST', body: { credential } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   /** Closes OnboardingWizard.jsx for good (finished OR skipped — see

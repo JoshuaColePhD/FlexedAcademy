@@ -62,3 +62,13 @@ The system still depends on external model and embedding APIs, and a grounded ci
 - [Live product](https://flexedacademy.com)
 - [Product walkthrough video](./FlexedAcademy_Walkthrough.mp4)
 - [Sample generated lesson plan](./FlexedAcademy_Sample_Lesson_Plan.docx)
+
+## Optional live demo
+
+The deployed sign-in page can expose a free, read-only recruiter demo. It is
+configured with `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` in deployment
+secrets, then provisions a seeded AP Language example account. Recruiters can
+browse the application, plan history, citations, and document export without
+creating an account, adding a payment method, running the code locally, or
+consuming generation credits. Server-side middleware rejects all mutations for
+that account, including generation, uploads, edits, sharing, and billing.

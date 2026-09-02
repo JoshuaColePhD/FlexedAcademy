@@ -110,6 +110,18 @@ The deployed product is the primary way to experience FlexedAcademy. The reposit
 - [Applied-AI case study](docs/recruiter/FlexedAcademy_Case_Study.md)
 - [Sample generated lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx)
 
+### Optional recruiter demo
+
+The deployed sign-in page can expose a one-click, read-only demo account. It
+uses the same application shell and seeded sample plan as the live product,
+but server-side enforcement disables generation, edits, uploads, sharing,
+billing, and other mutations. No payment or local setup is required.
+
+To enable it, set `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` as secrets in
+the deployment environment, optionally set `DEMO_ACCOUNT_NAME`, and redeploy.
+The password is never committed to GitHub or sent to the frontend. Without
+those two values, the demo remains completely disabled.
+
 For developers who want to run the system locally, the full setup requires Python 3.12+, Node.js, Postgres/Supabase with pgvector, and an OpenAI API key. See [.env.example](.env.example), [DEPLOYING.md](DEPLOYING.md), and the scripts in `eval/` for configuration and validation details. Never commit `.env`, API keys, database files, uploaded templates, generated plans, or local model caches.
 
 ## Known limitations

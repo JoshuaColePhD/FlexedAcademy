@@ -164,6 +164,11 @@ export function AuthProvider({ children }) {
     [applyIdentity]
   )
 
+  const loginDemo = useCallback(
+    async () => applyIdentity(await api.demoLogin()),
+    [applyIdentity]
+  )
+
   const loginWithGoogle = useCallback(
     async (credential) => applyIdentity(await api.loginWithGoogle(credential)),
     [applyIdentity]
@@ -253,6 +258,7 @@ export function AuthProvider({ children }) {
       status,
       user,
       login,
+      loginDemo,
       loginWithGoogle,
       signup,
       verifyEmail,
@@ -266,6 +272,7 @@ export function AuthProvider({ children }) {
       status,
       user,
       login,
+      loginDemo,
       loginWithGoogle,
       signup,
       verifyEmail,

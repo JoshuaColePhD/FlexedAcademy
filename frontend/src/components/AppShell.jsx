@@ -839,6 +839,11 @@ export function AppShell({ children }) {
         id="main"
       >
         <OnboardingWizardHost />
+        {user?.read_only ? (
+          <div className="shrink-0 border-b border-blue-500/20 bg-blue-500/10 px-4 py-2.5 text-center text-xs font-medium text-blue-700">
+            Recruiter demo · read-only. Existing plans, citations, and exports are available; generation and account changes are disabled.
+          </div>
+        ) : null}
         {isNarrow && !location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button

@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 
 /** { status: 'loading' | 'authed' | 'anon', user: {id,email,name}|null,
- *    login, signup, resetPassword, logout, signOutEverywhere, deleteAccount,
+ *    login, loginDemo, signup, resetPassword, logout, signOutEverywhere, deleteAccount,
  *    refresh } — see AuthProvider.jsx for the implementation. */
 export const AuthContext = createContext(null)
 

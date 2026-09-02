@@ -10,7 +10,7 @@ import psycopg2.errors
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from .. import abuse, auth, db, mail, stripe_api, turnstile
+from .. import abuse, auth, db, demo, mail, stripe_api, turnstile
 from ..config import settings
 from ..deps import COOKIE_NAME, get_current_user
 from ..entitlement import entitlement
@@ -71,6 +71,10 @@ def _public_user(user: dict) -> dict:
     composer and the account menu alike.
     """
     ent = entitlement(user["id"], user)
+    entitlement_payload = ent.as_dict()
+    if user.get("is_read_only"):
+        entitlement_payload["may_generate"] = False
+        entitlement_payload["read_only"] = True
     return {
         "id": user["id"],
         "email": user["email"],
@@ -99,7 +103,8 @@ def _public_user(user: dict) -> dict:
         # function is already holding (and that deps.get_current_user fetched
         # before that) — three reads of one row per request, each its own
         # pooled connection and SET LOCAL round trip.
-        "entitlement": ent.as_dict(),
+        "entitlement": entitlement_payload,
+        "read_only": bool(user.get("is_read_only")),
         # Reuses entitlement's own count instead of db.get_plan_count, which is
         # character-for-character the same query (SELECT COUNT(*) FROM plans
         # WHERE user_id = ?) as db.count_plans that entitlement() already ran.
@@ -148,6 +153,35 @@ class LoginBody(BaseModel):
 
 class GoogleLoginBody(BaseModel):
     credential: str
+
+
+@router.get("/demo-availability")
+def demo_availability():
+    """Public feature detection; no account details or credentials leak."""
+    return {"enabled": settings.demo_account_enabled}
+
+
+@router.post("/demo-login")
+@limiter.limit("5/minute")
+def demo_login(request: Request, response: Response):
+    """Issue a session for the configured, seeded read-only showcase account."""
+    if not settings.demo_account_enabled:
+        raise AppError("demo_unavailable", "The recruiter demo is not enabled.", status=404)
+    try:
+        user = demo.ensure_demo_account()
+    except (RuntimeError, ValueError) as exc:
+        log.error("recruiter demo provisioning failed: %s", exc)
+        raise AppError(
+            "demo_unavailable",
+            "The recruiter demo is temporarily unavailable.",
+            hint="Use the public walkthrough and GitHub package while it is being restored.",
+            status=503,
+        ) from exc
+    if not user:
+        raise AppError("demo_unavailable", "The recruiter demo is not enabled.", status=404)
+    token = auth.create_session_token(user["id"], user.get("session_version", 0))
+    response.set_cookie(COOKIE_NAME, token, **_cookie_kwargs(request))
+    return _public_user(user)
 
 
 @router.post("/signup")

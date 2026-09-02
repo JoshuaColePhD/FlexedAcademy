@@ -3370,6 +3370,12 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_trial_claims_user ON trial_claims(user_id);
     ALTER TABLE trial_claims ENABLE ROW LEVEL SECURITY;
     """,
+    # ── 69: optional read-only recruiter showcase account ────────────────────
+    # Stored on the account so one middleware choke point can protect every
+    # future mutating route without making individual features special-case it.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_read_only BOOLEAN NOT NULL DEFAULT false;
+    """,
 ]
 
 
@@ -6654,6 +6660,47 @@ def create_user(
         (uid, email.strip().lower(), name.strip(), password_hash, now(), email_verified_at, signup_ip_hash, signup_device_hash),
     )
     return get_user_by_id(uid)  # type: ignore[return-value]
+
+
+def ensure_demo_user(*, user_id: str, email: str, name: str, password_hash: str) -> dict:
+    """Create or refresh the fixed, non-production recruiter account.
+
+    The fixed id is important: a mistyped configured email must refuse rather
+    than silently convert an ordinary teacher account into a demo account.
+    """
+    normalized_email = email.strip().lower()
+    existing_by_id = get_user_by_id(user_id)
+    existing_by_email = get_user_by_email(normalized_email)
+    if existing_by_email and existing_by_email["id"] != user_id:
+        raise ValueError("DEMO_ACCOUNT_EMAIL belongs to a different account")
+    if existing_by_id and existing_by_id.get("email") != normalized_email:
+        raise ValueError("DEMO_ACCOUNT_ID belongs to a different account")
+
+    ts = now()
+    if existing_by_id:
+        _write(
+            """
+            UPDATE users
+            SET email = ?, name = ?, password_hash = ?, is_read_only = true,
+                is_admin = false, email_verified_at = COALESCE(email_verified_at, ?),
+                onboarding_seen_at = COALESCE(onboarding_seen_at, ?),
+                subscription_status = 'comped', trial_eligible = false
+            WHERE id = ?
+            """,
+            (normalized_email, name.strip()[:120], password_hash, ts, ts, user_id),
+        )
+    else:
+        _write(
+            """
+            INSERT INTO users (
+              id, email, name, password_hash, created_at, email_verified_at,
+              onboarding_seen_at, subscription_status, trial_eligible, is_admin,
+              is_read_only
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'comped', false, false, true)
+            """,
+            (user_id, normalized_email, name.strip()[:120], password_hash, ts, ts, ts),
+        )
+    return get_user_by_id(user_id)  # type: ignore[return-value]
 
 
 def create_beta_account(email: str, name: str, password_hash: str, *, days: int) -> dict:

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, Lock, Mail, X } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
@@ -42,7 +42,7 @@ const fieldClass =
  * the same affordance every other dismissible panel in this app has.
  */
 export function SignInForm({ compact = false, idPrefix = '', onClose }) {
-  const { login, loginWithGoogle } = useAuth()
+  const { login, loginDemo, loginWithGoogle } = useAuth()
   const [params] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -56,6 +56,16 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
   const [verificationNeeded, setVerificationNeeded] = useState(false)
   const [verificationSent, setVerificationSent] = useState(false)
   const [verificationLoading, setVerificationLoading] = useState(false)
+  const [demoEnabled, setDemoEnabled] = useState(false)
+  const [demoLoading, setDemoLoading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    api.demoAvailability().then((result) => {
+      if (active) setDemoEnabled(Boolean(result?.enabled))
+    }).catch(() => {})
+    return () => { active = false }
+  }, [])
 
   // Preserved across the round trip so a bookmarked /c/x/week/12 with an expired
   // cookie lands back on that week instead of dumping the teacher at the top.
@@ -128,6 +138,18 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
     }
   }
 
+  const handleDemoLogin = async () => {
+    setError(null)
+    setDemoLoading(true)
+    try {
+      await loginDemo()
+    } catch (err) {
+      setError(err.message || 'The recruiter demo is temporarily unavailable.')
+    } finally {
+      setDemoLoading(false)
+    }
+  }
+
   return (
     <div className="flex flex-col">
       {/* Compact-only: the full /login page already has its own "Sign in"
@@ -151,6 +173,21 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
               <X size={18} aria-hidden="true" />
             </button>
           ) : null}
+        </div>
+      ) : null}
+
+      {demoEnabled ? (
+        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-3 text-sm text-blue-900">
+          <div className="font-semibold">Recruiter demo</div>
+          <p className="mt-0.5 text-blue-800">Browse seeded plans, citations, and exports with no payment or local setup.</p>
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            disabled={demoLoading || loading}
+            className="mt-2 min-h-touch w-full rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {demoLoading ? 'Opening demo…' : 'Explore recruiter demo (read-only)'}
+          </button>
         </div>
       ) : null}
 

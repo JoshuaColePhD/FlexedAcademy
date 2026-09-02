@@ -126,7 +126,7 @@ const state = {
   // onboarding_seen_at set (unlike a brand-new account) so preview.html lands
   // on the real app shell — App.jsx's ClassRoutes redirects to the onboarding
   // wizard for as long as this is unset, and nothing in this mock ever set it.
-  me: { id: 'u1', name: 'Josh Cole', email: 'jc@x.org', custom_instructions: '', output_length: 'medium', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00', email_verified: true, trial_started_at: '2026-01-01T00:00:00+00:00' },
+  me: { id: 'u1', name: 'Josh Cole', email: 'jc@x.org', custom_instructions: '', output_length: 'medium', school: 'florence-high-school', onboarding_seen_at: '2026-01-01T00:00:00+00:00', email_verified: true, trial_started_at: '2026-01-01T00:00:00+00:00', read_only: false },
   // Default: billing live, weekly usage cap already hit — i.e. the paywall
   // state, because that is the one worth being able to look at. Flip
   // may_generate back to true (or billing_enabled to false) to leave it.
@@ -446,6 +446,7 @@ export function installMockApi() {
       onboarding_seen_at: state.me.onboarding_seen_at,
       email_verified: state.me.email_verified,
       trial_started_at: state.me.trial_started_at,
+      read_only: Boolean(state.me.read_only),
       entitlement: state.entitlement,
     })
 
@@ -478,6 +479,7 @@ export function installMockApi() {
       if (!state.authenticated) return new Response('{}', { status: 401 })
       return json(currentUser())
     }
+    if (path === '/api/auth/demo-availability') return json({ enabled: true })
     if (path === '/api/auth/signup' && method === 'POST') {
       if (!body?.name || !body?.email || !body?.password || body.password.length < 8) {
         return new Response(JSON.stringify({ error: { code: 'invalid_request', message: 'Please complete all fields.' } }), { status: 400, headers: { 'Content-Type': 'application/json' } })
@@ -499,6 +501,12 @@ export function installMockApi() {
         return new Response(JSON.stringify({ error: { code: 'invalid_credentials', message: 'Incorrect email or password.' } }), { status: 401, headers: { 'Content-Type': 'application/json' } })
       }
       state.authenticated = true
+      return json(currentUser())
+    }
+    if (path === '/api/auth/demo-login' && method === 'POST') {
+      state.authenticated = true
+      state.me.read_only = true
+      state.entitlement = { ...state.entitlement, may_generate: false, read_only: true }
       return json(currentUser())
     }
     if (path === '/api/auth/google' && method === 'POST') {

@@ -378,6 +378,14 @@ class Settings(BaseSettings):
 
     session_secret: str = "dev-secret-do-not-use-in-production"
 
+    # Optional recruiter showcase account. Both values must be present before
+    # the account or its one-click login route exists; the password stays in
+    # deployment secrets and never belongs in the repository or frontend.
+    demo_account_id: str = "recruiter_demo"
+    demo_account_email: str = ""
+    demo_account_password: str = ""
+    demo_account_name: str = "Recruiter Demo"
+
     # With this False, get_current_user() returns 'default_user' for any request
     # with no valid session cookie instead of a 401 — everyone unauthenticated
     # shares one account and its data. It exists as a local-iteration escape
@@ -447,6 +455,11 @@ class Settings(BaseSettings):
     @property
     def has_api_key(self) -> bool:
         return bool(self.openai_api_key) and self.openai_api_key != "your-api-key-here"
+
+    @property
+    def demo_account_enabled(self) -> bool:
+        """Whether the optional read-only recruiter account is configured."""
+        return bool(self.demo_account_email.strip() and self.demo_account_password)
 
     @property
     def billing_enabled(self) -> bool:

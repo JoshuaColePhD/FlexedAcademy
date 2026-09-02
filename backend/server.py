@@ -17,9 +17,10 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from . import db, retrieval, service
+from . import db, demo, retrieval, service
 from .config import settings
 from .docx_build import assert_builder_contract
+from .deps import COOKIE_NAME, _verify_current
 from .errors import AppError, app_error_handler, unhandled_handler
 from .ratelimit import limiter, rate_limit_exceeded_handler
 from .routes import (
@@ -141,6 +142,11 @@ async def lifespan(app: FastAPI):
     # will surface the same AppError with its hint; health reports pg_error.
     try:
         db.connect()
+        if settings.demo_account_enabled:
+            try:
+                demo.ensure_demo_account()
+            except (RuntimeError, ValueError):
+                log.exception("recruiter demo account could not be provisioned")
     except Exception as e:  # noqa: BLE001 — an unreachable DB must not stop the app from booting
         log.error(
             "DATABASE UNAVAILABLE AT BOOT: %s — serving anyway; /api/health has details",
@@ -304,6 +310,53 @@ class PrivateApiCacheMiddleware:
         await self.app(scope, receive, send_with_private_cache)
 
 
+class ReadOnlyDemoMiddleware:
+    """Make the recruiter showcase read-only across the entire API surface.
+
+    GET/HEAD remain available for browsing plans, citations, and downloads.
+    Logout endpoints remain available so the demo is easy to exit; every other
+    mutation is refused before it reaches a route or an external API.
+    """
+
+    _SAFE_MUTATIONS = {
+        "/api/auth/logout",
+        "/api/auth/sign_out_everywhere",
+    }
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.app(scope, receive, send)
+        method = scope.get("method", "GET").upper()
+        path = scope.get("path", "")
+        if method in {"GET", "HEAD", "OPTIONS"} or path in self._SAFE_MUTATIONS:
+            return await self.app(scope, receive, send)
+
+        request = Request(scope, receive=receive)
+        user_id = _verify_current(request.cookies.get(COOKIE_NAME))
+        user = db.get_user_by_id(user_id) if user_id else None
+        if not user or not user.get("is_read_only"):
+            return await self.app(scope, receive, send)
+        response = JSONResponse(
+            status_code=403,
+            content={
+                "error": {
+                    "code": "demo_read_only",
+                    "message": (
+                        "This recruiter demo is read-only. You can browse the seeded "
+                        "plans, citations, and artifacts, but changes, generation, "
+                        "uploads, sharing, and billing are disabled."
+                    ),
+                    "hint": "Use the walkthrough or GitHub package for the full engineering context.",
+                }
+            },
+            headers={"Cache-Control": "private, no-store"},
+        )
+        await response(scope, receive, send)
+
+
 app = FastAPI(title="FlexEd Academy", version="2.0.0", lifespan=lifespan)
 
 app.state.limiter = limiter
@@ -324,6 +377,7 @@ app.add_middleware(SlowAPIMiddleware)
 # the generation is exactly as fast, and visibly feels worse.
 app.add_middleware(ConditionalGZipMiddleware, minimum_size=1024)
 app.add_middleware(PrivateApiCacheMiddleware)
+app.add_middleware(ReadOnlyDemoMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

@@ -200,6 +200,17 @@ services:
       - key: SESSION_SECRET
         generateValue: true
 
+      # Optional recruiter access. Set an email and a strong random password in
+      # the Render dashboard; the sign-in page then exposes a one-click,
+      # read-only demo backed by seeded sample plans. Never put the password in
+      # this tracked blueprint or in a Vite variable.
+      - key: DEMO_ACCOUNT_EMAIL
+        sync: false
+      - key: DEMO_ACCOUNT_PASSWORD
+        sync: false
+      - key: DEMO_ACCOUNT_NAME
+        value: "Recruiter Demo"
+
       # ── fixed ────────────────────────────────────────────────────────────
       - key: REQUIRE_LOGIN
         value: "true"
