@@ -3603,6 +3603,17 @@ def _rows(sql: str, params: tuple = ()) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_standard_chunks() -> list[dict]:
+    """Return the canonical standards corpus without embedding vectors.
+
+    The retrieval module uses this for the standards browser and grounding
+    checks.  Similarity search still happens independently in retrieval.py;
+    this read only replaces the old runtime download of the same corpus from
+    Supabase Storage.
+    """
+    return _rows("SELECT id, metadata FROM chunks ORDER BY id")
+
+
 def _row(sql: str, params: tuple = ()) -> dict | None:
     with borrow() as conn, conn.cursor() as cur:
         cur.execute(sql.replace("?", "%s"), params)

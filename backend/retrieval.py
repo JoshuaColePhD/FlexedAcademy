@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import storage
+from . import db, storage
 from .config import settings
 from .errors import AppError
 
@@ -596,6 +596,31 @@ def load_chunks() -> list[dict]:
     change — same reasoning as those already have, just applied to the
     function they all sit on top of.
     """
+    # The corpus is already canonical in Postgres: `retrieve_raw()` searches
+    # the same `chunks` table and the standards browser only needs its id and
+    # metadata.  Reading that metadata here avoids downloading ~40MB of JSON
+    # from Supabase Storage every time an ephemeral production instance boots.
+    # Keep the file-backed path below as a development/offline fallback and as
+    # a recovery path if the database is temporarily unavailable.
+    if settings.database_url:
+        try:
+            rows = db.list_standard_chunks()
+            if rows and all(isinstance(row.get("metadata"), dict) for row in rows):
+                out = []
+                for row in rows:
+                    chunk = dict(row["metadata"])
+                    # Raw JSON files did not carry this field, but the API's
+                    # standards route already expects an id and DB-backed
+                    # retrieval uses this same stable identifier.
+                    chunk["id"] = row["id"]
+                    out.append(chunk)
+                log.info("loaded %d standards chunks from Postgres", len(out))
+                return out
+            if rows:
+                log.warning("standards table returned malformed metadata; using file fallback")
+        except Exception as exc:  # noqa: BLE001 — Storage remains a recovery path
+            log.warning("could not load standards chunks from Postgres: %s; using file fallback", exc)
+
     primary = Path(settings.chunks_path)
     for name in _UNTRACKED_CHUNK_FILES:
         storage.ensure_local(primary.parent / name)
