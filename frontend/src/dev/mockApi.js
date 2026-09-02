@@ -236,29 +236,29 @@ const state = {
       created_at: '2026-08-01T09:00:00+00:00', plans_built: 12, last_plan_at: '2026-08-08T08:00:00+00:00', tokens_used: 1_204_600 },
   ],
   chats: [
-    { id: 'seed1', title: 'Week 03 — voice and tone', class_id: 'c1', updated_at: '2026-08-07', week_number: 3 },
-    { id: 'stranded', title: 'plan week 12 on satire', class_id: 'c1', updated_at: '2026-08-06' },
-    { id: 'physics', title: 'Kinematics week', class_id: 'c2', updated_at: '2026-08-05' },
+    { id: 'seed1', title: 'Week 03 · Voice, Tone & Rhetorical Devices', class_id: 'c1', updated_at: '2026-08-07', week_number: 3 },
+    { id: 'stranded', title: 'Week 12 · Satire & Social Critique', class_id: 'c1', updated_at: '2026-08-06' },
+    { id: 'physics', title: 'Week 05 · Kinematics & Energy', class_id: 'c2', updated_at: '2026-08-05' },
     // Never attributed — must appear under BOTH classes, not vanish.
-    { id: 'legacy', title: 'an old chat with no class', class_id: null, updated_at: '2026-08-01' },
+    { id: 'legacy', title: 'Course Map · AP Lang Scope & Sequence', class_id: null, updated_at: '2026-08-01' },
     // Padding past SEARCH_THRESHOLD (AppShell.jsx) and spanning every date
     // bucket (Today/Yesterday/This week/Older) — the four chats above alone
     // never exercised either the search box or the Today/Yesterday buckets.
-    { id: 'gatsby1', title: 'Gatsby — symbolism week', class_id: 'c1', updated_at: '2026-08-10' },
-    { id: 'gatsby2', title: 'Gatsby — the green light', class_id: 'c1', updated_at: '2026-08-10' },
-    { id: 'rhetoric1', title: 'Rhetorical triangle intro', class_id: 'c1', updated_at: '2026-08-09' },
-    { id: 'cask1', title: 'Cask of Amontillado — irony', class_id: 'c1', updated_at: '2026-08-08' },
-    { id: 'unit4', title: 'Unit 4 kickoff planning', class_id: 'c1', updated_at: '2026-07-20' },
-    { id: 'satire2', title: 'Satire — A Modest Proposal', class_id: 'c1', updated_at: '2026-07-18' },
+    { id: 'gatsby1', title: 'The Great Gatsby · Symbolism & Motif', class_id: 'c1', updated_at: '2026-08-10' },
+    { id: 'gatsby2', title: 'The Great Gatsby · Close Reading', class_id: 'c1', updated_at: '2026-08-10' },
+    { id: 'rhetoric1', title: 'Rhetorical Situation · Practice Set', class_id: 'c1', updated_at: '2026-08-09' },
+    { id: 'cask1', title: 'The Cask of Amontillado · Irony', class_id: 'c1', updated_at: '2026-08-08' },
+    { id: 'unit4', title: 'Unit 04 · Argument & Evidence', class_id: 'c1', updated_at: '2026-07-20' },
+    { id: 'satire2', title: 'Satire · A Modest Proposal', class_id: 'c1', updated_at: '2026-07-18' },
   ],
   messages: {
     // The pre-fix shape: a plan was built, but no assistant message was ever
     // persisted, so nothing in the transcript names it. Only plans.chat_id knows.
     stranded: [
-      { role: 'user', content: 'plan week 12 on satire', plan_id: null },
+      { role: 'user', content: 'Build Week 12 around satire and social critique.', plan_id: null },
     ],
     seed1: [
-      { role: 'user', content: 'Plan Week 03 — voice and tone with "The Cask of Amontillado."' },
+      { role: 'user', content: 'Plan Week 03 around voice, tone, and rhetorical devices using "The Cask of Amontillado."' },
       {
         role: 'assistant',
         content: 'Four teaching days — Friday is a pep rally, so the exit assessment moved to Thursday.',
@@ -760,7 +760,7 @@ export function installMockApi() {
       // Stands in for the model: returns something that is NOT the raw prompt,
       // so a test can tell the suggestion apart from the placeholder.
       await wait(250)
-      return json({ title: 'Gatsby — symbolism week' })
+      return json({ title: 'The Great Gatsby · Symbolism & Motif' })
     }
     if (path === '/api/chats' && method === 'POST') {
       await wait(latency.createChat)
@@ -1108,7 +1108,7 @@ export function installMockApi() {
     }
     const lessonsMatch = path.match(/^\/api\/standards\/([^/]+)\/lessons$/)
     if (lessonsMatch && method === 'GET') {
-      return json([{ id: 'seed1', title: 'Week 03 — voice and tone' }])
+      return json([{ id: 'seed1', title: 'Week 03 · Voice, Tone & Rhetorical Devices' }])
     }
     if (path.startsWith('/api/standards/') && path !== '/api/standards/stats') {
       const code = decodeURIComponent(path.slice('/api/standards/'.length)).replace(/\s+/g, ' ').trim().toUpperCase()
