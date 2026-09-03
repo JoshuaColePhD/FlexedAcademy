@@ -673,11 +673,10 @@
     gap: var(--sp-3);
     overflow-x: auto;
     scroll-snap-type: x mandatory;
-    /* The rail owns horizontal swipes; the document body owns vertical ones.
-       Allowing pan-y here makes a vertical gesture that starts on a card get
-       consumed by this nested scroll region even though it has no vertical
-       overflow, so the rest of a long lesson plan never moves. */
-    touch-action: pan-x pinch-zoom;
+    /* This rail owns horizontal swipes, but it sits inside the document's
+       vertical scroller. Allow both axes so a vertical gesture that starts on
+       a card can continue up to .doc-body instead of feeling blocked. */
+    touch-action: pan-x pan-y pinch-zoom;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
   }
@@ -1149,9 +1148,9 @@
     background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
     background-attachment: local, local, scroll, scroll;
     /* This is a horizontal rail inside the document's vertical scroller.
-       Keep vertical touch movement available to .doc-body instead of letting
-       the nested rail consume a gesture that cannot move it vertically. */
-    touch-action: pan-x pinch-zoom;
+       Keep both axes available so vertical touch movement can continue to
+       .doc-body instead of feeling blocked when it starts over the table. */
+    touch-action: pan-x pan-y pinch-zoom;
     border: 1px solid var(--edge);
     border-radius: var(--r-md);
   }
