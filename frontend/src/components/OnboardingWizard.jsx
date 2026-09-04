@@ -7,8 +7,6 @@ import {
   CheckCircle2,
   FileText,
   Loader2,
-  Mic,
-  School as SchoolIcon,
   Sparkles,
   X,
 } from 'lucide-react'
@@ -22,65 +20,29 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { GRADES, gradeLabel, gradeSelectValue } from '../lib/grades'
 import { US_STATES } from '../lib/states'
+import { ONBOARDING_STEPS, derivePlan, nextStep, prevStep } from '../lib/onboardingPlan'
 import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
 import { CalendarBody } from './ArtifactDetailPanel'
 import { UploadDropzone } from './UploadDropzone'
 import { OnboardingStepRail } from './onboarding/OnboardingStepRail'
-import { OnboardingQuestion } from './onboarding/OnboardingQuestion'
+import { OnboardingQuestion, OnboardingChoiceLabel } from './onboarding/OnboardingQuestion'
 import { OnboardingActions } from './onboarding/OnboardingActions'
+import { AvatarPicker } from './AvatarPicker'
 // ClassDocuments used to live inside ClassPage.jsx and was re-exported from
 // there; it later moved out to its own file (components/ClassDocuments.jsx)
 // with nothing left behind at the old path, so this lazy import silently
-// resolved to `{ default: undefined }` and crashed the DocumentsStep below
+// resolved to `{ default: undefined }` and crashed the MaterialsStep below
 // with "Element type is invalid" the moment a teacher reached it — every
 // first-run account, since /welcome always leaves `documents` in the plan.
 const ClassDocuments = lazy(() => import('./ClassDocuments.jsx').then((module) => ({ default: module.ClassDocuments })))
 
 
-const TIPS = [
-  {
-    icon: Sparkles,
-    step: '01',
-    title: 'Start with a real teaching goal',
-    body: 'Start with a course, standard, text, or goal. FlexEd turns it into a workable plan.',
-  },
-  {
-    icon: SchoolIcon,
-    step: '02',
-    title: 'Keep the plan grounded',
-    body: 'Your state, calendar, materials, and school format keep each plan connected to your work.',
-  },
-  {
-    icon: Mic,
-    step: '03',
-    title: 'Shape it as you teach',
-    body: 'Ask for a revision, more support, or a fresh approach whenever you need one.',
-  },
-]
-
 // Keep the onboarding gate honest about what the current standards catalog
 // can actually support. Add a state code here when its standards are ingested;
 // the UI will then enable it automatically in the same alphabetical list.
 const INGESTED_STANDARDS_STATES = new Set(['AL'])
-
-/* One label per plan key, for the step rail.
- *
- * A short noun, not a sentence: it sits beside a question that already asks
- * the sentence, and the rail column is 11rem wide. These are the CURRENT plan
- * keys; when the flow re-sequencing lands they come from
- * lib/onboardingPlan.js's ONBOARDING_STEPS instead, which is where the labels
- * for the new keys already live.
- */
-const STEP_LABELS = {
-  welcome: 'State',
-  school: 'School',
-  class: 'Course',
-  template: 'Format',
-  documents: 'Materials',
-  tips: 'Review',
-}
 
 /* Direction-aware, and actually wired up this time.
  *
@@ -132,8 +94,17 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   /* Tracked by KEY, not by index. The step list is built from what this
    * account still has to answer (see `plan` below), so it isn't a fixed
    * length — and an index into a list that can grow or shrink underneath you
-   * is how a wizard lands someone on the wrong screen. A key stays put. */
-  const [stepKey, setStepKey] = useState('welcome')
+   * is how a wizard lands someone on the wrong screen. A key stays put.
+   *
+   * Starts null rather than at a hardcoded first step. It used to be
+   * useState('welcome'), and when the steps were renamed that literal stopped
+   * matching any branch of the dispatch below — which fell through to the
+   * FINISH screen. So the flow rendered "your workspace is ready" for one
+   * frame before the effect corrected it, and because AnimatePresence
+   * mode="wait" holds an exiting child until its animation completes, that
+   * wrong screen was what a teacher actually sat looking at. Deriving it means
+   * there is no literal to fall out of step with the plan. */
+  const [stepKey, setStepKey] = useState(null)
   // +1/-1, read by the step's own enter animation (onboarding-step-enter,
   // base.css) to decide which side it slides in from — forward feels like
   // moving on, back feels like undoing, and a single direction for both
@@ -162,8 +133,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   // Confirm-class step
   const [subject, setSubject] = useState(cls?.subject || '')
   const [grade, setGrade] = useState(gradeSelectValue(cls?.grade))
-  const [savingClass, setSavingClass] = useState(false)
-  const [classError, setClassError] = useState(false)
+  const [savingCourse, setSavingCourse] = useState(false)
+  const [courseError, setCourseError] = useState(false)
 
   const [finishing, setFinishing] = useState(false)
 
@@ -184,14 +155,17 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     queryFn: () => api.listSchoolTemplates(school),
     enabled: open && hasChosenSchool(school),
   })
-  const schoolTemplates = schoolTemplatesData?.templates || []
+  /* Memoized because the plan derivation takes it as a dependency. `?? []`
+     inline produced a brand-new array identity every render, so that useMemo
+     never memoized anything and oxlint flagged the dependency as a lie. */
+  const schoolTemplates = useMemo(() => schoolTemplatesData?.templates || [], [schoolTemplatesData])
   const [selectingTemplateId, setSelectingTemplateId] = useState(null)
 
   // Reset to a clean first step every time this opens on a (possibly
   // different) class, rather than resuming wherever a previous open left off.
   useEffect(() => {
     if (!open) return
-    setStepKey(cls?.state ? livePlan.find((candidate) => candidate !== 'welcome') || 'done' : 'welcome')
+    setStepKey(livePlan[0])
     setDirection(1)
     setSchool(cls?.school || '')
     setTemplateFile(null)
@@ -228,8 +202,6 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   // format, not when the review status happens to lag behind the builder.
   const schoolHasUsableTemplate = hasUsableSchoolTemplate(selectedSchool)
   const schoolNeedsTemplate = chosenSchool && selectedSchool && !schoolHasUsableTemplate
-  const schoolHasMultipleTemplates = schoolTemplates.length > 1
-  const schoolTemplateSelectionStep = chosenSchool && (schoolTemplatesLoading || schoolHasMultipleTemplates)
 
   /* Which steps this account actually has to sit through. The page variant is
    * the first-run setup, so it always includes a course confirmation even if
@@ -238,24 +210,46 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
    * language; the modal variant used from Settings still skips a completed
    * course choice and only shows genuinely unfinished setup.
    */
-  /* Live, not stateful — computed fresh every render from the current
-   * school/schoolNeedsTemplate/subject rather than committed via an effect.
-   * `schools` is an async query, so schoolNeedsTemplate can flip from false
-   * to true partway through a render — a version of this that stored the
-   * plan in state and recomputed it from a useEffect lagged one render
-   * behind that flip (effects commit after the render that triggered them),
-   * which was how the welcome screen's old step-count copy briefly showed a
-   * stale number before correcting itself. Computing it inline avoids that
-   * lag entirely, independent of whether anything on screen still displays
-   * a count. */
-  const livePlan = useMemo(() => {
-    const next = cls?.state ? [] : ['welcome']
-    if (!chosenSchool) next.push('school')
-    if (variant === 'page' || !subject) next.push('class')
-    if (!chosenSchool || schoolNeedsTemplate || schoolTemplateSelectionStep) next.push('template')
-    next.push('documents', 'tips', 'done')
-    return next
-  }, [chosenSchool, schoolNeedsTemplate, schoolTemplateSelectionStep, subject, cls?.state, variant])
+  /* Live, not stateful, and now derived in ONE place — lib/onboardingPlan.js,
+   * which scripts/test-onboarding-steps.mjs imports directly. It used to be
+   * computed here and re-implemented in that test, which is how the two came
+   * to disagree while CI stayed green.
+   *
+   * Still called through useMemo rather than committed by an effect. `schools`
+   * is an async query, so schoolNeedsTemplate can flip from false to true
+   * partway through a render; a version of this that stored the plan in state
+   * and recomputed it from a useEffect lagged one render behind that flip
+   * (effects commit after the render that triggered them), which was how the
+   * welcome screen's old step-count copy briefly showed a stale number before
+   * correcting itself.
+   *
+   * firstRun maps to the page variant, which IS the first-run route
+   * (OnboardingSetupPage); Settings' "take the tour again" opens the modal and
+   * skips the avatar question. hasMaterials is false for now: which documents
+   * a class already has is ClassDocuments' own query, not this component's, so
+   * the step is always offered and is skippable rather than being hidden on
+   * data this component doesn't hold.
+   */
+  const livePlan = useMemo(
+    () =>
+      derivePlan({
+        firstRun: variant === 'page',
+        subject,
+        grade,
+        state,
+        school,
+        schools,
+        schoolTemplates,
+        schoolTemplatesLoading,
+        calendarStatus: selectedSchool?.has_pending_calendar
+          ? 'pending'
+          : selectedSchool?.has_calendar
+            ? 'confirmed'
+            : 'none',
+        hasMaterials: false,
+      }),
+    [variant, subject, grade, state, school, schools, schoolTemplates, schoolTemplatesLoading, selectedSchool],
+  )
 
   /* Frozen the moment the teacher leaves welcome — once they've started
    * moving through the flow, the shape must not shift under them even if
@@ -263,7 +257,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const [frozenPlan, setFrozenPlan] = useState(null)
   useEffect(() => {
     if (!open) { setFrozenPlan(null); return }
-    if (stepKey === 'welcome') { setFrozenPlan(null); return }
+    if (stepKey === plan[0]) { setFrozenPlan(null); return }
     setFrozenPlan((prev) => prev || livePlan)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stepKey])
@@ -273,12 +267,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setDirection(plan.indexOf(next) > plan.indexOf(stepKey) ? 1 : -1)
     setStepKey(next)
   }
-  const step = (offset) => {
-    const i = plan.indexOf(stepKey)
-    return plan[Math.min(Math.max(i + offset, 0), plan.length - 1)]
-  }
-  const goNext = () => goTo(step(1))
-  const goBack = () => goTo(step(-1))
+  const goNext = () => goTo(nextStep(plan, stepKey))
+  const goBack = () => goTo(prevStep(plan, stepKey))
 
   const saveState = async () => {
     if (!state) {
@@ -310,7 +300,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
      them were dead: five step components passed currentStep/totalSteps into a
      StepHeader signature that never accepted them, so they rendered nothing at
      all while looking like they were doing the work. */
-  const progressSteps = plan.filter((key) => key !== 'done')
+  const progressSteps = plan.filter((key) => key !== 'preview')
 
   const saveSchool = async () => {
     setSavingSchool(true)
@@ -386,13 +376,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     }
   }
 
-  const saveClass = async () => {
+  const saveCourse = async () => {
     if (!subject) {
-      setClassError(true)
+      setCourseError(true)
       return
     }
-    setClassError(false)
-    setSavingClass(true)
+    setCourseError(false)
+    setSavingCourse(true)
     try {
       const patch = {}
       if (subject !== cls?.subject) patch.subject = subject
@@ -405,7 +395,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     } catch (err) {
       toast.apiError('Could not save that', err)
     } finally {
-      setSavingClass(false)
+      setSavingCourse(false)
     }
   }
 
@@ -441,7 +431,9 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   if (!mounted || !cls) return null
 
-  const railSteps = progressSteps.map((key) => ({ key, label: STEP_LABELS[key] || key }))
+  /* Labels come from lib/onboardingPlan.js, beside the step order and the
+     questions, so a renamed step cannot end up with a stale rail label. */
+  const railSteps = progressSteps.map((key) => ({ key, label: ONBOARDING_STEPS[key]?.label || key }))
 
   const card = (
     <>
@@ -475,9 +467,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
           {/* data-fill hands the card's own height down to a step whose
               content is itself a scroll region (the course browser), so there
               is only ever one scrollbar. */}
-          <div className="onboarding-content" data-fill={stepKey === 'class' ? 'true' : undefined}>
+          <div className="onboarding-content" data-fill={stepKey === 'course' ? 'true' : undefined}>
 
             <AnimatePresence mode="wait" custom={direction} initial={false}>
+              {/* Keyed on stepKey, so a null key mounts nothing at all rather
+                  than an empty animated wrapper that mode="wait" would then
+                  have to wait for. */}
+              {stepKey ? (
               <motion.div
                 key={stepKey}
                 custom={direction}
@@ -486,8 +482,10 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 animate="center"
                 exit="exit"
               >
-            {stepKey === 'welcome' ? (
-              <WelcomeStep
+            {stepKey === 'avatar' ? (
+              <AvatarStep onNext={goNext} onSkip={goNext} />
+            ) : stepKey === 'state' ? (
+              <StateStep
                 state={state}
                 setState={(value) => { setState(value); setStateError(false) }}
                 stateError={stateError}
@@ -511,9 +509,17 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 saving={savingSchool}
                 onBack={goBack}
                 onNext={saveSchool}
+                onSkip={goNext}
               />
-            ) : stepKey === 'template' ? (
-              <TemplateStep
+            ) : stepKey === 'calendar' ? (
+              <CalendarStep
+                school={school}
+                selectedSchool={selectedSchool}
+                onBack={goBack}
+                onNext={goNext}
+              />
+            ) : stepKey === 'format' ? (
+              <FormatStep
                 schoolName={selectedSchool?.name || school}
                 templates={schoolTemplates}
                 templatesLoading={schoolTemplatesLoading}
@@ -552,32 +558,50 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                   toast.success('Format confirmed', 'This format will be used for new plans.')
                 }}
               />
-            ) : stepKey === 'class' ? (
-              <ClassStep
+            ) : stepKey === 'course' ? (
+              <CourseStep
                 subject={subject}
                 /* Clears the error, and deliberately does NOT advance.
                    This used to be `onChange={(v) => { setSubject(v); if (error) onNext() }}`
-                   inside ClassStep, where onNext is saveClass — which closes
+                   inside CourseStep, where onNext is saveCourse — which closes
                    over the CURRENT render's `subject`. So picking a course
-                   while the error was showing called saveClass() with subject
+                   while the error was showing called saveCourse() with subject
                    still '' and simply re-set the same error, which read as the
                    click doing nothing at all. Auto-advancing on a click inside
                    a browse list is also hostile on its own: a teacher scanning
                    courses got teleported forward by a misclick. Same wrapper
                    shape as setState above. */
-                setSubject={(value) => { setSubject(value); setClassError(false) }}
+                setSubject={(value) => { setSubject(value); setCourseError(false) }}
                 grade={grade}
                 setGrade={setGrade}
                 frameworks={frameworks}
-                saving={savingClass}
-                error={classError}
+                saving={savingCourse}
+                error={courseError}
                 onBack={goBack}
-                onNext={saveClass}
+                onNext={saveCourse}
               />
-            ) : stepKey === 'documents' ? (
-              <DocumentsStep cls={cls} onBack={goBack} onNext={goNext} />
-            ) : stepKey === 'tips' ? (
-              <TipsStep
+            ) : stepKey === 'materials' ? (
+              <MaterialsStep cls={cls} onBack={goBack} onNext={goNext} />
+            ) : stepKey === 'preview' ? (
+              /* Explicitly matched, not a trailing `else`. As a fallthrough
+                 this branch rendered the finish screen for ANY key it didn't
+                 recognise, so a stale or renamed key told the teacher setup
+                 was complete when it wasn't — the exact "lands on the wrong
+                 screen" failure the key-based stepping above exists to
+                 prevent. An unrecognised key now renders nothing and the
+                 effect that owns stepKey corrects it.
+
+                 The `tips` step is gone. It asked nothing, sat between the
+                 work and the finish, and rendered the same five-field summary
+                 this screen renders again immediately afterwards with
+                 different CSS and a different field order. Its summary — the
+                 better of the two, because it had per-field Edit links — is
+                 now this screen's receipt, and its three static tips belong in
+                 the composer's first-session empty state rather than on a
+                 slide nobody reads twice. */
+              <PreviewStep
+                finishing={finishing}
+                onFinish={finish}
                 stateLabel={US_STATES.find(([value]) => value === state)?.[1]}
                 schoolName={selectedSchool?.name || school}
                 courseName={frameworks.find((framework) => framework.id === subject)?.label || subject}
@@ -586,20 +610,10 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 editableSteps={plan}
                 onEdit={(target) => { if (plan.includes(target)) goTo(target) }}
                 onBack={goBack}
-                onNext={goNext}
               />
-            ) : (
-              <DoneStep
-                finishing={finishing}
-                onFinish={finish}
-                stateLabel={US_STATES.find(([value]) => value === state)?.[1]}
-                schoolName={selectedSchool?.name || school}
-                courseName={frameworks.find((framework) => framework.id === subject)?.label || subject}
-                gradeName={gradeLabel(grade)}
-                formatName={schoolHasUsableTemplate || templatePhase === 'confirmed' ? 'School format' : 'Add later'}
-              />
-            )}
+            ) : null}
               </motion.div>
+              ) : null}
             </AnimatePresence>
           </div>
         </div>
@@ -656,7 +670,34 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   )
 }
 
-function WelcomeStep({ state, setState, stateError, saving, onNext }) {
+/* The opener: the one question in setup with no wrong answer.
+ *
+ * It goes first deliberately. Every other step asks the teacher for something
+ * that feels like work — where they teach, which standards, their district's
+ * document — and the flow used to lead with the weakest of them, a list where
+ * exactly one row was clickable. Picking a face costs nothing, cannot be got
+ * wrong, and the result shows up immediately in the account menu, so the first
+ * thing setup does is give something back.
+ *
+ * Renders the shared AvatarPicker, which owns the optimistic write, so there
+ * is nothing to save on Continue — the pick has already landed by then. Hence
+ * no `saving` state and no onNext handler of its own.
+ */
+function AvatarStep({ onNext, onSkip }) {
+  return (
+    <div>
+      <OnboardingQuestion
+        question={ONBOARDING_STEPS.avatar.title}
+        lead="It shows up next to your name. You can change it any time in Settings."
+      />
+      <OnboardingChoiceLabel>Choose an icon</OnboardingChoiceLabel>
+      <AvatarPicker size="lg" />
+      <OnboardingActions onNext={onNext} onSkip={onSkip} skipLabel={ONBOARDING_STEPS.avatar.skipLabel} />
+    </div>
+  )
+}
+
+function StateStep({ state, setState, stateError, saving, onNext }) {
   const stateListRef = useRef(null)
   const availableStates = US_STATES
   const firstAvailableStateIndex = 0
@@ -812,6 +853,7 @@ function SchoolStep({
   saving,
   onBack,
   onNext,
+  onSkip,
 }) {
   return (
     <div>
@@ -828,23 +870,62 @@ function SchoolStep({
         emptyOption={{ value: '', label: 'Choose a school' }}
         inputClassName="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
       />
-      {school && schools.find(s => s.id === school)?.has_pending_calendar ? (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
-          <h3 className="text-sm font-medium text-ink mb-2">Look at that! A colleague already did the heavy lifting and set up the calendar. Look right to you?</h3>
-          <PendingCalendarReview schoolId={school} />
-        </motion.div>
-      ) : school && schools.find(s => s.id === school)?.has_calendar ? (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
-          <h3 className="text-sm font-medium text-ink mb-2">School Calendar</h3>
-          <ConfirmedCalendarReview schoolId={school} />
-        </motion.div>
-      ) : null}
-<OnboardingActions onNext={onNext} busy={saving} onBack={onBack} />
+      <OnboardingActions
+        onNext={onNext}
+        busy={saving}
+        onBack={onBack}
+        onSkip={onSkip}
+        skipLabel={ONBOARDING_STEPS.school.skipLabel}
+      />
     </div>
   )
 }
 
-function TemplateStep({
+/* The school year, on its own screen.
+ *
+ * This used to render underneath the school picker, sharing its Continue
+ * button — two decisions on one screen, with the more consequential one
+ * visually subordinate. A wrong calendar silently mis-dates every plan for a
+ * year, so it gets asked rather than shown in passing.
+ *
+ * It is also the only place in the product that can tell a teacher the truth
+ * about the generic school. backend/schoolcal.py's NO_CALENDAR_SCHOOL_ID
+ * returns week NUMBERS with no dates attached to any of them, and until now
+ * that fact lived only in a code comment — a teacher could finish setup on the
+ * generic school and never be told their plans would have no dates on them.
+ */
+function CalendarStep({ school, selectedSchool, onBack, onNext }) {
+  const pending = selectedSchool?.has_pending_calendar
+  const confirmed = selectedSchool?.has_calendar
+
+  return (
+    <div>
+      <OnboardingQuestion
+        question={ONBOARDING_STEPS.calendar.title}
+        lead={
+          pending
+            ? 'A colleague at your school already set this up. Worth a look before we date your plans with it.'
+            : confirmed
+              ? 'This is what your plans will be dated against.'
+              : "We don't have a calendar for your school yet, so plans will be labelled by week number — Week 1, Week 2 — with no dates attached."
+        }
+      />
+      {pending ? (
+        <PendingCalendarReview schoolId={school} />
+      ) : confirmed ? (
+        <ConfirmedCalendarReview schoolId={school} />
+      ) : null}
+      <OnboardingActions
+        onNext={onNext}
+        onBack={onBack}
+        onSkip={onNext}
+        skipLabel={ONBOARDING_STEPS.calendar.skipLabel}
+      />
+    </div>
+  )
+}
+
+function FormatStep({
   schoolName,
   templates,
   templatesLoading,
@@ -1181,7 +1262,7 @@ function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, on
     </div>
   )
 }
-function ClassStep({ subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
+function CourseStep({ subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
   return (
     <div className="onboarding-class-step">
       <OnboardingQuestion
@@ -1227,7 +1308,7 @@ function ClassStep({ subject, setSubject, grade, setGrade, frameworks, saving, e
     </div>
   )
 }
-function DocumentsStep({ cls, onBack, onNext }) {
+function MaterialsStep({ cls, onBack, onNext }) {
   return (
     <div>
       <OnboardingQuestion
@@ -1250,80 +1331,25 @@ function DocumentsStep({ cls, onBack, onNext }) {
   )
 }
 
-function TipsStep({ stateLabel, schoolName, courseName, gradeName, formatName, editableSteps = [], onEdit, onBack, onNext }) {
-  const editButton = (target, label) => editableSteps.includes(target) ? (
-    <button type="button" className="onboarding-setup-summary-edit" onClick={() => onEdit(target)}>{label || 'Edit'}</button>
-  ) : null
-
-  return (
-    <div>
-      <OnboardingQuestion
-        question="You’re ready to start"
-        body="Your workspace is ready. Here’s how to turn it into your next plan."
-      />
-      <div className="onboarding-launch-layout">
-        <section className="onboarding-setup-summary" aria-label="Your setup summary">
-          <div className="onboarding-setup-summary-heading">
-            <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-faint">Workspace</span>
-            <span className="onboarding-setup-summary-ready">Ready</span>
-          </div>
-          <p className="onboarding-setup-summary-copy">FlexEd will use these details as you build new plans.</p>
-          <div className="onboarding-setup-summary-grid">
-            <div className="onboarding-setup-summary-item"><span>State</span><strong>{stateLabel || 'Not set yet'}</strong>{editButton('welcome')}</div>
-            <div className="onboarding-setup-summary-item"><span>School</span><strong>{schoolName || 'Not set yet'}</strong>{editButton('school')}</div>
-            <div className="onboarding-setup-summary-item"><span>Course</span><strong>{courseName || 'Not set yet'}</strong>{editButton('class')}</div>
-            <div className="onboarding-setup-summary-item"><span>Grade</span><strong>{gradeName || 'Not set yet'}</strong>{editButton('class')}</div>
-            <div className="onboarding-setup-summary-item"><span>Format</span><strong>{formatName}</strong>{editButton('template')}</div>
-          </div>
-          <p className="onboarding-setup-summary-footer">You can edit any of this later in Settings.</p>
-        </section>
-        <div className="onboarding-launch-guide">
-          <div className="onboarding-launch-guide-heading">
-            <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-faint">Your next move</span>
-            <span className="text-xs text-ink-muted">Three simple steps</span>
-          </div>
-          <motion.ul
-            initial="hidden"
-            animate="visible"
-            variants={{ visible: { transition: { staggerChildren: 0.045 } } }}
-            className="onboarding-next-steps"
-          >
-            {TIPS.map((tip) => (
-              <motion.li
-                key={tip.title}
-                variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
-                transition={{ duration: 0.22 }}
-                className={`onboarding-next-step${tip.step === '01' ? ' is-primary' : ''}`}
-              >
-                <div className="onboarding-next-step-number" aria-hidden="true">{tip.step}</div>
-                <div className="onboarding-next-step-icon">
-                  <tip.icon size={17} className="text-accent-text" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink">{tip.title}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-ink-muted">{tip.body}</p>
-                </div>
-              </motion.li>
-            ))}
-          </motion.ul>
-          <div className="onboarding-next-note">
-            <Sparkles size={15} aria-hidden="true" />
-            <span><strong>Try this next:</strong> “Plan a week for my next unit using my course standards.”</span>
-          </div>
-        </div>
-      </div>
-      <OnboardingActions onNext={onNext} onBack={onBack} nextLabel="Finish setup" />
-    </div>
-  )
-}
-
-function DoneStep({ finishing, onFinish, stateLabel, schoolName, courseName, gradeName, formatName }) {
+/* The closing screen, and now the only place the setup summary is rendered.
+ *
+ * There used to be two: the `tips` step drew a five-field summary with
+ * per-field Edit links, and this screen drew the same five values again
+ * immediately afterwards as a <dl>, in a different order, with different CSS.
+ * Two authors, no shared source. The version with the Edit links won, because
+ * a summary you cannot act on is decoration.
+ *
+ * Field order follows the order the questions were asked, which the old <dl>
+ * did not — it led with school and buried course last, so the receipt didn't
+ * read as a record of what had just happened.
+ */
+function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, gradeName, formatName, editableSteps = [], onEdit, onBack }) {
   const setupItems = [
-    { key: 'school', label: 'Your school', value: schoolName || 'Not set yet' },
-    { key: 'state', label: 'State', value: stateLabel || 'Not set yet' },
-    { key: 'grade', label: 'Grade', value: gradeName || 'Not set yet' },
-    { key: 'format', label: 'School format', value: formatName },
-    { key: 'course', label: 'Course', value: courseName || 'Not set yet' },
+    { key: 'state', label: 'State', value: stateLabel || 'Not set yet', edit: 'state' },
+    { key: 'course', label: 'Course', value: courseName || 'Not set yet', edit: 'course' },
+    { key: 'grade', label: 'Grade', value: gradeName || 'Not set yet', edit: 'course' },
+    { key: 'school', label: 'Your school', value: schoolName || 'Not set yet', edit: 'school' },
+    { key: 'format', label: 'School format', value: formatName, edit: 'format' },
   ]
 
   return (
@@ -1357,7 +1383,21 @@ function DoneStep({ finishing, onFinish, stateLabel, schoolName, courseName, gra
         {setupItems.map((item) => (
           <div key={item.key} className="onboarding-final-setup-item">
             <dt>{item.label}</dt>
-            <dd>{item.value}</dd>
+            <dd>
+              {item.value}
+              {/* Only offered for a step this account actually saw — the plan
+                  is 4-7 steps, so an Edit link to a step that was never in it
+                  would jump to a screen the teacher has no context for. */}
+              {editableSteps.includes(item.edit) ? (
+                <button
+                  type="button"
+                  className="onboarding-setup-summary-edit"
+                  onClick={() => onEdit(item.edit)}
+                >
+                  Edit<span className="sr-only"> {item.label}</span>
+                </button>
+              ) : null}
+            </dd>
           </div>
         ))}
       </dl>
@@ -1373,8 +1413,24 @@ function DoneStep({ finishing, onFinish, stateLabel, schoolName, courseName, gra
         {!finishing ? <ArrowRight size={17} className="ml-2" aria-hidden="true" /> : null}
       </button>
 
+      {/* The one line worth keeping from the deleted `tips` step. That step
+          showed three abstract tips on a screen with nothing to act on; a
+          concrete prompt here, one click from the composer, is the same advice
+          at the moment it can actually be used. The other two tips are in git
+          history — a proper first-session suggestion belongs in
+          lib/contextualSuggestions.js, which has its own priority/context
+          contract and five consumers, so it is a separate piece of work rather
+          than a paste. */}
+      <div className="onboarding-next-note">
+        <Sparkles size={15} aria-hidden="true" />
+        <span><strong>Try this first:</strong> “Plan a week for my next unit using my course standards.”</span>
+      </div>
+
       <div className="onboarding-final-footer">
         <span>Your setup is saved. You can change anything later in Settings.</span>
+        {onBack ? (
+          <button type="button" className="onboarding-quiet" onClick={onBack}>Back</button>
+        ) : null}
       </div>
     </motion.div>
   )

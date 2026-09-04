@@ -576,7 +576,14 @@ export function installMockApi() {
       custom_instructions: state.me.custom_instructions,
       output_length: state.me.output_length,
       school: state.me.school,
+      /* Mirrors _public_user (backend/routes/auth.py). currentUser() builds an
+         explicit object rather than spreading state.me, so a field added to
+         the fixture is invisible until it is listed here — which is why the
+         avatar never appeared in the account menu in the preview. */
+      avatar: state.me.avatar ?? null,
       onboarding_seen_at: state.me.onboarding_seen_at,
+      onboarding_state: state.me.onboarding_state || 'not_started',
+      onboarding_step: state.me.onboarding_step ?? null,
       email_verified: state.me.email_verified,
       trial_started_at: state.me.trial_started_at,
       read_only: Boolean(state.me.read_only),
@@ -668,6 +675,39 @@ export function installMockApi() {
     if (path === '/api/auth/onboarding-seen' && method === 'POST') {
       state.me.onboarding_seen_at = new Date().toISOString()
       return json(currentUser())
+    }
+    /* Returns the full public user, like the real route does, because
+       AvatarPicker's mutation replaces its optimistic guess with the response
+       rather than refetching /api/auth/me. Without this handler the request
+       fell through, the optimistic update rolled back, and onboarding's first
+       step was unusable in the preview — every click reverted to the
+       initials. */
+    if (path === '/api/auth/avatar' && method === 'PUT') {
+      state.me.avatar = body?.avatar ?? null
+      return json(currentUser())
+    }
+    /* Progress and funnel writes (backend/routes/onboarding.py). Both are
+       deliberately fire-and-forget on the client, so the mock only has to not
+       404 -- but recording them means the preview exercises the same code path
+       production does. */
+    if (path === '/api/onboarding/progress' && method === 'POST') {
+      if (body?.step) {
+        state.me.onboarding_step = body.step
+        if (state.me.onboarding_state !== 'completed') state.me.onboarding_state = 'in_progress'
+      }
+      if (body?.state) {
+        state.me.onboarding_state = body.state
+        state.me.onboarding_seen_at = new Date().toISOString()
+        if (body.state === 'completed') state.me.onboarding_step = null
+      }
+      return json({
+        onboarding_state: state.me.onboarding_state,
+        onboarding_step: state.me.onboarding_step,
+        onboarding_seen_at: state.me.onboarding_seen_at,
+      })
+    }
+    if (path === '/api/onboarding/events' && method === 'POST') {
+      return json({ recorded: body?.events?.length || 0, dropped: 0 })
     }
     if (path === '/api/auth/forgot-password') return json({ ok: true })
     if (path === '/api/auth/reset-password') return json({ id: 'u1', name: 'Josh Cole', email: 'jc@x.org', is_admin: true, has_password: true, entitlement: state.entitlement })

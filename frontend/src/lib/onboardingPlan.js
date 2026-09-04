@@ -148,7 +148,7 @@ export const ONBOARDING_EVENTS = Object.freeze({
  *  nothing saying so. See lib/schools.js.
  */
 export function derivePlan({
-  hasAvatar = false,
+  firstRun = false,
   subject = null,
   grade = null,
   state = null,
@@ -172,7 +172,20 @@ export function derivePlan({
   const schoolTemplateSelectionStep = chosenSchool && (schoolTemplatesLoading || schoolTemplates.length > 1)
 
   const needed = {
-    avatar: !hasAvatar,
+    /* Asked on first run and never again -- NOT derived from users.avatar,
+       and that distinction is the whole reason `firstRun` exists as a
+       parameter. "Initials" is a legitimate, deliberate choice, and it stores
+       avatar: null, which is byte-for-byte the same as "never been asked". A
+       data-driven rule would therefore re-ask the one teacher who had already
+       answered most clearly.
+    
+       This is not the `variant` parameter coming back. That one described
+       PRESENTATION (page vs. modal) and was being used to force a duplicate
+       course step; this describes whether the account is being set up for the
+       first time, which genuinely changes what is worth asking. Re-running
+       setup from Settings skips it, because by then the teacher has an avatar
+       they chose and a menu to change it in. */
+    avatar: firstRun,
     course: !subject || !grade,
     state: !state,
     school: !chosenSchool,
