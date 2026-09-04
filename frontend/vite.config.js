@@ -36,6 +36,13 @@ const previewDeepLinks = {
 export default defineConfig({
   plugins: [react(), previewDeepLinks],
   build: {
+    // Render's production build hit rolldown's default native "oxc" minifier
+    // with an opaque, message-less binding crash (aggregateBindingErrorsIntoJsError,
+    // no per-file detail) that a beefier local machine never reproduced —
+    // esbuild's minifier is a separate, more battle-tested native pass, and
+    // swapping to it is the cheapest way to tell a resource/native-binary
+    // problem apart from a real source error.
+    minify: 'esbuild',
     // Keep the large interaction libraries cacheable independently from the
     // route shell. A change to ChatPage should not invalidate React, motion,
     // or markdown for every teacher returning to the app.
