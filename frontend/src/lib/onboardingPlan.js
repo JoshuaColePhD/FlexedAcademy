@@ -34,8 +34,24 @@ export const STEP_ORDER = [
   'school',
   'calendar',
   'format',
-  'preview',
   'materials',
+  /* Last, and it has to be.
+   *
+   * This sat before `materials` first, because the intent was to put the
+   * payoff ahead of the flow's biggest upload ask — asking for a teacher's
+   * pacing guide lands very differently once the product has proved itself.
+   * But `preview` is also the CLOSING screen (the old `done` step was merged
+   * into it, since the two were rendering the same summary twice), and its
+   * primary button is what records completion. A finish screen in the middle
+   * made `materials` unreachable: nextStep('format') returned 'preview', the
+   * flow ended, and the rail cheerfully showed a Materials step nobody could
+   * get to.
+   *
+   * When the real payoff screen lands — the standards receipt, quoting the
+   * teacher's own ingested standards back to them — it goes in HERE, as its
+   * own step before `materials`, which is what that ordering was reaching
+   * for. It is not this screen. */
+  'preview',
 ]
 
 /* Per-step metadata. `label` is what the step rail renders — a short noun, not

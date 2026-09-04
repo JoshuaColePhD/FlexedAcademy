@@ -13,12 +13,13 @@ import {
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { deferOnboarding } from '../lib/onboardingWizardBus'
-import { hasChosenSchool, hasUsableSchoolTemplate } from '../lib/schools'
+import { GENERIC_SCHOOL, hasChosenSchool, hasUsableSchoolTemplate } from '../lib/schools'
 import { useAuth } from '../lib/authContext'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { GRADES, gradeLabel, gradeSelectValue } from '../lib/grades'
+import { inferGradeFromQuery, matchesFramework } from '../lib/frameworks'
 import { US_STATES } from '../lib/states'
 import { ONBOARDING_STEPS, derivePlan, nextStep, prevStep } from '../lib/onboardingPlan'
 import { FrameworkPicker } from './FrameworkPicker'
@@ -85,6 +86,25 @@ const STEP_VARIANTS = {
  * dialog role, nothing to click past to reach a half-set-up class.
  */
 export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
+  /* The class may not exist yet.
+   *
+   * /welcome used to collect course + grade and POST /api/classes before this
+   * component ever mounted, which is why it could assume a class and bail
+   * without one. It also meant the teacher answered course and grade there and
+   * then answered them again here, because the plan derivation branched on
+   * `variant === 'page'` and pushed the course step unconditionally for the
+   * first run. Now there is one flow: the course step creates the class.
+   *
+   * Held in state rather than pushed back up through a callback and a route
+   * change. Navigating to /c/:id/onboarding at this point would REMOUNT the
+   * wizard on a different Route and reset stepKey to the plan's first step,
+   * throwing away the answers the teacher had just given. The URL stays
+   * /onboarding for the whole first run; a reload mid-flow is handled by the
+   * path that already existed for it — RootRedirect sees a class, sends them
+   * into it, and ClassRoutes' guard sends them back here to resume, which is
+   * safe because every step saves before it advances. */
+  const [createdClass, setCreatedClass] = useState(null)
+  const activeClass = cls || createdClass
   const toast = useToast()
   const qc = useQueryClient()
   const { user, refresh } = useAuth()
@@ -132,9 +152,18 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   // Confirm-class step
   const [subject, setSubject] = useState(cls?.subject || '')
-  const [grade, setGrade] = useState(gradeSelectValue(cls?.grade))
+  /* '' -- not DEFAULT_GRADE -- for a class that has no grade yet.
+     gradeSelectValue falls back to '11' when its second argument is omitted,
+     so this used to open on 11th for a brand-new class and a K-5 teacher who
+     never touched the select got a class silently grounded in grade 11
+     language. routes/classes.py defaults the same way and prompts.py's
+     grounding_constraints uses grade directly to decide which standards are
+     eligible at all, so nothing downstream would have caught it. Empty means
+     unchosen, saveCourse refuses to continue without it, and it doubles as
+     "all grades" for the course filter below. */
+  const [grade, setGrade] = useState(gradeSelectValue(cls?.grade, ''))
   const [savingCourse, setSavingCourse] = useState(false)
-  const [courseError, setCourseError] = useState(false)
+  const [courseError, setCourseError] = useState(null)
 
   const [finishing, setFinishing] = useState(false)
 
@@ -165,9 +194,23 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   // different) class, rather than resuming wherever a previous open left off.
   useEffect(() => {
     if (!open) return
+    /* The class this wizard just created, arriving back through the prop, is
+       not a different class — and resetting for it wipes out the answers that
+       created it.
+    
+       Worth spelling out, because the obvious fix isn't one. Keying this
+       effect on `cls?.id` instead of the active class looks sufficient, but
+       saveCourse calls refresh() and invalidates qk.classes, so
+       OnboardingSetupPage re-reads and hands the brand-new class down as
+       `cls` a beat later. The prop changes from undefined to the new id either
+       way, the effect fires, stepKey resets to the plan's first step, and the
+       teacher lands back on the profile question with a class they can't see
+       they already made. Compare against what we created, not against
+       whether anything changed. */
+    if (cls?.id && cls.id === createdClass?.id) return
     setStepKey(livePlan[0])
     setDirection(1)
-    setSchool(cls?.school || '')
+    setSchool(activeClass?.school || '')
     setTemplateFile(null)
     setTemplateUrl('')
     setBlankTemplateAttested(false)
@@ -176,14 +219,25 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setTemplateFindings([])
     setTemplateAnalysisStatus(null)
     setSelectingTemplateId(null)
-    setState(cls?.state || '')
+    setState(activeClass?.state || '')
     setStateError(false)
-    setSubject(cls?.subject || '')
-    setGrade(gradeSelectValue(cls?.grade))
+    setSubject(activeClass?.subject || '')
+    setGrade(gradeSelectValue(activeClass?.grade, ''))
+    /* Keyed on the class this wizard was OPENED with, not on activeClass.
+       activeClass changes the moment the course step creates one, and this
+       effect resets stepKey to the plan's first step — so on the very first
+       run, creating the class threw the teacher straight back to the profile
+       question with their answers re-read from the class they had just made.
+       "Opened on a different class" and "created a class mid-flow" are not the
+       same event, and only the first one should reset anything. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cls?.id])
 
-  useFocusTrap(dialogRef, { active: open, trap: true, onEscape: onClose })
+  /* Wrapped, not passed directly: useFocusTrap hands onEscape the keyboard
+     event, and onClose's first parameter is now the class the flow finished
+     with — so a bare reference made Escape look like "closed with this
+     KeyboardEvent as your class". */
+  useFocusTrap(dialogRef, { active: open, trap: true, onEscape: () => onClose(activeClass) })
 
   /* hasChosenSchool, not a bare `school` truthiness check — see lib/schools.js.
      users.school DEFAULTs to 'generic', so a brand-new account that has never
@@ -278,8 +332,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setStateError(false)
     setSavingState(true)
     try {
-      if (state !== (cls?.state || '')) {
-        await api.updateClass(cls.id, { state })
+      if (state !== (activeClass?.state || '')) {
+        await api.updateClass(activeClass.id, { state })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
       goNext()
@@ -311,8 +365,19 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       if (school && school !== user?.school) {
         await api.updateMe({ school })
       }
-      if (school !== (cls?.school || '')) {
-        await api.updateClass(cls.id, { school })
+      /* Only ever WRITES a school, never clears one.
+      
+         The guard used to be a plain inequality, so advancing without choosing
+         PATCHed school: '' straight over whatever the class already had. That
+         is reachable in one click — this step's Continue has never been
+         disabled, and it is skippable by design — and the value it wiped is
+         load-bearing: schoolcal.py resolves the calendar from it and
+         docx_build resolves the district format from it, so a blanked school
+         quietly costs the teacher both. A teacher who doesn't answer keeps the
+         account default ('generic'), which plans by week number and says so on
+         the calendar step, rather than ending up with neither. */
+      if (school && school !== (activeClass?.school || '')) {
+        await api.updateClass(activeClass.id, { school })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
       goNext()
@@ -378,22 +443,47 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   const saveCourse = async () => {
     if (!subject) {
-      setCourseError(true)
+      setCourseError('Pick a course — it decides which standards your plans are grounded in.')
       return
     }
-    setCourseError(false)
+    /* Grade is validated, not defaulted, and this is the one validation in the
+       flow that is load-bearing rather than tidy. routes/classes.py's
+       ClassBody.grade defaults every new class to 11, and prompts.py's
+       grounding_constraints uses grade directly to decide which standards are
+       even eligible — so a K-8 teacher who never answered got plans silently
+       grounded in grade 11 language. db.py's migration 38 is a monument to
+       the same bug arriving from the other direction. */
+    if (!grade) {
+      setCourseError('Pick a grade — it decides which standards and language fit your students.')
+      return
+    }
+    setCourseError(null)
     setSavingCourse(true)
     try {
-      const patch = {}
-      if (subject !== cls?.subject) patch.subject = subject
-      if (grade !== gradeSelectValue(cls?.grade)) patch.grade = grade
-      if (Object.keys(patch).length) {
-        await api.updateClass(cls.id, patch)
-        qc.invalidateQueries({ queryKey: qk.classes })
+      if (!activeClass) {
+        /* First run: this step IS the class creation, which /welcome used to
+           do before the wizard mounted. The account-level school baseline
+           comes with it — users.school defaults to 'generic', and setting it
+           explicitly here keeps a teacher whose school isn't listed able to
+           finish (schoolcal.py's NO_CALENDAR_SCHOOL_ID plans by week number
+           rather than stopping short). hasChosenSchool() still reports false
+           for it, so the school step is still asked. */
+        if (!user?.school) await api.updateMe({ school: GENERIC_SCHOOL })
+        const created = await api.createClass({ subject, grade })
+        setCreatedClass(created)
+        await Promise.all([qc.invalidateQueries({ queryKey: qk.classes }), refresh()])
+      } else {
+        const patch = {}
+        if (subject !== activeClass.subject) patch.subject = subject
+        if (grade !== gradeSelectValue(activeClass.grade, '')) patch.grade = grade
+        if (Object.keys(patch).length) {
+          await api.updateClass(activeClass.id, patch)
+          qc.invalidateQueries({ queryKey: qk.classes })
+        }
       }
       goNext()
     } catch (err) {
-      toast.apiError('Could not save that', err)
+      toast.apiError('Could not set that up', err)
     } finally {
       setSavingCourse(false)
     }
@@ -425,11 +515,14 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       toast.apiError("Couldn't save your setup progress", err)
     } finally {
       setFinishing(false)
-      onClose()
+      onClose(activeClass)
     }
   }
 
-  if (!mounted || !cls) return null
+  /* No `|| !cls` any more. The first two steps run before a class exists —
+     see the note on createdClass at the top. The modal variant is still only
+     opened over an account that has one. */
+  if (!mounted) return null
 
   /* Labels come from lib/onboardingPlan.js, beside the step order and the
      questions, so a renamed step cannot end up with a stale rail label. */
@@ -571,9 +664,9 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                    a browse list is also hostile on its own: a teacher scanning
                    courses got teleported forward by a misclick. Same wrapper
                    shape as setState above. */
-                setSubject={(value) => { setSubject(value); setCourseError(false) }}
+                setSubject={(value) => { setSubject(value); setCourseError(null) }}
                 grade={grade}
-                setGrade={setGrade}
+                setGrade={(value) => { setGrade(value); setCourseError(null) }}
                 frameworks={frameworks}
                 saving={savingCourse}
                 error={courseError}
@@ -581,7 +674,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 onNext={saveCourse}
               />
             ) : stepKey === 'materials' ? (
-              <MaterialsStep cls={cls} onBack={goBack} onNext={goNext} />
+              <MaterialsStep cls={activeClass} onBack={goBack} onNext={goNext} />
             ) : stepKey === 'preview' ? (
               /* Explicitly matched, not a trailing `else`. As a fallthrough
                  this branch rendered the finish screen for ANY key it didn't
@@ -859,7 +952,7 @@ function SchoolStep({
     <div>
       <OnboardingQuestion
         question="Which school do you teach at?"
-        body="Choose your school, then continue to its format and calendar."
+        lead="Choose your school, then continue to its format and calendar."
       />
       <SchoolSelect
         ariaLabel="School"
@@ -981,7 +1074,7 @@ function FormatStep({
     <div>
       <OnboardingQuestion
         question={title}
-        body={body}
+        lead={body}
       />
       <div className="onboarding-template-panel rounded-2xl p-5 sm:p-7">
         {phase === 'upload' ? (
@@ -1263,6 +1356,66 @@ function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, on
   )
 }
 function CourseStep({ subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
+  const [query, setQuery] = useState('')
+
+  /* The grade select used to feed only the class this step saves — it sat
+     right beside a browser full of courses and did nothing to it, which reads
+     as broken the moment anyone tries it. Every framework carries its own
+     grades[] already (that's what powers the "elementary"/"middle"/"high"
+     search synonyms in lib/frameworks.js), so narrowing the list is a filter,
+     not a new capability. '' is "all grades". Ported from WelcomePage, which
+     this step replaces. */
+  const gradeFilteredFrameworks = useMemo(
+    () => (!grade ? frameworks : frameworks.filter((f) => (f.grades || []).includes(Number(grade)))),
+    [frameworks, grade],
+  )
+
+  /* A course chosen under one grade can fall outside the list the moment the
+     grade changes (AP Calculus picked at 11th, then grade dropped to 3rd) —
+     left alone, Continue would save a course that is no longer even visible. */
+  useEffect(() => {
+    if (subject && !gradeFilteredFrameworks.some((f) => f.id === subject)) setSubject('')
+  }, [gradeFilteredFrameworks, subject, setSubject])
+
+  /* The search box understands grade words too, which used to silently fight
+     the select: leave it on 11th, type "elementary", get zero results and no
+     hint why. A specific number is unambiguous, so it snaps the select to that
+     grade. A band word spans several grades with no single right answer, so it
+     only widens back to all grades — and only when the current grade actually
+     conflicts, leaving a grade already inside the band alone. */
+  useEffect(() => {
+    const intent = inferGradeFromQuery(query)
+    if (!intent) return
+    if (intent.type === 'grade') {
+      if (grade !== intent.grade) setGrade(intent.grade)
+    } else if (intent.type === 'band' && grade && !intent.grades.includes(Number(grade))) {
+      setGrade('')
+    }
+  }, [query, grade, setGrade])
+
+  /* A plain course-name search ("cybersecurity") isn't a grade word, so the
+     inference above doesn't fire — and it can still come up empty purely
+     because the grade filter excludes every match. FrameworkPicker's generic
+     "No course matches" is right for a typo; this gives the real reason
+     specifically when the search WOULD have hits at another grade. */
+  const emptyMessage = useMemo(() => {
+    if (!grade) return undefined
+    /* No query at all, and the grade filter has emptied the list. Ported from
+       /welcome, which only covered the WITH-a-query case and so left a teacher
+       whose grade simply has no courses staring at a blank panel with nothing
+       saying why. Reachable for real: the corpus is ingested per grade band,
+       so a grade with nothing behind it yet is a state the catalog can be in,
+       not just a mock-data artifact. */
+    if (!query.trim()) {
+      return gradeFilteredFrameworks.length
+        ? undefined
+        : `No ${gradeLabel(grade) || grade} courses yet — try All grades.`
+    }
+    if (gradeFilteredFrameworks.some((f) => matchesFramework(f, query))) return undefined
+    if (!frameworks.some((f) => matchesFramework(f, query))) return undefined
+    return `No ${gradeLabel(grade) || grade} courses match “${query}” — try All grades.`
+  }, [query, grade, gradeFilteredFrameworks, frameworks])
+
   return (
     <div className="onboarding-class-step">
       <OnboardingQuestion
@@ -1270,15 +1423,13 @@ function CourseStep({ subject, setSubject, grade, setGrade, frameworks, saving, 
         question="Which course are you teaching?"
       />
       <div className="onboarding-course-browser">
-        <motion.div
-          className="onboarding-course-picker"
-          animate={error ? { x: [-5, 5, -5, 5, 0] } : {}}
-          transition={{ duration: 0.4 }}
-        >
+        <div className="onboarding-course-picker">
           <FrameworkPicker
-            frameworks={frameworks}
+            frameworks={gradeFilteredFrameworks}
             value={subject}
             onChange={setSubject}
+            onQueryChange={setQuery}
+            emptyMessage={emptyMessage}
             id="onboarding-framework"
             variant="inline"
             afterInput={(
@@ -1290,6 +1441,10 @@ function CourseStep({ subject, setSubject, grade, setGrade, frameworks, saving, 
                   onChange={(e) => setGrade(e.target.value)}
                   className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
                 >
+                  {/* Present and empty on purpose. The grade a teacher never
+                      chose must not look chosen — see the note on the grade
+                      state in the wizard. */}
+                  <option value="">All grades</option>
                   {GRADES.map((g) => (
                     <option key={g.value} value={g.value}>
                       {g.label}
@@ -1299,8 +1454,16 @@ function CourseStep({ subject, setSubject, grade, setGrade, frameworks, saving, 
               </label>
             )}
           />
-          {error && <p className="mt-1.5 text-xs text-mark font-medium px-1">Please select a course to continue</p>}
-        </motion.div>
+          {/* .fa-flash, not a framer shake: it is the app's one informational
+              animation, and it is already gated by the blanket
+              prefers-reduced-motion block. Keyed on the message so a second
+              failure replays it. */}
+          {error ? (
+            <p key={error} className="fa-flash mt-1.5 px-1 text-xs font-medium text-mark" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
         <div className="onboarding-course-browser-actions">
           <OnboardingActions onNext={onNext} busy={saving} onBack={onBack} />
         </div>
@@ -1308,12 +1471,13 @@ function CourseStep({ subject, setSubject, grade, setGrade, frameworks, saving, 
     </div>
   )
 }
+
 function MaterialsStep({ cls, onBack, onNext }) {
   return (
     <div>
       <OnboardingQuestion
         question="Add your teaching materials"
-        body="Optional. Add the planning source FlexEd should use to organize new plans. You can add supporting materials later."
+        lead="Optional. Add the planning source FlexEd should use to organize new plans. You can add supporting materials later."
       />
       <Suspense fallback={<p className="text-xs text-ink-muted">Loading documents…</p>}>
         <ClassDocuments cls={cls} variant="onboarding" />

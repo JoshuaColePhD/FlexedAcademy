@@ -64,7 +64,7 @@ assert.equal(hasUsableSchoolTemplate(undefined), false, 'a school that is not in
 
 // A fully set-up account, used as the base every fixture varies from.
 const SETTLED = {
-  hasAvatar: true,
+  firstRun: false,
   subject: 'ap-lang',
   grade: '11',
   state: 'AL',
@@ -131,19 +131,32 @@ for (const [subject, grade, expected] of [
   )
 }
 
-// ── the payoff always renders ─────────────────────────────────────────────
-assert.ok(derivePlan(SETTLED).includes('preview'), 'the preview step is the one screen that always shows')
-assert.ok(
-  derivePlan(SETTLED).indexOf('preview') < derivePlan(SETTLED).indexOf('materials') ||
-    !derivePlan(SETTLED).includes('materials'),
-  'the payoff comes before the biggest upload ask, never after'
-)
+// ── the closing screen always renders, and is always LAST ────────────────
+/* `preview` is the finish: its button records completion. It sat mid-order
+   once, which made every step after it unreachable while the rail still
+   advertised them -- so this pins the invariant rather than the intent. */
+/* Every fixture here must include a step that COULD be sequenced after the
+   closing screen, or the assertion is vacuous. An earlier version used only
+   fixtures with hasMaterials: true -- so `materials` was never in the plan,
+   `preview` was trivially last, and moving it back to the middle did not fail
+   the suite. Checked by mutation, which is the only way to notice. */
+for (const fixture of [
+  { ...SETTLED, hasMaterials: false },
+  { ...SETTLED, hasMaterials: false, firstRun: true },
+  { ...SETTLED, hasMaterials: false, school: null },
+  SETTLED,
+]) {
+  const plan = derivePlan(fixture)
+  assert.ok(plan.includes('preview'), 'the closing screen always shows')
+  assert.equal(plan[plan.length - 1], 'preview', 'and nothing is sequenced after it')
+  assert.equal(nextStep(plan, plan[plan.length - 2]), 'preview', 'the step before it leads to it')
+}
 
 // ── every fixture, checked for the structural properties ──────────────────
 // A combinatorial sweep rather than a handful of cases, because the bugs this
 // file exists to catch were all shape bugs, not value bugs.
 const FIXTURES = []
-for (const hasAvatar of [true, false]) {
+for (const firstRun of [true, false]) {
   for (const subject of ['ap-lang', null]) {
     for (const state of ['AL', null]) {
       for (const school of [null, GENERIC_SCHOOL, 'florence-high-school', 'unconfigured-school']) {
@@ -151,7 +164,7 @@ for (const hasAvatar of [true, false]) {
           for (const hasMaterials of [true, false]) {
             FIXTURES.push({
               ...SETTLED,
-              hasAvatar,
+              firstRun,
               subject,
               grade: subject ? '11' : null,
               state,
@@ -239,7 +252,10 @@ for (const fixture of FIXTURES) {
  * one is picked, so both are assumed necessary until proven otherwise.
  */
 const ANSWERS = {
-  avatar: () => ({ hasAvatar: true }),
+  /* Answering the avatar step is what takes the account out of first-run for
+     the purposes of this sweep -- see the note on `avatar` in derivePlan for
+     why this is not read back off users.avatar. */
+  avatar: () => ({ firstRun: false }),
   course: () => ({ subject: 'ap-lang', grade: '11' }),
   state: () => ({ state: 'AL' }),
   /* Picking a school REVEALS two things that were unknowable before it: whether
@@ -292,6 +308,15 @@ assert.deepEqual(
   [...STEP_ORDER].sort(),
   Object.keys(ONBOARDING_STEPS).sort(),
   'STEP_ORDER and ONBOARDING_STEPS describe the same set of steps'
+)
+
+// ── the avatar step is asked on first run only ────────────────────────────
+assert.ok(derivePlan({ ...SETTLED, firstRun: true }).includes('avatar'), 'first run asks for a profile icon')
+assert.ok(!derivePlan({ ...SETTLED, firstRun: false }).includes('avatar'), 're-running setup does not ask again')
+assert.equal(
+  derivePlan({ ...SETTLED, firstRun: true })[0],
+  'avatar',
+  'and it is the FIRST thing asked — the one question with no wrong answer'
 )
 
 // ── the JS vocabulary and the Python allowlist must agree ─────────────────
