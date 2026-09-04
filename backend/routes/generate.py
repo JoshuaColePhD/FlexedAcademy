@@ -792,6 +792,13 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             plans_for_chat = db.list_plans(user_id, chat_id=req.chat_id, limit=1)["items"] if req.chat_id else []
             has_plan = bool(plans_for_chat)
             has_quiz = has_plan and bool(db.list_quizzes_for_plan(user_id, plans_for_chat[0]["id"]))
+            # Quiz creation is a beta feature (entitlement.require_beta_features,
+            # enforced for real on plans.py's create_quiz/revise_quiz_route) —
+            # checked here too so the model doesn't offer to build one, tool-call
+            # it, and only THEN have ChatPage.jsx's api.createQuiz fail: telling
+            # the teacher up front to enable it in Settings is a better reply
+            # than a build that starts and then errors out.
+            beta_enabled = db.has_beta_features(user_id)
 
             last_user = next(
                 (m.content for m in reversed(req.messages) if m.role == "user"), ""
@@ -953,32 +960,43 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     "written, and a generic one reads as though the specific conversation you just had didn't "
                     "register.\n\n"
                     + (
-                        "A plan already exists for this conversation. If the teacher explicitly asks for a "
-                        "quiz, test, or assessment as a downloadable file: when their request ALREADY names "
-                        "which question type(s) they want (multiple choice, true/false, short answer, "
-                        "matching) AND roughly how many questions, call `generate_quiz` with those values "
-                        "directly. Otherwise call `ask_clarifying_questions` INSTEAD — two short questions, "
-                        "each with a few tappable options, e.g. 'What kind of questions?' (Multiple choice / "
-                        "True or false / Short answer / Matching / A mix) and 'About how many?' (5 / 10 / 15 "
-                        "/ 20). Only ask about whichever of the two the teacher didn't already specify — if "
-                        "they said '10 multiple choice questions' that's already both answered, build "
-                        "immediately. Never call `generate_quiz` unasked, and never alongside "
-                        "`generate_lesson_plan` in the same turn.\n\n"
-                        + (
-                            "A quiz already exists for this conversation. If the teacher's message is asking "
-                            "to change, fix, or improve the quiz you already built ('make it harder', 'add "
-                            "two more questions', 'fix question 3', 'make these easier') — call "
-                            "`generate_quiz` again with `revises_current: true` so it updates the existing "
-                            "quiz instead of building a separate one. Only set it false (or call without it) "
-                            "when the teacher explicitly asks for an ADDITIONAL, distinct quiz — a different "
-                            "question type, or a second quiz alongside the first."
-                            if has_quiz
-                            else ""
+                        (
+                            "A plan already exists for this conversation. If the teacher explicitly asks for a "
+                            "quiz, test, or assessment as a downloadable file: when their request ALREADY names "
+                            "which question type(s) they want (multiple choice, true/false, short answer, "
+                            "matching) AND roughly how many questions, call `generate_quiz` with those values "
+                            "directly. Otherwise call `ask_clarifying_questions` INSTEAD — two short questions, "
+                            "each with a few tappable options, e.g. 'What kind of questions?' (Multiple choice / "
+                            "True or false / Short answer / Matching / A mix) and 'About how many?' (5 / 10 / 15 "
+                            "/ 20). Only ask about whichever of the two the teacher didn't already specify — if "
+                            "they said '10 multiple choice questions' that's already both answered, build "
+                            "immediately. Never call `generate_quiz` unasked, and never alongside "
+                            "`generate_lesson_plan` in the same turn.\n\n"
+                            + (
+                                "A quiz already exists for this conversation. If the teacher's message is asking "
+                                "to change, fix, or improve the quiz you already built ('make it harder', 'add "
+                                "two more questions', 'fix question 3', 'make these easier') — call "
+                                "`generate_quiz` again with `revises_current: true` so it updates the existing "
+                                "quiz instead of building a separate one. Only set it false (or call without it) "
+                                "when the teacher explicitly asks for an ADDITIONAL, distinct quiz — a different "
+                                "question type, or a second quiz alongside the first."
+                                if has_quiz
+                                else ""
+                            )
+                            if has_plan
+                            else "No plan exists yet for this conversation, so `generate_quiz` cannot be called — "
+                            "if the teacher asks for a quiz before there is a week to test, tell them to build "
+                            "the week first."
                         )
-                        if has_plan
-                        else "No plan exists yet for this conversation, so `generate_quiz` cannot be called — "
-                        "if the teacher asks for a quiz before there is a week to test, tell them to build "
-                        "the week first."
+                        if beta_enabled
+                        # Quiz creation is a beta feature (SettingsPage.jsx's "Enable Beta
+                        # Features" toggle, entitlement.require_beta_features) — this account
+                        # hasn't turned it on, so `generate_quiz` would be refused server-side
+                        # anyway (plans.py's create_quiz/revise_quiz_route). Telling the model
+                        # not to call it at all avoids a build that starts and then errors.
+                        else "Never call `generate_quiz` for this conversation: quiz creation is a beta "
+                        "feature this teacher hasn't turned on yet. If they ask for a quiz, test, or "
+                        "assessment, tell them to enable Beta Features in Settings first."
                     )
                 )
 

@@ -6662,6 +6662,14 @@ def is_admin(user_id: str) -> bool:
     return bool(row and row["is_admin"])
 
 
+def has_beta_features(user_id: str) -> bool:
+    """Migration 53's `beta_features` column — the same "Enable Beta
+    Features" toggle SettingsPage.jsx already gates Voice Mode behind, now
+    also required to create or edit a quiz (entitlement.require_beta_features)."""
+    row = _row("SELECT beta_features FROM users WHERE id = ?", (user_id,))
+    return bool(row and row["beta_features"])
+
+
 def list_accounts_with_stats() -> list[dict]:
     """Every account, its billing state, and what it's actually built.
 

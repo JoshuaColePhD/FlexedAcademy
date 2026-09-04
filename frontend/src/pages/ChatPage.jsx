@@ -2227,6 +2227,20 @@ export function ChatPage() {
           ])
           return
         }
+        // Quiz creation is beta-gated the same as Voice Mode (openVoice's
+        // own check above) — routes/generate.py's system prompt already
+        // tells the model not to call generate_quiz for this account, so
+        // reaching here means a race (the toggle changed mid-conversation)
+        // rather than the model ignoring that instruction. Real enforcement
+        // is server-side (plans.py's create_quiz/revise_quiz_route); this
+        // just avoids a build that starts and then fails.
+        if (!betaFeaturesEnabled) {
+          toast.info('Quiz creation is a beta feature', 'Turn on Beta Features in Settings to try it.', {
+            label: 'Open Settings',
+            onClick: () => navigate(`/c/${classId}/settings#section-advanced`),
+          })
+          return
+        }
         setQuizBuilding(true)
         // A fallback, not a second announcement: onDone already showed the
         // model's own text above when it wrote any (a natural "Sure, I'll
@@ -2407,7 +2421,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, betaFeaturesEnabled]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
