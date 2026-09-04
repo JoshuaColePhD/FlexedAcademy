@@ -766,7 +766,12 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
        `.onboarding-shell` existed only to compensate for that. */
     return (
       <div className="onboarding-ground">
-        <div className="onboarding-card onboarding-card-fill glass-panel fa-rise-panel">{card}</div>
+        <div className="onboarding-card onboarding-card-fill glass-panel fa-rise-panel">
+          {/* The app's own drifting aurora, on the mat rather than behind it —
+              see .onboarding-card > .app-blob. */}
+          <div className="app-blob" aria-hidden="true" />
+          {card}
+        </div>
       </div>
     )
   }

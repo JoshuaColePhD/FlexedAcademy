@@ -307,6 +307,35 @@
     border-radius: var(--r-xl);
   }
 
+  /* The aurora, ON the mat.
+    
+     App.jsx's root already renders .app-blob behind everything, but at
+     z-index -1 and behind a pane that now fills the whole window — so the
+     orbs were reduced to a hint of blue in one corner. Rendering the same
+     layer INSIDE the card puts them where they read: above the glass's own
+     background fill, below the content, drifting under the question.
+    
+     Reusing .app-blob rather than declaring a second set of gradients is the
+     point. There WAS a second one (.onboarding-blob), with its own copy of the
+     same five radials and its own bug comment, and it went with the rest of
+     the bespoke world. One definition means the app and setup drift together,
+     and it picks up the data-motion='lite' pause for free, since that rule
+     targets .app-blob by name.
+    
+     z-index 0, not the inherited -1: at -1 it painted behind the card's own
+     background and vanished. */
+  .onboarding-card > .app-blob {
+    z-index: 0;
+  }
+
+  /* Above the aurora. Both are static in the flow, so without this the
+     gradients paint over the content rather than under it. */
+  .onboarding-topbar,
+  .onboarding-body {
+    position: relative;
+    z-index: 1;
+  }
+
   /* First run FILLS the window, like .app-shell-main does. It was a 58rem ×
      40rem card centred in the viewport, which on a normal display read as a
      small dialog floating in a lot of dead space — and setup is not a dialog,

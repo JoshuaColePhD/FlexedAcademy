@@ -54,7 +54,18 @@ const at = params.get('at') || (params.has('fresh') ? '/' : null)
 // client-side navigation leaves /preview.html and Vite serves index.html,
 // dropping the mock fetch installation exactly when a new chat is created.
 window.__previewBase = '/preview.html'
-window.history.replaceState({}, '', `${window.__previewBase}${at || '/c/c1'}`)
+
+/* Only seed the route when there ISN'T one already.
+ *
+ * This used to replaceState unconditionally, which meant a reload of a deep
+ * link like /preview.html/onboarding was rewritten straight back to
+ * /preview.html/c/c1 — so the vite middleware that makes those URLs
+ * reloadable at all would have been undone one line later. An explicit ?at=
+ * still wins, since that is someone asking for a specific screen. */
+const current = window.location.pathname.slice(window.__previewBase.length)
+if (at || !current || current === '/') {
+  window.history.replaceState({}, '', `${window.__previewBase}${at || '/c/c1'}`)
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
