@@ -71,9 +71,13 @@ export const STEP_ORDER = [
 export const ONBOARDING_STEPS = {
   avatar: {
     label: 'Profile',
-    title: 'First — pick a face for your profile.',
+    /* The name is the substance of this step, not the icon. It is what
+       db.py seeds settings.teacher from, which service.py stamps into the
+       .docx header — so it is printed on every plan the teacher hands their
+       district. The icon rides along because it is the part with genuinely
+       nothing at stake, which is what makes this a safe opener. */
+    title: 'First — what name goes on your plans?',
     required: false,
-    skipLabel: "Skip — just use my initials",
   },
   course: {
     label: 'Course',

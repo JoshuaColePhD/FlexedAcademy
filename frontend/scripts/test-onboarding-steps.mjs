@@ -209,14 +209,28 @@ for (const fixture of FIXTURES) {
     `every step has a rail label and a question — ${where}`
   )
 
-  // Required steps can never be skipped out of a plan that still needs them.
+  /* Required steps are never skippable, and any step that DOES offer a skip
+     states what the skip costs.
+    
+     An earlier version asserted that every optional step must have a
+     skipLabel, which conflated two different things and broke the moment the
+     profile step stopped offering a skip — correctly, since its name is
+     pre-filled and its icon defaults to initials, so Continue already IS the
+     "leave it alone" path and a Skip button next to a filled field only
+     raises the question of what it would do. Not every optional step has
+     something to skip PAST. What matters is that the ones presenting a skip
+     say what it costs, rather than a bare "Skip for now" that makes the
+     consequence the teacher's problem to guess. */
   for (const key of plan) {
-    if (ONBOARDING_STEPS[key].required) {
+    const meta = ONBOARDING_STEPS[key]
+    if (meta.required) {
       assert.equal(isSkippable(key), false, `${key} is required — ${where}`)
-    } else {
-      assert.ok(
-        key === 'preview' || ONBOARDING_STEPS[key].skipLabel,
-        `optional step ${key} states its own cost — ${where}`
+      assert.ok(!meta.skipLabel, `required step ${key} offers no skip — ${where}`)
+    } else if (meta.skipLabel) {
+      assert.match(
+        meta.skipLabel,
+        /—/,
+        `${key}'s skip states its cost after an em dash, not a bare "Skip" — ${where}`
       )
     }
   }

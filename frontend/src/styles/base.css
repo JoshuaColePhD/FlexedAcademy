@@ -287,34 +287,51 @@
     display: flex;
     height: var(--app-h);
     width: 100%;
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
-    padding: var(--gutter);
+    /* --sp-2, matching AppShell's own `p-2` frame, not --gutter. First-run
+       setup IS the app for as long as it lasts, so it should sit in the window
+       the way the app does rather than as a small card adrift in a large empty
+       ground. */
+    padding: var(--sp-2);
   }
 
   .onboarding-card {
     position: relative;
     display: flex;
-    width: 100%;
-    max-width: 58rem;
-    /* A FIXED card, not one that resizes per step — the single biggest reason
-       the flow reads calm rather than busy, and what let SmoothHeight (and its
-       ResizeObserver) leave the wizard entirely.
-
-       `height`, not `min-height`, and on a non-flex-child: an explicit height
-       on a flex child is only a BASIS, so on a short viewport the browser was
-       free to squeeze the old shell below the height it had been given and
-       clip whichever step's Continue button sat at the bottom. SmoothHeight's
-       own `flexShrink: 0` was patching exactly that; a definite height here
-       removes the class of bug instead. Tall steps scroll inside
-       .onboarding-content. */
-    height: min(40rem, calc(var(--app-h) - var(--sp-8)));
     flex-direction: column;
     overflow: hidden;
     /* --r-xl, not the old rounded-3xl. 24px isn't on the radius scale, and
        every other card-shaped surface in the app — .app-rail,
        .app-shell-main, .split-layout-shell — is rounded-2xl = --r-xl. */
     border-radius: var(--r-xl);
+  }
+
+  /* First run FILLS the window, like .app-shell-main does. It was a 58rem ×
+     40rem card centred in the viewport, which on a normal display read as a
+     small dialog floating in a lot of dead space — and setup is not a dialog,
+     it is the only thing this account can do yet.
+
+     The size is not what made the flow calm; a definite height was, because it
+     stopped the card resizing per step (which is what let SmoothHeight and its
+     ResizeObserver go). Filling keeps that: the pane's height is fixed by the
+     window, not by the content. */
+  .onboarding-card-fill {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+  }
+
+  /* The modal stays a dialog — it opens over an app already in use, so it has
+     something to be layered ON. `height`, not `min-height`, and on a
+     non-flex-child: an explicit height on a flex CHILD is only a BASIS, so a
+     short viewport was free to squeeze the old shell below the height it had
+     been given and clip whichever step's Continue button sat at the bottom.
+     SmoothHeight's `flexShrink: 0` was patching exactly that. */
+  .onboarding-card-dialog {
+    width: 100%;
+    max-width: 58rem;
+    height: min(40rem, calc(var(--app-h) - var(--sp-8)));
   }
 
   /* The modal variant is opaque, where the page variant is .glass-panel.
@@ -368,10 +385,17 @@
     min-height: 0;
     flex: 1;
     /* 11rem holds the longest label ("Materials") plus its dot and gutter at
-       --fs-sm without wrapping. */
-    grid-template-columns: 11rem minmax(0, 1fr);
+       --fs-sm without wrapping. The content column is capped at --measure
+       rather than taking 1fr: the pane is the whole window now, and a question
+       and a short list stretched across 1400px is not what the extra room is
+       for. */
+    grid-template-columns: 11rem minmax(0, var(--measure));
+    /* Centres the rail-and-content pair, so the slack lands on both sides
+       instead of piling up to the right of a left-hugging column. */
+    justify-content: center;
+    align-content: start;
     gap: var(--sp-10);
-    padding: var(--sp-8) var(--sp-10) var(--sp-6);
+    padding: var(--sp-10) var(--sp-10) var(--sp-6);
   }
 
   .onboarding-column {
@@ -604,7 +628,11 @@
   }
 
   .onboarding-lead {
-    max-width: var(--measure-narrow);
+    /* --measure-form, not --measure-narrow. The 30rem cap was set while the
+       card was 58rem wide; against the full-page column it wrapped a
+       two-line sentence onto four. Still capped -- a line of prose the full
+       46rem wide is past comfortable reading measure. */
+    max-width: var(--measure-form);
     margin-top: var(--sp-2);
     color: var(--ink-muted);
     font-size: var(--fs-sm);
@@ -612,6 +640,10 @@
   }
 
   .onboarding-choice-label {
+    /* Explicit, because this renders as a <label> when it names a field and a
+       <label> is inline by default — which put "The name on your plans" beside
+       its input instead of above it, and collapsed the margins below. */
+    display: block;
     margin-top: var(--sp-7);
     margin-bottom: var(--sp-3);
     color: var(--ink);
@@ -627,26 +659,33 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--sp-4);
-    /* Sticky, because each step renders its own actions and therefore sits
-       INSIDE the scrolling content area. On a tall step (fifty states, a
-       documents list, a template review) the primary action would otherwise
-       scroll out of reach on the one screen where the teacher has exactly one
-       thing to press.
+    padding-top: var(--sp-6);
+  }
 
-       The structurally cleaner fix is to hoist the actions out of the scroller
-       and render them once, as a sibling, from the wizard -- which is what the
-       `flex-shrink: 0` here is really for. That needs every step to expose its
-       action config rather than render its own footer, so it is a follow-up;
-       this is six lines and holds for every step and every viewport in the
-       meantime.
-
-       The gradient rather than a flat fill: a hard edge across a translucent
-       glass card reads as a docked toolbar the design doesn't otherwise have,
-       while a fade just says "there is more above". */
+  /* Only the DIALOG pins its actions.
+    
+     Each step renders its own footer, so the buttons sit inside the scrolling
+     content area — and in a 40rem dialog a tall step (fifty states, a
+     documents list, a template review) scrolls the primary action out of
+     reach. Sticky fixes that, at the cost of a scrim behind the buttons.
+    
+     The full-page variant needs neither. It has the whole window, so almost
+     every step fits without scrolling at all, and against a full-width pane
+     that scrim read as a stray white band across the middle of the page rather
+     than as a footer. Where a step IS tall enough to scroll there, the buttons
+     follow the content, which is ordinary form behaviour.
+    
+     The structurally cleaner fix for both is to hoist the actions out of the
+     scroller and render them once from the wizard, which is what the
+     `flex-shrink: 0` above is really for. That needs every step to expose its
+     action config instead of rendering its own footer, so it stays a
+     follow-up. */
+  .onboarding-card-dialog .onboarding-actions {
     position: sticky;
     bottom: 0;
     margin-top: auto;
-    padding-top: var(--sp-6);
+    /* A fade, not a flat fill: a hard edge across a translucent card reads as
+       a docked toolbar the design doesn't otherwise have. */
     background: linear-gradient(
       to bottom,
       rgb(var(--paper-raised-rgb) / 0),
@@ -710,11 +749,14 @@
     }
     .onboarding-card {
       max-width: none;
-      height: var(--app-h);
       border-radius: 0;
+    }
+    .onboarding-card-dialog {
+      height: var(--app-h);
     }
     .onboarding-body {
       grid-template-columns: minmax(0, 1fr);
+      justify-content: stretch;
       gap: var(--sp-5);
       padding: var(--sp-5) var(--sp-5) var(--sp-4);
     }

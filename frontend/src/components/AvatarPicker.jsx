@@ -14,8 +14,14 @@ import { useToast } from '../lib/toastContext'
  * `size` is the only difference between the two callers. Onboarding gets the
  * larger grid because picking a face is the whole screen there, where in
  * Settings it is one control among many.
+ *
+ * `previewName` is for onboarding's profile step, where the name field sits
+ * directly above this grid: the initials tile follows what is being TYPED
+ * rather than what is saved, so the connection between the two controls is
+ * visible instead of something the teacher has to take on trust until after
+ * they press Continue. Settings omits it and reads the account.
  */
-export function AvatarPicker({ size = 'md' }) {
+export function AvatarPicker({ size = 'md', previewName }) {
   /* Reads the account through useAuth (which IS the qk.me query now, see
      AuthProvider) rather than a second ['me'] useQuery of its own. That
      duplicate was the bug: this component refetched ITS copy while the
@@ -76,7 +82,7 @@ export function AvatarPicker({ size = 'md' }) {
         aria-label="Your initials"
         title="Your initials"
       >
-        {getInitials(user?.name)}
+        {getInitials(previewName ?? user?.name)}
       </button>
       {AVATAR_OPTIONS.map((opt) => (
         <button

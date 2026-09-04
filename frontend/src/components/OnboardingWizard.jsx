@@ -104,6 +104,17 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
    * into it, and ClassRoutes' guard sends them back here to resume, which is
    * safe because every step saves before it advances. */
   const [createdClass, setCreatedClass] = useState(null)
+  /* The name that gets PRINTED on the plans.
+   *
+   * db.py seeds settings.teacher from users.name, and service.py's identity
+   * stamp puts that straight into the .docx header — so this is the name a
+   * teacher's district sees, not just a greeting. It was never asked for
+   * anywhere in setup: signup requires one, and Google hands over whatever it
+   * has on file, which is a legal name ("Joshua Cole") where a lesson plan
+   * usually wants what the school calls you. Confirming it costs one field on
+   * a step that had nothing at stake. */
+  const [teacherName, setTeacherName] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
   const activeClass = cls || createdClass
   const toast = useToast()
   const qc = useQueryClient()
@@ -209,6 +220,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
        whether anything changed. */
     if (cls?.id && cls.id === createdClass?.id) return
     setStepKey(livePlan[0])
+    setTeacherName(user?.name || '')
     setDirection(1)
     setSchool(activeClass?.school || '')
     setTemplateFile(null)
@@ -441,6 +453,27 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     }
   }
 
+  const saveProfile = async () => {
+    const next = teacherName.trim()
+    setSavingProfile(true)
+    try {
+      /* Only writes a real change, and never blanks the name: signup and
+         Google both guarantee one, so an empty field here means the teacher
+         cleared it rather than that they have none — and settings.teacher
+         feeds the .docx header, so writing '' would strip their name off every
+         plan they download. */
+      if (next && next !== (user?.name || '')) {
+        await api.updateMe({ name: next })
+        await refresh()
+      }
+      goNext()
+    } catch (err) {
+      toast.apiError('Could not save your name', err)
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
   const saveCourse = async () => {
     if (!subject) {
       setCourseError('Pick a course — it decides which standards your plans are grounded in.')
@@ -576,7 +609,12 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 exit="exit"
               >
             {stepKey === 'avatar' ? (
-              <AvatarStep onNext={goNext} onSkip={goNext} />
+              <ProfileStep
+                name={teacherName}
+                setName={setTeacherName}
+                saving={savingProfile}
+                onNext={saveProfile}
+              />
             ) : stepKey === 'state' ? (
               <StateStep
                 state={state}
@@ -728,7 +766,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
        `.onboarding-shell` existed only to compensate for that. */
     return (
       <div className="onboarding-ground">
-        <div className="onboarding-card glass-panel fa-rise-panel">{card}</div>
+        <div className="onboarding-card onboarding-card-fill glass-panel fa-rise-panel">{card}</div>
       </div>
     )
   }
@@ -750,7 +788,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
           weaker than expected and the live app showed through the panel. There
           is nothing behind a scrim worth diffusing anyway. */}
       <div
-        className={`onboarding-card neo-panel${closing ? ' is-closing' : ''}`}
+        className={`onboarding-card onboarding-card-dialog neo-panel${closing ? ' is-closing' : ''}`}
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
@@ -776,16 +814,39 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
  * is nothing to save on Continue — the pick has already landed by then. Hence
  * no `saving` state and no onNext handler of its own.
  */
-function AvatarStep({ onNext, onSkip }) {
+function ProfileStep({ name, setName, saving, onNext }) {
   return (
     <div>
       <OnboardingQuestion
         question={ONBOARDING_STEPS.avatar.title}
-        lead="It shows up next to your name. You can change it any time in Settings."
+        lead="Your name is printed in the header of every plan you download, so it's worth getting right — whatever your school actually calls you, not necessarily what's on your contract."
       />
-      <OnboardingChoiceLabel>Choose an icon</OnboardingChoiceLabel>
-      <AvatarPicker size="lg" />
-      <OnboardingActions onNext={onNext} onSkip={onSkip} skipLabel={ONBOARDING_STEPS.avatar.skipLabel} />
+
+      <OnboardingChoiceLabel as="label" htmlFor="onboarding-name">
+        The name on your plans
+      </OnboardingChoiceLabel>
+      <input
+        id="onboarding-name"
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        /* Pre-filled from the account, which signup required and Google
+           supplies — so this is a confirmation, not a blank the teacher has to
+           fill before they can get anywhere. */
+        placeholder="e.g. Mr. Cole"
+        autoComplete="name"
+        maxLength={120}
+        className="neo-inset w-full max-w-measure-narrow rounded-lg bg-paper-raised px-3.5 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+      />
+
+      <OnboardingChoiceLabel>And an icon, if you like</OnboardingChoiceLabel>
+      <AvatarPicker size="lg" previewName={name} />
+
+      {/* No skip. There is nothing to skip past — the name is pre-filled and
+          the icon already defaults to initials, so Continue IS the "leave it
+          as it is" path. A Skip button beside a filled-in field only invites
+          the question of what it would even do. */}
+      <OnboardingActions onNext={onNext} busy={saving} />
     </div>
   )
 }
