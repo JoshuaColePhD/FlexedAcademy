@@ -598,13 +598,20 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
         ) : null}
       </div>
 
-      <div className="onboarding-body">
-        <OnboardingStepRail steps={railSteps} activeKey={stepKey} onGoTo={goTo} />
-        <div className="onboarding-column">
+      {/* The scroll lives out here now, one level above the grid, so the grid
+          can be content-height and centre itself with auto margins. Auto
+          margins are the safe way to do it: they take up free space when
+          there is some and resolve to zero when the content is taller than
+          the frame, where `justify-content: center` would push the top of a
+          tall step out of reach instead. */}
+      <div className="onboarding-scroll">
+        <div className="onboarding-body">
+          <OnboardingStepRail steps={railSteps} activeKey={stepKey} onGoTo={goTo} />
+          <div className="onboarding-column">
           {/* data-fill hands the card's own height down to a step whose
               content is itself a scroll region (the course browser), so there
               is only ever one scrollbar. */}
-          <div className="onboarding-content" data-fill={stepKey === 'course' ? 'true' : undefined}>
+            <div className="onboarding-content" data-fill={stepKey === 'course' ? 'true' : undefined}>
 
             <AnimatePresence mode="wait" custom={direction} initial={false}>
               {/* Keyed on stepKey, so a null key mounts nothing at all rather
@@ -755,6 +762,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
               </motion.div>
               ) : null}
             </AnimatePresence>
+            </div>
           </div>
         </div>
       </div>
@@ -854,7 +862,7 @@ function ProfileStep({ name, setName, saving, onNext }) {
       />
 
       <OnboardingChoiceLabel>And an icon, if you like</OnboardingChoiceLabel>
-      <AvatarPicker size="lg" previewName={name} />
+      <AvatarPicker size="xl" previewName={name} />
 
       {/* No skip. There is nothing to skip past — the name is pre-filled and
           the icon already defaults to initials, so Continue IS the "leave it

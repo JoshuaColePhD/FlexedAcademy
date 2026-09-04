@@ -409,10 +409,25 @@
     color: var(--ink);
   }
 
-  .onboarding-body {
-    display: grid;
+  /* The frame that scrolls. The grid inside is content-height and centres
+     itself with auto margins, which is what stops a short step — the profile
+     question is barely 500px tall — from sitting in the top third of a
+     1200px-high window with the rest of the pane empty under it. */
+  .onboarding-scroll {
+    display: flex;
     min-height: 0;
     flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .onboarding-body {
+    display: grid;
+    width: 100%;
+    /* Centres vertically when there is room, and collapses to zero when the
+       step is taller than the frame — `justify-content: center` on the
+       scroller would instead push the top of a tall step out of reach. */
+    margin-block: auto;
     /* 11rem holds the longest label ("Materials") plus its dot and gutter at
        --fs-sm without wrapping. The content column is capped at --measure
        rather than taking 1fr: the pane is the whole window now, and a question
@@ -422,7 +437,6 @@
     /* Centres the rail-and-content pair, so the slack lands on both sides
        instead of piling up to the right of a left-hugging column. */
     justify-content: center;
-    align-content: start;
     gap: var(--sp-10);
     padding: var(--sp-10) var(--sp-10) var(--sp-6);
   }
@@ -436,10 +450,7 @@
   .onboarding-content {
     display: flex;
     min-height: 0;
-    flex: 1;
     flex-direction: column;
-    overflow-y: auto;
-    overscroll-behavior: contain;
     /* Keeps prose off the scrollbar rather than under it. */
     padding-right: var(--sp-2);
     /* Named container so a step can lay itself out against the space it
@@ -565,6 +576,11 @@
        Losing it when the component was replaced let the state chooser's pane
        ride up over the question's descenders. */
     margin-bottom: var(--sp-8);
+  }
+  /* A full-page step has room to let the question breathe; the dialog does
+     not, so this is scoped to the fill variant rather than applied to both. */
+  .onboarding-card-fill .onboarding-question {
+    margin-bottom: var(--sp-10);
   }
   .onboarding-question h2 {
     /* A question is one sentence; let it break where the sentence wants to. */
@@ -722,7 +738,7 @@
        <label> is inline by default — which put "The name on your plans" beside
        its input instead of above it, and collapsed the margins below. */
     display: block;
-    margin-top: var(--sp-7);
+    margin-top: var(--sp-8);
     margin-bottom: var(--sp-3);
     color: var(--ink);
     font-size: var(--fs-sm);

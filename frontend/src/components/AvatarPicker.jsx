@@ -66,11 +66,15 @@ export function AvatarPicker({ size = 'md', previewName }) {
     chooseAvatar.mutate(avatarId)
   }
 
-  const box = size === 'lg' ? 'h-14 w-14' : 'h-12 w-12'
-  const glyph = size === 'lg' ? 'text-3xl' : 'text-2xl'
+  /* Three sizes, because the same grid appears in three very different
+     amounts of room: one control among many in Settings, and the whole
+     subject of a full-page onboarding step. */
+  const box = size === 'xl' ? 'h-16 w-16' : size === 'lg' ? 'h-14 w-14' : 'h-12 w-12'
+  const glyph = size === 'xl' ? 'text-4xl' : size === 'lg' ? 'text-3xl' : 'text-2xl'
+  const gap = size === 'xl' ? 'gap-4' : 'gap-3'
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className={`flex flex-wrap ${gap}`}>
       {/* "No avatar" is the teacher's initials, not an empty slot — the
           account menu falls back to them, so this is a real preview of what
           they get rather than an absence. */}
