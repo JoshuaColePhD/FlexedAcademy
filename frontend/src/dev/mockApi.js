@@ -123,6 +123,7 @@ const uid = (p) => `${p}_${++seq}`
 const state = {
   authenticated: !previewAnonymous,
   credentials: { email: 'jc@x.org', password: 'demo-password' },
+  lastSupportMessage: null,
   // onboarding_seen_at set (unlike a brand-new account) so preview.html lands
   // on the real app shell — App.jsx's ClassRoutes redirects to the onboarding
   // wizard for as long as this is unset, and nothing in this mock ever set it.
@@ -288,11 +289,30 @@ const state = {
         // returns it hydrated on every row, not just get_quiz by id.
         quiz_json: {
           title: 'Week 03 Quiz — Voice & Tone',
+          passages: [
+            {
+              id: 'passage_1',
+              title: 'The narrator’s attitude',
+              text: 'The narrator describes the evening as calm, but his clipped sentences and repeated warnings make the calm feel carefully staged.',
+              source: 'ai_generated',
+            },
+          ],
           questions: [
             {
               type: 'multiple_choice',
               prompt: "Which term describes the narrator's own attitude toward the events of the story?",
               standard_code: 'RHS-2A',
+              passage_id: 'passage_1',
+              alignment: {
+                bloom: 'analyze',
+                dok: 3,
+                cras: {
+                  content_target: 'Authorial tone',
+                  cognitive_operation: 'Analyze diction and syntax',
+                  evidence_basis: 'Clipped sentences and repeated warnings',
+                  rationale: 'Students infer how language choices complicate the narrator’s stated calm.',
+                },
+              },
               choices: ['Tone', 'Diction', 'Syntax', 'Ethos'],
               correct_index: 0,
               correct_bool: false,
@@ -303,6 +323,8 @@ const state = {
               type: 'true_false',
               prompt: 'Diction and syntax are two of the tools a writer uses to establish tone.',
               standard_code: 'RHS-2A',
+              passage_id: '',
+              alignment: { bloom: 'understand', dok: 1, cras: { content_target: 'Tone', cognitive_operation: 'Identify', evidence_basis: 'Lesson plan vocabulary', rationale: 'Checks foundational vocabulary before analysis.' } },
               choices: [],
               correct_index: -1,
               correct_bool: true,
@@ -313,6 +335,8 @@ const state = {
               type: 'short_answer',
               prompt: 'Name one connotative word choice from Monday’s reading and the tone it creates.',
               standard_code: '',
+              passage_id: '',
+              alignment: { bloom: 'analyze', dok: 3, cras: { content_target: 'Connotation', cognitive_operation: 'Explain effect', evidence_basis: 'Student-selected word', rationale: 'Requires a claim supported by a textual choice.' } },
               choices: [],
               correct_index: -1,
               correct_bool: false,
@@ -323,6 +347,8 @@ const state = {
               type: 'matching',
               prompt: 'Match each rhetorical term to its definition.',
               standard_code: 'RHS-1',
+              passage_id: '',
+              alignment: { bloom: 'remember', dok: 1, cras: { content_target: 'Rhetorical terms', cognitive_operation: 'Match definitions', evidence_basis: 'Term-definition pairs', rationale: 'Checks recall of core vocabulary.' } },
               choices: [],
               correct_index: -1,
               correct_bool: false,
@@ -337,6 +363,31 @@ const state = {
         },
       },
     ],
+  },
+  quizLibrary: {
+    shared1: {
+      id: 'shared1',
+      title: 'Voice and Tone · Passage Set',
+      course: 'AP Language & Composition',
+      subject: 'AP Language & Composition',
+      grade: '11',
+      passage_source: 'ai_generated',
+      visibility: 'shared',
+      approval_status: 'approved',
+      provenance_label: 'Shared library',
+      is_owner: false,
+      usage_count: 3,
+      quiz_json: {
+        title: 'Voice and Tone · Passage Set',
+        passages: [{ id: 'shared_passage_1', title: 'A staged calm', text: 'The room was quiet, almost too quiet. Each short sentence seemed to close a door before the next one opened.', source: 'shared_library' }],
+        questions: [{
+          type: 'multiple_choice', passage_id: 'shared_passage_1', standard_code: 'RHS-2A',
+          prompt: 'Which inference is best supported by the passage?', choices: ['The narrator feels entirely relaxed.', 'The quiet contains an undercurrent of tension.', 'The setting is crowded and noisy.', 'The narrator is listing unrelated facts.'], correct_index: 1,
+          correct_bool: false, accepted_answers: [], pairs: [],
+          alignment: { bloom: 'analyze', dok: 3, cras: { content_target: 'Tone', cognitive_operation: 'Infer from syntax', evidence_basis: 'Short sentences and closing-door image', rationale: 'Students connect structural choices to an implied emotional effect.' } },
+        }],
+      },
+    },
   },
   // "Share via Google" (backend/routes/drive.py + plans.py's /share). Mirrors
   // the entitlement toggle above: sessionStorage flips it for a dev session,
@@ -373,14 +424,20 @@ const state = {
   // seed1 (the has_plan-and-openable case); week 12 is built but with no
   // chat_id (the pre-chat_id-tracking orphan case, plain text not a link);
   // week 02 is past and never built (the "missed" case); the rest are
-  // upcoming, and week 06 is a whole-week closure.
+  // upcoming, and week 06 includes Labor Day plus a teacher in-service day.
   weeks: [
     { week: 1, start: '2026-08-03', end: '2026-08-07', no_school: false, has_plan: false, is_current: false, is_past: true, plan_id: null, chat_id: null, unit: null },
     { week: 2, start: '2026-08-10', end: '2026-08-14', no_school: false, has_plan: false, is_current: false, is_past: true, plan_id: null, chat_id: null, unit: null },
     { week: 3, start: '2026-08-17', end: '2026-08-21', no_school: false, has_plan: true, is_current: true, is_past: false, plan_id: 'plan1', chat_id: 'seed1', unit: 'Voice, Tone & Rhetorical Devices' },
     { week: 4, start: '2026-08-24', end: '2026-08-28', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
     { week: 5, start: '2026-08-31', end: '2026-09-04', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
-    { week: 6, start: '2026-09-07', end: '2026-09-11', no_school: true, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
+    { week: 6, start: '2026-09-07', end: '2026-09-11', no_school: false, closures: true, notes: 'Mon Sep 7 = Labor Day (no school); Tue Sep 8 = Teacher in-service day (no students)', days: [
+      { date: '2026-09-07', dow: 'Mon', is_school: false, note: 'Labor Day' },
+      { date: '2026-09-08', dow: 'Tue', is_school: false, note: 'Teacher in-service day' },
+      { date: '2026-09-09', dow: 'Wed', is_school: true, note: '' },
+      { date: '2026-09-10', dow: 'Thu', is_school: true, note: '' },
+      { date: '2026-09-11', dow: 'Fri', is_school: true, note: '' },
+    ], has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
     { week: 7, start: '2026-09-14', end: '2026-09-18', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
     { week: 12, start: '2026-10-19', end: '2026-10-23', no_school: false, has_plan: true, is_current: false, is_past: false, plan_id: 'planOrphan', chat_id: null, unit: 'Satire' },
   ],
@@ -479,6 +536,17 @@ export function installMockApi() {
       if (!state.authenticated) return new Response('{}', { status: 401 })
       return json(currentUser())
     }
+    if (path === '/api/support' && method === 'POST') {
+      if (!body?.message?.trim()) return new Response('{}', { status: 400 })
+      await wait(250)
+      state.lastSupportMessage = {
+        subject: body.subject || 'FlexEd Academy support',
+        message: body.message.trim(),
+        from: state.me.email,
+        to: 'joshuacolephd@gmail.com',
+      }
+      return json({ ok: true })
+    }
     if (path === '/api/auth/demo-availability') return json({ enabled: true })
     if (path === '/api/auth/signup' && method === 'POST') {
       if (!body?.name || !body?.email || !body?.password || body.password.length < 8) {
@@ -560,6 +628,11 @@ export function installMockApi() {
         entitlement: state.entitlement,
       })
     }
+    if (path === '/api/billing/checkout-session' && method === 'POST') {
+      // Keep the preview deterministic and prevent live backend credentials
+      // from ever being paired with the test publishable key.
+      return json({ client_secret: 'cs_test_mock_secret', session_id: 'cs_test_mock' })
+    }
     if (path === '/api/billing/checkout' || path === '/api/billing/portal') {
       // Stripe redirects the browser, so the app reloads and this module's
       // state is rebuilt from scratch — the way it would be in production,
@@ -628,7 +701,7 @@ export function installMockApi() {
       const name = `${body.subject} · ${Number.isFinite(n) ? `${n}th` : `${body.grade}th`}`
       const sort_order = Math.max(-1, ...state.classes.map((c) => c.sort_order)) + 1
       // Stamped with the account's current default, same as db.create_class.
-      const created = { id, name, subject: body.subject, grade: body.grade, sort_order, school: state.me.school }
+      const created = { id, name, subject: body.subject, grade: body.grade, state: body.state || null, sort_order, school: state.me.school }
       state.classes.push(created)
       return json(created)
     }
@@ -908,6 +981,61 @@ export function installMockApi() {
       return json(state.quizzes[quizListMatch[1]] || [])
     }
 
+    if (path === '/api/quiz-library' && method === 'GET') {
+      await wait(150)
+      return json(Object.values(state.quizLibrary || {}))
+    }
+
+    const librarySuggestionMatch = path.match(/^\/api\/quiz-library\/suggestions$/)
+    if (librarySuggestionMatch && method === 'GET') {
+      await wait(250)
+      return json(Object.values(state.quizLibrary || {}).filter((item) => item.approval_status === 'approved'))
+    }
+
+    const libraryUseMatch = path.match(/^\/api\/quiz-library\/sets\/([^/]+)\/use$/)
+    if (libraryUseMatch && method === 'POST') {
+      await wait(250)
+      const item = state.quizLibrary?.[libraryUseMatch[1]]
+      if (!item) return new Response('{}', { status: 404 })
+      item.usage_count = (item.usage_count || 0) + 1
+      return json(structuredClone(item.quiz_json))
+    }
+
+    const libraryApproveMatch = path.match(/^\/api\/quiz-library\/sets\/([^/]+)\/(approve|unpublish)$/)
+    if (libraryApproveMatch && method === 'POST') {
+      await wait(250)
+      const item = state.quizLibrary?.[libraryApproveMatch[1]]
+      if (!item) return new Response('{}', { status: 404 })
+      const action = libraryApproveMatch[2]
+      item.approval_status = action === 'approve' ? 'approved' : 'unpublished'
+      item.visibility = action === 'approve' ? 'shared' : 'unpublished'
+      return json(item)
+    }
+
+    const libraryReportMatch = path.match(/^\/api\/quiz-library\/sets\/([^/]+)\/report$/)
+    if (libraryReportMatch && method === 'POST') {
+      await wait(150)
+      const item = state.quizLibrary?.[libraryReportMatch[1]]
+      if (!item) return new Response('{}', { status: 404 })
+      item.report_count = (item.report_count || 0) + 1
+      return json({ reported: true })
+    }
+
+    const quizLibrarySaveMatch = path.match(/^\/api\/quiz-library\/plans\/([^/]+)\/quizzes\/([^/]+)$/)
+    if (quizLibrarySaveMatch && method === 'POST') {
+      await wait(500)
+      const [, planId, quizId] = quizLibrarySaveMatch
+      const quiz = (state.quizzes[planId] || []).find((item) => item.id === quizId)
+      if (!quiz || !quiz.quiz_json?.passages?.length) return new Response('{}', { status: 400 })
+      const item = {
+        id: uid('shared'), title: quiz.title, course: 'AP Language & Composition', subject: 'AP Language & Composition', grade: '11',
+        passage_source: quiz.quiz_json.passages[0].source || 'ai_generated', visibility: 'private', approval_status: 'draft',
+        provenance_label: 'Your library', is_owner: true, usage_count: 0, quiz_json: structuredClone(quiz.quiz_json),
+      }
+      state.quizLibrary[item.id] = item
+      return json(item)
+    }
+
     const quizCreateMatch = path.match(/^\/api\/plans\/([^/]+)\/quiz$/)
     if (quizCreateMatch && method === 'POST') {
       // Slower than most mock writes on purpose — this is a real model call
@@ -917,6 +1045,13 @@ export function installMockApi() {
       await wait(1200)
       const planId = quizCreateMatch[1]
       const types = body.question_types || ['multiple_choice']
+      const passageMode = body.passage_mode || 'none'
+      const passages = passageMode === 'none' ? [] : [{
+        id: 'passage_1',
+        title: body.passage_title || 'A generated passage',
+        text: body.passage_text || 'The writer’s carefully chosen details create a moment that appears ordinary but carries a quiet tension.',
+        source: passageMode,
+      }]
       const quiz = {
         id: uid('quiz'),
         title: `${(state.plans[planId] || {}).week_of || 'Week'} Quiz`,
@@ -924,8 +1059,29 @@ export function installMockApi() {
         has_qti: true,
         has_docx: true,
         warnings: [],
+        quiz_json: {
+          title: `${(state.plans[planId] || {}).week_of || 'Week'} Quiz`,
+          passages,
+          questions: [{
+            type: 'multiple_choice', passage_id: passages[0]?.id || '', standard_code: 'RHS-2A',
+            prompt: 'Which description best explains the passage’s effect?', choices: ['It creates quiet tension.', 'It lists dates.', 'It gives directions.', 'It changes speakers.'], correct_index: 0,
+            correct_bool: false, accepted_answers: [], pairs: [],
+            alignment: { bloom: passageMode === 'none' ? 'understand' : 'analyze', dok: passageMode === 'none' ? 1 : 3, cras: { content_target: 'Rhetorical effect', cognitive_operation: passageMode === 'none' ? 'Identify' : 'Infer', evidence_basis: passages[0]?.text || 'Plan content', rationale: 'The item matches the requested cognitive demand.' } },
+          }],
+        },
       }
       state.quizzes[planId] = [quiz, ...(state.quizzes[planId] || [])]
+      return json(quiz)
+    }
+
+    const quizUpdateMatch = path.match(/^\/api\/plans\/([^/]+)\/quizzes\/([^/]+)$/)
+    if (quizUpdateMatch && method === 'PUT') {
+      await wait(250)
+      const [, planId, quizId] = quizUpdateMatch
+      const quiz = (state.quizzes[planId] || []).find((item) => item.id === quizId)
+      if (!quiz) return new Response('{}', { status: 404 })
+      quiz.quiz_json = structuredClone(body.quiz_json || quiz.quiz_json)
+      quiz.title = quiz.quiz_json.title || quiz.title
       return json(quiz)
     }
 
@@ -1031,6 +1187,7 @@ export function installMockApi() {
       // ask_clarifying_questions asks the two things missing.
       const quizTypeNamed = /\b(multiple.choice|true.false|short.answer|matching|a mix)\b/i.test(last)
       const quizCountNamed = /\b\d+\b/.test(last)
+      const passageMode = /\bpassage\b/i.test(last) ? 'ai_generated' : 'none'
       const quizNeedsClarify = wantsQuiz && !(quizTypeNamed && quizCountNamed)
       const wantsPlan = /\b(plan|week|build|unit|lesson)\b/i.test(last)
       // Vague, on purpose: enough words to want a plan at all, but nothing
@@ -1051,7 +1208,7 @@ export function installMockApi() {
           : wantsQuiz
           ? [
               [{ chunk: 'Sure — building a multiple choice quiz over this week now.' }, 120],
-              [{ tool_call: 'generate_quiz', question_types: ['multiple_choice', 'true_false'], num_questions: 6 }, 120],
+              [{ tool_call: 'generate_quiz', question_types: ['multiple_choice', 'true_false'], num_questions: 6, passage_mode: passageMode }, 120],
               [{ done: true }, 60],
             ]
           : isVague

@@ -37,6 +37,7 @@ from .routes import (
     generate,
     misc,
     plans,
+    quiz_library,
     school_calendars,
     standards,
 )
@@ -454,6 +455,7 @@ app.include_router(auth.router)
 app.include_router(misc.router)
 app.include_router(generate.router)
 app.include_router(plans.router)
+app.include_router(quiz_library.router)
 app.include_router(standards.router)
 app.include_router(curriculum.router)
 app.include_router(classes.router)

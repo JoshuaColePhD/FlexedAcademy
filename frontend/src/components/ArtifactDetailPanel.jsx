@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload } from 'lucide-react'
+import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload, ChevronLeft, ChevronRight, BookOpen, Library, CheckCircle2, Undo2, AlertTriangle } from 'lucide-react'
 import { api } from '../lib/api'
 import { fetchStandardsBatch } from '../lib/standardsCache'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { classColor } from '../lib/classColor'
 import { longDay, monthKey, monthLabel, parseISO, todayISO } from '../lib/dates'
-import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
+import { BLOOM_LEVELS, DOK_LEVELS, QUESTION_TYPE_LABELS, bloomLabel, questionTypesLabel } from '../lib/quizShape'
 import { Skeleton, SkeletonText } from './Skeleton'
 import { ShareDialog } from './ShareDialog'
 import { DocxDownloadButton } from './DocxDownloadButton'
@@ -39,6 +39,9 @@ function QuizQuestionCard({ q, index, onUpdate }) {
   const isValid =
     draft.prompt?.trim() &&
     (draft.type !== 'multiple_choice' || (draft.choices || []).every((c) => c?.trim()))
+
+  const alignment = draft.alignment || {}
+  const cras = alignment.cras || {}
 
   const handleSave = () => {
     if (!isValid) return
@@ -113,6 +116,40 @@ function QuizQuestionCard({ q, index, onUpdate }) {
             </label>
           </div>
         ) : null}
+
+        <div className="quiz-alignment-editor">
+          <label>
+            <span>Bloom</span>
+            <select
+              className="input text-xs"
+              value={alignment.bloom || ''}
+              onChange={(e) => setDraft({ ...draft, alignment: { ...alignment, bloom: e.target.value } })}
+            >
+              <option value="">Select level</option>
+              {BLOOM_LEVELS.map((level) => <option key={level} value={level}>{bloomLabel(level)}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>DOK</span>
+            <select
+              className="input text-xs"
+              value={alignment.dok || ''}
+              onChange={(e) => setDraft({ ...draft, alignment: { ...alignment, dok: Number(e.target.value) || undefined } })}
+            >
+              <option value="">Select level</option>
+              {DOK_LEVELS.map((level) => <option key={level} value={level}>DOK {level}</option>)}
+            </select>
+          </label>
+          <label className="quiz-alignment-wide">
+            <span>CRAS rationale</span>
+            <textarea
+              className="input text-xs resize-y"
+              value={cras.rationale || ''}
+              onChange={(e) => setDraft({ ...draft, alignment: { ...alignment, cras: { ...cras, rationale: e.target.value } } })}
+              placeholder="Why this item fits the selected rigor…"
+            />
+          </label>
+        </div>
       </div>
     )
   }
@@ -123,6 +160,8 @@ function QuizQuestionCard({ q, index, onUpdate }) {
         <span className="detail-card-index">Q{index + 1}</span>
         <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
         {q.standard_code ? <span className="detail-card-code">{q.standard_code}</span> : null}
+        {alignment.bloom ? <span className="quiz-alignment-chip">{bloomLabel(alignment.bloom)}</span> : null}
+        {alignment.dok ? <span className="quiz-alignment-chip">DOK {alignment.dok}</span> : null}
         <button 
           type="button" 
           className="ml-auto p-1 text-ink-faint hover:text-ink transition-colors opacity-0 group-hover:opacity-100" 
@@ -133,6 +172,7 @@ function QuizQuestionCard({ q, index, onUpdate }) {
         </button>
       </div>
       <p className="detail-card-prompt">{q.prompt}</p>
+      {q.passage_id ? <p className="detail-card-answer"><BookOpen size={12} aria-hidden="true" /> Passage-linked item</p> : null}
 
       {q.type === 'multiple_choice' ? (
         <ul className="detail-choice-list">
@@ -204,12 +244,36 @@ function QuizSkeleton() {
 
 function QuizBody({ quiz }) {
   const [questions, setQuestions] = useState(quiz?.quiz_json?.questions || [])
+  const [passages, setPassages] = useState(quiz?.quiz_json?.passages || [])
   const [isSaving, setIsSaving] = useState(false)
+  const [isSavingToLibrary, setIsSavingToLibrary] = useState(false)
+  const [libraryItem, setLibraryItem] = useState(null)
+  const [permissionConfirmed, setPermissionConfirmed] = useState(false)
+  const [suggestions, setSuggestions] = useState([])
+  const [selectedLibraryQuestions, setSelectedLibraryQuestions] = useState({})
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const [isPassageEditing, setIsPassageEditing] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
     setQuestions(quiz?.quiz_json?.questions || [])
+    setPassages(quiz?.quiz_json?.passages || [])
+    setLibraryItem(null)
+    setPermissionConfirmed(false)
   }, [quiz])
+
+  useEffect(() => {
+    if (!quiz?.plan_id) return undefined
+    const controller = new AbortController()
+    setSuggestionsLoading(true)
+    api.quizLibrarySuggestions(quiz.plan_id, { signal: controller.signal })
+      .then((items) => setSuggestions(Array.isArray(items) ? items : []))
+      .catch((err) => {
+        if (err?.name !== 'AbortError') setSuggestions([])
+      })
+      .finally(() => setSuggestionsLoading(false))
+    return () => controller.abort()
+  }, [quiz?.plan_id])
 
   if (!questions.length) {
     return <p className="note">This quiz has no questions to show.</p>
@@ -218,29 +282,209 @@ function QuizBody({ quiz }) {
   const handleUpdate = async (index, newQuestion) => {
     const newQuestions = [...questions]
     newQuestions[index] = newQuestion
-    setQuestions(newQuestions)
+    await saveQuiz({ questions: newQuestions, passages })
+  }
+
+  const saveQuiz = async ({ questions: nextQuestions = questions, passages: nextPassages = passages }) => {
+    const previousQuestions = questions
+    const previousPassages = passages
+    setQuestions(nextQuestions)
+    setPassages(nextPassages)
     setIsSaving(true)
     try {
-      await api.updateQuiz(quiz.plan_id, quiz.id, { ...quiz.quiz_json, questions: newQuestions })
+      await api.updateQuiz(quiz.plan_id, quiz.id, { ...quiz.quiz_json, questions: nextQuestions, passages: nextPassages })
       toast.success('Quiz Updated', 'Your edits have been saved securely.')
     } catch (err) {
       toast.apiError('Failed to save quiz', err)
-      setQuestions(questions) // Revert
+      setQuestions(previousQuestions)
+      setPassages(previousPassages)
     } finally {
       setIsSaving(false)
     }
   }
 
+  const handleSaveToLibrary = async () => {
+    setIsSavingToLibrary(true)
+    try {
+      const item = await api.saveQuizToLibrary(quiz.plan_id, quiz.id)
+      setLibraryItem(item)
+      setPermissionConfirmed(false)
+      toast.success('Saved privately', 'Review this set, then approve it for the shared library.')
+    } catch (err) {
+      toast.apiError('Could not save to library', err)
+    } finally {
+      setIsSavingToLibrary(false)
+    }
+  }
+
+  const handleApprove = async () => {
+    if (!libraryItem?.id) return
+    try {
+      const item = await api.approveQuizLibrarySet(libraryItem.id, { permissionConfirmed })
+      setLibraryItem(item)
+      toast.success('Shared library approved', 'Other teachers can now find this set in a matching context.')
+    } catch (err) {
+      toast.apiError('Could not approve library item', err)
+    }
+  }
+
+  const handleUnpublish = async () => {
+    if (!libraryItem?.id) return
+    try {
+      const item = await api.unpublishQuizLibrarySet(libraryItem.id)
+      setLibraryItem(item)
+      toast.success('Removed from shared library', 'Your quiz remains unchanged.')
+    } catch (err) {
+      toast.apiError('Could not remove library item', err)
+    }
+  }
+
+  const handleUseSuggestion = async (suggestion) => {
+    try {
+      const reusable = await api.useQuizLibrarySet(suggestion.id)
+      const allQuestions = reusable.questions || []
+      const selectedIndexes = selectedLibraryQuestions[suggestion.id]
+      const chosenQuestions = selectedIndexes?.length
+        ? allQuestions.filter((_, index) => selectedIndexes.includes(index))
+        : allQuestions
+      const passageIdMap = {}
+      const copiedPassages = (reusable.passages || []).map((passage, index) => {
+        let nextId = passage.id || `shared_passage_${index + 1}`
+        if (passages.some((existing) => existing.id === nextId)) nextId = `${nextId}_copy_${Date.now()}_${index}`
+        passageIdMap[passage.id] = nextId
+        return { ...passage, id: nextId }
+      })
+      const remappedQuestions = chosenQuestions.map((question) => ({
+        ...question,
+        passage_id: passageIdMap[question.passage_id] || question.passage_id || '',
+      }))
+      await saveQuiz({ questions: [...questions, ...remappedQuestions], passages: [...passages, ...copiedPassages] })
+      toast.success('Added shared questions', 'The copied questions are now editable in this quiz.')
+    } catch (err) {
+      toast.apiError('Could not reuse shared item', err)
+    }
+  }
+
+  const handleReportSuggestion = async (suggestion) => {
+    try {
+      await api.reportQuizLibrarySet(suggestion.id, 'Teacher reported this shared set for review.')
+      toast.success('Thanks for the report', 'This shared item has been flagged for review.')
+    } catch (err) {
+      toast.apiError('Could not report shared item', err)
+    }
+  }
+
+  const toggleLibraryQuestion = (suggestionId, index) => {
+    setSelectedLibraryQuestions((current) => {
+      const selected = current[suggestionId] || []
+      return {
+        ...current,
+        [suggestionId]: selected.includes(index) ? selected.filter((item) => item !== index) : [...selected, index],
+      }
+    })
+  }
+
+  const updatePassage = (passage, value) => {
+    setPassages(passages.map((item) => item.id === passage.id ? { ...item, text: value } : item))
+  }
+
   return (
-    <div className="detail-card-stack relative">
+    <div className={`quiz-body${passages.length ? ' has-passages' : ''}`}>
       {isSaving && (
         <div className="absolute top-0 right-0 m-2 flex items-center gap-1.5 text-xs text-ink-muted bg-paper-sunken px-2 py-1 rounded-full shadow-sm z-10">
           <Loader2 size={12} className="animate-spin" /> Saving...
         </div>
       )}
-      {questions.map((q, i) => (
-        <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} />
-      ))}
+      <div className="quiz-library-toolbar">
+        <div>
+          <strong>Reusable assessment set</strong>
+          <span>Keep this quiz private, or approve a reviewed passage set for other teachers.</span>
+        </div>
+        {!libraryItem ? (
+          <button type="button" className="btn-secondary fa-press" onClick={handleSaveToLibrary} disabled={isSavingToLibrary || !passages.length}>
+            {isSavingToLibrary ? <Loader2 size={14} className="animate-spin" /> : <Library size={14} />}
+            Save to library
+          </button>
+        ) : libraryItem.approval_status === 'approved' ? (
+          <button type="button" className="btn-secondary fa-press" onClick={handleUnpublish}><Undo2 size={14} /> Unpublish</button>
+        ) : (
+          <span className="quiz-approval-controls">
+            {libraryItem.passage_source === 'teacher_provided' ? (
+              <label><input type="checkbox" checked={permissionConfirmed} onChange={(e) => setPermissionConfirmed(e.target.checked)} /> I have permission to share this passage</label>
+            ) : null}
+            <button type="button" className="btn-primary fa-press" onClick={handleApprove} disabled={libraryItem.passage_source === 'teacher_provided' && !permissionConfirmed}><CheckCircle2 size={14} /> Approve for sharing</button>
+          </span>
+        )}
+      </div>
+
+      {libraryItem ? (
+        <div className="quiz-library-status" role="status">
+          <Library size={14} aria-hidden="true" />
+          {libraryItem.approval_status === 'approved' ? 'Approved and available to teachers in matching contexts.' : 'Saved privately as a draft. Review before sharing.'}
+        </div>
+      ) : null}
+
+      {passages.length ? (
+        <div className="quiz-paired-layout">
+          <aside className="quiz-passage-pane">
+            <div className="quiz-pane-heading">
+              <span><BookOpen size={15} aria-hidden="true" /> Passage</span>
+              <button type="button" className="btn-icon fa-press" onClick={() => setIsPassageEditing(!isPassageEditing)} aria-label={isPassageEditing ? 'Stop editing passage' : 'Edit passage'} title={isPassageEditing ? 'Stop editing passage' : 'Edit passage'}>
+                {isPassageEditing ? <X size={14} /> : <Edit2 size={14} />}
+              </button>
+            </div>
+            {passages.map((passage) => (
+              <div key={passage.id} className="quiz-passage-card">
+                <h3>{passage.title || 'Passage'}</h3>
+                {isPassageEditing ? (
+                  <textarea className="input quiz-passage-editor" value={passage.text || ''} onChange={(e) => updatePassage(passage, e.target.value)} />
+                ) : (
+                  <p>{passage.text}</p>
+                )}
+                <small>{passage.source === 'teacher_provided' ? 'Teacher-provided' : 'AI-generated'} · shared only after approval</small>
+              </div>
+            ))}
+            {isPassageEditing ? <button type="button" className="btn-primary fa-press mt-3" onClick={() => { setIsPassageEditing(false); saveQuiz({ questions, passages }) }}><Save size={14} /> Save passage</button> : null}
+          </aside>
+          <section className="quiz-question-pane" aria-label="Passage questions">
+            <div className="quiz-pane-heading"><span>Questions</span><span className="quiz-question-count">{questions.length} item{questions.length === 1 ? '' : 's'}</span></div>
+            <div className="detail-card-stack">
+              {questions.map((q, i) => <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} />)}
+            </div>
+          </section>
+        </div>
+      ) : (
+        <div className="detail-card-stack">
+          {questions.map((q, i) => <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} />)}
+        </div>
+      )}
+
+      <section className="quiz-library-suggestions" aria-label="Shared library suggestions">
+        <div className="quiz-pane-heading"><span><Library size={15} aria-hidden="true" /> Matching shared sets</span>{suggestionsLoading ? <Loader2 size={14} className="animate-spin" /> : null}</div>
+        {!suggestionsLoading && !suggestions.length ? <p className="note">No approved sets match this plan yet.</p> : null}
+        {suggestions.map((suggestion) => (
+          <div key={suggestion.id} className="quiz-library-suggestion">
+            <div className="quiz-library-suggestion-main">
+              <strong>{suggestion.title}</strong>
+              <span>{suggestion.provenance_label} · {suggestion.usage_count || 0} reuse{suggestion.usage_count === 1 ? '' : 's'}</span>
+              {suggestion.quiz_json?.questions?.length ? (
+                <div className="quiz-library-question-picker">
+                  {suggestion.quiz_json.questions.map((question, index) => (
+                    <label key={index}>
+                      <input type="checkbox" checked={(selectedLibraryQuestions[suggestion.id] || []).includes(index)} onChange={() => toggleLibraryQuestion(suggestion.id, index)} />
+                      <span>Q{index + 1}: {question.prompt}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="quiz-library-suggestion-actions">
+              <button type="button" className="btn-secondary fa-press" onClick={() => handleUseSuggestion(suggestion)}>Add selected</button>
+              <button type="button" className="btn-icon fa-press" onClick={() => handleReportSuggestion(suggestion)} aria-label={`Report ${suggestion.title}`} title="Report shared item"><AlertTriangle size={14} /></button>
+            </div>
+          </div>
+        ))}
+      </section>
     </div>
   )
 }
@@ -351,6 +595,34 @@ function StandardsBody({ grounded = [], ungrounded = [], subject }) {
 
 const WEEKDAY_LETTERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
+const localDateKey = (date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+)
+
+/* Settings can receive the school-level calendar before the API has added its
+ * derived `days` array, while the main app's week board already includes it.
+ * Keep both response shapes renderable so a calendar never disappears during
+ * that transition. The backend remains the source of exact closure details
+ * whenever `days` is present. */
+function inferredWeekDays(week) {
+  if (!week.start || !week.end) return []
+  const start = parseISO(week.start)
+  const end = parseISO(week.end)
+  const monday = new Date(start)
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
+    const inRange = date >= start && date <= end
+    const isSchool = !week.no_school && inRange
+    return {
+      date: localDateKey(date),
+      is_school: isSchool,
+      note: isSchool ? '' : week.no_school ? (week.notes || 'No school') : date < start ? 'Before the first day' : 'After the last day',
+    }
+  })
+}
+
 /* Every week's own `days` array (backend/schoolcal.py's week_days, already
  * attached to each /api/weeks row — see db.py's week_board) flattened into
  * one date → info map, then re-grouped into real calendar months. Weekends
@@ -360,7 +632,9 @@ const WEEKDAY_LETTERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 function buildMonths(weeks) {
   const byDate = new Map()
   weeks.forEach((w) => {
-    ;(w.days || []).forEach((d) => {
+    const days = Array.isArray(w.days) && w.days.length ? w.days : inferredWeekDays(w)
+    days.forEach((d) => {
+      if (!d.date) return
       byDate.set(d.date, {
         isSchool: d.is_school,
         note: d.note,
@@ -411,25 +685,92 @@ function buildMonths(weeks) {
  * on the API response — see buildMonths above) instead of a per-week
  * summary, so a single holiday inside an otherwise-normal week is visible
  * without opening anything further. */
-function CalendarBody({ weeks = [], currentWeek, classId }) {
+export function CalendarBody({ weeks = [], currentWeek, classId }) {
   const months = useMemo(() => buildMonths(weeks), [weeks])
   const today = todayISO()
-  const currentRef = useRef(null)
-  const hasScrolled = useRef(false)
+  const monthRefs = useRef([])
+  const todayMonthIndex = useMemo(() => {
+    const index = months.findIndex((month) => month.cells.some((cell) => cell?.iso === today))
+    return index >= 0 ? index : 0
+  }, [months, today])
+  const activeWeek = useMemo(() => {
+    if (currentWeek != null) return currentWeek
+    return weeks.find((week) => week.start <= today && today <= week.end)?.week
+  }, [weeks, currentWeek, today])
+  const focusMonthIndex = useMemo(() => {
+    const index = months.findIndex((month) => month.cells.some((cell) => (
+      cell && (currentWeek != null ? cell.week === currentWeek : cell.iso === today)
+    )))
+    return index >= 0 ? index : 0
+  }, [months, currentWeek, today])
+  const [activeMonthIndex, setActiveMonthIndex] = useState(focusMonthIndex)
+
   useEffect(() => {
-    if (hasScrolled.current || !months.length) return
-    hasScrolled.current = true
-    currentRef.current?.scrollIntoView({ block: 'center' })
-  }, [months.length])
+    if (!months.length) return
+    setActiveMonthIndex(focusMonthIndex)
+    monthRefs.current[focusMonthIndex]?.scrollIntoView({ block: 'nearest', inline: 'start' })
+  }, [months.length, focusMonthIndex])
+
+  const scrollToMonth = (index) => {
+    const nextIndex = Math.max(0, Math.min(months.length - 1, index))
+    setActiveMonthIndex(nextIndex)
+    monthRefs.current[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })
+  }
+
+  const handleMonthScroll = (event) => {
+    const container = event.currentTarget
+    const nextIndex = monthRefs.current.reduce((closest, month, index) => {
+      if (!month) return closest
+      const distance = Math.abs(month.offsetLeft - container.scrollLeft)
+      const closestDistance = Math.abs(monthRefs.current[closest]?.offsetLeft - container.scrollLeft)
+      return distance < closestDistance ? index : closest
+    }, 0)
+    if (nextIndex !== activeMonthIndex) setActiveMonthIndex(nextIndex)
+  }
 
   if (!weeks.length) {
     return <p className="note">No school calendar is on file for this class.</p>
   }
 
   return (
-    <div className="cal-months">
-      {months.map((month) => (
-        <div key={month.key} className="cal-month fa-rise">
+    <div className="cal-shell">
+      <div className="cal-toolbar">
+        <button
+          type="button"
+          className="cal-today-button"
+          onClick={() => scrollToMonth(todayMonthIndex)}
+          disabled={activeMonthIndex === todayMonthIndex}
+        >
+          Today
+        </button>
+        <h3 className="cal-toolbar-label">
+          {months[activeMonthIndex]?.label || months[0]?.label}
+          {activeWeek != null ? <span className="cal-toolbar-week">Week {String(activeWeek).padStart(2, '0')}</span> : null}
+        </h3>
+        <div className="cal-nav" aria-label="Calendar month navigation">
+          <button
+            type="button"
+            onClick={() => scrollToMonth(activeMonthIndex - 1)}
+            disabled={activeMonthIndex === 0}
+            aria-label="Previous month"
+            title="Previous month"
+          >
+            <ChevronLeft size={16} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToMonth(activeMonthIndex + 1)}
+            disabled={activeMonthIndex === months.length - 1}
+            aria-label="Next month"
+            title="Next month"
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <div className="cal-months" onScroll={handleMonthScroll} tabIndex={0} role="region" aria-label="School calendar months">
+      {months.map((month, monthIndex) => (
+        <div key={month.key} className="cal-month fa-rise" ref={(node) => { monthRefs.current[monthIndex] = node }}>
           <h3 className="cal-month-label">{month.label}</h3>
           <div className="cal-weekday-row" aria-hidden="true">
             {WEEKDAY_LETTERS.map((d) => (
@@ -437,43 +778,45 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
             ))}
           </div>
           <div className="cal-grid">
-            {(() => {
-              // Ref goes on the FIRST day of the plan's own week only — every
-              // day in that week would otherwise reassign currentRef as the
-              // map runs, and scrollIntoView on whichever happened to run
-              // last (Friday) centers the same week either way, but only one
-              // DOM node should actually own the ref.
-              let refAssigned = false
-              return month.cells.map((cell, i) => {
-                if (!cell) return <span key={`pad-${i}`} className="cal-day is-pad" aria-hidden="true" />
-                const isToday = cell.iso === today
-                const isThisPlanWeek = cell.week === currentWeek
-                const openable = cell.hasPlan && cell.chatId && !isThisPlanWeek && !cell.isOff
-                const ref = isThisPlanWeek && !refAssigned ? ((refAssigned = true), currentRef) : undefined
-                const cellBody = (
+            {month.cells.map((cell, i) => {
+              if (!cell) return <span key={`pad-${i}`} className="cal-day is-pad" aria-hidden="true" />
+              const isToday = cell.iso === today
+              const isThisPlanWeek = activeWeek != null && cell.week === activeWeek
+              const openable = cell.hasPlan && cell.chatId && !isThisPlanWeek && !cell.isOff
+              const cellBody = (
+                <span
+                  className={`cal-day${cell.isOff ? ' is-off' : ''}${cell.note ? ' has-note' : ''}${
+                    isToday ? ' is-today' : ''
+                  }${isThisPlanWeek ? ' is-current-week' : ''}${openable ? ' is-openable' : ''}`}
+                  title={`${longDay(cell.iso)}${cell.note ? ` — ${cell.note}` : ''}`}
+                >
+                  <span className="cal-day-number">{cell.day}</span>
                   <span
-                    className={`cal-day${cell.isOff ? ' is-off' : ''}${cell.note ? ' has-note' : ''}${
-                      isToday ? ' is-today' : ''
-                    }${isThisPlanWeek ? ' is-current-week' : ''}${openable ? ' is-openable' : ''}`}
-                    title={`${longDay(cell.iso)}${cell.note ? ` — ${cell.note}` : ''}`}
-                  >
-                    {cell.day}
-                  </span>
-                )
-                return openable ? (
-                  <Link key={cell.iso} to={`/c/${classId}/chat/${cell.chatId}`} className="cal-day-link" ref={ref}>
-                    {cellBody}
-                  </Link>
-                ) : (
-                  <span key={cell.iso} ref={ref}>
-                    {cellBody}
-                  </span>
-                )
-              })
-            })()}
+                    className={`cal-day-status ${cell.isOff ? (cell.note ? 'is-closure' : 'is-off') : 'is-work'}`}
+                    aria-hidden="true"
+                  />
+                </span>
+              )
+              return openable ? (
+                <Link key={cell.iso} to={`/c/${classId}/chat/${cell.chatId}`} className="cal-day-link">
+                  {cellBody}
+                </Link>
+              ) : (
+                <span key={cell.iso}>
+                  {cellBody}
+                </span>
+              )
+            })}
           </div>
         </div>
       ))}
+      </div>
+      <div className="cal-key" aria-label="Calendar key">
+        <span><i className="cal-key-dot is-work" aria-hidden="true" /> Teaching day</span>
+        <span><i className="cal-key-dot is-off" aria-hidden="true" /> Day off</span>
+        <span><i className="cal-key-dot is-closure" aria-hidden="true" /> Closure</span>
+        {activeWeek != null ? <span><i className="cal-key-line" aria-hidden="true" /> Current week</span> : null}
+      </div>
     </div>
   )
 }

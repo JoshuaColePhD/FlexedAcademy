@@ -3376,6 +3376,85 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_read_only BOOLEAN NOT NULL DEFAULT false;
     """,
+    # ── 70: structured plan-quality feedback ────────────────────────────────
+    # Keep the original thumbs-up/down contract, but capture the failure mode
+    # and retrieval context needed to turn teacher feedback into eval cases.
+    """
+    ALTER TABLE plan_feedback ADD COLUMN IF NOT EXISTS reason TEXT;
+    ALTER TABLE plan_feedback ADD COLUMN IF NOT EXISTS context_json JSONB;
+    CREATE INDEX IF NOT EXISTS idx_plan_feedback_reason ON plan_feedback(reason, created_at DESC);
+    """,
+    # ── 71: teacher-approved shared passage/question library ────────────────
+    # A library row is a reusable assessment set, not a live pointer into the
+    # creating teacher's quiz. The JSON snapshot makes reuse independent of the
+    # original plan, while the version table preserves an audit trail when a
+    # set is revised or unpublished later.
+    """
+    CREATE TABLE IF NOT EXISTS quiz_library_sets (
+      id                 TEXT PRIMARY KEY,
+      creator_user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title              TEXT NOT NULL,
+      quiz_json          TEXT NOT NULL,
+      course             TEXT NOT NULL,
+      subject            TEXT NOT NULL,
+      grade              TEXT NOT NULL,
+      standard_codes     JSONB NOT NULL DEFAULT '[]'::jsonb,
+      context_text       TEXT NOT NULL DEFAULT '',
+      embedding          vector(384),
+      content_hash       TEXT NOT NULL UNIQUE,
+      passage_source     TEXT NOT NULL CHECK (passage_source IN ('ai_generated','teacher_provided','shared_library')),
+      visibility         TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','shared','unpublished')),
+      approval_status    TEXT NOT NULL DEFAULT 'draft' CHECK (approval_status IN ('draft','approved','unpublished')),
+      permission_confirmed BOOLEAN NOT NULL DEFAULT false,
+      approved_at        TEXT,
+      unpublished_at     TEXT,
+      usage_count        INTEGER NOT NULL DEFAULT 0,
+      report_count       INTEGER NOT NULL DEFAULT 0,
+      created_at         TEXT NOT NULL,
+      updated_at         TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_context
+      ON quiz_library_sets(course, subject, grade, approval_status, visibility);
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_creator
+      ON quiz_library_sets(creator_user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_standard_codes
+      ON quiz_library_sets USING GIN (standard_codes);
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_embedding
+      ON quiz_library_sets USING hnsw (embedding vector_cosine_ops);
+    ALTER TABLE quiz_library_sets ENABLE ROW LEVEL SECURITY;
+
+    CREATE TABLE IF NOT EXISTS quiz_library_versions (
+      id             TEXT PRIMARY KEY,
+      library_set_id TEXT NOT NULL REFERENCES quiz_library_sets(id) ON DELETE CASCADE,
+      version        INTEGER NOT NULL,
+      quiz_json      TEXT NOT NULL,
+      changed_by     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at     TEXT NOT NULL,
+      UNIQUE (library_set_id, version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_versions_set
+      ON quiz_library_versions(library_set_id, version DESC);
+    ALTER TABLE quiz_library_versions ENABLE ROW LEVEL SECURITY;
+    """,
+    # ── 72: allow private library copies without weakening shared dedupe ─────
+    # A content hash is useful for deduplicating approved public material, but
+    # a globally unique constraint would make one teacher's private draft block
+    # another teacher from saving an independent private copy. Drop the broad
+    # constraint and replace it with the actual policy boundary.
+    """
+    ALTER TABLE quiz_library_sets DROP CONSTRAINT IF EXISTS quiz_library_sets_content_hash_key;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_quiz_library_shared_hash
+      ON quiz_library_sets(content_hash)
+      WHERE visibility = 'shared' AND approval_status = 'approved';
+    """,
+    # ── 73: keep the library backend-only at the Supabase boundary ──────────
+    # The app uses its authenticated backend connection, not the browser's
+    # publishable/anon key, for library access. Remove any default Data API
+    # grants so RLS is defense in depth rather than the only barrier.
+    """
+    REVOKE ALL ON TABLE quiz_library_sets FROM anon, authenticated;
+    REVOKE ALL ON TABLE quiz_library_versions FROM anon, authenticated;
+    """,
 ]
 
 
@@ -3806,7 +3885,7 @@ def create_class(user_id: str, *, name: str, subject: str, grade: str, state: st
     return get_class(user_id, class_id)
 
 
-_CLASS_FIELDS = {"name", "subject", "grade", "sort_order", "archived", "school", "custom_instructions"}
+_CLASS_FIELDS = {"name", "subject", "grade", "state", "sort_order", "archived", "school", "custom_instructions"}
 
 
 def class_school(cls: dict | None, user_id: str) -> str:
@@ -5050,16 +5129,49 @@ def replace_plan_standards(
         conn.commit()
 
 
-def add_plan_feedback(user_id: str, plan_id: str, is_good: bool, notes: str | None = None) -> bool:
+def add_plan_feedback(
+    user_id: str,
+    plan_id: str,
+    is_good: bool,
+    notes: str | None = None,
+    reason: str | None = None,
+) -> bool:
     # Ensure plan belongs to user
-    if not get_plan(user_id, plan_id):
+    plan = get_plan(user_id, plan_id)
+    if not plan:
         return False
-    
+
+    context = {
+        "course": plan.get("course"),
+        "week_label": plan.get("week_label"),
+        "retrieved_ids": plan.get("retrieved_ids") or [],
+        "warnings": plan.get("warnings") or [],
+    }
     _write(
-        "INSERT INTO plan_feedback (user_id, plan_id, is_good, notes, created_at) VALUES (?, ?, ?, ?, ?)",
-        (user_id, plan_id, 1 if is_good else 0, notes, now())
+        "INSERT INTO plan_feedback "
+        "(user_id, plan_id, is_good, notes, reason, context_json, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?::jsonb, ?)",
+        (user_id, plan_id, 1 if is_good else 0, notes, reason, json.dumps(context), now()),
     )
     return True
+
+
+def list_plan_feedback_for_quality(limit: int = 500) -> list[dict]:
+    """Return teacher feedback as privacy-minimized quality-review cases.
+
+    Only the plan context captured at feedback time is exported. The plan
+    body, teacher identity, and student-facing content stay out of the
+    quality dataset.
+    """
+    safe_limit = max(1, min(int(limit), 5000))
+    return _rows(
+        """SELECT pf.id, pf.plan_id, pf.is_good, pf.notes, pf.reason,
+                         pf.context_json, pf.created_at
+                  FROM plan_feedback pf
+                 ORDER BY pf.created_at DESC, pf.id DESC
+                 LIMIT ?""",
+        (safe_limit,),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -5157,6 +5269,167 @@ def list_quizzes_for_plan(user_id: str, plan_id: str) -> list[dict]:
         (plan_id, user_id),
     )
     return [_hydrate_quiz(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Shared passage/question library — approval-gated and backend-only
+# ---------------------------------------------------------------------------
+
+
+def _hydrate_library_set(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    d = dict(row)
+    for key in ("quiz_json", "standard_codes"):
+        if isinstance(d.get(key), str):
+            d[key] = json.loads(d[key])
+    return d
+
+
+def create_quiz_library_set(
+    *,
+    library_id: str,
+    creator_user_id: str,
+    title: str,
+    quiz_json: dict,
+    course: str,
+    subject: str,
+    grade: str,
+    standard_codes: list[str],
+    context_text: str,
+    embedding: list[float] | None,
+    content_hash: str,
+    passage_source: str,
+    permission_confirmed: bool,
+) -> dict | None:
+    ts = now()
+    row = _write_returning(
+        """INSERT INTO quiz_library_sets
+             (id, creator_user_id, title, quiz_json, course, subject, grade,
+              standard_codes, context_text, embedding, content_hash,
+              passage_source, permission_confirmed, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT DO NOTHING
+           RETURNING *""",
+        (
+            library_id, creator_user_id, title, json.dumps(quiz_json), course,
+            subject, grade, json.dumps(standard_codes), context_text, embedding,
+            content_hash, passage_source, permission_confirmed, ts, ts,
+        ),
+    )
+    if row:
+        _write(
+            "INSERT INTO quiz_library_versions (id, library_set_id, version, quiz_json, changed_by, created_at) VALUES (?,?,?,?,?,?)",
+            (new_id(), library_id, 1, json.dumps(quiz_json), creator_user_id, ts),
+        )
+    return _hydrate_library_set(row)
+
+
+def get_quiz_library_set(user_id: str, library_id: str) -> dict | None:
+    row = _row(
+        """SELECT * FROM quiz_library_sets
+            WHERE id = ? AND (creator_user_id = ? OR (visibility = 'shared' AND approval_status = 'approved'))""",
+        (library_id, user_id),
+    )
+    return _hydrate_library_set(row)
+
+
+def get_quiz_library_set_by_hash(content_hash: str, user_id: str | None = None) -> dict | None:
+    if user_id:
+        row = _row(
+            """SELECT * FROM quiz_library_sets
+                WHERE content_hash = ?
+                  AND (creator_user_id = ? OR (visibility = 'shared' AND approval_status = 'approved'))
+                ORDER BY CASE WHEN creator_user_id = ? THEN 0 ELSE 1 END
+                LIMIT 1""",
+            (content_hash, user_id, user_id),
+        )
+    else:
+        row = _row("SELECT * FROM quiz_library_sets WHERE content_hash = ? LIMIT 1", (content_hash,))
+    return _hydrate_library_set(row)
+
+
+def list_quiz_library_sets_for_user(user_id: str, *, limit: int = 100) -> list[dict]:
+    rows = _rows(
+        """SELECT * FROM quiz_library_sets
+            WHERE creator_user_id = ? OR (visibility = 'shared' AND approval_status = 'approved')
+            ORDER BY updated_at DESC LIMIT ?""",
+        (user_id, max(1, min(int(limit), 200))),
+    )
+    return [_hydrate_library_set(row) for row in rows]
+
+
+def search_quiz_library_sets(
+    *,
+    course: str,
+    subject: str,
+    grade: str,
+    standard_codes: list[str],
+    query_embedding: list[float] | None,
+    limit: int = 8,
+) -> list[dict]:
+    """Search only approved shared sets after hard context filters."""
+    params: list = [course, subject, grade]
+    where = "course = ? AND subject = ? AND grade = ? AND visibility = 'shared' AND approval_status = 'approved'"
+    if standard_codes:
+        # Use the function form instead of JSONB's `?|` operator: this module
+        # intentionally rewrites `?` placeholders before handing SQL to
+        # psycopg2, so the operator's question mark would be mistaken for a
+        # parameter marker.
+        where += " AND jsonb_exists_any(standard_codes, ?::text[])"
+        params.append(standard_codes)
+    if query_embedding is not None:
+        sql = f"""SELECT *, embedding <=> ?::vector AS similarity_distance
+                    FROM quiz_library_sets WHERE {where} AND embedding IS NOT NULL
+                    ORDER BY embedding <=> ?::vector LIMIT ?"""
+        params = [query_embedding, *params, query_embedding, max(1, min(int(limit), 20))]
+    else:
+        sql = f"""SELECT *, NULL::double precision AS similarity_distance
+                    FROM quiz_library_sets WHERE {where}
+                    ORDER BY updated_at DESC LIMIT ?"""
+        params.append(max(1, min(int(limit), 20)))
+    return [_hydrate_library_set(row) for row in _rows(sql, tuple(params))]
+
+
+def approve_quiz_library_set(user_id: str, library_id: str, *, permission_confirmed: bool) -> dict | None:
+    row = get_quiz_library_set(user_id, library_id)
+    if not row or row.get("creator_user_id") != user_id:
+        return None
+    updated = _write_returning(
+        """UPDATE quiz_library_sets
+              SET visibility = 'shared', approval_status = 'approved',
+                  permission_confirmed = ?, approved_at = ?, updated_at = ?
+            WHERE id = ? AND creator_user_id = ?
+            RETURNING *""",
+        (permission_confirmed, now(), now(), library_id, user_id),
+    )
+    return _hydrate_library_set(updated)
+
+
+def unpublish_quiz_library_set(user_id: str, library_id: str) -> dict | None:
+    updated = _write_returning(
+        """UPDATE quiz_library_sets
+              SET visibility = 'unpublished', approval_status = 'unpublished',
+                  unpublished_at = ?, updated_at = ?
+            WHERE id = ? AND creator_user_id = ?
+            RETURNING *""",
+        (now(), now(), library_id, user_id),
+    )
+    return _hydrate_library_set(updated)
+
+
+def increment_quiz_library_usage(library_id: str) -> None:
+    _write(
+        "UPDATE quiz_library_sets SET usage_count = usage_count + 1, updated_at = ? WHERE id = ?",
+        (now(), library_id),
+    )
+
+
+def report_quiz_library_set(library_id: str) -> None:
+    _write(
+        "UPDATE quiz_library_sets SET report_count = report_count + 1, updated_at = ? WHERE id = ?",
+        (now(), library_id),
+    )
 
 
 def delete_quiz(user_id: str, quiz_id: str) -> bool:

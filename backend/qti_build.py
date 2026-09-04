@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import uuid
 import zipfile
+from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -238,7 +239,18 @@ def _assessment_xml(quiz: dict, assessment_ident: str) -> bytes:
     assessment = ET.SubElement(root, "assessment", {"ident": assessment_ident, "title": quiz["title"]})
     section = ET.SubElement(assessment, "section", {"ident": "root_section"})
 
+    passages = {
+        p.get("id"): p for p in (quiz.get("passages") or [])
+        if isinstance(p, dict) and p.get("id")
+    }
     for q in quiz["questions"]:
+        q = deepcopy(q)
+        passage = passages.get(q.get("passage_id"))
+        if passage and q.get("type") == "multiple_choice":
+            q["prompt"] = (
+                f"{passage.get('title') or 'Passage'}\n\n{passage.get('text') or ''}\n\n"
+                f"{q.get('prompt') or ''}"
+            )
         build = _BUILDERS.get(q["type"])
         if build is None:  # pragma: no cover — validate_quiz already rejected this
             raise AppError("qti_unknown_type", f"Unknown question type {q['type']!r}.")

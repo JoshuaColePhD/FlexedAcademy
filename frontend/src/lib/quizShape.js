@@ -10,6 +10,13 @@ export const QUESTION_TYPE_LABELS = {
   matching: 'Matching',
 }
 
+export const BLOOM_LEVELS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+export const DOK_LEVELS = [1, 2, 3, 4]
+
+export function bloomLabel(level) {
+  return level ? level.charAt(0).toUpperCase() + level.slice(1) : 'Unassigned'
+}
+
 /** "Multiple choice, True/false" — the rail's own sub-line and the detail
  *  panel's header both want exactly this, title-cased. */
 export function questionTypesLabel(types = []) {
