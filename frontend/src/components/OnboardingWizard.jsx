@@ -702,7 +702,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     }
   }
 
-  const finish = async () => {
+  const finish = async (prefill) => {
     setFinishing(true)
     try {
       await api.markOnboardingSeen()
@@ -726,10 +726,15 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
          sessionStorage, so the wizard genuinely does return next login. */
       deferOnboarding(user?.id)
       toast.apiError("Couldn't save your setup progress", err)
-    } finally {
       setFinishing(false)
       onClose(activeClass)
+      return
     }
+    setFinishing(false)
+    // `prefill` reaches the destination chat's composer via each host's own
+    // onClose (OnboardingSetupPage.jsx / AppShell.jsx) — the wizard itself
+    // doesn't own navigation, so it only carries the intent along.
+    onClose(activeClass, prefill ? { prefill } : undefined)
   }
 
   /* No `|| !cls` any more. The first two steps run before a class exists —
@@ -972,7 +977,6 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 schoolName={selectedSchool?.name || school}
                 courseName={frameworks.find((framework) => framework.id === subject)?.label || subject}
                 gradeName={gradeLabel(grade)}
-                formatName={schoolHasUsableTemplate || templatePhase === 'confirmed' ? 'School format' : 'Add later'}
                 editableSteps={plan}
                 onEdit={(target) => { if (plan.includes(target)) goTo(target) }}
                 onBack={goBack}
@@ -2153,10 +2157,11 @@ const PREVIEW_ITEM_ICONS = {
   course: BookOpen,
   grade: GraduationCap,
   school: Building2,
-  format: FileText,
 }
 
-function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, gradeName, formatName, editableSteps = [], onEdit, onBack }) {
+const FIRST_CHAT_PROMPT = 'Plan a week for my next unit using my course standards.'
+
+function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, gradeName, editableSteps = [], onEdit, onBack }) {
   useOnboardingActions({
     onNext: onFinish,
     nextLabel: finishing ? 'Opening your workspace…' : 'Open my workspace',
@@ -2168,7 +2173,6 @@ function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, 
     { key: 'course', label: 'Course', value: courseName || 'Not set yet', edit: 'course' },
     { key: 'grade', label: 'Grade', value: gradeName || 'Not set yet', edit: 'course' },
     { key: 'school', label: 'Your school', value: schoolName || 'Not set yet', edit: 'school' },
-    { key: 'format', label: 'School format', value: formatName, edit: 'format' },
   ]
 
   return (
@@ -2269,7 +2273,15 @@ function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, 
         transition={{ duration: 0.32, delay: 0.5 + setupItems.length * 0.06 + 0.05, ease: [0.22, 1, 0.36, 1] }}
       >
         <Sparkles size={15} aria-hidden="true" />
-        <span><strong>Try this first:</strong> “Plan a week for my next unit using my course standards.”</span>
+        <span><strong>Try this first:</strong> “{FIRST_CHAT_PROMPT}”</span>
+        <button
+          type="button"
+          className="onboarding-next-note-cta neo-raised"
+          disabled={finishing}
+          onClick={() => onFinish(FIRST_CHAT_PROMPT)}
+        >
+          Start new chat
+        </button>
       </motion.div>
 
       <div className="onboarding-final-footer">

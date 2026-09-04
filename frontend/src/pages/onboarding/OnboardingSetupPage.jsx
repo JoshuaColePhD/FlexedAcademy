@@ -65,9 +65,10 @@ export function OnboardingSetupPage() {
       cls={cls}
       /* The class may not exist when this mounts, so the close destination is
          resolved at click time from whatever the wizard created. */
-      onClose={(finishedClass) => {
+      onClose={(finishedClass, opts) => {
         const target = finishedClass?.id || cls?.id
-        navigate(returnTo || (target ? `/c/${target}` : '/'), { replace: true })
+        const dest = returnTo || (target ? `/c/${target}` : '/')
+        navigate(dest, { replace: true, state: opts?.prefill ? { prefill: opts.prefill } : undefined })
       }}
     />
   )

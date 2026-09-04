@@ -1619,8 +1619,9 @@
   }
   .onboarding-next-note {
     display: flex;
-    align-items: flex-start;
-    gap: var(--sp-2);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
     margin-top: var(--sp-4);
     padding: var(--sp-3) var(--sp-4);
     border-radius: var(--r-md);
@@ -1628,6 +1629,14 @@
     color: var(--ink-muted);
     font-size: var(--fs-xs);
     line-height: 1.55;
+    /* Scoped .neo-raised primitives: this panel isn't under AppShell's own
+       .neo-world (onboarding renders standalone, pre-workspace), so the CTA
+       below would otherwise resolve rgb(var(--neo-dark-rgb) / …) against
+       nothing and render with no shadow at all. Same near-white recalibration
+       .land-bar's own block already does for the landing page's ground,
+       reused verbatim since this panel's paper is just as light. */
+    --neo-light-rgb: 255 255 255;
+    --neo-dark-rgb: 214 214 219;
   }
   .onboarding-next-note strong {
     color: var(--ink);
@@ -1637,6 +1646,25 @@
     flex: 0 0 auto;
     margin-top: 0.1rem;
     color: var(--accent-text);
+  }
+  .onboarding-next-note span {
+    flex: 1 1 auto;
+  }
+  .onboarding-next-note-cta {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding: 0.5rem var(--sp-4);
+    border: none;
+    border-radius: var(--r-md);
+    background: var(--paper-raised);
+    color: var(--accent-text);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    cursor: pointer;
+  }
+  .onboarding-next-note-cta:disabled {
+    color: var(--ink-faint);
+    cursor: default;
   }
   
   
