@@ -534,7 +534,11 @@
   }
   .onboarding-rail-step[data-state='done']::before,
   .onboarding-rail-step[data-state='current']::before {
-    background: var(--ink-soft);
+    /* The connector into a step you have reached is the road already
+       travelled, so it carries the accent at low alpha rather than a
+       neutral — that is what makes the rail read as one route being walked
+       instead of a list with some grey bits. */
+    background: rgb(var(--accent-rgb) / 0.45);
   }
 
   .onboarding-rail-dot {
@@ -551,10 +555,15 @@
   .onboarding-rail-step[data-state='done'] .onboarding-rail-dot {
     background: var(--ink-soft);
   }
+  /* The step you are ON is the app's accent — which in .neo-world is a purple
+     (--accent-rgb: 116 76 196), the same one every selected control in the
+     product uses. It was --ink, so "here" and "done" differed only by weight
+     and a shade of the same plum; the accent is what the rest of the app
+     means by "this is the live one". */
   .onboarding-rail-step[data-state='current'] .onboarding-rail-dot {
-    background: var(--ink);
+    background: var(--accent);
     /* A halo, not a bigger dot — nothing reflows as the step advances. */
-    box-shadow: 0 0 0 3px rgb(var(--ink-rgb) / 0.1);
+    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.18);
   }
 
   .onboarding-rail-label {
@@ -577,7 +586,10 @@
     text-underline-offset: 3px;
   }
   .onboarding-rail-step[data-state='current'] .onboarding-rail-label {
-    color: var(--ink);
+    /* --accent-text, not --accent: tokens.css keeps the fill and the
+       text-carrying step apart, and in .neo-world the text one is darkened to
+       97 55 165 specifically so it can hold a label at readable contrast. */
+    color: var(--accent-text);
     font-weight: var(--fw-semibold);
   }
 
