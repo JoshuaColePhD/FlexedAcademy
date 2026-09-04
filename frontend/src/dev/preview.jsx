@@ -35,7 +35,18 @@ if (params.has('anon')) {
    fetches /api/auth/me and /api/classes on mount, so by the time a console
    command lands React Query has already cached the established account and a
    client-side navigation just re-reads the cache. */
-if (params.has('fresh')) {
+/* Sticky for the browser session, because ?fresh=1 does not survive a reload
+   — the query is gone from a deep link like /preview.html/onboarding, so a
+   refresh halfway through a walkthrough would quietly hand you the
+   established fixture account instead, with a shorter step plan and the class
+   you just created missing. sessionStorage rather than localStorage: it should
+   expire when the tab does, not lie in wait for the next design pass.
+   ?fresh=0 clears it. */
+const FRESH_KEY = 'preview:fresh'
+if (params.get('fresh') === '0') sessionStorage.removeItem(FRESH_KEY)
+else if (params.has('fresh')) sessionStorage.setItem(FRESH_KEY, '1')
+
+if (sessionStorage.getItem(FRESH_KEY) === '1') {
   const st = window.__mock.state
   st.classes.length = 0
   st.me.onboarding_seen_at = null
