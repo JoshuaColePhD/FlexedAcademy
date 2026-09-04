@@ -1203,35 +1203,27 @@
     /* The desktop footer leans entirely on absolute positioning for the
        avatar (pinned to the footer's own corner) and Skip (centred on the
        footer's full width) — both fine against one wide row, both broken
-       once this same breakpoint (below) turns that row into two stacked
-       ones: each lands wherever 50%/the corner falls across the COMBINED
-       height of both rows, nowhere near the row it's meant to sit in. A
-       two-row grid gives every element an explicit cell instead: Back and
-       Skip share a slim utility row on top, the teacher's icon and Continue
-       — the one destination every step shares — share the primary row
-       beneath it, echoing the single-row layout a step with neither Back
-       nor Skip already had. */
+       once this same breakpoint stretched that row's content across a
+       taller box: each landed wherever 50%/the corner falls, nowhere near
+       where it actually reads on a phone. Simpler than reflowing all four
+       into a second row: drop the avatar here (it's decorative, and
+       readable elsewhere — the header already carries the account) and
+       keep the footer to the three things a phone screen's height can't
+       spare room to stack — Back, Skip, Continue — on the one row every
+       other step already had. */
     .onboarding-footer {
       position: relative;
       display: grid;
-      /* minmax(0, 1fr), not 1fr auto — an auto track sizes to Skip's full
-         unwrapped intrinsic width, and Skip's sentence is wider than half
-         this row, so it pushed clean past the viewport's left edge instead
-         of wrapping. Bounding both tracks equally forces Skip (and Back) to
-         wrap within their own half, same as Skip's old centred-absolute
-         width used to. */
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      grid-template-rows: auto auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
-      row-gap: var(--sp-2);
-      column-gap: var(--sp-3);
-      padding: var(--sp-3) var(--sp-5) calc(var(--sp-3) + var(--safe-b));
+      column-gap: var(--sp-2);
+      padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + var(--safe-b));
     }
     .onboarding-footer-back {
       position: static;
+      transform: none;
       grid-row: 1;
       grid-column: 1;
-      align-self: start;
       min-width: 0;
     }
     .onboarding-footer-skip {
@@ -1239,26 +1231,32 @@
       /* The desktop rule's translate(-50%, -50%) centred Skip on its old
          absolutely-positioned box — switching `position` to static here
          doesn't clear it, so without this it still shifts Skip up and left
-         by half its own (now much taller, wrapped) box. */
+         by half its own (now differently-sized) box. */
       transform: none;
       grid-row: 1;
       grid-column: 2;
-      align-self: start;
-      justify-self: end;
+      justify-self: center;
       min-width: 0;
       max-width: 100%;
-      text-align: right;
-      white-space: normal;
+      overflow: hidden;
+      text-align: center;
+      /* Back and Continue are single words/short phrases either way; Skip's
+         full sentence ("Skip the school — I'll plan by week number") is the
+         one label long enough to wrap, and wrapping put it on its own
+         visual line below the other two instead of sharing their line.
+         Truncating keeps all three on the one row this breakpoint exists
+         to fit them on — the question above already carries the "what" a
+         cut-off label loses. */
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: var(--fs-2xs);
     }
     .onboarding-footer-avatar {
-      position: static;
-      transform: none;
-      grid-row: 2;
-      grid-column: 1;
+      display: none;
     }
     .onboarding-footer .onboarding-actions {
-      grid-row: 2;
-      grid-column: 2;
+      grid-row: 1;
+      grid-column: 3;
       justify-content: flex-end;
     }
   }
