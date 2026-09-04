@@ -29,8 +29,18 @@ import { GENERIC_SCHOOL, hasChosenSchool, hasUsableSchoolTemplate } from './scho
  */
 export const STEP_ORDER = [
   'avatar',
-  'course',
+  /* Second, so the flow's first real question is "where do you teach" — which
+     opens with the state, because that is what decides the standards a plan
+     can quote at all.
+    
+     It sits before `course` even though it WRITES to the class, which the
+     course step creates. That works because db.create_class stamps the
+     account's current default school (get_user_school), so this step's
+     api.updateMe({school}) lands first and the class inherits it; the state is
+     held in component state and passed into api.createClass, which already
+     accepts it. See saveSchool. */
   'school',
+  'course',
   'calendar',
   'format',
   'materials',

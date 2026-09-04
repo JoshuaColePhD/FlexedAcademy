@@ -424,10 +424,12 @@
   .onboarding-body {
     display: grid;
     width: 100%;
-    /* Centres vertically when there is room, and collapses to zero when the
-       step is taller than the frame — `justify-content: center` on the
-       scroller would instead push the top of a tall step out of reach. */
-    margin-block: auto;
+    /* Fills the frame. Centring the whole grid took the rail down to the
+       middle with it, and the rail is a nav — it belongs at the top left,
+       travelling down, the way every other rail in the app sits. Only the
+       step CONTENT centres now; see .onboarding-content below. */
+    flex: 1;
+    min-height: 0;
     /* 11rem holds the longest label ("Materials") plus its dot and gutter at
        --fs-sm without wrapping. The content column is capped at --measure
        rather than taking 1fr: the pane is the whole window now, and a question
@@ -451,6 +453,12 @@
     display: flex;
     min-height: 0;
     flex-direction: column;
+    /* Centres the step in the column when there is spare room, and resolves to
+       zero when the step is taller than the frame. Auto margins rather than
+       `justify-content: center`, which inside a scroll container pushes the top
+       of a tall step out of reach — the format and materials steps are tall
+       enough to hit that. */
+    margin-block: auto;
     /* Keeps prose off the scrollbar rather than under it. */
     padding-right: var(--sp-2);
     /* Named container so a step can lay itself out against the space it
@@ -479,6 +487,9 @@
   /* ── the step rail ──────────────────────────────────────────────────────── */
   .onboarding-rail-slot {
     min-width: 0;
+    /* Top of the frame, not the middle of the centred content — the rail is a
+       nav, and it reads as one only if it starts where the pane starts. */
+    align-self: start;
   }
 
   .onboarding-rail {

@@ -378,6 +378,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setStateError(null)
     setSavingSchool(true)
     try {
+      /* No class yet on a first run — this step now runs BEFORE the course
+         step that creates one. The account-level updateMe above is what makes
+         that safe for the school half: db.create_class stamps
+         get_user_school(), so the class inherits it. The state half is held in
+         component state and handed to api.createClass by saveCourse. Patch
+         directly only when a class already exists, which is the re-run and
+         resume case. */
       if (activeClass && state !== (activeClass.state || '')) {
         await api.updateClass(activeClass.id, { state })
         qc.invalidateQueries({ queryKey: qk.classes })
@@ -399,7 +406,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
          quietly costs the teacher both. A teacher who doesn't answer keeps the
          account default ('generic'), which plans by week number and says so on
          the calendar step, rather than ending up with neither. */
-      if (school && school !== (activeClass?.school || '')) {
+      if (activeClass && school && school !== (activeClass.school || '')) {
         await api.updateClass(activeClass.id, { school })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
