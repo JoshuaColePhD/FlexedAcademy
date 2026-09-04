@@ -8009,24 +8009,30 @@
     border-radius: var(--r-full);
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
-    color: var(--brand);
-    background: var(--brand-ink);
+    color: var(--land-gold-ink);
+    /* Frosted violet glass (per direct request), not a flat tint or the
+       neumorphic gloss this used to carry — same recipe as .land-eyebrow's
+       pill (blur+saturate over the hero's aurora blob), tinted with the
+       page's one accent color instead of the ground's white so the fill
+       reads as matte purple glass rather than clear glass. */
+    background: rgb(var(--land-gold-rgb) / 0.22);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    border: 1px solid rgb(var(--land-gold-rgb) / 0.35);
     text-decoration: none;
-    /* The page's one filled action gets the page's one raised surface — same
-       reasoning as the app-side "New plan" button being the rail's only
-       embossed control. Uses .land's own --neo-light/--neo-dark (declared
-       above), not .neo-raised's class (that reads .neo-world's cream-
-       calibrated pair, which was never in scope here). */
-    box-shadow: 9px 9px 20px rgb(var(--neo-dark-rgb) / 0.9), -9px -9px 20px rgb(var(--neo-light-rgb) / 0.85);
-    transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease);
+    box-shadow: 0 8px 24px rgb(var(--land-gold-rgb) / 0.18);
+    transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease),
+      background var(--t-fast) var(--ease);
   }
   .land-cta:hover {
     transform: translateY(-2px);
-    box-shadow: 12px 12px 26px rgb(var(--neo-dark-rgb) / 0.95), -7px -7px 18px rgb(var(--neo-light-rgb) / 0.9);
+    background: rgb(var(--land-gold-rgb) / 0.3);
+    box-shadow: 0 12px 32px rgb(var(--land-gold-rgb) / 0.25);
   }
   .land-cta:active {
-    box-shadow: inset 5px 5px 11px rgb(var(--neo-dark-rgb) / 0.8), inset -5px -5px 11px rgb(var(--neo-light-rgb) / 0.6);
     transform: translateY(0);
+    background: rgb(var(--land-gold-rgb) / 0.38);
+    box-shadow: 0 4px 12px rgb(var(--land-gold-rgb) / 0.2);
   }
   .land-cta:focus-visible,
   .land-signin:focus-visible,
