@@ -525,32 +525,10 @@
     border-top: 1px solid rgb(var(--edge-rgb) / 0.7);
     padding: var(--sp-3) var(--sp-4);
   }
-  .onboarding-course-browser-selection {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .onboarding-course-browser-selection span {
-    color: var(--ink-faint);
-    font-size: var(--fs-2xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .onboarding-course-browser-selection strong {
-    max-width: 22rem;
-    overflow: hidden;
-    color: var(--ink);
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .onboarding-course-browser-actions > .onboarding-course-browser-selection {
-    align-items: center;
-    text-align: center;
-  }
+  
+  
+  
+  
   @media (max-width: 640px) {
     .onboarding-course-browser {
       height: 32rem;
@@ -587,13 +565,8 @@
       grid-row: 2;
       justify-self: end;
     }
-    .onboarding-course-browser-actions > .onboarding-course-browser-selection {
-      grid-column: 1 / -1;
-      grid-row: 1;
-    }
-    .onboarding-course-browser-selection strong {
-      max-width: 100%;
-    }
+    
+    
   }
   @media (min-width: 641px) and (max-height: 860px) {
     .onboarding-course-browser {
@@ -833,32 +806,9 @@
     margin-top: 0.1rem;
     color: var(--accent-text);
   }
-  .onboarding-ready-list {
-    display: flex;
-    width: min(100%, 22rem);
-    flex-direction: column;
-    gap: var(--sp-2);
-    margin-top: var(--sp-6);
-    padding: var(--sp-3);
-    border: 1px solid rgb(var(--edge-rgb) / 0.78);
-    border-radius: var(--r-lg);
-    background: rgb(var(--paper-raised-rgb) / 0.48);
-    text-align: left;
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.52),
-      0 8px 18px rgb(var(--neo-dark-rgb) / 0.05);
-  }
-  .onboarding-ready-item {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    color: var(--ink);
-    font-size: var(--fs-sm);
-  }
-  .onboarding-ready-item svg {
-    flex: 0 0 auto;
-    color: var(--ok);
-  }
+  
+  
+  
   @media (prefers-reduced-motion: reduce) {
     .onboarding-step {
       animation: none;
@@ -9444,141 +9394,23 @@
   flex-direction: column;
   gap: var(--sp-5);
 }
-.onboarding-final-hero {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-1) var(--sp-1) 0;
-  text-align: left;
-}
-.onboarding-final-mark {
-  position: relative;
-  display: flex;
-  flex: 0 0 3.5rem;
-  height: 3.5rem;
-  width: 3.5rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgb(var(--accent-rgb) / 0.26);
-  border-radius: 1.15rem;
-  background: linear-gradient(145deg, rgb(255 255 255 / 0.72), rgb(var(--accent-rgb) / 0.13));
-  color: var(--accent-text);
-  box-shadow:
-    inset 0 1px 1px rgb(255 255 255 / 0.78),
-    8px 10px 20px rgb(var(--neo-dark-rgb) / 0.1),
-    -7px -7px 16px rgb(var(--neo-light-rgb) / 0.65);
-}
-.onboarding-final-mark::before,
-.onboarding-final-mark::after {
-  position: absolute;
-  content: '';
-  pointer-events: none;
-  border: 1px solid rgb(var(--accent-rgb) / 0.16);
-  border-radius: 999px;
-}
-.onboarding-final-mark::before {
-  inset: -0.35rem;
-}
-.onboarding-final-mark::after {
-  inset: -0.7rem;
-  opacity: 0.55;
-}
-.onboarding-final-eyebrow,
-.onboarding-final-label {
-  color: var(--accent-text);
-  font-size: var(--fs-2xs);
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-.onboarding-final-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(15rem, 0.92fr);
-  align-items: stretch;
-  gap: var(--sp-4);
-}
-.onboarding-final-summary,
-.onboarding-final-start {
-  min-width: 0;
-  padding: var(--sp-4);
-  border: 1px solid rgb(var(--edge-rgb) / 0.76);
-  border-radius: var(--r-xl);
-  background: linear-gradient(145deg, rgb(255 255 255 / 0.5), rgb(var(--paper-raised-rgb) / 0.24));
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.6),
-    0 12px 25px rgb(var(--neo-dark-rgb) / 0.06);
-  backdrop-filter: blur(12px) saturate(120%);
-  -webkit-backdrop-filter: blur(12px) saturate(120%);
-}
-.onboarding-final-section-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-3);
-}
-.onboarding-final-status {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0.25rem;
-  border-radius: 999px;
-  background: rgb(var(--ok-rgb) / 0.1);
-  color: var(--ok);
-  font-size: var(--fs-2xs);
-  font-weight: 700;
-  padding: 0.3rem 0.5rem;
-}
-.onboarding-final-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--sp-3);
-  margin-top: var(--sp-4);
-}
-.onboarding-final-summary-item {
-  min-width: 0;
-  padding-top: var(--sp-2);
-  border-top: 1px solid rgb(var(--edge-rgb) / 0.58);
-}
-.onboarding-final-summary-item span,
-.onboarding-final-summary-item strong {
-  display: block;
-  overflow-wrap: anywhere;
-}
-.onboarding-final-summary-item span {
-  color: var(--ink-faint);
-  font-size: var(--fs-2xs);
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.onboarding-final-summary-item strong {
-  margin-top: 0.25rem;
-  color: var(--ink);
-  font-size: var(--fs-xs);
-  font-weight: 650;
-  line-height: 1.35;
-}
-.onboarding-final-prompt {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-3);
-  margin-top: var(--sp-4);
-  padding: var(--sp-3);
-  border: 1px solid rgb(var(--accent-rgb) / 0.17);
-  border-radius: var(--r-lg);
-  background: rgb(var(--accent-rgb) / 0.07);
-}
-.onboarding-final-prompt-icon {
-  display: flex;
-  flex: 0 0 auto;
-  height: 2rem;
-  width: 2rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.7rem;
-  background: rgb(var(--accent-rgb) / 0.12);
-  color: var(--accent-text);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .onboarding-final-cta {
   display: flex;
   width: 100%;
@@ -9601,47 +9433,18 @@
   flex: 0 0 auto;
   color: var(--ok);
 }
-:root[data-theme='dark'] .onboarding-final-mark,
-:root[data-theme='dark'] .onboarding-final-summary,
-:root[data-theme='dark'] .onboarding-final-start {
-  background: linear-gradient(145deg, rgb(255 255 255 / 0.11), rgb(var(--paper-raised-rgb) / 0.2));
-  border-color: rgb(255 255 255 / 0.12);
-}
-@media (max-width: 680px) {
-  .onboarding-final-layout {
-    grid-template-columns: 1fr;
-  }
-  .onboarding-final-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
+
+
 @media (max-height: 860px) and (min-width: 681px) {
   .onboarding-final {
     gap: var(--sp-3);
   }
-  .onboarding-final-hero {
-    gap: var(--sp-3);
-  }
-  .onboarding-final-mark {
-    flex-basis: 3rem;
-    height: 3rem;
-    width: 3rem;
-  }
-  .onboarding-final-layout {
-    gap: var(--sp-3);
-  }
-  .onboarding-final-summary,
-  .onboarding-final-start {
-    padding: var(--sp-3);
-  }
-  .onboarding-final-summary-grid {
-    gap: var(--sp-2);
-    margin-top: var(--sp-3);
-  }
-  .onboarding-final-prompt {
-    margin-top: var(--sp-3);
-    padding: var(--sp-2);
-  }
+  
+  
+  
+  
+  
+  
   .onboarding-final-cta {
     margin-top: var(--sp-2);
   }
@@ -9774,84 +9577,21 @@
 .onboarding-final {
   gap: var(--sp-4);
 }
-.onboarding-final-hero {
-  gap: var(--sp-3);
-  padding-inline: 0;
-}
-.onboarding-final-mark {
-  flex-basis: 3rem;
-  height: 3rem;
-  width: 3rem;
-  border: 1px solid rgb(var(--accent-rgb) / 0.18);
-  border-radius: 999px;
-  background: rgb(var(--accent-rgb) / 0.07);
-  box-shadow:
-    inset 0 1px 1px rgb(255 255 255 / 0.72),
-    0 7px 16px rgb(var(--neo-dark-rgb) / 0.07);
-}
-.onboarding-final-mark::before,
-.onboarding-final-mark::after {
-  display: none;
-}
-.onboarding-final-eyebrow,
-.onboarding-final-label {
-  color: var(--ink-muted);
-  font-size: var(--fs-xs);
-  letter-spacing: 0.06em;
-  text-transform: none;
-}
-.onboarding-final-hero h2 {
-  font-size: clamp(1.75rem, 3vw, 2.25rem);
-  line-height: 1.12;
-}
-.onboarding-final-layout {
-  grid-template-columns: minmax(0, 1.18fr) minmax(15rem, 0.82fr);
-  gap: var(--sp-5);
-}
-.onboarding-final-summary,
-.onboarding-final-start {
-  padding: var(--sp-4);
-  border-color: rgb(var(--edge-rgb) / 0.62) !important;
-  background: rgb(255 255 255 / 0.25) !important;
-  background-image: none !important;
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.62),
-    0 10px 24px rgb(var(--neo-dark-rgb) / 0.045) !important;
-}
-.onboarding-final-start {
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-.onboarding-shell .onboarding-final-start {
-  border-color: transparent !important;
-}
-.onboarding-final-summary-grid {
-  gap: var(--sp-3);
-  margin-top: var(--sp-4);
-}
-.onboarding-final-summary-item {
-  padding-top: var(--sp-2);
-  border-top-color: rgb(var(--edge-rgb) / 0.4);
-}
-.onboarding-final-summary-item span {
-  color: var(--ink-muted);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: none;
-}
-.onboarding-final-summary-item strong {
-  font-size: var(--fs-sm);
-}
-.onboarding-final-prompt {
-  margin-top: var(--sp-5);
-  padding: var(--sp-3) var(--sp-4);
-  border-color: transparent;
-  background: rgb(var(--accent-rgb) / 0.055);
-}
-.onboarding-final-prompt-icon {
-  background: rgb(var(--accent-rgb) / 0.1);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .onboarding-final-cta {
   width: auto;
   min-width: 14rem;
@@ -9861,13 +9601,9 @@
 .onboarding-final-footer {
   color: var(--ink-faint);
 }
-:root[data-theme='dark'] .onboarding-final-summary {
-  background: rgb(255 255 255 / 0.055) !important;
-}
+
 @media (max-width: 680px) {
-  .onboarding-final-start {
-    padding-inline: 0;
-  }
+  
   .onboarding-final-cta {
     width: 100%;
   }
@@ -9881,82 +9617,14 @@
   gap: var(--sp-4);
   text-align: center;
 }
-.onboarding-final-orbit {
-  position: relative;
-  width: min(100%, 34rem);
-  height: 22rem;
-  margin: 0 auto;
-}
-.onboarding-final-orbit-glow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  height: 9rem;
-  width: 9rem;
-  border-radius: 999px;
-  background: rgb(var(--accent-rgb) / 0.1);
-  filter: blur(24px);
-  transform: translate(-50%, -50%);
-}
-.onboarding-final-orbit-path {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  height: 13rem;
-  width: 23rem;
-  border: 1px solid rgb(var(--accent-rgb) / 0.14);
-  border-radius: 50%;
-  transform: translate(-50%, -50%) rotate(-12deg);
-}
-.onboarding-final-orbit-path::after {
-  position: absolute;
-  inset: 0.35rem;
-  border: 1px dashed rgb(var(--accent-rgb) / 0.1);
-  border-radius: inherit;
-  content: '';
-}
-.onboarding-final-orbit-label {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  --orbit-radius: 10.75rem;
-  width: max-content;
-  max-width: 11rem;
-  animation: onboarding-final-orbit 42s linear infinite;
-  transform: translate(-50%, -50%) rotate(var(--orbit-angle)) translateX(var(--orbit-radius));
-  transform-origin: center;
-  will-change: transform;
-}
-.onboarding-final-orbit-label-content {
-  display: flex;
-  min-width: 4.5rem;
-  flex-direction: column;
-  gap: 0.15rem;
-  align-items: center;
-  padding: 0.48rem 0.72rem;
-  border: 1px solid rgb(var(--accent-rgb) / 0.14);
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.42);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.7),
-    0 5px 12px rgb(var(--neo-dark-rgb) / 0.06);
-  backdrop-filter: blur(12px) saturate(120%);
-  -webkit-backdrop-filter: blur(12px) saturate(120%);
-  transform: rotate(var(--orbit-counter-angle));
-}
-.onboarding-final-orbit-label-content span {
-  color: var(--ink-muted);
-  font-size: var(--fs-2xs);
-  line-height: 1.1;
-}
-.onboarding-final-orbit-label-content strong {
-  max-width: 10rem;
-  overflow-wrap: anywhere;
-  color: var(--ink);
-  font-size: var(--fs-xs);
-  font-weight: 650;
-  line-height: 1.2;
-}
+
+
+
+
+
+
+
+
 .onboarding-final-logo {
   position: absolute;
   top: 50%;
@@ -9981,25 +9649,9 @@
   height: 5.8rem;
   width: 5.8rem;
 }
-@keyframes onboarding-final-orbit {
-  from {
-    transform: translate(-50%, -50%) rotate(var(--orbit-angle)) translateX(var(--orbit-radius));
-  }
-  to {
-    transform: translate(-50%, -50%) rotate(calc(var(--orbit-angle) + 360deg)) translateX(var(--orbit-radius));
-  }
-}
-@keyframes onboarding-final-orbit-content {
-  from {
-    transform: rotate(var(--orbit-counter-angle));
-  }
-  to {
-    transform: rotate(calc(var(--orbit-counter-angle) - 360deg));
-  }
-}
-.onboarding-final-orbit-label-content {
-  animation: onboarding-final-orbit-content 42s linear infinite;
-}
+
+
+
 .onboarding-final-cta {
   width: min(100%, 17rem);
   min-width: 15rem;
@@ -10018,67 +9670,17 @@
   background: rgb(255 255 255 / 0.08);
   border-color: rgb(147 185 255 / 0.18);
 }
-@media (max-width: 680px) {
-  .onboarding-final-orbit {
-    height: 24rem;
-    transform: scale(0.82);
-    transform-origin: center top;
-    margin-bottom: -3.5rem;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .onboarding-final-orbit-label,
-  .onboarding-final-orbit-label-content {
-    animation: none;
-  }
-}
+
+
 
 /* Orbit labels are information, not controls. Remove every pill/button cue
    and let the logo, typography, and fine orbit line carry the composition. */
-.onboarding-final-orbit-label-content {
-  position: relative;
-  min-width: 0;
-  gap: 0.2rem;
-  align-items: center;
-  padding: 0.2rem 0.4rem;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.onboarding-final-orbit-label-content::before {
-  height: 0.35rem;
-  width: 0.35rem;
-  margin-bottom: 0.1rem;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 0 0.2rem rgb(var(--accent-rgb) / 0.09);
-  content: '';
-}
-.onboarding-final-orbit-label-content span {
-  color: var(--ink-muted);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: none;
-}
-.onboarding-final-orbit-label-content strong {
-  max-width: 12rem;
-  color: var(--ink);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  line-height: 1.2;
-  text-shadow: 0 1px 0 rgb(255 255 255 / 0.45);
-}
-.onboarding-final-orbit-path {
-  border-color: rgb(var(--accent-rgb) / 0.11);
-  animation: onboarding-final-orbit-path 42s linear infinite;
-}
-.onboarding-final-orbit-path::after {
-  border-color: rgb(var(--accent-rgb) / 0.07);
-}
+
+
+
+
+
+
 .onboarding-final-logo {
   height: 9rem;
   width: 9rem;
@@ -10095,22 +9697,9 @@
   height: 7.6rem;
   width: 7.6rem;
 }
-@keyframes onboarding-final-orbit-path {
-  from {
-    transform: translate(-50%, -50%) rotate(-12deg);
-  }
-  to {
-    transform: translate(-50%, -50%) rotate(348deg);
-  }
-}
-:root[data-theme='dark'] .onboarding-final-orbit-label-content strong {
-  text-shadow: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .onboarding-final-orbit-path {
-    animation: none;
-  }
-}
+
+
+
 
 /* Responsive orbit tuning. The center stays fixed while the orbit radius,
    logo, and label measure step down together, so nothing gets clipped at
@@ -10119,22 +9708,10 @@
   .onboarding-shell {
     padding: 2rem !important;
   }
-  .onboarding-final-orbit {
-    width: min(100%, 31rem);
-    height: 20rem;
-  }
-  .onboarding-final-orbit-label {
-    --orbit-radius: 9.25rem;
-    max-width: 9.5rem;
-  }
-  .onboarding-final-orbit-label-content strong {
-    max-width: 9rem;
-    font-size: 0.75rem;
-  }
-  .onboarding-final-orbit-path {
-    width: 20rem;
-    height: 12rem;
-  }
+  
+  
+  
+  
   .onboarding-final-logo {
     height: 8rem;
     width: 8rem;
@@ -10161,30 +9738,12 @@
   .onboarding-final {
     gap: var(--sp-3);
   }
-  .onboarding-final-orbit {
-    width: 100%;
-    height: 19rem;
-    transform: none;
-    margin-bottom: 0;
-  }
-  .onboarding-final-orbit-label {
-    --orbit-radius: 7rem;
-    max-width: 7.5rem;
-  }
-  .onboarding-final-orbit-label-content {
-    padding-inline: 0.15rem;
-  }
-  .onboarding-final-orbit-label-content span {
-    font-size: 0.625rem;
-  }
-  .onboarding-final-orbit-label-content strong {
-    max-width: 7.5rem;
-    font-size: 0.6875rem;
-  }
-  .onboarding-final-orbit-path {
-    width: min(17rem, 94%);
-    height: 10.5rem;
-  }
+  
+  
+  
+  
+  
+  
   .onboarding-final-logo {
     height: 6.75rem;
     width: 6.75rem;
@@ -10217,9 +9776,7 @@
 .onboarding-final-cta {
   margin-top: var(--sp-3);
 }
-.onboarding-final-orbit {
-  height: 24rem;
-}
+
 .onboarding-final-logo {
   height: 10rem;
   width: 10rem;
@@ -10231,9 +9788,7 @@
   width: 8.5rem;
 }
 @media (min-width: 681px) and (max-width: 980px) {
-  .onboarding-final-orbit {
-    height: 22rem;
-  }
+  
   .onboarding-final-logo {
     height: 9rem;
     width: 9rem;
@@ -10246,9 +9801,7 @@
   }
 }
 @media (max-width: 680px) {
-  .onboarding-final-orbit {
-    height: 22rem;
-  }
+  
   .onboarding-final-logo {
     height: 8rem;
     width: 8rem;
@@ -10268,91 +9821,24 @@
    at the moving label's exact center, so it traces the ellipse as the label
    circles; the text is offset outward from that point and counter-rotated
    independently so it stays readable. */
-.onboarding-final-orbit-label::before {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 0;
-  height: 0.52rem;
-  width: 0.52rem;
-  border: 2px solid rgb(255 255 255 / 0.8);
-  border-radius: 999px;
-  background: rgb(121 76 204);
-  box-shadow:
-    0 0 0 0.25rem rgb(121 76 204 / 0.12),
-    0 0 0.7rem rgb(121 76 204 / 0.38);
-  content: '';
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-}
-.onboarding-final-orbit-label-content {
-  position: relative;
-  z-index: 1;
-  transform: translateX(1.25rem) rotate(var(--orbit-counter-angle));
-}
-.onboarding-final-orbit-label-content::before {
-  display: none;
-}
-@media (max-width: 980px) {
-  .onboarding-final-orbit-label-content {
-    transform: translateX(0.95rem) rotate(var(--orbit-counter-angle));
-  }
-}
-@media (max-width: 680px) {
-  .onboarding-final-orbit-label-content {
-    transform: translateX(0.7rem) rotate(var(--orbit-counter-angle));
-  }
-}
+
+
+
+
+
 
 /* Keep the information legible and still while the markers carry the motion.
    This gives the final screen a centered logo lockup instead of five moving
    text blocks competing with the action below. */
-.onboarding-final-orbit-label,
-.onboarding-final-orbit-label-content {
-  animation: none;
-}
-.onboarding-final-orbit-path {
-  animation: none;
-}
-.onboarding-final-orbit-dot {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  height: 0.62rem;
-  width: 0.62rem;
-  margin: -0.31rem;
-  border: 2px solid rgb(255 255 255 / 0.86);
-  border-radius: 999px;
-  background: rgb(121 76 204);
-  box-shadow:
-    0 0 0 0.28rem rgb(121 76 204 / 0.13),
-    0 0 0.8rem rgb(121 76 204 / 0.42);
-  transform-origin: center;
-  animation: onboarding-final-dot-orbit 42s linear infinite;
-}
+
+
+
 .onboarding-final-orbit-dot.is-secondary {
   animation-delay: -21s;
 }
-@keyframes onboarding-final-dot-orbit {
-  from {
-    transform: rotate(0deg) translateX(11.5rem) scaleY(0.565);
-  }
-  to {
-    transform: rotate(360deg) translateX(11.5rem) scaleY(0.565);
-  }
-}
-@media (min-width: 681px) and (max-width: 980px) {
-  @keyframes onboarding-final-dot-orbit {
-    from { transform: rotate(0deg) translateX(10rem) scaleY(0.6); }
-    to { transform: rotate(360deg) translateX(10rem) scaleY(0.6); }
-  }
-}
-@media (max-width: 680px) {
-  @keyframes onboarding-final-dot-orbit {
-    from { transform: rotate(0deg) translateX(8rem) scaleY(0.618); }
-    to { transform: rotate(360deg) translateX(8rem) scaleY(0.618); }
-  }
-}
+
+
+
 
 /* Completion screen reset: a centered seal is calmer and more legible than
    orbiting copy. Keep the older orbit rules above available for history, but
