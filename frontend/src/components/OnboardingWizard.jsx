@@ -555,7 +555,17 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
             ) : stepKey === 'class' ? (
               <ClassStep
                 subject={subject}
-                setSubject={setSubject}
+                /* Clears the error, and deliberately does NOT advance.
+                   This used to be `onChange={(v) => { setSubject(v); if (error) onNext() }}`
+                   inside ClassStep, where onNext is saveClass — which closes
+                   over the CURRENT render's `subject`. So picking a course
+                   while the error was showing called saveClass() with subject
+                   still '' and simply re-set the same error, which read as the
+                   click doing nothing at all. Auto-advancing on a click inside
+                   a browse list is also hostile on its own: a teacher scanning
+                   courses got teleported forward by a misclick. Same wrapper
+                   shape as setState above. */
+                setSubject={(value) => { setSubject(value); setClassError(false) }}
                 grade={grade}
                 setGrade={setGrade}
                 frameworks={frameworks}
@@ -1187,7 +1197,7 @@ function ClassStep({ subject, setSubject, grade, setGrade, frameworks, saving, e
           <FrameworkPicker
             frameworks={frameworks}
             value={subject}
-            onChange={(v) => { setSubject(v); if (error) onNext(); }}
+            onChange={setSubject}
             id="onboarding-framework"
             variant="inline"
             afterInput={(
