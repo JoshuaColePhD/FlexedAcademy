@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import { CalendarPreview } from './CalendarPreview'
+import { CalendarBody } from './ArtifactDetailPanel'
 
 /* A school with a pending (unconfirmed) teacher-submitted calendar — the
  * submitter's own account already uses it (schoolcal.py's dispatcher lets a
@@ -28,7 +28,7 @@ export function PendingCalendarReview({ schoolId }) {
         calendar for the school until an administrator approves it.
       </p>
       <div className="mt-2">
-        <CalendarPreview weeks={submission.weeks} />
+        <CalendarBody weeks={submission.weeks} />
       </div>
     </div>
   )

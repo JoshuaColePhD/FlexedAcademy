@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
 // linter until someone dragged a file.
-import { ArrowUp, AudioLines, FileText, Loader2, Mic, Paperclip, Plus, Square, Upload, X } from 'lucide-react'
+import { ArrowUp, AudioLines, BookOpen, FileText, Loader2, Mic, Paperclip, Plus, Square, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -103,6 +103,8 @@ export function Composer({
   isStreaming,
   attachments,
   setAttachments,
+  selectedStandard = null,
+  selectedStandardStatus = 'selected',
   // Offers each attachment chip a way to become a real, durable class
   // document instead of only ever riding into this one conversation. Kept
   // null (no offer shown) whenever there's no class in scope, or it already
@@ -522,6 +524,19 @@ export function Composer({
     <div className="relative w-full">
       {voicePanel}
       {questionsPanel}
+
+      {selectedStandard ? (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-accent/20 bg-accent-tint px-3 py-2 text-xs text-ink" role="status">
+          <BookOpen size={14} className="shrink-0 text-accent" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-semibold">Using {selectedStandard.code}</span>
+            <span className="ml-1.5 text-ink-muted">
+              {selectedStandardStatus === 'applied' ? '· applied to this plan' : selectedStandardStatus === 'review' ? '· review the alignment' : '· selected for this plan'}
+            </span>
+          </span>
+          {selectedStandardStatus === 'applied' ? <span className="shrink-0 rounded-full bg-ok-tint px-2 py-0.5 text-2xs font-semibold text-ok">Applied</span> : null}
+        </div>
+      ) : null}
 
       {attachments.length > 0 ? (
         <div className="composer-attachments flex flex-nowrap gap-2 overflow-x-auto px-3 pb-2" role="list" aria-label="Attached files">

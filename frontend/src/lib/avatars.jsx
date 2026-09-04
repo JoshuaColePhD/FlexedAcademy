@@ -20,7 +20,24 @@ export const AVATAR_OPTIONS = [
   { id: 'smile', emoji: '😊', label: 'Smile', bg: 'bg-yellow-400' },
   { id: 'flower2', emoji: '🌸', label: 'Flower', bg: 'bg-rose-400' },
   { id: 'zap', emoji: '⚡', label: 'Zap', bg: 'bg-yellow-500' },
+  { id: 'book', emoji: '📚', label: 'Books', bg: 'bg-indigo-500' },
+  { id: 'panda', emoji: '🐼', label: 'Panda', bg: 'bg-slate-500' },
+  { id: 'owl', emoji: '🦉', label: 'Owl', bg: 'bg-violet-500' },
+  { id: 'fox', emoji: '🦊', label: 'Fox', bg: 'bg-orange-500' },
+  { id: 'mushroom', emoji: '🍄', label: 'Mushroom', bg: 'bg-red-500' },
+  { id: 'palette', emoji: '🎨', label: 'Palette', bg: 'bg-pink-500' },
+  { id: 'globe', emoji: '🌎', label: 'Globe', bg: 'bg-sky-500' },
+  { id: 'leaf', emoji: '🌿', label: 'Leaf', bg: 'bg-green-500' },
+  { id: 'music', emoji: '🎵', label: 'Music', bg: 'bg-purple-500' },
+  { id: 'telescope', emoji: '🔭', label: 'Telescope', bg: 'bg-blue-600' },
 ]
+
+export function getInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return 'FE'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
 
 export function getAvatar(id) {
   return AVATAR_OPTIONS.find((a) => a.id === id) || null

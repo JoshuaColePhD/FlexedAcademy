@@ -403,6 +403,9 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
             quizRequested = {
               questionTypes: event.question_types || [],
               numQuestions: event.num_questions || 10,
+              passageMode: event.passage_mode || 'none',
+              passageTitle: event.passage_title || '',
+              passageText: event.passage_text || '',
               revisesCurrent: !!event.revises_current,
             }
           }

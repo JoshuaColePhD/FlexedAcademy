@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import re
@@ -155,20 +156,12 @@ _FILENAME_TO_COURSE = {
 def get_course_name_from_filename(filename: str) -> str:
     if filename in _FILENAME_TO_COURSE:
         return _FILENAME_TO_COURSE[filename]
-    # Fallback for a PDF added later that isn't in the table above yet — loud
-    # rather than silent, since a wrong guess here creates a new orphaned
-    # course identity exactly like the ones fixed 2026-08-22.
-    log.warning(
-        "%s has no entry in _FILENAME_TO_COURSE — guessing a name from the "
-        "filename. Verify it matches an existing course identity in "
-        "backend/retrieval.py before trusting retrieval for it.",
-        filename,
+    # Do not guess. A new College Board PDF must be explicitly mapped so it
+    # cannot create an orphan course identity that retrieval silently excludes.
+    raise ValueError(
+        f"{filename} has no entry in _FILENAME_TO_COURSE; add the official "
+        "course identity before ingesting it"
     )
-    name = filename.replace("-course-and-exam-description.pdf", "").replace("-", " ").title()
-    name = name.replace("Ap ", "AP ")
-    name = name.replace("Us ", "US ")
-    name = name.replace(" And ", " & ")
-    return name
 
 def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
@@ -208,6 +201,7 @@ def prepare_course(pdf_path: Path) -> dict | None:
     calls, so this stays cheap and sequential — the API calls it feeds are
     what gets parallelized in main()."""
     course_name = get_course_name_from_filename(pdf_path.name)
+    source_pdf_sha256 = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
 
     full_text_raw = extract_pdf_text_pdftotext(pdf_path)
     full_text_wordwise = wordwise(full_text_raw)
@@ -238,11 +232,14 @@ def prepare_course(pdf_path: Path) -> dict | None:
         "full_text_raw": full_text_raw,
         "full_text_wordwise": full_text_wordwise,
         "text_chunks": text_chunks,
+        "source_pdf_sha256": source_pdf_sha256,
+        "source_version": f"sha256:{source_pdf_sha256}",
     }
 
 
 def run_batch(course_name: str, pdf_name: str, batch_idx: int, total_batches: int, txt: str,
-              full_text_raw: str, full_text_wordwise: str) -> dict:
+              full_text_raw: str, full_text_wordwise: str, source_pdf_sha256: str,
+              source_version: str) -> dict:
     """One LLM call plus its zero-fabrication verification. Pure with respect
     to everything except USAGE (its own lock) — safe to run in a thread pool."""
     prompt = f"""
@@ -320,6 +317,8 @@ def run_batch(course_name: str, pdf_name: str, batch_idx: int, total_batches: in
                 # AP course this script touches.
                 "source_type": "college_board",
                 "source_document": pdf_name,
+                "source_pdf_sha256": source_pdf_sha256,
+                "source_version": source_version,
                 "source_page_or_section": section,
                 "strand": strand,
                 "verbatim_ok": True,
@@ -364,7 +363,8 @@ def main():
 
     work_items = [
         (c["course_name"], c["pdf_name"], idx, len(c["text_chunks"]), txt,
-         c["full_text_raw"], c["full_text_wordwise"])
+         c["full_text_raw"], c["full_text_wordwise"], c["source_pdf_sha256"],
+         c["source_version"])
         for c in courses
         for idx, txt in enumerate(c["text_chunks"])
     ]

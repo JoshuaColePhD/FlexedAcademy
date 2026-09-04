@@ -1,14 +1,16 @@
 import { createPortal } from 'react-dom'
-import { useRef } from 'react'
-import { ExternalLink, Mail, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Mail, Send, X } from 'lucide-react'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
-import { SUPPORT_EMAIL, SUPPORT_GMAIL } from '../lib/support'
+import { api } from '../lib/api'
+import { useAuth } from '../lib/authContext'
+import { SUPPORT_EMAIL, SUPPORT_SUBJECT } from '../lib/support'
 
-/* A small, human support handoff. Contact support should feel like part of
- * FlexEd, not like a browser-specific mailto side effect. The dialog gives the
- * teacher enough context to decide whether to reach out, then hands the final
- * send action to Gmail with the recipient and subject already filled in. */
+/* A small, human support composer. Contact support stays inside FlexEd, with
+ * the account's reply address and Josh's destination visible before sending.
+ * The backend owns the actual delivery so the teacher never has to leave the
+ * app or copy context into another mail client. */
 export function SupportDialog({ open, onClose }) {
   const { mounted, closing } = useExitTransition(open, 200)
 
@@ -28,7 +30,29 @@ function SupportDialogContent({ closing, onClose }) {
   // present. This also makes focus return to the Contact support trigger after
   // the exit transition completes.
   const dialogRef = useRef(null)
+  const { user } = useAuth()
+  const [subject, setSubject] = useState(SUPPORT_SUBJECT)
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState('')
   useFocusTrap(dialogRef, { active: true, trap: true, onEscape: onClose })
+
+  const sendMessage = async (event) => {
+    event.preventDefault()
+    const trimmedMessage = message.trim()
+    if (!trimmedMessage || sending) return
+    setSending(true)
+    setError('')
+    try {
+      await api.sendSupportMessage({ subject: subject.trim() || SUPPORT_SUBJECT, message: trimmedMessage })
+      setSent(true)
+    } catch (err) {
+      setError(err?.message || 'Could not send your message right now.')
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div
@@ -43,7 +67,7 @@ function SupportDialogContent({ closing, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="support-dialog-title"
-        className={`dialog${closing ? ' is-closing' : ''}`}
+        className={`dialog dialog-support${closing ? ' is-closing' : ''}`}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -63,40 +87,69 @@ function SupportDialogContent({ closing, onClose }) {
           </button>
         </div>
 
-        <p>
-          FlexEd Academy is built by Josh Cole to help teachers turn their curriculum,
-          calendars, and school templates into dependable lesson plans.
-        </p>
-
-        <div className="mt-5 rounded-xl border border-edge bg-paper-sunken p-4">
-          <p className="m-0 text-sm leading-relaxed text-ink-soft">
-            Have a question, comment, or idea? Send a note with the school, course,
-            and what you were trying to do. That context makes it much easier to help.
-          </p>
-        </div>
-
-        <div className="mt-5 flex items-center gap-3 border-t border-edge pt-4">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-mark-tint text-mark">
-            <Mail size={16} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="m-0 text-2xs font-semibold uppercase tracking-wider text-ink-muted">Email Josh</p>
-            <p className="m-0 truncate text-sm font-medium text-ink">{SUPPORT_EMAIL}</p>
+        {sent ? (
+          <div className="mt-5 rounded-xl border border-ok/30 bg-ok-tint p-4" role="status">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ok-tint text-ok">
+                <Mail size={16} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="m-0 font-semibold text-ink">Message sent to Josh.</p>
+                <p className="mt-1 text-sm leading-relaxed text-ink-soft">He can reply directly to {user?.email || 'your account email'}.</p>
+              </div>
+            </div>
+            <div className="dialog-actions mt-5">
+              <button type="button" className="btn btn-primary" onClick={onClose}>Done</button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <form className="mt-5" onSubmit={sendMessage}>
+            <div className="rounded-xl border border-edge bg-paper-sunken p-3">
+              <div className="grid gap-2 text-xs">
+                <div className="flex items-baseline gap-3">
+                  <span className="w-12 shrink-0 font-semibold uppercase tracking-wider text-ink-muted">From</span>
+                  <span className="min-w-0 truncate text-ink">{user?.email || 'Your account email'}</span>
+                </div>
+              </div>
+              <p className="mt-3 border-t border-edge pt-3 text-2xs leading-relaxed text-ink-muted">
+                Sent securely to Josh Cole at {SUPPORT_EMAIL}. Josh can reply directly to this email.
+              </p>
+            </div>
 
-        <div className="dialog-actions">
-          <button type="button" className="btn" onClick={onClose}>Maybe later</button>
-          <a
-            href={SUPPORT_GMAIL}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-primary"
-            onClick={onClose}
-          >
-            <ExternalLink size={14} className="mr-1.5" aria-hidden="true" /> Open email
-          </a>
-        </div>
+            <label className="mt-4 grid gap-1.5 text-sm font-semibold text-ink">
+              Subject
+              <input
+                type="text"
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                maxLength={120}
+                className="input w-full"
+              />
+            </label>
+            <label className="mt-4 grid gap-1.5 text-sm font-semibold text-ink">
+              Message
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                maxLength={5000}
+                rows={6}
+                required
+                autoFocus
+                placeholder="Tell Josh what you noticed, what you were trying to do, or what you would improve."
+                className="input support-message-input min-h-32 w-full resize-y leading-relaxed"
+              />
+            </label>
+            {error ? <p className="mt-2 text-sm text-mark" role="alert">{error}</p> : null}
+
+            <div className="dialog-actions mt-5">
+              <button type="button" className="btn" onClick={onClose} disabled={sending}>Maybe later</button>
+              <button type="submit" className="btn btn-primary" disabled={!message.trim() || sending}>
+                <Send size={14} className="mr-1.5" aria-hidden="true" />
+                {sending ? 'Sending…' : 'Send message'}
+              </button>
+            </div>
+          </form>
+        )}
       </section>
     </div>
   )

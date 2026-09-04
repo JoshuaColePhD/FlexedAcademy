@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronUp, Info, LogOut, Mail, Settings, ShieldCheck, User } from 'lucide-react'
-import { getAvatar } from '../lib/avatars'
+import { ChevronUp, Info, LogOut, Mail, Settings, ShieldCheck } from 'lucide-react'
+import { getAvatar, getInitials } from '../lib/avatars'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -163,47 +163,60 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
   useFocusTrap(popoverRef, { active: open, trap: false, onEscape: () => setOpen(false) })
 
   const name = user?.name || user?.email || 'Signed in'
+  const avatar = getAvatar(user?.avatar)
+  const sizeCls = spacious ? 'h-9 w-9' : 'h-7 w-7'
+  const avatarNode = avatar ? (
+    <span
+      aria-hidden="true"
+      className={`grid ${sizeCls} shrink-0 place-items-center rounded-full ${avatar.bg} border border-edge/30`}
+    >
+      <span className={spacious ? 'text-base leading-none' : 'text-sm leading-none'}>{avatar.emoji}</span>
+    </span>
+  ) : (
+    <span
+      aria-hidden="true"
+      className={`grid ${sizeCls} shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted border border-edge/30`}
+    >
+      <span className={spacious ? 'text-xs font-bold tracking-wide' : 'text-2xs font-bold tracking-wide'}>{getInitials(user?.name)}</span>
+    </span>
+  )
 
   return (
     <div className={`relative flex items-center gap-1 py-2 ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
-      <button
-        type="button"
-        className={`flex items-center rounded-md text-left transition-colors hover:bg-paper-inset ${
-          collapsed ? 'justify-center p-2' : spacious ? 'min-w-0 min-h-[48px] flex-1 gap-2.5 px-2.5 py-2.5' : 'min-w-0 flex-1 gap-2 px-2 py-1.5'
-        }`}
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        title={collapsed ? name : undefined}
-      >
-        {(() => {
-          const avatar = getAvatar(user?.avatar)
-          const sizeCls = spacious ? 'h-9 w-9' : 'h-7 w-7'
-          if (avatar) {
-            return (
-              <span
-                aria-hidden="true"
-                className={`grid ${sizeCls} shrink-0 place-items-center rounded-full ${avatar.bg} border border-edge/30`}
-              >
-                <span className={spacious ? 'text-base leading-none' : 'text-sm leading-none'}>{avatar.emoji}</span>
-              </span>
-            )
-          }
-          return (
-            <span
-              aria-hidden="true"
-              className={`grid ${sizeCls} shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted border border-edge/30`}
-            >
-              <User size={spacious ? 18 : 15} />
-            </span>
-          )
-        })()}
-        {collapsed ? null : (
-          <>
+      {collapsed ? (
+        <button
+          type="button"
+          className="flex justify-center rounded-md p-2 transition-colors hover:bg-paper-inset"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={`Open account menu for ${name}`}
+          title={name}
+        >
+          {avatarNode}
+        </button>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center">
+          <Link
+            to={`${classPath}/settings`}
+            onClick={() => setOpen(false)}
+            className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left transition-colors hover:bg-paper-inset ${spacious ? 'min-h-[48px] px-2.5 py-2.5' : 'gap-2 px-2 py-1.5'}`}
+            title="Open settings"
+          >
+            {avatarNode}
             <span className={`min-w-0 flex-1 truncate font-medium text-ink-soft ${spacious ? 'text-sm' : 'text-xs'}`}>{name}</span>
-            <ChevronUp size={spacious ? 15 : 13} aria-hidden="true" className="shrink-0 text-ink-faint" />
-          </>
-        )}
-      </button>
+          </Link>
+          <button
+            type="button"
+            className="grid shrink-0 place-items-center rounded-md p-2 text-ink-faint transition-colors hover:bg-paper-inset hover:text-ink"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-label="Open account menu"
+            title="Account menu"
+          >
+            <ChevronUp size={spacious ? 15 : 13} aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       {mounted ? (
         <div

@@ -232,12 +232,12 @@ export function WelcomePage() {
             className="flex h-full w-full flex-col overflow-hidden"
           >
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-edge bg-paper-raised px-6 py-5 md:px-10 md:py-6">
-              <div>
+              <div className="min-w-0">
                 <h1 className="text-xl font-semibold tracking-display text-ink">
                   Let’s set up your year{firstName ? `, ${firstName}` : ''}
                 </h1>
                 <p className="text-xs text-ink-muted">
-                  Tell us who and what you teach, and we’ll ground every plan in the right standards.
+                  Choose a course and grade so every plan starts with the right standards.
                 </p>
               </div>
               {/* Same mark as the app's own sidebar (AppShell.jsx) — this

@@ -43,17 +43,17 @@ Postgres persistence + DOCX generation
 - Added layered grounding controls: out-of-scope grade refusal, off-domain refusal, source-type-aware retrieval, and post-generation detection of missing, borrowed, or hallucinated standard codes.
 - Uses OpenAI Structured Outputs with strict JSON schemas so the frontend and document builders receive a predictable contract rather than free-form model text.
 - Handles streaming generation over Server-Sent Events, reconnects, upstream timeouts, rate limits, model refusals, response truncation, token accounting, and database-backed completion caching.
-- Built a standards-ingestion path using ALSDE CASE packages and PDF verification. The current corpus contains 2,997 standards and 11,435 chunks across 11 Alabama frameworks for grades 9–12, with AP Language as the most thoroughly calibrated path.
+- Built a standards-ingestion path using ALSDE CASE packages and PDF verification. The checked Alabama artifact contains 7,456 unique standards and 19,701 grade-scoped chunks across 11 frameworks when built with `--grades 0-12`; the ingest defaults to grades 9–12, with AP Language as the most thoroughly calibrated path.
 - Built a template-aware document pipeline that validates plans before rendering, supports school-specific templates, and persists generated documents through a durable queue.
 - Added tenant-aware authentication, class scoping, account export/deletion, session invalidation, plan-sharing controls, rate limiting, and security regression tests.
 
 ## Evaluation
 
-The repository includes deterministic unit, contract, retrieval, grounding, security, and artifact tests. The recorded retrieval baseline contains 143 teacher-style cases:
+The repository includes deterministic unit, contract, retrieval, grounding, security, and artifact tests. The release retrieval gate is generated from the current corpus: 61 canonical course identities currently pass at 61/61 recall@5 and 61/61 recall@20. The older 143-case set remains a historical drift diagnostic because many of its AP codes no longer exist in the current corpus.
 
 ```text
-Recall@5:  138 / 143
-Recall@60: 142 / 143
+Current recall@5:  61 / 61
+Current recall@20: 61 / 61
 ```
 
 The evaluation suite also covers:
@@ -72,6 +72,27 @@ Run the fast local checks from the repository root:
 ./venv/bin/python eval/run_all.py --fast
 ./venv/bin/python scripts/05_eval_harness.py --offline
 ```
+
+The Alabama standards artifact has its own dependency-free quality gate. It
+checks the complete framework roster, required metadata, valid state/grade
+scope, duplicate identities, source URLs, PDF verification availability, and
+that the aggregate ingest report still matches the emitted chunks:
+
+```bash
+./venv/bin/python scripts/check_alabama_ingest.py
+```
+
+`01d_ingest_alcos_case.py` runs the same gate before replacing
+`data/processed/alcos_chunks.json`. Low PDF wording-match rates are reported as
+warnings for known extraction-heavy frameworks; missing PDF verification or
+structural inconsistencies fail the ingest.
+
+Embedding rebuilds keep a local content-addressed cache keyed by the embedding
+model, dimensions, and document text. Interrupted or repeated rebuilds reuse
+unchanged vectors, while the staged Supabase cutover still validates the
+complete replacement corpus before it becomes live. Each rebuild uses a unique
+staging identifier, builds HNSW/full-text indexes after loading, and only then
+performs the atomic table swap; retries never write a partial live corpus.
 
 ## Technology
 

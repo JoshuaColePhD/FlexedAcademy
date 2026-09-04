@@ -6,6 +6,7 @@ import re
 import subprocess
 import tempfile
 from collections import Counter
+from html import escape
 from pathlib import Path
 
 import requests
@@ -13,7 +14,7 @@ from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .. import db, docx_build, llm, retrieval, service
+from .. import db, docx_build, llm, mail, retrieval, service
 from ..config import settings
 from ..deps import get_current_user, get_current_user_optional
 from ..errors import AppError
@@ -255,6 +256,42 @@ def put_settings(body: SettingsBody, user_id: str = Depends(get_current_user)):
         body.subject.strip(),
         body.grade.strip()
     )
+
+
+class SupportMessageBody(BaseModel):
+    subject: str = Field(default="FlexEd Academy support", max_length=120)
+    message: str = Field(min_length=1, max_length=5000)
+
+
+@router.post("/support")
+@limiter.limit("5/hour")
+def send_support_message(request: Request, body: SupportMessageBody, user_id: str = Depends(get_current_user)):
+    """Send a teacher's support note without opening an external mail client."""
+    user = db.get_user_by_id(user_id)
+    if not user or not user.get("email"):
+        raise AppError("support_sender_missing", "Your account email is unavailable. Please try again.", status=400)
+
+    subject = re.sub(r"[\r\n]+", " ", body.subject.strip()) or "FlexEd Academy support"
+    message = body.message.strip()
+    sender_name = escape(str(user.get("name") or "FlexEd teacher"))
+    sender_email = escape(str(user["email"]))
+    message_html = escape(message).replace("\n", "<br>")
+    sent = mail.send(
+        to=settings.support_email,
+        subject=f"FlexEd support — {subject}",
+        reply_to=str(user["email"]),
+        html=(
+            f"<p><strong>From:</strong> {sender_name} &lt;{sender_email}&gt;</p>"
+            f"<p>{message_html}</p>"
+        ),
+    )
+    if not sent:
+        raise AppError(
+            "support_unavailable",
+            "Support email is not available right now. Please try again later.",
+            status=503,
+        )
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

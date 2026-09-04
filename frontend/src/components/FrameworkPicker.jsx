@@ -1,9 +1,14 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronsUpDown } from 'lucide-react'
 import { findFramework, gradeRangeLabel, groupFrameworks, matchesFramework } from '../lib/frameworks'
 import { useExitTransition } from '../hooks/useExitTransition'
 
-export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover', beforeInput, onQueryChange, emptyMessage }) {
+function PickerPortal({ enabled, children }) {
+  return enabled ? createPortal(children, document.body) : children
+}
+
+export function FrameworkPicker({ frameworks, value, onChange, disabled, id, variant = 'popover', beforeInput, afterInput, onQueryChange, emptyMessage, constrainPopover = false }) {
   // 'inline' is the full-page course browser (WelcomePage.jsx's /welcome) —
   // permanently visible, no dropdown to open. Every isInline branch below
   // falls through to the exact 'popover' code path when omitted, so the
@@ -20,7 +25,10 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
   // what a 72-item flat dropdown couldn't offer: 18rem of scroll and no way
   // to jump straight to "Science" without hunting past everything before it.
   const [activeGroup, setActiveGroup] = useState(null)
+  const [popoverMaxHeight, setPopoverMaxHeight] = useState(null)
+  const [popoverPosition, setPopoverPosition] = useState(null)
   const rootRef = useRef(null)
+  const panelRef = useRef(null)
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const groupRefs = useRef(new Map())
@@ -39,6 +47,35 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
 
   useEffect(() => setActive(0), [query])
   useEffect(() => setActiveGroup(groups[0]?.name ?? null), [groups])
+
+  // A picker inside a short onboarding step can otherwise render a tall
+  // dropdown into the shell's scroll boundary, leaving the course options
+  // visibly cut off. Keep the popover inside the available space below its
+  // trigger and let the list scroll within that space.
+  useLayoutEffect(() => {
+    if (!constrainPopover || isInline || !open) {
+      setPopoverMaxHeight(null)
+      setPopoverPosition(null)
+      return undefined
+    }
+    const updatePopover = () => {
+      const rootRect = rootRef.current?.getBoundingClientRect()
+      if (!rootRect) return
+      const width = Math.min(34 * 16, window.innerWidth - 32)
+      const left = Math.min(rootRect.left, window.innerWidth - width - 16)
+      const top = rootRect.bottom + 4
+      const available = Math.max(11 * 16, window.innerHeight - top - 16)
+      setPopoverPosition({ top, left: Math.max(16, left), width })
+      setPopoverMaxHeight(`${Math.min(28 * 16, available)}px`)
+    }
+    updatePopover()
+    window.addEventListener('resize', updatePopover)
+    window.addEventListener('scroll', updatePopover, true)
+    return () => {
+      window.removeEventListener('resize', updatePopover)
+      window.removeEventListener('scroll', updatePopover, true)
+    }
+  }, [constrainPopover, isInline, open])
 
   // Tracks which group header is currently topmost in the scrollable list,
   // so the rail highlights where you actually are — the same "scrollspy"
@@ -65,13 +102,39 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
 
   const scrollToGroup = (name) => {
     setActiveGroup(name)
-    groupRefs.current.get(name)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    const list = listRef.current
+    const group = groupRefs.current.get(name)
+    if (!list || !group) return
+    // scrollIntoView() is allowed to move every scrollable ancestor. In the
+    // inline onboarding picker that included the wizard page itself, so a
+    // category click could shift the whole card upward. Move only the list's
+    // own scrollTop instead.
+    const listRect = list.getBoundingClientRect()
+    const groupRect = group.getBoundingClientRect()
+    list.scrollTo({
+      top: Math.max(0, list.scrollTop + groupRect.top - listRect.top),
+      behavior: 'smooth',
+    })
+  }
+
+  const keepActiveOptionVisible = (option) => {
+    const list = listRef.current
+    if (!list || !option) return
+    const listRect = list.getBoundingClientRect()
+    const optionRect = option.getBoundingClientRect()
+    const topInset = 8
+    const bottomInset = 8
+    if (optionRect.top < listRect.top + topInset) {
+      list.scrollBy({ top: optionRect.top - (listRect.top + topInset) })
+    } else if (optionRect.bottom > listRect.bottom - bottomInset) {
+      list.scrollBy({ top: optionRect.bottom - (listRect.bottom - bottomInset) })
+    }
   }
 
   useEffect(() => {
     if (isInline || !open) return undefined
     const onDown = (e) => {
-      if (!rootRef.current?.contains(e.target)) {
+      if (!rootRef.current?.contains(e.target) && !panelRef.current?.contains(e.target)) {
         setOpen(false)
         setQuery('')
       }
@@ -82,12 +145,11 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
 
   useEffect(() => {
     if (!open) return
-    listRef.current
-      ?.querySelector('[data-active="true"]')
-      ?.scrollIntoView({ block: 'nearest' })
+    keepActiveOptionVisible(listRef.current?.querySelector('[data-active="true"]'))
   }, [active, open])
 
   const commit = (fw) => {
+    if (disabled) return
     onChange(fw.id)
     // Inline never "closes" — there's no popover to dismiss, and the
     // scrollspy/active-scroll effects above are both keyed on `open`, so
@@ -112,6 +174,14 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
       if (!open) return
       e.preventDefault()
       if (flat[active]) commit(flat[active])
+    } else if (e.key === 'Home') {
+      if (!open || !flat.length) return
+      e.preventDefault()
+      setActive(0)
+    } else if (e.key === 'End') {
+      if (!open || !flat.length) return
+      e.preventDefault()
+      setActive(flat.length - 1)
     } else if (e.key === 'Escape') {
       if (!open) return
       e.preventDefault()
@@ -122,7 +192,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
 
   return (
     <div className={`fw-picker relative w-full${isInline ? ' flex min-h-0 flex-1 flex-col gap-3' : ''}`} ref={rootRef}>
-      <div className={isInline && beforeInput ? 'flex items-center gap-3' : undefined}>
+      <div className={isInline && (beforeInput || afterInput) ? 'flex items-center gap-3' : undefined}>
         {isInline ? beforeInput : null}
         <div className="relative flex-1">
           <input
@@ -133,6 +203,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
             role="combobox"
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
+            aria-activedescendant={open && flat[active] ? `${listId}-${flat[active].id}` : undefined}
             aria-autocomplete="list"
             placeholder="Search courses — try “math”, “elementary”, “Pre-AP”..."
             autoComplete="off"
@@ -167,33 +238,47 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
             />
           ) : null}
         </div>
+        {isInline ? afterInput : null}
       </div>
 
       {(isInline || mounted) ? (
-        <div
-          className={
-            isInline
-              ? 'fw-picker-panel neo-panel flex min-h-0 w-full flex-1 overflow-hidden rounded-2xl border border-edge bg-paper-raised'
-              : `fw-picker-panel neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`
-          }
-          style={isInline ? undefined : { width: 'min(34rem, calc(100vw - 2rem))', maxWidth: 'calc(100vw - 2rem)' }}
-        >
+        <PickerPortal enabled={constrainPopover && Boolean(popoverPosition) && !isInline}>
+          <div
+            ref={constrainPopover && !isInline ? panelRef : undefined}
+            className={
+              isInline
+                ? 'fw-picker-panel neo-panel flex min-h-0 w-full flex-1 overflow-hidden rounded-2xl border border-edge bg-paper-raised'
+                : `fw-picker-panel neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`
+            }
+            style={isInline ? undefined : {
+              ...(popoverPosition ? {
+                position: 'fixed',
+                top: popoverPosition.top,
+                left: popoverPosition.left,
+                width: popoverPosition.width,
+              } : {
+                width: 'min(34rem, calc(100vw - 2rem))',
+                maxWidth: 'calc(100vw - 2rem)',
+              }),
+              ...(popoverMaxHeight ? { maxHeight: popoverMaxHeight } : {}),
+            }}
+          >
           {/* Category rail — desktop only. A phone-width dropdown has no room
               for a second column, so it falls back to the plain scrolling
               list (still grouped, just without the jump-to-category rail). */}
           {groups.length > 1 ? (
             <div
               className={`fw-picker-rail hidden ${isInline ? 'w-56' : 'w-40'} shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-2 sm:flex${isInline ? ' h-full' : ''}`}
-              style={isInline ? undefined : { maxHeight: 'min(28rem, 70vh)' }}
+              style={isInline ? undefined : { maxHeight: popoverMaxHeight || 'min(28rem, 70vh)' }}
             >
               {groups.map((g) => (
                 <button
                   key={g.name}
                   type="button"
                   onClick={() => scrollToGroup(g.name)}
-                  className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                  className={`onboarding-course-category flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
                     activeGroup === g.name ? 'neo-inset bg-paper text-ink' : 'text-ink-muted hover:bg-paper hover:text-ink'
-                  }`}
+                  }${activeGroup === g.name ? ' onboarding-course-category-active' : ''}`}
                 >
                   <span className="truncate">{g.name}</span>
                   <span className="shrink-0 text-[10px] text-ink-faint">{g.items.length}</span>
@@ -208,7 +293,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
             role="listbox"
             aria-label="Standards frameworks"
             className={`min-w-0 flex-1 overflow-y-auto py-1${isInline ? ' h-full' : ''}`}
-            style={isInline ? undefined : { maxHeight: 'min(28rem, 70vh)' }}
+            style={isInline ? undefined : { maxHeight: popoverMaxHeight || 'min(28rem, 70vh)' }}
           >
             {flat.length === 0 ? (
               <li className="px-3 py-6 text-center text-sm text-ink-muted">
@@ -237,11 +322,16 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
                           <button
                             type="button"
                             role="option"
+                            id={`${listId}-${fw.id}`}
                             aria-selected={isSelected}
+                            disabled={disabled}
+                            tabIndex={-1}
                             data-active={isActive}
-                            className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
-                              isActive ? 'neo-inset bg-paper text-ink' : 'hover:bg-paper-sunken'
-                            }`}
+                    className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
+                      isActive ? 'onboarding-course-active bg-paper-sunken text-ink' : 'hover:bg-paper-sunken'
+                    }${isSelected ? ' onboarding-course-selected' : ''}`}
+                            onFocus={() => setActive(i)}
+                            onKeyDown={onKeyDown}
                             onMouseEnter={() => setActive(i)}
                             onClick={() => commit(fw)}
                           >
@@ -270,7 +360,8 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
               ))
             )}
           </ul>
-        </div>
+          </div>
+        </PickerPortal>
       ) : null}
     </div>
   )

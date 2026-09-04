@@ -164,6 +164,40 @@ _CODE_RE = re.compile(
     r")(?!\.?\w)"
 )
 
+_RERANK_STOPWORDS = frozenset(
+    [
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
+        "i", "in", "is", "it", "lesson", "of", "on", "or", "plan", "that", "the",
+        "their", "this", "to", "was", "we", "what", "with", "you",
+    ]
+)
+
+
+def _content_tokens(text: str) -> frozenset[str]:
+    """Small, dependency-free vocabulary used only for reranking ties."""
+    return frozenset(
+        token
+        for token in re.findall(r"[a-z][a-z0-9'-]{2,}", (text or "").casefold())
+        if token not in _RERANK_STOPWORDS
+    )
+
+
+def rerank_score(query: str, chunk: dict) -> float:
+    """Return a bounded lexical relevance bonus for an already-scoped hit.
+
+    The embedding distance remains the admission rule. This score only helps
+    choose among close candidates after hybrid retrieval, rewarding shared
+    content words while preventing long standards from winning simply because
+    they contain more vocabulary. Exact code lookup already returns distance 0
+    and therefore remains dominant.
+    """
+    query_tokens = _content_tokens(query)
+    document_tokens = _content_tokens(str(chunk.get("document") or ""))
+    if not query_tokens or not document_tokens:
+        return 0.0
+    overlap = len(query_tokens & document_tokens) / max(len(query_tokens), 1)
+    return min(0.06, overlap * 0.06)
+
 
 # ---------------------------------------------------------------------------
 # ACT companion scoping
@@ -1102,7 +1136,14 @@ def retrieve_grounded(
             except Exception as e:  # noqa: BLE001 — one retrieval source failing shouldn't sink the others
                 log.warning("retrieval failed: %s", e)
 
-    raw = sorted(best.values(), key=lambda c: c["distance"])
+    def ranking_value(chunk: dict) -> tuple[float, float]:
+        # Preserve distance as the secondary key so two equally relevant chunks
+        # remain deterministic. Admission below still uses the raw distance;
+        # this cannot turn an out-of-domain chunk into an in-domain one.
+        bonus = max((rerank_score(q, chunk) for q in searches), default=0.0)
+        return (chunk["distance"] - bonus, chunk["distance"])
+
+    raw = sorted(best.values(), key=ranking_value)
 
     def is_act(c: dict) -> bool:
         return (c.get("metadata") or {}).get("source_type") == "act_standards"
@@ -1140,7 +1181,7 @@ def retrieve_grounded(
     act_floor = settings.act_max_distance if max_distance is None else max_distance
     if survivors:
         survivors += [c for c in raw if is_act(c) and floor < c["distance"] <= act_floor]
-    survivors.sort(key=lambda c: c["distance"])
+    survivors.sort(key=ranking_value)
 
     keep = survivors[:top_k]
     kept_ids = {c["id"] for c in keep}
@@ -1167,7 +1208,7 @@ def retrieve_grounded(
                 kept_ids.add(best_sec["id"])
 
     # Distance ascending: nearest first. There is no rerank_score any more.
-    keep.sort(key=lambda c: c["distance"])
+    keep.sort(key=ranking_value)
 
     kept_ids = {c["id"] for c in keep}
     drop = [

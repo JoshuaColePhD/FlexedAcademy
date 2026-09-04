@@ -120,7 +120,7 @@ def main() -> int:
     check("'2.C' IS an AP Spanish code",
           "2.C" in R.codes_for_course("AP Spanish Language and Culture"), True)
     warned = R.audit_grounding(
-        {"days": [{"name": "Mon", "standards": "2.C", "act_alignment": ""}]},
+        {"days": [{"name": "Mon", "standards": "2.C", "act_alignment": "R.WME.301"}]},
         set(), subject_code="AP_Lang",
     )
     check("audit flags 2.C in an AP Lang plan", bool(warned), True)

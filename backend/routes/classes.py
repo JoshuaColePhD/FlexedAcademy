@@ -34,6 +34,7 @@ class ClassPatch(BaseModel):
 
     subject: str | None = Field(default=None, max_length=120)
     grade: str | None = Field(default=None, max_length=8)
+    state: str | None = Field(default=None, max_length=120)
     sort_order: int | None = None
     # Which calendar this class follows (migration 25) — independent of the
     # account default (PATCH /api/me), and of every other class on it. Not on

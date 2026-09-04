@@ -1,0 +1,490 @@
+[
+  {
+    "course": "AP Art History",
+    "raw_course": "AP Art History",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students to make a claim about one or more related works of art and support it with specific, relevant evidence.",
+    "expected_code": "8.B",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP African American Studies",
+    "raw_course": "AP African American Studies",
+    "grade": 11,
+    "query": "Create a lesson plan on the 1964 Mississippi Freedom Summer project, examining the racial violence faced by African Americans seeking to vote, the Freedom Schools\u2019 role in civic activism and celebrating Black history, the murders of James Chaney, Andrew Goodman, and Michael Schwerner, and the project\u2019s impact on the civil rights movement and formation of the Mississippi Freedom Democratic Party.",
+    "expected_code": "EK 4.6.B.3",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Art and Design",
+    "raw_course": "AP Art and Design",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand and practice spontaneous and methodical revision by evaluating their work, comparing its actual and desired states, and modifying, clarifying, or reimagining ideas through thoughtful consideration of materials, processes, and relationships.",
+    "expected_code": "2.B.3",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Biology",
+    "raw_course": "AP Biology",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how energy captured during the light reactions is transferred to ATP and NADPH to power carbohydrate production from carbon dioxide in the Calvin cycle within the chloroplast stroma.",
+    "expected_code": "3.4.B.6",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Business & Personal Finance",
+    "raw_course": "AP Business & Personal Finance",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how individuals choose how much insurance coverage and personal risk to take on based on their risk tolerance, premiums, deductibles, and potential out-of-pocket costs.",
+    "expected_code": "5.2.C.3",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Calculus AB & BC",
+    "raw_course": "AP Calculus AB & BC",
+    "grade": 11,
+    "query": "Create a lesson plan explaining why a limit may not exist at a particular x-value, including examples of unbounded functions, oscillating functions, and functions whose left- and right-hand limits differ.",
+    "expected_code": "LIM-1.C.4",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Chemistry",
+    "raw_course": "AP Chemistry",
+    "grade": 11,
+    "query": "Create a lesson plan explaining that standard Gibbs free energy change measures thermodynamic favorability, with emphasis that processes having \u0394G\u00b0 < 0 are thermodynamically favored and why this terminology is preferred over \u201cspontaneous\u201d to avoid misconceptions about processes occurring suddenly or without cause.",
+    "expected_code": "9.3.A.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Chinese Language and Culture",
+    "raw_course": "AP Chinese Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students to choose language appropriate to their communicative purpose, audience, and context.",
+    "expected_code": "Skill 2.A",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Comparative Government and Politics",
+    "raw_course": "AP Comparative Government and Politics",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how competition in Nigeria\u2019s multiparty system\u2014including its 30 registered parties, dominant PDP and APC, and a third party with some electoral success\u2014affects political representation and citizens\u2019 formal participation.",
+    "expected_code": "PAU-4.A.5",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Computer Science A",
+    "raw_course": "AP Computer Science A",
+    "grade": 11,
+    "query": "Create a lesson plan explaining legal and intellectual property issues in programming, including the responsible use of open-source code and the need to obtain permission or purchase non-open-source code before incorporating it into a program.",
+    "expected_code": "3.2.A.3",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Computer Science Principles",
+    "raw_course": "AP Computer Science Principles",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how place value in a number system is determined by raising the base to the power of each position, with positions numbered from 0 at the rightmost digit and increasing by 1 to the left.",
+    "expected_code": "DAT-1.C.5",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Cybersecurity",
+    "raw_course": "AP Cybersecurity",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how encryption protects internet traffic and how people can assess the sensitivity of their data, including DNS queries, before connecting to unencrypted Wi-Fi networks.",
+    "expected_code": "1.3.C.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP English Literature and Composition",
+    "raw_course": "AP English Literature and Composition",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how point of view shapes what narrators, characters, or speakers can and cannot reveal based on their involvement in and intimacy with the text\u2019s details, events, and characters.",
+    "expected_code": "NAR-1.D",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Environmental Science",
+    "raw_course": "AP Environmental Science",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how CAFOs can lower consumer costs through economic efficiency while examining confined animal housing, grain- and soy-based diets, manure-related water contamination, and the contribution of routine antibiotic use to antibiotic resistance.",
+    "expected_code": "EIN-2.I.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP European History",
+    "raw_course": "AP European History",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how women in Western Europe gained voting rights, educational opportunities, and access to professional careers through feminist efforts, while women in Eastern Europe and the Soviet Union gained them through government policy, and how social inequalities persisted despite these advances.",
+    "expected_code": "KC-4.4.II.B",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP French Language and Culture",
+    "raw_course": "AP French Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how to choose an appropriate level of formality and language style for different audiences and situations.",
+    "expected_code": "2.A.4",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP German Language and Culture",
+    "raw_course": "AP German Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students compare the cultural products, practices, and perspectives of two or more distinct communities.",
+    "expected_code": "3.A.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Human Geography",
+    "raw_course": "AP Human Geography",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how supranational organizations such as the UN, NATO, EU, ASEAN, Arctic Council, and African Union can challenge state sovereignty by limiting the economic or political actions of their member states.",
+    "expected_code": "SPS-4.B.4",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Italian Language and Culture",
+    "raw_course": "AP Italian Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students understand the Project Q&A task, including who their likely interlocutor will be, what types of questions they may be asked, and how much time they will have to answer.",
+    "expected_code": "Phase 4 Objective 1",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Japanese Language and Culture",
+    "raw_course": "AP Japanese Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students to integrate evidence of cultural products, practices, and perspectives into an engaging presentation.",
+    "expected_code": "Phase 3 Objective 3",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP_Lang",
+    "raw_course": "AP_Lang",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students to recognize and correct sentence-structure problems, including faulty adjective placement, participial phrase fragments, missing or incorrect relative pronouns, dangling or misplaced modifiers, and nonparallel verbs in a simple series.",
+    "expected_code": "SST 401",
+    "source_type": "act_standards"
+  },
+  {
+    "course": "AP Latin",
+    "raw_course": "AP Latin",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how epic poetry uses dactylic hexameter, including its six-foot structure, the possible dactyls and spondees in the first four feet, the typically dactylic fifth foot, and the final spondee or trochee in Vergilian epic.",
+    "expected_code": "STYL-4.C",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Macroeconomics",
+    "raw_course": "AP Macroeconomics",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how the aggregate production function shows that output per capita increases with both physical capital per capita and human capital per capita.",
+    "expected_code": "MEA-2.B.5",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Microeconomics",
+    "raw_course": "AP Microeconomics",
+    "grade": 11,
+    "query": "Create a lesson plan that defines the production possibilities curve and related terms, uses graphs and tables to explain trade-offs, opportunity costs, efficiency, inefficiency, and economic growth or contraction, and includes practice calculating opportunity cost from PPCs or data tables.",
+    "expected_code": "MKT-1.C",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Music Theory",
+    "raw_course": "AP Music Theory",
+    "grade": 11,
+    "query": "Create a lesson plan explaining simple and compound intervals, including how adding an octave to a simple interval creates its corresponding compound interval, such as a major third becoming a major tenth, and why the two intervals sound similar.",
+    "expected_code": "PIT-1.M.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Physics 1",
+    "raw_course": "AP Physics 1",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how kinetic friction acts on a rotating system slipping relative to another surface, how its point of application moves relative to that surface, and why this friction dissipates energy from the system.",
+    "expected_code": "6.5.C.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Physics 2",
+    "raw_course": "AP Physics 2",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how the Bohr model represents electrons moving in circular orbits around the nucleus and how their charge, mass, and the electric force between the electron and nucleus determine those orbits.",
+    "expected_code": "15.2.A.3.i",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Physics C",
+    "raw_course": "AP Physics C",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how to determine the total mass of a solid by integrating a given mass-density function over its length, area, or volume.",
+    "expected_code": "2.1.B.3.ii",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Precalculus",
+    "raw_course": "AP Precalculus",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how to determine the midline of a sinusoidal function by finding the arithmetic mean of its maximum and minimum values, including the examples \\(y=\\sin\\theta\\) and \\(y=\\cos\\theta\\), whose midline is \\(y=0\\).",
+    "expected_code": "3.5.A.4",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Psychology",
+    "raw_course": "AP Psychology",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how explanatory style shapes the way people explain good and bad events in their own lives and the lives of others, including the differences between optimistic and pessimistic explanatory styles.",
+    "expected_code": "4.1.A.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Research",
+    "raw_course": "AP Research",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how to present data and other information graphically using infographics, graphs, tables, and models to improve audience understanding and interpretation.",
+    "expected_code": "EK 5.1C2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Seminar",
+    "raw_course": "AP Seminar",
+    "grade": 11,
+    "query": "Create a lesson plan that helps students use curiosity and imagination through the inquiry process to engage with ideas and explore approaches to complex issues.",
+    "expected_code": "EK 1.1B2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Spanish Language and Culture",
+    "raw_course": "AP Spanish Language and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how to combine information from multiple sources to develop and support a well-reasoned position or perspective.",
+    "expected_code": "2.C.4",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Spanish Literature and Culture",
+    "raw_course": "AP Spanish Literature and Culture",
+    "grade": 11,
+    "query": "Create a lesson plan that guides students in analyzing and interpreting literary texts and audio sources in the target language.",
+    "expected_code": "1",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP Statistics",
+    "raw_course": "AP Statistics",
+    "grade": 11,
+    "query": "Create a lesson plan that teaches students how pie charts represent frequencies and relative frequencies for categorical data, with each slice corresponding to a category and its area showing the category\u2019s proportion of the whole.",
+    "expected_code": "1.4.A.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP US Government & Politics",
+    "raw_course": "AP US Government & Politics",
+    "grade": 11,
+    "query": "Create a lesson plan explaining the president\u2019s formal and informal powers, including vetoes and pocket vetoes, foreign policy powers, bargaining and persuasion, executive orders, and signing statements.",
+    "expected_code": "EK 2.4.A.2",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP US History",
+    "raw_course": "AP US History",
+    "grade": 11,
+    "query": "Create a lesson plan exploring how colonists\u2019 belief in republican government and natural rights was expressed in Thomas Paine\u2019s *Common Sense* and the Declaration of Independence and how these ideas shaped Americans\u2019 understanding of the nation\u2019s founding ideals throughout history.",
+    "expected_code": "KC-3.2.I.B",
+    "source_type": "college_board"
+  },
+  {
+    "course": "AP World History",
+    "raw_course": "AP World History",
+    "grade": 11,
+    "query": "Create a lesson plan explaining how political, religious, and economic rivalries drove Portugal, Spain, the Netherlands, France, and Britain to establish new maritime empires.",
+    "expected_code": "KC-4.3.II.C",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Arts",
+    "raw_course": "Arts",
+    "grade": 5,
+    "query": "Create a lesson plan that teaches students how to modify elements and components of media artworks for clear communication and intentional effects, then revise their work to strengthen its impact and clarify its purpose.",
+    "expected_code": "AE24.MA.5.4",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "Counseling",
+    "raw_course": "Counseling",
+    "grade": 5,
+    "query": "Create a lesson plan that helps students understand how their interests and skills connect to different career options.",
+    "expected_code": "CSC26.3-5.CD.3",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "DLCS",
+    "raw_course": "DLCS",
+    "grade": 7,
+    "query": "Create a lesson plan that teaches students about firewalls, antivirus software, and secure passwords, while explaining how to identify and reduce system vulnerabilities.",
+    "expected_code": "DLCS25.7.16",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "ELA",
+    "raw_course": "ELA",
+    "grade": 2,
+    "query": "Create a lesson plan that teaches students to decode and encode one-syllable words ending in vowel **y** with the long /\u012b/ sound, two-syllable words ending in **y** with the long /\u0113/ sound, and words with medial **y** producing the short /\u012d/ sound.",
+    "expected_code": "ELA21.2.10k",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "Health",
+    "raw_course": "Health",
+    "grade": 8,
+    "query": "Create a lesson plan that teaches adolescents how family history, personal behaviors, and regular health care can help reduce or prevent injuries and illness.",
+    "expected_code": "HE19.8.1.2a",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "Math",
+    "raw_course": "Math",
+    "grade": 5,
+    "query": "Create a lesson plan that teaches students to solve real-world addition and subtraction problems involving fractions of the same whole, including unlike denominators, by using visual fraction models and equations, estimating with benchmark fractions, and evaluating whether their answers are reasonable.",
+    "expected_code": "MA19.5.9",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "Math_AWF",
+    "raw_course": "Math_AWF",
+    "grade": 10,
+    "query": "Create a lesson plan that teaches students how to analyze debt, cash flow, and available resources to determine net worth.",
+    "expected_code": "AWF15.19a",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "PE",
+    "raw_course": "PE",
+    "grade": 7,
+    "query": "Create a lesson plan that teaches catching by using shorter tosses, rolls, or bounces and offering buckets or baskets along with accessible objects such as stuffed animals, beach balls, scarves, deflated balls, foam or fleece balls, and balloons.",
+    "expected_code": "PE19.7.1.3.APE",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "Pre-AP Algebra 1",
+    "raw_course": "Pre-AP Algebra 1",
+    "grade": 9,
+    "query": "Create a lesson plan teaching students how to determine the algebraic representation of an exponential function using its growth or decay factor and one point, two points on its graph, or two coordinate pairs from a table or numerical data.",
+    "expected_code": "2.3.3b",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP Algebra 2",
+    "raw_course": "Pre-AP Algebra 2",
+    "grade": 10,
+    "query": "Create a lesson plan that teaches students to add and subtract complex numbers by combining real and imaginary parts separately and to multiply complex numbers using the distributive property and \\(i^2=-1\\).",
+    "expected_code": "3.2.4(c)",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP Biology",
+    "raw_course": "Pre-AP Biology",
+    "grade": 9,
+    "query": "Create a lesson plan explaining how geographic or reproductive isolation reduces gene flow between populations of the same species, allowing them to become genetically distinct and eventually form new species.",
+    "expected_code": "EVO 3.1.1",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP Chemistry",
+    "raw_course": "Pre-AP Chemistry",
+    "grade": 10,
+    "query": "Create an engaging lesson plan that helps students compare the macroscopic properties of solids, liquids, and gases\u2014such as density, shape, volume, and ability to flow\u2014and explain these differences using particle arrangement and motion.",
+    "expected_code": "1.1.A.a",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP Dance",
+    "raw_course": "Pre-AP Dance",
+    "grade": 9,
+    "query": "Create a lesson plan in which students read and practice a theatre work while identifying the technical skills in design, character development, staging, management, and playwriting needed to achieve its artistic goals.",
+    "expected_code": "EK 2.1A-T Emerging",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP English 1",
+    "raw_course": "Pre-AP English 1",
+    "grade": 9,
+    "query": "Create a lesson plan that teaches students to analyze literature by making inferences, examining the author\u2019s use of literary and stylistic elements, and drawing conclusions about the meaning of the work as a whole.",
+    "expected_code": "EU 1.3",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP English 2",
+    "raw_course": "Pre-AP English 2",
+    "grade": 10,
+    "query": "Create a lesson plan that teaches students how writers use multiple, separate cycles of revision to refine ideas and organization before editing and proofreading for grammar, usage, and mechanics.",
+    "expected_code": "EK 2.1C3",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP Geometry",
+    "raw_course": "Pre-AP Geometry",
+    "grade": 10,
+    "query": "Create a lesson plan that teaches students how histograms partition quantitative data into equal-width intervals, use bar heights to represent frequencies, and reveal the shape of a distribution.",
+    "expected_code": "1.1.2b",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP Music",
+    "raw_course": "Pre-AP Music",
+    "grade": 9,
+    "query": "Create a lesson plan that teaches students to determine and defend which musical ideas to emphasize, manipulate phrasing, articulation, tone, and other musical elements in an existing or original work, and explain how these choices change the listener\u2019s experience using music-specific vocabulary.",
+    "expected_code": "EK 3.2A-M",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP Theatre",
+    "raw_course": "Pre-AP Theatre",
+    "grade": 9,
+    "query": "Create a lesson plan that helps students discuss their own and peers\u2019 work in conversation and writing by evaluating stylistic and technical ability, inventive phrasing or improvisation, and understanding of the composition\u2019s context.",
+    "expected_code": "LO 4.1A-M Advanced",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP Visual Arts",
+    "raw_course": "Pre-AP Visual Arts",
+    "grade": 9,
+    "query": "Create a lesson plan that guides students in analyzing and evaluating a theatre work\u2019s performance and production choices, connecting those elements to its overall meaning and effect while articulating and comparing their personal interpretations with those of others.",
+    "expected_code": "EK 1.2B-T",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Pre-AP World History",
+    "raw_course": "Pre-AP World History",
+    "grade": 9,
+    "query": "Create a lesson plan comparing the competition for political authority between the Roman Catholic Church and monarchs in feudal western Europe with the Byzantine emperors\u2019 control of both the state and Eastern Orthodox Church, especially after the East\u2013West Schism.",
+    "expected_code": "EK 3.2.A",
+    "source_type": "college_board"
+  },
+  {
+    "course": "Science",
+    "raw_course": "Science",
+    "grade": 6,
+    "query": "Create a lesson plan that helps students obtain, evaluate, and communicate information about how human activities and population growth interact with natural processes and affect Earth\u2019s systems and the global environment over time.",
+    "expected_code": "SC23.6.11",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "Social_Studies",
+    "raw_course": "Social_Studies",
+    "grade": 6,
+    "query": "Create a lesson plan that defines the Declaration of Independence\u2019s key principles of inalienable rights, equality, and social contract and examines how these ideas have been expressed in significant U.S. statements of belief from the founding era to the present.",
+    "expected_code": "SS24.6.7e",
+    "source_type": "state_course_of_study"
+  },
+  {
+    "course": "World_Languages",
+    "raw_course": "World_Languages",
+    "grade": 4,
+    "query": "Create a lesson plan that helps students listen to short recordings and restate the key information in their own words.",
+    "expected_code": "WL17.ASL.IHP.2a",
+    "source_type": "state_course_of_study"
+  }
+]

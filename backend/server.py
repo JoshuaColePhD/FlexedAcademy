@@ -357,6 +357,53 @@ class ReadOnlyDemoMiddleware:
         await response(scope, receive, send)
 
 
+class SecurityHeadersMiddleware:
+    """Add the baseline browser policy required by the SPA and Stripe.js."""
+
+    _CSP = (
+        "default-src 'self'; "
+        "base-uri 'self'; object-src 'none'; frame-ancestors 'self'; "
+        "script-src 'self' 'unsafe-inline' https://js.stripe.com https://accounts.google.com "
+        "https://challenges.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https://*.stripe.com https://*.link.com "
+        "https://accounts.google.com https://challenges.cloudflare.com; "
+        "font-src 'self' data:; "
+        "connect-src 'self' https://api.stripe.com https://*.stripe.com https://*.link.com "
+        "https://accounts.google.com https://challenges.cloudflare.com; "
+        "frame-src 'self' https://*.stripe.com https://*.link.com https://accounts.google.com "
+        "https://challenges.cloudflare.com"
+    )
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_with_security_headers(message):
+            if message.get("type") == "http.response.start":
+                headers = [
+                    (key, value)
+                    for key, value in message.get("headers", [])
+                    if key.lower() not in {
+                        b"content-security-policy",
+                        b"x-content-type-options",
+                        b"referrer-policy",
+                    }
+                ]
+                headers.extend([
+                    (b"content-security-policy", self._CSP.encode()),
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+                ])
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_security_headers)
+
+
 app = FastAPI(title="FlexEd Academy", version="2.0.0", lifespan=lifespan)
 
 app.state.limiter = limiter
@@ -378,6 +425,7 @@ app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(ConditionalGZipMiddleware, minimum_size=1024)
 app.add_middleware(PrivateApiCacheMiddleware)
 app.add_middleware(ReadOnlyDemoMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

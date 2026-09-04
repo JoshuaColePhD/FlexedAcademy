@@ -74,7 +74,14 @@ _MONTHS = {
 # whole-week closures; "Mon Jan 18 = MLK Day (no school)" is a single day and
 # must NOT take the week out — that week is still four teaching days.
 _WEEK_OFF = re.compile(r"no school all week|break\s*[—-]\s*no school|winter break", re.IGNORECASE)
-_ANY_CLOSURE = re.compile(r"no school", re.IGNORECASE)
+# A school closure is not always phrased as "no school". In-service days,
+# professional-development days, and teacher workdays are also non-teaching
+# days for lesson planning, even when students are explicitly mentioned rather
+# than the phrase "no school".
+_ANY_CLOSURE = re.compile(
+    r"no school|no students|in[- ]service|professional development|teacher workday|teacher work day",
+    re.IGNORECASE,
+)
 
 _DOW = ("Mon", "Tue", "Wed", "Thu", "Fri")
 

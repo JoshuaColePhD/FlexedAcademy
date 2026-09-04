@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, History, Loader2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, History, Loader2, Save, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -25,6 +25,7 @@ import * as perf from '../lib/performanceMetrics'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { useInterfacePreferences } from '../hooks/useInterfacePreferences'
 import { durableTurnSnapshot, readTurnOutbox, removeTurnOutbox, writeTurnOutbox } from '../lib/turnOutbox'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -453,6 +454,11 @@ function normalizeChatMode(mode) {
   return 'brainstorm'
 }
 
+function planContainsStandard(plan, code) {
+  if (!plan || !code) return false
+  return JSON.stringify(plan).toLocaleLowerCase().includes(String(code).toLocaleLowerCase())
+}
+
 export function ChatPage() {
   const { classId, chatId } = useParams()
   const navigate = useNavigate()
@@ -580,6 +586,14 @@ export function ChatPage() {
   const [artifactRetryTick, setArtifactRetryTick] = useState(0)
   const [query, setQuery] = useState('')
   const [chatMode, setChatMode] = useState(() => normalizeChatMode(location.state?.mode))
+  // A standards-library handoff stays attached to the new chat while the
+  // teacher edits the prompt and while the first plan is generated. It is
+  // deliberately separate from the visible draft so the model receives the
+  // exact selected code even if the teacher rewrites the wording.
+  const [selectedStandard, setSelectedStandard] = useState(() => location.state?.selectedStandard || null)
+  const [selectedStandardStatus, setSelectedStandardStatus] = useState(() => (
+    location.state?.selectedStandard ? 'selected' : null
+  ))
   const changeChatMode = useCallback(async (nextMode) => {
     setChatMode(nextMode)
     if (!chatId) return
@@ -596,6 +610,40 @@ export function ChatPage() {
   // change (switching chats), not just once on mount.
   const draftKey = chatId || (classId ? `new:${classId}` : null)
   useComposerDraft(draftKey, query, setQuery, user?.id)
+  const standardsHandoffRef = useRef(null)
+  useEffect(() => {
+    const handoff = location.state?.selectedStandard || null
+    const prefill = location.state?.prefill || searchParams.get('prefill')
+    if (chatId || (!handoff && !prefill)) return
+
+    const handoffKey = `${location.pathname}:${handoff?.code || ''}:${prefill || ''}`
+    if (standardsHandoffRef.current === handoffKey) return
+    standardsHandoffRef.current = handoffKey
+
+    if (handoff) {
+      setSelectedStandard(handoff)
+      setSelectedStandardStatus('selected')
+    }
+    if (prefill) setQuery(prefill)
+    if (searchParams.has('prefill')) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('prefill')
+          return next
+        },
+        { replace: true },
+      )
+    }
+    requestAnimationFrame(() => document.getElementById('composer-input')?.focus())
+  }, [chatId, location.pathname, location.state, searchParams, setSearchParams])
+  useEffect(() => {
+    // Keep the handoff alive when the new chat is created, but never let a
+    // selected standard leak into a different existing conversation.
+    if (!chatId || location.state?.selectedStandard) return
+    setSelectedStandard(null)
+    setSelectedStandardStatus(null)
+  }, [chatId, location.state])
   /* A follow-up typed and sent while the current turn is still busy—or a
      send made while offline—lives here until it can be accepted by the
      server. The matching local outbox below makes this survive a reload. */
@@ -705,6 +753,8 @@ export function ChatPage() {
   const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false)
   const [planSaveState, setPlanSaveState] = useState('idle')
   const [lastSavedLabel, setLastSavedLabel] = useState('Lesson plan saved')
+  const [pendingPlan, setPendingPlan] = useState(null)
+  const { autoSave } = useInterfacePreferences()
   // A quiz build is its own busy state, not folded into `revising` — the
   // two can genuinely overlap (asking for a quiz while a revision request
   // from a moment ago is still finishing), and ArtifactRail needs to show
@@ -1383,6 +1433,7 @@ export function ChatPage() {
     setRevisionHistoryOpen(false)
     setPlanSaveState('idle')
     setLastSavedLabel('Lesson plan saved')
+    setPendingPlan(null)
   }, [chatId])
 
   const undoLastChange = useCallback(async () => {
@@ -1422,6 +1473,12 @@ export function ChatPage() {
       showReadyNotice('Lesson plan ready')
       setPlanSaveState('saved')
       setLastSavedLabel('Lesson plan saved')
+      const selectedStandardApplied = selectedStandard
+        ? planContainsStandard(done.plan, selectedStandard.code)
+        : null
+      if (selectedStandard) {
+        setSelectedStandardStatus(selectedStandardApplied ? 'applied' : 'review')
+      }
       setArtifact({
         planId: done.plan_id,
         plan: done.plan,
@@ -1436,10 +1493,15 @@ export function ChatPage() {
       // of a system toast. unitSuffix already knows not to repeat the week
       // number back when there's no real unit name to add (see its own
       // comment) — same guard SplitLayout and ArtifactRail lean on.
+      const standardHandoffNote = selectedStandard
+        ? selectedStandardApplied
+          ? ` I included ${selectedStandard.code} in the alignment.`
+          : ` I couldn't confirm ${selectedStandard.code} in the generated alignment, so please review the Standards section.`
+        : ''
       const content = `${done.plan?.week_of || 'The week'} is built${unitSuffix(
         done.unit,
         ', centered on '
-      )}. Take a look, and tell me what needs to change.`
+      )}.${standardHandoffNote} Take a look, and tell me what needs to change.`
       setMessages((prev) => [
         ...prev,
         {
@@ -1835,6 +1897,22 @@ export function ChatPage() {
 
       const content = docs ? `${docs}\n\n---\n\n${typed}` : typed
       const chatUserContent = typed || (docs ? 'Please use the attached documents as reference for this request.' : '')
+      const selectedStandardContext = selectedStandard
+        ? [
+            'Teacher-selected primary course standard (apply this exact standard when building the plan):',
+            `Code: ${selectedStandard.code}`,
+            `Wording: ${selectedStandard.description}`,
+            selectedStandard.strand ? `Strand: ${selectedStandard.strand}` : '',
+          ].filter(Boolean).join('\n')
+        : ''
+      // Keep the selection in the operative model request as well as the
+      // out-of-band context. This makes it survive a teacher editing the
+      // visible prompt and gives the generator a clear instruction to use the
+      // exact selected code, rather than merely treating it as a search hint.
+      const modelQuery = selectedStandard
+        ? `${typed}\n\n${selectedStandardContext}`
+        : typed
+      const referenceContext = [selectedStandardContext, docs].filter(Boolean).join('\n\n')
       // Guards on the COMBINED text, so an attachment with no typed message
       // sends — the send button was already enabled for that and did nothing.
       const voiceTurn = Boolean(options.voiceTurn)
@@ -1894,7 +1972,10 @@ export function ChatPage() {
           activeChatId = created.id
           localFor.current = created.id
           qc.invalidateQueries({ queryKey: ['chats'] })
-          navigate(`/c/${classId}/chat/${created.id}`, { replace: true })
+          navigate(`/c/${classId}/chat/${created.id}`, {
+            replace: true,
+            state: selectedStandard ? { selectedStandard } : undefined,
+          })
 
           /* Then give it a real name.
              The placeholder is the first 80 characters of whatever was typed,
@@ -2016,7 +2097,7 @@ export function ChatPage() {
 
         const firstPayload = [
           ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
-          { role: 'user', content: chatUserContent },
+          { role: 'user', content: selectedStandard ? modelQuery : chatUserContent },
         ]
 
         if (isClearlySpecifiedPlanRequest(typed)) {
@@ -2025,12 +2106,12 @@ export function ChatPage() {
           // No chat placeholder is needed here: the progress tray is the
           // live response surface, and the completed-plan callback adds the
           // assistant handoff when the document is ready.
-          stream.start(typed, {
+          stream.start(modelQuery, {
             chatId: activeChatId,
             weekNumber: effectiveWeek,
             classId,
             conversationContext: priorConversation,
-            referenceContext: docs,
+            referenceContext,
           }).catch(() => {})
           return
         }
@@ -2050,7 +2131,7 @@ export function ChatPage() {
           voice: voiceOpen,
           mode: chatMode,
           weekNumber: effectiveWeek,
-          referenceContext: docs,
+          referenceContext,
         })
 
         // Asked instead of building — onDone (above) already rendered the
@@ -2080,12 +2161,12 @@ export function ChatPage() {
         }
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
-        stream.start(typed, {
+        stream.start(modelQuery, {
           chatId: activeChatId,
           weekNumber: effectiveWeek,
           classId,
           conversationContext: firstHistory,
-          referenceContext: docs,
+          referenceContext,
         }).catch(() => {})
         return
       }
@@ -2122,7 +2203,7 @@ export function ChatPage() {
         voice: voiceOpen,
         mode: chatMode,
         weekNumber: conversationWeek,
-        referenceContext: docs,
+        referenceContext,
       })
 
       // The generate_quiz alternative — a distinct request from
@@ -2326,7 +2407,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2467,6 +2548,25 @@ export function ChatPage() {
       if (!artifact?.planId || !content?.trim()) return
       const label = `${day.name}’s ${FIELD_LABELS[field] || field}`
       const previousPlan = clonePlan(artifact.plan)
+
+      if (!autoSave) {
+        const nextPlan = clonePlan(artifact.plan)
+        const nextDay = { ...nextPlan.days[dayIndex] }
+        nextDay[field] = field === 'engagement_strategy'
+          ? content.split(/[\n,]+/).map((part) => part.trim()).filter(Boolean)
+          : content.trim()
+        nextPlan.days[dayIndex] = nextDay
+        setArtifact((current) => ({ ...current, plan: nextPlan }))
+        setPendingPlan((current) => ({
+          beforePlan: current?.beforePlan || previousPlan,
+          label,
+          plan: nextPlan,
+        }))
+        setPlanSaveState('pending')
+        flash([cellKey(dayIndex, field)])
+        return
+      }
+
       setRevising(true)
       setPlanSaveState('saving')
       try {
@@ -2487,8 +2587,35 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [artifact, toast, flash, recordRevision]
+    [artifact, autoSave, toast, flash, recordRevision]
   )
+
+  const savePendingPlan = useCallback(async () => {
+    if (!pendingPlan?.plan || !artifact?.planId || revising) return
+    setRevising(true)
+    setPlanSaveState('saving')
+    try {
+      const row = await api.patchPlan(artifact.planId, pendingPlan.plan)
+      setArtifact((current) => ({
+        ...current,
+        plan: row.plan_json,
+        warnings: row.warnings,
+        retrievedIds: row.retrieved_ids,
+      }))
+      setPendingPlan(null)
+      toast.success('Saved', 'Your lesson-plan changes are saved.')
+      recordRevision(`${pendingPlan.label} update`, pendingPlan.beforePlan)
+    } catch (err) {
+      setPlanSaveState('error')
+      toast.apiError("Couldn't save your lesson-plan changes", err)
+    } finally {
+      setRevising(false)
+    }
+  }, [pendingPlan, artifact, revising, toast, recordRevision])
+
+  useEffect(() => {
+    if (autoSave && pendingPlan && !revising) void savePendingPlan()
+  }, [autoSave, pendingPlan, revising, savePendingPlan])
 
   /* The batch counterpart: one instruction, one field, applied to several days
      at once — what the tweak popover's "All N days" scope sends. Not reachable
@@ -3748,25 +3875,38 @@ export function ChatPage() {
                     : 'Sending…'}
               </span>
             </div>
-          ) : artifact?.planId && (planSaveState === 'saved' || planSaveState === 'error') ? (
+          ) : artifact?.planId && (planSaveState === 'saved' || planSaveState === 'pending' || planSaveState === 'error') ? (
             <div
-              className={`composer-writing-status composer-save-status mb-2${planSaveState === 'error' ? ' is-error' : ' is-saved'}`}
+              className={`composer-writing-status composer-save-status mb-2${planSaveState === 'error' ? ' is-error' : planSaveState === 'pending' ? ' is-pending' : ' is-saved'}`}
               role="status"
               aria-live="polite"
             >
               <span className="composer-writing-status-mark" aria-hidden="true">
                 {planSaveState === 'error' ? (
                   <TriangleAlert size={14} />
+                ) : planSaveState === 'pending' ? (
+                  <Clock size={14} />
                 ) : (
                   <CheckCircle2 size={14} />
                 )}
               </span>
               <strong className="composer-writing-status-label">
-                {planSaveState === 'error' ? 'Save failed' : 'Lesson plan saved'}
+                {planSaveState === 'error' ? 'Save failed' : planSaveState === 'pending' ? 'Unsaved plan changes' : 'Lesson plan saved'}
               </strong>
               <span className="composer-writing-status-status min-w-0 flex-1 truncate">
-                {planSaveState === 'error' ? 'Try the change again.' : lastSavedLabel}
+                {planSaveState === 'error' ? 'Try the change again.' : planSaveState === 'pending' ? 'Auto-save is off.' : lastSavedLabel}
               </span>
+              {(planSaveState === 'pending' || (planSaveState === 'error' && pendingPlan)) ? (
+                <button
+                  type="button"
+                  className="composer-status-action fa-press"
+                  onClick={savePendingPlan}
+                  disabled={revising}
+                >
+                  <Save size={14} aria-hidden="true" />
+                  <span>Save changes</span>
+                </button>
+              ) : null}
               {planSaveState === 'saved' && lastChange ? (
                 <button
                   type="button"
@@ -3945,6 +4085,8 @@ export function ChatPage() {
             isStreaming={busy}
             attachments={attachments}
             setAttachments={setAttachments}
+            selectedStandard={selectedStandard}
+            selectedStandardStatus={selectedStandardStatus}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
             onOpenVoice={betaFeaturesEnabled ? openVoice : undefined}
             voiceModeActive={voiceOpen}

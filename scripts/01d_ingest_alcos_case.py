@@ -44,11 +44,13 @@ Usage:
     python scripts/01d_ingest_alcos_case.py --refresh        # re-download packages
 
 Writes: alcos_chunks.json  (picked up by scripts/02_embed_store.py's *chunks.json glob)
+The output is quality-gated before the previous artifact is replaced.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import re
@@ -57,7 +59,12 @@ import sys
 import unicodedata
 import urllib.request
 from collections import Counter, defaultdict
+from datetime import UTC, datetime
 from pathlib import Path
+
+from alabama_ingest_config import FRAMEWORKS as FRAMEWORK_MANIFEST
+from alabama_ingest_config import STATE
+from check_alabama_ingest import check_ingest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CASE_CACHE = PROJECT_ROOT / "data" / "raw" / "case"
@@ -74,24 +81,11 @@ log = logging.getLogger("alcos")
 # The frameworks, one per subject Course of Study PDF.
 #
 # `course` is the value written to chunk metadata and the value the app filters
-# on. It must match the framework ids the /api/frameworks endpoint hands the UI,
-# which is derived from these chunks — so this table is the single place a
-# subject code is decided.
+# on. It must match the framework ids the /api/frameworks endpoint hands the UI.
+# The executable roster lives in alabama_ingest_config.py and is shared with the
+# quality gate, so a new framework cannot silently exist in only one of them.
 # ---------------------------------------------------------------------------
-FRAMEWORKS = [
-    # course           CASE package id                          local PDF filename
-    ("ELA",             "d5af742b-1042-4647-a45a-027e4c4a2f1f", "English Language Arts (2021).pdf"),
-    ("Math",            "0c01a9eb-4d20-4578-89fb-3876b435c3d4", "Mathematics (2019, rev 2021).pdf"),
-    ("Science",         "d90c97ad-c327-4799-97bc-37789308baab", "Science (2023).pdf"),
-    ("Social_Studies",  "5936b8cf-ae38-49ca-aa4c-85707bbdef07", "Social Studies (2024).pdf"),
-    ("Arts",            "1de51ebf-fdb5-4a4a-bc68-3fab6e6ed7d6", "Arts Education (2024).pdf"),
-    ("DLCS",            "8ab34547-b2e8-4189-9aad-ea232df02fbd", "Digital Literacy and Computer Science (2025).pdf"),
-    ("Health",          "2adb1f52-c078-4c1c-b559-62f58832fc68", "Health Education (2019).pdf"),
-    ("PE",              "98581f63-d6b5-4cad-982e-73c26ff0ff57", "Physical Education (2019).pdf"),
-    ("World_Languages", "63b660d5-e540-49ae-84f5-0cd99cdf1eb9", "World Languages (2017).pdf"),
-    ("Counseling",      "93710213-5d54-4326-b1d5-660a933dd3bd", "Comprehensive School Counseling (2024-2026).pdf"),
-    ("Math_AWF",        "edd52d0d-4c05-4f4b-bcd4-f51897db339f", "_Superseded/Mathematics - Algebra with Finance (2015).pdf"),
-]
+FRAMEWORKS = list(FRAMEWORK_MANIFEST)
 
 # CFItemTypes whose fullStatement is USUALLY a label ("Grade 8", "Geometry")
 # rather than a standard.
@@ -295,6 +289,16 @@ def pdftotext(pdf: Path) -> str:
         return ""
 
 
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def source_fingerprint(pkg: dict) -> str:
+    """Fingerprint CASE content without depending on JSON key ordering."""
+    payload = json.dumps(pkg, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return sha256_bytes(payload)
+
+
 def fetch_package(case_id: str, refresh: bool = False) -> dict:
     CASE_CACHE.mkdir(parents=True, exist_ok=True)
     path = CASE_CACHE / f"{case_id}.json"
@@ -353,8 +357,19 @@ def ingest_framework(course: str, case_id: str, pdf_name: str, *,
     title = doc.get("title", course)
     log.info("%s — %s", course, title)
 
+    pdf_path = PDF_DIR / pdf_name
+    pdf_sha256 = sha256_bytes(pdf_path.read_bytes()) if pdf_path.is_file() else None
+    package_sha256 = source_fingerprint(pkg)
+    source_version = (
+        doc.get("lastChangeDateTime")
+        or doc.get("statusStartDate")
+        or doc.get("identifier")
+        or "unknown"
+    )
+    ingested_at = datetime.now(UTC).isoformat(timespec="seconds")
+
     items, parent_of, has_children = build_tree(pkg)
-    pdf_text = pdftotext(PDF_DIR / pdf_name)
+    pdf_text = pdftotext(pdf_path)
     pdf_words = wordwise(pdf_text) if pdf_text else ""
 
     chunks: list[dict] = []
@@ -456,7 +471,7 @@ def ingest_framework(course: str, case_id: str, pdf_name: str, *,
                 "description": statement,
                 "course": course,
                 "grade": grade,
-                "state": "AL",
+                "state": STATE,
                 "source_type": "state_course_of_study",
                 "source_document": pdf_name.split("/")[-1],
                 "source_page_or_section": section,
@@ -481,6 +496,11 @@ def ingest_framework(course: str, case_id: str, pdf_name: str, *,
                 "item_type": itype,
                 "case_framework": title,
                 "case_item_uri": item.get("uri"),
+                "source_case_id": case_id,
+                "source_version": source_version,
+                "source_package_sha256": package_sha256,
+                "source_pdf_sha256": pdf_sha256,
+                "source_ingested_at": ingested_at,
                 "official_source_url": doc.get("officialSourceURL"),
                 "verbatim_ok": verbatim,
                 "wordwise_ok": word_ok,
@@ -488,12 +508,20 @@ def ingest_framework(course: str, case_id: str, pdf_name: str, *,
             })
             per_grade[grade] += 1
 
-    total_checked = stats["verbatim_ok"] + stats["verbatim_miss"]
-    rate = (stats["verbatim_ok"] / total_checked * 100) if total_checked else 0.0
-    word_rate = (stats["wordwise_ok"] / total_checked * 100) if total_checked else 0.0
+    # Report metrics are based on emitted source standards, not parser attempts.
+    # In strict mode some attempts are deliberately dropped, and counting them
+    # would make the report disagree with the file that is about to be embedded.
+    unique_emitted: dict[tuple[str, str], dict] = {}
+    for chunk in chunks:
+        unique_emitted.setdefault((chunk["code"], chunk["description"]), chunk)
+    total_checked = len(unique_emitted)
+    emitted_verbatim = sum(bool(c.get("verbatim_ok")) for c in unique_emitted.values())
+    emitted_wordwise = sum(bool(c.get("wordwise_ok")) for c in unique_emitted.values())
+    rate = (emitted_verbatim / total_checked * 100) if total_checked else 0.0
+    word_rate = (emitted_wordwise / total_checked * 100) if total_checked else 0.0
     log.info(
         "  %d standards -> %d chunks | verbatim %.1f%% | wording %.1f%% (%d/%d) | grades %s",
-        total_checked - stats["dropped_strict"], len(chunks),
+        total_checked, len(chunks),
         rate, word_rate, stats["wordwise_ok"], total_checked,
         ",".join(str(g) for g in sorted(per_grade)) or "-",
     )
@@ -505,12 +533,17 @@ def ingest_framework(course: str, case_id: str, pdf_name: str, *,
     return chunks, {
         "course": course, "framework": title, "chunks": len(chunks),
         "standards": total_checked,
-        "verbatim_ok": stats["verbatim_ok"], "verbatim_rate": round(rate, 1),
-        "wordwise_ok": stats["wordwise_ok"], "wordwise_rate": round(word_rate, 1),
-        "unmatched": stats["wordwise_miss"],
+        "verbatim_ok": emitted_verbatim, "verbatim_rate": round(rate, 1),
+        "wordwise_ok": emitted_wordwise, "wordwise_rate": round(word_rate, 1),
+        "unmatched": total_checked - emitted_wordwise,
         "pdf": pdf_name,
         "pdf_text_available": bool(pdf_text),
         "official_source_url": doc.get("officialSourceURL"),
+        "source_case_id": case_id,
+        "source_version": source_version,
+        "source_package_sha256": package_sha256,
+        "source_pdf_sha256": pdf_sha256,
+        "source_ingested_at": ingested_at,
         "grades": sorted(per_grade),
         "grade_scope": sorted(keep_grades),
         "skipped_out_of_grade_scope": stats["skipped_out_of_grade_scope"],
@@ -557,7 +590,7 @@ def main() -> int:
     log.info("Grade scope: %s",
              ", ".join("K" if g == 0 else str(g) for g in shown))
 
-    if subprocess.run(["which", "pdftotext"], capture_output=True).returncode != 0:
+    if subprocess.run(["which", "pdftotext"], capture_output=True, check=False).returncode != 0:
         log.warning("pdftotext not found (brew install poppler) — "
                     "chunks will be written with verbatim_ok=false")
 
@@ -589,6 +622,23 @@ def main() -> int:
         log.error("Nothing ingested.")
         return 1
 
+    # Gate the artifact before replacing the previous output. A partial
+    # --only ingest is checked against only the frameworks requested; a full
+    # ingest must account for the complete manifest.
+    quality = check_ingest(
+        all_chunks,
+        report,
+        expected_courses={course for course, _case_id, _pdf in selected},
+        expected_grades=keep_grades,
+    )
+    for issue in quality["errors"]:
+        log.error("QUALITY ERROR [%s] %s: %s", issue.get("course", "-"), issue["check"], issue["message"])
+    for issue in quality["warnings"]:
+        log.warning("QUALITY WARNING [%s] %s: %s", issue.get("course", "-"), issue["check"], issue["message"])
+    if not quality["ok"]:
+        log.error("Ingestion quality gate failed; existing output was not replaced.")
+        return 1
+
     # Merge, don't clobber, when only some frameworks were requested.
     if args.only and OUTPUT_PATH.is_file():
         with open(OUTPUT_PATH, encoding="utf-8") as f:
@@ -605,9 +655,14 @@ def main() -> int:
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
 
+    quality_path = PROJECT_ROOT / "data" / "processed" / "alcos_quality_report.json"
+    with open(quality_path, "w", encoding="utf-8") as f:
+        json.dump(quality, f, indent=2, ensure_ascii=False)
+
     log.info("")
     log.info("Wrote %d chunks to %s", len(all_chunks), OUTPUT_PATH.name)
     log.info("Per-course report: data/raw/%s", report_path.name)
+    log.info("Quality report: %s", quality_path.relative_to(PROJECT_ROOT))
     ok = sum(r.get("verbatim_ok", 0) for r in report)
     words = sum(r.get("wordwise_ok", 0) for r in report)
     tot = sum(r.get("standards", 0) for r in report)

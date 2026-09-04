@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run every eval suite. One command, one exit code.
 
     ./venv/bin/python eval/run_all.py
@@ -21,6 +20,12 @@ PY = sys.executable
 
 # (script, needs_corpus) — needs_corpus means it queries the live DB + embeddings.
 SUITES: list[tuple[str, bool]] = [
+    ("test_alabama_ingest_quality.py", False),
+    ("test_golden_corpus_alignment.py", False),
+    ("test_current_golden_recall.py", True),
+    ("test_embedding_cache.py", False),
+    ("test_retrieval_reranker.py", False),
+    ("test_feedback_contract.py", False),
     ("test_grounding_audit.py", False),
     ("test_generation_context_and_variety.py", False),
     ("test_template_day_shape_guard.py", False),
@@ -55,7 +60,10 @@ SUITES: list[tuple[str, bool]] = [
     ("test_course_identity_and_codes.py", True),
     ("test_cross_course_grounding.py", True),
     ("test_offdomain_refusal.py", True),
-    ("test_golden_recall.py", True),
+    # Retired as a release gate: its 143 historical cases intentionally
+    # include codes removed or renamed by the current AP corpus. The current
+    # canonical gate above is the release signal; run this file manually as a
+    # drift diagnostic when investigating historical changes.
 ]
 
 
@@ -71,7 +79,7 @@ def main() -> int:
     for name in suites:
         print(f"\n{'=' * 78}\n{name}\n{'=' * 78}")
         started = time.monotonic()
-        proc = subprocess.run([PY, str(HERE / name)], cwd=HERE.parent)
+        proc = subprocess.run([PY, str(HERE / name)], cwd=HERE.parent, check=False)
         results.append((name, proc.returncode == 0, time.monotonic() - started))
 
     print(f"\n{'=' * 78}\nSUMMARY\n{'=' * 78}")

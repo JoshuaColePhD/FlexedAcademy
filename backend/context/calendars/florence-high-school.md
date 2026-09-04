@@ -26,7 +26,7 @@ Winter break dates are approximate.
 | 3 | Aug 17 | Aug 21 | |
 | 4 | Aug 24 | Aug 28 | |
 | 5 | Aug 31 | Sep 4 | |
-| 6 | Sep 7 | Sep 11 | Mon Sep 7 = Labor Day (no school) |
+| 6 | Sep 7 | Sep 11 | Mon Sep 7 = Labor Day (no school); Tue Sep 8 = Teacher in-service day (no students) |
 | 7 | Sep 14 | Sep 18 | |
 | 8 | Sep 21 | Sep 25 | |
 | 9 | Sep 28 | Oct 2 | |

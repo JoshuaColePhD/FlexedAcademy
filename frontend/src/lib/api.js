@@ -336,6 +336,8 @@ export const api = {
   updateCoachingProfile: (payload) => request('/api/coaching/profile', { method: 'PATCH', body: payload }),
   listCoachingMemories: () => request('/api/coaching/memories'),
   deleteCoachingMemory: (id) => request(`/api/coaching/memories/${id}`, { method: 'DELETE' }),
+  sendSupportMessage: ({ subject, message }) =>
+    request('/api/support', { method: 'POST', body: { subject, message } }),
 
   // `signal` is destructured out so it is never serialised into the query string.
   listPlans: ({ signal, ...params } = {}) => {
@@ -564,6 +566,7 @@ export const api = {
     request(`/api/admin/audit-log${limit ? `?limit=${limit}` : ''}`, { signal }),
   adminBilling: ({ signal } = {}) => request('/api/admin/billing', { signal }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
+  checkoutSession: () => request('/api/billing/checkout-session', { method: 'POST' }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
   cancelSubscription: () => request('/api/billing/cancel', { method: 'POST' }),
 

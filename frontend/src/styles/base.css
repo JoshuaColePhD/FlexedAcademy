@@ -7319,3 +7319,232 @@
       inset 0 1px 1px rgba(255, 255, 255, 0.1),
       0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
   }
+
+/* ══ ONBOARDING REFINEMENT ════════════════════════════════════════════════
+   Onboarding is the handoff into a warm, document-focused workspace. Keep
+   that promise here: one floating sheet is enough elevation; the choices
+   inside it use paper, type, and a quiet rule rather than more glass layers. */
+.onboarding-mac-classic {
+  --paper-rgb: 246 244 236;
+  --paper-raised-rgb: 253 251 246;
+  --paper-sunken-rgb: 236 233 223;
+  --paper-inset-rgb: 224 220 207;
+  --edge-rgb: 221 217 205;
+  --edge-strong-rgb: 195 189 172;
+  --ink-rgb: 20 22 26;
+  --ink-soft-rgb: 58 63 71;
+  --ink-muted-rgb: 102 109 120;
+  --ink-faint-rgb: 154 161 171;
+  --ink-inverse-rgb: 255 255 255;
+  --accent-rgb: 47 95 191;
+  --accent-hover-rgb: 36 74 154;
+  --accent-tint-rgb: 233 239 250;
+  --accent-text-rgb: 47 95 191;
+  --paper: rgb(var(--paper-rgb));
+  --paper-raised: rgb(var(--paper-raised-rgb));
+  --paper-sunken: rgb(var(--paper-sunken-rgb));
+  --paper-inset: rgb(var(--paper-inset-rgb));
+  --edge: rgb(var(--edge-rgb));
+  --edge-strong: rgb(var(--edge-strong-rgb));
+  --ink: rgb(var(--ink-rgb));
+  --ink-soft: rgb(var(--ink-soft-rgb));
+  --ink-muted: rgb(var(--ink-muted-rgb));
+  --ink-faint: rgb(var(--ink-faint-rgb));
+  --ink-inverse: rgb(var(--ink-inverse-rgb));
+  --accent: rgb(var(--accent-rgb));
+  --accent-hover: rgb(var(--accent-hover-rgb));
+  --accent-tint: rgb(var(--accent-tint-rgb));
+  --accent-text: rgb(var(--accent-text-rgb));
+  background: var(--paper) !important;
+}
+.onboarding-mac-classic::before,
+.onboarding-mac-classic::after,
+.onboarding-mac-classic .onboarding-blob {
+  display: none;
+}
+.onboarding-shell {
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  background: var(--paper-raised) !important;
+  border: 1px solid var(--edge) !important;
+  border-radius: var(--r-xl) !important;
+  box-shadow: 0 14px 34px rgb(20 22 26 / 0.08) !important;
+  scrollbar-gutter: stable;
+}
+.onboarding-shell :is(
+  .onboarding-glass-pane,
+  .onboarding-neomorphic-pane,
+  .onboarding-neomorphic-list,
+  .onboarding-template-panel,
+  .onboarding-course-browser,
+  .onboarding-setup-summary,
+  .onboarding-template-preview,
+  .onboarding-analysis-card,
+  .onboarding-ingest-path,
+  .onboarding-template-upload,
+  .onboarding-template-processing,
+  .onboarding-template-confirmed,
+  .onboarding-next-step,
+  .onboarding-ready-list
+) {
+  background: var(--paper-raised) !important;
+  background-image: none !important;
+  border-color: var(--edge) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.onboarding-shell .onboarding-neomorphic-list {
+  background: var(--paper-sunken) !important;
+}
+.onboarding-shell .onboarding-step > .mb-8,
+.onboarding-shell .dialog-actions {
+  border-color: var(--edge) !important;
+}
+.onboarding-shell .btn {
+  min-height: var(--touch-min);
+}
+
+/* The state picker now makes the real, available choice the primary content.
+   The map earns its space only after that choice is made. */
+.onboarding-state-available {
+  color: var(--ok);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.onboarding-state-list {
+  min-height: 0;
+}
+.onboarding-state-support-note {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  line-height: var(--lh-relaxed);
+}
+.onboarding-state-selected {
+  box-shadow: inset 3px 0 0 var(--accent) !important;
+}
+
+/* Course selection is a focused browser, not a second full-screen surface.
+   The selected check stays beside the selected course; repeating it in the
+   footer made the layout louder without adding useful context. */
+.onboarding-course-browser {
+  height: min(30rem, calc(100dvh - 19rem));
+  min-height: 23rem;
+  border-radius: var(--r-lg) !important;
+}
+.onboarding-course-browser-actions {
+  grid-template-columns: auto auto;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/* Keep the successful finish memorable, but give the saved details enough
+   room to read. A two-column definition list avoids five narrow, wrapping
+   strips for the two longest values: school and course. */
+.onboarding-final {
+  gap: var(--sp-3);
+}
+.onboarding-final-stage {
+  height: clamp(7rem, 15vw, 10rem);
+  margin-top: var(--sp-3);
+}
+.onboarding-final-stage-glow {
+  height: 6.25rem;
+  width: 6.25rem;
+  filter: blur(18px);
+}
+.onboarding-final-ring {
+  height: 6.5rem;
+  width: 10.5rem;
+}
+.onboarding-final-ring-secondary {
+  height: 7.5rem;
+  width: 12rem;
+}
+.onboarding-final-logo {
+  height: 6.5rem;
+  width: 6.5rem;
+  box-shadow: 0 8px 20px rgb(20 22 26 / 0.1) !important;
+}
+.onboarding-final-logo img {
+  height: 5.4rem;
+  width: 5.4rem;
+}
+.onboarding-final-logo-check {
+  height: 1.8rem;
+  width: 1.8rem;
+  border-color: var(--paper-raised);
+}
+.onboarding-final-setup {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 36rem);
+  margin-top: var(--sp-3);
+}
+.onboarding-final-setup-item + .onboarding-final-setup-item {
+  border-left: 0;
+}
+.onboarding-final-setup-item:nth-child(even) {
+  border-left: 1px solid var(--edge);
+}
+.onboarding-final-setup-item:nth-child(n + 3) {
+  border-top: 1px solid var(--edge);
+}
+.onboarding-final-setup-item:last-child {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 767.98px) {
+  .onboarding-mac-classic {
+    align-items: flex-start;
+    padding: var(--sp-3) !important;
+  }
+  .onboarding-shell {
+    max-height: calc(100dvh - (var(--sp-3) * 2));
+    padding: var(--sp-5) !important;
+  }
+  .onboarding-state-chooser {
+    padding: var(--sp-4) !important;
+  }
+  .onboarding-state-list {
+    flex: 0 0 auto !important;
+  }
+  .onboarding-glass-pane {
+    display: none !important;
+  }
+  .onboarding-course-browser {
+    height: min(26rem, calc(100dvh - 17rem));
+    min-height: 21rem;
+  }
+  .onboarding-course-browser-actions {
+    grid-template-columns: auto auto;
+    align-items: center;
+  }
+  .onboarding-course-browser-actions > .btn:first-child,
+  .onboarding-course-browser-actions > .btn:last-child {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .onboarding-shell .dialog-actions {
+    position: sticky;
+    bottom: calc(var(--sp-5) * -1);
+    z-index: 2;
+    margin-inline: calc(var(--sp-5) * -1);
+    padding: var(--sp-3) var(--sp-5) calc(var(--sp-3) + var(--safe-b)) !important;
+    background: var(--paper-raised);
+    box-shadow: 0 -8px 18px rgb(20 22 26 / 0.05);
+  }
+  .onboarding-final-stage {
+    height: 7.5rem;
+  }
+  .onboarding-final-logo {
+    height: 5.75rem;
+    width: 5.75rem;
+  }
+  .onboarding-final-logo img {
+    height: 4.75rem;
+    width: 4.75rem;
+  }
+}

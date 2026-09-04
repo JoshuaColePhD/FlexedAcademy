@@ -22,6 +22,9 @@
   "dependencies": {
     "@react-oauth/google": "^0.13.5",
     "@sentry/react": "^10.70.0",
+    "@stripe/react-stripe-js": "^6.8.2",
+    "@stripe/stripe-js": "^9.15.0",
+    "@svg-maps/usa": "^2.0.0",
     "@tanstack/react-query": "^5.101.4",
     "cmdk": "^1.1.1",
     "framer-motion": "^13.1.0",

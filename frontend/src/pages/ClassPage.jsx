@@ -6,8 +6,13 @@ import {
   ArrowRight,
   ArrowUp,
   BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
   FileText,
+  GraduationCap,
   Loader2,
+  MapPin,
   Trash2,
   Upload,
   Settings,
@@ -25,7 +30,7 @@ import { useToast } from '../lib/toastContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
-import { useActiveClass } from '../hooks/useAppData'
+import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { ClassSwitcher } from '../components/ClassSwitcher'
@@ -448,46 +453,49 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
   )
 }
 
-function ClassManagementBar({ classes, activeClass, classId }) {
+function ClassStatusItem({ icon: Icon, label, value, detail, tone = 'neutral' }) {
+  const toneClasses = {
+    ready: 'bg-ok-tint text-ok',
+    attention: 'bg-flag-tint text-flag',
+    neutral: 'bg-paper-sunken text-ink-muted',
+  }
+
   return (
-    <section
-      className="mb-8 flex max-w-5xl flex-col gap-4 rounded-2xl border border-edge/60 bg-paper-raised/40 p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between sm:p-5"
-      aria-label="Class management"
-    >
-      <div className="min-w-0">
-        <p className="eyebrow mb-1">Class management</p>
-        <h2 className="text-lg font-semibold text-ink">Choose the class you’re managing</h2>
-        <p className="mt-1 max-w-xl text-sm leading-6 text-ink-muted">
-          Switch between your classes here, or add another course and grade level.
-        </p>
+    <div className="min-w-0 rounded-xl border border-edge/50 bg-paper-raised/55 p-3">
+      <div className="flex items-center gap-2">
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${toneClasses[tone] || toneClasses.neutral}`}>
+          <Icon size={14} aria-hidden="true" />
+        </span>
+        <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">{label}</span>
       </div>
-      <div className="flex shrink-0 flex-col gap-2 sm:min-w-[18rem]">
-        <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Current class</span>
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <ClassSwitcher classes={classes} activeClass={activeClass} classPath={`/c/${classId}`} />
-          </div>
-          <Link
-            to="/c/new/class"
-            className="fa-press neo-raised inline-flex min-h-touch shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent/90"
-          >
-            <Plus size={15} aria-hidden="true" />
-            Add a class
-          </Link>
-        </div>
-      </div>
-    </section>
+      <p className="mt-2 truncate text-sm font-semibold text-ink" title={value}>{value}</p>
+      <p className="mt-0.5 truncate text-xs text-ink-muted" title={detail}>{detail}</p>
+    </div>
   )
 }
 
 /* ── one class details (Right Pane) ────────────────────────────────────────── */
-function ClassDetail({ cls, frameworks, onChanged }) {
+function ClassDetail({ cls, classes, frameworks, onChanged }) {
   const confirm = useConfirm()
   const toast = useToast()
   const navigate = useNavigate()
-  
+
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
+  const calendar = useCalendar(cls.id)
+  const documents = useQuery({
+    queryKey: qk.classDocuments(cls.id),
+    queryFn: ({ signal }) => api.listClassDocuments(cls.id, { signal }),
+    retry: false,
+  })
+  const documentRows = documents.data || []
+  const hasPacingGuide = documentRows.some((doc) => doc.kind === 'pacing_guide')
+  const calendarWeeks = calendar.data?.weeks || []
+  const hasCalendar = Boolean(calendar.data && !calendar.isError && calendarWeeks.length)
+  const schoolName = calendar.data?.school?.name || cls.school || 'Not set'
+  const standardsTone = fw ? 'ready' : 'attention'
+  const calendarTone = calendar.isLoading ? 'neutral' : hasCalendar ? 'ready' : 'attention'
+  const pacingTone = documents.isLoading ? 'neutral' : hasPacingGuide ? 'ready' : 'attention'
 
   // Guards a double-click: the button had no disabled state and this had no
   // reentrancy check, so two fast clicks after confirming sent two
@@ -517,93 +525,123 @@ function ClassDetail({ cls, frameworks, onChanged }) {
   return (
     <div className="w-full max-w-5xl flex flex-col gap-6">
 
-      <header className="mb-4">
-        <div className="flex items-center gap-3">
-          <span
-            className="class-dot h-5 w-5 rounded-full"
-            aria-hidden="true"
-            style={{ '--class-dot-color': `rgb(${classColor(cls.id).rgb})`, backgroundColor: 'var(--class-dot-color)' }}
-          />
-          <h2 className="text-2xl font-bold text-ink">{cls.name}</h2>
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 fa-rise">
-        
-        {/* Core Settings Card */}
-        <div id="section-core" className="flex flex-col gap-4 p-6 rounded-2xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm scroll-mt-8">
-          <div className="flex items-center gap-2 mb-2 border-b border-edge/50 pb-3">
-            <Settings size={18} className="text-ink-muted" />
-            <h3 className="text-base font-semibold text-ink">Core Settings</h3>
+      <div className="flex flex-col gap-6 fa-rise">
+        <section id="section-core" className="scroll-mt-8 rounded-2xl border border-edge/60 bg-paper/45 p-5 shadow-sm backdrop-blur-md md:p-6" aria-labelledby="class-summary-title">
+          <div className="flex flex-col gap-4 border-b border-edge/50 pb-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="eyebrow mb-2">Current class</p>
+              <div className="flex items-center gap-3">
+                <span
+                  className="class-dot h-4 w-4 shrink-0 rounded-full"
+                  aria-hidden="true"
+                  style={{ '--class-dot-color': `rgb(${classColor(cls.id).rgb})`, backgroundColor: 'var(--class-dot-color)' }}
+                />
+                <h2 id="class-summary-title" className="truncate text-xl font-semibold tracking-tight text-ink">{cls.name}</h2>
+              </div>
+              <p className="mt-2 max-w-2xl text-sm text-ink-muted">The course context FlexEd uses when you build lesson plans for this class.</p>
+            </div>
+            <div className="flex w-full shrink-0 items-center gap-2 lg:w-auto">
+              <div className="min-w-0 flex-1 lg:w-64 lg:flex-none">
+                <ClassSwitcher classes={classes} activeClass={cls} classPath={`/c/${cls.id}`} />
+              </div>
+              <Link
+                to="/c/new/class"
+                className="fa-press neo-raised inline-flex min-h-touch shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent/90"
+              >
+                <Plus size={15} aria-hidden="true" />
+                Add class
+              </Link>
+            </div>
           </div>
-          <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
-          
-          <div className="pt-4 mt-2 border-t border-edge/30">
-            <button
-              type="button"
-              onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
-              className="neo-raised inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold text-ink transition-colors hover:bg-paper-sunken border border-edge shadow-sm"
-            >
-              <Zap size={16} className="text-amber-500" />
-              Generate 5-Minute Sub Plan
-            </button>
-          </div>
-        </div>
 
-        {/* AI Personality Card */}
-        <div id="section-ai" className="flex flex-col gap-4 p-6 rounded-2xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm scroll-mt-8">
-          <div className="flex items-center gap-2 mb-2 border-b border-edge/50 pb-3">
-            <Sparkles size={18} className="text-accent" />
-            <h3 className="text-base font-semibold text-ink">AI Personality</h3>
+          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <ClassStatusItem icon={BookOpen} label="Course" value={shortLabel(fw, cls.subject) || 'Not set'} detail="Course of study" tone={fw ? 'ready' : 'attention'} />
+            <ClassStatusItem icon={GraduationCap} label="Grade" value={gradeLabel(gradeSelectValue(cls.grade)) || 'Not set'} detail="Grade level" tone={cls.grade ? 'ready' : 'attention'} />
+            <ClassStatusItem icon={MapPin} label="School" value={schoolName} detail={cls.school ? 'Class school' : 'Choose a school'} tone={cls.school ? 'ready' : 'attention'} />
+            <ClassStatusItem icon={CheckCircle2} label="Standards" value={fw ? 'Ready' : 'Not set'} detail={fw && verified !== null ? `${verified}% verified` : 'Choose a course'} tone={standardsTone} />
+            <ClassStatusItem icon={CalendarDays} label="Calendar" value={calendar.isLoading ? 'Checking…' : hasCalendar ? 'Ready' : 'Not set'} detail={hasCalendar ? `${calendarWeeks.length} weeks loaded` : 'Add in School & Templates'} tone={calendarTone} />
+            <ClassStatusItem icon={FileText} label="Pacing guide" value={documents.isLoading ? 'Checking…' : hasPacingGuide ? 'Ready' : 'Not set'} detail={hasPacingGuide ? 'Available to the AI' : 'Upload a guide below'} tone={pacingTone} />
           </div>
-          <ClassCustomInstructions cls={cls} onChanged={onChanged} />
-        </div>
 
-        {/* Knowledge Base Card */}
-        <div id="section-docs" className="flex flex-col p-6 rounded-2xl bg-paper/40 backdrop-blur-md border border-white/5 shadow-sm lg:col-span-2 scroll-mt-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 border-b border-edge/50 pb-4">
+          <details className="mt-5 border-t border-edge/50 pt-4">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
+              <Settings size={15} aria-hidden="true" className="text-ink-muted" />
+              Edit class details
+              <ChevronDown size={15} aria-hidden="true" className="ml-auto details-chevron" />
+            </summary>
+            <div className="mt-4 max-w-2xl rounded-xl border border-edge/50 bg-paper-sunken/35 p-4">
+              <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
+            </div>
+          </details>
+        </section>
+
+        <section id="section-docs" className="flex scroll-mt-8 flex-col rounded-2xl border border-edge/60 bg-paper/40 p-5 shadow-sm backdrop-blur-md md:p-6">
+          <div className="mb-4 flex flex-col justify-between gap-3 border-b border-edge/50 pb-4 md:flex-row md:items-center">
             <div>
               <div className="flex items-center gap-2">
                 <Database size={18} className="text-ink-muted" />
-                <h3 className="text-base font-semibold text-ink">Class Documents</h3>
+                <h3 className="text-base font-semibold text-ink">Documents for this class</h3>
               </div>
-              <p className="text-xs text-ink-muted mt-1">Pacing guides, syllabi, and rubrics</p>
+              <p className="mt-1 text-xs text-ink-muted">The source material FlexEd can use when building plans.</p>
             </div>
-            
             {verified !== null && verified < 100 ? (
-              <div className="shrink-0">
-                <span className="rounded-full bg-flag-tint px-2 py-1 text-[11px] font-medium text-flag">
-                  {verified}% verified against source
-                </span>
-              </div>
+              <span className="shrink-0 rounded-full bg-flag-tint px-2 py-1 text-[11px] font-medium text-flag">
+                {verified}% standards verified
+              </span>
             ) : null}
           </div>
-          
+
           <Suspense fallback={<div className="py-8 text-sm text-ink-muted">Loading documents…</div>}>
             <ClassDocuments cls={cls} onChanged={onChanged} />
           </Suspense>
-        </div>
+        </section>
 
-        {/* Danger Zone */}
-        <div id="section-danger" className="flex flex-col gap-4 p-6 rounded-2xl bg-mark/5 border border-mark/10 shadow-sm lg:col-span-2 mt-4 scroll-mt-8">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={18} className="text-mark" />
-            <h3 className="text-base font-semibold text-mark">Danger Zone</h3>
+        <section id="section-ai" className="flex scroll-mt-8 flex-col gap-4 rounded-2xl border border-edge/60 bg-paper/40 p-5 shadow-sm backdrop-blur-md md:p-6">
+          <div className="flex items-center gap-2 border-b border-edge/50 pb-3">
+            <Sparkles size={18} className="text-accent" />
+            <div>
+              <h3 className="text-base font-semibold text-ink">Class-specific instructions</h3>
+              <p className="mt-0.5 text-xs text-ink-muted">Extra guidance for this class only.</p>
+            </div>
           </div>
-          <p className="text-sm text-mark/80 mb-2">Archiving a class hides it from the sidebar, but preserves all associated lesson plans and data.</p>
-          <div>
+          <ClassCustomInstructions cls={cls} onChanged={onChanged} />
+        </section>
+
+        <section id="section-actions" className="rounded-2xl border border-edge/60 bg-paper/35 p-4 shadow-sm backdrop-blur-md scroll-mt-8" aria-labelledby="class-actions-title">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 id="class-actions-title" className="text-sm font-semibold text-ink">Quick actions</h3>
+              <p className="mt-1 text-xs text-ink-muted">Start a focused workflow for this class.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/c/${cls.id}/chat/new`, { state: { autoPrompt: "I am sick today. Please generate an emergency 5-minute substitute teacher plan for today's lesson based on the pacing guide.", mode: "sub_plan" } })}
+              className="neo-raised inline-flex items-center justify-center gap-2 rounded-lg border border-edge px-3 py-2 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-paper-sunken"
+            >
+              <Zap size={15} className="text-amber-500" />
+              Make a 5-minute sub plan
+            </button>
+          </div>
+        </section>
+
+        <details id="section-danger" className="scroll-mt-8 rounded-2xl border border-mark/20 bg-mark/5 shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold text-mark [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2"><AlertTriangle size={16} aria-hidden="true" /> Danger zone</span>
+            <ChevronDown size={16} aria-hidden="true" className="transition-transform details-chevron" />
+          </summary>
+          <div className="border-t border-mark/15 px-4 pb-4 pt-3">
+            <p className="text-sm text-mark/80">Archiving a class hides it from the sidebar, but preserves all associated lesson plans and data.</p>
             <button
               type="button"
               onClick={remove}
               disabled={removing}
-              className="neo-raised inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
+              className="neo-raised mt-3 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Trash2 size={14} aria-hidden="true" />
-              Archive / Delete Class
+              Archive class
             </button>
           </div>
-        </div>
-
+        </details>
       </div>
     </div>
   )
@@ -871,10 +909,10 @@ function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
 /* ── Your classes layout (Master-Detail) ──────────────────────────────────── */
 
 const CLASS_TABS = [
-  { id: 'core', label: 'Core Settings' },
-  { id: 'ai', label: 'AI Personality' },
-  { id: 'docs', label: 'Class Documents' },
-  { id: 'danger', label: 'Danger Zone' },
+  { id: 'core', label: 'Overview' },
+  { id: 'ai', label: 'Instructions' },
+  { id: 'docs', label: 'Documents' },
+  { id: 'danger', label: 'More' },
 ]
 
 export function ClassPage() {
@@ -941,13 +979,12 @@ export function ClassPage() {
 
   return (
     <SplitLayout
-      title="Classroom Profile"
+      title="Class"
       icon={BookOpen}
       tabs={CLASS_TABS}
       backPath="/"
     >
-      <ClassManagementBar classes={classes} activeClass={activeClass} classId={classId} />
-      <ClassDetail cls={activeClass} frameworks={frameworks} onChanged={reloadClasses} />
+      <ClassDetail cls={activeClass} classes={classes} frameworks={frameworks} onChanged={reloadClasses} />
     </SplitLayout>
   )
 }

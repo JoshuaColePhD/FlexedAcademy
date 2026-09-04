@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     # reaching a teacher. Override this in EMAIL_FROM if the verified sender
     # address changes.
     email_from: str = "FlexEd Academy <no-reply@flexedacademy.com>"
+    support_email: str = "joshuacolephd@gmail.com"
     # Email verification is required before a password account can receive a
     # session or spend any model tokens. The token lives in Postgres and the
     # link is sent through the same Resend integration used for password reset.

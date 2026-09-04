@@ -74,10 +74,10 @@ export function SplitLayout({
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/40 backdrop-blur-3xl saturate-[1.2] glass-panel border border-white/5">
+    <div className="split-layout-shell flex h-full min-h-0 w-full overflow-hidden bg-paper/40 backdrop-blur-3xl saturate-[1.2] glass-panel border border-white/5">
       
       {/* Left Sidebar (Master) */}
-      <div className="hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
+      <div className="split-layout-sidebar hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
           <button
             onClick={() => backPath ? navigate(backPath) : navigate(-1)}
@@ -123,10 +123,10 @@ export function SplitLayout({
       </div>
 
       {/* Right Content Area (Detail) */}
-      <div className="flex-1 overflow-y-auto relative" ref={scrollContainerRef}>
-        <div className={`mx-auto p-6 md:p-10 lg:p-12 pb-32 ${contentMaxWidth}`}>
+      <div className="split-layout-content flex-1 overflow-y-auto relative" ref={scrollContainerRef}>
+        <div className={`split-layout-content-inner mx-auto p-6 md:p-10 lg:p-12 pb-32 ${contentMaxWidth}`}>
           {/* Mobile Header (Shows only on small screens) */}
-          <div className="md:hidden flex items-center gap-3 mb-8">
+          <div className="split-layout-mobile-header md:hidden flex items-center gap-3 mb-8">
              <button
               type="button"
               onClick={() => backPath ? navigate(backPath) : navigate(-1)}
@@ -139,7 +139,7 @@ export function SplitLayout({
           </div>
 
           {mobileTabs?.length ? (
-            <nav className="md:hidden mb-8 -mx-1 flex gap-1 overflow-x-auto pb-1" aria-label={`${title} sections`}>
+            <nav className="split-layout-mobile-tabs md:hidden mb-8 -mx-1 flex gap-1 overflow-x-auto pb-1" aria-label={`${title} sections`}>
               {mobileTabs.map((tab) => (
                 <button
                   key={tab.id}

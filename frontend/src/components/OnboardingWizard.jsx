@@ -1,13 +1,14 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import usaMap from '@svg-maps/usa'
 import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  FileText,
   Loader2,
   Mic,
-  PartyPopper,
   School as SchoolIcon,
   Sparkles,
   X,
@@ -20,11 +21,12 @@ import { useAuth } from '../lib/authContext'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
-import { GRADES, gradeSelectValue } from '../lib/grades'
+import { GRADES, gradeLabel, gradeSelectValue } from '../lib/grades'
+import { US_STATES } from '../lib/states'
 import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
-import { CalendarPreview } from './CalendarPreview'
+import { CalendarBody } from './ArtifactDetailPanel'
 import { UploadDropzone } from './UploadDropzone'
 // ClassDocuments used to live inside ClassPage.jsx and was re-exported from
 // there; it later moved out to its own file (components/ClassDocuments.jsx)
@@ -38,20 +40,28 @@ const ClassDocuments = lazy(() => import('./ClassDocuments.jsx').then((module) =
 const TIPS = [
   {
     icon: Sparkles,
-    title: 'Just describe the week',
-    body: 'Tell the composer what you’re teaching — a text, a skill, a standard — and it builds the whole week, grounded in your course of study, in your district’s exact template.',
-  },
-  {
-    icon: Mic,
-    title: 'Or just talk',
-    body: 'Voice mode turns a spoken back-and-forth into a finished plan — useful for thinking out loud on a commute, or planning between classes without typing.',
+    step: '01',
+    title: 'Start with a real teaching goal',
+    body: 'Start with a course, standard, text, or goal. FlexEd turns it into a workable plan.',
   },
   {
     icon: SchoolIcon,
-    title: 'Everything grounds to a source',
-    body: 'Every standard cited is quoted straight from the Course of Study, never invented — click any citation to see exactly where it came from.',
+    step: '02',
+    title: 'Keep the plan grounded',
+    body: 'Your state, calendar, materials, and school format keep each plan connected to your work.',
+  },
+  {
+    icon: Mic,
+    step: '03',
+    title: 'Shape it as you teach',
+    body: 'Ask for a revision, more support, or a fresh approach whenever you need one.',
   },
 ]
+
+// Keep the onboarding gate honest about what the current standards catalog
+// can actually support. Add a state code here when its standards are ingested;
+// the UI will then enable it automatically in the same alphabetical list.
+const INGESTED_STANDARDS_STATES = new Set(['AL'])
 
 /* Animates the step slot's height between whatever each step's content
  * happens to be (a one-line welcome vs. the documents step's whole list) —
@@ -134,12 +144,23 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   // just pressed.
   const [direction, setDirection] = useState(1)
 
-  // School & template step
+  // School and lesson-plan format steps
   const [school, setSchool] = useState(cls?.school || '')
   const [templateFile, setTemplateFile] = useState(null)
   const [templateUrl, setTemplateUrl] = useState('')
   const [blankTemplateAttested, setBlankTemplateAttested] = useState(false)
   const [savingSchool, setSavingSchool] = useState(false)
+  const [savingTemplate, setSavingTemplate] = useState(false)
+  const [templatePhase, setTemplatePhase] = useState('upload')
+  const [templateAnalysis, setTemplateAnalysis] = useState(null)
+  const [templateFindings, setTemplateFindings] = useState([])
+  const [templateAnalysisStatus, setTemplateAnalysisStatus] = useState(null)
+
+  // State is the first onboarding decision because it determines which
+  // standards catalog the rest of the setup should be grounded in.
+  const [state, setState] = useState(cls?.state || '')
+  const [savingState, setSavingState] = useState(false)
+  const [stateError, setStateError] = useState(false)
 
   // Confirm-class step
   const [subject, setSubject] = useState(cls?.subject || '')
@@ -173,13 +194,19 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   // different) class, rather than resuming wherever a previous open left off.
   useEffect(() => {
     if (!open) return
-    setStepKey('welcome')
+    setStepKey(cls?.state ? livePlan.find((candidate) => candidate !== 'welcome') || 'done' : 'welcome')
     setDirection(1)
     setSchool(cls?.school || '')
     setTemplateFile(null)
     setTemplateUrl('')
     setBlankTemplateAttested(false)
+    setTemplatePhase('upload')
+    setTemplateAnalysis(null)
+    setTemplateFindings([])
+    setTemplateAnalysisStatus(null)
     setSelectingTemplateId(null)
+    setState(cls?.state || '')
+    setStateError(false)
     setSubject(cls?.subject || '')
     setGrade(gradeSelectValue(cls?.grade))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,19 +234,12 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const schoolHasMultipleTemplates = schoolTemplates.length > 1
   const schoolTemplateSelectionStep = chosenSchool && (schoolTemplatesLoading || schoolHasMultipleTemplates)
 
-  /* Which steps this account actually has to sit through.
-   *
-   * /welcome (pages/onboarding/WelcomePage.jsx) is what CREATES the first
-   * class, and it collects the teacher's name, school, course and grade to do
-   * it — then this wizard opened straight afterwards and asked for the school,
-   * the course and the grade again. Two forms, thirty seconds apart, asking
-   * the same three questions: the second one reads as "the first one didn't
-   * save", which is the opposite of the reassurance a first run is for.
-   *
-   * So each step earns its place by having something left to ask. A teacher
-   * who came through /welcome drops straight to the parts it did NOT cover —
-   * their own materials, and the tips — and someone re-running this from
-   * Settings sees only what is genuinely still blank.
+  /* Which steps this account actually has to sit through. The page variant is
+   * the first-run setup, so it always includes a course confirmation even if
+   * /welcome already supplied a starting value. That gives the teacher a
+   * clear chance to choose the course that should drive standards and plan
+   * language; the modal variant used from Settings still skips a completed
+   * course choice and only shows genuinely unfinished setup.
    */
   /* Live, not stateful — computed fresh every render from the current
    * school/schoolNeedsTemplate/subject rather than committed via an effect.
@@ -232,12 +252,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
    * lag entirely, independent of whether anything on screen still displays
    * a count. */
   const livePlan = useMemo(() => {
-    const next = ['welcome']
-    if (!chosenSchool || schoolNeedsTemplate || schoolTemplateSelectionStep) next.push('school')
-    if (!subject) next.push('class')
+    const next = cls?.state ? [] : ['welcome']
+    if (!chosenSchool) next.push('school')
+    if (variant === 'page' || !subject) next.push('class')
+    if (!chosenSchool || schoolNeedsTemplate || schoolTemplateSelectionStep) next.push('template')
     next.push('documents', 'tips', 'done')
     return next
-  }, [chosenSchool, schoolNeedsTemplate, schoolTemplateSelectionStep, subject])
+  }, [chosenSchool, schoolNeedsTemplate, schoolTemplateSelectionStep, subject, cls?.state, variant])
 
   /* Frozen the moment the teacher leaves welcome — once they've started
    * moving through the flow, the shape must not shift under them even if
@@ -262,15 +283,35 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const goNext = () => goTo(step(1))
   const goBack = () => goTo(step(-1))
 
-  /* "Step 1 of 3" was hardcoded on three steps of a SIX-step flow, so a
-   * teacher told there were three things left got two more screens after the
-   * one labelled last. Counted from the plan instead — welcome and the
-   * closing celebration aren't work, so they don't count. */
-  const formSteps = plan.filter((s) => s !== 'welcome' && s !== 'done')
-  const formIndex = formSteps.indexOf(stepKey)
-  const eyebrow = formIndex >= 0 ? `Step ${formIndex + 1} of ${formSteps.length}` : null
-  const currentStep = formIndex >= 0 ? formIndex + 1 : 0
-  const totalSteps = formSteps.length
+  const saveState = async () => {
+    if (!state) {
+      setStateError(true)
+      return
+    }
+    setStateError(false)
+    setSavingState(true)
+    try {
+      if (state !== (cls?.state || '')) {
+        await api.updateClass(cls.id, { state })
+        qc.invalidateQueries({ queryKey: qk.classes })
+      }
+      goNext()
+    } catch (err) {
+      toast.apiError('Could not save your state', err)
+    } finally {
+      setSavingState(false)
+    }
+  }
+
+  /* Keep one progress sequence for the whole first-run flow. Welcome is a
+   * real decision (state), so excluding it here made the next screen reset
+   * from "Step 1 of 6" to "Step 1 of 5". The closing celebration is the only
+   * screen that should stay outside the numbered sequence. */
+  const progressSteps = plan.filter((s) => s !== 'done')
+  const progressIndex = progressSteps.indexOf(stepKey)
+  const eyebrow = progressIndex >= 0 ? `Step ${progressIndex + 1} of ${progressSteps.length}` : null
+  const currentStep = progressIndex >= 0 ? progressIndex + 1 : 0
+  const totalSteps = progressSteps.length
 
   const saveSchool = async () => {
     setSavingSchool(true)
@@ -285,22 +326,51 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
         await api.updateClass(cls.id, { school })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
-      if ((templateFile || templateUrl.trim()) && school) {
-        await api.uploadSchoolTemplate(school, {
-          file: templateFile,
-          sourceUrl: templateUrl.trim() || undefined,
-          blankTemplateAttested,
-          templateScope: schoolTemplates.length ? 'personal' : 'school_candidate',
-        })
-        qc.invalidateQueries({ queryKey: qk.schools })
-        qc.invalidateQueries({ queryKey: ['school-templates', school] })
-        toast.success('Template submitted', 'We’ll train the AI on your school’s format.')
-      }
       goNext()
     } catch (err) {
       toast.apiError('Could not save that', err)
     } finally {
       setSavingSchool(false)
+    }
+  }
+
+  const saveTemplate = async () => {
+    if (templatePhase === 'confirmed') {
+      goNext()
+      return
+    }
+    if (!templateFile && !templateUrl.trim()) {
+      goNext()
+      return
+    }
+    setSavingTemplate(true)
+    setTemplatePhase('processing')
+    try {
+      const result = await api.uploadSchoolTemplate(school, {
+        file: templateFile,
+        sourceUrl: templateUrl.trim() || undefined,
+        blankTemplateAttested,
+        templateScope: schoolTemplates.length ? 'personal' : 'school_candidate',
+      })
+      let parsedAnalysis = result?.analysis || null
+      if (!parsedAnalysis && result?.template?.analysis_summary) {
+        try {
+          parsedAnalysis = JSON.parse(result.template.analysis_summary)
+        } catch {
+          parsedAnalysis = null
+        }
+      }
+      setTemplateAnalysis(parsedAnalysis)
+      setTemplateFindings(result?.findings || [])
+      setTemplateAnalysisStatus(result?.template?.analysis_status || result?.status || null)
+      setTemplatePhase('review')
+      qc.invalidateQueries({ queryKey: qk.schools })
+      qc.invalidateQueries({ queryKey: ['school-templates', school] })
+    } catch (err) {
+      setTemplatePhase('upload')
+      toast.apiError('Could not submit that format', err)
+    } finally {
+      setSavingTemplate(false)
     }
   }
 
@@ -374,15 +444,21 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   const steps = (
     <>
-      <button
-        type="button"
-        className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
-        onClick={finish}
-        aria-label="Close"
-        title="Skip for now"
-      >
-        <X size={20} aria-hidden="true" />
-      </button>
+      {/* First-run onboarding is a full page, not a dismissible dialog. A
+          close icon there suggested that setup was optional while the route
+          guard immediately returns unfinished accounts to this flow. Keep
+          the escape hatch for the Settings dialog only. */}
+      {variant !== 'page' ? (
+        <button
+          type="button"
+          className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
+          onClick={finish}
+          aria-label="Close"
+          title="Skip for now"
+        >
+          <X size={20} aria-hidden="true" />
+        </button>
+      ) : null}
 
       {/* SmoothHeight was written in this file, exported from this file,
           and then only ever used by VoiceModePanel — so the one panel it
@@ -394,7 +470,14 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div key={stepKey} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
             {stepKey === 'welcome' ? (
-              <WelcomeStep onNext={goNext} />
+              <WelcomeStep
+                state={state}
+                setState={(value) => { setState(value); setStateError(false) }}
+                stateError={stateError}
+                saving={savingState}
+                progressLabel={`Step ${currentStep} of ${totalSteps}`}
+                onNext={saveState}
+              />
             ) : stepKey === 'school' ? (
               <SchoolStep
                 eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
@@ -404,28 +487,60 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                   setTemplateFile(null)
                   setTemplateUrl('')
                   setBlankTemplateAttested(false)
-                  setSelectingTemplateId(null)
+                  setTemplatePhase('upload')
+                  setTemplateAnalysis(null)
+                  setTemplateFindings([])
+                  setTemplateAnalysisStatus(null)
                 }}
                 schools={schools}
+                saving={savingSchool}
+                onBack={goBack}
+                onNext={saveSchool}
+              />
+            ) : stepKey === 'template' ? (
+              <TemplateStep
+                eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
+                schoolName={selectedSchool?.name || school}
                 templates={schoolTemplates}
                 templatesLoading={schoolTemplatesLoading}
                 selectingTemplateId={selectingTemplateId}
                 onSelectTemplate={selectOnboardingTemplate}
                 schoolNeedsTemplate={schoolNeedsTemplate}
+                schoolFormatReady={schoolHasUsableTemplate}
+                phase={templatePhase}
+                analysis={templateAnalysis}
+                findings={templateFindings}
+                analysisStatus={templateAnalysisStatus}
                 templateFile={templateFile}
-                setTemplateFile={setTemplateFile}
+                setTemplateFile={(file) => {
+                  setTemplateFile(file)
+                  setTemplatePhase('upload')
+                  setTemplateAnalysis(null)
+                  setTemplateFindings([])
+                  setTemplateAnalysisStatus(null)
+                }}
                 templateUrl={templateUrl}
-                setTemplateUrl={setTemplateUrl}
+                setTemplateUrl={(value) => {
+                  setTemplateUrl(value)
+                  setTemplatePhase('upload')
+                  setTemplateAnalysis(null)
+                  setTemplateFindings([])
+                }}
                 blankTemplateAttested={blankTemplateAttested}
                 setBlankTemplateAttested={setBlankTemplateAttested}
-                saving={savingSchool}
+                saving={savingTemplate}
                 onBack={goBack}
-                onNext={saveSchool}
+                onNext={saveTemplate}
+                onSkip={() => goNext()}
+                onEdit={() => setTemplatePhase('upload')}
+                onConfirm={() => {
+                  setTemplatePhase('confirmed')
+                  toast.success('Format confirmed', 'This format will be used for new plans.')
+                }}
               />
             ) : stepKey === 'class' ? (
               <ClassStep
                 eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
-                cls={cls}
                 subject={subject}
                 setSubject={setSubject}
                 grade={grade}
@@ -439,9 +554,30 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
             ) : stepKey === 'documents' ? (
               <DocumentsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} cls={cls} onBack={goBack} onNext={goNext} />
             ) : stepKey === 'tips' ? (
-              <TipsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} onBack={goBack} onNext={goNext} />
+              <TipsStep
+                eyebrow={eyebrow}
+                currentStep={currentStep}
+                totalSteps={totalSteps}
+                stateLabel={US_STATES.find(([value]) => value === state)?.[1]}
+                schoolName={selectedSchool?.name || school}
+                courseName={frameworks.find((framework) => framework.id === subject)?.label || subject}
+                gradeName={gradeLabel(grade)}
+                formatName={schoolHasUsableTemplate || templatePhase === 'confirmed' ? 'School format' : 'Add later'}
+                editableSteps={plan}
+                onEdit={(target) => { if (plan.includes(target)) goTo(target) }}
+                onBack={goBack}
+                onNext={goNext}
+              />
             ) : (
-              <DoneStep finishing={finishing} onFinish={finish} />
+              <DoneStep
+                finishing={finishing}
+                onFinish={finish}
+                stateLabel={US_STATES.find(([value]) => value === state)?.[1]}
+                schoolName={selectedSchool?.name || school}
+                courseName={frameworks.find((framework) => framework.id === subject)?.label || subject}
+                gradeName={gradeLabel(grade)}
+                formatName={schoolHasUsableTemplate || templatePhase === 'confirmed' ? 'School format' : 'Add later'}
+              />
             )}
           </motion.div>
         </AnimatePresence>
@@ -449,10 +585,10 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
       {/* Where am I, and how much is left — the flow had no answer to
           either beyond a line of text that was counting wrong. */}
-      {formSteps.length > 1 && formIndex >= 0 ? (
+      {progressSteps.length > 1 && progressIndex >= 0 ? (
         <div className="onboarding-progress" aria-hidden="true">
-          {formSteps.map((s, i) => (
-            <span key={s} className={i <= formIndex ? 'is-done' : undefined} />
+          {progressSteps.map((s, i) => (
+            <span key={s} className={i <= progressIndex ? 'is-done' : undefined} />
           ))}
         </div>
       ) : null}
@@ -464,10 +600,10 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
        (see the comment on `variant` above) and nothing here should read as
        dismissible-by-clicking-past, since there's nothing behind it to reach. */
     return (
-      <div className="flex h-app w-full items-center justify-center bg-paper p-gutter">
+      <div className="onboarding-mac-classic flex h-app w-full items-center justify-center bg-paper p-gutter">
         <div className="onboarding-blob" aria-hidden="true" />
         <div
-          className="relative flex max-h-full w-full max-w-2xl flex-col overflow-y-auto rounded-3xl border border-edge bg-paper-raised p-10 shadow-2xl"
+          className="onboarding-shell relative flex max-h-full w-full max-w-4xl flex-col overflow-y-auto rounded-3xl p-8 shadow-2xl sm:p-12"
         >
           {steps}
         </div>
@@ -488,7 +624,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     >
       <div
         className={`relative overflow-hidden rounded-3xl shadow-2xl ${closing ? ' is-closing' : ''}`}
-        style={{ width: '100%', maxWidth: '42rem' }} // max-w-2xl equivalent
+        style={{ width: '100%', maxWidth: '58rem' }} // max-w-4xl equivalent
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
@@ -497,7 +633,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       >
         <div className="onboarding-blob" aria-hidden="true" />
         <div
-          className="relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto border border-white/10 bg-paper/60 p-10 backdrop-blur-3xl"
+          className="onboarding-shell relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-hidden p-8 sm:p-12"
         >
           {steps}
         </div>
@@ -506,9 +642,12 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   )
 }
 
-function StepHeader({ eyebrow, title, body }) {
+function StepHeader({ eyebrow, title, body, progressLabel, className = '' }) {
   return (
-    <div className="mb-8">
+    <div className={`mb-8 ${className}`}>
+      {progressLabel ? (
+        <p className="mb-3 text-2xs font-semibold uppercase tracking-[0.18em] text-ink-faint">{progressLabel}</p>
+      ) : null}
       {eyebrow ? (
         <p className="text-xs font-semibold uppercase tracking-widest text-accent-text">{eyebrow}</p>
       ) : null}
@@ -520,31 +659,156 @@ function StepHeader({ eyebrow, title, body }) {
   )
 }
 
-function WelcomeStep({ onNext }) {
-  /* No counted body copy here anymore — it used to promise "N quick
-     things", but N came from `plan`, which depends on the async `schools`
-     query (schoolNeedsTemplate isn't known until that resolves). Even after
-     prefetching that query earlier (see OnboardingSetupPage) so the count is
-     right by the time this ever mounts, a slow connection or the "take the
-     tour again" reopen (AppShell) could still show a placeholder before
-     flipping to the real number — a visible correction on a screen whose
-     only job is a first impression. Title alone says enough; the actual
-     steps introduce themselves as the teacher reaches each one. */
+function WelcomeStep({ state, setState, stateError, saving, progressLabel, onNext }) {
+  const stateListRef = useRef(null)
+  const availableStates = US_STATES.filter(([value]) => INGESTED_STANDARDS_STATES.has(value))
+  const firstAvailableStateIndex = 0
+
+  const moveState = (event, index) => {
+    const lastIndex = availableStates.length - 1
+    let nextIndex = index
+    const direction = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
+    if (direction) {
+      nextIndex = index + direction
+      nextIndex = index + direction
+      if (nextIndex < 0 || nextIndex > lastIndex) nextIndex = index
+    }
+    if (event.key === 'Home') nextIndex = firstAvailableStateIndex
+    if (event.key === 'End') {
+      nextIndex = lastIndex
+      nextIndex = lastIndex
+    }
+    if (nextIndex === index) return
+
+    event.preventDefault()
+    const [nextValue] = availableStates[nextIndex]
+    setState(nextValue)
+    const nextButton = stateListRef.current?.querySelectorAll('button')[nextIndex]
+    nextButton?.focus()
+    nextButton?.scrollIntoView({ block: 'nearest' })
+  }
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-      <StepHeader eyebrow="Welcome to FlexEd" title="Let’s make some magic" />
-      <div className="dialog-actions mt-2">
+      <StepHeader
+        progressLabel={progressLabel}
+        eyebrow="Welcome to FlexEd"
+        title="What state are you coming from?"
+      />
+      <div className={`onboarding-state-layout grid items-stretch gap-6 ${state ? 'lg:h-[30rem] lg:max-h-[calc(100vh-20rem)] lg:grid-cols-[minmax(0,0.78fr)_minmax(22rem,1.22fr)]' : 'lg:max-w-md'}`}>
+        <div className="onboarding-neomorphic-pane onboarding-state-chooser flex min-h-0 flex-col rounded-2xl p-6 lg:h-full">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-ink">Teaching state</p>
+            <span className="onboarding-state-available">Available now</span>
+          </div>
+          <div ref={stateListRef} role="listbox" aria-label="Teaching state" className="onboarding-neomorphic-list onboarding-state-list mt-3 rounded-xl p-1.5 lg:min-h-0 lg:flex-1">
+            {availableStates.map(([value, label], index) => {
+              const isSelected = state === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  tabIndex={isSelected || (!state && index === firstAvailableStateIndex) ? 0 : -1}
+                  onClick={() => setState(value)}
+                  onKeyDown={(event) => moveState(event, index)}
+                  className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isSelected
+                    ? 'onboarding-state-selected border-accent/30 bg-accent/10 font-semibold text-ink'
+                    : 'border-transparent text-ink-soft hover:border-edge hover:bg-paper-sunken hover:text-ink'
+                  }`}
+                >
+                  <span>{label}</span>
+                  <span className={`text-2xs font-semibold tracking-wider ${isSelected ? 'text-accent-text' : 'text-ink-faint'}`}>{value}</span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="onboarding-state-support-note">More states are on the way. We’ll only ask you to choose when their standards are ready.</p>
+          {stateError ? <p className="mt-2 text-xs font-medium text-mark">Choose your state to continue.</p> : null}
+        </div>
+        {state ? <StateMapPreview stateCode={state} /> : null}
+      </div>
+      <div className="dialog-actions mt-6">
         <motion.button 
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="button" 
           className="btn btn-primary ml-auto" 
+          disabled={!state || saving}
           onClick={onNext}
         >
-          Get started <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
+          {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
+          {saving ? 'Saving…' : 'Continue'} <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
       </div>
     </motion.div>
+  )
+}
+
+function StateMapPreview({ stateCode }) {
+  const selected = usaMap.locations.find((location) => location.id === stateCode.toLowerCase())
+  const [viewBox, setViewBox] = useState(usaMap.viewBox)
+  const pathRef = useRef(null)
+
+  // Always measure a new state against the source map's coordinate system.
+  // Measuring while the previous state is still zoomed makes getBBox() return
+  // transformed coordinates, which can move the next outline outside the
+  // visible SVG frame.
+  useLayoutEffect(() => {
+    setViewBox(usaMap.viewBox)
+  }, [selected?.id])
+
+  useLayoutEffect(() => {
+    if (viewBox !== usaMap.viewBox) return
+    const bounds = pathRef.current?.getBBox()
+    if (!bounds || !bounds.width || !bounds.height) return
+    const padding = Math.max(bounds.width, bounds.height) * 0.16
+    setViewBox(`${bounds.x - padding} ${bounds.y - padding} ${bounds.width + padding * 2} ${bounds.height + padding * 2}`)
+  }, [selected?.id, viewBox])
+
+  if (!selected) return null
+
+  return (
+    <div className="onboarding-glass-pane flex min-h-72 flex-col rounded-2xl border-accent/20 bg-accent/5 p-6 lg:h-full">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-2xs font-semibold uppercase tracking-widest text-accent-text">Your state</p>
+          <p className="mt-1 text-base font-semibold text-ink">{selected.name}</p>
+        </div>
+        <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold tracking-wider text-accent-text">{stateCode}</span>
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.svg
+            key={selected.id}
+            initial={{ opacity: 0, scale: 0.94 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            viewBox={viewBox}
+            role="img"
+            aria-label={`Outline of ${selected.name}`}
+            className="h-56 w-full origin-center"
+          >
+            <path
+              ref={pathRef}
+              d={selected.path}
+              fill="none"
+              className="stroke-accent-text"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+            />
+          </motion.svg>
+        </AnimatePresence>
+      </div>
+      <div className="mt-3 flex flex-wrap justify-center gap-2" aria-label="State-based setup">
+        {['Standards', 'School calendar', 'Course options'].map((item) => (
+          <span key={item} className="rounded-full border border-accent/15 bg-paper-raised/70 px-2.5 py-1 text-2xs font-medium text-accent-text">
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -555,17 +819,6 @@ function SchoolStep({
   school,
   onSchoolChange,
   schools,
-  templates,
-  templatesLoading,
-  selectingTemplateId,
-  onSelectTemplate,
-  schoolNeedsTemplate,
-  templateFile,
-  setTemplateFile,
-  templateUrl,
-  setTemplateUrl,
-  blankTemplateAttested,
-  setBlankTemplateAttested,
   saving,
   onBack,
   onNext,
@@ -574,8 +827,8 @@ function SchoolStep({
     <div>
       <StepHeader
         eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
-        title="Where are we teaching?"
-        body="Sets your school calendar — which weeks are teaching weeks and which days are closed."
+        title="Which school do you teach at?"
+        body="Choose your school, then continue to its format and calendar."
       />
       <SchoolSelect
         ariaLabel="School"
@@ -586,52 +839,6 @@ function SchoolStep({
         emptyOption={{ value: '', label: 'Choose a school' }}
         inputClassName="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
       />
-      {school ? (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-lg border border-edge bg-paper-sunken p-4 text-sm text-ink-soft">
-          {templates.length > 1 ? (
-            <p>
-              <span className="font-medium text-ink">This school has several saved lesson-plan formats.</span> Choose the one you want to use, or upload a new personal format for your own plans.
-            </p>
-          ) : schoolNeedsTemplate ? (
-            <p>
-              <span className="font-medium text-ink">Got a rigid district lesson plan format?</span> Toss it here, and the AI will handle the formatting for you.
-            </p>
-          ) : (
-            <p>
-              <span className="font-medium text-ink">A standard lesson-plan template is already on file</span> for this
-              school. You can use it as-is or add a personal version below.
-            </p>
-          )}
-          {templates.length || templatesLoading ? (
-            <OnboardingTemplateChoices
-              templates={templates}
-              loading={templatesLoading}
-              selectingTemplateId={selectingTemplateId}
-              onSelect={onSelectTemplate}
-            />
-          ) : null}
-          <div className="mt-3 border-t border-edge/70 pt-3">
-            <p className="mb-2 text-xs font-medium text-ink">{templates.length ? 'Upload a new personal format' : 'Upload a template'}</p>
-            <UploadDropzone
-              label="Choose file"
-              selectedFileName={templateFile?.name}
-              onFile={(file) => {
-                setTemplateFile(file)
-                setTemplateUrl('')
-              }}
-              url={templateUrl}
-              onUrlChange={(v) => {
-                setTemplateUrl(v)
-                if (v) setTemplateFile(null)
-              }}
-              templateUpload
-              blankTemplateAttested={blankTemplateAttested}
-              onBlankTemplateAttestedChange={setBlankTemplateAttested}
-            />
-          </div>
-        </motion.div>
-      ) : null}
-      
       {school && schools.find(s => s.id === school)?.has_pending_calendar ? (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
           <h3 className="text-sm font-medium text-ink mb-2">Look at that! A colleague already did the heavy lifting and set up the calendar. Look right to you?</h3>
@@ -656,6 +863,293 @@ function SchoolStep({
   )
 }
 
+function TemplateStep({
+  eyebrow,
+  currentStep,
+  totalSteps,
+  schoolName,
+  templates,
+  templatesLoading,
+  selectingTemplateId,
+  onSelectTemplate,
+  schoolNeedsTemplate,
+  schoolFormatReady,
+  phase,
+  analysis,
+  findings,
+  analysisStatus,
+  templateFile,
+  setTemplateFile,
+  templateUrl,
+  setTemplateUrl,
+  blankTemplateAttested,
+  setBlankTemplateAttested,
+  saving,
+  onBack,
+  onNext,
+  onSkip,
+  onEdit,
+  onConfirm,
+}) {
+  const sections = analysis?.sections || []
+  const errors = findings.filter((finding) => finding.severity === 'error')
+  const warnings = findings.filter((finding) => finding.severity === 'warning')
+  const hasInput = Boolean(templateFile || templateUrl.trim())
+  const reviewable = sections.length > 0 && analysisStatus !== 'failed'
+  const title = phase === 'processing'
+    ? 'Analyzing your format'
+    : phase === 'review'
+      ? 'Review the detected format'
+      : phase === 'confirmed'
+        ? 'Your format is ready'
+        : 'Add your lesson-plan format'
+  const personalDefault = templates.find((template) => template.is_personal_default)
+  const schoolDefault = templates.find((template) => template.is_school_default)
+  const defaultTemplate = personalDefault || schoolDefault
+  const body = phase === 'processing'
+    ? 'FlexEd is reading the structure of your template now.'
+    : phase === 'review'
+      ? 'Check the sections FlexEd found before making this the format for new plans.'
+      : phase === 'confirmed'
+        ? 'This format is now connected to your planning workflow.'
+        : defaultTemplate || schoolFormatReady
+          ? 'Your school format is ready and will be used for new plans. You can add a personal format if you want.'
+          : schoolName
+            ? `Give FlexEd a blank example from ${schoolName}, or choose a format already on file.`
+          : 'Give FlexEd a blank example of the format you want your plans to follow.'
+
+  return (
+    <div>
+      <StepHeader
+        eyebrow={eyebrow}
+        currentStep={currentStep}
+        totalSteps={totalSteps}
+        title={title}
+        body={body}
+      />
+      <div className="onboarding-template-panel rounded-2xl p-5 sm:p-7">
+        {phase === 'upload' ? (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="onboarding-template-kicker">Template setup</p>
+                <h3 className="mt-1 text-xl font-semibold tracking-tight text-ink">
+                  {defaultTemplate || schoolFormatReady ? 'Use the school format or add your own' : schoolNeedsTemplate ? 'Teach FlexEd your format' : 'Choose how plans should look'}
+                </h3>
+                <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-muted">
+                  Upload a blank lesson-plan example. FlexEd will read the sections, order, and layout before it formats future plans.
+                </p>
+              </div>
+              <span className={`onboarding-template-status ${schoolNeedsTemplate ? 'is-needed' : 'is-ready'}`}>
+                {schoolNeedsTemplate ? 'Needed' : 'Optional'}
+              </span>
+            </div>
+
+            <TemplateIngestPath phase={phase} />
+
+            {templates.length || templatesLoading ? (
+              <div className="onboarding-template-choice mt-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">{defaultTemplate ? 'Default for new plans' : 'Formats already available'}</p>
+                <OnboardingTemplateChoices
+                  templates={templates}
+                  loading={templatesLoading}
+                  selectingTemplateId={selectingTemplateId}
+                  onSelect={onSelectTemplate}
+                />
+              </div>
+            ) : null}
+
+            <div className="onboarding-template-input-grid mt-6">
+              <div className="onboarding-template-upload-wrap">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-ink">{templates.length ? 'Add a personal format' : 'Upload a blank format'}</p>
+                    <p className="mt-0.5 text-xs text-ink-muted">PDF or Word document, or a shareable Google Doc.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5" aria-label="What FlexEd reads">
+                    {['Sections', 'Order', 'Layout'].map((item) => (
+                      <span key={item} className="onboarding-template-chip">{item}</span>
+                    ))}
+                  </div>
+                </div>
+                <UploadDropzone
+                  label="Choose file"
+                  selectedFileName={templateFile?.name}
+                  onFile={(file) => {
+                    setTemplateFile(file)
+                    setTemplateUrl('')
+                  }}
+                  url={templateUrl}
+                  onUrlChange={(v) => {
+                    setTemplateUrl(v)
+                    if (v) setTemplateFile(null)
+                  }}
+                  templateUpload
+                  compactGuidance
+                  className="onboarding-template-upload"
+                  blankTemplateAttested={blankTemplateAttested}
+                  onBlankTemplateAttestedChange={setBlankTemplateAttested}
+                />
+              </div>
+              <TemplatePreview file={templateFile} url={templateUrl} />
+            </div>
+          </>
+        ) : phase === 'processing' ? (
+          <>
+            <TemplateIngestPath phase={phase} />
+            <div className="onboarding-template-processing">
+              <Loader2 size={24} className="animate-spin text-accent-text" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-semibold text-ink">Analyzing format…</p>
+                <p className="mt-1 text-sm leading-relaxed text-ink-muted">Looking for headings, tables, labels, and the order your plans should follow.</p>
+              </div>
+            </div>
+            <TemplatePreview file={templateFile} url={templateUrl} />
+          </>
+        ) : phase === 'review' ? (
+          <>
+            <TemplateIngestPath phase={phase} />
+            <div className="onboarding-analysis-grid mt-6">
+              <TemplatePreview file={templateFile} url={templateUrl} />
+              <div className="onboarding-analysis-card">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="onboarding-template-kicker">Detected sections</p>
+                    <p className="mt-1 text-sm font-semibold text-ink">Does this look right?</p>
+                  </div>
+                  <span className={`onboarding-template-status ${reviewable ? 'is-ready' : 'is-needed'}`}>
+                    {reviewable ? 'Ready to review' : 'Needs another file'}
+                  </span>
+                </div>
+                {sections.length ? (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {sections.map((section, index) => (
+                      <span key={`${section.name || section.title || 'section'}-${index}`} className="onboarding-detected-field">
+                        {section.name || section.title || `Section ${index + 1}`}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-lg bg-mark/10 p-3 text-sm leading-relaxed text-mark">FlexEd couldn’t verify any sections in this file. Try a blank PDF or Word template with visible headings or tables.</p>
+                )}
+                {errors.length || warnings.length ? (
+                  <div className="onboarding-analysis-notes mt-4">
+                    {errors.concat(warnings).slice(0, 3).map((finding, index) => (
+                      <p key={`${finding.check_name || 'note'}-${index}`} className={finding.severity === 'error' ? 'is-error' : 'is-warning'}>{finding.message}</p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <TemplateIngestPath phase={phase} />
+            <div className="onboarding-template-confirmed">
+              <div className="onboarding-template-confirmed-icon"><CheckCircle2 size={23} aria-hidden="true" /></div>
+              <div>
+                <p className="text-base font-semibold text-ink">This format will be used for new plans.</p>
+                <p className="mt-1 text-sm leading-relaxed text-ink-muted">FlexEd will keep the detected sections, order, and layout in view as it builds your plans.</p>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="dialog-actions mt-6">
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
+          <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
+        </motion.button>
+        {phase === 'upload' ? (
+          <>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onSkip} disabled={saving}>
+              Skip for now
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext} disabled={saving}>
+              {hasInput ? 'Analyze format' : 'Continue'} <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
+            </motion.button>
+          </>
+        ) : phase === 'processing' ? (
+          <p className="ml-auto flex items-center gap-2 text-sm text-ink-muted"><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Working on it…</p>
+        ) : phase === 'review' ? (
+          <>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onEdit}>
+              Choose another file
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onConfirm} disabled={!reviewable}>
+              Use this format <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
+            </motion.button>
+          </>
+        ) : (
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext}>
+            Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
+          </motion.button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TemplateIngestPath({ phase }) {
+  const steps = [
+    ['upload', 'Upload'],
+    ['processing', 'Analyze'],
+    ['confirmed', 'Use in plans'],
+  ]
+  const activeIndex = phase === 'review' ? 1 : phase === 'confirmed' ? 2 : phase === 'processing' ? 1 : 0
+  return (
+    <div className="onboarding-ingest-path" aria-label="Template setup steps">
+      {steps.map(([key, label], index) => (
+        <Fragment key={key}>
+          <div className={`onboarding-ingest-step ${index <= activeIndex ? 'is-active' : ''}`}>
+            <span>{index + 1}</span><strong>{label}</strong>
+          </div>
+          {index < steps.length - 1 ? <div className="onboarding-ingest-line" aria-hidden="true" /> : null}
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
+function TemplatePreview({ file, url }) {
+  const [previewUrl, setPreviewUrl] = useState('')
+
+  useEffect(() => {
+    if (!file || file.type !== 'application/pdf') {
+      setPreviewUrl('')
+      return undefined
+    }
+    const objectUrl = URL.createObjectURL(file)
+    setPreviewUrl(objectUrl)
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [file])
+
+  return (
+    <div className="onboarding-template-preview">
+      <p className="onboarding-template-kicker">Template preview</p>
+      {previewUrl ? (
+        <iframe title={`${file.name} preview`} src={previewUrl} className="onboarding-template-preview-frame" />
+      ) : file ? (
+        <div className="onboarding-template-preview-file">
+          <FileText size={28} className="text-accent-text" aria-hidden="true" />
+          <p className="mt-3 truncate text-sm font-semibold text-ink">{file.name}</p>
+          <p className="mt-1 text-xs text-ink-muted">Word document selected</p>
+        </div>
+      ) : url?.trim() ? (
+        <div className="onboarding-template-preview-file">
+          <FileText size={28} className="text-accent-text" aria-hidden="true" />
+          <p className="mt-3 text-sm font-semibold text-ink">Google Doc selected</p>
+          <p className="mt-1 truncate text-xs text-ink-muted">{url}</p>
+        </div>
+      ) : (
+        <div className="onboarding-template-preview-empty">
+          <FileText size={24} aria-hidden="true" />
+          <span>Your preview will appear here after you choose a file.</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, onSelect }) {
   if (loading) {
     return (
@@ -671,14 +1165,15 @@ function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, on
       <p className="text-xs font-medium text-ink">Choose your starting format</p>
       {templates.map((template) => {
         const ready = ['analyzed', 'analyzed_with_warnings'].includes(template.analysis_status)
-        const selected = Boolean(template.is_personal_default)
-        const label = selected
+        const hasPersonalDefault = templates.some((candidate) => candidate.is_personal_default)
+        const selected = Boolean(template.is_personal_default) || (!hasPersonalDefault && Boolean(template.is_school_default))
+        const label = template.is_personal_default
           ? 'Your default'
-          : template.is_school_default
-            ? 'School default'
-            : template.template_scope === 'school_candidate'
-              ? 'School candidate'
-              : 'Personal template'
+            : template.is_school_default
+              ? 'Default for this school'
+              : template.template_scope === 'school_candidate'
+                ? 'School candidate'
+                : 'Personal template'
         const date = template.approved_at || template.created_at
         return (
           <div key={template.id} className="flex items-center justify-between gap-3 rounded-md border border-edge bg-paper-raised px-3 py-2.5">
@@ -689,8 +1184,9 @@ function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, on
               </p>
             </div>
             {selected ? (
-              <span className="inline-flex shrink-0 items-center gap-1 text-2xs font-medium text-emerald-700">
-                <CheckCircle2 size={13} aria-hidden="true" /> In use
+              <span className="inline-flex shrink-0 items-center gap-1 text-right text-2xs font-medium text-emerald-700">
+                <CheckCircle2 size={13} aria-hidden="true" />
+                {template.is_personal_default ? 'Your format · selected' : 'School format · selected'}
               </span>
             ) : (
               <button
@@ -700,7 +1196,7 @@ function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, on
                 onClick={() => onSelect(template)}
               >
                 {selectingTemplateId === template.id ? <Loader2 size={12} className="mr-1 animate-spin" aria-hidden="true" /> : null}
-                {ready ? 'Use for my plans' : 'Preparing…'}
+                {ready ? (template.is_school_default ? 'Use school format' : 'Use for my plans') : 'Preparing…'}
               </button>
             )}
           </div>
@@ -709,46 +1205,55 @@ function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, on
     </div>
   )
 }
-function ClassStep({ eyebrow, currentStep, totalSteps, cls, subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
+function ClassStep({ eyebrow, currentStep, totalSteps, subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
   return (
-    <div>
+    <div className="onboarding-class-step">
       <StepHeader
         eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
-        title={<span>Confirm {cls.name || 'your class'}</span>}
-        body="The course decides which standards get retrieved. Change it any time from My Classes."
+        className="onboarding-class-header"
+        title={<span>Confirm your teaching context</span>}
       />
-      <div className="flex flex-col gap-2">
-        <motion.div animate={error ? { x: [-5, 5, -5, 5, 0] } : {}} transition={{ duration: 0.4 }}>
-          <FrameworkPicker frameworks={frameworks} value={subject} onChange={(v) => { setSubject(v); if (error) onNext(); }} id="onboarding-framework" />
+      <div className="onboarding-course-browser onboarding-course-browser-focus">
+        <motion.div
+          className="onboarding-course-picker"
+          animate={error ? { x: [-5, 5, -5, 5, 0] } : {}}
+          transition={{ duration: 0.4 }}
+        >
+          <FrameworkPicker
+            frameworks={frameworks}
+            value={subject}
+            onChange={(v) => { setSubject(v); if (error) onNext(); }}
+            id="onboarding-framework"
+            variant="inline"
+            afterInput={(
+              <label className="onboarding-course-grade-control" htmlFor="onboarding-grade">
+                <span>Grade</span>
+                <select
+                  id="onboarding-grade"
+                  value={grade}
+                  onChange={(e) => setGrade(e.target.value)}
+                  className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
+                >
+                  {GRADES.map((g) => (
+                    <option key={g.value} value={g.value}>
+                      {g.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          />
           {error && <p className="mt-1.5 text-xs text-mark font-medium px-1">Please select a course to continue</p>}
         </motion.div>
-        <div className="mt-2">
-          <label htmlFor="onboarding-grade" className="mb-1.5 block text-sm font-medium text-ink">
-            Grade level
-          </label>
-          <p className="mb-1.5 text-xs text-ink-muted">Used to pick grade-appropriate standards and language.</p>
-          <select
-            id="onboarding-grade"
-            value={grade}
-            onChange={(e) => setGrade(e.target.value)}
-            className="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
-          >
-            {GRADES.map((g) => (
-              <option key={g.value} value={g.value}>
-                {g.label}
-              </option>
-            ))}
-          </select>
+        <div className="onboarding-course-browser-actions">
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
+            <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
+          </motion.button>
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary" onClick={onNext} disabled={saving}>
+            {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
+            {saving ? 'Saving…' : 'Continue'}
+          </motion.button>
         </div>
-      </div>
-      <div className="dialog-actions mt-6">
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
-          <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext} disabled={saving}>
-          {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
-          {saving ? 'Saving…' : 'Continue'}
-        </motion.button>
       </div>
     </div>
   )
@@ -758,16 +1263,19 @@ function DocumentsStep({ eyebrow, currentStep, totalSteps, cls, onBack, onNext }
     <div>
       <StepHeader
         eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
-        title="Ground it in your materials"
-        body="A pacing guide, syllabus, or curriculum map lets plans follow YOUR sequence and units, not a generic one. Optional — add these anytime from My Classes."
+        title="Add your teaching materials"
+        body="Optional. Add the planning source FlexEd should use to organize new plans. You can add supporting materials later."
       />
       <Suspense fallback={<p className="text-xs text-ink-muted">Loading documents…</p>}>
-        <ClassDocuments cls={cls} />
+        <ClassDocuments cls={cls} variant="onboarding" />
       </Suspense>
       <div className="dialog-actions mt-6">
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onNext}>
+          Skip for now
+        </motion.button>
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext}>
           Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
@@ -776,88 +1284,149 @@ function DocumentsStep({ eyebrow, currentStep, totalSteps, cls, onBack, onNext }
   )
 }
 
-function TipsStep({ eyebrow, currentStep, totalSteps, onBack, onNext }) {
+function TipsStep({ eyebrow, currentStep, totalSteps, stateLabel, schoolName, courseName, gradeName, formatName, editableSteps = [], onEdit, onBack, onNext }) {
+  const editButton = (target, label) => editableSteps.includes(target) ? (
+    <button type="button" className="onboarding-setup-summary-edit" onClick={() => onEdit(target)}>{label || 'Edit'}</button>
+  ) : null
+
   return (
     <div>
-      <StepHeader eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} title="Getting the most out of FlexEd" />
-      {/* 0.1s per item over three items ran ~400ms with the last item still
-          invisible — and SmoothHeight (which now wraps the steps) sizes the
-          panel to the FINAL height immediately, so that delay showed as a
-          panel opened to full size around a mostly empty box. Tightened to a
-          ripple that finishes inside the step's own 280ms entrance instead of
-          trailing well past it. */}
-      <motion.ul
-        initial="hidden"
-        animate="visible"
-        variants={{ visible: { transition: { staggerChildren: 0.045 } } }}
-        className="flex flex-col gap-3"
-      >
-        {TIPS.map((tip) => (
-          <motion.li
-            key={tip.title}
-            variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
-            transition={{ duration: 0.22 }}
-            className="flex gap-3 rounded-lg border border-edge bg-paper-sunken p-3"
+      <StepHeader
+        eyebrow={eyebrow}
+        currentStep={currentStep}
+        totalSteps={totalSteps}
+        title="You’re ready to start"
+        body="Your workspace is ready. Here’s how to turn it into your next plan."
+      />
+      <div className="onboarding-launch-layout">
+        <section className="onboarding-setup-summary" aria-label="Your setup summary">
+          <div className="onboarding-setup-summary-heading">
+            <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-faint">Workspace</span>
+            <span className="onboarding-setup-summary-ready">Ready</span>
+          </div>
+          <p className="onboarding-setup-summary-copy">FlexEd will use these details as you build new plans.</p>
+          <div className="onboarding-setup-summary-grid">
+            <div className="onboarding-setup-summary-item"><span>State</span><strong>{stateLabel || 'Not set yet'}</strong>{editButton('welcome')}</div>
+            <div className="onboarding-setup-summary-item"><span>School</span><strong>{schoolName || 'Not set yet'}</strong>{editButton('school')}</div>
+            <div className="onboarding-setup-summary-item"><span>Course</span><strong>{courseName || 'Not set yet'}</strong>{editButton('class')}</div>
+            <div className="onboarding-setup-summary-item"><span>Grade</span><strong>{gradeName || 'Not set yet'}</strong>{editButton('class')}</div>
+            <div className="onboarding-setup-summary-item"><span>Format</span><strong>{formatName}</strong>{editButton('template')}</div>
+          </div>
+          <p className="onboarding-setup-summary-footer">You can edit any of this later in Settings.</p>
+        </section>
+        <div className="onboarding-launch-guide">
+          <div className="onboarding-launch-guide-heading">
+            <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-faint">Your next move</span>
+            <span className="text-xs text-ink-muted">Three simple steps</span>
+          </div>
+          <motion.ul
+            initial="hidden"
+            animate="visible"
+            variants={{ visible: { transition: { staggerChildren: 0.045 } } }}
+            className="onboarding-next-steps"
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10">
-              <tip.icon size={16} className="text-accent-text" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-ink">{tip.title}</p>
-              <p className="mt-0.5 text-xs text-ink-muted">{tip.body}</p>
-            </div>
-          </motion.li>
-        ))}
-      </motion.ul>
+            {TIPS.map((tip) => (
+              <motion.li
+                key={tip.title}
+                variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
+                transition={{ duration: 0.22 }}
+                className={`onboarding-next-step${tip.step === '01' ? ' is-primary' : ''}`}
+              >
+                <div className="onboarding-next-step-number" aria-hidden="true">{tip.step}</div>
+                <div className="onboarding-next-step-icon">
+                  <tip.icon size={17} className="text-accent-text" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">{tip.title}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-muted">{tip.body}</p>
+                </div>
+              </motion.li>
+            ))}
+          </motion.ul>
+          <div className="onboarding-next-note">
+            <Sparkles size={15} aria-hidden="true" />
+            <span><strong>Try this next:</strong> “Plan a week for my next unit using my course standards.”</span>
+          </div>
+        </div>
+      </div>
       <div className="dialog-actions mt-6">
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
           <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
         </motion.button>
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext}>
-          Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
+          Finish setup <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
         </motion.button>
       </div>
     </div>
   )
 }
 
-function DoneStep({ finishing, onFinish }) {
+function DoneStep({ finishing, onFinish, stateLabel, schoolName, courseName, gradeName, formatName }) {
+  const setupItems = [
+    { key: 'school', label: 'Your school', value: schoolName || 'Not set yet' },
+    { key: 'state', label: 'State', value: stateLabel || 'Not set yet' },
+    { key: 'grade', label: 'Grade', value: gradeName || 'Not set yet' },
+    { key: 'format', label: 'School format', value: formatName },
+    { key: 'course', label: 'Course', value: courseName || 'Not set yet' },
+  ]
+
   return (
     <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4, type: "spring", bounce: 0.4 }}
-      className="flex flex-col items-center py-4 text-center"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, type: "spring", bounce: 0.2 }}
+      className="onboarding-final"
     >
-      <motion.div 
-        animate={{ rotate: [0, -10, 10, -10, 10, 0] }} 
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="text-accent-text"
-      >
-        <PartyPopper size={36} aria-hidden="true" />
-      </motion.div>
-      <h2 id="onboarding-title" className="mt-4 text-2xl font-bold tracking-display text-ink">
-        You’re all set!
-      </h2>
-      <p className="mt-2 max-w-sm text-sm text-ink-muted">
-        Everything here can be changed later from My Classes or Settings. Say what you need for the week, and let’s build it.
-      </p>
+      <div className="onboarding-final-kicker">Workspace ready</div>
+      <h2 id="onboarding-title" className="onboarding-final-title">Your teaching workspace is ready.</h2>
+      <p className="onboarding-final-intro">Everything is saved and ready for your first plan.</p>
+      <section className="onboarding-final-stage" aria-label="Workspace ready">
+        <div className="onboarding-final-stage-glow" aria-hidden="true" />
+        <div className="onboarding-final-ring" aria-hidden="true" />
+        <div className="onboarding-final-ring onboarding-final-ring-secondary" aria-hidden="true" />
+        <motion.div
+          initial={{ scale: 0.86, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4, type: 'spring', bounce: 0.25 }}
+          className="onboarding-final-logo"
+        >
+          <img src="/icon-512.png" alt="" />
+          <span className="onboarding-final-logo-check" aria-hidden="true">
+            <CheckCircle2 size={30} strokeWidth={2.5} />
+          </span>
+        </motion.div>
+      </section>
+
+      <dl className="onboarding-final-setup" aria-label="Saved setup details">
+        {setupItems.map((item) => (
+          <div key={item.key} className="onboarding-final-setup-item">
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+
       <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+        whileHover={{ scale: 1.015 }}
+        whileTap={{ scale: 0.985 }}
         type="button"
         disabled={finishing}
-        className="btn btn-primary mt-8 px-8 py-3 text-base"
+        className="btn btn-primary onboarding-final-cta"
         onClick={onFinish}
       >
-        {finishing ? <Loader2 size={16} className="mr-2 animate-spin" aria-hidden="true" /> : null}
-        {finishing ? 'Taking you there...' : 'Start planning 🚀'}
+        {finishing ? <Loader2 size={17} className="mr-2 animate-spin" aria-hidden="true" /> : null}
+        {finishing ? 'Opening your workspace…' : 'Open my workspace'}
+        {!finishing ? <ArrowRight size={17} className="ml-2" aria-hidden="true" /> : null}
       </motion.button>
+
+      <div className="onboarding-final-footer">
+        <span>Your setup is saved. You can change anything later in Settings.</span>
+      </div>
     </motion.div>
   )
 }
 
-export function ConfirmedCalendarReview({ schoolId }) {
+export function ConfirmedCalendarReview({ schoolId, compact = false }) {
   const { data: submission, isLoading } = useQuery({
     queryKey: ['schoolCalendarConfirmed', schoolId],
     queryFn: () => api.getConfirmedSchoolCalendar(schoolId),
@@ -869,9 +1438,9 @@ export function ConfirmedCalendarReview({ schoolId }) {
   if (!submission || !submission.weeks) return null
 
   return (
-    <div className="mt-2 max-w-sm rounded-lg bg-ok/10 p-3 text-xs">
+    <div className={`mt-3 rounded-xl bg-ok/10 p-3 text-xs ${compact ? 'w-full' : 'max-w-sm'}`}>
       <p className="font-medium text-ok mb-2">Confirmed by your colleagues</p>
-      <CalendarPreview weeks={submission.weeks} />
+      <CalendarBody weeks={submission.weeks} />
     </div>
   )
 }

@@ -52,7 +52,10 @@ export function monthLabel(iso) {
 /** Month+year key, so consecutive weeks group under one heading. */
 export const monthKey = (iso) => (iso ? iso.slice(0, 7) : '')
 
-export const todayISO = () => new Date().toISOString().slice(0, 10)
+export const todayISO = () => {
+  const today = new Date()
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+}
 
 /** Same calendar day, local time, for two real datetimes (created_at
  *  values) — not the date-only strings the rest of this file parses. Used to

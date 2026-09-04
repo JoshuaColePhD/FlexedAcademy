@@ -51,6 +51,7 @@ uploads/
 
 # Generated eval-run output, not source.
 quality_results.json
+quality_feedback_cases.json
 
 # Scratch. temp/ is no longer a store as of the 2026-08-04 refactor; kept
 # ignored so any stragglers don't get committed.

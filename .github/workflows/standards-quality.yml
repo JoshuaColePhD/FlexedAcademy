@@ -1,0 +1,40 @@
+name: Standards Quality
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "backend/retrieval.py"
+      - "scripts/**"
+      - "eval/**"
+      - "data/raw/**"
+      - "data/eval/**"
+  pull_request:
+    paths:
+      - "backend/retrieval.py"
+      - "scripts/**"
+      - "eval/**"
+      - "data/raw/**"
+      - "data/eval/**"
+  schedule:
+    - cron: "17 10 * * 1"
+  workflow_dispatch:
+
+jobs:
+  local-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: pip install -e ".[dev]"
+      - name: Run standards quality report
+        run: python scripts/generate_quality_report.py
+      - name: Upload quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standards-quality-report
+          path: quality_results.json

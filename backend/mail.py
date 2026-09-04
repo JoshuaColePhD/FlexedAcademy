@@ -19,7 +19,7 @@ log = logging.getLogger("flexedacademy.mail")
 RESEND_URL = "https://api.resend.com/emails"
 
 
-def send(*, to: str, subject: str, html: str) -> bool:
+def send(*, to: str, subject: str, html: str, reply_to: str | None = None) -> bool:
     """Best-effort. Returns whether it actually went out — callers decide
     whether that's worth telling the teacher about (usually not: see
     forgot-password's deliberately generic response, which must not change
@@ -28,10 +28,13 @@ def send(*, to: str, subject: str, html: str) -> bool:
         log.warning("RESEND_API_KEY not set; not sending %r to %s", subject, to)
         return False
     try:
+        payload = {"from": settings.email_from, "to": [to], "subject": subject, "html": html}
+        if reply_to:
+            payload["reply_to"] = [reply_to]
         resp = requests.post(
             RESEND_URL,
             headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json={"from": settings.email_from, "to": [to], "subject": subject, "html": html},
+            json=payload,
             timeout=10,
         )
         resp.raise_for_status()

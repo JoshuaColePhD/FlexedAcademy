@@ -3,16 +3,16 @@
 Three surfaces:
 
   GET  /api/billing            what this account may do, and what a plan costs
-  POST /api/billing/checkout   -> a hosted Stripe Checkout URL
+  POST /api/billing/checkout   -> a hosted Stripe Checkout URL (compatibility)
+  POST /api/billing/checkout-session -> an embedded Checkout client secret
   POST /api/billing/portal     -> a hosted Stripe portal URL (change card, cancel)
   POST /api/billing/webhook    <- Stripe telling us a status changed
 
-The app never sees a card number. Both flows hand the browser a Stripe-hosted
-URL and get out of the way, which is also why the only thing that may change a
-subscription status in our database is the **webhook** — not the success
-redirect. A success redirect is a URL the user's browser was told to visit, and
-a URL a browser can be told to visit is a URL anyone can visit. So the redirect
-only refreshes the page; the signed webhook is what grants access.
+The app never sees a card number. Stripe.js collects payment details in its
+hosted fields, while the retained hosted flow hands the browser a Stripe URL.
+The only thing that may change a subscription status in our database is the
+**webhook** — not the success return. A browser can be told to visit that URL,
+so it only refreshes the page; the signed webhook is what grants access.
 """
 from __future__ import annotations
 
@@ -142,6 +142,42 @@ def checkout(request: Request, user_id: str = Depends(get_current_user)):
         trial_days=0,
     )
     return {"url": session["url"]}
+
+
+@router.post("/checkout-session")
+def checkout_session(request: Request, user_id: str = Depends(get_current_user)):
+    """Create the embedded Checkout Session used by the React payment form.
+
+    The client receives only Stripe's short-lived client secret. The server
+    still chooses the Price and customer from the authenticated account, and
+    the signed webhook remains the only authority that grants entitlement.
+    """
+    if not settings.billing_enabled:
+        raise AppError("billing_unconfigured", "Billing isn’t set up yet.", status=503)
+    user = db.get_user_by_id(user_id)
+    if not user:
+        raise AppError("not_authenticated", "Not logged in.", status=401)
+
+    base = _return_url(request)
+    session = stripe_api.create_custom_checkout_session(
+        price_id=settings.stripe_price_id,
+        customer_id=user.get("stripe_customer_id"),
+        email=user["email"],
+        user_id=user_id,
+        return_url=f"{base}/?checkout=return&session_id={{CHECKOUT_SESSION_ID}}",
+        # The app-side free week has already elapsed before this CTA is shown.
+        trial_days=0,
+    )
+    client_secret = session.get("client_secret")
+    session_id = session.get("id")
+    if not client_secret or not session_id:
+        log.error("embedded Checkout Session missing client secret or id for user=%s", user_id)
+        raise AppError(
+            "billing_error",
+            "The payment provider returned an incomplete checkout session.",
+            status=502,
+        )
+    return {"client_secret": client_secret, "session_id": session_id}
 
 
 @router.post("/portal")

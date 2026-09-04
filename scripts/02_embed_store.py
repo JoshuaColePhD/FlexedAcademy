@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
 """
-Step 2 — Embed and store the parsed standards in a local vector database.
+Step 2 — Embed and store the parsed standards in Supabase Postgres.
 
-Local ChromaDB + sentence-transformers, so nothing leaves the machine and a
-rebuild costs no API credit. Metadata is preserved so retrieval can filter by
-course/grade/source_type.
+OpenAI embeddings are staged in Supabase Postgres/pgvector. The local SQLite
+cache avoids re-embedding unchanged text, while metadata is preserved so
+retrieval can filter by course/grade/source_type and audit source provenance.
 
 Two properties this script is responsible for:
 
@@ -30,22 +29,30 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
+import os
 import re
+import sqlite3
+import struct
 import sys
 from collections import Counter, defaultdict
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "db" / "chroma_db"
 COLLECTION_NAME = "flexed_academy_standards"
 # Kept as a label for the printout; the authoritative values live in
 # backend/embeddings.py, which is what actually does the work.
-from backend.embeddings import EMBED_DIMS, EMBED_MODEL  # noqa: E402
+from backend.embeddings import EMBED_DIMS, EMBED_MODEL
 
-# Chroma's own ceiling on a single add/upsert call.
-BATCH_SIZE = 5000
+# The Supabase pooler has intermittently corrupted COPY and multi-row INSERT
+# payloads over TLS. One-row writes are slower, but they are the proven-safe
+# release path; the local content-addressed embedding cache makes retries and
+# incremental rebuilds cheap by avoiding repeat API work.
+BATCH_SIZE = 1000
+EMBED_CACHE_PATH = PROJECT_ROOT / ".cache" / "standards_embeddings.sqlite3"
 
 
 def chunk_id(chunk: dict) -> str:
@@ -58,10 +65,11 @@ def chunk_id(chunk: dict) -> str:
 
 
 def flatten(chunk: dict) -> dict:
-    """Chroma metadata accepts str/int/float/bool only. Lists join, Nones drop.
+    """Postgres JSONB metadata keeps the source fields queryable. Lists join,
+    Nones drop.
 
     `code` is kept in the metadata deliberately: retrieval reads the citable code
-    from here rather than from the Chroma id, so the id is free to carry the
+    from here rather than from the vector id, so the id is free to carry the
     course/grade disambiguation without corrupting the grounding audit.
     """
     meta = {}
@@ -85,9 +93,93 @@ def load_all_chunks() -> tuple[list[dict], list[str]]:
     for path in files:
         with open(path, encoding="utf-8") as f:
             loaded = json.load(f)
+        snapshot = hashlib.sha256(path.read_bytes()).hexdigest()
+        # Keep this provenance on the records that are embedded, not only in a
+        # console line. The live corpus can then be audited back to the exact
+        # processed input file without trusting a filename alone.
+        loaded = [
+            {
+                **chunk,
+                "source_snapshot_sha256": chunk.get("source_snapshot_sha256") or snapshot,
+                "embedding_model": EMBED_MODEL,
+                "embedding_dimensions": EMBED_DIMS,
+            }
+            for chunk in loaded
+        ]
         notes.append(f"  {path.name}: {len(loaded)} chunks")
         chunks.extend(loaded)
     return chunks, notes
+
+
+def _cache_key(document: str) -> str:
+    """Stable cache key for one document in one embedding configuration."""
+    payload = f"{EMBED_MODEL}\0{EMBED_DIMS}\0{document}".encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _open_embedding_cache() -> sqlite3.Connection:
+    """Open the local, rebuildable embedding cache."""
+    EMBED_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(EMBED_CACHE_PATH)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS embeddings ("
+        "cache_key TEXT PRIMARY KEY, model TEXT NOT NULL, dims INTEGER NOT NULL, "
+        "vector BLOB NOT NULL)"
+    )
+    return conn
+
+
+def embed_documents_cached(documents: list[str]) -> tuple[list[list[float]], int]:
+    """Embed documents, reusing vectors for unchanged text when possible.
+
+    The cache is intentionally local and rebuildable. It is not a source of
+    truth and is never uploaded; the text/model/dimension hash makes reuse safe
+    across interrupted rebuilds and future corpus changes.
+    """
+    keys = [_cache_key(document) for document in documents]
+    conn = _open_embedding_cache()
+    try:
+        cached: dict[str, list[float]] = {}
+        for start in range(0, len(keys), 500):
+            wanted = keys[start : start + 500]
+            placeholders = ",".join("?" for _ in wanted)
+            rows = conn.execute(
+                f"SELECT cache_key, vector FROM embeddings WHERE cache_key IN ({placeholders})",
+                wanted,
+            )
+            for cache_key, blob in rows:
+                try:
+                    vector = list(struct.unpack(f"<{EMBED_DIMS}f", blob))
+                except struct.error:
+                    continue
+                if len(vector) == EMBED_DIMS:
+                    cached[cache_key] = vector
+
+        reused_count = sum(key in cached for key in keys)
+        missing_keys = list(dict.fromkeys(key for key in keys if key not in cached))
+        if missing_keys:
+            from backend.embeddings import embed_texts
+
+            document_by_key = dict(zip(keys, documents))
+            missing_documents = [document_by_key[key] for key in missing_keys]
+            embedded = embed_texts(missing_documents)
+            if any(len(vector) != EMBED_DIMS for vector in embedded):
+                raise RuntimeError("embedding API returned a vector with the wrong dimensions")
+            conn.executemany(
+                "INSERT OR REPLACE INTO embeddings(cache_key, model, dims, vector) "
+                "VALUES (?, ?, ?, ?)",
+                [
+                    (key, EMBED_MODEL, EMBED_DIMS,
+                     struct.pack(f"<{EMBED_DIMS}f", *vector))
+                    for key, vector in zip(missing_keys, embedded)
+                ],
+            )
+            conn.commit()
+            cached.update(zip(missing_keys, embedded))
+
+        return [cached[key] for key in keys], reused_count
+    finally:
+        conn.close()
 
 
 def main() -> int:
@@ -152,7 +244,7 @@ def main() -> int:
     print(f"\n{len(chunks)} chunks -> {len(ids)} unique ids")
     if collisions:
         print(f"WARNING: {len(collisions)} ids collided with DIFFERING text "
-              f"(last file wins): {list(collisions)[:5]}")
+              f"(distinct descriptions receive suffix IDs): {list(collisions)[:5]}")
     print("By course:", dict(Counter(m.get("course", "?") for m in metadatas)))
     print("By source_type:", dict(Counter(m.get("source_type", "?") for m in metadatas)))
 
@@ -163,60 +255,128 @@ def main() -> int:
 
     print("\\nPostgreSQL Database configured in settings.")
     from backend import db
-    from backend.embeddings import embed_texts
-
     db.connect()
     # A real `with`, not ctx.__enter__(). borrow() takes a pool slot and a
     # semaphore permit; entering without exiting leaks both. Harmless in a
     # script that exits immediately, wrong everywhere else, and this file is
     # the example someone copies.
-    with db.borrow() as conn:
-    
-        if not args.upsert:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM chunks")
-                conn.commit()
-                print("Dropped existing chunks.")
+    target_table = "chunks"
+    # A unique run suffix prevents the next staging table from colliding with
+    # indexes left on the live table by a prior successful swap. Indexes are
+    # normalized to stable names after the old table is removed at cutover.
+    run_token = f"{datetime.now(UTC):%Y%m%d%H%M%S}_{os.getpid()}"
+    staging_table = f"chunks__rebuild_staging_{run_token}"
+    if not args.upsert:
+        # Build beside the live table. A transient API or database failure must
+        # not leave the live site with a partial corpus.
+        with db.borrow() as conn, conn.cursor() as cur:
+            # Clean up the old fixed-name staging attempt from pre-suffix
+            # versions. New runs use a unique name and therefore need no
+            # broad catalog scan or destructive wildcard cleanup.
+            cur.execute("DROP INDEX IF EXISTS chunks__rebuild_staging_embedding_idx")
+            cur.execute("DROP INDEX IF EXISTS chunks__rebuild_staging_tsvector_idx")
+            cur.execute("DROP TABLE IF EXISTS chunks__rebuild_staging")
+            cur.execute(f"DROP TABLE IF EXISTS {staging_table}")
+            cur.execute(f"""
+                    CREATE TABLE {staging_table} (
+                        id TEXT PRIMARY KEY,
+                        document TEXT NOT NULL,
+                        metadata JSONB,
+                        embedding vector(384),
+                        document_tsvector tsvector
+                            GENERATED ALWAYS AS (to_tsvector('english', document)) STORED
+                    )
+                """)
+            cur.execute(f"ALTER TABLE {staging_table} ENABLE ROW LEVEL SECURITY")
+            conn.commit()
+        print("Created isolated staging table; live chunks remain untouched.")
+    else:
+        print("Upsert mode: writing directly to the live chunks table.")
 
-        print(f"Embedding {len(ids)} chunks with {EMBED_MODEL} ({EMBED_DIMS} dims)...")
-    
-        with conn.cursor() as cur:
-            for start in range(0, len(ids), BATCH_SIZE):
-                end = min(start + BATCH_SIZE, len(ids))
-                print(f"  {start}-{end}")
-            
-                batch_ids = ids[start:end]
-                batch_docs = documents[start:end]
-                batch_metas = metadatas[start:end]
-            
-                # One API call per sub-batch, retried inside embed_texts.
-                batch_embs = embed_texts(batch_docs)
-            
-                from psycopg2.extras import execute_values
-                import json
-            
-                # Use execute_values for fast insert
-                values = []
-                for i, d, m, e in zip(batch_ids, batch_docs, batch_metas, batch_embs):
-                    values.append((i, d, json.dumps(m), e))
-                
-                execute_values(
-                    cur,
-                    "INSERT INTO chunks (id, document, metadata, embedding) VALUES %s ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document, metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding",
-                    values
-                )
+    print(f"Embedding {len(ids)} chunks with {EMBED_MODEL} ({EMBED_DIMS} dims)...")
+    for start in range(0, len(ids), BATCH_SIZE):
+        end = min(start + BATCH_SIZE, len(ids))
+        print(f"  {start}-{end}")
+
+        batch_ids = ids[start:end]
+        batch_docs = documents[start:end]
+        batch_metas = metadatas[start:end]
+
+        # Do not hold a pooled database connection open while waiting on the
+        # embeddings API; Supabase can expire an idle TLS connection mid-batch.
+        batch_embs, cached_count = embed_documents_cached(batch_docs)
+        if cached_count:
+            print(f"    reused {cached_count}/{len(batch_docs)} cached vectors")
+        values = [
+            (i, d, json.dumps(m), e)
+            for i, d, m, e in zip(batch_ids, batch_docs, batch_metas, batch_embs)
+        ]
+        table = target_table if args.upsert else staging_table
+        with db.borrow() as conn:
+            with conn.cursor() as cur:
+                for value in values:
+                    cur.execute(
+                        f"INSERT INTO {table} (id, document, metadata, embedding) "
+                        "VALUES (%s, %s, %s::jsonb, %s) "
+                        "ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document, "
+                        "metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding",
+                        value,
+                    )
                 conn.commit()
-            
-            cur.execute("SELECT COUNT(*) FROM chunks")
-            final = cur.fetchone()["count"]
-        
+            # Supabase's pooler has intermittently returned a connection with
+            # a broken TLS record on the following large write. Do not return
+            # this batch connection to the pool for reuse; the next borrow will
+            # replace it with a fresh physical connection.
+            conn.close()
+
+    if not args.upsert:
+        # Build indexes after loading. Maintaining HNSW for every inserted row
+        # is substantially slower than one set-based build, and the staging
+        # table remains private until both indexes finish successfully.
+        print("Building staging vector and full-text indexes...")
+        with db.borrow() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"CREATE INDEX {staging_table}_embedding_idx ON {staging_table} "
+                "USING hnsw (embedding vector_cosine_ops)"
+            )
+            cur.execute(
+                f"CREATE INDEX {staging_table}_tsvector_idx ON {staging_table} "
+                "USING gin (document_tsvector)"
+            )
+            conn.commit()
+
+    with db.borrow() as conn, conn.cursor() as cur:
+        table = target_table if args.upsert else staging_table
+        cur.execute(f"SELECT COUNT(*) FROM {table}")
+        final = cur.fetchone()["count"]
+
+        if not args.upsert:
+            if final != len(ids):
+                raise RuntimeError(
+                    f"staging row count {final} does not match expected {len(ids)}"
+                )
+            # Brief atomic cutover. Any exception before commit leaves the
+            # original chunks table in place.
+            cur.execute("LOCK TABLE chunks IN ACCESS EXCLUSIVE MODE")
+            cur.execute("ALTER TABLE chunks RENAME TO chunks__rebuild_previous")
+            cur.execute(f"ALTER TABLE {staging_table} RENAME TO chunks")
+            cur.execute("DROP TABLE chunks__rebuild_previous")
+            cur.execute(
+                f"ALTER INDEX {staging_table}_embedding_idx "
+                "RENAME TO chunks_embedding_idx"
+            )
+            cur.execute(
+                f"ALTER INDEX {staging_table}_tsvector_idx "
+                "RENAME TO chunks_tsvector_idx"
+            )
+            conn.commit()
+            print("Atomically swapped the validated staging corpus into chunks.")
+
         print(f"\\nStored {final} chunks in PostgreSQL 'chunks' table.")
 
-        # Spot check
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, metadata FROM chunks LIMIT 1")
-            sample = cur.fetchone()
-        
+        cur.execute("SELECT id, metadata FROM chunks LIMIT 1")
+        sample = cur.fetchone()
+
         if sample:
             meta = sample["metadata"]
             print("Spot-check:", sample["id"],

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, Link, NavLink } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, CreditCard, Download, FileText, HardDrive, Loader2, Mail, Save, Settings, Sparkles, Trash2, User } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ArrowLeft, Building2, CheckCircle2, ChevronDown, CreditCard, Download, FileText, HardDrive, Loader2, Mail, MessageCircle, PencilLine, Save, Settings, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -11,14 +12,15 @@ import { qk } from '../lib/queryKeys'
 import { errorParts } from '../lib/apiError'
 import { useTheme } from '../hooks/useTheme'
 import { useDesignSkin } from '../hooks/useDesignSkin'
+import { useInterfacePreferences } from '../hooks/useInterfacePreferences'
 import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { ConfirmedCalendarReview } from '../components/OnboardingWizard'
 import { UploadDropzone } from '../components/UploadDropzone'
 import { SchoolSelect } from '../components/SchoolSelect'
-import { Tooltip } from '../components/Tooltip'
-import { AccountMenu } from '../components/AccountMenu'
 import { SupportDialog } from '../components/SupportDialog'
-import { AVATAR_OPTIONS } from '../lib/avatars'
+import { AVATAR_OPTIONS, getInitials } from '../lib/avatars'
+import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useExitTransition } from '../hooks/useExitTransition'
 
 import { openOnboardingWizard } from '../lib/onboardingWizardBus'
 
@@ -35,21 +37,106 @@ import { openOnboardingWizard } from '../lib/onboardingWizardBus'
 const CUSTOM_INSTRUCTIONS_MAX = 2000
 
 const TABS = [
-  { id: 'general', label: 'General' },
-  { id: 'preferences', label: 'Preferences' },
-  { id: 'account', label: 'Account & Security' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'billing', label: 'Billing' },
-  { id: 'advanced', label: 'Advanced' },
+  { id: 'general', label: 'General', icon: MessageCircle },
+  { id: 'planning', label: 'Planning', icon: Sparkles },
+  { id: 'preferences', label: 'Preferences', icon: Settings },
+  { id: 'school', label: 'School & Templates', icon: Building2 },
+  { id: 'account', label: 'Account & Security', icon: ShieldCheck },
+  { id: 'integrations', label: 'Integrations', icon: HardDrive },
+  { id: 'billing', label: 'Billing', icon: CreditCard },
+  { id: 'advanced', label: 'Advanced', icon: Sparkles },
 ]
 
-function CoachingProfileSection() {
+function SettingsDisclosure({ title, description, defaultOpen = false, open: controlledOpen, onOpenChange, className = '', children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const isControlled = controlledOpen !== undefined
+  const isOpen = isControlled ? controlledOpen : open
+  const setExpanded = (next) => {
+    if (!isControlled) setOpen(next)
+    onOpenChange?.(next)
+  }
+
+  return (
+    <section className={`border-b border-edge ${className}`}>
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        onClick={() => setExpanded(!isOpen)}
+        className="flex w-full items-center justify-between gap-4 py-3 text-left"
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-ink">{title}</span>
+          {description ? <span className="mt-0.5 block text-xs text-ink-muted">{description}</span> : null}
+        </span>
+        <ChevronDown size={16} aria-hidden="true" className={`shrink-0 text-ink-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      <div className={isOpen ? 'pb-4' : 'hidden'}>{children}</div>
+    </section>
+  )
+}
+
+function SettingsEditDialog({ open, onClose, title, description, children, onSave, saving = false, saveLabel = 'Save changes' }) {
+  const { mounted, closing } = useExitTransition(open, 200)
+  const dialogRef = useRef(null)
+  useFocusTrap(dialogRef, { active: open, trap: true, onEscape: onClose })
+
+  if (!mounted) return null
+
+  return createPortal(
+    <div
+      className={`dialog-scrim dialog-scrim--panel${closing ? ' is-closing' : ''}`}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-edit-dialog-title"
+        className={`dialog max-h-[min(720px,calc(100vh-2rem))] overflow-y-auto${closing ? ' is-closing' : ''}`}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="m-0 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.16em] text-mark">
+              <MessageCircle size={13} aria-hidden="true" /> FlexEd editor
+            </p>
+            <h2 id="settings-edit-dialog-title" className="mt-2">{title}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={`Close ${title}`}
+            className="-mr-2 -mt-2 grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+          >
+            <X size={17} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="mt-3 rounded-xl border border-edge bg-paper-sunken p-3">
+          <p className="m-0 text-sm leading-relaxed text-ink-soft">{description}</p>
+        </div>
+        <div className="mt-4">{children}</div>
+        <div className="dialog-actions mt-5">
+          <button type="button" className="btn" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={onSave} disabled={saving}>
+            {saving ? 'Saving…' : saveLabel}
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+function CoachingProfileSection({ compact = false }) {
   const qc = useQueryClient()
   const toast = useToast()
   const profileQuery = useQuery({ queryKey: ['coaching-profile'], queryFn: () => api.getCoachingProfile() })
   const memoriesQuery = useQuery({ queryKey: ['coaching-memories'], queryFn: () => api.listCoachingMemories() })
   const [fields, setFields] = useState({ teaching_context: '', strengths: '', challenges: '', preferences: '', goals: '' })
   const [saving, setSaving] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
 
   useEffect(() => {
     if (profileQuery.data) {
@@ -63,6 +150,7 @@ function CoachingProfileSection() {
       await api.updateCoachingProfile(fields)
       toast.success('Coaching profile saved')
       qc.invalidateQueries({ queryKey: ['coaching-profile'] })
+      setEditorOpen(false)
     } catch (err) {
       toast.apiError('Could not save your coaching profile', err)
     } finally {
@@ -78,32 +166,73 @@ function CoachingProfileSection() {
     goals: ['Professional goals', 'Longer-term instructional goals you want to keep in view'],
   }
   return (
-    <section className="mb-8">
-      <div className="border-b border-edge pb-2 mb-4">
-        <h3 className="text-sm font-semibold text-ink">Coaching profile</h3>
-        <p className="text-xs text-ink-muted">Give the teacher coach durable context so advice becomes more personal over time. You can edit or clear it anytime.</p>
-      </div>
-      <div className="flex max-w-xl flex-col gap-3">
-        {Object.entries(labels).map(([key, [label, hint]]) => (
-          <label key={key} className="block">
-            <span className="mb-1 block text-xs font-medium text-ink">{label}</span>
-            <span className="mb-1 block text-xs text-ink-muted">{hint}</span>
-            <textarea
-              value={fields[key]}
-              onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))}
-              rows={2}
-              maxLength={2000}
-              className="neo-inset w-full resize-y rounded-lg bg-paper-raised/60 px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
-            />
-          </label>
-        ))}
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-ink-faint">FlexEd learns only teacher-level preferences—not student names, diagnoses, grades, or scores.</p>
-          <button type="button" onClick={save} disabled={saving} className="fa-press flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-on disabled:opacity-50">
-            <Save size={14} aria-hidden="true" /> {saving ? 'Saving…' : 'Save profile'}
-          </button>
+    <section className={compact ? '' : 'mb-8'}>
+      {!compact ? (
+        <div className="border-b border-edge pb-2 mb-4">
+          <h3 className="text-sm font-semibold text-ink">Coaching profile</h3>
+          <p className="text-xs text-ink-muted">Give the teacher coach durable context so advice becomes more personal over time. You can edit or clear it anytime.</p>
         </div>
-      </div>
+      ) : null}
+      {compact ? (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-edge bg-paper-raised/40 p-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-ink">
+                {Object.values(fields).filter(Boolean).length ? `${Object.values(fields).filter(Boolean).length} coaching notes added` : 'No coaching context yet'}
+              </p>
+              <p className="mt-0.5 text-xs text-ink-muted">Add durable context so the teacher coach can give more personal advice.</p>
+            </div>
+            <button type="button" className="btn shrink-0" onClick={() => setEditorOpen(true)}>Edit context</button>
+          </div>
+          <SettingsEditDialog
+            open={editorOpen}
+            onClose={() => setEditorOpen(false)}
+            title="Teacher coach context"
+            description="A little context helps the coach make suggestions that fit your courses, classroom, and goals. Keep it teacher-level—never add student names, diagnoses, grades, or scores."
+            onSave={save}
+            saving={saving}
+            saveLabel="Save context"
+          >
+            <div className="flex flex-col gap-3">
+              {Object.entries(labels).map(([key, [label, hint]]) => (
+                <label key={key} className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink">{label}</span>
+                  <span className="mb-1 block text-xs text-ink-muted">{hint}</span>
+                  <textarea
+                    value={fields[key]}
+                    onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))}
+                    rows={2}
+                    maxLength={2000}
+                    className="neo-inset w-full resize-y rounded-lg bg-paper-raised/60 px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </label>
+              ))}
+            </div>
+          </SettingsEditDialog>
+        </>
+      ) : (
+        <div className="flex max-w-xl flex-col gap-3">
+          {Object.entries(labels).map(([key, [label, hint]]) => (
+            <label key={key} className="block">
+              <span className="mb-1 block text-xs font-medium text-ink">{label}</span>
+              <span className="mb-1 block text-xs text-ink-muted">{hint}</span>
+              <textarea
+                value={fields[key]}
+                onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))}
+                rows={2}
+                maxLength={2000}
+                className="neo-inset w-full resize-y rounded-lg bg-paper-raised/60 px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+              />
+            </label>
+          ))}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-ink-faint">FlexEd learns only teacher-level preferences—not student names, diagnoses, grades, or scores.</p>
+            <button type="button" onClick={save} disabled={saving} className="fa-press flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-on disabled:opacity-50">
+              <Save size={14} aria-hidden="true" /> {saving ? 'Saving…' : 'Save profile'}
+            </button>
+          </div>
+        </div>
+      )}
       {memoriesQuery.data?.items?.length ? (
         <div className="mt-6 max-w-xl rounded-xl border border-edge bg-paper-raised/40 p-3">
           <p className="mb-2 text-xs font-semibold text-ink">Learned from conversations</p>
@@ -140,40 +269,64 @@ function CoachingProfileSection() {
 function DesignSkinSection() {
   const { skin, setSkin } = useDesignSkin()
   const OPTIONS = [
-    { value: 'neo', label: 'Neomorphic', hint: 'Soft embossed shadows, cream & rose' },
+    { value: 'neo', label: 'Neomorphic', hint: 'Soft embossed shadows, lavender & violet' },
     { value: 'skeu', label: 'Skeuomorphic', hint: 'Real shadows, crisp white & slate' },
   ]
   return (
     <div className="mt-5">
-      <h2 className="text-sm font-semibold text-ink">Appearance</h2>
-      <p className="mt-1 text-xs text-ink-muted">
-        How raised surfaces and panels look throughout the app — try both, keep whichever reads
-        better to you.
-      </p>
-      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => setSkin(opt.value)}
-            aria-pressed={skin === opt.value}
-            className={`neo-raised flex flex-col items-start gap-0.5 rounded-xl px-3.5 py-3 text-left transition-colors focus-visible:ring-2 focus-visible:ring-accent outline-none ${
-              skin === opt.value ? 'neo-inset text-accent-text' : 'text-ink-soft'
-            }`}
-          >
-            <span className="text-sm font-medium">{opt.label}</span>
-            <Tooltip content={opt.hint}>
-              <span className="text-2xs text-ink-muted flex items-center gap-1 cursor-help underline decoration-dotted">{opt.hint.split(',')[0]}</span>
-            </Tooltip>
-          </button>
-        ))}
+      <InlineChoice
+        label="Appearance"
+        description="How raised surfaces and panels look throughout the app."
+        value={skin}
+        onChange={setSkin}
+        options={OPTIONS}
+      />
+    </div>
+  )
+}
+
+function InlineChoice({ label, description, value, onChange, options, disabled = false, status = '', className = '' }) {
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-3 ${className}`}>
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+          <span>{label}</span>
+          {status ? (
+            <span className="inline-flex items-center rounded-md bg-paper-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">
+              {status}
+            </span>
+          ) : null}
+        </p>
+        {description ? <p className="mt-0.5 max-w-[46ch] text-xs text-ink-muted">{description}</p> : null}
+      </div>
+      <div className="neo-inset flex w-fit max-w-full shrink-0 items-center gap-0.5 rounded-lg bg-paper-sunken p-0.5" role="group" aria-label={label}>
+        {options.map((option) => {
+          const item = typeof option === 'string'
+            ? { value: option, label: option.charAt(0).toUpperCase() + option.slice(1) }
+            : option
+          const selected = item.value === value
+          return (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => onChange(item.value)}
+              disabled={disabled}
+              aria-pressed={selected}
+              className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50 ${
+                selected ? 'neo-raised bg-paper text-accent-text' : 'text-ink-muted hover:text-ink-soft'
+              }`}
+            >
+              {item.label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
 }
 
 
-function AiGenerationPreferences({ value, outputLength, onSaved }) {
+function AiGenerationPreferences({ value, outputLength, onSaved, compact = false }) {
   const toast = useToast()
   const [saving, setSaving] = useState(false)
 
@@ -191,10 +344,30 @@ function AiGenerationPreferences({ value, outputLength, onSaved }) {
   const legacyLength = getLevel('Response Length', 'Medium')
   const length = String(outputLength || ({ Short: 'short', Medium: 'medium', Long: 'long' }[legacyLength] || 'medium')).toLowerCase()
   const lengthLabel = length.charAt(0).toUpperCase() + length.slice(1)
-  const detail = getLevel('Level of Detail', 'Standard')
-  const examples = getLevel('Specific Examples', 'Some')
-  const differentiation = getLevel('Differentiation', 'None')
+  const detailValue = getLevel('Level of Detail', 'Standard')
+  const detail = {
+    concise: 'Concise',
+    standard: 'Standard',
+    exhaustive: 'Exhaustive',
+  }[String(detailValue).toLowerCase()] || 'Standard'
+  const examplesValue = getLevel('Specific Examples', 'Some')
+  // Keep the UI's middle label ("Medium") compatible with the older saved
+  // value ("Some"), and make the default selected even if an older account
+  // stored the preference in lowercase or with the newer label.
+  const examples = {
+    few: 'Few',
+    some: 'Some',
+    medium: 'Some',
+    many: 'Many',
+  }[String(examplesValue).toLowerCase()] || 'Some'
+  const differentiationValue = getLevel('Differentiation', 'None')
+  const differentiation = {
+    none: 'None',
+    light: 'Light',
+    heavy: 'Heavy',
+  }[String(differentiationValue).toLowerCase()] || 'None'
   const [profileText, setProfileText] = useState(getProfile())
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false)
 
   const handleSelect = async (tag, level, customProfileText = null) => {
     setSaving(true)
@@ -242,6 +415,7 @@ function AiGenerationPreferences({ value, outputLength, onSaved }) {
       if (tag !== 'Classroom Profile') toast.success(`Updated ${tag}`)
       else toast.success('Saved Classroom Profile')
       onSaved?.()
+      if (tag === 'Classroom Profile') setProfileEditorOpen(false)
     } catch (err) {
       toast.apiError('Could not save preference', err)
     } finally {
@@ -250,45 +424,27 @@ function AiGenerationPreferences({ value, outputLength, onSaved }) {
   }
 
   const Slider = ({ title, description, tag, options, currentValue }) => {
-    const currentIndex = options.indexOf(currentValue)
-    const val = currentIndex !== -1 ? currentIndex : Math.floor((options.length - 1) / 2)
     return (
-      <div className="mt-5">
-        <h3 className="text-sm font-semibold text-ink">{title}</h3>
-        <p className="mt-1 text-xs text-ink-muted">{description}</p>
-        <div className="mt-4 max-w-xl">
-          <div className="relative flex neo-inset rounded-xl p-1 bg-paper-sunken items-center">
-            <div 
-              className="absolute top-1 bottom-1 neo-raised bg-paper rounded-lg transition-all duration-300 ease-out pointer-events-none"
-              style={{
-                width: `calc(${100 / options.length}% - 8px)`,
-                left: `calc(${(val * 100) / options.length}% + 4px)`,
-              }}
-            />
-            {options.map((opt, i) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => handleSelect(tag, opt)}
-                disabled={saving}
-                aria-pressed={i === val}
-                className={`relative flex-1 py-2 text-center text-xs font-medium rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-accent outline-none ${
-                  i === val ? 'text-accent-text' : 'text-ink-muted hover:text-ink-soft'
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <InlineChoice
+        label={title}
+        description={description}
+        value={currentValue}
+        onChange={(next) => handleSelect(tag, next)}
+        options={options}
+        disabled={saving}
+        className="border-b border-edge py-3"
+      />
     )
   }
 
   return (
-    <div className="mt-6 border-t border-edge pt-4">
-      <h2 className="text-sm font-semibold text-ink">AI Generation Criteria</h2>
-      <p className="mt-1 text-xs text-ink-muted">Control the length, detail, and tone of the AI's outputs.</p>
+    <div className={compact ? '' : 'mt-6 border-t border-edge pt-4'}>
+      {!compact ? (
+        <>
+          <h2 className="text-sm font-semibold text-ink">AI Generation Criteria</h2>
+          <p className="mt-1 text-xs text-ink-muted">Control the length, detail, and tone of the AI's outputs.</p>
+        </>
+      ) : null}
       
       <Slider 
         title="Response Length" 
@@ -308,7 +464,11 @@ function AiGenerationPreferences({ value, outputLength, onSaved }) {
         title="Specific Examples" 
         description="How often the AI should invent specific, real-world examples."
         tag="Specific Examples"
-        options={['Few', 'Some', 'Many']}
+        options={[
+          { value: 'Few', label: 'Few' },
+          { value: 'Some', label: 'Medium' },
+          { value: 'Many', label: 'Many' },
+        ]}
         currentValue={examples}
       />
       
@@ -317,24 +477,60 @@ function AiGenerationPreferences({ value, outputLength, onSaved }) {
         <p className="mt-1 text-xs text-ink-muted">Tailor the AI's lesson plans to specific student needs in your classroom.</p>
         
         <div className="mt-4">
-          <label className="text-xs font-semibold text-ink">Classroom Profile</label>
-          <textarea
-            value={profileText}
-            onChange={(e) => setProfileText(e.target.value)}
-            rows={2}
-            placeholder="e.g. 3 students with ADHD, 2 ELL students, 1 visually impaired"
-            className="neo-inset mt-1 w-full resize-y rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
-          />
-          <div className="mt-1 flex justify-end">
-             <button
-              type="button"
-              onClick={() => handleSelect('Classroom Profile', null, profileText)}
-              disabled={saving}
-              className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink hover:bg-paper-sunken focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-edge outline-none disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Save Profile
-            </button>
-          </div>
+          {compact ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-edge bg-paper-raised/40 p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-ink">{profileText ? 'Classroom profile added' : 'No classroom profile yet'}</p>
+                  <p className="mt-0.5 truncate text-xs text-ink-muted">
+                    {profileText || 'Add context if you want differentiated plans.'}
+                  </p>
+                </div>
+                <button type="button" className="btn shrink-0" onClick={() => setProfileEditorOpen(true)}>
+                  {profileText ? 'Edit profile' : 'Add profile'}
+                </button>
+              </div>
+              <SettingsEditDialog
+                open={profileEditorOpen}
+                onClose={() => setProfileEditorOpen(false)}
+                title="Classroom profile"
+                description="Add high-level classroom context so FlexEd can suggest useful differentiation. Avoid student names, diagnoses, grades, or scores."
+                onSave={() => handleSelect('Classroom Profile', null, profileText)}
+                saving={saving}
+                saveLabel="Save profile"
+              >
+                <textarea
+                  autoFocus
+                  value={profileText}
+                  onChange={(e) => setProfileText(e.target.value)}
+                  rows={6}
+                  placeholder="e.g. 3 students with ADHD, 2 ELL students, 1 visually impaired"
+                  className="neo-inset w-full resize-y rounded-xl bg-paper-raised/60 px-3 py-3 text-sm leading-relaxed text-ink outline-none focus:ring-1 focus:ring-accent"
+                />
+              </SettingsEditDialog>
+            </>
+          ) : (
+            <>
+              <label className="text-xs font-semibold text-ink">Classroom Profile</label>
+              <textarea
+                value={profileText}
+                onChange={(e) => setProfileText(e.target.value)}
+                rows={2}
+                placeholder="e.g. 3 students with ADHD, 2 ELL students, 1 visually impaired"
+                className="neo-inset mt-1 w-full resize-y rounded-lg bg-paper-raised/60 px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+              />
+              <div className="mt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => handleSelect('Classroom Profile', null, profileText)}
+                  disabled={saving}
+                  className="fa-press neo-raised rounded-lg bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink hover:bg-paper-sunken focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-edge outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Save Profile
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <Slider 
@@ -351,7 +547,7 @@ function AiGenerationPreferences({ value, outputLength, onSaved }) {
 
 
 
-function CustomInstructions({ value, onSaved }) {
+function CustomInstructions({ value, onSaved, compact = false }) {
   const toast = useToast()
   const [text, setText] = useState(value || '')
   const [saved, setSaved] = useState(value || '')
@@ -381,20 +577,24 @@ function CustomInstructions({ value, onSaved }) {
   }
 
   return (
-    <div className="mt-5">
-      <h2 className="text-sm font-semibold text-ink">Custom instructions</h2>
-      <p className="mt-1 text-xs text-ink-muted">
-        Style and format preferences applied to every plan and chat — how you like activities
-        phrased, a tone to avoid, a format quirk your district expects. Standards still come only
-        from retrieval; this can’t add or change a code.
-      </p>
+    <div className={compact ? 'mt-4 max-w-3xl' : 'mt-5'}>
+      {!compact ? (
+        <>
+          <h2 className="text-sm font-semibold text-ink">Custom instructions</h2>
+          <p className="mt-1 text-xs text-ink-muted">
+            Style and format preferences applied to every plan and chat — how you like activities
+            phrased, a tone to avoid, a format quirk your district expects. Standards still come only
+            from retrieval; this can’t add or change a code.
+          </p>
+        </>
+      ) : null}
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         maxLength={CUSTOM_INSTRUCTIONS_MAX}
-        rows={4}
+        rows={compact ? 10 : 4}
         placeholder="e.g. Keep Do Now activities under 5 minutes. Avoid group work on Fridays."
-        className="neo-inset mt-2 w-full resize-y rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+        className="neo-inset mt-2 w-full resize-y rounded-xl bg-paper-raised/60 backdrop-blur-2xl px-3 py-3 text-sm leading-relaxed text-ink outline-none focus:ring-1 focus:ring-accent"
       />
       <div className="mt-1 flex items-center justify-between">
         <span className="text-2xs text-ink-muted">
@@ -426,7 +626,20 @@ function CustomInstructions({ value, onSaved }) {
    Reads from the `schools` table (db.py migration 23) via GET /api/schools,
    the same curated, admin-added list onboarding's own picker uses — not a
    hardcoded dict, so a school added there just appears here too. */
-function TemplateRegistry({ school }) {
+const TEMPLATE_ANALYSIS_META = {
+  analyzed: { label: 'Ready', className: 'bg-ok/10 text-ok' },
+  analyzed_with_warnings: { label: 'Needs review', className: 'bg-amber-500/10 text-amber-700' },
+  failed: { label: 'Needs review', className: 'bg-red-500/10 text-red-700' },
+  analyzing: { label: 'Processing', className: 'bg-sky-500/10 text-sky-700' },
+  pending: { label: 'Processing', className: 'bg-ink-muted/10 text-ink-muted' },
+}
+
+function TemplateAnalysisChip({ status }) {
+  const meta = TEMPLATE_ANALYSIS_META[status] || TEMPLATE_ANALYSIS_META.pending
+  return <span className={`inline-flex rounded-full px-1.5 py-0.5 text-2xs font-medium ${meta.className}`}>{meta.label}</span>
+}
+
+function TemplateRegistry({ school, className = '', embedded = false }) {
   const toast = useToast()
   const qc = useQueryClient()
   const [selectingId, setSelectingId] = useState(null)
@@ -436,6 +649,7 @@ function TemplateRegistry({ school }) {
     enabled: Boolean(school?.id),
   })
   const templates = data?.templates || []
+  const containerClass = embedded ? className : `rounded-2xl border border-edge bg-paper-raised/60 p-4 ${className}`
 
   const selectTemplate = async (template) => {
     setSelectingId(template.id)
@@ -454,26 +668,43 @@ function TemplateRegistry({ school }) {
 
   if (!templates.length) {
     return school.builder_readiness === 'ready' || school.builder_readiness === 'ready_unverified' ? (
-      <div className="mt-3 rounded-lg border border-edge bg-paper-raised p-3">
-        <h3 className="text-xs font-semibold text-ink">Your template library</h3>
-        <div className="mt-2 rounded-md border border-edge/70 bg-paper-sunken px-2.5 py-2">
-          <p className="text-xs font-medium text-ink">{school.name} school format</p>
-          <p className="mt-0.5 text-2xs text-ink-muted">School default · Current format</p>
+      <div className={containerClass}>
+        <h3 className="text-sm font-semibold text-ink">Available formats</h3>
+        <div className="mt-2 flex items-center gap-3 rounded-xl border border-edge/70 bg-paper-sunken p-3">
+          <div className="flex h-11 w-10 shrink-0 flex-col items-center justify-center rounded-lg border border-edge/70 bg-paper text-accent-text">
+            <FileText size={18} aria-hidden="true" />
+            <span className="mt-0.5 text-[8px] font-semibold tracking-wide">DOC</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-ink">{school.name} school format</p>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="rounded-full bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent-text">School default</span>
+              <span className="rounded-full bg-ok/10 px-1.5 py-0.5 text-2xs font-medium text-ok">Ready</span>
+              <span className="text-2xs text-ink-muted">Currently used</span>
+            </div>
+          </div>
         </div>
       </div>
-    ) : null
+    ) : (
+      <div className={containerClass}>
+        <h3 className="text-sm font-semibold text-ink">Available formats</h3>
+        <p className="mt-1 text-xs text-ink-muted">
+          The school format will appear here when processing is complete.
+        </p>
+      </div>
+    )
   }
 
   return (
-    <div className="mt-3 rounded-lg border border-edge bg-paper-raised p-3">
+    <div className={containerClass}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-xs font-semibold text-ink">Your template library</h3>
-          <p className="mt-0.5 text-2xs text-ink-muted">
-            Choose your own format without changing what anyone else at {school.name} uses.
+          <h3 className="text-sm font-semibold text-ink">Available formats</h3>
+          <p className="mt-1 text-xs text-ink-muted">
+            Select the format FlexEd uses for your plans.
           </p>
         </div>
-        <span className="shrink-0 text-2xs text-ink-muted">{templates.length} saved</span>
+        <span className="shrink-0 rounded-full bg-paper-sunken px-2 py-1 text-2xs font-medium text-ink-muted">{templates.length} saved</span>
       </div>
       <ul className="mt-2 space-y-2">
         {templates.map((template) => {
@@ -486,18 +717,31 @@ function TemplateRegistry({ school }) {
               ? 'School default'
               : template.template_scope === 'school_candidate'
                 ? 'School candidate'
-                : 'Personal template'
+                : 'Personal format'
+          const extension = template.filename?.split('.').pop()?.toUpperCase() || 'FILE'
           return (
-            <li key={template.id} className="flex items-center justify-between gap-3 rounded-md border border-edge/70 bg-paper-sunken px-2.5 py-2">
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium text-ink">{template.filename}</p>
-                <p className="mt-0.5 text-2xs text-ink-muted">
-                  {label} · {template.approved_at ? `Approved · ${new Date(template.approved_at).toLocaleDateString()}` : `Added · ${new Date(template.created_at).toLocaleDateString()}`}
-                </p>
+            <li key={template.id} className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${isSelected ? 'border-accent/30 bg-accent/5' : 'border-edge/70 bg-paper-sunken'}`}>
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-10 shrink-0 flex-col items-center justify-center rounded-lg border border-edge/70 bg-paper text-accent-text">
+                  <FileText size={18} aria-hidden="true" />
+                  <span className="mt-0.5 text-[8px] font-semibold tracking-wide">{extension}</span>
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-ink">{template.filename}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <span className={`rounded-full px-1.5 py-0.5 text-2xs font-medium ${isSelected ? 'bg-accent/10 text-accent-text' : isSchoolDefault ? 'bg-paper-raised text-ink-soft' : 'bg-paper-raised text-ink-muted'}`}>
+                      {label}
+                    </span>
+                    <TemplateAnalysisChip status={template.analysis_status} />
+                    <span className="text-2xs text-ink-muted">
+                      {template.approved_at ? `Approved · ${new Date(template.approved_at).toLocaleDateString()}` : `Added · ${new Date(template.created_at).toLocaleDateString()}`}
+                    </span>
+                  </div>
+                </div>
               </div>
               {isSelected ? (
-                <span className="inline-flex shrink-0 items-center gap-1 text-2xs font-medium text-emerald-700">
-                  <CheckCircle2 size={13} aria-hidden="true" /> In use
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-ok/10 px-2 py-1 text-2xs font-medium text-ok">
+                  <CheckCircle2 size={13} aria-hidden="true" /> Currently used
                 </span>
               ) : (
                 <button
@@ -524,6 +768,14 @@ function SchoolPicker({ value, onSaved }) {
   const [saving, setSaving] = useState(false)
   const schools = schoolsState.data || []
   const selected = schools.find((s) => s.id === value) || null
+  const [templateToolsOpen, setTemplateToolsOpen] = useState(false)
+  const [calendarToolsOpen, setCalendarToolsOpen] = useState(false)
+
+  useEffect(() => {
+    setTemplateToolsOpen(false)
+    setCalendarToolsOpen(false)
+    setTemplateUploadStatus('idle')
+  }, [value])
 
   const commit = async (school) => {
     if (!school || school === value) return
@@ -576,16 +828,20 @@ function SchoolPicker({ value, onSaved }) {
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const [templateUrl, setTemplateUrl] = useState('')
   const [blankTemplateAttested, setBlankTemplateAttested] = useState(false)
+  const [templateUploadStatus, setTemplateUploadStatus] = useState('idle')
 
   const submitTemplate = async ({ file, url }) => {
     if ((!file && !url) || !selected) return
+    setTemplateUploadStatus('idle')
     setUploadingTemplate(true)
     try {
       await api.uploadSchoolTemplate(selected.id, { file, sourceUrl: file ? undefined : url, blankTemplateAttested, templateScope: 'personal' })
+      setTemplateUploadStatus('processing')
       toast.success('Personal template submitted', 'It will be available in your template library after analysis.')
       await qc.invalidateQueries({ queryKey: ['school-templates', selected.id] })
       schoolsState.refetch()
     } catch (err) {
+      setTemplateUploadStatus('needs_review')
       toast.apiError('Could not upload the template', err)
     } finally {
       setUploadingTemplate(false)
@@ -597,34 +853,33 @@ function SchoolPicker({ value, onSaved }) {
   const submitTemplateUrl = () => submitTemplate({ url: templateUrl.trim() })
 
   return (
-    <div id="section-school-calendar" className="mt-5 scroll-mt-8">
-      <h2 className="text-sm font-semibold text-ink">School</h2>
-      {/* Was "Sets your school calendar" — true when school lived only on
-          the account (migration 22). Now that a class can pin its own
-          (migration 25), this only decides what a NEW class starts as; an
-          existing one keeps whatever it already has regardless of this
-          setting. Said plainly rather than left to be discovered the first
-          time changing this here doesn't move an existing class's weeks. */}
-      <p className="mt-1 text-xs text-ink-muted">
-        The default calendar for a new class — which weeks are teaching weeks and which days
-        are closed.
-        {schools.length > 1 ? ' Change one class’s own school from its Edit panel below.' : ''}
-      </p>
-      <SchoolSelect
-        ariaLabel="School"
-        schools={schools}
-        value={value || ''}
-        disabled={saving}
-        onChange={commit}
-        className="mt-2 w-full max-w-xs"
-        /* Always available, not gated behind schools.length — see
-           WelcomePage.jsx's own comment on why this id works with no
-           schools table row at all (backend/schoolcal.py's
-           NO_CALENDAR_SCHOOL_ID special-cases it directly, synthesizing
-           dateless weeks instead of reading a calendar file). */
-      />
-      {selected ? (
-        <div className="mt-2 flex items-center gap-2">
+    <div id="section-school-calendar" className="mt-6 max-w-3xl space-y-4 scroll-mt-8">
+      <section className="neo-panel rounded-2xl bg-paper-raised/50 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-paper-sunken text-ink-muted">
+              <Building2 size={17} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-ink">Default school</h2>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <SchoolSelect
+              ariaLabel="School"
+              schools={schools}
+              value={value || ''}
+              disabled={saving}
+              onChange={commit}
+              className="mt-0 w-full max-w-xs sm:w-64"
+              /* Always available, not gated behind schools.length — see
+                 WelcomePage.jsx's own comment on why this id works with no
+                 schools table row at all (backend/schoolcal.py's
+                 NO_CALENDAR_SCHOOL_ID special-cases it directly, synthesizing
+                 dateless weeks instead of reading a calendar file). */
+            />
+            {selected ? (
+              <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Keyed off builder_readiness (docx_build.bulk_builder_readiness),
               not template_status alone — same reasoning as ChatPage.jsx's
               TemplateBanner: template_status can reach 'active' (analysis
@@ -653,43 +908,66 @@ function SchoolPicker({ value, onSaved }) {
               Template Status: Finishing up — downloads unavailable
             </span>
           ) : selected.builder_readiness === 'ready' ? (
-            <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-              Template Status: Active
+            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+              School format ready
             </span>
           ) : null}
+          {selected.has_pending_calendar ? (
+            <span className="inline-flex items-center rounded-full bg-flag-tint px-2.5 py-1 text-xs font-medium text-flag">
+              Calendar pending review
+            </span>
+          ) : selected.has_calendar === false ? (
+            <span className="inline-flex items-center rounded-full bg-mark-tint px-2.5 py-1 text-xs font-medium text-mark">
+              Calendar needed
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded-full bg-ok/10 px-2.5 py-1 text-xs font-medium text-ok">
+              Calendar ready
+            </span>
+          )}
+              </div>
+            ) : null}
+          </div>
         </div>
-      ) : null}
-      {/* Always rendered once a school is selected — see the comment above
-          `templateFileRef`. Copy and button label switch on whether
-          something's already on file; the upload itself is the same either
-          way. */}
+      </section>
+
       {selected ? (
-        <div className="mt-2 max-w-sm rounded-lg border border-edge bg-paper-sunken p-3">
-          <p className="text-xs text-ink-soft">
-            {selected.template_status === 'active'
-              ? `${selected.name}'s school format is available. Add a personal format below if you prefer a different version.`
-              : selected.builder_readiness === 'in_progress'
-                ? `We're drafting an AI version of ${selected.name}'s format right now — usually just a few minutes. No need to upload again.`
-                : selected.builder_readiness === 'ready_unverified'
-                  ? `${selected.name}'s AI-drafted format is already in use while we finish reviewing it — upload a corrected one below if something looks off.`
-                  : selected.builder_readiness === 'pending' || selected.builder_readiness === 'blocked'
-                    ? `${selected.name}'s own lesson-plan format is still being learned — you can also add a personal version below.`
-                    : `Add a personal lesson-plan format and choose it from your template library after the AI finishes analyzing it.`}
-          </p>
-          <UploadDropzone
-            uploading={uploadingTemplate}
-            label="Add Personal Template"
-            onFile={uploadTemplate}
-            url={templateUrl}
-            onUrlChange={setTemplateUrl}
-            onUrlSubmit={submitTemplateUrl}
-            templateUpload
-            blankTemplateAttested={blankTemplateAttested}
-            onBlankTemplateAttestedChange={setBlankTemplateAttested}
-          />
-        </div>
-      ) : null}
-      {selected ? <TemplateRegistry school={selected} /> : null}
+        <div className="grid gap-4">
+          <div className="space-y-4">
+            <section className="neo-panel rounded-2xl bg-paper-raised/50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-paper-sunken text-ink-muted">
+                  <FileText size={15} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold text-ink">Personal formats</h3>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Choose the format used for your plans, or add a blank format of your own.
+                  </p>
+                </div>
+                </div>
+                <button type="button" className="btn shrink-0" onClick={() => setTemplateToolsOpen((open) => !open)}>
+                  {templateToolsOpen ? 'Close' : 'Add format'}
+                </button>
+              </div>
+              {templateToolsOpen ? (
+                <UploadDropzone
+                  uploading={uploadingTemplate}
+                  uploadStatus={templateUploadStatus}
+                  label="Upload file"
+                  onFile={uploadTemplate}
+                  url={templateUrl}
+                  onUrlChange={setTemplateUrl}
+                  onUrlSubmit={submitTemplateUrl}
+                  templateUpload
+                  blankTemplateAttested={blankTemplateAttested}
+                  onBlankTemplateAttestedChange={setBlankTemplateAttested}
+                />
+              ) : null}
+              <TemplateRegistry school={selected} className="mt-4 border-t border-edge pt-4" embedded />
+            </section>
+
       {/* A school's row and its calendar are added in different places on
           purpose (see GET /api/schools) — so one can exist with no year
           behind it, and choosing it silently empties the week board, the
@@ -704,11 +982,19 @@ function SchoolPicker({ value, onSaved }) {
            for this class builds worse until one is added), which is what
            --mark-tint/--mark already exist to carry as a status colour, not
            just a flag on prose. */
-        <div className="mt-2 max-w-sm rounded-lg border border-mark/20 bg-mark-tint p-3">
-          <p className="text-xs text-mark">
+        <section className="neo-panel rounded-2xl border-mark/20 bg-mark-tint p-4">
+          <div className="flex items-start gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-paper/50 text-mark">
+              <span className="text-sm font-semibold">!</span>
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-mark">Calendar needed</h3>
+              <p className="mt-1 text-xs text-mark">
             No calendar is on file for {selected.name} yet, so weeks can’t be scheduled — plans
             will build without a week or a closure to work from until one is added.
-          </p>
+              </p>
+            </div>
+          </div>
           <UploadDropzone
             uploading={uploading}
             label="Upload Calendar"
@@ -717,28 +1003,45 @@ function SchoolPicker({ value, onSaved }) {
             onUrlChange={setCalendarUrl}
             onUrlSubmit={submitCalendarUrl}
           />
-        </div>
+        </section>
       ) : selected ? (
         /* Confirmed and on file — previously the calendar section rendered
            nothing at all here, so once a school's first calendar was
            confirmed there was no page left in the app that could take a
            correction (a new school year, a snow day added after the fact)
            short of the onboarding tour. */
-        <div className="mt-2 max-w-sm">
-          <h3 className="text-sm font-medium text-ink mb-2">School Calendar</h3>
-          <ConfirmedCalendarReview schoolId={selected.id} />
-          <div className="mt-3 rounded-lg border border-edge bg-paper-sunken p-3">
-            <p className="text-xs text-ink-soft">
-              Starting a new school year, or need to fix a date? Upload a new calendar to replace this one.
-            </p>
-            <UploadDropzone
-              uploading={uploading}
-              label="Replace Calendar"
-              onFile={uploadCalendar}
-              url={calendarUrl}
-              onUrlChange={setCalendarUrl}
-              onUrlSubmit={submitCalendarUrl}
-            />
+        <section className="neo-panel rounded-2xl bg-paper-raised/50 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-paper-sunken text-ink-muted">
+              <Building2 size={15} aria-hidden="true" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-ink">School calendar</h3>
+            </div>
+            </div>
+            <button type="button" className="btn shrink-0" onClick={() => setCalendarToolsOpen((open) => !open)}>
+              {calendarToolsOpen ? 'Hide upload' : 'Replace calendar'}
+            </button>
+          </div>
+          <ConfirmedCalendarReview schoolId={selected.id} compact />
+          {calendarToolsOpen ? (
+            <div className="mt-3 rounded-xl border border-edge bg-paper-sunken p-3">
+              <p className="text-xs text-ink-soft">
+                Starting a new school year, or need to fix a date? Upload a new calendar to replace this one.
+              </p>
+              <UploadDropzone
+                uploading={uploading}
+                label="Replace Calendar"
+                onFile={uploadCalendar}
+                url={calendarUrl}
+                onUrlChange={setCalendarUrl}
+                onUrlSubmit={submitCalendarUrl}
+              />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
           </div>
         </div>
       ) : null}
@@ -836,7 +1139,7 @@ function ChangePassword() {
 
 function formatRenewal(iso) {
   try {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   } catch {
     return null
   }
@@ -845,8 +1148,7 @@ function formatRenewal(iso) {
 /* Subscription state and usage. Hidden entirely while billing is unconfigured,
  * same reasoning as AccountMenu's own version. */
 function BillingSection() {
-  const { entitlement, billingEnabled, openPaywall, manage, cancelSubscription, busy } = useBilling()
-  const confirm = useConfirm()
+  const { entitlement, billingEnabled, priceLabel, openPaywall, manage, busy } = useBilling()
 
   if (!billingEnabled || !entitlement) return null
 
@@ -855,48 +1157,168 @@ function BillingSection() {
   // settings page has to carry. The teacher's OWN usage now also shows in
   // the account menu popover (AccountMenu.jsx) — this section stays about
   // subscription status/renewal, not a second usage bar right below it.
+  const trialExpired = !!entitlement.trial_expired
   const periodEnd = entitlement.subscribed && entitlement.period_end ? formatRenewal(entitlement.period_end) : null
   const cancellationScheduled = entitlement.subscribed && entitlement.cancel_at_period_end
+  const paymentNeedsAttention = entitlement.subscribed && ['past_due', 'unpaid', 'incomplete'].includes(entitlement.status)
+  const statusLabel = cancellationScheduled
+    ? 'Cancels at period end'
+    : paymentNeedsAttention
+      ? 'Payment needs attention'
+      : entitlement.subscribed
+        ? 'Active subscription'
+        : trialExpired
+          ? 'Trial ended'
+          : 'Free plan'
+  const statusClassName = cancellationScheduled || trialExpired
+    ? 'bg-amber-500/10 text-amber-700'
+    : paymentNeedsAttention
+      ? 'bg-red-500/10 text-red-700'
+      : entitlement.subscribed
+        ? 'bg-ok/10 text-ok'
+        : 'bg-paper-sunken text-ink-soft'
 
-  const unsubscribe = async () => {
-    const ok = await confirm({
-      title: 'Unsubscribe from FlexEd Academy?',
-      body: `Your Stripe subscription will stop renewing at the end of the current billing period${periodEnd ? ` (${periodEnd})` : ''}. You’ll keep access until then.`,
-      confirmLabel: 'Unsubscribe',
-      tone: 'danger',
-    })
-    if (!ok) return
-    await cancelSubscription()
+  if (!entitlement.subscribed) {
+    return (
+      <div className="billing-free-card neo-panel max-w-3xl overflow-hidden rounded-3xl bg-paper-raised/70 backdrop-blur-2xl">
+        <div className="billing-free-main">
+          <div className="billing-free-art" aria-hidden="true">
+            <img src="/icon-512.png" alt="" />
+          </div>
+          <div className="billing-free-summary">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="billing-free-kicker">FlexEd Academy</p>
+              <span className={`rounded-full px-2.5 py-1 text-2xs font-semibold ${statusClassName}`}>{statusLabel}</span>
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink">Build more with FlexEd</h2>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-muted">
+              {trialExpired
+                ? 'Your free access has ended. Keep your school context, standards, and plans in one place.'
+                : 'Keep your school context and standards grounded while you build more lesson plans each week.'}
+            </p>
+            <div className="billing-free-price" aria-label={`FlexEd subscription ${priceLabel || 'monthly price'}`}>
+              <strong>{priceLabel || 'Loading price…'}</strong>
+              <span>Cancel anytime</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="billing-free-benefits">
+          <div>
+            <p className="billing-free-benefit-title">More room to build</p>
+            <p>Higher weekly usage limits for plans, activities, and ideas.</p>
+          </div>
+          <div>
+            <p className="billing-free-benefit-title">Nothing gets lost</p>
+            <p>Everything you’ve already made stays yours.</p>
+          </div>
+        </div>
+
+        <div className="billing-free-action">
+          <div className="billing-free-action-copy">
+            <p className="billing-free-benefit-title">Ready when you are</p>
+            <p>Start a secure monthly checkout and keep your plans moving.</p>
+          </div>
+          <button
+            type="button"
+            onClick={openPaywall}
+            disabled={busy}
+            className="fa-press btn btn-primary billing-free-cta"
+          >
+            <Sparkles size={15} aria-hidden="true" />
+            {busy ? 'Opening…' : 'Subscribe'}
+          </button>
+          <p className="billing-free-secure">
+            <ShieldCheck size={13} className="text-ok" aria-hidden="true" />
+            Secure checkout handled by Stripe
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="neo-panel flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper-raised/60 backdrop-blur-2xl p-3">
-      <div>
-        <p className="text-sm font-medium text-ink">
-          {entitlement.subscribed ? 'Subscribed' : 'Free'}
+    <div className="neo-panel max-w-4xl overflow-hidden rounded-3xl bg-paper-raised/60 backdrop-blur-2xl">
+      <div className="bg-gradient-to-b from-accent/15 via-accent/5 to-transparent px-6 pb-7 pt-6">
+        <div className="flex items-center justify-between gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-accent/10 text-accent-text">
+            {entitlement.subscribed ? <CreditCard size={18} aria-hidden="true" /> : <Sparkles size={18} aria-hidden="true" />}
+          </span>
+          <span className={`rounded-full px-2.5 py-1 text-2xs font-semibold ${statusClassName}`}>{statusLabel}</span>
+        </div>
+        <p className="mt-5 text-2xs font-semibold uppercase tracking-[0.16em] text-ink-muted">Your FlexEd plan</p>
+        <p className="mt-1 text-2xl font-semibold tracking-tight text-ink">
+          {entitlement.subscribed ? 'Subscription active' : trialExpired ? 'Trial ended' : 'Free plan'}
         </p>
-        {periodEnd ? <p className="text-xs text-ink-muted">{cancellationScheduled ? 'Ends' : 'Renews'} {periodEnd}</p> : null}
+        {priceLabel ? <p className="mt-1 text-sm font-medium text-ink-soft">{priceLabel}</p> : null}
+        <p className="mt-2 max-w-md text-xs leading-relaxed text-ink-muted">
+          {entitlement.subscribed
+            ? cancellationScheduled
+              ? `You can keep building through ${periodEnd || 'the end of this billing period'}.`
+              : paymentNeedsAttention
+                ? 'Update your payment method to keep your higher usage limit active.'
+                : 'Your higher usage limit and grounded planning tools are active.'
+            : trialExpired
+              ? 'Subscribe to keep building lesson plans after your free trial.'
+              : 'Subscribe whenever you want a higher weekly usage limit.'}
+        </p>
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-2">
+
+      <div className="mx-6 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-edge/70 bg-paper-sunken px-4 py-4">
+          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Plan</p>
+          <p className="mt-1 text-xs font-semibold text-ink">{entitlement.subscribed ? 'FlexEd subscription' : 'Free plan'}</p>
+          <p className="mt-1 text-2xs text-ink-muted">{entitlement.subscribed ? 'Higher weekly limit' : 'Free weekly limit'}</p>
+        </div>
+        <div className="rounded-2xl border border-edge/70 bg-paper-sunken px-4 py-4">
+          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-ink-muted">{cancellationScheduled ? 'Access until' : entitlement.subscribed ? 'Renews' : 'Price'}</p>
+          <p className="mt-1 text-xs font-semibold text-ink">
+            {cancellationScheduled ? periodEnd || 'End of billing period' : entitlement.subscribed ? periodEnd || 'Managed by Stripe' : priceLabel || 'Loading price…'}
+          </p>
+          <p className="mt-1 text-2xs text-ink-muted">{cancellationScheduled ? 'No further charges' : entitlement.subscribed ? 'Automatic monthly renewal' : 'Cancel anytime'}</p>
+        </div>
+        <div className="rounded-2xl border border-edge/70 bg-paper-sunken px-4 py-4">
+          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Payment</p>
+          <p className="mt-1 text-xs font-semibold text-ink">{entitlement.subscribed ? 'Managed by Stripe' : 'Not set up'}</p>
+          <p className="mt-1 text-2xs text-ink-muted">Secure payment details</p>
+        </div>
+      </div>
+
+      <div className="px-6 pb-6 pt-5">
+        {entitlement.subscribed ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-edge/70 bg-paper-sunken px-4 py-4">
+            <div>
+              <p className="text-xs font-semibold text-ink">Payment method & receipts</p>
+              <p className="mt-1 text-2xs text-ink-muted">Update payment details or view receipts securely in Stripe.</p>
+            </div>
+            <button
+              type="button"
+              onClick={manage}
+              disabled={busy}
+              className="neo-raised inline-flex shrink-0 items-center rounded-lg px-3 py-2 text-xs font-semibold text-ink transition-colors hover:bg-paper-raised disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Open Stripe
+            </button>
+          </div>
+        ) : null}
+        {cancellationScheduled ? (
+          <div className="mb-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-xs text-amber-800">
+            Your subscription is set to end on <strong>{periodEnd || 'the end of this billing period'}</strong>. You will not be charged again.
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={entitlement.subscribed ? manage : openPaywall}
           disabled={busy}
-          className="fa-press neo-raised inline-flex items-center gap-1.5 rounded-lg bg-paper-raised px-3 py-2 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
+          className={`fa-press flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${entitlement.subscribed ? 'btn' : 'btn btn-primary'}`}
         >
           {entitlement.subscribed ? <CreditCard size={14} aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
-          {busy ? 'Opening…' : entitlement.subscribed ? 'Manage subscription' : 'Subscribe'}
+          {busy ? 'Opening…' : entitlement.subscribed ? paymentNeedsAttention ? 'Update payment' : 'Manage subscription' : 'Subscribe'}
         </button>
-        {entitlement.subscribed && !cancellationScheduled ? (
-          <button
-            type="button"
-            onClick={unsubscribe}
-            disabled={busy}
-            className="neo-raised rounded-lg px-3 py-2 text-sm font-medium text-mark transition-colors hover:bg-mark-tint disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Unsubscribe
-          </button>
-        ) : null}
+        <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-2xs text-ink-muted">
+          <ShieldCheck size={13} className="text-ok" aria-hidden="true" />
+          Securely handled by Stripe
+        </p>
       </div>
     </div>
   )
@@ -1173,19 +1595,28 @@ function Diagnostics() {
   )
 }
 
-function Toggle({ checked, onChange, label, description }) {
+function Toggle({ checked, onChange, label, description, disabled = false, status = '' }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
       <div>
-        <p className="text-sm font-medium text-ink">{label}</p>
+        <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+          <span>{label}</span>
+          {status ? (
+            <span className="inline-flex items-center rounded-md bg-paper-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">
+              {status}
+            </span>
+          ) : null}
+        </p>
         {description && <p className="text-xs text-ink-muted">{description}</p>}
       </div>
       <button
         type="button"
         role="switch"
+        aria-label={label}
         aria-checked={checked}
+        disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 ${
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
           checked ? 'bg-accent' : 'bg-edge-strong'
         }`}
       >
@@ -1267,7 +1698,7 @@ function AvatarSelect() {
 
   /* No `saving` guard and no disabled state: the update is optimistic, so
      there is no window where a click could land on stale data, and freezing
-     all twelve buttons on every pick was most of what made this feel slow.
+     every picker button on every pick was most of what made this feel slow.
      No success toast either — the ring moving IS the confirmation. */
   const handleSelect = (avatarId) => {
     if (user?.avatar === avatarId) return
@@ -1284,12 +1715,12 @@ function AvatarSelect() {
         <button
           type="button"
           onClick={() => handleSelect(null)}
-          className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${!user?.avatar ? 'border-[var(--accent)] shadow-md' : 'border-transparent bg-paper-inset text-ink-muted hover:bg-paper-sunken'}`}
+          className={`flex h-12 w-12 items-center justify-center rounded-full border-2 text-xs font-bold tracking-wide transition-all hover:scale-110 active:scale-95 ${!user?.avatar ? 'border-[var(--accent)] bg-accent/15 text-accent-text shadow-md' : 'border-transparent bg-paper-inset text-ink-muted hover:bg-paper-sunken'}`}
           aria-pressed={!user?.avatar}
-          aria-label="Default avatar"
-          title="Default"
+          aria-label="Your initials"
+          title="Your initials"
         >
-          <User size={20} />
+          {getInitials(user?.name)}
         </button>
         {AVATAR_OPTIONS.map((opt) => (
           <button
@@ -1315,25 +1746,26 @@ export function SettingsPage() {
   const qc = useQueryClient()
   const toast = useToast()
   const navigate = useNavigate()
-  const { classId } = useParams()
-  const classPath = classId ? `/c/${classId}` : ''
   const meState = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
 
   const [teacher, setTeacher] = useState('')
   const [savedName, setSavedName] = useState('')
-  const [activeTab, setActiveTab] = useState('general')
+  const [openPlanningGroup, setOpenPlanningGroup] = useState(null)
+  const [activeTab, setActiveTab] = useState(() => {
+    const hashTab = window.location.hash.replace('#section-', '')
+    return TABS.some((tab) => tab.id === hashTab) ? hashTab : 'general'
+  })
 
-  // Placeholder states
+  // Local plan-default state remains intentionally separate from the persisted
+  // AI-generation preferences above; interface preferences are shared through
+  // useInterfacePreferences so their controls affect the rendered app.
   const [outputFormat, setOutputFormat] = useState('narrative')
   const [aiTone, setAiTone] = useState('encouraging')
-  const [autoSave, setAutoSave] = useState(true)
   const [classifyPlan, setClassifyPlan] = useState(false)
   const { mode, setMode } = useTheme()
-  const [fontSize, setFontSize] = useState('normal')
-  const [highContrast, setHighContrast] = useState(false)
+  const { fontSize, setFontSize, highContrast, setHighContrast, autoSave, setAutoSave } = useInterfacePreferences()
   const [supportOpen, setSupportOpen] = useState(false)
-
-  const scrollContainerRef = useRef(null)
+  const [nameEditing, setNameEditing] = useState(false)
 
   useEffect(() => {
     const n = meState.data?.name || ''
@@ -1352,15 +1784,20 @@ export function SettingsPage() {
      the old invalidate left the rail showing the previous name. */
   const commitTeacher = async () => {
     const next = teacher.trim()
-    if (!next || next === savedName) return setTeacher(savedName)
+    if (!next || next === savedName) {
+      setTeacher(savedName)
+      return true
+    }
     try {
       await api.updateMe({ name: next })
       setSavedName(next)
       toast.success('Saved')
       qc.setQueryData(qk.me, (u) => (u ? { ...u, name: next } : u))
+      return true
     } catch (err) {
       toast.apiError('Could not save your name', err)
       setTeacher(savedName)
+      return false
     }
   }
 
@@ -1382,52 +1819,29 @@ export function SettingsPage() {
     }
   }
 
-  // Intersection Observer for scroll spy
+  // Settings is a focused view rather than one long scroll. Preserve the
+  // section hash so links from the rest of the app still open the right tab.
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Find the most visible section
-        let maxRatio = 0
-        let visibleId = null
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
-            maxRatio = entry.intersectionRatio
-            visibleId = entry.target.id
-          }
-        })
-        if (visibleId) {
-          setActiveTab(visibleId.replace('section-', ''))
-        }
-      },
-      {
-        root: scrollContainerRef.current,
-        threshold: [0.1, 0.5, 0.9],
-        rootMargin: '-10% 0px -40% 0px',
-      }
-    )
-
-    TABS.forEach((tab) => {
-      const el = document.getElementById(`section-${tab.id}`)
-      if (el) observer.observe(el)
-    })
-
-    return () => observer.disconnect()
+    const syncHashTab = () => {
+      const hashTab = window.location.hash.replace('#section-', '')
+      if (TABS.some((tab) => tab.id === hashTab)) setActiveTab(hashTab)
+    }
+    syncHashTab()
+    window.addEventListener('hashchange', syncHashTab)
+    return () => window.removeEventListener('hashchange', syncHashTab)
   }, [])
 
   const scrollToSection = (id) => {
     setActiveTab(id)
-    const el = document.getElementById(`section-${id}`)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' })
-    }
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#section-${id}`)
   }
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
       
       {/* Left Sidebar (Master) */}
-      <div className="hidden md:flex w-64 shrink-0 flex-col border-r border-edge bg-paper-sunken">
-        <header className="flex h-14 shrink-0 items-center gap-2 px-4">
+      <div className="hidden w-52 shrink-0 flex-col border-r border-edge bg-paper-sunken md:flex">
+        <header className="flex h-12 shrink-0 items-center gap-2 px-3">
           <button
             onClick={() => navigate(-1)}
             aria-label="Back"
@@ -1441,203 +1855,244 @@ export function SettingsPage() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto py-2">
-          <nav className="flex flex-col px-2 gap-0.5">
+        <div className="flex-1 overflow-y-auto py-3">
+          <nav className="flex flex-col gap-0.5 px-2" aria-label="Settings sections">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => scrollToSection(tab.id)}
-                className={`flex items-center justify-between min-h-touch rounded-lg px-2 text-sm transition-colors ${
+                className={`flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm transition-colors ${
                   activeTab === tab.id
                     ? 'bg-paper shadow-sm ring-1 ring-black/5 font-medium text-ink'
                     : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
                 }`}
               >
+                <tab.icon size={15} aria-hidden="true" className="shrink-0 text-ink-muted" />
                 <span className="truncate">{tab.label}</span>
               </button>
             ))}
           </nav>
         </div>
-        <div className="shrink-0 border-t border-edge">
-          {/* Every plan this class has ever built, placed at the bottom near account settings. */}
-          <NavLink
-            to={`${classPath}/plans`}
-            className={({ isActive }) =>
-              `flex min-h-touch items-center gap-2.5 px-4 text-sm transition-colors ${
-                isActive ? 'text-ink' : 'text-ink-soft hover:text-ink'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <FileText
-                  size={15}
-                  aria-hidden="true"
-                  style={isActive ? { color: 'rgb(var(--rail-pop-rgb))' } : undefined}
-                />
-                Library
-              </>
-            )}
-          </NavLink>
-          <AccountMenu classPath={classPath} />
-        </div>
       </div>
 
       {/* Right Content Area (Detail) */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex md:hidden h-14 shrink-0 items-center border-b border-edge bg-paper px-4 z-10 gap-3">
+        <header className="flex h-12 shrink-0 items-center border-b border-edge bg-paper px-4 z-10 gap-3 md:hidden">
           <Link to="/" className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"><ArrowLeft size={16}/></Link>
-          <div className="text-sm font-semibold text-ink truncate">{TABS.find(t => t.id === activeTab)?.label}</div>
-        </header>
-        <header className="hidden md:flex h-14 shrink-0 items-center border-b border-edge bg-paper px-8 z-10">
-          <div className="text-sm font-medium text-ink-muted">
-            {TABS.find(t => t.id === activeTab)?.label}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Settings size={15} aria-hidden="true" className="text-ink-muted" />
+            <div className="text-sm font-semibold text-ink truncate">Settings</div>
           </div>
         </header>
-
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 py-8 scroll-smooth">
-          <div className="w-full max-w-3xl flex flex-col gap-16 pb-32">
+        <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-edge bg-paper px-3 md:hidden" aria-label="Settings sections">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => scrollToSection(tab.id)}
+              className={`min-h-10 shrink-0 border-b-2 px-2 text-xs font-medium transition-colors ${
+                activeTab === tab.id ? 'border-accent text-ink' : 'border-transparent text-ink-muted'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8 md:py-6">
+          <div className={`w-full pb-16 ${activeTab === 'billing' ? 'max-w-5xl' : 'max-w-3xl'}`}>
             
             {/* General Section */}
-            <div id="section-general" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">General</h2>
-              
-              <section className="mb-8">
+            <div id="section-general" className={activeTab === 'general' ? '' : 'hidden'}>
+              <div className="max-w-3xl">
+                <div className="border-b border-edge py-3">
+                  <div className="flex flex-wrap items-center gap-4">
+                    {!nameEditing ? (
+                      <button
+                        type="button"
+                        className="group flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-paper-inset"
+                        onClick={() => {
+                          setTeacher(savedName)
+                          setNameEditing(true)
+                        }}
+                        aria-label="Edit display name"
+                        title="Edit display name"
+                      >
+                        <span className="truncate text-sm font-semibold text-ink">{savedName || 'Add your name'}</span>
+                        <PencilLine size={14} aria-hidden="true" className="shrink-0 text-ink-muted transition-colors group-hover:text-accent-text" />
+                      </button>
+                    ) : (
+                      <form
+                        className="flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:flex-initial"
+                        onSubmit={async (event) => {
+                          event.preventDefault()
+                          if (await commitTeacher()) setNameEditing(false)
+                        }}
+                      >
+                        <label htmlFor="teacher" className="sr-only">Your name</label>
+                        <input
+                          id="teacher"
+                          autoFocus
+                          value={teacher}
+                          onChange={(e) => setTeacher(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                              setTeacher(savedName)
+                              setNameEditing(false)
+                            }
+                          }}
+                          placeholder="Mr. Cole"
+                          className="neo-inset min-w-0 flex-1 rounded-lg bg-paper-raised/60 px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent sm:w-52 sm:flex-none"
+                        />
+                        <button type="submit" className="btn-icon text-ok" aria-label="Save display name" title="Save display name">
+                          <CheckCircle2 size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-icon text-ink-muted"
+                          aria-label="Cancel editing display name"
+                          title="Cancel"
+                          onClick={() => {
+                            setTeacher(savedName)
+                            setNameEditing(false)
+                          }}
+                        >
+                          <X size={16} aria-hidden="true" />
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 max-w-3xl">
+                <div className="mb-3 border-b border-edge pb-2">
+                  <h3 className="text-sm font-semibold text-ink">Custom instructions</h3>
+                  <p className="mt-0.5 text-xs text-ink-muted">Global defaults for your account and every course.</p>
+                </div>
                 <CustomInstructions
                   value={meState.data?.custom_instructions}
                   onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                  compact
                 />
-                <AiGenerationPreferences
-                  value={meState.data?.custom_instructions}
-                  outputLength={meState.data?.output_length}
-                  onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
-                />
-              </section>
+              </div>
 
-              <CoachingProfileSection />
+              <div className="mt-8 max-w-3xl">
+                <AvatarSelect />
+              </div>
+            </div>
 
-              <section className="mb-8">
-                <div className="border-b border-edge pb-2 mb-4">
-                  <h3 className="text-sm font-semibold text-ink">Profile</h3>
-                  <p className="text-xs text-ink-muted">How you are addressed in the app and on your plans.</p>
-                </div>
-                <div className="max-w-md">
-                  <label htmlFor="teacher" className="mb-1 block text-xs text-ink-muted">
-                    Your Name
-                  </label>
-                  <input
-                    id="teacher"
-                    value={teacher}
-                    onChange={(e) => setTeacher(e.target.value)}
-                    onBlur={commitTeacher}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur()
-                      if (e.key === 'Escape') setTeacher(savedName)
-                    }}
-                    placeholder="Mr. Cole"
-                    className="neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl px-3 py-2 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+            {/* Planning Section */}
+            <div id="section-planning" className={activeTab === 'planning' ? '' : 'hidden'}>
+              <div>
+                <section className="border-b border-edge pb-4">
+                  <div className="py-3">
+                    <p className="text-sm font-semibold text-ink">AI behavior</p>
+                    <p className="mt-0.5 text-xs text-ink-muted">Shape how FlexEd generates and adapts your plans.</p>
+                  </div>
+                  <AiGenerationPreferences
+                    value={meState.data?.custom_instructions}
+                    outputLength={meState.data?.output_length}
+                    onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+                    compact
                   />
-                </div>
-              </section>
-              
-              <AvatarSelect />
-              
-              <section className="mb-8">
-                <SchoolPicker
-                  value={meState.data?.school}
-                  onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
-                />
-              </section>
-
-              <section>
-                <div className="border-b border-edge pb-2 mb-4">
-                  <h3 className="text-sm font-semibold text-ink">AI Defaults</h3>
-                  <p className="text-xs text-ink-muted">Default behaviors for plan generation.</p>
-                </div>
-                
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl mb-6">
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-ink-muted">Default Output Format</span>
-                    <select
+                </section>
+                <SettingsDisclosure
+                  title="Teacher coach"
+                  description="Give coaching more durable context about your teaching."
+                  open={openPlanningGroup === 'coach'}
+                  onOpenChange={(next) => setOpenPlanningGroup(next ? 'coach' : null)}
+                >
+                  <CoachingProfileSection compact />
+                </SettingsDisclosure>
+                <SettingsDisclosure
+                  title="Plan defaults"
+                  description="Default format, tone, and automatic draft behavior."
+                  open={openPlanningGroup === 'defaults'}
+                  onOpenChange={(next) => setOpenPlanningGroup(next ? 'defaults' : null)}
+                >
+                  <div className="border-b border-edge pb-2 mb-4">
+                    <h3 className="text-sm font-semibold text-ink">AI Defaults</h3>
+                    <p className="text-xs text-ink-muted">Default behaviors for plan generation.</p>
+                  </div>
+                  <div className="max-w-2xl divide-y divide-edge border-b border-edge">
+                    <InlineChoice
+                      label="Default output"
+                      description="The format used when a plan does not specify one."
                       value={outputFormat}
-                      onChange={(e) => setOutputFormat(e.target.value)}
-                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl py-2.5 pl-2.5 pr-8 text-sm text-ink"
-                    >
-                      <option value="narrative">Narrative Text</option>
-                      <option value="bullets">Bulleted Lists</option>
-                      <option value="tables">Tables</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-ink-muted">AI Tone / Voice</span>
-                    <select
+                      onChange={setOutputFormat}
+                      disabled
+                      status="Coming soon"
+                      options={[
+                        { value: 'narrative', label: 'Narrative' },
+                        { value: 'bullets', label: 'Bullets' },
+                        { value: 'tables', label: 'Tables' },
+                      ]}
+                      className="py-3"
+                    />
+                    <InlineChoice
+                      label="AI tone"
+                      description="The default voice for generated plans and activities."
                       value={aiTone}
-                      onChange={(e) => setAiTone(e.target.value)}
-                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl py-2.5 pl-2.5 pr-8 text-sm text-ink"
-                    >
-                      <option value="formal">Formal</option>
-                      <option value="encouraging">Encouraging</option>
-                      <option value="direct">Direct</option>
-                    </select>
-                  </label>
-                </div>
-
-                <div className="max-w-xl border border-edge rounded-xl p-4">
-                  <Toggle 
-                    label="Auto-Save Drafts" 
-                    description="Automatically save changes to your plans while editing."
-                    checked={autoSave}
-                    onChange={setAutoSave}
-                  />
-                  <div className="h-px w-full bg-edge my-2" />
-                  <Toggle 
-                    label="Classify Plan Status" 
-                    description="Allow the AI to automatically label plans as Draft, Review, or Final."
-                    checked={classifyPlan}
-                    onChange={setClassifyPlan}
-                  />
-                </div>
-              </section>
+                      onChange={setAiTone}
+                      disabled
+                      status="Coming soon"
+                      options={['formal', 'encouraging', 'direct']}
+                      className="py-3"
+                    />
+                  </div>
+                  <div className="max-w-xl border border-edge rounded-xl p-4">
+                    <Toggle
+                      label="Auto-Save Drafts"
+                      description="Automatically save changes to your plans while editing."
+                      checked={autoSave}
+                      onChange={setAutoSave}
+                    />
+                    <div className="h-px w-full bg-edge my-2" />
+                    <Toggle
+                      label="Classify Plan Status"
+                      description="Allow the AI to automatically label plans as Draft, Review, or Final."
+                      checked={classifyPlan}
+                      onChange={setClassifyPlan}
+                      disabled
+                      status="Coming soon"
+                    />
+                  </div>
+                </SettingsDisclosure>
+              </div>
             </div>
 
             {/* Preferences Section */}
-            <div id="section-preferences" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Preferences</h2>
-              
-              <section className="mb-8">
+            <div id="section-preferences" className={activeTab === 'preferences' ? '' : 'hidden'}>
+              <section className="mt-8 mb-8">
                 <DesignSkinSection />
               </section>
-              
+
               <section className="mb-8">
                 <div className="border-b border-edge pb-2 mb-4">
                   <h3 className="text-sm font-semibold text-ink">Interface Settings</h3>
                 </div>
                 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl mb-6">
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-ink-muted">Theme</span>
-                    <select
-                      value={mode}
-                      onChange={(e) => setMode(e.target.value)}
-                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl py-2.5 pl-2.5 pr-8 text-sm text-ink"
-                    >
-                      <option value="system">System Default</option>
-                      <option value="light">Light</option>
-                      <option value="dark">Dark</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-ink-muted">Editor Font Size</span>
-                    <select
-                      value={fontSize}
-                      onChange={(e) => setFontSize(e.target.value)}
-                      className="neo-select neo-inset w-full rounded-lg bg-paper-raised/60 backdrop-blur-2xl py-2.5 pl-2.5 pr-8 text-sm text-ink"
-                    >
-                      <option value="small">Small</option>
-                      <option value="normal">Normal</option>
-                      <option value="large">Large</option>
-                    </select>
-                  </label>
+                <div className="max-w-2xl divide-y divide-edge border-b border-edge">
+                  <InlineChoice
+                    label="Theme"
+                    description="Choose the overall appearance of FlexEd."
+                    value={mode}
+                    onChange={setMode}
+                    options={[
+                      { value: 'system', label: 'System' },
+                      { value: 'light', label: 'Light' },
+                      { value: 'dark', label: 'Dark' },
+                    ]}
+                    className="py-3"
+                  />
+                  <InlineChoice
+                    label="Editor text"
+                    description="Set the reading size for the plan editor."
+                    value={fontSize}
+                    onChange={setFontSize}
+                    options={['small', 'normal', 'large']}
+                    className="py-3"
+                  />
                 </div>
 
                 <div className="max-w-xl border border-edge rounded-xl p-4">
@@ -1674,10 +2129,16 @@ export function SettingsPage() {
               </section>
             </div>
 
+            {/* School & Templates Section */}
+            <div id="section-school" className={activeTab === 'school' ? '' : 'hidden'}>
+              <SchoolPicker
+                value={meState.data?.school}
+                onSaved={() => qc.invalidateQueries({ queryKey: qk.me })}
+              />
+            </div>
+
             {/* Account Section */}
-            <div id="section-account" className="scroll-mt-8">
-                            <h2 className="text-xl font-bold text-ink mb-6">Account & Security</h2>
-              
+            <div id="section-account" className={activeTab === 'account' ? '' : 'hidden'}>
               {meState.data && meState.data.has_password ? (
                 <section className="mb-8">
                   <div className="border-b border-edge pb-2 mb-4">
@@ -1701,9 +2162,7 @@ export function SettingsPage() {
             </div>
 
             {/* Integrations Section */}
-            <div id="section-integrations" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Integrations</h2>
-              
+            <div id="section-integrations" className={activeTab === 'integrations' ? '' : 'hidden'}>
               <section>
                 <GoogleDriveSection />
                 
@@ -1713,14 +2172,26 @@ export function SettingsPage() {
                     Connect your external accounts to push and pull assignments seamlessly.
                   </p>
                   
-                  <IntegrationPlaceholder 
-                    name="Canvas LMS" 
-                    description="Export your plans directly to Canvas Modules."
-                    icon={<span className="font-bold">C</span>}
+                  <IntegrationPlaceholder
+                    name="Google Classroom"
+                    description="Bring assignments, classwork, and course context into FlexEd."
+                    icon={<span className="font-bold">G</span>}
                   />
-                  
-                  <IntegrationPlaceholder 
-                    name="Microsoft OneDrive" 
+
+                  <IntegrationPlaceholder
+                    name="Google Calendar"
+                    description="Sync teaching schedules, holidays, and school events."
+                    icon={<span className="font-bold">31</span>}
+                  />
+
+                  <IntegrationPlaceholder
+                    name="Outlook Calendar"
+                    description="Sync teaching schedules and school events from Microsoft 365."
+                    icon={<span className="font-bold">O</span>}
+                  />
+
+                  <IntegrationPlaceholder
+                    name="OneDrive"
                     description="Save and sync documents with OneDrive."
                     icon={<span className="font-bold">O</span>}
                   />
@@ -1729,16 +2200,14 @@ export function SettingsPage() {
             </div>
 
             {/* Billing Section */}
-            <div id="section-billing" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Billing</h2>
+            <div id="section-billing" className={activeTab === 'billing' ? '' : 'hidden'}>
               <section>
                 <BillingSection />
               </section>
             </div>
 
             {/* Advanced Section */}
-            <div id="section-advanced" className="scroll-mt-8">
-              <h2 className="text-xl font-bold text-ink mb-6">Advanced</h2>
+            <div id="section-advanced" className={activeTab === 'advanced' ? '' : 'hidden'}>
               <section>
                 <div className="border-b border-edge pb-2 mb-4">
                   <h3 className="text-sm font-semibold text-ink">Experimental</h3>

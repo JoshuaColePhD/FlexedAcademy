@@ -23,7 +23,7 @@ import { SignInForm } from '../components/SignInForm'
  * Mono elsewhere.
  * STORY: See the claim with its seal, watch the connector draw from claim to
  * source on scroll, see the three-stage thread that makes it true, start a
- * free week.
+ * early access.
  * FIRST VIEWPORT: bar (mark, quiet sign-in) over a violet hero — headline
  * with a hand-drawn seal, sub, one gold CTA.
  * FORM: second pass via /frontend-design after the first (glazier-wall)
@@ -53,8 +53,8 @@ function priceLine(data) {
   // promise a number Stripe isn't actually configured to honor.
   const days = data?.trial_period_days
   return days > 0
-    ? `Get ${days} days of Premium automatically — no credit card required. Then ${money} a ${every}.`
-    : `Free to start, ${money} a ${every}.`
+    ? `Try FlexEd free for ${days} days — no credit card required. Then ${money} a ${every}.`
+    : `Join early access — ${money} a ${every}.`
 }
 
 /* Reveal-on-scroll, with a backstop that does not depend on
@@ -424,7 +424,7 @@ export function LandingPage() {
             working reliably today. A visitor deciding whether to trust this
             with real curriculum should know that going in, not discover it
             from a rough edge. */}
-        <span className="land-eyebrow">Beta</span>
+        <span className="land-eyebrow">Early access</span>
         <h1 className="land-title">A week of lesson plans, cited to the standard</h1>
         <p className="land-sub">
           Generated from the verbatim text of the Alabama Course of Study — not a model's
@@ -436,7 +436,7 @@ export function LandingPage() {
             className="land-cta"
             onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
           >
-            Start a week free
+            Join early access
             <ArrowIcon />
           </Link>
           <span className="land-note">Built by an Alabama high school teacher</span>
@@ -547,7 +547,7 @@ export function LandingPage() {
           className="land-foot-cta"
           onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
         >
-          Start a week free
+          Join early access
           <ArrowIcon />
         </Link>
         <div className="land-foot-legal mt-4 flex-col gap-2">

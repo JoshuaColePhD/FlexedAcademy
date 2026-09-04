@@ -77,8 +77,12 @@ def main() -> int:
                 schoolcal.closure_days("eval-fixture-b").get("2026-09-14") == "In-service",
             )
 
-            print("\n3. An unknown school id fails closed, not onto someone else's calendar")
-            check("an unregistered school has zero weeks", schoolcal.school_weeks("no-such-school") == [])
+            print("\n3. An unregistered school gets a dateless fallback, not another school's dates")
+            unknown_weeks = schoolcal.school_weeks("no-such-school")
+            check(
+                "an unregistered school has dateless fallback weeks",
+                len(unknown_weeks) == 43 and all(w["start"] is None for w in unknown_weeks),
+            )
 
             print("\n4. Repeat calls for the same school are cached, not re-parsed")
             check(

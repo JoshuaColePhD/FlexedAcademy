@@ -1,8 +1,10 @@
 import hashlib
 import hmac
+import re
 import time
 
 import pytest
+import stripe
 
 from backend import stripe_api
 from backend.errors import AppError
@@ -33,29 +35,32 @@ def test_verify_webhook_rejects_non_object_json():
 
 
 def test_stripe_non_json_error_becomes_provider_error(monkeypatch):
-    class Response:
-        content = b"upstream html"
-        ok = False
-        status_code = 502
-
-        def json(self):
-            raise ValueError("not json")
-
-    monkeypatch.setattr(stripe_api.settings, "stripe_secret_key", "sk_test")
-    monkeypatch.setattr(stripe_api.requests, "request", lambda *args, **kwargs: Response())
+    def operation():
+        raise stripe.error.InvalidRequestError("payment provider rejected", "price")
 
     with pytest.raises(AppError, match="payment provider rejected"):
-        stripe_api._call("GET", "/prices/price_test")
+        stripe_api._provider_call(operation)
 
 
 def test_checkout_uses_recurring_price_without_a_second_trial(monkeypatch):
     captured = {}
 
-    def fake_call(method, path, data=None):
-        captured.update(method=method, path=path, data=data)
-        return {"id": "cs_123", "url": "https://checkout.stripe.com/cs_123"}
+    class Sessions:
+        def create(self, data):
+            captured["data"] = data
+            return {"id": "cs_123", "url": "https://checkout.stripe.com/cs_123"}
 
-    monkeypatch.setattr(stripe_api, "_call", fake_call)
+    class Checkout:
+        sessions = Sessions()
+
+    class V1:
+        checkout = Checkout()
+
+    class Client:
+        v1 = V1()
+
+    monkeypatch.setattr(stripe_api.settings, "stripe_secret_key", "rk_test")
+    monkeypatch.setattr(stripe_api, "_client", lambda: Client())
 
     session = stripe_api.create_checkout_session(
         price_id="price_123",
@@ -71,32 +76,112 @@ def test_checkout_uses_recurring_price_without_a_second_trial(monkeypatch):
     assert captured["data"]["mode"] == "subscription"
     assert captured["data"]["line_items"] == [{"price": "price_123", "quantity": 1}]
     assert "trial_period_days" not in captured["data"]["subscription_data"]
+    assert "payment_method_types" not in captured["data"]
+    assert re.fullmatch(r"flexed_web_checkout_[a-z]{8}", captured["data"]["integration_identifier"])
+
+
+def test_custom_checkout_session_uses_embedded_dynamic_payment_flow(monkeypatch):
+    captured = {}
+
+    class Sessions:
+        def create(self, data):
+            captured["data"] = data
+            return {"id": "cs_custom", "client_secret": "cs_custom_secret"}
+
+    class Checkout:
+        sessions = Sessions()
+
+    class V1:
+        checkout = Checkout()
+
+    class Client:
+        v1 = V1()
+
+    monkeypatch.setattr(stripe_api.settings, "stripe_secret_key", "rk_test")
+    monkeypatch.setattr(stripe_api, "_client", lambda: Client())
+
+    session = stripe_api.create_custom_checkout_session(
+        price_id="price_123",
+        customer_id="cus_123",
+        email="teacher@example.com",
+        user_id="user_1",
+        return_url="https://example.com/?checkout=return",
+    )
+
+    assert session["client_secret"] == "cs_custom_secret"
+    assert captured["data"]["mode"] == "subscription"
+    assert captured["data"]["ui_mode"] == "elements"
+    assert captured["data"]["return_url"] == "https://example.com/?checkout=return"
+    assert captured["data"]["customer"] == "cus_123"
+    assert "success_url" not in captured["data"]
+    assert "cancel_url" not in captured["data"]
+    assert "payment_method_types" not in captured["data"]
+
+
+def test_checkout_session_route_returns_only_embedded_client_secret(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(billing.settings, "stripe_secret_key", "rk_test")
+    monkeypatch.setattr(billing.settings, "stripe_price_id", "price_test")
+    monkeypatch.setattr(billing.settings, "stripe_webhook_secret", "whsec_test")
+    monkeypatch.setattr(billing.settings, "billing_return_url", "https://example.com")
+    monkeypatch.setattr(
+        billing.db,
+        "get_user_by_id",
+        lambda user_id: {
+            "id": user_id,
+            "email": "teacher@example.com",
+            "stripe_customer_id": "cus_123",
+        },
+    )
+
+    def create_custom(**kwargs):
+        captured.update(kwargs)
+        return {"id": "cs_123", "client_secret": "cs_secret_123", "url": "should_not_return"}
+
+    monkeypatch.setattr(billing.stripe_api, "create_custom_checkout_session", create_custom)
+
+    result = billing.checkout_session(object(), "user_1")
+
+    assert result == {"client_secret": "cs_secret_123", "session_id": "cs_123"}
+    assert "url" not in result
+    assert captured["price_id"] == "price_test"
+    assert captured["customer_id"] == "cus_123"
+    assert captured["return_url"] == (
+        "https://example.com/?checkout=return&session_id={CHECKOUT_SESSION_ID}"
+    )
 
 
 def test_cancel_subscriptions_schedules_live_subscriptions(monkeypatch):
     calls = []
 
-    def fake_call(method, path, data=None):
-        calls.append((method, path, data))
-        if method == "GET":
-            return {
-                "data": [
-                    {"id": "sub_live", "status": "active", "cancel_at_period_end": False},
-                    {"id": "sub_scheduled", "status": "active", "cancel_at_period_end": True},
-                    {"id": "sub_done", "status": "canceled", "cancel_at_period_end": True},
-                ]
-            }
-        return {"id": "sub_live", "status": "active", "cancel_at_period_end": True}
+    class Subscriptions:
+        def list(self, data):
+            calls.append(("list", data))
+            return {"data": [
+                {"id": "sub_live", "status": "active", "cancel_at_period_end": False},
+                {"id": "sub_scheduled", "status": "active", "cancel_at_period_end": True},
+                {"id": "sub_done", "status": "canceled", "cancel_at_period_end": True},
+            ]}
 
-    monkeypatch.setattr(stripe_api, "_call", fake_call)
+        def update(self, subscription_id, data):
+            calls.append(("update", subscription_id, data))
+            return {"id": subscription_id, "status": "active", "cancel_at_period_end": True}
+
+    class V1:
+        subscriptions = Subscriptions()
+
+    class Client:
+        v1 = V1()
+
+    monkeypatch.setattr(stripe_api.settings, "stripe_secret_key", "rk_test")
+    monkeypatch.setattr(stripe_api, "_client", lambda: Client())
 
     result = stripe_api.cancel_subscriptions_at_period_end_for_customer("cus_123")
 
-    assert [call[0:2] for call in calls] == [
-        ("GET", "/subscriptions?customer=cus_123&status=all"),
-        ("POST", "/subscriptions/sub_live"),
+    assert calls == [
+        ("list", {"customer": "cus_123", "status": "all"}),
+        ("update", "sub_live", {"cancel_at_period_end": True}),
     ]
-    assert calls[1][2] == {"cancel_at_period_end": True}
     assert [sub["id"] for sub in result] == ["sub_live", "sub_scheduled"]
 
 

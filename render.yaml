@@ -65,18 +65,11 @@ services:
       - key: COMMON_STANDARDS_API_KEY
         sync: false
       # Not secrets, so tracked directly here rather than left to the
-      # dashboard. KNOWN_GAPS.md documented RETRIEVAL_MAX_DISTANCE as
-      # "measured at 0.78" but it was never actually present in this file (or
-      # in a real .env — only in .env.example as a template), so production
-      # had been running on backend/config.py's fallback default of 0.65
-      # since that measurement was written. 0.65 is tighter than every
-      # framework's "safe at 0.78" margin in that table, so nothing became
-      # unsafe, but it risked rejecting legitimate in-domain queries that
-      # fell between 0.65 and 0.78. See KNOWN_GAPS.md's floor-calibration
-      # section for the per-course RETRIEVAL_FLOORS values and how each was
-      # measured (scripts/06_threshold_sweep.py).
+      # dashboard. These values are calibrated for text-embedding-3-small at
+      # 384 dimensions with pgvector cosine distance. Re-run the threshold
+      # sweep after changing the model or corpus.
       - key: RETRIEVAL_MAX_DISTANCE
-        value: "0.78"
+        value: "0.65"
       - key: RETRIEVAL_FLOORS
         value: '{"Math": 0.52, "Science": 0.55, "PE": 0.60, "AP_Lang": 0.64}'
       # Vite inlines this at BUILD time, so it must exist before the build runs,
@@ -157,7 +150,7 @@ services:
       # a half-finished state. Set them together or not at all; two out of
       # three leaves the gate closed and no way through it.
       #
-      #   STRIPE_SECRET_KEY      sk_live_… (Developers → API keys)
+      #   STRIPE_SECRET_KEY      rk_live_… (restricted key with billing permissions)
       #   STRIPE_PRICE_ID        price_…   the recurring price, NOT the product
       #   STRIPE_WEBHOOK_SECRET  whsec_…   shown when the endpoint is created
       #
@@ -172,6 +165,10 @@ services:
       - key: STRIPE_PRICE_ID
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Public key only. It is embedded into the Vite bundle at build time;
+      # never use a secret or restricted key here.
+      - key: VITE_STRIPE_PUBLISHABLE_KEY
         sync: false
       # Where Stripe sends the browser back to. Without it the app falls back
       # to the request's own origin, which is right locally and wrong behind

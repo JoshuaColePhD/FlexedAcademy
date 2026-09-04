@@ -16,6 +16,16 @@ grounded, per course) rather than a retrieval-recall check, see
 model and costs real tokens, so it's a deliberate, budgeted run, not part of this
 suite.
 
+The scheduled, no-secret report is reproducible with:
+
+```bash
+./venv/bin/python scripts/generate_quality_report.py
+```
+
+It runs the Alabama provenance gate and all database-free regressions, then writes
+`quality_results.json` for CI artifact review. Live retrieval sweeps remain a
+deliberate manual run because they require the project database and embeddings key.
+
 ## The suites
 
 | Suite | Guards | Needs |
@@ -24,7 +34,37 @@ suite.
 | `test_course_identity_and_codes.py` | AP courses ground in AP skills not ALCOS; course variants join while real courses stay apart; the audit is course-scoped; a code named in a query retrieves itself | DB + API |
 | `test_cross_course_grounding.py` | 32 courses never retrieve another subject's standards, and each gets its correct ACT section | DB + API |
 | `test_offdomain_refusal.py` | the looser ACT floor did not re-open the off-domain hole | DB + API |
-| `test_golden_recall.py` | recall@5 over 143 synthetic teacher phrasings, against a recorded baseline | DB + API |
+| `test_golden_recall.py` | historical recall diagnostic over 143 synthetic teacher phrasings; not a release gate because many expectations are retired from the current corpus | DB + API |
+| `test_golden_corpus_alignment.py` | separates stale/moved golden expectations from genuine retrieval misses | local corpus |
+| `test_current_golden_recall.py` | release recall gate generated from the current canonical corpus | DB + API |
+| `test_retrieval_ab.py` | read-only A/B comparison of the current reranker against the prior ranker on the same live corpus | DB + API |
+
+## Current release gate
+
+`data/eval/current_golden_cases.json` is generated from the current corpus, one
+case per canonical course identity. `test_current_golden_recall.py` records its
+baseline in `eval/current_baseline.json` and fails only when a current standard
+falls out of the top 20 or top-5 recall declines. Regenerate deliberately after
+an intentional corpus change:
+
+```bash
+./venv/bin/python scripts/07_generate_golden_evals.py
+./venv/bin/python eval/test_current_golden_recall.py
+./venv/bin/python eval/test_retrieval_ab.py
+```
+
+`test_retrieval_ab.py` compares the current production ranker with the
+immediately prior ranker while sharing one query vector per case. It includes
+the 61 current golden cases plus in-domain and off-domain refusal probes; it
+does not write to Supabase or change the release baseline.
+
+## Historical diagnostic
+
+`test_golden_recall.py` remains useful for understanding corpus drift, but it is
+not included in `run_all.py`: its 143 cases were authored against older AP
+partitions and code formats. `test_golden_corpus_alignment.py` reports those
+stale, moved, and missing expectations instead of presenting them as retrieval
+regressions.
 
 ## Why the golden set is a number, not a pass/fail
 

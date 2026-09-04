@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Database, FileText, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Database, FileText, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
-import { NARROW, useMediaQuery } from '../hooks/useMediaQuery'
+import { NARROW, PHONE, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
@@ -298,7 +299,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
 }
 
 /* Exported so ChatPage.jsx can reuse it as the phone-only "home" screen —
-   chats list + Workspace Tools + Settings, the same content as the desktop
+   chats list + Workspace Tools + account controls, the same content as the desktop
    sidebar, landing where a teacher currently gets dropped straight into an
    empty chat instead. See MobileChatHome.jsx. */
 export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious }) {
@@ -334,6 +335,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   // view, but searching in place is faster than leaving the conversation just
   // to find an older plan. The sidebar and phone home use the same filter.
   const [chatSearch, setChatSearch] = useState('')
+  const [recentOpen, setRecentOpen] = useState(true)
   const chatSearchQuery = chatSearch.trim().toLowerCase()
   const searchFilter = (c) => !chatSearchQuery || c.title?.toLowerCase().includes(chatSearchQuery)
 
@@ -360,6 +362,8 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
 
   const pinnedChats = (chats?.filter((c) => c.is_pinned) || []).filter(searchFilter)
   const recentChats = (chats?.filter((c) => !c.is_pinned) || []).filter(searchFilter)
+  const visibleRecentChats = chatSearchQuery ? recentChats : recentChats.slice(0, 10)
+  const showRecentChats = recentOpen || Boolean(chatSearchQuery)
 
   const isFreeTier = entitlement && (!entitlement.subscribed || entitlement.status !== 'active')
   const freePlansUsed = entitlement ? entitlement.tokens_used : 0
@@ -579,36 +583,51 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
               </div>
             )}
 
-            <div className="flex items-center justify-between px-4 pb-1 mt-2">
-              <p className="eyebrow">Recent</p>
+            <div className="mt-2 flex items-center justify-between gap-2 px-4 pb-1">
+              <button
+                type="button"
+                onClick={() => setRecentOpen((open) => !open)}
+                aria-expanded={showRecentChats}
+                aria-controls="recent-chat-list"
+                className="flex min-w-0 items-center gap-1 text-left"
+              >
+                <span className="eyebrow">Recent</span>
+                {recentChats.length ? <span className="text-[10px] text-ink-faint">{recentChats.length}</span> : null}
+                <ChevronDown size={13} aria-hidden="true" className={`shrink-0 text-ink-faint transition-transform ${showRecentChats ? 'rotate-0' : '-rotate-90'}`} />
+              </button>
               <Link
                 to={`${classPath}/history`}
                 onClick={onNavigate}
-                className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-ink-muted hover:text-ink"
-                aria-label="Edit chat history"
+                className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-ink-muted hover:text-ink"
+                aria-label="View all chats"
               >
-                <Pencil size={11} aria-hidden="true" />
-                Edit
+                View all
               </Link>
             </div>
-            
-            {isLoading ? (
-              <div className="px-4 py-2">
-                <SkeletonText lines={4} />
+
+            {showRecentChats ? (
+              <div id="recent-chat-list">
+                {isLoading ? (
+                  <div className="px-4 py-2">
+                    <SkeletonText lines={4} />
+                  </div>
+                ) : recentChats.length ? (
+                  <>
+                    <ul className="flex flex-col gap-0">
+                      <AnimatePresence initial={false}>
+                        {visibleRecentChats.map((c) => (
+                          <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} swipeOpen={swipeOpenId === c.id} onSwipeOpenChange={(open) => setSwipeOpenId(open ? c.id : null)} />
+                        ))}
+                      </AnimatePresence>
+                    </ul>
+                  </>
+                ) : !pinnedChats.length && (
+                  <p className="px-4 py-2 text-xs text-ink-muted">
+                    {chatSearchQuery ? `No chats match "${chatSearch.trim()}".` : 'Nothing yet. Describe a week to get started.'}
+                  </p>
+                )}
               </div>
-            ) : recentChats.length ? (
-              <ul className="flex flex-col gap-0">
-                <AnimatePresence initial={false}>
-                  {recentChats.map((c) => (
-                    <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} swipeOpen={swipeOpenId === c.id} onSwipeOpenChange={(open) => setSwipeOpenId(open ? c.id : null)} />
-                  ))}
-                </AnimatePresence>
-              </ul>
-            ) : !pinnedChats.length && (
-              <p className="px-4 py-2 text-xs text-ink-muted">
-                {chatSearchQuery ? `No chats match "${chatSearch.trim()}".` : 'Nothing yet. Describe a week to get started.'}
-              </p>
-            )}
+            ) : null}
           </div>
         </nav>
       )}
@@ -729,6 +748,7 @@ function OnboardingWizardHost() {
 
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
+  const isPhone = useMediaQuery(PHONE)
   const prefersReducedMotion = useReducedMotion()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerRef = useRef(null)
@@ -742,6 +762,7 @@ export function AppShell({ children }) {
      Persisted the same way chatWidthPx is (ChatPage.jsx), so it survives a
      reload instead of springing back open every visit. */
   const location = useLocation()
+  const isChatRoute = /^\/c\/[^/]+(\/chat\/[^/]+)?$/.test(location.pathname)
   const isFocusMode = false // We now want the sidebar to be permanent across all pages
   const { user } = useAuth()
 
@@ -815,20 +836,23 @@ export function AppShell({ children }) {
 
       {/* drawer */}
       {isNarrow && drawerExit.mounted ? (
-        <>
-          <button
-            type="button"
-            className={`panel-scrim${drawerExit.closing ? ' is-closing' : ''}`}
-            aria-label="Close menu"
-            onClick={() => setDrawerOpen(false)}
-          />
-          <div
-            ref={drawerRef}
-            className={`app-rail rail-drawer${drawerExit.closing ? ' is-closing' : ''} fixed inset-y-0 left-0 z-50 flex w-[min(300px,85vw)] flex-col shadow-lg`}
-          >
-            <Rail onNavigate={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} />
-          </div>
-        </>
+        createPortal(
+          <>
+            <button
+              type="button"
+              className={`panel-scrim${drawerExit.closing ? ' is-closing' : ''}`}
+              aria-label="Close menu"
+              onClick={() => setDrawerOpen(false)}
+            />
+            <div
+              ref={drawerRef}
+              className={`app-rail rail-drawer neo-world${drawerExit.closing ? ' is-closing' : ''} fixed inset-y-0 left-0 z-[210] flex w-[min(300px,85vw)] flex-col shadow-lg`}
+            >
+              <Rail onNavigate={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} />
+            </div>
+          </>,
+          document.body
+        )
       ) : null}
 
       <motion.div
@@ -844,7 +868,7 @@ export function AppShell({ children }) {
             Explore demo · read-only. Existing plans, citations, and exports are available; generation and account changes are disabled.
           </div>
         ) : null}
-        {isNarrow && !location.pathname.match(/^\/c\/[^/]+(\/chat\/[^/]+)?$/) ? (
+        {isNarrow && (!isPhone || !isChatRoute) ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button
               type="button"

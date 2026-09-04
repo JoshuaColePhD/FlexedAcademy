@@ -57,6 +57,9 @@ export function LessonPlanTable({
   // just "sent" — disabling both buttons on a plain boolean left no visible
   // trace of which one you'd picked, only a toast that had already faded.
   const [feedbackSent, setFeedbackSent] = useState(null)
+  const [feedbackPending, setFeedbackPending] = useState(false)
+  const [feedbackReason, setFeedbackReason] = useState('lesson_design')
+  const [feedbackNotes, setFeedbackNotes] = useState('')
   const mode = useLayoutMode()
   const toast = useToast()
 
@@ -66,15 +69,24 @@ export function LessonPlanTable({
      makes the feature exist at all; routing through lib/api.js is what makes it
      send the session cookie, surface a {code,message,hint} error, and reach the
      global 401 handler. */
-  const handleFeedback = async (isGood) => {
+  const sendFeedback = async (isGood, reason = null, notes = '') => {
     if (!planId || feedbackSent !== null) return
     setFeedbackSent(isGood)
     try {
-      await api.planFeedback(planId, isGood)
+      await api.planFeedback(planId, isGood, notes.trim(), reason)
+      setFeedbackPending(false)
       toast.success(isGood ? 'Thanks — noted.' : 'Thanks. That helps tune the prompt.')
     } catch (e) {
       setFeedbackSent(null)
       toast.apiError("Couldn't send that", e)
+    }
+  }
+
+  const handleFeedback = (isGood) => {
+    if (isGood) {
+      void sendFeedback(true)
+    } else {
+      setFeedbackPending(true)
     }
   }
 
@@ -119,28 +131,63 @@ export function LessonPlanTable({
       <div className="plan-head">
         <h2>{plan.week_of || 'Untitled week'}</h2>
         {planId && mode !== 'phone' ? (
-          <div className="plan-feedback">
-            <button
-              type="button"
-              className={`btn-icon${feedbackSent === true ? ' is-good' : ''}`}
-              disabled={feedbackSent !== null}
-              onClick={() => handleFeedback(true)}
-              aria-label="This plan is good"
-              title="This plan is good"
-            >
-              <ThumbsUp size={16} className={feedbackSent === true ? 'fa-pop' : ''} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={`btn-icon${feedbackSent === false ? ' is-bad' : ''}`}
-              disabled={feedbackSent !== null}
-              onClick={() => handleFeedback(false)}
-              aria-label="This plan needs work"
-              title="This plan needs work"
-            >
-              <ThumbsDown size={16} className={feedbackSent === false ? 'fa-pop' : ''} aria-hidden="true" />
-            </button>
-          </div>
+          <>
+            <div className="plan-feedback">
+              <button
+                type="button"
+                className={`btn-icon${feedbackSent === true ? ' is-good' : ''}`}
+                disabled={feedbackSent !== null}
+                onClick={() => handleFeedback(true)}
+                aria-label="This plan is good"
+                title="This plan is good"
+              >
+                <ThumbsUp size={16} className={feedbackSent === true ? 'fa-pop' : ''} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={`btn-icon${feedbackSent === false ? ' is-bad' : ''}`}
+                disabled={feedbackSent !== null}
+                onClick={() => handleFeedback(false)}
+                aria-label="This plan needs work"
+                title="This plan needs work"
+              >
+                <ThumbsDown size={16} className={feedbackSent === false ? 'fa-pop' : ''} aria-hidden="true" />
+              </button>
+            </div>
+            {feedbackPending ? (
+              <form
+                className="plan-feedback-form"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void sendFeedback(false, feedbackReason, feedbackNotes)
+                }}
+              >
+                <label>
+                  What needs work?
+                  <select value={feedbackReason} onChange={(event) => setFeedbackReason(event.target.value)}>
+                    <option value="lesson_design">Lesson design</option>
+                    <option value="retrieval">Retrieved standards</option>
+                    <option value="standards">Standards accuracy</option>
+                    <option value="grade_level">Grade level</option>
+                    <option value="other">Something else</option>
+                  </select>
+                </label>
+                <textarea
+                  value={feedbackNotes}
+                  onChange={(event) => setFeedbackNotes(event.target.value)}
+                  placeholder="Optional detail"
+                  maxLength={2000}
+                  rows={2}
+                />
+                <div className="plan-feedback-form-actions">
+                  <button type="button" className="btn-outline" onClick={() => setFeedbackPending(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">Send feedback</button>
+                </div>
+              </form>
+            ) : null}
+          </>
         ) : null}
       </div>
       {/* The stamped header: Teacher / Course / Period above a district-blue

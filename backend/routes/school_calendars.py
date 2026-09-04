@@ -108,7 +108,11 @@ def get_pending_calendar(school_id: str, _user_id: str = Depends(get_current_use
     submission = db.get_pending_calendar_submission(school_id)
     if not submission:
         raise AppError("not_found", "No pending calendar for that school.", status=404)
-    return submission
+    from .. import schoolcal
+    return {
+        **submission,
+        "weeks": [{**week, "days": schoolcal.week_days(school_id, week)} for week in submission["weeks"]],
+    }
 
 
 @router.post("/{submission_id}/confirm")
@@ -246,4 +250,4 @@ def get_confirmed_calendar_route(school_id: str, _user_id: str = Depends(get_cur
     weeks = schoolcal.school_weeks(school_id)
     if not weeks:
         raise HTTPException(status_code=404, detail="No calendar found")
-    return {"weeks": weeks}
+    return {"weeks": [{**week, "days": schoolcal.week_days(school_id, week)} for week in weeks]}

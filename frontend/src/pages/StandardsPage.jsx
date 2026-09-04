@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeft, BookOpen, Check, Loader2, Plus, Search, X } from 'lucide-react'
+import { ArrowLeft, BarChart3, BookOpen, Check, Layers3, Loader2, Plus, Search, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
@@ -25,7 +25,17 @@ function StandardRow({ standard, classId, coverageCount }) {
   const addToPlan = (event) => {
     event.stopPropagation()
     const text = `Focus this lesson on ${standard.code}: ${standard.description}`
-    navigate(`/c/${classId}?prefill=${encodeURIComponent(text)}`)
+    navigate(`/c/${classId}`, {
+      state: {
+        prefill: text,
+        selectedStandard: {
+          code: standard.code,
+          description: standard.description,
+          strand: standard.strand,
+          domain: standard.domain,
+        },
+      },
+    })
     toast({ title: 'Added to chat', type: 'success' })
   }
 
@@ -90,6 +100,7 @@ export function StandardsPage() {
   const grade = activeClass?.grade
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [standardsView, setStandardsView] = useState('browse')
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['standards', subject, grade],
@@ -140,6 +151,32 @@ export function StandardsPage() {
     })
   }, [activeCategory, search, standards])
 
+  const groupedFiltered = useMemo(() => {
+    const groups = new Map()
+    for (const standard of filtered) {
+      const category = standardCategory(standard)
+      if (!groups.has(category)) groups.set(category, [])
+      groups.get(category).push(standard)
+    }
+    return Array.from(groups, ([name, items]) => ({ name, items }))
+  }, [filtered])
+
+  const coveredCount = useMemo(
+    () => standards.filter((standard) => coverage[standard.code] > 0).length,
+    [coverage, standards],
+  )
+  const coveragePercent = standards.length ? Math.round((coveredCount / standards.length) * 100) : 0
+  const maxCoverage = useMemo(
+    () => Math.max(0, ...standards.map((standard) => coverage[standard.code] || 0)),
+    [coverage, standards],
+  )
+
+  const focusStandard = (code) => {
+    setSelectedCategory('all')
+    setSearch(code)
+    requestAnimationFrame(() => document.getElementById('standards-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+
   const categoryButtons = [
     { name: 'all', label: 'All standards', count: standards.length },
     ...categories,
@@ -155,7 +192,7 @@ export function StandardsPage() {
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/40 backdrop-blur-3xl saturate-[1.2] glass-panel border border-white/5">
       <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-4xl px-4 py-5 pb-28 sm:px-6 md:px-10 md:py-10">
-          <header className="mb-8 flex items-start gap-3">
+          <header className="mb-6 flex items-start gap-3">
             <button
               type="button"
               onClick={() => navigate(-1)}
@@ -166,60 +203,175 @@ export function StandardsPage() {
             </button>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.16em] text-ink-muted">
-                <BookOpen size={14} aria-hidden="true" /> Standards
+                <BookOpen size={14} aria-hidden="true" /> Standards library
               </div>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
-                {activeClass ? `${activeClass.name} standards` : 'Standards'}
-              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight text-ink">
+                  {activeClass ? activeClass.name : 'Standards'}
+                </h1>
+                {activeClass?.subject ? (
+                  <span className="rounded-full border border-accent/20 bg-accent-tint px-2.5 py-1 text-2xs font-semibold text-accent-text">
+                    {activeClass.subject}{activeClass.grade !== undefined ? ` · Grade ${activeClass.grade}` : ''}
+                  </span>
+                ) : null}
+              </div>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">
-                Search the standards for this course, then add one directly to your lesson plan.
+                Browse the standards attached to this course, then send one directly into a new lesson plan.
               </p>
             </div>
           </header>
 
-          <label className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-edge bg-paper-raised px-4 shadow-sm transition-shadow focus-within:shadow-md">
-            <Search size={19} className="shrink-0 text-ink-muted" aria-hidden="true" />
-            <span className="sr-only">Search standards</span>
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by code or keyword"
-              className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-faint"
-            />
-            {search ? (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="btn-icon h-8 w-8 shrink-0"
-                aria-label="Clear standards search"
-              >
-                <X size={15} aria-hidden="true" />
-              </button>
-            ) : null}
-          </label>
+          <div className="mb-5 flex rounded-2xl border border-edge bg-paper-sunken/45 p-1" role="tablist" aria-label="Standards views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={standardsView === 'browse'}
+              onClick={() => setStandardsView('browse')}
+              className={`fa-press flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors ${standardsView === 'browse' ? 'bg-paper-raised text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+            >
+              <BookOpen size={15} aria-hidden="true" /> Browse standards
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={standardsView === 'heatmap'}
+              onClick={() => setStandardsView('heatmap')}
+              className={`fa-press flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors ${standardsView === 'heatmap' ? 'bg-paper-raised text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+            >
+              <BarChart3 size={15} aria-hidden="true" /> Coverage heatmap
+            </button>
+          </div>
 
-          <div className="mt-4 -mx-1 overflow-x-auto px-1 pb-1" role="group" aria-label="Filter standards by category">
-            <div className="flex min-w-max items-center gap-2">
-              {categoryButtons.map(({ name, label = name, count }) => {
-                const selected = activeCategory === name
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => selectCategory(name)}
-                    aria-pressed={selected}
-                    className={`fa-press tap-target inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      selected
-                        ? 'border-accent bg-accent text-accent-on shadow-sm'
-                        : 'border-edge bg-paper-raised text-ink-muted hover:border-accent/50 hover:text-ink'
-                    }`}
-                  >
-                    <span>{label}</span>
-                    <span className={selected ? 'text-accent-on/75' : 'text-ink-faint'}>{count}</span>
-                  </button>
-                )
-              })}
+          {standardsView === 'browse' ? (
+          <section className="neo-world neo-panel rounded-3xl border border-edge/80 bg-paper-raised/85 p-4 sm:p-5" aria-label="Standards overview">
+            <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.16em] text-ink-muted">
+              <BarChart3 size={14} aria-hidden="true" /> Course coverage
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
+              <div className="rounded-2xl bg-paper-sunken/70 p-3">
+                <p className="text-2xs font-semibold uppercase tracking-wider text-ink-muted">Standards</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{standards.length}</p>
+              </div>
+              <div className="rounded-2xl bg-paper-sunken/70 p-3">
+                <p className="text-2xs font-semibold uppercase tracking-wider text-ink-muted">Strands</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{categories.length}</p>
+              </div>
+              <div className="rounded-2xl bg-paper-sunken/70 p-3">
+                <p className="text-2xs font-semibold uppercase tracking-wider text-ink-muted">Used in plans</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{coveragePercent}%</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3 text-xs text-ink-muted">
+              <span>{coveredCount} of {standards.length || 0} standards have been used in a plan</span>
+              <Layers3 size={16} className="shrink-0 text-accent" aria-hidden="true" />
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-paper-sunken" aria-hidden="true">
+              <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${coveragePercent}%` }} />
+            </div>
+          </section>
+          ) : null}
+
+          {standardsView === 'heatmap' && standards.length > 0 ? (
+            <section className="mt-5 rounded-3xl border border-edge bg-paper-raised/70 p-4 shadow-sm sm:p-5" aria-labelledby="standards-heatmap-title">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.16em] text-ink-muted">
+                    <Layers3 size={14} aria-hidden="true" /> Standards heatmap
+                  </div>
+                  <h2 id="standards-heatmap-title" className="mt-2 text-base font-semibold text-ink">Where your plans are concentrated</h2>
+                  <p className="mt-1 text-sm text-ink-muted">Each tile is a standard. Darker violet means it appears in more plans.</p>
+                </div>
+                <div className="flex items-center gap-1.5 text-2xs font-medium text-ink-muted" aria-label="Heatmap legend">
+                  <span>Less</span>
+                  {[0, 1, 2, 3, 4].map((level) => (
+                    <span key={level} className={`h-3 w-3 rounded-sm border ${
+                      level === 0 ? 'border-edge bg-paper-sunken/50' : level === 1 ? 'border-accent/15 bg-accent/10' : level === 2 ? 'border-accent/25 bg-accent/20' : level === 3 ? 'border-accent/40 bg-accent/35' : 'border-accent/60 bg-accent/50'
+                    }`} aria-hidden="true" />
+                  ))}
+                  <span>More</span>
+                </div>
+              </div>
+              <div className="mt-4 max-h-64 overflow-y-auto rounded-2xl bg-paper-sunken/35 p-2" role="list" aria-label="Standards usage heatmap">
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+                  {standards.map((standard) => {
+                    const count = coverage[standard.code] || 0
+                    const ratio = maxCoverage ? count / maxCoverage : 0
+                    const level = count === 0 ? 0 : ratio >= 0.75 ? 4 : ratio >= 0.5 ? 3 : ratio >= 0.25 ? 2 : 1
+                    const levelClass = level === 0
+                      ? 'border-edge bg-paper-raised text-ink-muted hover:border-accent/35 hover:text-ink'
+                      : level === 1
+                        ? 'border-accent/15 bg-accent/10 text-ink hover:border-accent/35'
+                        : level === 2
+                          ? 'border-accent/25 bg-accent/20 text-ink hover:border-accent/45'
+                          : level === 3
+                            ? 'border-accent/40 bg-accent/35 text-ink hover:border-accent/60'
+                            : 'border-accent/60 bg-accent/50 text-ink hover:border-accent'
+                    return (
+                      <button
+                        key={standard.code}
+                        type="button"
+                        role="listitem"
+                        onClick={() => focusStandard(standard.code)}
+                        className={`fa-press min-h-12 rounded-xl border px-2 py-2 text-left transition-colors ${levelClass}`}
+                        aria-label={`Filter to ${standard.code}; used in ${count} ${count === 1 ? 'plan' : 'plans'}`}
+                        title={`Filter to ${standard.code}`}
+                      >
+                        <span className="block truncate font-mono text-2xs font-semibold">{standard.code}</span>
+                        <span className="mt-1 block text-2xs opacity-75">{count ? `${count} ${count === 1 ? 'plan' : 'plans'}` : 'Not used'}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {standardsView === 'browse' ? (<>
+          <div className="sticky top-0 z-10 -mx-4 mt-5 bg-paper/80 px-4 pb-3 pt-1 backdrop-blur-xl sm:-mx-6 sm:px-6 md:-mx-10 md:px-10">
+            <label className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-edge bg-paper-raised px-4 shadow-sm transition-shadow focus-within:shadow-md">
+              <Search size={19} className="shrink-0 text-ink-muted" aria-hidden="true" />
+              <span className="sr-only">Search standards</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by code or keyword"
+                className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-faint"
+              />
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="btn-icon h-8 w-8 shrink-0"
+                  aria-label="Clear standards search"
+                >
+                  <X size={15} aria-hidden="true" />
+                </button>
+              ) : null}
+            </label>
+
+            <div className="mt-3 -mx-1 overflow-x-auto px-1 pb-1" role="group" aria-label="Filter standards by category">
+              <div className="flex min-w-max items-center gap-2">
+                {categoryButtons.map(({ name, label = name, count }) => {
+                  const selected = activeCategory === name
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => selectCategory(name)}
+                      aria-pressed={selected}
+                      className={`fa-press tap-target inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        selected
+                          ? 'border-accent bg-accent text-accent-on shadow-sm'
+                          : 'border-edge bg-paper-raised text-ink-muted hover:border-accent/50 hover:text-ink'
+                      }`}
+                    >
+                      <span>{label}</span>
+                      <span className={selected ? 'text-accent-on/75' : 'text-ink-faint'}>{count}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
@@ -247,17 +399,30 @@ export function StandardsPage() {
               <p className="mt-1 text-sm text-ink-muted">Try a different code or keyword.</p>
             </div>
           ) : (
-            <div className="mt-3 flex flex-col gap-2">
-              {filtered.map((standard) => (
-                <StandardRow
-                  key={standard.code}
-                  standard={standard}
-                  classId={classId}
-                  coverageCount={coverage[standard.code] || 0}
-                />
+            <div id="standards-results" className="mt-5 flex flex-col gap-7">
+              {groupedFiltered.map(({ name, items }) => (
+                <section key={name} aria-labelledby={`standard-group-${name}`}>
+                  <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                    <h2 id={`standard-group-${name}`} className="text-sm font-semibold text-ink">{name}</h2>
+                    <span className="text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+                      {items.length} {items.length === 1 ? 'standard' : 'standards'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {items.map((standard) => (
+                      <StandardRow
+                        key={standard.code}
+                        standard={standard}
+                        classId={classId}
+                        coverageCount={coverage[standard.code] || 0}
+                      />
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           )}
+          </> ) : null}
         </div>
       </main>
     </div>

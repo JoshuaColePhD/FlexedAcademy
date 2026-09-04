@@ -27,6 +27,7 @@ import { ClassPage } from './pages/ClassPage.jsx'
 import { PlansPage } from './pages/PlansPage.jsx'
 import { StandardsPage } from './pages/StandardsPage.jsx'
 import { useClasses } from './hooks/useAppData'
+import { useInterfacePreferences } from './hooks/useInterfacePreferences'
 import './styles/base.css'
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })))
@@ -435,6 +436,8 @@ function MotionProfile() {
 }
 
 export default function App() {
+  useInterfacePreferences()
+
   return (
     <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
       <MotionConfig reducedMotion="user">
