@@ -730,6 +730,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
  */
 function OnboardingWizardHost() {
   const { classId } = useParams()
+  const navigate = useNavigate()
   const { data: classes = [] } = useClasses()
   const [open, setOpen] = useState(false)
 
@@ -741,7 +742,11 @@ function OnboardingWizardHost() {
     <OnboardingWizard
       open={open}
       cls={cls}
-      onClose={() => setOpen(false)}
+      onClose={(finishedClass, opts) => {
+        setOpen(false)
+        const target = finishedClass?.id || cls?.id
+        if (opts?.prefill && target) navigate(`/c/${target}`, { state: { prefill: opts.prefill } })
+      }}
     />
   )
 }

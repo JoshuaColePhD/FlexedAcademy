@@ -36,7 +36,9 @@ from .routes import (
     drive,
     generate,
     misc,
+    onboarding,
     plans,
+    quiz_library,
     school_calendars,
     standards,
 )
@@ -454,6 +456,7 @@ app.include_router(auth.router)
 app.include_router(misc.router)
 app.include_router(generate.router)
 app.include_router(plans.router)
+app.include_router(quiz_library.router)
 app.include_router(standards.router)
 app.include_router(curriculum.router)
 app.include_router(classes.router)
@@ -465,6 +468,7 @@ app.include_router(drive.router)
 app.include_router(canvas.router)
 app.include_router(bell_ringer.router)
 app.include_router(coaching.router)
+app.include_router(onboarding.router)
 import os
 
 from fastapi.responses import FileResponse

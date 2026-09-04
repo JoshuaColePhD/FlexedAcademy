@@ -34,7 +34,6 @@ const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ defa
 const ChatPage = lazyNamed(() => import('./pages/ChatPage.jsx'), 'ChatPage')
 const SettingsPage = lazyNamed(() => import('./pages/SettingsPage.jsx'), 'SettingsPage')
 const HistoryPage = lazyNamed(() => import('./pages/HistoryPage.jsx'), 'HistoryPage')
-const WelcomePage = lazyNamed(() => import('./pages/onboarding/WelcomePage.jsx'), 'WelcomePage')
 const OnboardingSetupPage = lazyNamed(() => import('./pages/onboarding/OnboardingSetupPage.jsx'), 'OnboardingSetupPage')
 const AdminPage = lazyNamed(() => import('./pages/AdminPage.jsx'), 'AdminPage')
 const LandingPage = lazyNamed(() => import('./pages/LandingPage.jsx'), 'LandingPage')
@@ -97,7 +96,7 @@ function RootRedirect() {
       </div>
     )
   }
-  if (!classes.length) return <Navigate to="/welcome" replace />
+  if (!classes.length) return <Navigate to="/onboarding" replace />
 
   const hint = readAccountStorage(LAST_CLASS_KEY, user?.id)
   const target = classes.find((c) => c.id === hint) || classes[0]
@@ -128,7 +127,7 @@ function ClassRoutes() {
   const { user } = useAuth()
   const { classId } = useParams()
   // First run, enforced here rather than trusted to whichever page linked in:
-  // WelcomePage sends a brand-new account straight to .../onboarding, but
+  // A brand-new account starts at /onboarding, which creates its class, but
   // RootRedirect and AfterAuthRedirect both land on plain `/c/:classId` for
   // an *existing* account with classes — including one that dismissed the
   // wizard mid-flow last time and still has onboarding_seen_at unset. This
@@ -319,7 +318,14 @@ function Gate() {
   return (
     <Routes>
       <Route path="/" element={<RootRedirect />} />
-      <Route path="/welcome" element={<WelcomePage />} />
+      {/* /welcome is retired, not deleted.
+          It was a whole page whose only job was to collect course + grade and
+          POST /api/classes before the wizard mounted — which is exactly why
+          the teacher was then asked for course and grade a SECOND time by the
+          wizard's own step. The course step creates the class now, so there is
+          one flow. Kept as a redirect because emailed links, bookmarks and
+          AfterAuthRedirect's carried `next` all still point here. */}
+      <Route path="/welcome" element={<Navigate to="/onboarding" replace />} />
       {/* Already signed in — bounce off the auth pages rather than showing a
           sign-in form to someone who is signed in. */}
       <Route path="/login" element={<AfterAuthRedirect />} />
@@ -331,7 +337,7 @@ function Gate() {
           requires the CURRENT password, which is the thing a teacher following a
           reset link has forgotten. The session cookie lasts 30 days, so clicking
           that link on the laptop she is already signed in on is the likely case,
-          and it silently redirected her into the app (or to /welcome, which
+          and it silently redirected her into the app (or to onboarding, which
           reads as an unrelated malfunction) while the still-valid token expired
           unused. ResetPasswordPage works signed in or out by design — the token
           in the URL is the credential, not the cookie. */}
@@ -344,6 +350,12 @@ function Gate() {
       {/* Outside ClassRoutes/AppShell on purpose — see the guard in
           ClassRoutes above. A first-run account must never see the sidebar
           rail behind this, even for a frame. */}
+      {/* Two paths, one page. /onboarding is the first run, before any class
+          exists — its first two steps (profile, course) need no class, and the
+          course step creates one. /c/:classId/onboarding is where ClassRoutes'
+          guard sends an account that HAS a class but unfinished setup, and
+          where a reload mid-first-run lands. */}
+      <Route path="/onboarding" element={<OnboardingSetupPage />} />
       <Route path="/c/:classId/onboarding" element={<OnboardingSetupPage />} />
       <Route path="/c/:classId/*" element={<ClassRoutes />} />
       {/* Gated again server-side by every request the page makes — reaching
@@ -361,7 +373,7 @@ function Gate() {
  *  product signs up), and a zero-class account can neither own nor do
  *  anything useful with whatever class that path names. Without this check,
  *  that signup landed straight in ClassRoutes with no class ever created —
- *  RootRedirect's own "no classes -> /welcome" only runs for a bare "/"
+ *  RootRedirect's own "no classes -> /onboarding" only runs for a bare "/"
  *  visit, and login/signup/reset-password all funnel here instead, so the
  *  one path a brand-new teacher is actually likely to arrive by (a shared
  *  link) was exactly the one that skipped onboarding entirely. */
@@ -379,7 +391,7 @@ function AfterAuthRedirect() {
   // A brand-new recipient still needs to create a class and complete setup.
   // Carry the shared destination through both first-run screens so the link
   // remains useful after onboarding instead of silently disappearing.
-  if (!isError && !classes.length) return <Navigate to={withReturnTo('/welcome', next)} replace />
+  if (!isError && !classes.length) return <Navigate to={withReturnTo('/onboarding', next)} replace />
   return <Navigate to={next || '/'} replace />
 }
 

@@ -38,7 +38,16 @@ function DocumentRow({ doc, removing, featured, onRemove }) {
   )
 }
 
-function AddMaterialsControls({ cls, kind, setKind, fileRef, uploading, upload, linkOpen, setLinkOpen, submitLink, compact = false }) {
+/* `linkUrl` and `setLinkUrl` are threaded in from ClassDocuments, which owns
+ * them alongside submitLink.
+ *
+ * They were missing, and the "Add Link" form below reads both — so opening it
+ * threw "linkUrl is not defined" and the error boundary took the whole panel.
+ * Reachable from onboarding's materials step and from the class page. Nothing
+ * caught it because the identifier looks fine to a reader (ClassDocuments
+ * declares linkUrl a couple of hundred lines down, in this same file) and
+ * oxlint had no-undef switched off. */
+function AddMaterialsControls({ cls, kind, setKind, fileRef, uploading, upload, linkOpen, setLinkOpen, linkUrl, setLinkUrl, submitLink, compact = false }) {
   return (
     <div className={compact ? 'mt-3 border-t border-edge/30 pt-4' : 'mt-4 rounded-xl border border-dashed border-edge/60 bg-paper/30 p-5 transition-colors hover:border-edge/80'}>
       <div className="flex flex-col gap-4">
@@ -155,6 +164,8 @@ function OnboardingMaterialsFlow({
   setKind,
   linkOpen,
   setLinkOpen,
+  linkUrl,
+  setLinkUrl,
   submitLink,
   supportingOpen,
   setSupportingOpen,
@@ -240,6 +251,8 @@ function OnboardingMaterialsFlow({
           upload={upload}
           linkOpen={linkOpen}
           setLinkOpen={setLinkOpen}
+          linkUrl={linkUrl}
+          setLinkUrl={setLinkUrl}
           submitLink={submitLink}
           compact
         />
@@ -411,6 +424,8 @@ export function ClassDocuments({ cls, onChanged, onKindChange, variant = 'defaul
           setKind={setKind}
           linkOpen={linkOpen}
           setLinkOpen={setLinkOpen}
+          linkUrl={linkUrl}
+          setLinkUrl={setLinkUrl}
           submitLink={submitLink}
           supportingOpen={supportingOpen}
           setSupportingOpen={setSupportingOpen}
@@ -489,6 +504,8 @@ export function ClassDocuments({ cls, onChanged, onKindChange, variant = 'defaul
           upload={upload}
           linkOpen={linkOpen}
           setLinkOpen={setLinkOpen}
+          linkUrl={linkUrl}
+          setLinkUrl={setLinkUrl}
           submitLink={submitLink}
         />
       ) : null}

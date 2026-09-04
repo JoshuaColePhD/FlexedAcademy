@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload } from 'lucide-react'
+import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload, ChevronLeft, ChevronRight, BookOpen, Library, CheckCircle2, Undo2, AlertTriangle } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { fetchStandardsBatch } from '../lib/standardsCache'
@@ -9,7 +9,7 @@ import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { classColor } from '../lib/classColor'
 import { longDay, monthKey, monthLabel, parseISO, todayISO } from '../lib/dates'
-import { QUESTION_TYPE_LABELS, questionTypesLabel } from '../lib/quizShape'
+import { BLOOM_LEVELS, DOK_LEVELS, QUESTION_TYPE_LABELS, bloomLabel, questionTypesLabel } from '../lib/quizShape'
 import { Skeleton, SkeletonText } from './Skeleton'
 import { ShareDialog } from './ShareDialog'
 import { DocxDownloadButton } from './DocxDownloadButton'
@@ -27,7 +27,7 @@ import { DocxDownloadButton } from './DocxDownloadButton'
  * artifact.
  */
 
-function QuizQuestionCard({ q, index, onUpdate, canEdit }) {
+function QuizQuestionCard({ q, index, stagger = index, onUpdate, describedBy, canEdit }) {
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(q)
 
@@ -42,6 +42,9 @@ function QuizQuestionCard({ q, index, onUpdate, canEdit }) {
     draft.prompt?.trim() &&
     (draft.type !== 'multiple_choice' || (draft.choices || []).every((c) => c?.trim()))
 
+  const alignment = draft.alignment || {}
+  const cras = alignment.cras || {}
+
   const handleSave = () => {
     if (!isValid) return
     onUpdate(draft)
@@ -55,7 +58,7 @@ function QuizQuestionCard({ q, index, onUpdate, canEdit }) {
 
   if (isEditing) {
     return (
-      <div className="detail-card neo-raised fa-rise" style={{ animationDelay: `${index * 60}ms` }}>
+      <div className="detail-card neo-raised fa-rise" style={{ animationDelay: `${Math.min(stagger, 6) * 60}ms` }}>
         <div className="detail-card-head mb-2">
           <span className="detail-card-index">Q{index + 1} Edit</span>
           <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
@@ -115,20 +118,60 @@ function QuizQuestionCard({ q, index, onUpdate, canEdit }) {
             </label>
           </div>
         ) : null}
+
+        <div className="quiz-alignment-editor">
+          <label>
+            <span>Bloom</span>
+            <select
+              className="input text-xs"
+              value={alignment.bloom || ''}
+              onChange={(e) => setDraft({ ...draft, alignment: { ...alignment, bloom: e.target.value } })}
+            >
+              <option value="">Select level</option>
+              {BLOOM_LEVELS.map((level) => <option key={level} value={level}>{bloomLabel(level)}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>DOK</span>
+            <select
+              className="input text-xs"
+              value={alignment.dok || ''}
+              onChange={(e) => setDraft({ ...draft, alignment: { ...alignment, dok: Number(e.target.value) || undefined } })}
+            >
+              <option value="">Select level</option>
+              {DOK_LEVELS.map((level) => <option key={level} value={level}>DOK {level}</option>)}
+            </select>
+          </label>
+          <label className="quiz-alignment-wide">
+            <span>CRAS rationale</span>
+            <textarea
+              className="input text-xs resize-y"
+              value={cras.rationale || ''}
+              onChange={(e) => setDraft({ ...draft, alignment: { ...alignment, cras: { ...cras, rationale: e.target.value } } })}
+              placeholder="Why this item fits the selected rigor…"
+            />
+          </label>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="detail-card neo-raised fa-rise group" style={{ animationDelay: `${index * 60}ms` }}>
+    <div
+      className="detail-card neo-raised fa-rise group"
+      style={{ animationDelay: `${Math.min(stagger, 6) * 60}ms` }}
+      aria-describedby={describedBy}
+    >
       <div className="detail-card-head">
         <span className="detail-card-index">Q{index + 1}</span>
         <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
         {q.standard_code ? <span className="detail-card-code">{q.standard_code}</span> : null}
+        {alignment.bloom ? <span className="quiz-alignment-chip">{bloomLabel(alignment.bloom)}</span> : null}
+        {alignment.dok ? <span className="quiz-alignment-chip">DOK {alignment.dok}</span> : null}
         {canEdit ? (
           <button
             type="button"
-            className="ml-auto p-1 text-ink-faint hover:text-ink transition-colors opacity-0 group-hover:opacity-100"
+            className="ml-auto p-1 text-ink-faint hover:text-ink transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
             onClick={() => setIsEditing(true)}
             title="Edit Question"
           >
@@ -206,9 +249,91 @@ function QuizSkeleton() {
   )
 }
 
+/* Q-numbers are GLOBAL — they are the numbers the .docx export prints, in
+ * quiz_json.questions order — so grouping by passage below must never
+ * renumber. This turns a group's global indexes into the label a teacher can
+ * check against the handout: a run reads "Q1–Q3", a lone item reads "Q4", and
+ * a scattered set falls back to a count rather than lying about a range. */
+function itemRangeLabel(indexes) {
+  if (!indexes.length) return 'no items yet'
+  if (indexes.length === 1) return `Q${indexes[0] + 1}`
+  const contiguous = indexes.every((n, i) => i === 0 || n === indexes[i - 1] + 1)
+  if (contiguous) return `Q${indexes[0] + 1}–Q${indexes[indexes.length - 1] + 1}`
+  return `${indexes.length} items`
+}
+
+const PASSAGE_SOURCE_LABELS = {
+  teacher_provided: 'Teacher-provided',
+  shared_library: 'Shared library',
+  ai_generated: 'AI-generated',
+}
+
+/* The left half of a group. Sticky is handled entirely in CSS (see
+ * .quiz-passage-pane) against .doc-body's container height — the pane holds
+ * position while its OWN questions scroll past, then releases when the next
+ * group pushes it up. That only works because each passage is its own grid
+ * row; the previous single-well layout made "sticky" meaningless the moment a
+ * quiz had two passages. */
+function PassagePane({ passage, headingId, cardId, rangeLabel, isEditing, draft, onDraftChange, onEdit, onCancel, onSave }) {
+  return (
+    <aside className="quiz-passage-pane">
+      <div className="quiz-pane-heading">
+        <span id={headingId}>
+          <BookOpen size={15} aria-hidden="true" /> Passage · {rangeLabel}
+        </span>
+        {!isEditing ? (
+          <button
+            type="button"
+            className="btn-icon fa-press"
+            onClick={onEdit}
+            aria-label={`Edit the passage "${passage.title || 'Passage'}"`}
+            title="Edit passage"
+          >
+            <Edit2 size={14} />
+          </button>
+        ) : null}
+      </div>
+      <div className="quiz-passage-card" id={cardId}>
+        <h3>
+          {passage.title || 'Passage'}
+          <span className="quiz-passage-source">{PASSAGE_SOURCE_LABELS[passage.source] || 'AI-generated'}</span>
+        </h3>
+        {isEditing ? (
+          <>
+            <textarea
+              className="input quiz-passage-editor"
+              value={draft}
+              onChange={(e) => onDraftChange(e.target.value)}
+              aria-label={`Passage text for "${passage.title || 'Passage'}"`}
+            />
+            <div className="quiz-passage-edit-actions">
+              <button type="button" className="btn fa-press" onClick={onCancel}>Cancel</button>
+              <button type="button" className="btn btn-primary fa-press" onClick={onSave}><Save size={14} /> Save passage</button>
+            </div>
+          </>
+        ) : (
+          <p>{passage.text}</p>
+        )}
+      </div>
+    </aside>
+  )
+}
+
 function QuizBody({ quiz }) {
   const [questions, setQuestions] = useState(quiz?.quiz_json?.questions || [])
+  const [passages, setPassages] = useState(quiz?.quiz_json?.passages || [])
   const [isSaving, setIsSaving] = useState(false)
+  const [isSavingToLibrary, setIsSavingToLibrary] = useState(false)
+  const [libraryItem, setLibraryItem] = useState(null)
+  const [permissionConfirmed, setPermissionConfirmed] = useState(false)
+  const [suggestions, setSuggestions] = useState([])
+  const [selectedLibraryQuestions, setSelectedLibraryQuestions] = useState({})
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  /* One id, not a boolean: the old isPassageEditing flipped EVERY passage into
+   * a textarea at once, which is not the model QuizQuestionCard uses two
+   * columns away. */
+  const [editingPassageId, setEditingPassageId] = useState(null)
+  const [passageDraft, setPassageDraft] = useState('')
   const toast = useToast()
   // Editing a quiz's questions is beta-gated the same as building one
   // (entitlement.require_beta_features, enforced server-side on
@@ -222,7 +347,63 @@ function QuizBody({ quiz }) {
 
   useEffect(() => {
     setQuestions(quiz?.quiz_json?.questions || [])
+    setPassages(quiz?.quiz_json?.passages || [])
+    setLibraryItem(null)
+    setPermissionConfirmed(false)
+    setEditingPassageId(null)
+    setPassageDraft('')
   }, [quiz])
+
+  useEffect(() => {
+    if (!quiz?.plan_id) return undefined
+    const controller = new AbortController()
+    setSuggestionsLoading(true)
+    api.quizLibrarySuggestions(quiz.plan_id, { signal: controller.signal })
+      .then((items) => setSuggestions(Array.isArray(items) ? items : []))
+      .catch((err) => {
+        if (err?.name !== 'AbortError') setSuggestions([])
+      })
+      .finally(() => setSuggestionsLoading(false))
+    return () => controller.abort()
+  }, [quiz?.plan_id])
+
+  /* The split's whole claim is "these questions go with THAT passage." It used
+   * to render two independent stacks side by side and leave the teacher to
+   * infer the pairing from a generic "Passage-linked item" line that never said
+   * WHICH passage. Grouping makes the claim structural instead. */
+  const groups = useMemo(() => {
+    const indexed = questions.map((q, i) => ({ q, i }))
+    const known = new Set(passages.map((p) => p.id))
+    return {
+      byPassage: passages.map((passage) => ({
+        passage,
+        items: indexed.filter(({ q }) => q.passage_id === passage.id),
+      })),
+      // An unresolvable passage_id (a shared set copied without its passage)
+      // lands here rather than vanishing from the panel entirely.
+      standalone: indexed.filter(({ q }) => !q.passage_id || !known.has(q.passage_id)),
+    }
+  }, [questions, passages])
+
+  /* schema.py already warns the BACKEND when a quiz clusters on one Bloom or
+   * DOK level (validate_quiz, "fewer than two levels"); the teacher was never
+   * shown the distribution that warning is about. */
+  const summary = useMemo(() => {
+    const bloom = new Map()
+    const dok = new Map()
+    let linked = 0
+    for (const q of questions) {
+      if (q.passage_id) linked += 1
+      const alignment = q.alignment || {}
+      if (alignment.bloom) bloom.set(alignment.bloom, (bloom.get(alignment.bloom) || 0) + 1)
+      if (alignment.dok) dok.set(alignment.dok, (dok.get(alignment.dok) || 0) + 1)
+    }
+    return {
+      linked,
+      bloom: [...bloom.entries()].sort((a, b) => BLOOM_LEVELS.indexOf(a[0]) - BLOOM_LEVELS.indexOf(b[0])),
+      dok: [...dok.entries()].sort((a, b) => a[0] - b[0]),
+    }
+  }, [questions])
 
   if (!questions.length) {
     return <p className="note">This quiz has no questions to show.</p>
@@ -231,29 +412,268 @@ function QuizBody({ quiz }) {
   const handleUpdate = async (index, newQuestion) => {
     const newQuestions = [...questions]
     newQuestions[index] = newQuestion
-    setQuestions(newQuestions)
+    await saveQuiz({ questions: newQuestions, passages })
+  }
+
+  const saveQuiz = async ({ questions: nextQuestions = questions, passages: nextPassages = passages }) => {
+    const previousQuestions = questions
+    const previousPassages = passages
+    setQuestions(nextQuestions)
+    setPassages(nextPassages)
     setIsSaving(true)
     try {
-      await api.updateQuiz(quiz.plan_id, quiz.id, { ...quiz.quiz_json, questions: newQuestions })
+      await api.updateQuiz(quiz.plan_id, quiz.id, { ...quiz.quiz_json, questions: nextQuestions, passages: nextPassages })
       toast.success('Quiz Updated', 'Your edits have been saved securely.')
     } catch (err) {
       toast.apiError('Failed to save quiz', err)
-      setQuestions(questions) // Revert
+      setQuestions(previousQuestions)
+      setPassages(previousPassages)
     } finally {
       setIsSaving(false)
     }
   }
 
+  const handleSaveToLibrary = async () => {
+    setIsSavingToLibrary(true)
+    try {
+      const item = await api.saveQuizToLibrary(quiz.plan_id, quiz.id)
+      setLibraryItem(item)
+      setPermissionConfirmed(false)
+      toast.success('Saved privately', 'Review this set, then approve it for the shared library.')
+    } catch (err) {
+      toast.apiError('Could not save to library', err)
+    } finally {
+      setIsSavingToLibrary(false)
+    }
+  }
+
+  const handleApprove = async () => {
+    if (!libraryItem?.id) return
+    try {
+      const item = await api.approveQuizLibrarySet(libraryItem.id, { permissionConfirmed })
+      setLibraryItem(item)
+      toast.success('Shared library approved', 'Other teachers can now find this set in a matching context.')
+    } catch (err) {
+      toast.apiError('Could not approve library item', err)
+    }
+  }
+
+  const handleUnpublish = async () => {
+    if (!libraryItem?.id) return
+    try {
+      const item = await api.unpublishQuizLibrarySet(libraryItem.id)
+      setLibraryItem(item)
+      toast.success('Removed from shared library', 'Your quiz remains unchanged.')
+    } catch (err) {
+      toast.apiError('Could not remove library item', err)
+    }
+  }
+
+  const handleUseSuggestion = async (suggestion) => {
+    const selectedIndexes = selectedLibraryQuestions[suggestion.id]
+    if (!selectedIndexes?.length) return
+    try {
+      const reusable = await api.useQuizLibrarySet(suggestion.id)
+      const allQuestions = reusable.questions || []
+      const chosenQuestions = allQuestions.filter((_, index) => selectedIndexes.includes(index))
+      const passageIdMap = {}
+      const copiedPassages = (reusable.passages || []).map((passage, index) => {
+        let nextId = passage.id || `shared_passage_${index + 1}`
+        if (passages.some((existing) => existing.id === nextId)) nextId = `${nextId}_copy_${Date.now()}_${index}`
+        passageIdMap[passage.id] = nextId
+        return { ...passage, id: nextId }
+      })
+      const remappedQuestions = chosenQuestions.map((question) => ({
+        ...question,
+        passage_id: passageIdMap[question.passage_id] || question.passage_id || '',
+      }))
+      await saveQuiz({ questions: [...questions, ...remappedQuestions], passages: [...passages, ...copiedPassages] })
+      setSelectedLibraryQuestions((current) => ({ ...current, [suggestion.id]: [] }))
+      toast.success('Added shared questions', 'The copied questions are now editable in this quiz.')
+    } catch (err) {
+      toast.apiError('Could not reuse shared item', err)
+    }
+  }
+
+  const handleReportSuggestion = async (suggestion) => {
+    try {
+      await api.reportQuizLibrarySet(suggestion.id, 'Teacher reported this shared set for review.')
+      toast.success('Thanks for the report', 'This shared item has been flagged for review.')
+    } catch (err) {
+      toast.apiError('Could not report shared item', err)
+    }
+  }
+
+  const toggleLibraryQuestion = (suggestionId, index) => {
+    setSelectedLibraryQuestions((current) => {
+      const selected = current[suggestionId] || []
+      return {
+        ...current,
+        [suggestionId]: selected.includes(index) ? selected.filter((item) => item !== index) : [...selected, index],
+      }
+    })
+  }
+
+  const startPassageEdit = (passage) => {
+    setEditingPassageId(passage.id)
+    setPassageDraft(passage.text || '')
+  }
+
+  const savePassageEdit = async (passage) => {
+    setEditingPassageId(null)
+    await saveQuiz({ questions, passages: passages.map((item) => item.id === passage.id ? { ...item, text: passageDraft } : item) })
+  }
+
+  const renderQuestions = (items, describedBy) => (
+    <div className="detail-card-stack">
+      {items.map(({ q, i }, position) => (
+        <QuizQuestionCard
+          key={i}
+          q={q}
+          index={i}
+          stagger={position}
+          describedBy={describedBy}
+          onUpdate={(updated) => handleUpdate(i, updated)}
+          canEdit={canEdit}
+        />
+      ))}
+    </div>
+  )
+
   return (
-    <div className="detail-card-stack relative">
+    <div className={`quiz-body${passages.length ? ' has-passages' : ''}`}>
       {isSaving && (
         <div className="absolute top-0 right-0 m-2 flex items-center gap-1.5 text-xs text-ink-muted bg-paper-sunken px-2 py-1 rounded-full shadow-sm z-10">
           <Loader2 size={12} className="animate-spin" /> Saving...
         </div>
       )}
-      {questions.map((q, i) => (
-        <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} canEdit={canEdit} />
-      ))}
+
+      <div className="quiz-summary">
+        <strong>{questions.length} item{questions.length === 1 ? '' : 's'}</strong>
+        {summary.linked ? <span>{summary.linked} passage-linked</span> : null}
+        {summary.bloom.map(([level, count]) => (
+          <span key={level} className="quiz-alignment-chip">{bloomLabel(level)} ×{count}</span>
+        ))}
+        {summary.dok.map(([level, count]) => (
+          <span key={level} className="quiz-alignment-chip">DOK {level} ×{count}</span>
+        ))}
+      </div>
+
+      {passages.length ? (
+        <div className="quiz-groups">
+          {groups.byPassage.map(({ passage, items }) => {
+            const headingId = `passage-heading-${passage.id}`
+            const cardId = `passage-card-${passage.id}`
+            return (
+              <section key={passage.id} className="quiz-passage-group" aria-labelledby={headingId}>
+                <PassagePane
+                  passage={passage}
+                  headingId={headingId}
+                  cardId={cardId}
+                  rangeLabel={itemRangeLabel(items.map(({ i }) => i))}
+                  isEditing={editingPassageId === passage.id}
+                  draft={passageDraft}
+                  onDraftChange={setPassageDraft}
+                  onEdit={() => startPassageEdit(passage)}
+                  onCancel={() => setEditingPassageId(null)}
+                  onSave={() => savePassageEdit(passage)}
+                />
+                <div className="quiz-question-pane">
+                  {items.length
+                    ? renderQuestions(items, cardId)
+                    : <p className="note">No questions use this passage yet.</p>}
+                </div>
+              </section>
+            )
+          })}
+
+          {groups.standalone.length ? (
+            <section className="quiz-passage-group is-standalone" aria-labelledby="quiz-standalone-heading">
+              <div className="quiz-pane-heading">
+                <span id="quiz-standalone-heading">Independent items</span>
+                <span className="quiz-question-count">not tied to a passage</span>
+              </div>
+              {renderQuestions(groups.standalone)}
+            </section>
+          ) : null}
+        </div>
+      ) : (
+        renderQuestions(questions.map((q, i) => ({ q, i })))
+      )}
+
+      {/* Publishing is a terminal action and used to open the panel, above the
+          quiz the teacher came to read. It sits under the work now, and the
+          status line + suggestions share its one region rather than stacking
+          three separate boxes. */}
+      <section className="quiz-library" aria-label="Shared library">
+        <div className="quiz-library-toolbar">
+          <div>
+            <strong>Reusable assessment set</strong>
+            <span>Keep this quiz private, or approve a reviewed passage set for other teachers.</span>
+          </div>
+          {!libraryItem ? (
+            <button type="button" className="btn fa-press" onClick={handleSaveToLibrary} disabled={isSavingToLibrary || !passages.length}>
+              {isSavingToLibrary ? <Loader2 size={14} className="animate-spin" /> : <Library size={14} />}
+              Save to library
+            </button>
+          ) : libraryItem.approval_status === 'approved' ? (
+            <button type="button" className="btn fa-press" onClick={handleUnpublish}><Undo2 size={14} /> Unpublish</button>
+          ) : (
+            <span className="quiz-approval-controls">
+              {libraryItem.passage_source === 'teacher_provided' ? (
+                <label><input type="checkbox" checked={permissionConfirmed} onChange={(e) => setPermissionConfirmed(e.target.checked)} /> I have permission to share this passage</label>
+              ) : null}
+              <button type="button" className="btn btn-primary fa-press" onClick={handleApprove} disabled={libraryItem.passage_source === 'teacher_provided' && !permissionConfirmed}><CheckCircle2 size={14} /> Approve for sharing</button>
+            </span>
+          )}
+        </div>
+
+        {libraryItem ? (
+          <div className="quiz-library-status" role="status">
+            <Library size={14} aria-hidden="true" />
+            {libraryItem.approval_status === 'approved' ? 'Approved and available to teachers in matching contexts.' : 'Saved privately as a draft. Review before sharing.'}
+          </div>
+        ) : null}
+
+        <div className="quiz-library-suggestions">
+          <div className="quiz-pane-heading"><span><Library size={15} aria-hidden="true" /> Matching shared sets</span>{suggestionsLoading ? <Loader2 size={14} className="animate-spin" /> : null}</div>
+          {!suggestionsLoading && !suggestions.length ? <p className="note">No approved sets match this plan yet.</p> : null}
+          {suggestions.map((suggestion) => {
+            const selectedCount = (selectedLibraryQuestions[suggestion.id] || []).length
+            return (
+              <div key={suggestion.id} className="quiz-library-suggestion">
+                <div className="quiz-library-suggestion-main">
+                  <strong>{suggestion.title}</strong>
+                  <span>{suggestion.provenance_label} · {suggestion.usage_count || 0} reuse{suggestion.usage_count === 1 ? '' : 's'}</span>
+                  {suggestion.quiz_json?.questions?.length ? (
+                    <div className="quiz-library-question-picker">
+                      {suggestion.quiz_json.questions.map((question, index) => (
+                        <label key={index}>
+                          <input type="checkbox" checked={(selectedLibraryQuestions[suggestion.id] || []).includes(index)} onChange={() => toggleLibraryQuestion(suggestion.id, index)} />
+                          <span>Q{index + 1}: {question.prompt}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="quiz-library-suggestion-actions">
+                  {/* Was: an empty selection silently copied EVERY question. */}
+                  <button
+                    type="button"
+                    className="btn fa-press"
+                    onClick={() => handleUseSuggestion(suggestion)}
+                    disabled={!selectedCount}
+                    title={selectedCount ? undefined : 'Tick the questions you want first'}
+                  >
+                    {selectedCount ? `Add ${selectedCount} selected` : 'Add selected'}
+                  </button>
+                  <button type="button" className="btn-icon fa-press" onClick={() => handleReportSuggestion(suggestion)} aria-label={`Report ${suggestion.title}`} title="Report shared item"><AlertTriangle size={14} /></button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
     </div>
   )
 }
@@ -364,6 +784,34 @@ function StandardsBody({ grounded = [], ungrounded = [], subject }) {
 
 const WEEKDAY_LETTERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
+const localDateKey = (date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+)
+
+/* Settings can receive the school-level calendar before the API has added its
+ * derived `days` array, while the main app's week board already includes it.
+ * Keep both response shapes renderable so a calendar never disappears during
+ * that transition. The backend remains the source of exact closure details
+ * whenever `days` is present. */
+function inferredWeekDays(week) {
+  if (!week.start || !week.end) return []
+  const start = parseISO(week.start)
+  const end = parseISO(week.end)
+  const monday = new Date(start)
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
+    const inRange = date >= start && date <= end
+    const isSchool = !week.no_school && inRange
+    return {
+      date: localDateKey(date),
+      is_school: isSchool,
+      note: isSchool ? '' : week.no_school ? (week.notes || 'No school') : date < start ? 'Before the first day' : 'After the last day',
+    }
+  })
+}
+
 /* Every week's own `days` array (backend/schoolcal.py's week_days, already
  * attached to each /api/weeks row — see db.py's week_board) flattened into
  * one date → info map, then re-grouped into real calendar months. Weekends
@@ -373,7 +821,9 @@ const WEEKDAY_LETTERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 function buildMonths(weeks) {
   const byDate = new Map()
   weeks.forEach((w) => {
-    ;(w.days || []).forEach((d) => {
+    const days = Array.isArray(w.days) && w.days.length ? w.days : inferredWeekDays(w)
+    days.forEach((d) => {
+      if (!d.date) return
       byDate.set(d.date, {
         isSchool: d.is_school,
         note: d.note,
@@ -424,25 +874,131 @@ function buildMonths(weeks) {
  * on the API response — see buildMonths above) instead of a per-week
  * summary, so a single holiday inside an otherwise-normal week is visible
  * without opening anything further. */
-function CalendarBody({ weeks = [], currentWeek, classId }) {
+export function CalendarBody({ weeks = [], currentWeek, classId }) {
   const months = useMemo(() => buildMonths(weeks), [weeks])
   const today = todayISO()
-  const currentRef = useRef(null)
-  const hasScrolled = useRef(false)
+  const monthRefs = useRef([])
+  const todayMonthIndex = useMemo(() => {
+    const index = months.findIndex((month) => month.cells.some((cell) => cell?.iso === today))
+    return index >= 0 ? index : 0
+  }, [months, today])
+  const activeWeek = useMemo(() => {
+    if (currentWeek != null) return currentWeek
+    return weeks.find((week) => week.start <= today && today <= week.end)?.week
+  }, [weeks, currentWeek, today])
+  const focusMonthIndex = useMemo(() => {
+    const index = months.findIndex((month) => month.cells.some((cell) => (
+      cell && (currentWeek != null ? cell.week === currentWeek : cell.iso === today)
+    )))
+    return index >= 0 ? index : 0
+  }, [months, currentWeek, today])
+  const [activeMonthIndex, setActiveMonthIndex] = useState(focusMonthIndex)
+  /* scrollIntoView's own scroll fires the SAME 'scroll' event handleMonthScroll
+     listens for to track free (manual) scrolling — and while that scroll is
+     still in flight (or, inside onboarding's animated step transition,
+     delayed well past when it would normally settle), container.scrollLeft
+     doesn't yet match its destination, so handleMonthScroll's
+     nearest-month measurement briefly resolves to the WRONG (starting)
+     month and stomps the correct index right back to 0.
+     A timing-based guard (armed on scroll, cleared after a fixed delay or
+     on 'scrollend') was tried here first and still lost this race under
+     onboarding's own mount animation — timing assumptions about how long a
+     browser takes to settle a scroll are exactly the kind of thing that
+     holds locally and breaks somewhere with different layout/animation
+     timing. This is deliberately not a timing guess: handleMonthScroll
+     simply never runs at all until the scroller has received a genuine
+     user gesture (wheel, touch, or a pointer press) — every mount-time or
+     button-triggered scroll (scrollIntoView, scrollToMonth) already sets
+     activeMonthIndex itself, so handleMonthScroll only exists to track
+     FREE dragging/swiping, which cannot happen without one of these
+     gestures firing first regardless of animation or scroll timing. */
+  const userScrolledRef = useRef(false)
+
   useEffect(() => {
-    if (hasScrolled.current || !months.length) return
-    hasScrolled.current = true
-    currentRef.current?.scrollIntoView({ block: 'center' })
+    const container = monthRefs.current[0]?.closest('.cal-months')
+    if (!container) return undefined
+    const markUserScrolled = () => { userScrolledRef.current = true }
+    container.addEventListener('wheel', markUserScrolled, { passive: true })
+    container.addEventListener('touchstart', markUserScrolled, { passive: true })
+    container.addEventListener('pointerdown', markUserScrolled)
+    return () => {
+      container.removeEventListener('wheel', markUserScrolled)
+      container.removeEventListener('touchstart', markUserScrolled)
+      container.removeEventListener('pointerdown', markUserScrolled)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [months.length])
+
+  // useLayoutEffect, not useEffect: runs before the browser paints, so the
+  // very first frame already shows the right month instead of a flash of
+  // month 0 that a post-paint effect would correct a tick later.
+  useLayoutEffect(() => {
+    if (!months.length) return
+    setActiveMonthIndex(focusMonthIndex)
+    monthRefs.current[focusMonthIndex]?.scrollIntoView({ block: 'nearest', inline: 'start' })
+  }, [months.length, focusMonthIndex])
+
+  const scrollToMonth = (index) => {
+    const nextIndex = Math.max(0, Math.min(months.length - 1, index))
+    setActiveMonthIndex(nextIndex)
+    monthRefs.current[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })
+  }
+
+  const handleMonthScroll = (event) => {
+    if (!userScrolledRef.current) return
+    const container = event.currentTarget
+    const nextIndex = monthRefs.current.reduce((closest, month, index) => {
+      if (!month) return closest
+      const distance = Math.abs(month.offsetLeft - container.scrollLeft)
+      const closestDistance = Math.abs(monthRefs.current[closest]?.offsetLeft - container.scrollLeft)
+      return distance < closestDistance ? index : closest
+    }, 0)
+    if (nextIndex !== activeMonthIndex) setActiveMonthIndex(nextIndex)
+  }
 
   if (!weeks.length) {
     return <p className="note">No school calendar is on file for this class.</p>
   }
 
   return (
-    <div className="cal-months">
-      {months.map((month) => (
-        <div key={month.key} className="cal-month fa-rise">
+    <div className="cal-shell">
+      <div className="cal-toolbar">
+        <button
+          type="button"
+          className="cal-today-button"
+          onClick={() => scrollToMonth(todayMonthIndex)}
+          disabled={activeMonthIndex === todayMonthIndex}
+        >
+          Today
+        </button>
+        <h3 className="cal-toolbar-label">
+          {months[activeMonthIndex]?.label || months[0]?.label}
+          {activeWeek != null ? <span className="cal-toolbar-week">Week {String(activeWeek).padStart(2, '0')}</span> : null}
+        </h3>
+        <div className="cal-nav" aria-label="Calendar month navigation">
+          <button
+            type="button"
+            onClick={() => scrollToMonth(activeMonthIndex - 1)}
+            disabled={activeMonthIndex === 0}
+            aria-label="Previous month"
+            title="Previous month"
+          >
+            <ChevronLeft size={16} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToMonth(activeMonthIndex + 1)}
+            disabled={activeMonthIndex === months.length - 1}
+            aria-label="Next month"
+            title="Next month"
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <div className="cal-months" onScroll={handleMonthScroll} tabIndex={0} role="region" aria-label="School calendar months">
+      {months.map((month, monthIndex) => (
+        <div key={month.key} className="cal-month fa-rise" ref={(node) => { monthRefs.current[monthIndex] = node }}>
           <h3 className="cal-month-label">{month.label}</h3>
           <div className="cal-weekday-row" aria-hidden="true">
             {WEEKDAY_LETTERS.map((d) => (
@@ -450,43 +1006,41 @@ function CalendarBody({ weeks = [], currentWeek, classId }) {
             ))}
           </div>
           <div className="cal-grid">
-            {(() => {
-              // Ref goes on the FIRST day of the plan's own week only — every
-              // day in that week would otherwise reassign currentRef as the
-              // map runs, and scrollIntoView on whichever happened to run
-              // last (Friday) centers the same week either way, but only one
-              // DOM node should actually own the ref.
-              let refAssigned = false
-              return month.cells.map((cell, i) => {
-                if (!cell) return <span key={`pad-${i}`} className="cal-day is-pad" aria-hidden="true" />
-                const isToday = cell.iso === today
-                const isThisPlanWeek = cell.week === currentWeek
-                const openable = cell.hasPlan && cell.chatId && !isThisPlanWeek && !cell.isOff
-                const ref = isThisPlanWeek && !refAssigned ? ((refAssigned = true), currentRef) : undefined
-                const cellBody = (
-                  <span
-                    className={`cal-day${cell.isOff ? ' is-off' : ''}${cell.note ? ' has-note' : ''}${
-                      isToday ? ' is-today' : ''
-                    }${isThisPlanWeek ? ' is-current-week' : ''}${openable ? ' is-openable' : ''}`}
-                    title={`${longDay(cell.iso)}${cell.note ? ` — ${cell.note}` : ''}`}
-                  >
-                    {cell.day}
-                  </span>
-                )
-                return openable ? (
-                  <Link key={cell.iso} to={`/c/${classId}/chat/${cell.chatId}`} className="cal-day-link" ref={ref}>
-                    {cellBody}
-                  </Link>
-                ) : (
-                  <span key={cell.iso} ref={ref}>
-                    {cellBody}
-                  </span>
-                )
-              })
-            })()}
+            {month.cells.map((cell, i) => {
+              if (!cell) return <span key={`pad-${i}`} className="cal-day is-pad" aria-hidden="true" />
+              const isToday = cell.iso === today
+              const isThisPlanWeek = activeWeek != null && cell.week === activeWeek
+              const openable = cell.hasPlan && cell.chatId && !isThisPlanWeek && !cell.isOff
+              const cellBody = (
+                <span
+                  className={`cal-day${cell.isOff ? ' is-off' : ''}${
+                    isToday ? ' is-today' : ''
+                  }${isThisPlanWeek ? ' is-current-week' : ''}${openable ? ' is-openable' : ''}`}
+                  title={`${longDay(cell.iso)}${cell.note ? ` — ${cell.note}` : ''}`}
+                >
+                  <span className="cal-day-number">{cell.day}</span>
+                  <span className={`cal-day-status ${cell.isOff ? 'is-off' : 'is-work'}`} aria-hidden="true" />
+                </span>
+              )
+              return openable ? (
+                <Link key={cell.iso} to={`/c/${classId}/chat/${cell.chatId}`} className="cal-day-link">
+                  {cellBody}
+                </Link>
+              ) : (
+                <span key={cell.iso}>
+                  {cellBody}
+                </span>
+              )
+            })}
           </div>
         </div>
       ))}
+      </div>
+      <div className="cal-key" aria-label="Calendar key">
+        <span><i className="cal-key-dot is-work" aria-hidden="true" /> Teaching day</span>
+        <span><i className="cal-key-dot is-off" aria-hidden="true" /> Non-teaching day</span>
+        {activeWeek != null ? <span><i className="cal-key-line" aria-hidden="true" /> Current week</span> : null}
+      </div>
     </div>
   )
 }

@@ -7,7 +7,7 @@ import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
 import { errorParts } from '../lib/apiError'
 import { useTheme } from '../hooks/useTheme'
@@ -18,7 +18,7 @@ import { ConfirmedCalendarReview } from '../components/OnboardingWizard'
 import { UploadDropzone } from '../components/UploadDropzone'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { SupportDialog } from '../components/SupportDialog'
-import { AVATAR_OPTIONS, getInitials } from '../lib/avatars'
+import { AvatarPicker } from '../components/AvatarPicker'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 
@@ -1661,83 +1661,13 @@ function IntegrationPlaceholder({ name, description, icon }) {
 
 export
 function AvatarSelect() {
-  /* Reads the account through useAuth (which is the qk.me query itself now,
-     see AuthProvider) rather than a second ['me'] useQuery of its own. That
-     duplicate was the bug: this component refetched ITS copy while the
-     sidebar's AccountMenu read AuthProvider's separate useState, so picking an
-     avatar updated the picker here and left the rail showing the old one until
-     a full page reload. */
-  const { user } = useAuth()
-  const qc = useQueryClient()
-  const toast = useToast()
-
-  const chooseAvatar = useMutation({
-    mutationFn: (avatarId) => api.updateAvatar(avatarId),
-    /* Optimistic: the ring moves on click. Picking an avatar is a direct
-       manipulation of something the teacher is looking at — a round trip
-       before it moves reads as the app ignoring the click, which is exactly
-       what "takes a while for it to show" was. Same shape as useRenameChat
-       (hooks/useAppData.js), the pattern this app already uses for this. */
-    onMutate: async (avatarId) => {
-      await qc.cancelQueries({ queryKey: qk.me })
-      const prev = qc.getQueryData(qk.me)
-      qc.setQueryData(qk.me, (u) => (u ? { ...u, avatar: avatarId } : u))
-      return { prev }
-    },
-    onError: (err, _avatarId, ctx) => {
-      if (ctx?.prev !== undefined) qc.setQueryData(qk.me, ctx.prev)
-      toast.apiError('Could not update avatar', err)
-    },
-    /* PUT /api/auth/avatar already returns the full public user
-       (backend/routes/auth.py), so the authoritative answer replaces the
-       optimistic guess with NO second round trip. This used to be an
-       await refetch() — a whole extra GET /api/auth/me, which is one of the
-       most expensive endpoints in the app, for data the response already had. */
-    onSuccess: (updated) => qc.setQueryData(qk.me, updated),
-  })
-
-  /* No `saving` guard and no disabled state: the update is optimistic, so
-     there is no window where a click could land on stale data, and freezing
-     every picker button on every pick was most of what made this feel slow.
-     No success toast either — the ring moving IS the confirmation. */
-  const handleSelect = (avatarId) => {
-    if (user?.avatar === avatarId) return
-    chooseAvatar.mutate(avatarId)
-  }
-
   return (
     <div className="mb-8 border-b border-edge pb-8">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-ink">Profile Icon</h3>
         <p className="mt-1 text-xs text-ink-muted">Choose a fun icon to give your profile some personality.</p>
       </div>
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={() => handleSelect(null)}
-          className={`flex h-12 w-12 items-center justify-center rounded-full border-2 text-xs font-bold tracking-wide transition-all hover:scale-110 active:scale-95 ${!user?.avatar ? 'border-[var(--accent)] bg-accent/15 text-accent-text shadow-md' : 'border-transparent bg-paper-inset text-ink-muted hover:bg-paper-sunken'}`}
-          aria-pressed={!user?.avatar}
-          aria-label="Your initials"
-          title="Your initials"
-        >
-          {getInitials(user?.name)}
-        </button>
-        {AVATAR_OPTIONS.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => handleSelect(opt.id)}
-            className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${opt.bg} ${user?.avatar === opt.id ? 'border-[var(--accent)] shadow-[0_0_0_2px_var(--paper),0_0_0_4px_var(--accent)]' : 'border-transparent'}`}
-            aria-pressed={user?.avatar === opt.id}
-            aria-label={opt.label}
-            title={opt.label}
-          >
-            <span className="text-2xl leading-none" aria-hidden="true">
-              {opt.emoji}
-            </span>
-          </button>
-        ))}
-      </div>
+      <AvatarPicker />
     </div>
   )
 }
