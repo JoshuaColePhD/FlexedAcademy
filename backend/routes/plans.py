@@ -24,7 +24,7 @@ from .. import (
 )
 from ..config import settings
 from ..deps import get_current_user
-from ..entitlement import require_entitlement
+from ..entitlement import require_beta_features, require_entitlement
 from ..errors import AppError
 from ..template_context import day_names_for_school
 from .drive import get_valid_access_token
@@ -665,7 +665,10 @@ def create_quiz(
 
     Gated the same as building the plan itself (require_entitlement) — this
     is a real model call and spends real tokens, same reasoning as
-    revise_day's own gate.
+    revise_day's own gate. Also gated behind require_beta_features: quiz
+    creation is a beta feature (SettingsPage.jsx's toggle), checked before
+    entitlement so a teacher who hasn't opted in gets the "enable it in
+    Settings" message instead of an unrelated usage-limit one.
 
     Synchronous, unlike the plan's own docx build (which backgrounds):
     generation plus the two local artifact writes are short enough to finish
@@ -673,6 +676,7 @@ def create_quiz(
     export fails.
     """
     row = _require_plan(user_id, plan_id)
+    require_beta_features(user_id)
     require_entitlement(user_id)
 
     unknown = set(body.question_types) - set(schema.QUESTION_TYPES)
@@ -722,9 +726,11 @@ def revise_quiz_route(
     follow-up — the chat-driven counterpart to create_quiz above, the same
     way revise_whole_plan is the counterpart to building a plan fresh.
 
-    Gated the same as create_quiz — a real model call, same reasoning.
+    Gated the same as create_quiz — a real model call, same reasoning, plus
+    the same require_beta_features check.
     """
     row = _require_plan(user_id, plan_id)
+    require_beta_features(user_id)
     require_entitlement(user_id)
     quiz_row = _require_quiz(user_id, plan_id, quiz_id)
 
@@ -758,7 +764,12 @@ def revise_quiz_route(
 def update_quiz(
     plan_id: str, quiz_id: str, body: QuizUpdateRequest, user_id: str = Depends(get_current_user)
 ) -> dict:
+    """Hand-edit an already-built quiz's questions (ArtifactDetailPanel.jsx) —
+    no model call, but still gated behind require_beta_features: editing a
+    quiz's content is the other half of "quiz creation is a beta feature,"
+    same as create_quiz/revise_quiz_route above."""
     row = _require_plan(user_id, plan_id)
+    require_beta_features(user_id)
     _require_quiz(user_id, plan_id, quiz_id)
 
     try:

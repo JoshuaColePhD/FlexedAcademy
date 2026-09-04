@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload } from 'lucide-react'
 import { api } from '../lib/api'
+import { qk } from '../lib/queryKeys'
 import { fetchStandardsBatch } from '../lib/standardsCache'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -25,7 +27,7 @@ import { DocxDownloadButton } from './DocxDownloadButton'
  * artifact.
  */
 
-function QuizQuestionCard({ q, index, onUpdate }) {
+function QuizQuestionCard({ q, index, onUpdate, canEdit }) {
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(q)
 
@@ -123,14 +125,16 @@ function QuizQuestionCard({ q, index, onUpdate }) {
         <span className="detail-card-index">Q{index + 1}</span>
         <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
         {q.standard_code ? <span className="detail-card-code">{q.standard_code}</span> : null}
-        <button 
-          type="button" 
-          className="ml-auto p-1 text-ink-faint hover:text-ink transition-colors opacity-0 group-hover:opacity-100" 
-          onClick={() => setIsEditing(true)}
-          title="Edit Question"
-        >
-          <Edit2 size={12} />
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            className="ml-auto p-1 text-ink-faint hover:text-ink transition-colors opacity-0 group-hover:opacity-100"
+            onClick={() => setIsEditing(true)}
+            title="Edit Question"
+          >
+            <Edit2 size={12} />
+          </button>
+        ) : null}
       </div>
       <p className="detail-card-prompt">{q.prompt}</p>
 
@@ -206,6 +210,15 @@ function QuizBody({ quiz }) {
   const [questions, setQuestions] = useState(quiz?.quiz_json?.questions || [])
   const [isSaving, setIsSaving] = useState(false)
   const toast = useToast()
+  // Editing a quiz's questions is beta-gated the same as building one
+  // (entitlement.require_beta_features, enforced server-side on
+  // routes/plans.py's update_quiz) — hiding the per-question Edit button
+  // here avoids a save that fails outright for an account that hasn't
+  // turned Beta Features on in Settings. useQuery, not useAuth: the small
+  // {id,email,name} auth context doesn't carry beta_features (see
+  // ChatPage.jsx's own comment on this same qk.me query).
+  const { data: meAccount } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
+  const canEdit = Boolean(meAccount?.beta_features)
 
   useEffect(() => {
     setQuestions(quiz?.quiz_json?.questions || [])
@@ -239,7 +252,7 @@ function QuizBody({ quiz }) {
         </div>
       )}
       {questions.map((q, i) => (
-        <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} />
+        <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} canEdit={canEdit} />
       ))}
     </div>
   )

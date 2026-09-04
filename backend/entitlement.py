@@ -464,3 +464,24 @@ def require_entitlement(user_id: str) -> None:
         "Everything you’ve already built stays yours — open it, revise it, download it.",
         extra={"entitlement": ent.as_dict()},
     )
+
+
+def require_beta_features(user_id: str) -> None:
+    """Quiz creation/editing is gated behind the same "Enable Beta Features"
+    toggle SettingsPage.jsx already uses for Voice Mode (db.py migration 53).
+
+    One function decides, same as require_entitlement above: routes/plans.py's
+    create_quiz, revise_quiz_route and update_quiz all call this, and
+    SettingsPage.jsx's toggle plus the quiz-creation UI it gates (ChatPage.jsx,
+    ArtifactRail.jsx) read the same `beta_features` flag off /api/auth/me —
+    the client only hides/disables to avoid a bad UX; this is the real
+    enforcement, so a request that reaches these routes directly can't skip
+    Settings.
+    """
+    if not db.has_beta_features(user_id):
+        raise AppError(
+            "beta_features_required",
+            "Quiz creation is a beta feature.",
+            status=403,
+            hint="Turn on Beta Features in Settings to build or edit quizzes.",
+        )
