@@ -20,8 +20,35 @@
  * Correct for any length, index-free, and nothing to keep in sync.
  */
 
+import { useLayoutEffect, useRef, useState } from 'react'
+
 export function OnboardingStepRail({ steps, activeKey, onGoTo }) {
   const activeIndex = steps.findIndex((step) => step.key === activeKey)
+
+  /* One marker that SLIDES between steps, rather than each dot changing
+   * colour where it stands. Same pattern as AppShell's own sliding indicator,
+   * and the same reason: a marker that travels reads as progress along a
+   * route, where a colour swap reads as two separate states.
+   *
+   * Measured from the live <li> rather than computed from a row height and a
+   * gap. The arithmetic version is a trap — a label that wraps, a longer step
+   * name, or a different font size all silently desynchronise it from the dots
+   * it is supposed to sit on.
+   */
+  const listRef = useRef(null)
+  const [markerY, setMarkerY] = useState(null)
+
+  useLayoutEffect(() => {
+    const item = listRef.current?.children?.[activeIndex]
+    if (!item) return undefined
+    const place = () => setMarkerY(item.offsetTop + item.offsetHeight / 2)
+    place()
+    /* The rail's own height can change without the step changing — a label
+     * rewrapping when the pane resizes — and the marker has to follow. */
+    const ro = new ResizeObserver(place)
+    ro.observe(listRef.current)
+    return () => ro.disconnect()
+  }, [activeIndex, steps.length])
 
   /* The closing screen sits outside the numbered sequence, and a one-step plan
      has no progress worth drawing. Render the slot either way so the card's
@@ -31,7 +58,31 @@ export function OnboardingStepRail({ steps, activeKey, onGoTo }) {
   return (
     <div className="onboarding-rail-slot">
       <nav aria-label="Setup progress">
-        <ol className="onboarding-rail">
+        {/* The marker is a SIBLING of the <ol>, not a child of it. An <ol> may
+            only contain <li> (plus script-supporting elements), and putting a
+            <span> in there also shifted every :first-child match by one — so
+            the first step stopped being :first-child and grew a connector
+            segment above it, pointing at nothing. */}
+        <div className="onboarding-rail-track">
+          {/* Decorative: the <li>s carry the real state, including
+              aria-current, so this is the visual half only. Held back until it
+              has been measured, so it cannot flash at the top on first paint. */}
+          {markerY === null ? null : (
+            <span
+              className="onboarding-rail-marker"
+              aria-hidden="true"
+              /* Position set inline, EASED IN CSS. Deliberately not a framer
+                 animate: the rest of this rail is CSS for exactly one reason —
+                 base.css's blanket prefers-reduced-motion block collapses
+                 every transition to 0.01ms, so anything expressed as a CSS
+                 transition honours that setting without a MotionConfig in the
+                 loop. The travel is the whole point of this element, so it is
+                 the last thing that should need a second mechanism to respect
+                 someone's motion preference. */
+              style={{ transform: `translateY(${markerY}px)` }}
+            />
+          )}
+          <ol className="onboarding-rail" ref={listRef}>
           {steps.map((step, index) => {
             const state = index < activeIndex ? 'done' : index === activeIndex ? 'current' : 'upcoming'
             return (
@@ -53,7 +104,8 @@ export function OnboardingStepRail({ steps, activeKey, onGoTo }) {
               </li>
             )
           })}
-        </ol>
+          </ol>
+        </div>
       </nav>
       {/* Phone only. The <ol> above stays the accessible source of truth in both
           layouts — below md it collapses to a hairline track with only the

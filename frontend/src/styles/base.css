@@ -491,9 +491,18 @@
   /* ── the step rail ──────────────────────────────────────────────────────── */
   .onboarding-rail-slot {
     min-width: 0;
-    /* Top of the frame, not the middle of the centred content — the rail is a
-       nav, and it reads as one only if it starts where the pane starts. */
-    align-self: start;
+    /* Centred in the pane, on request. The rail is the one thing on screen
+       that never changes between steps, so parking it in the middle of the
+       left column gives the flow a fixed spine to travel down while the
+       content stays top-aligned and stable. */
+    align-self: center;
+  }
+
+  /* The positioned ancestor for the marker, and for the offsetTop the rail
+     measures against — one element owning both keeps the two in the same
+     coordinate space. */
+  .onboarding-rail-track {
+    position: relative;
   }
 
   .onboarding-rail {
@@ -502,6 +511,28 @@
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  /* The travelling marker. framer animates its y; everything static about it
+     lives here. Centred on its own height so the measured mid-point of a row
+     is where it lands. */
+  .onboarding-rail-marker {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 0.5rem;
+    width: 0.5rem;
+    margin-top: -0.25rem;
+    border-radius: var(--r-full);
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.18);
+    pointer-events: none;
+    /* --ease-spring overshoots slightly, which is what makes this read as
+       arriving at a step rather than sliding to a stop — tokens.css reserves
+       that curve for "the product's own tactile press feedback", and a marker
+       landing on the step you just reached is the same kind of moment.
+       --t-panel because it travels the length of the rail, not a few pixels. */
+    transition: transform var(--t-panel) var(--ease-spring);
   }
 
   .onboarding-rail-step {
@@ -555,15 +586,14 @@
   .onboarding-rail-step[data-state='done'] .onboarding-rail-dot {
     background: var(--ink-soft);
   }
-  /* The step you are ON is the app's accent — which in .neo-world is a purple
-     (--accent-rgb: 116 76 196), the same one every selected control in the
-     product uses. It was --ink, so "here" and "done" differed only by weight
-     and a shade of the same plum; the accent is what the rest of the app
-     means by "this is the live one". */
+  /* The current step's own dot goes INVISIBLE on the vertical rail, because
+     the sliding marker is sitting on top of it — two purple dots in the same
+     place, one of which lags behind the other during the slide, is worse than
+     one that moves. It keeps its place in the layout so nothing shifts, and
+     the mobile block below turns it back on, since the horizontal track has
+     no marker. */
   .onboarding-rail-step[data-state='current'] .onboarding-rail-dot {
-    background: var(--accent);
-    /* A halo, not a bigger dot — nothing reflows as the step advances. */
-    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.18);
+    background: transparent;
   }
 
   .onboarding-rail-label {
@@ -917,7 +947,13 @@
       width: auto;
       box-shadow: none;
     }
+    .onboarding-rail-marker {
+      display: none;
+    }
+    /* The horizontal track has no marker to carry it, so the segment itself
+       takes the accent back. */
     .onboarding-rail-step[data-state='current'] .onboarding-rail-dot {
+      background: var(--accent);
       box-shadow: none;
     }
     /* Clipped, not display:none — the <ol> is still the accessible source of
