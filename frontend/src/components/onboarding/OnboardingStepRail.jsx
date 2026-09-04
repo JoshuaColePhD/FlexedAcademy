@@ -50,9 +50,10 @@ export function OnboardingStepRail({ steps, activeKey, onGoTo }) {
     return () => ro.disconnect()
   }, [activeIndex, steps.length])
 
-  /* The closing screen sits outside the numbered sequence, and a one-step plan
-     has no progress worth drawing. Render the slot either way so the card's
-     two-column grid doesn't reflow as the rail comes and goes. */
+  /* The closing screen is the visible destination now, so activeKey remains
+     meaningful through the final receipt. A one-step plan still has no
+     journey worth drawing; render the slot either way so the card's grid does
+     not reflow as the rail comes and goes. */
   if (activeIndex < 0 || steps.length < 2) return <div className="onboarding-rail-slot" />
 
   return (
@@ -90,6 +91,7 @@ export function OnboardingStepRail({ steps, activeKey, onGoTo }) {
                 key={step.key}
                 className="onboarding-rail-step"
                 data-state={state}
+                data-terminal={step.terminal || undefined}
                 aria-current={state === 'current' ? 'step' : undefined}
               >
                 <span className="onboarding-rail-dot" aria-hidden="true" />

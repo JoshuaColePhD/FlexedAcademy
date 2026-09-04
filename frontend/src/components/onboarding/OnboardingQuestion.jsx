@@ -28,7 +28,7 @@
 export function OnboardingQuestion({ question, lead, children, className = '' }) {
   return (
     <header className={`onboarding-question ${className}`.trim()}>
-      <h2 id="onboarding-title" className="text-2xl font-semibold tracking-tight text-ink">
+      <h2 id="onboarding-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight text-ink">
         {question}
       </h2>
       {lead ? <p className="onboarding-lead">{lead}</p> : null}
@@ -41,6 +41,6 @@ export function OnboardingQuestion({ question, lead, children, className = '' })
  * control below it. Deliberately not .eyebrow, which is uppercase --fs-2xs
  * with caps tracking: that is a section tag, and this is a field label, so it
  * stays sentence case at body size. */
-export function OnboardingChoiceLabel({ children, as: Tag = 'p' }) {
-  return <Tag className="onboarding-choice-label">{children}</Tag>
+export function OnboardingChoiceLabel({ children, as: Tag = 'p', className = '' }) {
+  return <Tag className={`onboarding-choice-label${className ? ` ${className}` : ''}`}>{children}</Tag>
 }

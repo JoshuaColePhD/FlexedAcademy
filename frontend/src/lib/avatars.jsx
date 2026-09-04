@@ -30,6 +30,22 @@ export const AVATAR_OPTIONS = [
   { id: 'leaf', emoji: '🌿', label: 'Leaf', bg: 'bg-green-500' },
   { id: 'music', emoji: '🎵', label: 'Music', bg: 'bg-purple-500' },
   { id: 'telescope', emoji: '🔭', label: 'Telescope', bg: 'bg-blue-600' },
+  { id: 'apple', emoji: '🍎', label: 'Apple', bg: 'bg-red-600' },
+  { id: 'pencil', emoji: '✏️', label: 'Pencil', bg: 'bg-yellow-600' },
+  { id: 'trophy', emoji: '🏆', label: 'Trophy', bg: 'bg-amber-500' },
+  { id: 'rainbow', emoji: '🌈', label: 'Rainbow', bg: 'bg-sky-400' },
+  { id: 'unicorn', emoji: '🦄', label: 'Unicorn', bg: 'bg-pink-400' },
+  { id: 'dino', emoji: '🦖', label: 'Dinosaur', bg: 'bg-lime-600' },
+  { id: 'robot', emoji: '🤖', label: 'Robot', bg: 'bg-slate-600' },
+  { id: 'alien', emoji: '👽', label: 'Alien', bg: 'bg-green-600' },
+  { id: 'turtle', emoji: '🐢', label: 'Turtle', bg: 'bg-emerald-600' },
+  { id: 'butterfly', emoji: '🦋', label: 'Butterfly', bg: 'bg-violet-400' },
+  { id: 'whale', emoji: '🐳', label: 'Whale', bg: 'bg-blue-500' },
+  { id: 'cactus', emoji: '🌵', label: 'Cactus', bg: 'bg-green-500' },
+  { id: 'basketball', emoji: '🏀', label: 'Basketball', bg: 'bg-orange-600' },
+  { id: 'guitar', emoji: '🎸', label: 'Guitar', bg: 'bg-red-500' },
+  { id: 'cupcake', emoji: '🧁', label: 'Cupcake', bg: 'bg-rose-500' },
+  { id: 'compass', emoji: '🧭', label: 'Compass', bg: 'bg-teal-600' },
 ]
 
 export function getInitials(name) {

@@ -1,24 +1,16 @@
 import { ArrowRight, Loader2 } from 'lucide-react'
 
-/* Exactly one filled control per step.
+/* One plain-language action row per step.
  *
- * The old footers used .dialog-actions with up to THREE .btn siblings — Back,
- * "Skip for now", Continue — two of them competing outline buttons carrying
- * their own neomorphic emboss. Back and Skip are quiet text here; Continue is
- * the only thing on the screen with a fill.
+ * Back, Skip, and Continue are semantic buttons so keyboard, disabled, and
+ * focus behaviour remain honest. They intentionally do not LOOK like boxed
+ * buttons: the journey should finish as part of the question, not at a docked
+ * control bar. Continue is the single forward phrase, with its arrow as the
+ * directional cue rather than an enclosing pill.
  *
- * Continue is the DARK ink pill, not .btn-primary, which fills with --accent.
- * That split is real and worth keeping: tokens.css rule 4 reserves district
- * blue for what is actionable INSIDE the product, and every linear one-way
- * flow the app has already carries ink instead — /welcome's "Open my year",
- * /signup, /reset. This wizard opens straight off /welcome's own Continue, so
- * the button must not change colour mid-flow.
- *
- * No .neo-raised: rule 2 keeps elevation for floating layers, and /welcome's
- * equivalent doesn't wear one either. .fa-press gives the tactile feedback
- * instead — transform-only, and already gated by the blanket
- * prefers-reduced-motion block in base.css, which is also what replaces the
- * whileHover={{ scale: 1.02 }} props scattered across this flow.
+ * No .neo-raised: elevation belongs to surfaces, not a sentence that moves a
+ * teacher to the next question. The arrow's small transform-only hover is
+ * already covered by the blanket prefers-reduced-motion rule in base.css.
  *
  * `skipLabel` defaults to a bare "Skip for now" but every caller that can
  * should pass the step's own cost instead ("Skip — I'll plan by week number
@@ -35,13 +27,20 @@ export function OnboardingActions({
   backLabel = 'Back',
   onSkip,
   skipLabel = 'Skip for now',
+  hideBack = false,
+  hideSkip = false,
   children,
 }) {
   return (
     <div className="onboarding-actions">
-      {/* Primary first in the DOM and left-aligned: it matches the reference,
-          it makes Continue the focus trap's first stop rather than something
-          you tab past two throwaways to reach, and it is the Enter target. */}
+      {/* In onboarding, Back moves to the top bar so the lower action zone
+          carries only the forward decision. Other callers may still render it
+          here. Continue stays the submit target for Enter. */}
+      {onBack && !hideBack ? (
+        <button type="button" className="onboarding-quiet" onClick={onBack}>
+          {backLabel}
+        </button>
+      ) : null}
       <button
         type="button"
         className="onboarding-continue fa-press"
@@ -52,12 +51,7 @@ export function OnboardingActions({
         {busy ? busyLabel : nextLabel}
         {busy ? null : <ArrowRight size={15} aria-hidden="true" />}
       </button>
-      {onBack ? (
-        <button type="button" className="onboarding-quiet" onClick={onBack}>
-          {backLabel}
-        </button>
-      ) : null}
-      {onSkip ? (
+      {onSkip && !hideSkip ? (
         <button type="button" className="onboarding-quiet onboarding-skip" onClick={onSkip}>
           {skipLabel}
         </button>

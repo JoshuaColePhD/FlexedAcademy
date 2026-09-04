@@ -1,13 +1,28 @@
-import { Fragment, lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createContext, Fragment, lazy, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import usaMap from '@svg-maps/usa'
 import {
-  ArrowRight,
+  BookOpen,
+  Building2,
+  Calculator,
+  Check,
   CheckCircle2,
+  Code2,
   FileText,
+  FlaskConical,
+  GraduationCap,
+  Grid2x2,
+  HeartPulse,
+  Landmark,
+  Languages,
   Loader2,
+  Mail,
+  MapPin,
+  Palette,
+  Search,
   Sparkles,
+  Users,
   X,
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -19,10 +34,23 @@ import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { GRADES, gradeLabel, gradeSelectValue } from '../lib/grades'
-import { inferGradeFromQuery, matchesFramework } from '../lib/frameworks'
+import {
+  GROUP_ARTS,
+  GROUP_CS,
+  GROUP_ENGLISH,
+  GROUP_HISTORY,
+  GROUP_MATH,
+  GROUP_OTHER,
+  GROUP_PE_HEALTH,
+  GROUP_SCIENCE,
+  GROUP_SPECIAL_ED,
+  GROUP_WORLD_LANG,
+  gradeRangeLabel,
+  groupFrameworks,
+  matchesFramework,
+} from '../lib/frameworks'
 import { US_STATES, isStandardsReady } from '../lib/states'
 import { ONBOARDING_STEPS, derivePlan, nextStep, prevStep } from '../lib/onboardingPlan'
-import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
 import { CalendarBody } from './ArtifactDetailPanel'
@@ -31,6 +59,7 @@ import { OnboardingStepRail } from './onboarding/OnboardingStepRail'
 import { OnboardingQuestion, OnboardingChoiceLabel } from './onboarding/OnboardingQuestion'
 import { OnboardingActions } from './onboarding/OnboardingActions'
 import { AvatarPicker } from './AvatarPicker'
+import { getAvatar, getInitials } from '../lib/avatars'
 // ClassDocuments used to live inside ClassPage.jsx and was re-exported from
 // there; it later moved out to its own file (components/ClassDocuments.jsx)
 // with nothing left behind at the old path, so this lazy import silently
@@ -67,6 +96,89 @@ const STEP_VARIANTS = {
   enter: (dir) => ({ opacity: 0, y: dir * 20 }),
   center: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
   exit: (dir) => ({ opacity: 0, y: dir * -20, transition: { duration: 0.13, ease: [0.22, 1, 0.36, 1] } }),
+}
+
+/* The action row belongs to the wizard, not to each individual question.
+ *
+ * Steps register only their current action contract; this shared row renders
+ * once below the active question in the content column. That keeps short steps
+ * self-contained instead of pinning their navigation to a separate screen
+ * footer, while long steps retain ordinary, safe scrolling to their actions.
+ *
+ * A ref, rather than action config in the plan module, is deliberate. The
+ * plan is dependency-free and describes durable flow shape; callbacks, busy
+ * flags, and the format upload's local review phase are live React concerns.
+ * The ref lets the footer read the latest callbacks without turning a child
+ * effect into a render loop every time a handler closes over fresh state. */
+const OnboardingActionContext = createContext(null)
+
+function useOnboardingActions(config) {
+  const register = useContext(OnboardingActionContext)
+  const configRef = useRef(config)
+  configRef.current = config
+
+  useLayoutEffect(() => {
+    if (!register) return undefined
+    return register(configRef)
+  }, [register])
+}
+
+/* The teacher's own chosen icon, pinned to the footer's own bottom-left
+ * corner from the moment they pick one on the Profile step onward — a
+ * small, persistent confirmation of "this is you" that stays in view for
+ * the rest of setup instead of only appearing back on Settings later.
+ * Falls back to initials the same way AvatarPicker's own "no avatar" tile
+ * does, since avatar: null is a real, deliberate choice — not a state that
+ * still needs picking. */
+function OnboardingFooterAvatar({ configRef }) {
+  const { user } = useAuth()
+  if (!user) return null
+  const avatar = getAvatar(user.avatar)
+  // Only matters when there's no chosen avatar — a real emoji pick doesn't
+  // change just because the name field is mid-edit.
+  const previewName = configRef?.current?.previewName
+  return (
+    <span
+      className={`onboarding-footer-avatar${avatar ? ` ${avatar.bg}` : ''}`}
+      aria-hidden="true"
+      title={avatar?.label || 'Your icon'}
+    >
+      {avatar ? avatar.emoji : getInitials(previewName ?? user.name)}
+    </span>
+  )
+}
+
+function OnboardingFooter({ configRef }) {
+  const config = configRef?.current
+  if (!config) return <div className="onboarding-footer" aria-hidden="true" />
+
+  if (config.status) {
+    return (
+      <div className="onboarding-footer">
+        <OnboardingFooterAvatar configRef={configRef} />
+        <p className="flex items-center gap-2 text-sm text-ink-muted" role="status">
+          <Loader2 size={14} className="animate-spin" aria-hidden="true" /> {config.status}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="onboarding-footer">
+      <OnboardingFooterAvatar configRef={configRef} />
+      {config.onBack ? (
+        <button type="button" className="onboarding-quiet onboarding-footer-back" onClick={config.onBack}>
+          <span aria-hidden="true">←</span> {config.backLabel || 'Back'}
+        </button>
+      ) : null}
+      <OnboardingActions {...config} hideBack hideSkip />
+      {config.onSkip ? (
+        <button type="button" className="onboarding-quiet onboarding-footer-skip" onClick={config.onSkip}>
+          {config.skipLabel || 'Skip for now'}
+        </button>
+      ) : null}
+    </div>
+  )
 }
 
 /* Post-login guided setup — welcome, confirm the school & template, confirm
@@ -122,6 +234,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const { user, refresh } = useAuth()
   const { mounted, closing } = useExitTransition(open, 220)
   const dialogRef = useRef(null)
+  const scrollRef = useRef(null)
+  const settledStepRef = useRef(null)
+  const [footerRef, setFooterRef] = useState(null)
+  const registerFooter = useCallback((nextRef) => {
+    setFooterRef(nextRef)
+    return () => setFooterRef((current) => (current === nextRef ? null : current))
+  }, [])
 
   /* Tracked by KEY, not by index. The step list is built from what this
    * account still has to answer (see `plan` below), so it isn't a fixed
@@ -175,6 +294,17 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const [grade, setGrade] = useState(gradeSelectValue(cls?.grade, ''))
   const [savingCourse, setSavingCourse] = useState(false)
   const [courseError, setCourseError] = useState(null)
+  /* The course step's own three-screen flow (grade, then discipline, then
+     course) — lifted up here rather than kept as CourseStep's own local
+     state because the footer (Back/Continue label, disabled state) lives
+     OUTSIDE CourseStep and only re-renders when ITS OWN props change.
+     useOnboardingActions writes into a ref every render, but nothing makes
+     OnboardingFooter re-render just because that ref mutated — only a
+     state change on a shared ancestor (this component) does that. Local
+     state inside CourseStep would leave the footer showing stale button
+     labels one screen behind. */
+  const [courseSubStep, setCourseSubStep] = useState(() => (subject ? 'course' : grade ? 'discipline' : 'grade'))
+  const [courseDiscipline, setCourseDiscipline] = useState(null)
 
   const [finishing, setFinishing] = useState(false)
 
@@ -205,6 +335,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   // different) class, rather than resuming wherever a previous open left off.
   useEffect(() => {
     if (!open) return
+    settledStepRef.current = null
     /* The class this wizard just created, arriving back through the prop, is
        not a different class — and resetting for it wipes out the answers that
        created it.
@@ -235,6 +366,9 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setStateError(false)
     setSubject(activeClass?.subject || '')
     setGrade(gradeSelectValue(activeClass?.grade, ''))
+    setCourseSubStep(activeClass?.subject ? 'course' : activeClass?.grade ? 'discipline' : 'grade')
+    // Re-derived once frameworks load — see the effect inside CourseStep.
+    setCourseDiscipline(null)
     /* Keyed on the class this wizard was OPENED with, not on activeClass.
        activeClass changes the moment the course step creates one, and this
        effect resets stepKey to the plan's first step — so on the very first
@@ -336,14 +470,27 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const goNext = () => goTo(nextStep(plan, stepKey))
   const goBack = () => goTo(prevStep(plan, stepKey))
 
-  /* The sequence the rail renders. 'preview' is the closing screen and stays
-     outside it, the way 'done' did.
-    
-     This was lost to a careless range deletion — it happened to sit between
-     two handlers that were being removed together — and nothing caught it
-     until the step actually rendered, because oxlint had no-undef switched
-     off. That is now on (see .oxlintrc.json). */
-  const progressSteps = plan.filter((key) => key !== 'preview')
+  /* The rail now includes the closing screen as the route's visible endpoint.
+     `preview` is still terminal in the PLAN (and its CTA still records
+     completion); including it here only gives the journey a destination
+     instead of making the progress rail disappear at the exact moment a
+     teacher should be able to see what they have reached. */
+  const progressSteps = plan
+
+  const settleStep = useCallback(() => {
+    /* Reset only after the incoming pane has finished entering. Resetting on
+       goTo() moved the outgoing pane to the top while AnimatePresence was
+       still showing it, which made a Back click look like the document jumped
+       before the step itself changed. The focus target is deliberately the
+       heading, not the first control: it tells a screen-reader user which
+       question arrived and does not skip the explanation that makes a choice
+       safe to make. */
+    if (settledStepRef.current === stepKey) return
+    const isInitialEntry = settledStepRef.current === null
+    settledStepRef.current = stepKey
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'auto' })
+    if (!isInitialEntry) document.getElementById('onboarding-title')?.focus({ preventScroll: true })
+  }, [stepKey])
 
   /* A teacher outside the ingested states asking for theirs.
    *
@@ -498,8 +645,17 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     }
   }
 
-  const saveCourse = async () => {
-    if (!subject) {
+  /* Takes an optional override rather than reading `subject` alone: the
+     course sub-step calls setSubject(fw.id) and this in the same click
+     handler, and `subject` inside this closure is still the PREVIOUS
+     render's value at that point — setState never applies mid-handler. A
+     picked course would otherwise save whatever was picked before it (or
+     nothing, on the very first pick), which is exactly the bug a comment
+     right below this one used to warn about for the old click-then-Continue
+     flow and would silently reintroduce here for click-to-advance. */
+  const saveCourse = async (overrideSubject) => {
+    const courseSubject = overrideSubject ?? subject
+    if (!courseSubject) {
       setCourseError('Pick a course — it decides which standards your plans are grounded in.')
       return
     }
@@ -526,12 +682,12 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
            rather than stopping short). hasChosenSchool() still reports false
            for it, so the school step is still asked. */
         if (!user?.school) await api.updateMe({ school: GENERIC_SCHOOL })
-        const created = await api.createClass({ subject, grade })
+        const created = await api.createClass({ subject: courseSubject, grade })
         setCreatedClass(created)
         await Promise.all([qc.invalidateQueries({ queryKey: qk.classes }), refresh()])
       } else {
         const patch = {}
-        if (subject !== activeClass.subject) patch.subject = subject
+        if (courseSubject !== activeClass.subject) patch.subject = courseSubject
         if (grade !== gradeSelectValue(activeClass.grade, '')) patch.grade = grade
         if (Object.keys(patch).length) {
           await api.updateClass(activeClass.id, patch)
@@ -583,14 +739,42 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   /* Labels come from lib/onboardingPlan.js, beside the step order and the
      questions, so a renamed step cannot end up with a stale rail label. */
-  const railSteps = progressSteps.map((key) => ({ key, label: ONBOARDING_STEPS[key]?.label || key }))
+  const railSteps = progressSteps.map((key) => ({
+    key,
+    label: key === 'preview' ? 'Ready' : ONBOARDING_STEPS[key]?.label || key,
+    terminal: key === 'preview',
+  }))
 
   const card = (
-    <>
+    <OnboardingActionContext.Provider value={registerFooter}>
       {/* Slim top bar, wordmark centred — the reference layout's chrome, and
           the same treatment /welcome's own header gives it. */}
       <div className="onboarding-topbar">
+        {/* Same seal used in AppShell's own sidebar header — reused rather
+            than a second mark invented for onboarding, so the first screen
+            a new account sees and the app it lands in afterward carry the
+            same logo. */}
+        <svg viewBox="0 0 64 64" className="onboarding-topbar-logo" aria-hidden="true">
+          <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
+          <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
+          <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" className="land-seal-ring" />
+          <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
+        </svg>
         <span className="onboarding-wordmark">FlexEd Academy</span>
+        {/* A mailto:, not a button that sends anything itself — this just
+            opens whatever mail client the teacher already has, with them as
+            the one composing and sending. Placed even on the page variant,
+            which otherwise has no top-right control at all: a school or
+            class genuinely missing from FlexEd's own catalog is not
+            something Back/Skip anywhere in this flow can resolve. */}
+        <a
+          href="mailto:joshuacolephd@gmail.com?subject=Missing%20school%20or%20class%20in%20FlexEd"
+          className={`onboarding-topbar-contact${variant !== 'page' ? ' onboarding-topbar-contact-with-close' : ''}`}
+          title="Having trouble finding your class or school? Email us and we'll get it added."
+        >
+          <Mail size={14} aria-hidden="true" />
+          Contact
+        </a>
         {/* The page variant gets NO close button, and that gate is
             load-bearing: App.jsx's ClassRoutes guard routes any account
             without onboarding_seen_at straight back here, so an X on first run
@@ -617,14 +801,23 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
           there is some and resolve to zero when the content is taller than
           the frame, where `justify-content: center` would push the top of a
           tall step out of reach instead. */}
-      <div className="onboarding-scroll">
+      <div className="onboarding-scroll" ref={scrollRef}>
         <div className="onboarding-body">
           <OnboardingStepRail steps={railSteps} activeKey={stepKey} onGoTo={goTo} />
           <div className="onboarding-column">
           {/* data-fill hands the card's own height down to a step whose
               content is itself a scroll region (the course browser), so there
               is only ever one scrollbar. */}
-            <div className="onboarding-content" data-fill={stepKey === 'course' ? 'true' : undefined}>
+            <div
+              className="onboarding-content"
+              data-fill={stepKey === 'course' ? 'true' : undefined}
+              /* .onboarding-content is normally only min-height tall (a
+                 floor, not a fill) — that's what leaves the deliberate blank
+                 space below every other short step. The school step's own
+                 centering has nothing to centre INTO unless this box actually
+                 grows to the full column height first. */
+              data-center={stepKey === 'school' ? 'true' : undefined}
+            >
 
             <AnimatePresence mode="wait" custom={direction} initial={false}>
               {/* Keyed on stepKey, so a null key mounts nothing at all rather
@@ -638,6 +831,15 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 initial="enter"
                 animate="center"
                 exit="exit"
+                onAnimationComplete={settleStep}
+                /* Every other step is top-aligned on purpose (see
+                   .onboarding-content above) so the rail's current item stays
+                   level with the question it labels. This step has no rail
+                   label to line up with mid-question — just two short
+                   fields floating over a watermark — so it's centred in the
+                   full frame instead, equidistant from the rail's top and
+                   the footer, not pinned to the question's usual top edge. */
+                className={stepKey === 'school' ? 'onboarding-step-center' : undefined}
               >
             {stepKey === 'avatar' ? (
               <ProfileStep
@@ -739,6 +941,10 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 error={courseError}
                 onBack={goBack}
                 onNext={saveCourse}
+                subStep={courseSubStep}
+                setSubStep={setCourseSubStep}
+                discipline={courseDiscipline}
+                setDiscipline={setCourseDiscipline}
               />
             ) : stepKey === 'materials' ? (
               <MaterialsStep cls={activeClass} onBack={goBack} onNext={goNext} />
@@ -779,7 +985,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
           </div>
         </div>
       </div>
-    </>
+      <OnboardingFooter configRef={footerRef} />
+    </OnboardingActionContext.Provider>
   )
 
   if (variant === 'page') {
@@ -850,6 +1057,12 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
  * no `saving` state and no onNext handler of its own.
  */
 function ProfileStep({ name, setName, saving, onNext }) {
+  /* previewName isn't a real action, but it rides along in the same config
+     ref the footer already reads every render — the footer avatar's
+     initials-fallback (OnboardingFooterAvatar) needs to follow what's being
+     TYPED here, the same way AvatarPicker's own preview ring already does,
+     rather than only updating once this step is saved. */
+  useOnboardingActions({ onNext, busy: saving, previewName: name })
   return (
     <div>
       <OnboardingQuestion
@@ -881,73 +1094,83 @@ function ProfileStep({ name, setName, saving, onNext }) {
           the icon already defaults to initials, so Continue IS the "leave it
           as it is" path. A Skip button beside a filled-in field only invites
           the question of what it would even do. */}
-      <OnboardingActions onNext={onNext} busy={saving} />
     </div>
   )
 }
 
-function StateMapPreview({ stateCode }) {
+/* Each state's fitted viewBox, measured once and cached forever — a state's
+ * outline never changes shape, so there's nothing to re-measure on a second
+ * selection.
+ *
+ * This used to measure with getBBox() on the VISIBLE path itself, reset to
+ * the full US map's viewBox first (a path can only be measured once it's
+ * actually laid out) and then refit a moment later in a second effect. That
+ * meant two separate commits — one with the wrong (full-map) viewBox, one
+ * with the right one — and the browser is free to paint in between them.
+ * Most of the time React's layout effects run and re-render before the next
+ * paint and nobody sees it, but there's no guarantee of that, which is
+ * exactly why it read as an intermittent glitch: a single state's outline,
+ * tiny, sitting whever it actually falls on the full US map. Measuring
+ * against a detached, off-screen path — never the one on screen — means the
+ * visible svg gets its correct viewBox on its very first render. There is no
+ * wrong frame for the browser to paint. */
+const stateViewBoxCache = new Map()
+let measurementSvg = null
+
+function measureStateViewBox(location) {
+  if (stateViewBoxCache.has(location.id)) return stateViewBoxCache.get(location.id)
+
+  let viewBox = usaMap.viewBox
+  if (typeof document !== 'undefined') {
+    if (!measurementSvg) {
+      measurementSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      measurementSvg.setAttribute('aria-hidden', 'true')
+      Object.assign(measurementSvg.style, { position: 'fixed', top: '-9999px', left: '-9999px' })
+      document.body.appendChild(measurementSvg)
+    }
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('d', location.path)
+    measurementSvg.appendChild(path)
+    const bounds = path.getBBox()
+    measurementSvg.removeChild(path)
+    if (bounds.width && bounds.height) {
+      const padding = Math.max(bounds.width, bounds.height) * 0.16
+      viewBox = `${bounds.x - padding} ${bounds.y - padding} ${bounds.width + padding * 2} ${bounds.height + padding * 2}`
+    }
+  }
+  stateViewBoxCache.set(location.id, viewBox)
+  return viewBox
+}
+
+/* Decoration, not confirmation — the select's own value already says which
+ * state got chosen, so this doesn't need a header or a chip row repeating
+ * it. It sits behind the fields as a large, pale outline rather than beside
+ * them in its own boxed card, which is what made it read as a second,
+ * disconnected widget instead of part of the question. */
+function StateWatermark({ stateCode }) {
   const selected = usaMap.locations.find((location) => location.id === stateCode.toLowerCase())
-  const [viewBox, setViewBox] = useState(usaMap.viewBox)
-  const pathRef = useRef(null)
-
-  // Always measure a new state against the source map's coordinate system.
-  // Measuring while the previous state is still zoomed makes getBBox() return
-  // transformed coordinates, which can move the next outline outside the
-  // visible SVG frame.
-  useLayoutEffect(() => {
-    setViewBox(usaMap.viewBox)
-  }, [selected?.id])
-
-  useLayoutEffect(() => {
-    if (viewBox !== usaMap.viewBox) return
-    const bounds = pathRef.current?.getBBox()
-    if (!bounds || !bounds.width || !bounds.height) return
-    const padding = Math.max(bounds.width, bounds.height) * 0.16
-    setViewBox(`${bounds.x - padding} ${bounds.y - padding} ${bounds.width + padding * 2} ${bounds.height + padding * 2}`)
-  }, [selected?.id, viewBox])
+  const viewBox = useMemo(() => (selected ? measureStateViewBox(selected) : null), [selected])
 
   if (!selected) return null
 
   return (
-    <div className="onboarding-glass-pane flex min-h-72 flex-col rounded-2xl border-accent/20 bg-accent/5 p-6 lg:h-full">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-2xs font-semibold uppercase tracking-widest text-accent-text">Your state</p>
-          <p className="mt-1 text-base font-semibold text-ink">{selected.name}</p>
-        </div>
-        <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold tracking-wider text-accent-text">{stateCode}</span>
-      </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.svg
-            key={selected.id}
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.35, ease: 'easeOut' }}
-            viewBox={viewBox}
-            role="img"
-            aria-label={`Outline of ${selected.name}`}
-            className="h-56 w-full origin-center"
-          >
-            <path
-              ref={pathRef}
-              d={selected.path}
-              fill="none"
-              className="stroke-accent-text"
-              strokeWidth="2.5"
-              strokeLinejoin="round"
-            />
-          </motion.svg>
-        </AnimatePresence>
-      </div>
-      <div className="mt-3 flex flex-wrap justify-center gap-2" aria-label="State-based setup">
-        {['Standards', 'School calendar', 'Course options'].map((item) => (
-          <span key={item} className="rounded-full border border-accent/15 bg-paper-raised/70 px-2.5 py-1 text-2xs font-medium text-accent-text">
-            {item}
-          </span>
-        ))}
-      </div>
+    // A plain wrapper handles centring the shape in the frame; motion.svg
+    // below writes its own inline `transform` for the scale/opacity entrance,
+    // which would silently clobber a CSS transform used for positioning if
+    // this div's job were done on the svg itself instead.
+    <div className="onboarding-where-watermark" aria-hidden="true">
+      <AnimatePresence initial={false}>
+        <motion.svg
+          key={selected.id}
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+          viewBox={viewBox}
+          className="onboarding-where-watermark-svg"
+        >
+          <path d={selected.path} fill="none" strokeWidth="2.5" strokeLinejoin="round" />
+        </motion.svg>
+      </AnimatePresence>
     </div>
   )
 }
@@ -983,6 +1206,13 @@ function SchoolStep({
   onSkip,
 }) {
   const ready = Boolean(state) && isStandardsReady(state)
+  useOnboardingActions({
+    onNext,
+    busy: saving,
+    onBack,
+    onSkip: ready ? onSkip : undefined,
+    skipLabel: "Skip the school — I'll plan by week number",
+  })
   /* Rows with no recorded state are kept rather than filtered out: NULL means
      "not recorded" (create_school is reachable from the admin page and from a
      calendar submission with no state to hand), and dropping them would hide a
@@ -991,14 +1221,19 @@ function SchoolStep({
   const stateName = US_STATES.find(([value]) => value === state)?.[1] || state
 
   return (
-    <div>
-      <OnboardingQuestion
-        question={ONBOARDING_STEPS.school.title}
-        lead="Your state decides which standards your plans quote. Your school decides the calendar they are dated against and the document they are downloaded in."
-      />
+    // The question sits directly in the shell, unshifted, at the same inset
+    // from the rail every other step's question uses. Watermark + fields are
+    // nested one level deeper, in their own box — that's the one that grows
+    // to fill the remaining height (for a watermark that fills the page) AND
+    // carries the horizontal re-centring shift, so the shift never touches
+    // the question above it.
+    <div className="onboarding-where-shell">
+      <OnboardingQuestion question={ONBOARDING_STEPS.school.title} />
 
-      <div className="onboarding-where-layout">
-        <div className="min-w-0">
+      <div className="onboarding-where-body">
+        {state ? <StateWatermark stateCode={state} /> : null}
+        <div className="onboarding-where-layout">
+        <div className="onboarding-where-fields">
           <OnboardingChoiceLabel as="label" htmlFor="onboarding-state">
             State
           </OnboardingChoiceLabel>
@@ -1040,7 +1275,7 @@ function SchoolStep({
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               >
-                <OnboardingChoiceLabel as="label" htmlFor="onboarding-school">
+                <OnboardingChoiceLabel as="label" htmlFor="onboarding-school" className="onboarding-where-school-label">
                   School
                 </OnboardingChoiceLabel>
                 <SchoolSelect
@@ -1050,13 +1285,8 @@ function SchoolStep({
                   value={school}
                   onChange={onSchoolChange}
                   emptyOption={{ value: '', label: `Choose a school in ${stateName}` }}
-                  inputClassName="neo-select neo-inset min-h-touch w-full rounded-lg bg-paper-raised py-2.5 pl-3.5 pr-9 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+                  inputClassName="neo-inset min-h-touch w-full rounded-lg bg-paper-raised py-2.5 pl-3.5 pr-9 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
                 />
-                <p className="onboarding-state-support-note">
-                  {schoolsInState.length} {stateName} school
-                  {schoolsInState.length === 1 ? '' : 's'} listed. Not there? Skip it — your plans
-                  will be labelled by week number until you add a calendar.
-                </p>
               </motion.div>
             ) : state ? (
               /* An un-ingested state. It says what does and doesn't work
@@ -1100,13 +1330,6 @@ function SchoolStep({
             ) : null}
           </AnimatePresence>
         </div>
-
-        {/* The outline, on the other side. Confirmation rather than
-            decoration: it is the one control on this screen whose answer is a
-            place, and seeing it drawn is how you know the select took the
-            state you meant. */}
-        <div className="onboarding-where-map">
-          {state ? <StateMapPreview stateCode={state} /> : null}
         </div>
       </div>
 
@@ -1116,13 +1339,6 @@ function SchoolStep({
         </p>
       ) : null}
 
-      <OnboardingActions
-        onNext={onNext}
-        busy={saving}
-        onBack={onBack}
-        onSkip={ready ? onSkip : undefined}
-        skipLabel="Skip the school — I'll plan by week number"
-      />
     </div>
   )
 }
@@ -1141,8 +1357,40 @@ function SchoolStep({
  * generic school and never be told their plans would have no dates on them.
  */
 function CalendarStep({ school, selectedSchool, onBack, onNext }) {
+  useOnboardingActions({
+    onNext,
+    onBack,
+    onSkip: onNext,
+    skipLabel: ONBOARDING_STEPS.calendar.skipLabel,
+  })
   const pending = selectedSchool?.has_pending_calendar
   const confirmed = selectedSchool?.has_calendar
+  const toast = useToast()
+
+  /* Same submission the "Replace calendar" button uses on Settings' School
+   * & Templates panel (SettingsPage.jsx) — a new file goes through the same
+   * admin-review path as any other calendar submission, it doesn't silently
+   * overwrite the confirmed one. Kept local to this step rather than lifted
+   * to the wizard: nothing else needs it, and it's the same shape as
+   * Settings' own copy already is. */
+  const [calendarToolsOpen, setCalendarToolsOpen] = useState(false)
+  const [uploadingCalendar, setUploadingCalendar] = useState(false)
+  const [calendarUrl, setCalendarUrl] = useState('')
+
+  const submitCalendar = async ({ file, url }) => {
+    if ((!file && !url) || !selectedSchool) return
+    setUploadingCalendar(true)
+    try {
+      await api.uploadSchoolCalendar(selectedSchool.name, { file, sourceUrl: file ? undefined : url })
+      toast.success('Calendar submitted', 'An administrator will review it before it becomes the school calendar.')
+      setCalendarToolsOpen(false)
+    } catch (err) {
+      toast.apiError('Could not upload the calendar', err)
+    } finally {
+      setUploadingCalendar(false)
+      setCalendarUrl('')
+    }
+  }
 
   return (
     <div>
@@ -1152,21 +1400,54 @@ function CalendarStep({ school, selectedSchool, onBack, onNext }) {
           pending
             ? 'A colleague at your school already set this up. Worth a look before we date your plans with it.'
             : confirmed
-              ? 'This is what your plans will be dated against.'
+              ? undefined
               : "We don't have a calendar for your school yet, so plans will be labelled by week number — Week 1, Week 2 — with no dates attached."
         }
       />
       {pending ? (
         <PendingCalendarReview schoolId={school} />
       ) : confirmed ? (
-        <ConfirmedCalendarReview schoolId={school} />
+        <>
+          <ConfirmedCalendarReview schoolId={school} />
+          <button
+            type="button"
+            className="onboarding-quiet mt-3"
+            onClick={() => setCalendarToolsOpen((open) => !open)}
+          >
+            {calendarToolsOpen ? 'Hide upload' : "Doesn't look right? Upload a different calendar"}
+          </button>
+          {calendarToolsOpen ? (
+            <div className="mt-3 rounded-xl border border-edge bg-paper-sunken p-3">
+              <p className="text-xs text-ink-soft">
+                Starting a new school year, or need to fix a date? Your plans can use what you upload right
+                away — it only becomes the shared calendar for everyone else at your school once another
+                teacher confirms it.
+              </p>
+              <div className="onboarding-ingest-path onboarding-ingest-path-static" aria-label="What happens after you upload">
+                <div className="onboarding-ingest-step is-active">
+                  <span>1</span><strong>You upload</strong>
+                </div>
+                <div className="onboarding-ingest-line" aria-hidden="true" />
+                <div className="onboarding-ingest-step">
+                  <span>2</span><strong>A teacher confirms it</strong>
+                </div>
+                <div className="onboarding-ingest-line" aria-hidden="true" />
+                <div className="onboarding-ingest-step">
+                  <span>3</span><strong>Shared school-wide</strong>
+                </div>
+              </div>
+              <UploadDropzone
+                uploading={uploadingCalendar}
+                label="Upload calendar"
+                onFile={(file) => submitCalendar({ file })}
+                url={calendarUrl}
+                onUrlChange={setCalendarUrl}
+                onUrlSubmit={() => submitCalendar({ url: calendarUrl.trim() })}
+              />
+            </div>
+          ) : null}
+        </>
       ) : null}
-      <OnboardingActions
-        onNext={onNext}
-        onBack={onBack}
-        onSkip={onNext}
-        skipLabel={ONBOARDING_STEPS.calendar.skipLabel}
-      />
     </div>
   )
 }
@@ -1222,6 +1503,16 @@ function FormatStep({
           : schoolName
             ? `Give FlexEd a blank example from ${schoolName}, or choose a format already on file.`
           : 'Give FlexEd a blank example of the format you want your plans to follow.'
+
+  useOnboardingActions(
+    phase === 'upload'
+      ? { onNext, nextLabel: hasInput ? 'Analyze format' : 'Continue', busy: saving, onBack, onSkip, skipLabel: 'Skip — use a neutral layout for now' }
+      : phase === 'processing'
+        ? { status: 'Working on it…' }
+        : phase === 'review'
+          ? { onNext: onConfirm, nextLabel: 'Use this format', disabled: !reviewable, onBack: onEdit, backLabel: 'Choose another file' }
+          : { onNext, onBack },
+  )
 
   return (
     <div>
@@ -1357,37 +1648,6 @@ function FormatStep({
           </>
         )}
       </div>
-      {/* One footer per phase of the nested upload -> processing -> review ->
-          confirmed machine, each with exactly one filled control. `processing`
-          has no button on purpose: there is nothing to press while soffice
-          works, and offering a disabled Continue there just invites clicking
-          it. */}
-      {phase === 'upload' ? (
-        <OnboardingActions
-          onNext={onNext}
-          nextLabel={hasInput ? 'Analyze format' : 'Continue'}
-          busy={saving}
-          onBack={onBack}
-          onSkip={onSkip}
-          skipLabel="Skip — use a neutral layout for now"
-        />
-      ) : phase === 'processing' ? (
-        <div className="onboarding-actions">
-          <p className="flex items-center gap-2 text-sm text-ink-muted">
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Working on it…
-          </p>
-        </div>
-      ) : phase === 'review' ? (
-        <OnboardingActions
-          onNext={onConfirm}
-          nextLabel="Use this format"
-          disabled={!reviewable}
-          onBack={onEdit}
-          backLabel="Choose another file"
-        />
-      ) : (
-        <OnboardingActions onNext={onNext} onBack={onBack} />
-      )}
     </div>
   )
 }
@@ -1508,129 +1768,361 @@ function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, on
     </div>
   )
 }
-function CourseStep({ subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
-  const [query, setQuery] = useState('')
+const COURSE_GROUP_ICONS = {
+  [GROUP_ENGLISH]: BookOpen,
+  [GROUP_MATH]: Calculator,
+  [GROUP_SCIENCE]: FlaskConical,
+  [GROUP_HISTORY]: Landmark,
+  [GROUP_WORLD_LANG]: Languages,
+  [GROUP_ARTS]: Palette,
+  [GROUP_PE_HEALTH]: HeartPulse,
+  [GROUP_CS]: Code2,
+  [GROUP_SPECIAL_ED]: Users,
+  [GROUP_OTHER]: Grid2x2,
+}
 
-  /* The grade select used to feed only the class this step saves — it sat
-     right beside a browser full of courses and did nothing to it, which reads
-     as broken the moment anyone tries it. Every framework carries its own
-     grades[] already (that's what powers the "elementary"/"middle"/"high"
-     search synonyms in lib/frameworks.js), so narrowing the list is a filter,
-     not a new capability. '' is "all grades". Ported from WelcomePage, which
-     this step replaces. */
-  const gradeFilteredFrameworks = useMemo(
-    () => (!grade ? frameworks : frameworks.filter((f) => (f.grades || []).includes(Number(grade)))),
-    [frameworks, grade],
+/* One big-row choice, shared by all three CourseStep screens (grade,
+ * discipline, course) — same shape as a topic-picker's radio card: an
+ * optional icon, a label (+ small sublabel), an optional count, and a
+ * checkmark that only appears once chosen. Kept as one component rather than
+ * three near-identical ones so the three screens read as ONE pattern used
+ * three times, not three separately-designed lists that happen to look
+ * similar.
+ */
+function OnboardingBigChoice({ icon: Icon, label, sublabel, count, selected, onClick }) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      onClick={onClick}
+      className={`onboarding-bigchoice${selected ? ' onboarding-bigchoice-selected' : ''}`}
+    >
+      {Icon ? (
+        <span className="onboarding-bigchoice-icon" aria-hidden="true">
+          <Icon size={18} />
+        </span>
+      ) : null}
+      <span className="onboarding-bigchoice-text">
+        <span className="onboarding-bigchoice-label">{label}</span>
+        {sublabel ? <span className="onboarding-bigchoice-sublabel">{sublabel}</span> : null}
+      </span>
+      {typeof count === 'number' ? <span className="onboarding-bigchoice-count">{count}</span> : null}
+      <span className="onboarding-bigchoice-radio" aria-hidden="true">
+        {selected ? <Check size={13} /> : null}
+      </span>
+    </button>
   )
+}
 
-  /* A course chosen under one grade can fall outside the list the moment the
-     grade changes (AP Calculus picked at 11th, then grade dropped to 3rd) —
-     left alone, Continue would save a course that is no longer even visible. */
-  useEffect(() => {
-    if (subject && !gradeFilteredFrameworks.some((f) => f.id === subject)) setSubject('')
-  }, [gradeFilteredFrameworks, subject, setSubject])
+const COURSE_SUB_STEPS = ['grade', 'discipline', 'course']
 
-  /* The search box understands grade words too, which used to silently fight
-     the select: leave it on 11th, type "elementary", get zero results and no
-     hint why. A specific number is unambiguous, so it snaps the select to that
-     grade. A band word spans several grades with no single right answer, so it
-     only widens back to all grades — and only when the current grade actually
-     conflicts, leaving a grade already inside the band alone. */
-  useEffect(() => {
-    const intent = inferGradeFromQuery(query)
-    if (!intent) return
-    if (intent.type === 'grade') {
-      if (grade !== intent.grade) setGrade(intent.grade)
-    } else if (intent.type === 'band' && grade && !intent.grades.includes(Number(grade))) {
-      setGrade('')
-    }
-  }, [query, grade, setGrade])
+/* One purple dash per screen in the course step's own three-screen flow,
+ * filled up to and including the current one — a sub-progress bar for a
+ * sub-flow, distinct from the wizard's own step rail (Profile/School/
+ * Course/…) which only ever advances once per whole step, not once per
+ * screen inside this one. */
+function OnboardingSubProgress({ current }) {
+  // 'search' is a bypass around discipline+course, not a fourth screen with
+  // its own dash — it lands on the same final "pick one and you're done"
+  // decision course does, so it fills the rail the same way that does.
+  const index = current === 'search' ? COURSE_SUB_STEPS.length - 1 : COURSE_SUB_STEPS.indexOf(current)
+  return (
+    <div className="onboarding-subprogress" role="presentation">
+      {COURSE_SUB_STEPS.map((key, i) => (
+        <span key={key} className={`onboarding-subprogress-dash${i <= index ? ' onboarding-subprogress-dash-filled' : ''}`} />
+      ))}
+    </div>
+  )
+}
 
-  /* A plain course-name search ("cybersecurity") isn't a grade word, so the
-     inference above doesn't fire — and it can still come up empty purely
-     because the grade filter excludes every match. FrameworkPicker's generic
-     "No course matches" is right for a typo; this gives the real reason
-     specifically when the search WOULD have hits at another grade. */
-  const emptyMessage = useMemo(() => {
-    if (!grade) return undefined
-    /* No query at all, and the grade filter has emptied the list. Ported from
-       /welcome, which only covered the WITH-a-query case and so left a teacher
-       whose grade simply has no courses staring at a blank panel with nothing
-       saying why. Reachable for real: the corpus is ingested per grade band,
-       so a grade with nothing behind it yet is a state the catalog can be in,
-       not just a mock-data artifact. */
-    if (!query.trim()) {
-      return gradeFilteredFrameworks.length
-        ? undefined
-        : `No ${gradeLabel(grade) || grade} courses yet — try All grades.`
-    }
-    if (gradeFilteredFrameworks.some((f) => matchesFramework(f, query))) return undefined
-    if (!frameworks.some((f) => matchesFramework(f, query))) return undefined
-    return `No ${gradeLabel(grade) || grade} courses match “${query}” — try All grades.`
-  }, [query, grade, gradeFilteredFrameworks, frameworks])
-
+/* First of the course step's three screens: which grade. Filters the
+ * catalog the same way the old grade <select> did — every framework already
+ * carries its own grades[] (lib/frameworks.js), so narrowing is a filter,
+ * not a new capability. '' is "all grades". */
+function GradeSubStep({ grade, setGrade, onBack, onNext }) {
+  useOnboardingActions({ onNext, onBack })
   return (
     <div className="onboarding-class-step">
-      {/* No className override and a lead like every other step. It used to
-          pass .onboarding-class-header, which tightened the bottom margin to
-          buy its browser more height — and that made this the one step whose
-          question block was 31px instead of 82px, so the controls under it
-          started fifty pixels higher than on every other screen. */}
-      <OnboardingQuestion
-        question="Which course are you teaching?"
-        lead="This picks the standards your plans are grounded in and the language they're written in, so it's the one answer worth getting exactly right."
-      />
-      <div className="onboarding-course-browser">
-        <div className="onboarding-course-picker">
-          <FrameworkPicker
-            frameworks={gradeFilteredFrameworks}
-            value={subject}
-            onChange={setSubject}
-            onQueryChange={setQuery}
-            emptyMessage={emptyMessage}
-            id="onboarding-framework"
-            variant="inline"
-            afterInput={(
-              <label className="onboarding-course-grade-control" htmlFor="onboarding-grade">
-                <span>Grade</span>
-                <select
-                  id="onboarding-grade"
-                  value={grade}
-                  onChange={(e) => setGrade(e.target.value)}
-                  className="neo-select min-h-touch rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
-                >
-                  {/* Present and empty on purpose. The grade a teacher never
-                      chose must not look chosen — see the note on the grade
-                      state in the wizard. */}
-                  <option value="">All grades</option>
-                  {GRADES.map((g) => (
-                    <option key={g.value} value={g.value}>
-                      {g.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+      <OnboardingQuestion question="What grade do you teach?" lead="Narrows the course list to what's actually taught at that grade." />
+      <OnboardingSubProgress current="grade" />
+      {/* Picking a grade advances straight to the next screen — unlike
+          discipline and course, there's nothing further to weigh once a
+          grade is picked (no icon, no course count to compare), so waiting
+          for a second Continue click is pure friction. */}
+      <div className="onboarding-bigchoice-list" role="listbox" aria-label="Grade">
+        <OnboardingBigChoice
+          label="All grades"
+          selected={grade === ''}
+          onClick={() => {
+            setGrade('')
+            onNext()
+          }}
+        />
+        {GRADES.map((g) => (
+          <OnboardingBigChoice
+            key={g.value}
+            label={g.label}
+            selected={grade === g.value}
+            onClick={() => {
+              setGrade(g.value)
+              onNext()
+            }}
           />
-          {/* .fa-flash, not a framer shake: it is the app's one informational
-              animation, and it is already gated by the blanket
-              prefers-reduced-motion block. Keyed on the message so a second
-              failure replays it. */}
-          {error ? (
-            <p key={error} className="fa-flash mt-1.5 px-1 text-xs font-medium text-mark" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </div>
-        <div className="onboarding-course-browser-actions">
-          <OnboardingActions onNext={onNext} busy={saving} onBack={onBack} />
-        </div>
+        ))}
       </div>
     </div>
   )
 }
 
+/* Second screen: which discipline. `groups` is the grade-filtered catalog,
+ * already bucketed by lib/frameworks.js's groupFrameworks — the same
+ * grouping the old discipline rail used, just as full rows instead of a
+ * narrow sidebar. */
+function DisciplineSubStep({ groups, discipline, setDiscipline, onBack, onNext, onSearch }) {
+  useOnboardingActions({ onNext, onBack, disabled: !discipline })
+  return (
+    <div className="onboarding-class-step">
+      <OnboardingQuestion question="Which subject area?" lead="Narrows the list to just the courses in that discipline." />
+      <OnboardingSubProgress current="discipline" />
+      {/* Escape hatch for a teacher who already knows the course by name —
+          the three-screen flow is a fine default, but it costs three clicks
+          to reach something a search box used to answer in one. Placed
+          here, not on the grade screen: this is the point where browsing
+          the actual catalog starts. */}
+      <button type="button" className="onboarding-course-search-link" onClick={onSearch}>
+        <Search size={14} aria-hidden="true" />
+        Search for a course instead
+      </button>
+      {groups.length ? (
+        <div className="onboarding-bigchoice-list" role="listbox" aria-label="Subject area">
+          {groups.map((g) => (
+            <OnboardingBigChoice
+              key={g.name}
+              icon={COURSE_GROUP_ICONS[g.name]}
+              label={g.name}
+              count={g.items.length}
+              selected={discipline === g.name}
+              onClick={() => {
+                setDiscipline(g.name)
+                onNext()
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-ink-muted">No courses at this grade yet — go back and try All grades.</p>
+      )}
+    </div>
+  )
+}
+
+/* Third and final screen: the actual course. This is what saveCourse (the
+ * real onNext) records, so it carries `saving`/`error` the way the step
+ * always has. */
+function CourseSubStep({ items, subject, setSubject, saving, error, onBack, onNext }) {
+  useOnboardingActions({ onNext, onBack, busy: saving, disabled: !subject })
+  return (
+    <div className="onboarding-class-step">
+      <OnboardingQuestion
+        question="Which course, exactly?"
+        lead="This picks the standards your plans are grounded in, so it's the one answer worth getting exactly right."
+      />
+      <OnboardingSubProgress current="course" />
+      {items.length ? (
+        <div className="onboarding-bigchoice-list" role="listbox" aria-label="Course">
+          {items.map((fw) => (
+            <OnboardingBigChoice
+              key={fw.id}
+              label={fw.label}
+              sublabel={gradeRangeLabel(fw)}
+              selected={subject === fw.id}
+              onClick={() => {
+                setSubject(fw.id)
+                /* onNext here is the real saveCourse, which normally reads
+                   `subject` from its own closure — still the PREVIOUS
+                   render's value this synchronously after setSubject, since
+                   state updates never apply mid-handler. The override arg
+                   is what lets this click both pick AND save the course
+                   just picked, rather than the one before it. */
+                onNext(fw.id)
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-ink-muted">No courses in this subject yet.</p>
+      )}
+      {/* .fa-flash, not a framer shake: it is the app's one informational
+          animation, and it is already gated by the blanket
+          prefers-reduced-motion block. Keyed on the message so a second
+          failure replays it. */}
+      {error ? (
+        <p key={error} className="fa-flash mt-1.5 px-1 text-xs font-medium text-mark" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/* A bypass around discipline+course for a teacher who already knows the
+ * course by name — reached from the "Search for a course instead" link on
+ * the discipline screen. Still respects the grade filter (frameworks passed
+ * in are already grade-filtered, not the full catalog), so a search here
+ * can't surface a course that doesn't fit the grade already chosen. */
+function SearchSubStep({ frameworks, subject, setSubject, saving, error, onBack, onNext }) {
+  const [query, setQuery] = useState('')
+  useOnboardingActions({ onNext, onBack, busy: saving, disabled: !subject })
+  const results = useMemo(() => frameworks.filter((f) => matchesFramework(f, query)), [frameworks, query])
+  return (
+    <div className="onboarding-class-step">
+      <OnboardingQuestion question="Search for your course" lead="Type a course name, or a grade word like “elementary” or “Pre-AP”." />
+      <OnboardingSubProgress current="search" />
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="e.g. AP Calculus, world history…"
+        autoFocus
+        autoComplete="off"
+        className="onboarding-course-search-input neo-inset"
+      />
+      {results.length ? (
+        <div className="onboarding-bigchoice-list onboarding-course-search-results" role="listbox" aria-label="Course results">
+          {results.map((fw) => (
+            <OnboardingBigChoice
+              key={fw.id}
+              label={fw.label}
+              sublabel={gradeRangeLabel(fw)}
+              selected={subject === fw.id}
+              onClick={() => {
+                setSubject(fw.id)
+                // Same override-arg reasoning as CourseSubStep's click
+                // handler — onNext is the real saveCourse, and `subject`
+                // inside its closure is still last render's value here.
+                onNext(fw.id)
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-ink-muted">
+          {query.trim() ? `No course matches “${query}”.` : 'Start typing to search the catalog.'}
+        </p>
+      )}
+      {error ? (
+        <p key={error} className="fa-flash mt-1.5 px-1 text-xs font-medium text-mark" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/* The dispatcher: picks which of the three screens above is showing.
+ *
+ * This used to be one screen — a search box over a three-column browser
+ * (grade rail, discipline rail, course list) all visible at once. Rebuilt as
+ * three sequential screens (grade, then discipline, then course), each one
+ * big single-choice list: fewer decisions on screen at a time, at the cost
+ * of the search box as a fast path for a teacher who already knows their
+ * course by name. subStep/discipline are lifted into the wizard itself (see
+ * courseSubStep/courseDiscipline there) rather than kept as local state
+ * here — the footer that shows Back/Continue lives outside this component
+ * and only re-renders when the WIZARD re-renders, not when this component's
+ * own local state changes. */
+function CourseStep({
+  subject,
+  setSubject,
+  grade,
+  setGrade,
+  frameworks,
+  saving,
+  error,
+  onBack,
+  onNext,
+  subStep,
+  setSubStep,
+  discipline,
+  setDiscipline,
+}) {
+  const gradeFilteredFrameworks = useMemo(
+    () => (!grade ? frameworks : frameworks.filter((f) => (f.grades || []).includes(Number(grade)))),
+    [frameworks, grade],
+  )
+  const groups = useMemo(() => groupFrameworks(gradeFilteredFrameworks), [gradeFilteredFrameworks])
+
+  /* A course chosen under one grade can fall outside the list the moment the
+     grade changes (AP Calculus picked at 11th, then grade dropped to 3rd) —
+     left alone, Continue would save a course that is no longer even visible.
+     Same reasoning for discipline once grade narrows its group away. */
+  useEffect(() => {
+    if (subject && !gradeFilteredFrameworks.some((f) => f.id === subject)) setSubject('')
+  }, [gradeFilteredFrameworks, subject, setSubject])
+  useEffect(() => {
+    if (discipline && !groups.some((g) => g.name === discipline)) setDiscipline(null)
+  }, [groups, discipline, setDiscipline])
+
+  /* Resuming on a class that already has a subject (Back from Calendar, or
+     reopening mid-flow): the wizard reset discipline to null because it has
+     no way to know the grouping before the framework catalog has loaded.
+     Once it has, derive it from the subject that's already chosen, so Back
+     from the course screen lands on the discipline it actually belongs to
+     rather than an empty screen. */
+  useEffect(() => {
+    if (discipline || !subject) return
+    const match = groups.find((g) => g.items.some((f) => f.id === subject))
+    if (match) setDiscipline(match.name)
+  }, [subject, discipline, groups, setDiscipline])
+
+  if (subStep === 'search') {
+    return (
+      <SearchSubStep
+        frameworks={gradeFilteredFrameworks}
+        subject={subject}
+        setSubject={setSubject}
+        saving={saving}
+        error={error}
+        onBack={() => setSubStep('discipline')}
+        onNext={onNext}
+      />
+    )
+  }
+
+  if (subStep === 'discipline') {
+    return (
+      <DisciplineSubStep
+        groups={groups}
+        discipline={discipline}
+        setDiscipline={setDiscipline}
+        onBack={() => setSubStep('grade')}
+        onNext={() => setSubStep('course')}
+        onSearch={() => setSubStep('search')}
+      />
+    )
+  }
+
+  if (subStep === 'course') {
+    const items = groups.find((g) => g.name === discipline)?.items || []
+    return (
+      <CourseSubStep
+        items={items}
+        subject={subject}
+        setSubject={setSubject}
+        saving={saving}
+        error={error}
+        onBack={() => setSubStep('discipline')}
+        onNext={onNext}
+      />
+    )
+  }
+
+  return <GradeSubStep grade={grade} setGrade={setGrade} onBack={onBack} onNext={() => setSubStep('discipline')} />
+}
+
 function MaterialsStep({ cls, onBack, onNext }) {
+  useOnboardingActions({ onNext, onBack, onSkip: onNext, skipLabel: 'Skip — I’ll add these later' })
   return (
     <div>
       <OnboardingQuestion
@@ -1640,15 +2132,6 @@ function MaterialsStep({ cls, onBack, onNext }) {
       <Suspense fallback={<p className="text-xs text-ink-muted">Loading documents…</p>}>
         <ClassDocuments cls={cls} variant="onboarding" />
       </Suspense>
-      {/* The skip states its own cost, rather than a bare "Skip for now".
-          A teacher who skips this keeps planning fine; they just don't get
-          plans that follow their pacing guide, and nothing said so before. */}
-      <OnboardingActions
-        onNext={onNext}
-        onBack={onBack}
-        onSkip={onNext}
-        skipLabel="Skip — I’ll add these later"
-      />
     </div>
   )
 }
@@ -1665,7 +2148,21 @@ function MaterialsStep({ cls, onBack, onNext }) {
  * did not — it led with school and buried course last, so the receipt didn't
  * read as a record of what had just happened.
  */
+const PREVIEW_ITEM_ICONS = {
+  state: MapPin,
+  course: BookOpen,
+  grade: GraduationCap,
+  school: Building2,
+  format: FileText,
+}
+
 function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, gradeName, formatName, editableSteps = [], onEdit, onBack }) {
+  useOnboardingActions({
+    onNext: onFinish,
+    nextLabel: finishing ? 'Opening your workspace…' : 'Open my workspace',
+    busy: finishing,
+    onBack,
+  })
   const setupItems = [
     { key: 'state', label: 'State', value: stateLabel || 'Not set yet', edit: 'state' },
     { key: 'course', label: 'Course', value: courseName || 'Not set yet', edit: 'course' },
@@ -1675,38 +2172,71 @@ function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, 
   ]
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, type: "spring", bounce: 0.2 }}
-      className="onboarding-final"
-    >
-      <div className="onboarding-final-kicker">Workspace ready</div>
-      <h2 id="onboarding-title" className="onboarding-final-title">Your teaching workspace is ready.</h2>
-      <p className="onboarding-final-intro">Everything is saved and ready for your first plan.</p>
-      <section className="onboarding-final-stage" aria-label="Workspace ready">
-        <div className="onboarding-final-stage-glow" aria-hidden="true" />
-        <div className="onboarding-final-ring" aria-hidden="true" />
-        <div className="onboarding-final-ring onboarding-final-ring-secondary" aria-hidden="true" />
+    <div className="onboarding-final">
+      {/* A small overshoot (custom cubic-bezier past 1) reads as a pop rather
+          than a plain fade — the one moment in the whole flow that's a
+          celebration rather than a question, so it's allowed a little more
+          motion than everywhere else. Each row below stays a normal ease-out
+          fade-up, staggered, so the checklist reads as a receipt printing
+          itself rather than a single canned reveal. */}
+      <div className="onboarding-final-hero">
+        {/* The same seal used in the topbar and in AppShell's own sidebar
+            header, just much bigger — the destination this whole flow was
+            walking toward, not a new mark invented for one screen. Gets a
+            small overshoot on entrance (past scale 1, past rotate 0) and a
+            slow, continuous breathing glow afterward — the one moment in the
+            whole flow that's a celebration rather than a question, so it's
+            allowed motion nothing else here gets. Both collapse under the
+            app's blanket prefers-reduced-motion rule (base.css) same as
+            everything else. */}
         <motion.div
-          initial={{ scale: 0.86, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.4, type: 'spring', bounce: 0.25 }}
-          className="onboarding-final-logo"
+          className="onboarding-final-hero-logo"
+          initial={{ opacity: 0, scale: 0.55, rotate: -8 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
+          aria-hidden="true"
         >
-          <img src="/icon-512.png" alt="" />
-          <span className="onboarding-final-logo-check" aria-hidden="true">
-            <CheckCircle2 size={30} strokeWidth={2.5} />
-          </span>
+          <svg viewBox="0 0 64 64" className="onboarding-final-hero-svg">
+            <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
+            <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
+            <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" className="land-seal-ring" />
+            <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
+          </svg>
         </motion.div>
-      </section>
+        <motion.p
+          className="onboarding-final-hero-ready"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        >
+          Ready
+        </motion.p>
+      </div>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}>
+        <p className="onboarding-final-kicker">Workspace ready</p>
+        <h2 id="onboarding-title" tabIndex={-1} className="onboarding-final-title">Your teaching workspace is ready.</h2>
+        <p className="onboarding-final-intro">Everything is saved and ready for your first plan.</p>
+      </motion.div>
 
-      <dl className="onboarding-final-setup" aria-label="Saved setup details">
-        {setupItems.map((item) => (
-          <div key={item.key} className="onboarding-final-setup-item">
-            <dt>{item.label}</dt>
-            <dd>
-              {item.value}
+      <div className="onboarding-final-cards" role="list" aria-label="Saved setup details">
+        {setupItems.map((item, index) => {
+          const Icon = PREVIEW_ITEM_ICONS[item.key]
+          return (
+            <motion.div
+              key={item.key}
+              role="listitem"
+              className="onboarding-final-card"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.32, delay: 0.5 + index * 0.06, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <span className="onboarding-final-card-icon" aria-hidden="true">
+                <Icon size={16} strokeWidth={2} />
+              </span>
+              <span className="onboarding-final-card-text">
+                <span className="onboarding-final-card-label">{item.label}</span>
+                <span className="onboarding-final-card-value">{item.value}</span>
+              </span>
               {/* Only offered for a step this account actually saw — the plan
                   is 4-7 steps, so an Edit link to a step that was never in it
                   would jump to a screen the teacher has no context for. */}
@@ -1719,21 +2249,10 @@ function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, 
                   Edit<span className="sr-only"> {item.label}</span>
                 </button>
               ) : null}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      <button
-        type="button"
-        disabled={finishing}
-        className="onboarding-continue onboarding-final-cta fa-press"
-        onClick={onFinish}
-      >
-        {finishing ? <Loader2 size={17} className="mr-2 animate-spin" aria-hidden="true" /> : null}
-        {finishing ? 'Opening your workspace…' : 'Open my workspace'}
-        {!finishing ? <ArrowRight size={17} className="ml-2" aria-hidden="true" /> : null}
-      </button>
+            </motion.div>
+          )
+        })}
+      </div>
 
       {/* The one line worth keeping from the deleted `tips` step. That step
           showed three abstract tips on a screen with nothing to act on; a
@@ -1743,18 +2262,20 @@ function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, 
           lib/contextualSuggestions.js, which has its own priority/context
           contract and five consumers, so it is a separate piece of work rather
           than a paste. */}
-      <div className="onboarding-next-note">
+      <motion.div
+        className="onboarding-next-note"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.32, delay: 0.5 + setupItems.length * 0.06 + 0.05, ease: [0.22, 1, 0.36, 1] }}
+      >
         <Sparkles size={15} aria-hidden="true" />
         <span><strong>Try this first:</strong> “Plan a week for my next unit using my course standards.”</span>
-      </div>
+      </motion.div>
 
       <div className="onboarding-final-footer">
         <span>Your setup is saved. You can change anything later in Settings.</span>
-        {onBack ? (
-          <button type="button" className="onboarding-quiet" onClick={onBack}>Back</button>
-        ) : null}
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -1770,8 +2291,8 @@ export function ConfirmedCalendarReview({ schoolId, compact = false }) {
   if (!submission || !submission.weeks) return null
 
   return (
-    <div className={`mt-3 rounded-xl bg-ok/10 p-3 text-xs ${compact ? 'w-full' : 'max-w-sm'}`}>
-      <p className="font-medium text-ok mb-2">Confirmed by your colleagues</p>
+    <div className={`mt-3 rounded-xl bg-ok/10 p-4 text-sm ${compact ? 'w-full' : 'max-w-2xl onboarding-calendar-card'}`}>
+      <p className="font-medium text-ok mb-3">Confirmed by your colleagues</p>
       <CalendarBody weeks={submission.weeks} />
     </div>
   )

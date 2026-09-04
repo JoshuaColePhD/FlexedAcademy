@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload, ChevronLeft, ChevronRight, BookOpen, Library, CheckCircle2, Undo2, AlertTriangle } from 'lucide-react'
 import { api } from '../lib/api'
@@ -879,8 +879,46 @@ export function CalendarBody({ weeks = [], currentWeek, classId }) {
     return index >= 0 ? index : 0
   }, [months, currentWeek, today])
   const [activeMonthIndex, setActiveMonthIndex] = useState(focusMonthIndex)
+  /* scrollIntoView's own scroll fires the SAME 'scroll' event handleMonthScroll
+     listens for to track free (manual) scrolling — and while that scroll is
+     still in flight (or, inside onboarding's animated step transition,
+     delayed well past when it would normally settle), container.scrollLeft
+     doesn't yet match its destination, so handleMonthScroll's
+     nearest-month measurement briefly resolves to the WRONG (starting)
+     month and stomps the correct index right back to 0.
+     A timing-based guard (armed on scroll, cleared after a fixed delay or
+     on 'scrollend') was tried here first and still lost this race under
+     onboarding's own mount animation — timing assumptions about how long a
+     browser takes to settle a scroll are exactly the kind of thing that
+     holds locally and breaks somewhere with different layout/animation
+     timing. This is deliberately not a timing guess: handleMonthScroll
+     simply never runs at all until the scroller has received a genuine
+     user gesture (wheel, touch, or a pointer press) — every mount-time or
+     button-triggered scroll (scrollIntoView, scrollToMonth) already sets
+     activeMonthIndex itself, so handleMonthScroll only exists to track
+     FREE dragging/swiping, which cannot happen without one of these
+     gestures firing first regardless of animation or scroll timing. */
+  const userScrolledRef = useRef(false)
 
   useEffect(() => {
+    const container = monthRefs.current[0]?.closest('.cal-months')
+    if (!container) return undefined
+    const markUserScrolled = () => { userScrolledRef.current = true }
+    container.addEventListener('wheel', markUserScrolled, { passive: true })
+    container.addEventListener('touchstart', markUserScrolled, { passive: true })
+    container.addEventListener('pointerdown', markUserScrolled)
+    return () => {
+      container.removeEventListener('wheel', markUserScrolled)
+      container.removeEventListener('touchstart', markUserScrolled)
+      container.removeEventListener('pointerdown', markUserScrolled)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [months.length])
+
+  // useLayoutEffect, not useEffect: runs before the browser paints, so the
+  // very first frame already shows the right month instead of a flash of
+  // month 0 that a post-paint effect would correct a tick later.
+  useLayoutEffect(() => {
     if (!months.length) return
     setActiveMonthIndex(focusMonthIndex)
     monthRefs.current[focusMonthIndex]?.scrollIntoView({ block: 'nearest', inline: 'start' })
@@ -893,6 +931,7 @@ export function CalendarBody({ weeks = [], currentWeek, classId }) {
   }
 
   const handleMonthScroll = (event) => {
+    if (!userScrolledRef.current) return
     const container = event.currentTarget
     const nextIndex = monthRefs.current.reduce((closest, month, index) => {
       if (!month) return closest
@@ -960,16 +999,13 @@ export function CalendarBody({ weeks = [], currentWeek, classId }) {
               const openable = cell.hasPlan && cell.chatId && !isThisPlanWeek && !cell.isOff
               const cellBody = (
                 <span
-                  className={`cal-day${cell.isOff ? ' is-off' : ''}${cell.note ? ' has-note' : ''}${
+                  className={`cal-day${cell.isOff ? ' is-off' : ''}${
                     isToday ? ' is-today' : ''
                   }${isThisPlanWeek ? ' is-current-week' : ''}${openable ? ' is-openable' : ''}`}
                   title={`${longDay(cell.iso)}${cell.note ? ` — ${cell.note}` : ''}`}
                 >
                   <span className="cal-day-number">{cell.day}</span>
-                  <span
-                    className={`cal-day-status ${cell.isOff ? (cell.note ? 'is-closure' : 'is-off') : 'is-work'}`}
-                    aria-hidden="true"
-                  />
+                  <span className={`cal-day-status ${cell.isOff ? 'is-off' : 'is-work'}`} aria-hidden="true" />
                 </span>
               )
               return openable ? (
@@ -988,8 +1024,7 @@ export function CalendarBody({ weeks = [], currentWeek, classId }) {
       </div>
       <div className="cal-key" aria-label="Calendar key">
         <span><i className="cal-key-dot is-work" aria-hidden="true" /> Teaching day</span>
-        <span><i className="cal-key-dot is-off" aria-hidden="true" /> Day off</span>
-        <span><i className="cal-key-dot is-closure" aria-hidden="true" /> Closure</span>
+        <span><i className="cal-key-dot is-off" aria-hidden="true" /> Non-teaching day</span>
         {activeWeek != null ? <span><i className="cal-key-line" aria-hidden="true" /> Current week</span> : null}
       </div>
     </div>

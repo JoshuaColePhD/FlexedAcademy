@@ -393,6 +393,14 @@
     letter-spacing: var(--tracking-tight);
   }
 
+  .onboarding-topbar-logo {
+    position: absolute;
+    left: var(--sp-4);
+    height: 1.375rem;
+    width: 1.375rem;
+    color: #7c3aed;
+  }
+
   .onboarding-topbar-close {
     position: absolute;
     right: var(--sp-3);
@@ -408,6 +416,29 @@
     background: var(--paper-sunken);
     color: var(--ink);
   }
+  .onboarding-topbar-contact {
+    position: absolute;
+    right: var(--sp-3);
+    display: inline-flex;
+    height: 2rem;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-md);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  }
+  /* Only the modal variant also has a close button in this same corner —
+     shifted left of it there so neither one covers the other. */
+  .onboarding-topbar-contact-with-close {
+    right: 3.25rem;
+  }
+  .onboarding-topbar-contact:hover {
+    background: var(--paper-sunken);
+    color: var(--ink);
+  }
 
   /* The frame that scrolls. The grid inside is content-height and centres
      itself with auto margins, which is what stops a short step — the profile
@@ -419,6 +450,13 @@
     flex: 1;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* Reserves the scrollbar's width whether or not a scrollbar is actually
+       needed. Without this, a step whose content just barely grows past the
+       visible height (School's field appearing once a state is picked) pops
+       a scrollbar into existence, which narrows the content box and nudges
+       everything centered in it a few pixels left — a shift with no visual
+       cause a teacher could point to. */
+    scrollbar-gutter: stable;
   }
 
   .onboarding-body {
@@ -451,7 +489,10 @@
 
   .onboarding-content {
     display: flex;
-    min-height: 0;
+    /* Short questions reserve a lower action zone. That puts their plain-text
+       navigation in the second half of the page without pinning it to the
+       viewport; a taller step simply grows past this floor. */
+    min-height: min(32rem, calc(var(--app-h) - 16rem));
     flex-direction: column;
     /* Top-aligned, on purpose, and this is the third position it has had.
     
@@ -472,6 +513,26 @@
     container-name: onboarding-step;
   }
 
+  /* Paired with .onboarding-step-center below: that rule centers the school
+     step's own content, but has nothing to center into until this box grows
+     past its min-height floor to the column's actual full height. */
+  .onboarding-content[data-center='true'] {
+    flex: 1;
+  }
+
+  /* One deliberate exception to .onboarding-content's top alignment above:
+     see the comment beside where this class is applied in
+     OnboardingWizard.jsx. flex:1 makes this step's own frame claim the
+     column's full min-height, so justify-content:center has real vertical
+     room to centre into instead of collapsing to the content's own height. */
+  .onboarding-step-center {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+  }
+
   /* The course step's own content IS a scroll region (FrameworkPicker's
      variant="inline" rail + list). Two nested scrollers is what
      .onboarding-course-browser's hand-rolled
@@ -479,6 +540,7 @@
      has a definite height, the step just hands it down and lets the picker own
      the only scrollbar. */
   .onboarding-content[data-fill='true'] {
+    flex: 1 1 auto;
     overflow: hidden;
   }
   .onboarding-content[data-fill='true'] > * {
@@ -491,11 +553,13 @@
   /* ── the step rail ──────────────────────────────────────────────────────── */
   .onboarding-rail-slot {
     min-width: 0;
-    /* Centred in the pane, on request. The rail is the one thing on screen
-       that never changes between steps, so parking it in the middle of the
-       left column gives the flow a fixed spine to travel down while the
-       content stays top-aligned and stable. */
-    align-self: center;
+    /* Start beside the question, not in the vertical middle of the viewport.
+       The old centre placement left a short step's first checkpoint hundreds
+       of pixels below its title: the rail read as a second, unrelated list
+       rather than the route through the form. Keeping the shared top edge
+       makes the marker a companion to the active question; its travel is now
+       the movement a teacher reads while advancing. */
+    align-self: start;
   }
 
   /* The positioned ancestor for the marker, and for the offsetTop the rail
@@ -527,12 +591,11 @@
     background: var(--accent);
     box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.18);
     pointer-events: none;
-    /* --ease-spring overshoots slightly, which is what makes this read as
-       arriving at a step rather than sliding to a stop — tokens.css reserves
-       that curve for "the product's own tactile press feedback", and a marker
-       landing on the step you just reached is the same kind of moment.
-       --t-panel because it travels the length of the rail, not a few pixels. */
-    transition: transform var(--t-panel) var(--ease-spring);
+    /* This is a route, not a press. A spring's overshoot made the marker look
+       as if it reconsidered its destination while the incoming question was
+       already calm; the panel glide keeps both halves of the same transition
+       moving with one deliberate cadence. */
+    transition: transform var(--t-panel) var(--ease-glide);
   }
 
   .onboarding-rail-step {
@@ -565,11 +628,9 @@
   }
   .onboarding-rail-step[data-state='done']::before,
   .onboarding-rail-step[data-state='current']::before {
-    /* The connector into a step you have reached is the road already
-       travelled, so it carries the accent at low alpha rather than a
-       neutral — that is what makes the rail read as one route being walked
-       instead of a list with some grey bits. */
-    background: rgb(var(--accent-rgb) / 0.45);
+    /* Solid, not a low-alpha tint — the rail should read as a track FILLING
+       with purple on the way down, not a faint hint of one. */
+    background: var(--accent);
   }
 
   .onboarding-rail-dot {
@@ -584,7 +645,10 @@
     transition: background var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
   }
   .onboarding-rail-step[data-state='done'] .onboarding-rail-dot {
-    background: var(--ink-soft);
+    /* Was --ink-soft (grey) — filled purple instead, matching the connector
+       above it, so a completed step reads as part of the same purple trail
+       rather than a neutral checkmark sitting on a purple road. */
+    background: var(--accent);
   }
   /* The current step's own dot goes INVISIBLE on the vertical rail, because
      the sliding marker is sitting on top of it — two purple dots in the same
@@ -622,6 +686,19 @@
     color: var(--accent-text);
     font-weight: var(--fw-semibold);
   }
+  .onboarding-rail-step[data-terminal='true'] .onboarding-rail-label {
+    letter-spacing: var(--tracking-tight);
+  }
+  .onboarding-rail-step[data-terminal='true'][data-state='upcoming'] .onboarding-rail-dot {
+    border: 1px solid rgb(var(--mark-rgb) / 0.42);
+    background: var(--paper-raised);
+  }
+  /* Ready's own dot is red rather than the purple every other completed step
+     gets — it's the finish line, not one more step in the same trail, so it
+     reads as a distinct destination rather than blending into the route. */
+  .onboarding-rail-step[data-terminal='true'][data-state='done'] .onboarding-rail-dot {
+    background: var(--mark);
+  }
 
   .onboarding-rail-count {
     display: none;
@@ -653,26 +730,139 @@
   }
 
   /* ── "where do you teach" ─────────────────────────────────────────────────
-     Controls on one side, the state's outline on the other. A container query
-     on the card, not a viewport breakpoint: this step lives inside a pane
-     whose width has nothing to do with the window's, which is the mistake the
-     old state step made with its `lg:` utilities. */
-  .onboarding-where-layout {
-    display: grid;
-    gap: var(--sp-6);
-    align-items: start;
+     The state's outline used to sit beside the fields in its own bordered
+     card — which, at the size a card needs to hold a header and a chip row,
+     never matched the two short selects next to it and read as a second,
+     disconnected widget. It's a large watermark filling the frame now,
+     behind the fields, which are centred rather than pinned to the left:
+     decoration, not confirmation (the select's own value already says which
+     state got chosen), so it doesn't need a box, a header, or size-tuning to
+     pair with anything. */
+  /* The shell just stacks the question above the body at full height — no
+     shift here, so the question sits at the exact inset from the rail every
+     other step's question uses. */
+  .onboarding-where-shell {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
   }
-  .onboarding-where-map {
-    display: none;
+  /* This, not .onboarding-where-layout below, is what needs to fill the
+     step's remaining height — the watermark is sized as a fraction of THIS
+     box, so it stays small if this stays small. (.onboarding-content's own
+     data-center flag is what gives the shell above something taller than the
+     question to grow into in the first place — see OnboardingWizard.jsx.)
+
+     justify-content is flex-start, not center: centering the fields within
+     this box meant their vertical position depended on their own height, so
+     the State select visibly jumped the moment the School field (and, past
+     that, an un-ingested-state notice) appeared below it and grew the group
+     taller. Top-aligned, State stays exactly where it was the instant more
+     content appears beneath it — the watermark is still centered in the
+     full height regardless, since it has its own positioning independent of
+     this. */
+  .onboarding-where-body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: flex-start;
+    min-height: 0;
   }
+  /* Centred within the CONTENT column, margin:auto (on the fields, below)
+     still lands right of the page's true centre — the rail column and its
+     gap (11rem + --sp-10) sit to the left of that column and are never
+     counted. Shifting the body left by half of that width re-centres both
+     the fields and the watermark behind them on the whole card instead of
+     just their own column — the question above the body, outside this box,
+     is untouched by the shift. Desktop-only: on the phone breakpoint the
+     rail collapses to a strip above the content and this column IS the full
+     width, so the same shift would push it off-centre the other way. */
   @container onboarding-step (min-width: 34rem) {
-    .onboarding-where-layout {
-      grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.8fr);
+    .onboarding-where-body {
+      transform: translateX(calc(-1 * (11rem + var(--sp-10)) / 2));
     }
-    /* Only once there is a state to draw — an empty pane holding the grid
-       open would read as something failing to load. */
-    .onboarding-where-map:not(:empty) {
-      display: block;
+  }
+  .onboarding-where-fields {
+    position: relative;
+    z-index: 1;
+    max-width: 26rem;
+    margin-inline: auto;
+    text-align: center;
+  }
+  /* State and School sit over the watermark rather than plain paper, so the
+     small --fs-sm label the rest of onboarding uses is harder to read here.
+     Bigger, scoped to this step only — and left-aligned over the dropdown's
+     own left edge rather than following the centred text below it, so each
+     reads as a caption anchored to its field instead of a centred title. */
+  .onboarding-where-fields .onboarding-choice-label {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    text-align: left;
+    /* Tighter than the base label's --sp-3: sitting closer over its own
+       dropdown reads as a caption belonging to that field rather than a
+       floating title. */
+    margin-bottom: var(--sp-1);
+  }
+  /* More than the base label's --sp-8, so School gets real air below
+     State's dropdown instead of crowding straight up against it — the
+     opposite of the tight margin-bottom above, which pulls each label
+     toward its OWN control rather than the one before it.
+
+     A dedicated class, not :not(:first-child): School's label lives inside
+     its own AnimatePresence motion.div, so it's the first child of ITS
+     parent — sibling-position selectors never see it as anything but a
+     first child, no matter how many fields render before it. Specificity
+     has to beat .onboarding-choice-label:first-child (which also matches,
+     for the same reason), so this compounds onto the base class rather than
+     standing alone. */
+  .onboarding-where-fields .onboarding-choice-label.onboarding-where-school-label {
+    margin-top: var(--sp-10);
+  }
+  /* The label and the control both centre, not just the block around them —
+     a left-aligned line inside a centred column reads as an accident, not a
+     choice. The chevron stays pinned to its own inset on the right rather
+     than following the centred text, same as every other select in the
+     app. */
+  .onboarding-where-fields select,
+  .onboarding-where-fields input {
+    text-align: center;
+  }
+  .onboarding-where-watermark {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  /* A container query on the card, not a viewport breakpoint: this step
+     lives inside a pane whose width has nothing to do with the window's. */
+  @container onboarding-step (min-width: 34rem) {
+    .onboarding-where-watermark {
+      display: flex;
+    }
+    .onboarding-where-watermark-svg {
+      /* Sized against the shell, which now actually fills the step's full
+         height — a fixed rem height here would either float in a much
+         bigger box (too small to read as "most of the page") or, on a short
+         window, blow past it. */
+      width: min(64rem, 98%);
+      height: 105%;
+      /* Nudged down rather than dead-centred behind the fields: centred, the
+         shape sat fully underneath State/School with nothing peeking out
+         past them. Bigger than the shell's own box (height > 100%) so the
+         outline's shoulders reach up and genuinely overlap the dropdowns
+         instead of just filling the space below them. A margin, not a
+         transform — the svg already carries its own inline transform for
+         the entrance scale, and a second transform source here would only
+         replace it again. */
+      margin-top: 2%;
+    }
+    .onboarding-where-watermark-svg path {
+      stroke: var(--accent);
+      opacity: 0.16;
     }
   }
 
@@ -776,15 +966,6 @@
     text-transform: uppercase;
   }
 
-  .onboarding-state-support-note {
-    margin-top: var(--sp-3);
-    /* --ink-muted, not --ink-faint: tokens.css puts the faint step below the
-       floor for real content, and this sentence is the one that tells a
-       teacher outside Alabama what to expect. */
-    color: var(--ink-muted);
-    font-size: var(--fs-xs);
-    line-height: var(--lh-normal);
-  }
 
   .onboarding-lead {
     /* --measure-form, not --measure-narrow. The 30rem cap was set while the
@@ -818,74 +999,98 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--sp-4);
-    padding-top: var(--sp-6);
   }
 
-  /* Only the DIALOG pins its actions.
-    
-     Each step renders its own footer, so the buttons sit inside the scrolling
-     content area — and in a 40rem dialog a tall step (fifty states, a
-     documents list, a template review) scrolls the primary action out of
-     reach. Sticky fixes that, at the cost of a scrim behind the buttons.
-    
-     The full-page variant needs neither. It has the whole window, so almost
-     every step fits without scrolling at all, and against a full-width pane
-     that scrim read as a stray white band across the middle of the page rather
-     than as a footer. Where a step IS tall enough to scroll there, the buttons
-     follow the content, which is ordinary form behaviour.
-    
-     The structurally cleaner fix for both is to hoist the actions out of the
-     scroller and render them once from the wizard, which is what the
-     `flex-shrink: 0` above is really for. That needs every step to expose its
-     action config instead of rendering its own footer, so it stays a
-     follow-up. */
-  .onboarding-card-dialog .onboarding-actions {
-    position: sticky;
-    bottom: 0;
-    margin-top: auto;
-    /* A fade, not a flat fill: a hard edge across a translucent card reads as
-       a docked toolbar the design doesn't otherwise have. */
-    background: linear-gradient(
-      to bottom,
-      rgb(var(--paper-raised-rgb) / 0),
-      rgb(var(--paper-raised-rgb) / 0.92) var(--sp-4)
-    );
+  /* One shared footer makes the primary destination physically stable across
+     every question — especially important when a profile form, course browser,
+     and document list all have radically different heights. Skip shares this
+     fixed line, right-aligned as the alternate route rather than a peer of
+     Continue. */
+  .onboarding-footer {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    flex-shrink: 0;
+    grid-template-columns: 11rem minmax(0, var(--measure));
+    justify-content: center;
+    gap: var(--sp-10);
+    padding: var(--sp-3) var(--sp-10) calc(var(--sp-3) + var(--safe-b));
+    border-top: 1px solid rgb(var(--edge-rgb) / 0.7);
+    background: rgb(var(--paper-raised-rgb) / 0.68);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .onboarding-footer .onboarding-actions {
+    grid-column: 2;
+    justify-content: flex-end;
+    min-height: var(--touch-min-lg);
+    padding: 0;
+  }
+  /* The teacher's own chosen icon (or initials, if they left it on the
+     default), pinned to the footer's true corner — inset less than Back's
+     own rail-aligned column, so the two sit side by side rather than
+     overlapping on every step after Profile. */
+  .onboarding-footer-avatar {
+    position: absolute;
+    left: var(--sp-3);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--r-full);
+    background: var(--paper-sunken);
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    font-weight: var(--fw-bold);
+    line-height: 1;
   }
 
-  /* The one filled control on any step, and deliberately the dark ink pill
-     rather than .btn-primary's --accent fill. tokens.css rule 4 reserves
-     district blue for what is actionable inside the product; every linear
-     one-way flow the app already has carries ink instead (/welcome's "Open my
-     year", /signup, /reset). This wizard opens straight off /welcome's own
-     Continue, so the button must not change colour mid-flow.
-
-     No emboss: rule 2 keeps elevation for floating layers, and /welcome's
-     equivalent doesn't wear one. .fa-press carries the press instead. */
+  /* A semantic button styled as a clear forward cue. Violet stays scoped to
+     onboarding's one moment of momentum; the typography remains the app's
+     normal interface face. */
   .onboarding-continue {
     display: inline-flex;
     min-height: var(--touch-min-lg);
     align-items: center;
-    gap: var(--sp-2);
-    padding-inline: var(--sp-6);
-    border-radius: var(--r-lg);
-    background: var(--ink);
-    color: var(--ink-inverse);
-    font-size: var(--fs-sm);
+    gap: var(--sp-3);
+    padding: var(--sp-3) 0;
+    color: var(--onboarding-forward);
+    font-family: var(--font-ui);
+    font-size: var(--fs-xl);
     font-weight: var(--fw-semibold);
-    transition: background var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--lh-tight);
+    transition: color var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease-glide);
   }
   .onboarding-continue:hover:not(:disabled) {
-    background: var(--ink-soft);
+    color: var(--accent);
+    transform: translateX(var(--sp-1));
+  }
+  .onboarding-continue svg {
+    width: 1.15em;
+    height: 1.15em;
+    stroke-width: 1.7;
+    transition: transform var(--t-fast) var(--ease-glide);
+  }
+  .onboarding-continue:hover:not(:disabled) svg {
+    transform: translateX(var(--sp-2));
   }
   .onboarding-continue:disabled {
     cursor: not-allowed;
     opacity: 0.5;
   }
+  .onboarding-continue:focus-visible,
+  .onboarding-quiet:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+  }
 
   .onboarding-quiet {
     min-height: var(--touch-min);
-    padding-inline: var(--sp-2);
-    border-radius: var(--r-sm);
+    padding: var(--sp-2) 0;
     color: var(--ink-muted);
     font-size: var(--fs-sm);
     font-weight: var(--fw-medium);
@@ -894,11 +1099,25 @@
   .onboarding-quiet:hover {
     color: var(--ink);
   }
-  /* Pushed to the far end: a skip is a legitimate choice and should be
-     reachable, but it should not sit shoulder to shoulder with Back as if the
-     two were a pair. */
-  .onboarding-skip {
-    margin-left: auto;
+  /* Grid column 1 is the footer's share of the same 11rem rail column
+     .onboarding-body uses — same width, same gap, same centred grid — so
+     Back sits directly under the rail instead of hugging the card's own
+     edge. Skip sits on the footer's centre line, independent of Continue's
+     grid column, so both stay put regardless of how wide the current step's
+     Continue label is. */
+  .onboarding-footer-back {
+    grid-column: 1;
+    align-self: center;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .onboarding-footer-skip {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
   }
 
   /* ── phone ──────────────────────────────────────────────────────────────── */
@@ -909,6 +1128,12 @@
     .onboarding-card {
       max-width: none;
       border-radius: 0;
+    }
+    .onboarding-column {
+      min-height: 0;
+    }
+    .onboarding-content {
+      min-height: 0;
     }
     .onboarding-card-dialog {
       height: var(--app-h);
@@ -974,6 +1199,14 @@
     }
     .onboarding-actions {
       flex-wrap: wrap;
+    }
+    .onboarding-footer {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+      padding: var(--sp-3) var(--sp-5) calc(var(--sp-3) + var(--safe-b));
+    }
+    .onboarding-footer .onboarding-actions {
+      grid-column: 1;
     }
   }
 
@@ -1064,162 +1297,143 @@
     min-height: 0;
     flex-direction: column;
   }
-  .onboarding-course-browser {
+  /* Three dashes, one per screen in the course step's own grade/discipline/
+     course flow — a sub-progress bar for a sub-flow, filling left to right
+     as each screen is reached. Distinct from the wizard's own rail, which
+     only advances once per whole step. */
+  .onboarding-subprogress {
     display: flex;
-    height: clamp(32rem, calc(100vh - 17rem), 46rem);
-    min-height: 0;
-    flex-direction: column;
-    overflow: hidden;
-    border: 1px solid rgb(var(--edge-strong-rgb) / 0.86);
-    border-radius: var(--r-xl);
-    background: rgb(var(--paper-raised-rgb) / 0.48);
-    box-shadow:
-      inset 0 1px 1px rgb(255 255 255 / 0.7),
-      0 14px 30px rgb(var(--neo-dark-rgb) / 0.1);
+    /* Centred over the list's own width (shares its max-width), not spanning
+       the full card edge-to-edge — a small cluster of dashes sitting above
+       the "All grades" row, not a bar stretched under the question. */
+    justify-content: center;
+    gap: var(--sp-2);
+    max-width: var(--measure-form);
+    margin-bottom: var(--sp-4);
   }
-  .onboarding-course-picker,
-  .onboarding-course-browser .fw-picker {
-    display: flex;
-    min-height: 0;
-    flex: 1 1 0;
-    flex-direction: column;
+  .onboarding-subprogress-dash {
+    width: 2.5rem;
+    height: 0.25rem;
+    border-radius: var(--r-full);
+    background: rgb(var(--edge-strong-rgb) / 0.6);
+    transition: background var(--t-base) var(--ease);
   }
-  .onboarding-course-picker {
-    padding: var(--sp-3) var(--sp-3) 0;
+  .onboarding-subprogress-dash-filled {
+    background: var(--accent);
   }
-  .onboarding-course-browser .fw-picker-panel {
-    height: 100%;
-    min-height: 0;
-    flex: 1 1 0;
-  }
-  .onboarding-course-grade-control {
-    display: flex;
-    flex: 0 0 9.5rem;
+  /* The escape hatch on the discipline screen, into SearchSubStep. Quiet on
+     purpose — a link, not a button — since browsing is the intended default
+     path and this is for the exception. */
+  .onboarding-course-search-link {
+    display: inline-flex;
     align-items: center;
     gap: var(--sp-2);
+    margin-bottom: var(--sp-4);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-fast) var(--ease);
   }
-  .onboarding-course-grade-control span {
-    color: var(--ink-soft);
-    font-size: var(--fs-sm);
-    font-weight: var(--fw-semibold);
+  .onboarding-course-search-link:hover {
+    color: var(--accent);
   }
-  .onboarding-course-grade-control select {
-    min-width: 0;
-    flex: 1;
-  }
-  .onboarding-class-step .fw-picker-panel {
-    border-color: transparent;
-    background-color: rgb(var(--paper-raised-rgb) / 0.76);
-    box-shadow:
-      inset 0 1px 1px rgb(255 255 255 / 0.72),
-      0 14px 30px rgb(var(--neo-dark-rgb) / 0.16);
-  }
-  .onboarding-course-browser .fw-picker-panel {
+  .onboarding-course-search-input {
+    display: block;
+    width: 100%;
+    max-width: var(--measure-form);
+    min-height: var(--touch-min-lg);
+    margin-bottom: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
     border-radius: var(--r-lg);
-    box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.68);
-  }
-  .onboarding-class-step .fw-picker-rail {
-    width: 9.5rem;
-    height: 100%;
-    padding: var(--sp-3);
-    background-color: rgb(var(--paper-sunken-rgb) / 0.68);
-  }
-  .onboarding-class-step .fw-picker-rail .onboarding-course-category {
-    min-height: 2rem;
-    padding: 0.25rem 0.45rem;
-    font-size: 0.6875rem;
-    color: var(--ink-soft);
-  }
-  .onboarding-class-step .fw-picker-rail .onboarding-course-category-active {
     color: var(--ink);
+    font-size: var(--fs-base);
   }
-  .onboarding-class-step .fw-picker-panel > ul > li > p {
-    padding: 0.35rem 0.65rem;
+  /* The course step's three sequential screens (grade, discipline, course)
+     share this one row style — a big single-choice list, the reference
+     point being a typical "pick one to continue" onboarding quiz rather
+     than a dense browsable table. Replaced the old three-column browser
+     (a bordered box holding a grade rail, a discipline rail, and a
+     FrameworkPicker course list all visible at once) entirely — that
+     layout and this one don't mix, so there's nothing left to share with
+     .fw-picker's own styling here. */
+  .onboarding-bigchoice-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    max-width: var(--measure-form);
   }
-  .onboarding-class-step .fw-picker-panel [role='option'] {
-    min-height: 2.5rem;
-    padding: 0.3rem 0.65rem;
-  }
-  .onboarding-class-step .fw-picker-panel [role='option'] .text-sm {
-    font-size: 0.8125rem;
-  }
-  .onboarding-class-step .fw-picker-panel [role='option'].onboarding-course-selected {
-    background-color: rgb(var(--accent-rgb) / 0.1);
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-  .onboarding-class-step .fw-picker-panel [role='option'].onboarding-course-selected:hover {
-    background-color: rgb(var(--accent-rgb) / 0.15);
-  }
-  .onboarding-class-step .fw-picker-panel [role='option'].onboarding-course-active:not(.onboarding-course-selected) {
-    background-color: rgb(var(--paper-sunken-rgb) / 0.7);
-    box-shadow: inset 2px 0 0 rgb(var(--ink-faint-rgb) / 0.5);
-  }
-  .onboarding-class-step .fw-picker-rail,
-  .onboarding-class-step .fw-picker-panel > ul {
-    overscroll-behavior: contain;
-  }
-  .onboarding-course-browser-actions {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    flex: 0 0 auto;
+  .onboarding-bigchoice {
+    display: flex;
+    min-height: var(--touch-min-lg);
     align-items: center;
     gap: var(--sp-3);
-    border-top: 1px solid rgb(var(--edge-rgb) / 0.7);
     padding: var(--sp-3) var(--sp-4);
+    border: 1px solid rgb(var(--edge-rgb) / 0.7);
+    border-radius: var(--r-lg);
+    background: rgb(var(--paper-raised-rgb) / 0.6);
+    color: var(--ink);
+    text-align: left;
+    transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
   }
-  
-  
-  
-  
-  @media (max-width: 640px) {
-    .onboarding-course-browser {
-      height: 32rem;
-    }
-    .onboarding-course-picker {
-      padding: var(--sp-2) var(--sp-2) 0;
-    }
-    .onboarding-course-browser .fw-picker > div:first-child {
-      align-items: stretch;
-      flex-wrap: wrap;
-    }
-    .onboarding-course-browser .fw-picker > div:first-child > .relative {
-      flex-basis: 100%;
-      order: 1;
-    }
-    .onboarding-course-grade-control {
-      flex-basis: 100%;
-      order: 0;
-    }
-    .onboarding-class-step .fw-picker-rail {
-      width: 8.5rem;
-    }
-    .onboarding-course-browser-actions {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      align-items: stretch;
-    }
-    .onboarding-course-browser-actions > .btn:first-child {
-      grid-column: 1;
-      grid-row: 2;
-      justify-self: start;
-    }
-    .onboarding-course-browser-actions > .btn:last-child {
-      grid-column: 2;
-      grid-row: 2;
-      justify-self: end;
-    }
-    
-    
+  .onboarding-bigchoice:hover {
+    border-color: rgb(var(--edge-strong-rgb) / 0.9);
+    background: rgb(var(--paper-raised-rgb) / 0.9);
   }
-  @media (min-width: 641px) and (max-height: 860px) {
-    .onboarding-course-browser {
-      height: 31rem;
-    }
-    .onboarding-class-step .fw-picker-panel [role='option'] {
-      min-height: 2.5rem;
-      padding-block: 0.3rem;
-    }
+  .onboarding-bigchoice-selected,
+  .onboarding-bigchoice-selected:hover {
+    border-color: var(--accent);
+    background: rgb(var(--accent-rgb) / 0.08);
   }
-  
+  .onboarding-bigchoice-icon {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--r-md);
+    background: rgb(var(--paper-sunken-rgb) / 0.8);
+    color: var(--ink-soft);
+  }
+  .onboarding-bigchoice-selected .onboarding-bigchoice-icon {
+    background: rgb(var(--accent-rgb) / 0.14);
+    color: var(--accent);
+  }
+  .onboarding-bigchoice-text {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+  .onboarding-bigchoice-label {
+    font-size: var(--fs-base);
+    font-weight: var(--fw-medium);
+  }
+  .onboarding-bigchoice-sublabel {
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+  }
+  .onboarding-bigchoice-count {
+    flex-shrink: 0;
+    color: var(--ink-faint);
+    font-size: var(--fs-xs);
+  }
+  .onboarding-bigchoice-radio {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.9);
+    border-radius: var(--r-full);
+    color: #fff;
+  }
+  .onboarding-bigchoice-selected .onboarding-bigchoice-radio {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
 
   /* How far in, and how much is left. The flow's only answer to that was the
      eyebrow's "Step 1 of 3" — which was hardcoded on three steps of a six-step
@@ -6024,11 +6238,9 @@
   /* ── the school calendar's own month grid ─────────────────────────────────
      A traditional wall calendar (ArtifactDetailPanel's CalendarBody) instead
      of a flat list of week rows — see that component's own header comment.
-     Weekends carry no per-day record from the backend (the school week is
-     Mon–Fri only) and are treated as off the same as a named closure; the
-     "flag" tint below is reserved for closures that carry a real reason
-     (`.has-note` — a holiday, a workday), so a plain Saturday and "No school:
-     Labor Day" don't compete for the same visual weight. */
+     Only two states matter: a teaching day or not. A weekend and a named
+     closure render identically (muted gray) — the reason, if any, only shows
+     up in the day's hover tooltip. */
   .cal-shell {
     overflow: hidden;
     border: 1px solid var(--edge);
@@ -6174,10 +6386,6 @@
     color: var(--ink-faint);
     background: rgb(var(--paper-inset-rgb) / 0.3);
   }
-  .cal-day.is-off.has-note {
-    color: var(--flag);
-    background: var(--flag-tint);
-  }
   .cal-day.is-today {
     color: var(--ink);
     font-weight: var(--fw-semibold);
@@ -6197,9 +6405,6 @@
   }
   .cal-day-status.is-off {
     background: var(--ink-faint);
-  }
-  .cal-day-status.is-closure {
-    background: var(--flag);
   }
   /* The week this plan is actually FOR — same "found it" job the old list's
      .is-current outline did, just per-day now. Accent, not --ok/--flag: this
@@ -6246,15 +6451,25 @@
   .cal-key-dot.is-off {
     background: var(--ink-faint);
   }
-  .cal-key-dot.is-closure {
-    background: var(--flag);
-  }
   .cal-key-line {
     display: inline-block;
     width: 10px;
     height: 2px;
     border-radius: 999px;
     background: var(--accent);
+  }
+  /* Onboarding's own confirmed-calendar card is wider than the shared
+     .cal-shell's usual home (a sidebar panel or a compact Settings row), so
+     the legend earns a size bump here — scoped to this one wider context
+     rather than the shared component's default, which stays small where
+     it's still a compact aside. */
+  .onboarding-calendar-card .cal-key {
+    gap: 8px 16px;
+    font-size: var(--fs-xs);
+  }
+  .onboarding-calendar-card .cal-key-dot {
+    width: 8px;
+    height: 8px;
   }
   .detail-code {
     padding: 6px 10px;
@@ -9667,6 +9882,14 @@
     flex: 1 1 auto;
     background: rgb(var(--edge-rgb) / 0.7);
   }
+  /* The calendar-upload explainer reuses this stepper as a plain "here's
+     what happens" list rather than a live progress tracker — it already
+     sits inside a padded panel with its own paragraph above, so the
+     default --sp-6 top margin (sized for sitting directly under a bare
+     question) is too much on top of that. */
+  .onboarding-ingest-path-static {
+    margin-top: var(--sp-3);
+  }
   .onboarding-template-preview {
     min-width: 0;
     margin-top: var(--sp-5);
@@ -10060,6 +10283,138 @@
   .onboarding-final-cta {
     width: 100%;
   }
+}
+
+/* The completion receipt is the destination of the same route shown in the
+   rail, not a second mini-brand moment. These overrides intentionally retire
+   the old animated logo/orbits without needing a second background, gradient,
+   or glass recipe: one token-tinted checkpoint is enough to say "arrived". */
+.onboarding-final {
+  align-items: stretch;
+  gap: var(--sp-3);
+  text-align: left;
+}
+.onboarding-final-kicker {
+  color: var(--accent-text);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+}
+.onboarding-final-title {
+  max-width: var(--measure-form);
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-tight);
+}
+.onboarding-final-intro {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+/* The one moment on this screen allowed a little more motion than a plain
+   fade — see the comment beside where this renders in OnboardingWizard.jsx. */
+.onboarding-final-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-4) 0 var(--sp-2);
+}
+.onboarding-final-hero-logo {
+  width: 7rem;
+  height: 7rem;
+  color: var(--accent);
+  filter: drop-shadow(0 0 0 rgb(var(--accent-rgb) / 0));
+  animation: onboarding-final-hero-glow 2.6s ease-in-out 0.9s infinite;
+}
+.onboarding-final-hero-svg {
+  width: 100%;
+  height: 100%;
+}
+@keyframes onboarding-final-hero-glow {
+  0%, 100% { filter: drop-shadow(0 0 0.4rem rgb(var(--accent-rgb) / 0.18)); }
+  50% { filter: drop-shadow(0 0 1.1rem rgb(var(--accent-rgb) / 0.38)); }
+}
+.onboarding-final-hero-ready {
+  margin: 0;
+  color: var(--accent-text);
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+.onboarding-final-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(100%, var(--measure-form));
+}
+.onboarding-final-card {
+  /* .onboarding-setup-summary-edit (the "Edit" button rendered inside this
+     card) is position:absolute, top-right — written for a positioned
+     ancestor of its own size. Without this, it anchors to the nearest ONE
+     up the tree instead, which floated it to the corner of the whole page
+     rather than this card. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  padding-right: 3.25rem;
+  border: 1px solid rgb(var(--edge-rgb) / 0.8);
+  border-radius: var(--r-lg);
+  background: rgb(var(--paper-raised-rgb) / 0.5);
+}
+.onboarding-final-card-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: rgb(var(--accent-rgb) / 0.1);
+  color: var(--accent-text);
+}
+.onboarding-final-card-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.onboarding-final-card-label {
+  color: var(--ink-faint);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.onboarding-final-card-value {
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  line-height: 1.3;
+}
+.onboarding-final-footer {
+  width: min(100%, var(--measure-form));
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+}
+/* The base .onboarding-setup-summary-edit is top:-0.1rem — right for sitting
+   above a short dt/dd column. This card is a horizontal row instead, so it
+   needs to be centred in the row's own height, not pinned near its top. */
+.onboarding-final-card .onboarding-setup-summary-edit {
+  top: 50%;
+  right: var(--sp-4);
+  transform: translateY(-50%);
+}
+@media (max-width: 680px) {
+  .onboarding-final-title { max-width: none; font-size: var(--fs-xl); }
+  .onboarding-final-cards { width: 100%; }
+  .onboarding-final-footer { width: 100%; font-size: var(--fs-2xs); }
 }
 
 /* A quieter completion state: the mark is the destination, while the setup
@@ -10505,4 +10860,23 @@
     max-width: 22rem;
     font-size: 0.6875rem;
   }
+}
+
+/* Live completion receipt overrides. This block follows the legacy completion
+   experiments above so the current screen cannot accidentally inherit the
+   abandoned orbit/logo geometry. */
+.onboarding-final { align-items: stretch; gap: var(--sp-3); text-align: left; }
+.onboarding-final-kicker { color: var(--accent-text); font-size: var(--fs-2xs); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-caps); }
+.onboarding-final-title { max-width: var(--measure-form); margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); line-height: var(--lh-tight); }
+.onboarding-final-intro { margin: 0; font-size: var(--fs-sm); }
+.onboarding-final-stage { display: flex; height: auto; width: min(100%, var(--measure-form)); align-items: center; gap: var(--sp-4); margin: var(--sp-2) 0 0; padding: var(--sp-4); border: 1px solid rgb(var(--accent-rgb) / 0.22); border-radius: var(--r-lg); background: rgb(var(--accent-rgb) / 0.08); }
+.onboarding-final-route-mark { display: grid; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; place-items: center; border-radius: var(--r-full); background: var(--accent); color: var(--ink-inverse); }
+.onboarding-final-stage-label { margin: 0; color: var(--accent-text); font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.onboarding-final-stage-copy { margin: var(--sp-1) 0 0; color: var(--ink-soft); font-size: var(--fs-sm); line-height: var(--lh-normal); }
+.onboarding-final-setup { width: min(100%, var(--measure-form)); margin: 0; border-color: rgb(var(--edge-rgb) / 0.8); }
+.onboarding-final-footer { width: min(100%, var(--measure-form)); margin: 0; color: var(--ink-muted); font-size: var(--fs-xs); }
+@media (max-width: 680px) {
+  .onboarding-final-title { max-width: none; font-size: var(--fs-xl); }
+  .onboarding-final-stage, .onboarding-final-setup, .onboarding-final-footer { width: 100%; }
+  .onboarding-final-footer { font-size: var(--fs-2xs); }
 }
