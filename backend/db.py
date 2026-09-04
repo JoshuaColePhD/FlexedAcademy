@@ -3541,6 +3541,28 @@ MIGRATIONS: list[str] = [
 
     REVOKE ALL ON TABLE onboarding_events FROM anon, authenticated;
     """,
+
+    # ── 76: which state a school is in ───────────────────────────────────────
+    #
+    # Every row in this table is an Alabama school, and has been since
+    # migration 49 seeded ~1,600 of them — but only by construction, never as
+    # recorded fact. Onboarding now asks for the state and then narrows the
+    # school list to it, and a narrow with nothing to narrow ON is theatre: it
+    # would look like a filter, return everything, and quietly hand a Georgia
+    # teacher a list of Alabama schools the first time a second state was
+    # ingested.
+    #
+    # Backfilled to 'AL' rather than left NULL, because the existing rows ARE
+    # Alabama schools and a NULL would make the filter drop all 1,600 of them.
+    # Deliberately not NOT NULL: create_school is reachable from the admin page
+    # and from a calendar submission for a school that isn't listed yet, and
+    # neither knows a state today. A NULL there means "not recorded", which the
+    # picker can show as unfiltered rather than as absent.
+    """
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS state TEXT;
+    UPDATE schools SET state = 'AL' WHERE state IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_schools_state ON schools(state);
+    """,
 ]
 
 

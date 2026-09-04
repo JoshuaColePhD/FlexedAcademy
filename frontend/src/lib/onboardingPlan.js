@@ -30,7 +30,6 @@ import { GENERIC_SCHOOL, hasChosenSchool, hasUsableSchoolTemplate } from './scho
 export const STEP_ORDER = [
   'avatar',
   'course',
-  'state',
   'school',
   'calendar',
   'format',
@@ -84,16 +83,23 @@ export const ONBOARDING_STEPS = {
     title: 'Which course are you teaching?',
     required: true,
   },
-  state: {
-    label: 'Standards',
-    title: "Which state's standards should ground your plans?",
-    required: true,
-  },
   school: {
     label: 'School',
-    title: 'Which school do you teach at?',
-    required: false,
-    skipLabel: "Skip — I'll plan by week number for now",
+    /* One question, answered with a state and then a school. The state used to
+       be a step of its own, which meant spending a whole screen on a fifty-row
+       listbox where exactly one row was clickable.
+    
+       Asking it HERE rather than on page one is also what keeps it simple:
+       classes.state is a column on the class, and by this step the course step
+       has already created one — so it is a plain PATCH instead of something
+       threaded through api.createClass. */
+    title: 'Where do you teach?',
+    /* Required, because it carries the state, and the state is what says which
+       course of study a plan's standards are quoted from. The SCHOOL half is
+       still skippable inside the step: a teacher whose school isn't listed
+       keeps the 'generic' default and plans by week number. */
+    required: true,
+    writes: ['classes.state', 'users.school', 'classes.school'],
   },
   calendar: {
     label: 'Calendar',
@@ -186,6 +192,13 @@ export function derivePlan({
    * while its separate template-content review is still pending. Onboarding
    * should ask for a file only when downloads genuinely have no usable school
    * format, not when the review status happens to lag behind the builder. */
+  /* True while the school is still up for decision — either unchosen, or
+     chosen but on a step the teacher hasn't reached yet because the state half
+     is unanswered. Everything downstream that depends on WHICH school it is
+     has to assume it might change until this is false, or it grows the plan
+     mid-flow. */
+  const decidingSchool = !chosenSchool || !state
+
   const schoolNeedsTemplate = chosenSchool && Boolean(selectedSchool) && !hasUsableSchoolTemplate(selectedSchool)
   /* More than one template on file (or still loading, so we don't yet know) is
    * a choice for the teacher to make rather than an upload to request. */
@@ -207,8 +220,8 @@ export function derivePlan({
        they chose and a menu to change it in. */
     avatar: firstRun,
     course: !subject || !grade,
-    state: !state,
-    school: !chosenSchool,
+    // Either half unanswered brings the step back.
+    school: !chosenSchool || !state,
     /* Only when there is something to review or disclose. A confirmed,
      * uncorrected calendar is a rubber stamp, so it folds into the preview
      * step's receipt instead of spending a screen. `generic` earns the screen
@@ -226,8 +239,8 @@ export function derivePlan({
      * (that shrink is what frozenPlan hides mid-flow); a step must never
      * appear. See the monotonicity assertion in
      * scripts/test-onboarding-steps.mjs. */
-    calendar: !chosenSchool || calendarStatus === 'pending' || school === GENERIC_SCHOOL,
-    format: !chosenSchool || schoolNeedsTemplate || schoolTemplateSelectionStep,
+    calendar: decidingSchool || calendarStatus === 'pending' || school === GENERIC_SCHOOL,
+    format: decidingSchool || schoolNeedsTemplate || schoolTemplateSelectionStep,
     /* The payoff always renders. It is the only screen that gives something
      * back rather than asking for something, which is the whole reason it sits
      * before `materials` instead of after: asking for a teacher's biggest

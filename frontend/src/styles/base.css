@@ -571,6 +571,55 @@
     text-wrap: balance;
   }
 
+  /* ── "where do you teach" ─────────────────────────────────────────────────
+     Controls on one side, the state's outline on the other. A container query
+     on the card, not a viewport breakpoint: this step lives inside a pane
+     whose width has nothing to do with the window's, which is the mistake the
+     old state step made with its `lg:` utilities. */
+  .onboarding-where-layout {
+    display: grid;
+    gap: var(--sp-6);
+    align-items: start;
+  }
+  .onboarding-where-map {
+    display: none;
+  }
+  @container onboarding-step (min-width: 34rem) {
+    .onboarding-where-layout {
+      grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.8fr);
+    }
+    /* Only once there is a state to draw — an empty pane holding the grid
+       open would read as something failing to load. */
+    .onboarding-where-map:not(:empty) {
+      display: block;
+    }
+  }
+
+  /* An un-ingested state: what works, what doesn't, and how to ask. --flag,
+     not --mark: nothing has gone wrong, this is a limit being stated. */
+  .onboarding-state-request {
+    margin-top: var(--sp-4);
+    display: grid;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border: 1px solid rgb(var(--flag-rgb) / 0.25);
+    border-radius: var(--r-lg);
+    background: var(--flag-tint);
+    color: var(--ink-soft);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-relaxed);
+  }
+  .onboarding-state-request .btn {
+    justify-self: start;
+  }
+  .onboarding-state-requested {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--ok);
+    font-weight: var(--fw-medium);
+  }
+
   /* ── the state chooser ────────────────────────────────────────────────────
      These four classes were referenced by the JSX with no definitions at all,
      so `npm run check:classes` failed on them and the pill and the note

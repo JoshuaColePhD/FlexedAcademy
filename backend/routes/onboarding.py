@@ -18,7 +18,8 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
-from .. import db
+from .. import db, mail
+from ..config import settings
 from ..deps import get_current_user
 from ..errors import AppError
 from ..ratelimit import limiter
@@ -35,7 +36,6 @@ router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
 STEPS = frozenset({
     "avatar",
     "course",
-    "state",
     "school",
     "calendar",
     "format",
@@ -138,6 +138,74 @@ def set_progress(
         "onboarding_step": user.get("onboarding_step"),
         "onboarding_seen_at": user.get("onboarding_seen_at"),
     }
+
+
+class StateRequestBody(BaseModel):
+    """A two-letter postal code, checked against the closed list rather than
+    trusted: this value ends up in an email subject line."""
+    state: str = Field(min_length=2, max_length=2)
+
+
+# Mirrors US_STATES in frontend/src/lib/states.js. Only the codes, because the
+# label is presentational and the request only needs to say WHICH state.
+US_STATE_CODES = frozenset({
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+    "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+    "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+    "WI", "WY",
+})
+
+
+@router.post("/state-request")
+@limiter.limit("10/hour")
+def request_state(
+    body: StateRequestBody,
+    request: Request,
+    user_id: str = Depends(get_current_user),
+):
+    """A teacher outside Alabama asking for their state's standards.
+
+    Two records, deliberately, because they answer different questions. The
+    event is the queryable one — "how many teachers in which states", which is
+    what decides the ingest order — and it is the durable half. The email is
+    the prompt to go look, and it is best-effort: mail.send returning False
+    must not turn a teacher's request into an error toast, because from their
+    side the request WAS recorded.
+
+    Recorded per request rather than deduplicated. A teacher who asks twice is
+    a signal, not a mistake, and COUNT(DISTINCT user_id) is one word away for
+    whoever reads the funnel.
+    """
+    code = body.state.strip().upper()
+    if code not in US_STATE_CODES:
+        raise AppError("unknown_state", "That isn't a state we recognise.", status=400)
+
+    db.record_onboarding_events(user_id, [{
+        "name": "state_unsupported_interest",
+        "step": "school",
+        "props": {"state": code},
+    }])
+
+    user = db.get_user_by_id(user_id)
+    try:
+        mail.send(
+            to=settings.support_email,
+            subject=f"FlexEd: standards requested for {code}",
+            html=(
+                f"<p><strong>{code}</strong> standards requested.</p>"
+                f"<p>{(user or {}).get('name') or 'A teacher'} "
+                f"&lt;{(user or {}).get('email') or 'unknown'}&gt;</p>"
+                "<p>Counts by state are in the onboarding funnel "
+                "(GET /api/admin/onboarding-funnel reads the snapshot; "
+                "onboarding_events holds one row per request).</p>"
+            ),
+            reply_to=(user or {}).get("email"),
+        )
+    except Exception:  # see the docstring: a failed email must not fail the request
+        log.exception("state request email failed for %s", code)
+
+    return {"requested": code}
 
 
 class EventBody(BaseModel):

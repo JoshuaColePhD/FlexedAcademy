@@ -280,7 +280,11 @@ const ANSWERS = {
      calendarStatus untouched, and the monotonicity sweep passed even with the
      `!chosenSchool` guard removed from `calendar`; it was asserting over a case
      it never actually reached. */
-  school: () => ({ school: 'unconfigured-school', calendarStatus: 'pending' }),
+  /* Answering the school step answers BOTH halves of it — the state and the
+     school — since that is what the step asks for. Leaving the state out meant
+     the step stayed in the plan after being answered, which made the sweep
+     walk it forever. */
+  school: () => ({ school: 'unconfigured-school', state: 'AL', calendarStatus: 'pending' }),
   calendar: () => ({ calendarStatus: 'confirmed' }),
   format: () => ({ schoolTemplates: [{ id: 't1' }], schoolTemplatesLoading: false }),
   preview: () => ({}),
@@ -313,8 +317,8 @@ for (const fixture of FIXTURES) {
  * documented catastrophic failure (db.py migration 38). */
 assert.deepEqual(
   Object.keys(ONBOARDING_STEPS).filter((key) => ONBOARDING_STEPS[key].required),
-  ['course', 'state'],
-  'only course and state are required; everything else states its cost and can be skipped'
+  ['course', 'school'],
+  'only course and the school step (which carries the state) are required'
 )
 
 // Metadata and order can never disagree about which steps exist.

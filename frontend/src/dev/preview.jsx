@@ -54,6 +54,8 @@ if (sessionStorage.getItem(FRESH_KEY) === '1') {
   st.me.onboarding_step = null
   st.me.avatar = null
   st.me.school = 'generic'
+  // and no state, so the school step actually asks for one
+  st.classes.forEach((c) => { c.state = null })
 }
 
 /* Start on the class root — the greeting — so the new-chat path is the first

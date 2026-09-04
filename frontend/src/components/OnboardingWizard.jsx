@@ -20,7 +20,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { GRADES, gradeLabel, gradeSelectValue } from '../lib/grades'
 import { inferGradeFromQuery, matchesFramework } from '../lib/frameworks'
-import { US_STATES } from '../lib/states'
+import { US_STATES, isStandardsReady } from '../lib/states'
 import { ONBOARDING_STEPS, derivePlan, nextStep, prevStep } from '../lib/onboardingPlan'
 import { FrameworkPicker } from './FrameworkPicker'
 import { SchoolSelect } from './SchoolSelect'
@@ -39,11 +39,6 @@ import { AvatarPicker } from './AvatarPicker'
 // first-run account, since /welcome always leaves `documents` in the plan.
 const ClassDocuments = lazy(() => import('./ClassDocuments.jsx').then((module) => ({ default: module.ClassDocuments })))
 
-
-// Keep the onboarding gate honest about what the current standards catalog
-// can actually support. Add a state code here when its standards are ingested;
-// the UI will then enable it automatically in the same alphabetical list.
-const INGESTED_STANDARDS_STATES = new Set(['AL'])
 
 /* Direction-aware, and actually wired up this time.
  *
@@ -158,8 +153,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   // State is the first onboarding decision because it determines which
   // standards catalog the rest of the setup should be grounded in.
   const [state, setState] = useState(cls?.state || '')
-  const [savingState, setSavingState] = useState(false)
-  const [stateError, setStateError] = useState(false)
+  const [stateError, setStateError] = useState(null)
 
   // Confirm-class step
   const [subject, setSubject] = useState(cls?.subject || '')
@@ -336,41 +330,58 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const goNext = () => goTo(nextStep(plan, stepKey))
   const goBack = () => goTo(prevStep(plan, stepKey))
 
-  const saveState = async () => {
-    if (!state) {
-      setStateError(true)
-      return
-    }
-    setStateError(false)
-    setSavingState(true)
+  /* The sequence the rail renders. 'preview' is the closing screen and stays
+     outside it, the way 'done' did.
+    
+     This was lost to a careless range deletion — it happened to sit between
+     two handlers that were being removed together — and nothing caught it
+     until the step actually rendered, because oxlint had no-undef switched
+     off. That is now on (see .oxlintrc.json). */
+  const progressSteps = plan.filter((key) => key !== 'preview')
+
+  /* A teacher outside the ingested states asking for theirs.
+   *
+   * Records the interest and emails support (backend/routes/onboarding.py).
+   * The state they asked for is remembered locally so the button can settle
+   * into an acknowledgement rather than staying pressable — asking twice is
+   * harmless server-side, but a button that looks like it did nothing invites
+   * exactly that. */
+  const [requestingState, setRequestingState] = useState(false)
+  const [requestedState, setRequestedState] = useState(null)
+
+  const requestStateStandards = async (code) => {
+    setRequestingState(true)
     try {
-      if (state !== (activeClass?.state || '')) {
-        await api.updateClass(activeClass.id, { state })
-        qc.invalidateQueries({ queryKey: qk.classes })
-      }
-      goNext()
+      await api.requestStateStandards(code)
+      setRequestedState(code)
     } catch (err) {
-      toast.apiError('Could not save your state', err)
+      toast.apiError('Could not send that request', err)
     } finally {
-      setSavingState(false)
+      setRequestingState(false)
     }
   }
 
-  /* Keep one progress sequence for the whole first-run flow. Welcome is a
-   * real decision (state), so excluding it here made the next screen reset
-   * from "Step 1 of 6" to "Step 1 of 5". The closing celebration is the only
-   * screen that should stay outside the numbered sequence. */
-  /* The rail owns progress now, so this is just the sequence it renders.
-     What used to be here as well -- an `eyebrow` string, plus `currentStep`
-     and `totalSteps` -- was three ways of saying the same thing, and two of
-     them were dead: five step components passed currentStep/totalSteps into a
-     StepHeader signature that never accepted them, so they rendered nothing at
-     all while looking like they were doing the work. */
-  const progressSteps = plan.filter((key) => key !== 'preview')
-
   const saveSchool = async () => {
+    /* The state is the required half of this step: it is what says which
+       course of study a plan's standards are quoted from. The school half is
+       skippable — see the step's own Skip. */
+    if (!state) {
+      setStateError('Choose your state — it decides which standards your plans quote.')
+      return
+    }
+    if (!isStandardsReady(state)) {
+      setStateError(
+        "We don't have that state's standards yet. Ask for it above, then pick Alabama to carry on for now.",
+      )
+      return
+    }
+    setStateError(null)
     setSavingSchool(true)
     try {
+      if (activeClass && state !== (activeClass.state || '')) {
+        await api.updateClass(activeClass.id, { state })
+        qc.invalidateQueries({ queryKey: qk.classes })
+      }
       // Keep the account-level school in sync with the class selection. This
       // also authorizes the just-selected teacher to upload a personal
       // template for that school after choosing it in onboarding.
@@ -615,14 +626,6 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 saving={savingProfile}
                 onNext={saveProfile}
               />
-            ) : stepKey === 'state' ? (
-              <StateStep
-                state={state}
-                setState={(value) => { setState(value); setStateError(false) }}
-                stateError={stateError}
-                saving={savingState}
-                onNext={saveState}
-              />
             ) : stepKey === 'school' ? (
               <SchoolStep
                 school={school}
@@ -637,7 +640,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                   setTemplateAnalysisStatus(null)
                 }}
                 schools={schools}
+                state={state}
+                setState={(value) => { setState(value); setStateError(null) }}
+                error={stateError}
                 saving={savingSchool}
+                requesting={requestingState}
+                requestedState={requestedState}
+                onRequestState={requestStateStandards}
                 onBack={goBack}
                 onNext={saveSchool}
                 onSkip={goNext}
@@ -856,89 +865,6 @@ function ProfileStep({ name, setName, saving, onNext }) {
   )
 }
 
-function StateStep({ state, setState, stateError, saving, onNext }) {
-  const stateListRef = useRef(null)
-  const availableStates = US_STATES
-  const firstAvailableStateIndex = 0
-
-  const moveState = (event, index) => {
-    const lastIndex = availableStates.length - 1
-    let nextIndex = index
-    const direction = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
-    if (direction) {
-      nextIndex = index + direction
-      nextIndex = index + direction
-      if (nextIndex < 0 || nextIndex > lastIndex) nextIndex = index
-    }
-    if (event.key === 'Home') nextIndex = firstAvailableStateIndex
-    if (event.key === 'End') {
-      nextIndex = lastIndex
-      nextIndex = lastIndex
-    }
-    if (nextIndex === index) return
-
-    event.preventDefault()
-    const [nextValue] = availableStates[nextIndex]
-    setState(nextValue)
-    const nextButton = stateListRef.current?.querySelectorAll('button')[nextIndex]
-    nextButton?.focus()
-    nextButton?.scrollIntoView({ block: 'nearest' })
-  }
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-      <OnboardingQuestion
-        question="What state are you coming from?"
-      />
-      {/* The two-column split lives in CSS now, keyed on the CARD's width
-          rather than the viewport's. It was `lg:grid-cols-[minmax(0,0.78fr)_minmax(22rem,1.22fr)]`
-          — viewport breakpoints for a layout inside a fixed 58rem card, so at
-          1440px the utilities fired while the content column was still only
-          ~640px wide: the 22rem minimum on the map left ~290px for the list,
-          and "Teaching state" and "Coming soon" both wrapped. */}
-      <div className="onboarding-state-layout" data-has-state={state ? 'true' : undefined}>
-        <div className="onboarding-neomorphic-pane onboarding-state-chooser flex min-h-0 flex-col rounded-2xl p-6 lg:h-full">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-ink">Teaching state</p>
-            <span className="onboarding-state-available">Available now</span>
-          </div>
-          <div ref={stateListRef} role="listbox" aria-label="Teaching state" className="onboarding-neomorphic-list onboarding-state-list mt-3 rounded-xl p-1.5 lg:min-h-0 lg:flex-1">
-            {availableStates.map(([value, label], index) => {
-              const isSelected = state === value
-              const isAvailable = INGESTED_STANDARDS_STATES.has(value)
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  tabIndex={isAvailable && (isSelected || (!state && index === firstAvailableStateIndex)) ? 0 : -1}
-                  disabled={!isAvailable}
-                  onClick={() => setState(value)}
-                  onKeyDown={(event) => moveState(event, index)}
-                  className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${!isAvailable
-                    ? 'cursor-not-allowed border-transparent text-ink-faint opacity-55'
-                    : isSelected
-                      ? 'onboarding-state-selected border-accent/30 bg-accent/10 font-semibold text-ink'
-                      : 'border-transparent text-ink-soft hover:border-edge hover:bg-paper-sunken hover:text-ink'
-                  }`}
-                >
-                  <span>{label}</span>
-                  <span className={`text-2xs font-semibold tracking-wider ${isAvailable && isSelected ? 'text-accent-text' : 'text-ink-faint'}`}>{isAvailable ? value : 'Coming soon'}</span>
-                </button>
-              )
-            })}
-          </div>
-          <p className="onboarding-state-support-note">More states are on the way. We’ll only ask you to choose when their standards are ready.</p>
-          {stateError ? <p className="mt-2 text-xs font-medium text-mark">Choose your state to continue.</p> : null}
-        </div>
-        {state ? <StateMapPreview stateCode={state} /> : null}
-      </div>
-      <OnboardingActions onNext={onNext} busy={saving} disabled={!state} />
-    </motion.div>
-  )
-}
-
 function StateMapPreview({ stateCode }) {
   const selected = usaMap.locations.find((location) => location.id === stateCode.toLowerCase())
   const [viewBox, setViewBox] = useState(usaMap.viewBox)
@@ -1005,36 +931,176 @@ function StateMapPreview({ stateCode }) {
   )
 }
 
+/* "Where do you teach?" — answered with a state, and then a school.
+ *
+ * The state used to be a step of its own, which spent a whole screen on a
+ * fifty-row listbox where exactly one row was clickable. Here it is the thing
+ * that narrows the next control: pick a state, the school list appears filtered
+ * to it. That narrowing is real as of migration 76, which added schools.state
+ * — before that every row was an Alabama school by construction but never as
+ * recorded fact, so a filter would have looked like one and returned
+ * everything.
+ *
+ * Asking it on this step rather than page one also keeps the save simple:
+ * classes.state is a column on the class, and the course step has already
+ * created one by now, so it is a plain PATCH rather than something threaded
+ * through api.createClass.
+ */
 function SchoolStep({
   school,
   onSchoolChange,
   schools,
+  state,
+  setState,
+  error,
   saving,
+  requesting,
+  requestedState,
+  onRequestState,
   onBack,
   onNext,
   onSkip,
 }) {
+  const ready = Boolean(state) && isStandardsReady(state)
+  /* Rows with no recorded state are kept rather than filtered out: NULL means
+     "not recorded" (create_school is reachable from the admin page and from a
+     calendar submission with no state to hand), and dropping them would hide a
+     real school from the teacher who just asked for it. */
+  const schoolsInState = ready ? schools.filter((s) => !s.state || s.state === state) : []
+  const stateName = US_STATES.find(([value]) => value === state)?.[1] || state
+
   return (
     <div>
       <OnboardingQuestion
-        question="Which school do you teach at?"
-        lead="Choose your school, then continue to its format and calendar."
+        question={ONBOARDING_STEPS.school.title}
+        lead="Your state decides which standards your plans quote. Your school decides the calendar they are dated against and the document they are downloaded in."
       />
-      <SchoolSelect
-        ariaLabel="School"
-        id="onboarding-school"
-        schools={schools}
-        value={school}
-        onChange={onSchoolChange}
-        emptyOption={{ value: '', label: 'Choose a school' }}
-        inputClassName="neo-select min-h-touch w-full rounded-lg border border-edge bg-paper py-2.5 pl-3.5 pr-8 text-sm text-ink outline-none focus:border-accent"
-      />
+
+      <div className="onboarding-where-layout">
+        <div className="min-w-0">
+          <OnboardingChoiceLabel as="label" htmlFor="onboarding-state">
+            State
+          </OnboardingChoiceLabel>
+          <select
+            id="onboarding-state"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            className="neo-select neo-inset min-h-touch w-full rounded-lg bg-paper-raised py-2.5 pl-3.5 pr-9 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+          >
+            <option value="">Choose your state</option>
+            {US_STATES.map(([value, label]) => (
+              /* Selectable, not disabled. A teacher outside Alabama should be
+                 able to say so and ask for theirs — see onRequestState — rather
+                 than find forty-nine greyed rows and no way to register that
+                 they turned up. */
+              <option key={value} value={value}>
+                {isStandardsReady(value) ? label : `${label} — not ready yet`}
+              </option>
+            ))}
+          </select>
+
+          {/* The school list appears only once the state is one we have
+              schools for, so the two controls read as a sequence rather than
+              two dropdowns to fill in either order. */}
+          {/* No mode="wait" here, deliberately. The outer step swap needs it —
+              it is what keeps id="onboarding-title" unique across a
+              transition — but these two children are mutually exclusive and
+              can overlap for a frame without harm. With mode="wait" the
+              school select could not mount until the request panel had
+              finished exiting, so a stalled exit animation left a teacher who
+              switched from an un-ingested state back to Alabama with no way to
+              reach the school list at all. */}
+          <AnimatePresence initial={false}>
+            {ready ? (
+              <motion.div
+                key="school"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <OnboardingChoiceLabel as="label" htmlFor="onboarding-school">
+                  School
+                </OnboardingChoiceLabel>
+                <SchoolSelect
+                  ariaLabel="School"
+                  id="onboarding-school"
+                  schools={schoolsInState}
+                  value={school}
+                  onChange={onSchoolChange}
+                  emptyOption={{ value: '', label: `Choose a school in ${stateName}` }}
+                  inputClassName="neo-select neo-inset min-h-touch w-full rounded-lg bg-paper-raised py-2.5 pl-3.5 pr-9 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+                />
+                <p className="onboarding-state-support-note">
+                  {schoolsInState.length} {stateName} school
+                  {schoolsInState.length === 1 ? '' : 's'} listed. Not there? Skip it — your plans
+                  will be labelled by week number until you add a calendar.
+                </p>
+              </motion.div>
+            ) : state ? (
+              /* An un-ingested state. It says what does and doesn't work
+                 rather than just refusing, because most of the product does
+                 work — it is the standards library that is Alabama-only. */
+              <motion.div
+                key="request"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="onboarding-state-request"
+              >
+                <p>
+                  <strong>{stateName} standards aren&rsquo;t loaded yet.</strong> Every standard
+                  FlexEd quotes is ingested document by document, so plans cite real codes instead
+                  of a paraphrase — and a half-ingested catalog would let it cite one that
+                  doesn&rsquo;t exist.
+                </p>
+                <p>
+                  Planning, your school&rsquo;s calendar and your district&rsquo;s format all work
+                  anywhere. It&rsquo;s the standards library that&rsquo;s Alabama&rsquo;s for now.
+                </p>
+                {requestedState === state ? (
+                  <p className="onboarding-state-requested">
+                    <CheckCircle2 size={15} aria-hidden="true" />
+                    Asked for — we&rsquo;ll email you when {stateName} is in.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn fa-press"
+                    onClick={() => onRequestState(state)}
+                    disabled={requesting}
+                  >
+                    {requesting ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
+                    {requesting ? 'Sending…' : `Ask for ${stateName}`}
+                  </button>
+                )}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
+
+        {/* The outline, on the other side. Confirmation rather than
+            decoration: it is the one control on this screen whose answer is a
+            place, and seeing it drawn is how you know the select took the
+            state you meant. */}
+        <div className="onboarding-where-map">
+          {state ? <StateMapPreview stateCode={state} /> : null}
+        </div>
+      </div>
+
+      {error ? (
+        <p key={error} className="fa-flash mt-3 text-xs font-medium text-mark" role="alert">
+          {error}
+        </p>
+      ) : null}
+
       <OnboardingActions
         onNext={onNext}
         busy={saving}
         onBack={onBack}
-        onSkip={onSkip}
-        skipLabel={ONBOARDING_STEPS.school.skipLabel}
+        onSkip={ready ? onSkip : undefined}
+        skipLabel="Skip the school — I'll plan by week number"
       />
     </div>
   )

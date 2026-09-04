@@ -260,6 +260,10 @@ export const api = {
 
   me: ({ signal } = {}) => request('/api/auth/me', { signal }),
   updateAvatar: (avatar) => request('/api/auth/avatar', { method: 'PUT', body: { avatar } }),
+  /** A teacher outside the ingested states asking for theirs. Records the
+   *  interest and emails support — see backend/routes/onboarding.py. */
+  requestStateStandards: (state) =>
+    request('/api/onboarding/state-request', { method: 'POST', body: { state } }),
   signup: (name, email, password, extra = {}) =>
     request('/api/auth/signup', {
       method: 'POST',

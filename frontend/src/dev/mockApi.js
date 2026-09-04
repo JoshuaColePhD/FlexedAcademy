@@ -224,9 +224,12 @@ const state = {
   // Springfield is deliberately calendar-less: a school row can be added by
   // admin before anyone authors its year, and that state has to be visible
   // rather than silently emptying the week board.
+  // `state` mirrors migration 76. Springfield is deliberately in a DIFFERENT
+  // state from Florence, so the school step's state filter is exercised as a
+  // filter rather than passing trivially with one bucket.
   schools: [
-    { id: 'florence-high-school', name: 'Florence High School', created_at: '2026-01-01T00:00:00+00:00', has_calendar: true },
-    { id: 'springfield-ms', name: 'Springfield Middle School', created_at: '2026-01-02T00:00:00+00:00', has_calendar: false },
+    { id: 'florence-high-school', name: 'Florence High School', state: 'AL', created_at: '2026-01-01T00:00:00+00:00', has_calendar: true },
+    { id: 'springfield-ms', name: 'Springfield Middle School', state: 'TN', created_at: '2026-01-02T00:00:00+00:00', has_calendar: false },
   ],
   accounts: [
     { id: 'u1', email: 'jc@x.org', name: 'Josh Cole', subscription_status: 'comped', is_admin: true, is_blocked: false,
