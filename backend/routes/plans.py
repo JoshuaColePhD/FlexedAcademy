@@ -49,12 +49,16 @@ class PatchPlan(BaseModel):
 
 class PlanFeedback(BaseModel):
     is_good: bool
-    notes: str | None = None
+    reason: Literal["retrieval", "standards", "lesson_design", "grade_level", "other"] | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class QuizRequest(BaseModel):
     question_types: list[str] = Field(min_length=1, max_length=len(schema.QUESTION_TYPES))
     num_questions: int = Field(default=10, ge=1, le=40)
+    passage_mode: Literal["none", "ai_generated", "teacher_provided"] = "none"
+    passage_text: str | None = Field(default=None, max_length=20000)
+    passage_title: str | None = Field(default=None, max_length=200)
 
 
 class DayUpdateRequest(BaseModel):
@@ -532,7 +536,7 @@ def delete_plan(plan_id: str, user_id: str = Depends(get_current_user)):
 
 @router.post("/{plan_id}/feedback")
 def post_plan_feedback(plan_id: str, body: PlanFeedback, user_id: str = Depends(get_current_user)):
-    if not db.add_plan_feedback(user_id, plan_id, body.is_good, body.notes):
+    if not db.add_plan_feedback(user_id, plan_id, body.is_good, body.notes, body.reason):
         raise AppError("plan_not_found", "No such plan.", status=404)
     return {"status": "ok"}
 
@@ -684,8 +688,22 @@ def create_quiz(
             hint=f"Valid types: {', '.join(schema.QUESTION_TYPES)}.",
         )
 
+    if body.passage_mode == "teacher_provided" and not (body.passage_text or "").strip():
+        raise AppError(
+            "passage_text_required",
+            "A teacher-provided passage is required for passage-based quiz generation.",
+            status=400,
+        )
+
     quiz_raw = llm.generate_quiz(
-        user_id, row["plan_json"], body.question_types, body.num_questions, class_id=row.get("class_id")
+        user_id,
+        row["plan_json"],
+        body.question_types,
+        body.num_questions,
+        class_id=row.get("class_id"),
+        passage_mode=body.passage_mode,
+        passage_text=body.passage_text,
+        passage_title=body.passage_title,
     )
     try:
         warnings = schema.validate_quiz(quiz_raw)

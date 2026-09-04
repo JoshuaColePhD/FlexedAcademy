@@ -194,6 +194,42 @@ def plan_json_schema(day_names: list[str] | tuple[str, ...] | None = None) -> di
 # ---------------------------------------------------------------------------
 
 QUESTION_TYPES = ["multiple_choice", "true_false", "short_answer", "matching"]
+BLOOM_LEVELS = ["remember", "understand", "apply", "analyze", "evaluate", "create"]
+DOK_LEVELS = [1, 2, 3, 4]
+PASSAGE_SOURCES = ["ai_generated", "teacher_provided", "shared_library"]
+
+ALIGNMENT_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "bloom": {"type": "string", "enum": BLOOM_LEVELS},
+        "dok": {"type": "integer", "enum": DOK_LEVELS},
+        "cras": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "content_target": {"type": "string"},
+                "cognitive_operation": {"type": "string"},
+                "evidence_basis": {"type": "string"},
+                "rationale": {"type": "string"},
+            },
+            "required": ["content_target", "cognitive_operation", "evidence_basis", "rationale"],
+        },
+    },
+    "required": ["bloom", "dok", "cras"],
+}
+
+PASSAGE_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "text": {"type": "string"},
+        "source": {"type": "string", "enum": PASSAGE_SOURCES},
+    },
+    "required": ["id", "title", "text", "source"],
+}
 
 QUESTION_JSON_SCHEMA = {
     "type": "object",
@@ -204,6 +240,14 @@ QUESTION_JSON_SCHEMA = {
         "standard_code": {
             "type": "string",
             "description": "The exact standard code (as written in the plan) this question tests, or '' if it tests general comprehension rather than one specific code.",
+        },
+        "passage_id": {
+            "type": "string",
+            "description": "ID of the passage this question uses, or '' when it is not passage-based.",
+        },
+        "alignment": {
+            **ALIGNMENT_JSON_SCHEMA,
+            "description": "Teacher-facing Bloom, DOK, and internal CRAS alignment for this item.",
         },
         "choices": {
             "type": "array",
@@ -237,7 +281,10 @@ QUESTION_JSON_SCHEMA = {
             "description": "matching only: 3-6 term/match pairs. [] for every other type.",
         },
     },
-    "required": ["type", "prompt", "standard_code", "choices", "correct_index", "correct_bool", "accepted_answers", "pairs"],
+    "required": [
+        "type", "prompt", "standard_code", "passage_id", "alignment", "choices",
+        "correct_index", "correct_bool", "accepted_answers", "pairs",
+    ],
 }
 
 QUIZ_JSON_SCHEMA = {
@@ -245,9 +292,10 @@ QUIZ_JSON_SCHEMA = {
     "additionalProperties": False,
     "properties": {
         "title": {"type": "string", "description": "e.g. 'Week 11 Quiz — Voice, Tone & Rhetorical Devices'"},
+        "passages": {"type": "array", "items": PASSAGE_JSON_SCHEMA},
         "questions": {"type": "array", "items": QUESTION_JSON_SCHEMA},
     },
-    "required": ["title", "questions"],
+    "required": ["title", "passages", "questions"],
 }
 
 
@@ -605,12 +653,37 @@ def validate_quiz(quiz: dict) -> list[str]:
     could not render at all (grading a QTI item with no correct answer marked
     is worse than dropping it, so those are fatal here rather than warned)."""
     warnings: list[str] = []
+    passages = quiz.get("passages") or []
+    passage_ids = {p.get("id") for p in passages if isinstance(p, dict) and p.get("id")}
+    for passage in passages:
+        if not isinstance(passage, dict) or not str(passage.get("text") or "").strip():
+            raise QuizSchemaError("Every passage must have non-empty text.")
     questions = quiz.get("questions") or []
     if not questions:
         raise QuizSchemaError("The quiz has no questions.")
     for i, q in enumerate(questions, 1):
         label = f"Q{i} ({q.get('type')})"
         qtype = q.get("type")
+        passage_id = (q.get("passage_id") or "").strip()
+        if passage_id:
+            if passage_id not in passage_ids:
+                raise QuizSchemaError(f"{label}: passage_id {passage_id!r} does not exist.")
+            if qtype != "multiple_choice":
+                warnings.append(f"{label}: passage linkage is currently supported for multiple choice only.")
+        alignment = q.get("alignment") or {}
+        if alignment and not isinstance(alignment, dict):
+            warnings.append(f"{label}: alignment metadata is not an object.")
+            alignment = {}
+        if alignment:
+            if alignment.get("bloom") not in BLOOM_LEVELS:
+                warnings.append(f"{label}: unknown Bloom level.")
+            if alignment.get("dok") not in DOK_LEVELS:
+                warnings.append(f"{label}: unknown DOK level.")
+            cras = alignment.get("cras") or {}
+            if not all(isinstance(cras.get(key), str) and cras.get(key).strip() for key in (
+                "content_target", "cognitive_operation", "evidence_basis", "rationale"
+            )):
+                warnings.append(f"{label}: incomplete CRAS alignment.")
         if qtype == "multiple_choice":
             choices = q.get("choices") or []
             idx = q.get("correct_index")
@@ -634,6 +707,13 @@ def validate_quiz(quiz: dict) -> list[str]:
             raise QuizSchemaError(f"{label}: unknown question type {qtype!r}.")
         if not (q.get("standard_code") or "").strip():
             warnings.append(f"{label}: no standard cited.")
+    aligned = [q.get("alignment") or {} for q in questions if isinstance(q.get("alignment"), dict)]
+    blooms = {a.get("bloom") for a in aligned if a.get("bloom") in BLOOM_LEVELS}
+    doks = {a.get("dok") for a in aligned if a.get("dok") in DOK_LEVELS}
+    if len(aligned) >= 4 and len(blooms) < 2:
+        warnings.append("Quiz alignment: use at least two Bloom levels when four or more aligned items are present.")
+    if len(aligned) >= 4 and len(doks) < 2:
+        warnings.append("Quiz alignment: use at least two DOK levels when four or more aligned items are present.")
     return warnings
 
 

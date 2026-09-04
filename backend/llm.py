@@ -542,6 +542,10 @@ _ITEM_WRITING_GUIDELINES = (
     "vague or partially-true compound statement.\n"
     "Matching: keep terms and matches each roughly the same length/type so answers can't "
     "be guessed by process of elimination on format alone.\n\n"
+    "Alignment: assign each item a Bloom level and DOK level that match the actual thinking required. "
+    "Vary the levels when the quiz is large enough; do not force artificial difficulty. For every item, "
+    "complete the CRAS alignment with a content target, cognitive operation, evidence basis, and a brief "
+    "rationale a teacher could audit. Passage-based multiple-choice questions must identify their passage_id.\n\n"
 )
 
 
@@ -568,7 +572,15 @@ def _randomize_mc_choice_order(quiz: dict) -> dict:
 
 
 def generate_quiz(
-    user_id: str, plan: dict, question_types: list[str], num_questions: int, *, class_id: str | None = None
+    user_id: str,
+    plan: dict,
+    question_types: list[str],
+    num_questions: int,
+    *,
+    class_id: str | None = None,
+    passage_mode: str = "none",
+    passage_text: str | None = None,
+    passage_title: str | None = None,
 ) -> dict:
     """A short quiz over an ALREADY-BUILT plan — no retrieval call of its
     own. The plan's own plan_json is the ONLY source material handed to the
@@ -579,6 +591,21 @@ def generate_quiz(
     JSON matching QUIZ_JSON_SCHEMA.
     """
     types_wanted = ", ".join(_QUESTION_TYPE_PROMPT_NAMES.get(t, t) for t in question_types) or "multiple choice"
+    if passage_mode == "teacher_provided":
+        passage_instruction = (
+            "The teacher provided the passage below. Use it as the only source for passage-based items; "
+            "do not rewrite or add facts to it. Return it in `passages` with source `teacher_provided`.\n\n"
+            f"TEACHER-PROVIDED PASSAGE ({passage_title or 'Passage'}):\n{passage_text or ''}\n\n"
+        )
+    elif passage_mode == "ai_generated":
+        passage_instruction = (
+            "Create one short, original, grade-appropriate passage grounded only in the week's plan. "
+            "Return it in `passages` with id `passage_1`, an informative title, and source `ai_generated`. "
+            "Write passage-linked multiple-choice questions that require students to cite or reason from "
+            "that passage, not from outside knowledge.\n\n"
+        )
+    else:
+        passage_instruction = "Return an empty `passages` array unless passage-based questions were explicitly requested.\n\n"
     system_prompt = (
         "You are writing a short quiz for a lesson plan a teacher already built. "
         "Write ONLY using the content, standards, and vocabulary already present in the plan below — "
@@ -587,6 +614,7 @@ def generate_quiz(
         f"Write approximately {num_questions} questions, using ONLY these question type(s): {types_wanted}. "
         "Spread the questions across the days rather than clustering them on one. "
         "Each question must be self-contained — a student answering it should not need to see the plan itself.\n\n"
+        + passage_instruction
         + _ITEM_WRITING_GUIDELINES
         + "\nTHE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
     )
@@ -637,7 +665,8 @@ def revise_quiz(
         "Write ONLY using the content, standards, and vocabulary already present in the plan below — "
         "never invent a standard code, term, or fact that isn't already in it. Keep the same question "
         "types and roughly the same number of questions as the quiz below unless the teacher's feedback "
-        "says otherwise.\n\n"
+        "says otherwise. Preserve existing passages and passage_id links unless the teacher asks to change "
+        "the passage.\n\n"
         + _ITEM_WRITING_GUIDELINES
         + "THE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
         + "\n\nTHE QUIZ YOU ALREADY WROTE:\n\n" + json.dumps(existing_quiz, indent=2)
@@ -1634,6 +1663,19 @@ CHAT_TOOLS = [
                         "type": "integer",
                         "description": "How many questions, if the teacher named a number. Default 10.",
                     },
+                    "passage_mode": {
+                        "type": "string",
+                        "enum": ["none", "ai_generated", "teacher_provided"],
+                        "description": "Use ai_generated only when the teacher asks for a passage; use teacher_provided when passage text is supplied; otherwise none.",
+                    },
+                    "passage_title": {
+                        "type": "string",
+                        "description": "Optional title for a teacher-provided passage.",
+                    },
+                    "passage_text": {
+                        "type": "string",
+                        "description": "The teacher's supplied passage text when passage_mode is teacher_provided; copy it faithfully from the conversation.",
+                    },
                 },
                 "required": ["question_types"],
             },
@@ -1889,6 +1931,9 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                     "tool_call": "generate_quiz",
                     "question_types": question_types,
                     "num_questions": args.get("num_questions") or 10,
+                    "passage_mode": args.get("passage_mode") or "none",
+                    "passage_title": args.get("passage_title") or "",
+                    "passage_text": args.get("passage_text") or "",
                     "revises_current": bool(args.get("revises_current")),
                 }
                 break

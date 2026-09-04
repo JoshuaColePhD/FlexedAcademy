@@ -260,6 +260,10 @@ export const api = {
 
   me: ({ signal } = {}) => request('/api/auth/me', { signal }),
   updateAvatar: (avatar) => request('/api/auth/avatar', { method: 'PUT', body: { avatar } }),
+  /** A teacher outside the ingested states asking for theirs. Records the
+   *  interest and emails support — see backend/routes/onboarding.py. */
+  requestStateStandards: (state) =>
+    request('/api/onboarding/state-request', { method: 'POST', body: { state } }),
   signup: (name, email, password, extra = {}) =>
     request('/api/auth/signup', {
       method: 'POST',
@@ -376,10 +380,14 @@ export const api = {
       method: 'POST',
       body: { feedback: feedback || null },
     }),
-  planFeedback: (id, isGood, notes) =>
+  planFeedback: (id, isGood, notes, reason) =>
     request(`/api/plans/${id}/feedback`, {
       method: 'POST',
-      body: { is_good: isGood, ...(notes ? { notes } : {}) },
+      body: {
+        is_good: isGood,
+        ...(notes ? { notes } : {}),
+        ...(reason ? { reason } : {}),
+      },
     }),
   /* Share via Google — a separate Google integration from sign-in (see
    * backend/routes/drive.py). driveConnectUrl is a plain navigable URL, not
@@ -413,10 +421,16 @@ export const api = {
    *  earlier one. `questionTypes` is a real array (['multiple_choice']),
    *  not a single string, since a request can name more than one type. */
   listQuizzes: (planId, { signal } = {}) => request(`/api/plans/${planId}/quizzes`, { signal }),
-  createQuiz: (planId, { questionTypes, numQuestions } = {}) =>
+  createQuiz: (planId, { questionTypes, numQuestions, passageMode = 'none', passageText, passageTitle } = {}) =>
     request(`/api/plans/${planId}/quiz`, {
       method: 'POST',
-      body: { question_types: questionTypes, num_questions: numQuestions },
+      body: {
+        question_types: questionTypes,
+        num_questions: numQuestions,
+        passage_mode: passageMode,
+        ...(passageText ? { passage_text: passageText } : {}),
+        ...(passageTitle ? { passage_title: passageTitle } : {}),
+      },
     }),
   deleteQuiz: (planId, quizId) =>
     request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'DELETE' }),
@@ -433,6 +447,24 @@ export const api = {
       method: 'POST',
       body: { feedback },
     }),
+  listQuizLibrary: ({ signal } = {}) => request('/api/quiz-library', { signal }),
+  quizLibrarySuggestions: (planId, { signal } = {}) => request(`/api/quiz-library/suggestions?plan_id=${encodeURIComponent(planId)}`, { signal }),
+  saveQuizToLibrary: (planId, quizId, { permissionConfirmed = false } = {}) =>
+    request(`/api/quiz-library/plans/${encodeURIComponent(planId)}/quizzes/${encodeURIComponent(quizId)}`, {
+      method: 'POST',
+      body: { permission_confirmed: permissionConfirmed },
+    }),
+  approveQuizLibrarySet: (libraryId, { permissionConfirmed = false } = {}) =>
+    request(`/api/quiz-library/sets/${encodeURIComponent(libraryId)}/approve`, {
+      method: 'POST',
+      body: { permission_confirmed: permissionConfirmed },
+    }),
+  unpublishQuizLibrarySet: (libraryId) =>
+    request(`/api/quiz-library/sets/${encodeURIComponent(libraryId)}/unpublish`, { method: 'POST' }),
+  reportQuizLibrarySet: (libraryId, reason = '') =>
+    request(`/api/quiz-library/sets/${encodeURIComponent(libraryId)}/report`, { method: 'POST', body: { reason } }),
+  useQuizLibrarySet: (libraryId) =>
+    request(`/api/quiz-library/sets/${encodeURIComponent(libraryId)}/use`, { method: 'POST' }),
   quizDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download`,
   quizDocxDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download-docx`,
   downloadQuizDocx: (planId, quizId, options = {}) =>

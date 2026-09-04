@@ -98,7 +98,17 @@ def _public_user(user: dict) -> dict:
         # NULL means the post-login onboarding wizard (OnboardingWizard.jsx)
         # hasn't run for this account yet — AppShell reads this, not a
         # separate GET, to decide whether to mount it.
+        #
+        # This stays the ONLY field App.jsx's ClassRoutes guard consults, and
+        # both terminal states set it (db.set_onboarding_progress). The two
+        # below are additive: `state` is what lets Settings offer "Finish
+        # setup" instead of "Take the tour again" to someone who skipped, and
+        # `step` is where resuming sends them back to. Neither gates anything —
+        # see migration 74 on why keeping one boolean-shaped gate is what stops
+        # the redirect loop from being reintroduced.
         "onboarding_seen_at": user.get("onboarding_seen_at"),
+        "onboarding_state": user.get("onboarding_state") or "not_started",
+        "onboarding_step": user.get("onboarding_step"),
         # `user` passed through so entitlement() doesn't re-SELECT the row this
         # function is already holding (and that deps.get_current_user fetched
         # before that) — three reads of one row per request, each its own
@@ -512,11 +522,15 @@ def me(user_id: str = Depends(get_current_user)):
 
 @router.post("/onboarding-seen")
 def mark_onboarding_seen_route(user_id: str = Depends(get_current_user)):
-    """Called once, when OnboardingWizard.jsx closes (finished OR skipped —
-    see db.mark_onboarding_seen's own comment on why those are the same
-    state). Idempotent, so a double-fire from a fast double-click costs
-    nothing."""
-    user = db.mark_onboarding_seen(user_id)
+    """Superseded by POST /api/onboarding/progress, and kept as an alias so a
+    cached client build still completes setup rather than 404ing.
+
+    It records 'completed' unconditionally, which is why it had to be
+    superseded: this route was also what the wizard's "Skip for now" X called,
+    so skipping and finishing were the same state and skipping was permanent.
+    New callers send an explicit state. Idempotent either way, so a double-fire
+    from a fast double-click costs nothing."""
+    user = db.set_onboarding_progress(user_id, state="completed")
     if not user:
         raise AppError("not_found", "No such user.", status=404)
     return _public_user(user)

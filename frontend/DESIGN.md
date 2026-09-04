@@ -77,7 +77,7 @@ A first pass at this page (a steel-and-glass "glazier's wall" metaphor, bordered
 **Key characteristics:**
 - Two colors, two jobs: violet is the identity/ground, gold is reserved for "this was checked."
 - The landing page ignores `data-theme` entirely — a deliberate, fixed brand world, unlike every other surface in the product.
-- One display face (Bricolage Grotesque) for the landing headline only; one serif (Source Serif 4, italic) for quoted document text only; the app's own Inter/JetBrains Mono carry everything else, including the landing page's UI chrome.
+- One display face (Bricolage Grotesque) for the landing headline only; one serif (Source Serif 4) for quoted document text only — wherever it occurs, landing page or app; the app's own Inter/JetBrains Mono carry everything else, including the landing page's UI chrome.
 - Motion is two scroll-triggered reveals (the citation connector draws, the pipeline thread draws with its nodes) plus one load-time moment (the hero seal stamps in) — never scattered hover effects.
 
 ## Colors
@@ -101,6 +101,8 @@ A first pass at this page (a steel-and-glass "glazier's wall" metaphor, bordered
 ### Named Rules
 **The One Door Rule.** `--brand`, `--brand-ink`, `--brand-muted`, and every `--land-*` token are used only by `.land-*` classes on the landing page. `--accent` (district blue) is used everywhere else. A component needing both is a sign the landing page and the app have blurred.
 
+(`--font-serif` is deliberately *not* covered by this rule — see Typography below. It is scoped by job, not by surface.)
+
 **The Gold-Means-Checked Rule.** Gold never decorates. It appears only on the seal and the one primary CTA — anywhere else a landing element wants emphasis, it earns lavender-on-violet or ink-violet-on-paper instead.
 
 ## Typography
@@ -108,7 +110,9 @@ A first pass at this page (a steel-and-glass "glazier's wall" metaphor, bordered
 **Body/UI Font:** Inter — used everywhere, including the landing page's nav, sub-copy, labels, and buttons.
 **Mono Font:** JetBrains Mono — standard codes, citation tags, small caps meta, everywhere.
 **Landing Display Font (landing-only):** Bricolage Grotesque, 800 weight, `clamp(2.5rem, 7vw, 5.5rem)`, −0.02em tracking — the headline only.
-**Landing Quote Font (landing-only):** Source Serif 4, italic — used only for text that is quoting an actual document excerpt (the plan line, the cited standard), never for UI chrome.
+**Quoted-Document Font:** Source Serif 4 — used only for text that is quoting an actual document, anywhere in the product: the landing page's plan line and cited standard (italic), and a quiz's reading passage in the artifact panel (roman). Never for UI chrome. This is scoped by *job*, not by surface — a reading passage is the same kind of object the landing page's italic serif was already reserved for, and setting it in Inter made it read as one more piece of interface sitting beside the questions rather than as the text students are handed.
+
+**Only weight 400 normal and 400/500 italic are self-hosted** (`src/styles/fonts.css`). Anything that would need a serif bold — a passage title, for instance — stays on Inter rather than asking the browser to synthesise one.
 
 **Character:** The pairing is deliberately mixed-register on purpose: a confident modern grotesque carries the brand's voice, while the serif italic signals "this is a real document being quoted," and the interface underneath both stays on the product's own workhorse Inter. Two new families, each with exactly one job, rather than a wholesale new type system.
 
@@ -116,6 +120,7 @@ A first pass at this page (a steel-and-glass "glazier's wall" metaphor, bordered
 - **Landing Display** (800, `clamp(2.5rem, 7vw, 5.5rem)`, 1.05 line-height): the hero headline only.
 - **Landing Heading** (700, `clamp(1.5rem, 3vw, 2rem)`): the "Every line traces back" section heading.
 - **Landing Quote** (400 italic, `1.0625rem`/`--fs-lg`, serif): the plan excerpt and the cited standard text.
+- **Passage Body** (400 roman, `--fs-base`, `--lh-relaxed`, serif): a quiz's reading passage in the artifact panel. Its title stays Inter semibold.
 - **Label/Mono** (500, `--fs-xs`, uppercase, `--tracking-caps`): section tags, stage names, footer meta — unchanged from the product.
 
 ## Layout

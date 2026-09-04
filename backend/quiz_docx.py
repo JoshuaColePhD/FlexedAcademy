@@ -44,7 +44,16 @@ def _answer_text(question: dict) -> str:
     return ""
 
 
-def _add_question(doc: Document, number: int, question: dict) -> None:
+def _add_question(doc: Document, number: int, question: dict, passages: dict[str, dict] | None = None) -> None:
+    passage = (passages or {}).get(question.get("passage_id"))
+    if passage and question.get("type") == "multiple_choice":
+        passage_title = doc.add_paragraph()
+        passage_title.paragraph_format.space_after = Pt(2)
+        passage_title.add_run(str(passage.get("title") or "Passage")).bold = True
+        passage_text = doc.add_paragraph(str(passage.get("text") or ""))
+        passage_text.paragraph_format.left_indent = Inches(0.2)
+        passage_text.paragraph_format.right_indent = Inches(0.2)
+        passage_text.paragraph_format.space_after = Pt(6)
     paragraph = doc.add_paragraph()
     paragraph.paragraph_format.space_after = Pt(4)
     run = paragraph.add_run(f"{number}. {question.get('prompt', '')}")
@@ -89,8 +98,12 @@ def build_quiz_docx(quiz: dict, out_path: Path) -> Path:
     details.add_run("Name: ________________________________    Date: ________________")
 
     doc.add_paragraph()
+    passages = {
+        p.get("id"): p for p in (cleaned.get("passages") or [])
+        if isinstance(p, dict) and p.get("id")
+    }
     for number, question in enumerate(cleaned.get("questions") or [], 1):
-        _add_question(doc, number, question)
+        _add_question(doc, number, question, passages)
 
     doc.add_section(WD_SECTION.NEW_PAGE)
     key_title = doc.add_paragraph()
@@ -102,6 +115,12 @@ def build_quiz_docx(quiz: dict, out_path: Path) -> Path:
         paragraph = doc.add_paragraph()
         paragraph.add_run(f"{number}. ").bold = True
         paragraph.add_run(_answer_text(question))
+        alignment = question.get("alignment") or {}
+        if alignment:
+            bloom = alignment.get("bloom") or "unassigned"
+            dok = alignment.get("dok") or "—"
+            cras = (alignment.get("cras") or {}).get("rationale") or ""
+            paragraph.add_run(f"  [Bloom: {bloom}; DOK: {dok}; CRAS: {cras}]")
 
     doc.save(out_path)
     strip_bloat(out_path)

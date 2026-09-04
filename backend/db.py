@@ -3376,6 +3376,193 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_read_only BOOLEAN NOT NULL DEFAULT false;
     """,
+    # ── 70: structured plan-quality feedback ────────────────────────────────
+    # Keep the original thumbs-up/down contract, but capture the failure mode
+    # and retrieval context needed to turn teacher feedback into eval cases.
+    """
+    ALTER TABLE plan_feedback ADD COLUMN IF NOT EXISTS reason TEXT;
+    ALTER TABLE plan_feedback ADD COLUMN IF NOT EXISTS context_json JSONB;
+    CREATE INDEX IF NOT EXISTS idx_plan_feedback_reason ON plan_feedback(reason, created_at DESC);
+    """,
+    # ── 71: teacher-approved shared passage/question library ────────────────
+    # A library row is a reusable assessment set, not a live pointer into the
+    # creating teacher's quiz. The JSON snapshot makes reuse independent of the
+    # original plan, while the version table preserves an audit trail when a
+    # set is revised or unpublished later.
+    """
+    CREATE TABLE IF NOT EXISTS quiz_library_sets (
+      id                 TEXT PRIMARY KEY,
+      creator_user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title              TEXT NOT NULL,
+      quiz_json          TEXT NOT NULL,
+      course             TEXT NOT NULL,
+      subject            TEXT NOT NULL,
+      grade              TEXT NOT NULL,
+      standard_codes     JSONB NOT NULL DEFAULT '[]'::jsonb,
+      context_text       TEXT NOT NULL DEFAULT '',
+      embedding          vector(384),
+      content_hash       TEXT NOT NULL UNIQUE,
+      passage_source     TEXT NOT NULL CHECK (passage_source IN ('ai_generated','teacher_provided','shared_library')),
+      visibility         TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','shared','unpublished')),
+      approval_status    TEXT NOT NULL DEFAULT 'draft' CHECK (approval_status IN ('draft','approved','unpublished')),
+      permission_confirmed BOOLEAN NOT NULL DEFAULT false,
+      approved_at        TEXT,
+      unpublished_at     TEXT,
+      usage_count        INTEGER NOT NULL DEFAULT 0,
+      report_count       INTEGER NOT NULL DEFAULT 0,
+      created_at         TEXT NOT NULL,
+      updated_at         TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_context
+      ON quiz_library_sets(course, subject, grade, approval_status, visibility);
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_creator
+      ON quiz_library_sets(creator_user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_standard_codes
+      ON quiz_library_sets USING GIN (standard_codes);
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_embedding
+      ON quiz_library_sets USING hnsw (embedding vector_cosine_ops);
+    ALTER TABLE quiz_library_sets ENABLE ROW LEVEL SECURITY;
+
+    CREATE TABLE IF NOT EXISTS quiz_library_versions (
+      id             TEXT PRIMARY KEY,
+      library_set_id TEXT NOT NULL REFERENCES quiz_library_sets(id) ON DELETE CASCADE,
+      version        INTEGER NOT NULL,
+      quiz_json      TEXT NOT NULL,
+      changed_by     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at     TEXT NOT NULL,
+      UNIQUE (library_set_id, version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_quiz_library_versions_set
+      ON quiz_library_versions(library_set_id, version DESC);
+    ALTER TABLE quiz_library_versions ENABLE ROW LEVEL SECURITY;
+    """,
+    # ── 72: allow private library copies without weakening shared dedupe ─────
+    # A content hash is useful for deduplicating approved public material, but
+    # a globally unique constraint would make one teacher's private draft block
+    # another teacher from saving an independent private copy. Drop the broad
+    # constraint and replace it with the actual policy boundary.
+    """
+    ALTER TABLE quiz_library_sets DROP CONSTRAINT IF EXISTS quiz_library_sets_content_hash_key;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_quiz_library_shared_hash
+      ON quiz_library_sets(content_hash)
+      WHERE visibility = 'shared' AND approval_status = 'approved';
+    """,
+    # ── 73: keep the library backend-only at the Supabase boundary ──────────
+    # The app uses its authenticated backend connection, not the browser's
+    # publishable/anon key, for library access. Remove any default Data API
+    # grants so RLS is defense in depth rather than the only barrier.
+    """
+    REVOKE ALL ON TABLE quiz_library_sets FROM anon, authenticated;
+    REVOKE ALL ON TABLE quiz_library_versions FROM anon, authenticated;
+    """,
+
+    # ── 74: tell a skipped setup apart from an unfinished one ────────────────
+    #
+    # Migration 36 deliberately collapsed "finished every step" and "skipped
+    # every step" into one nullable timestamp, and said so in its own comment:
+    # "skipping every step and finishing every step both mean the same thing
+    # here." That was right when the only consumer was "should the wizard
+    # auto-open." It is wrong now, for two reasons.
+    #
+    # The wizard's close button calls the same finish() as its final button
+    # (OnboardingWizard.jsx, title="Skip for now"), so a teacher who dismissed
+    # screen one is permanently indistinguishable from one who uploaded a
+    # template and a pacing guide — and skipping is irreversible, because the
+    # only thing that would bring the wizard back is the timestamp both paths
+    # set. And nothing records WHICH step anyone reached, so the flow cannot be
+    # resumed and its drop-off cannot be measured at all.
+    #
+    # onboarding_seen_at is KEPT, with its exact current meaning ("don't
+    # auto-open this again"), and BOTH terminal states still set it. That is
+    # deliberate and load-bearing: App.jsx's ClassRoutes guard redirects any
+    # account without it back into the wizard, so a state where the guard says
+    # "go back" while the wizard cannot record "done" is an inescapable loop —
+    # the bug lib/onboardingWizardBus.js's deferOnboarding() exists to escape.
+    # Keeping ONE boolean-shaped gate, set by skip and by complete alike, means
+    # no state added here can reintroduce it. Everything below is additive
+    # metadata the guard never consults.
+    #
+    # Two columns rather than a JSON blob because every consumer filters or
+    # groups by exactly these fields ("who is stuck on format?", "how many
+    # skipped, and from where?"). Note what is deliberately NOT stored: any
+    # per-step ANSWER. Those already live in classes.subject/grade/state/school,
+    # users.school, user_school_template_preferences and the class-document
+    # tables. A blob invites duplicating them and letting the two disagree,
+    # which is the bug class migration 38 is a monument to.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_state TEXT NOT NULL DEFAULT 'not_started';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_step TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_skipped_at TEXT;
+    UPDATE users SET onboarding_state = 'completed' WHERE onboarding_seen_at IS NOT NULL;
+    """,
+
+    # ── 75: onboarding funnel events ─────────────────────────────────────────
+    #
+    # users.onboarding_step (migration 74) already answers "where are they
+    # stuck" as a point-in-time snapshot, and that one GROUP BY is the whole
+    # drop-off report. This answers only what a snapshot cannot: how long a step
+    # took, which steps get retried or backed out of, which skip was chosen,
+    # and whether the format preview rendered or degraded.
+    #
+    # Deliberately NOT usage_events (migration 17). That table is the token
+    # meter — entitlement.py sums tokens_in + tokens_out over its trailing 7
+    # days against a weekly cap, and its own comment insists the sum can't
+    # drift from what it's summing. Funnel rows have no business inside the
+    # entitlement query, zero-token or not.
+    #
+    # No free text and no teacher content, by construction. `name` comes from a
+    # closed vocabulary the frontend owns (src/lib/onboardingPlan.js's
+    # ONBOARDING_EVENTS) and the route validates against an allowlist; `props`
+    # is small and holds only enums, ids and integers. Specifically excluded:
+    # template filenames (a district document name — section_count carries the
+    # same signal) and the school id (already on users.school and joinable
+    # server-side). This is a K-12 product; setup telemetry must not be ABLE to
+    # contain a student name, a lesson, or a district filename.
+    #
+    # Cascades from users, so db.delete_user_account sweeps it with no code
+    # change — that function enumerates its cascades by hand, and a new table is
+    # exactly what such a list forgets.
+    """
+    CREATE TABLE IF NOT EXISTS onboarding_events (
+        id         TEXT PRIMARY KEY,
+        user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        step       TEXT,
+        props      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_onboarding_events_user ON onboarding_events(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_onboarding_events_name ON onboarding_events(name, created_at);
+    ALTER TABLE onboarding_events ENABLE ROW LEVEL SECURITY;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own onboarding events" ON onboarding_events USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    REVOKE ALL ON TABLE onboarding_events FROM anon, authenticated;
+    """,
+
+    # ── 76: which state a school is in ───────────────────────────────────────
+    #
+    # Every row in this table is an Alabama school, and has been since
+    # migration 49 seeded ~1,600 of them — but only by construction, never as
+    # recorded fact. Onboarding now asks for the state and then narrows the
+    # school list to it, and a narrow with nothing to narrow ON is theatre: it
+    # would look like a filter, return everything, and quietly hand a Georgia
+    # teacher a list of Alabama schools the first time a second state was
+    # ingested.
+    #
+    # Backfilled to 'AL' rather than left NULL, because the existing rows ARE
+    # Alabama schools and a NULL would make the filter drop all 1,600 of them.
+    # Deliberately not NOT NULL: create_school is reachable from the admin page
+    # and from a calendar submission for a school that isn't listed yet, and
+    # neither knows a state today. A NULL there means "not recorded", which the
+    # picker can show as unfiltered rather than as absent.
+    """
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS state TEXT;
+    UPDATE schools SET state = 'AL' WHERE state IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_schools_state ON schools(state);
+    """,
 ]
 
 
@@ -3806,7 +3993,7 @@ def create_class(user_id: str, *, name: str, subject: str, grade: str, state: st
     return get_class(user_id, class_id)
 
 
-_CLASS_FIELDS = {"name", "subject", "grade", "sort_order", "archived", "school", "custom_instructions"}
+_CLASS_FIELDS = {"name", "subject", "grade", "state", "sort_order", "archived", "school", "custom_instructions"}
 
 
 def class_school(cls: dict | None, user_id: str) -> str:
@@ -5050,16 +5237,49 @@ def replace_plan_standards(
         conn.commit()
 
 
-def add_plan_feedback(user_id: str, plan_id: str, is_good: bool, notes: str | None = None) -> bool:
+def add_plan_feedback(
+    user_id: str,
+    plan_id: str,
+    is_good: bool,
+    notes: str | None = None,
+    reason: str | None = None,
+) -> bool:
     # Ensure plan belongs to user
-    if not get_plan(user_id, plan_id):
+    plan = get_plan(user_id, plan_id)
+    if not plan:
         return False
-    
+
+    context = {
+        "course": plan.get("course"),
+        "week_label": plan.get("week_label"),
+        "retrieved_ids": plan.get("retrieved_ids") or [],
+        "warnings": plan.get("warnings") or [],
+    }
     _write(
-        "INSERT INTO plan_feedback (user_id, plan_id, is_good, notes, created_at) VALUES (?, ?, ?, ?, ?)",
-        (user_id, plan_id, 1 if is_good else 0, notes, now())
+        "INSERT INTO plan_feedback "
+        "(user_id, plan_id, is_good, notes, reason, context_json, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?::jsonb, ?)",
+        (user_id, plan_id, 1 if is_good else 0, notes, reason, json.dumps(context), now()),
     )
     return True
+
+
+def list_plan_feedback_for_quality(limit: int = 500) -> list[dict]:
+    """Return teacher feedback as privacy-minimized quality-review cases.
+
+    Only the plan context captured at feedback time is exported. The plan
+    body, teacher identity, and student-facing content stay out of the
+    quality dataset.
+    """
+    safe_limit = max(1, min(int(limit), 5000))
+    return _rows(
+        """SELECT pf.id, pf.plan_id, pf.is_good, pf.notes, pf.reason,
+                         pf.context_json, pf.created_at
+                  FROM plan_feedback pf
+                 ORDER BY pf.created_at DESC, pf.id DESC
+                 LIMIT ?""",
+        (safe_limit,),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -5157,6 +5377,167 @@ def list_quizzes_for_plan(user_id: str, plan_id: str) -> list[dict]:
         (plan_id, user_id),
     )
     return [_hydrate_quiz(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Shared passage/question library — approval-gated and backend-only
+# ---------------------------------------------------------------------------
+
+
+def _hydrate_library_set(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    d = dict(row)
+    for key in ("quiz_json", "standard_codes"):
+        if isinstance(d.get(key), str):
+            d[key] = json.loads(d[key])
+    return d
+
+
+def create_quiz_library_set(
+    *,
+    library_id: str,
+    creator_user_id: str,
+    title: str,
+    quiz_json: dict,
+    course: str,
+    subject: str,
+    grade: str,
+    standard_codes: list[str],
+    context_text: str,
+    embedding: list[float] | None,
+    content_hash: str,
+    passage_source: str,
+    permission_confirmed: bool,
+) -> dict | None:
+    ts = now()
+    row = _write_returning(
+        """INSERT INTO quiz_library_sets
+             (id, creator_user_id, title, quiz_json, course, subject, grade,
+              standard_codes, context_text, embedding, content_hash,
+              passage_source, permission_confirmed, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT DO NOTHING
+           RETURNING *""",
+        (
+            library_id, creator_user_id, title, json.dumps(quiz_json), course,
+            subject, grade, json.dumps(standard_codes), context_text, embedding,
+            content_hash, passage_source, permission_confirmed, ts, ts,
+        ),
+    )
+    if row:
+        _write(
+            "INSERT INTO quiz_library_versions (id, library_set_id, version, quiz_json, changed_by, created_at) VALUES (?,?,?,?,?,?)",
+            (new_id(), library_id, 1, json.dumps(quiz_json), creator_user_id, ts),
+        )
+    return _hydrate_library_set(row)
+
+
+def get_quiz_library_set(user_id: str, library_id: str) -> dict | None:
+    row = _row(
+        """SELECT * FROM quiz_library_sets
+            WHERE id = ? AND (creator_user_id = ? OR (visibility = 'shared' AND approval_status = 'approved'))""",
+        (library_id, user_id),
+    )
+    return _hydrate_library_set(row)
+
+
+def get_quiz_library_set_by_hash(content_hash: str, user_id: str | None = None) -> dict | None:
+    if user_id:
+        row = _row(
+            """SELECT * FROM quiz_library_sets
+                WHERE content_hash = ?
+                  AND (creator_user_id = ? OR (visibility = 'shared' AND approval_status = 'approved'))
+                ORDER BY CASE WHEN creator_user_id = ? THEN 0 ELSE 1 END
+                LIMIT 1""",
+            (content_hash, user_id, user_id),
+        )
+    else:
+        row = _row("SELECT * FROM quiz_library_sets WHERE content_hash = ? LIMIT 1", (content_hash,))
+    return _hydrate_library_set(row)
+
+
+def list_quiz_library_sets_for_user(user_id: str, *, limit: int = 100) -> list[dict]:
+    rows = _rows(
+        """SELECT * FROM quiz_library_sets
+            WHERE creator_user_id = ? OR (visibility = 'shared' AND approval_status = 'approved')
+            ORDER BY updated_at DESC LIMIT ?""",
+        (user_id, max(1, min(int(limit), 200))),
+    )
+    return [_hydrate_library_set(row) for row in rows]
+
+
+def search_quiz_library_sets(
+    *,
+    course: str,
+    subject: str,
+    grade: str,
+    standard_codes: list[str],
+    query_embedding: list[float] | None,
+    limit: int = 8,
+) -> list[dict]:
+    """Search only approved shared sets after hard context filters."""
+    params: list = [course, subject, grade]
+    where = "course = ? AND subject = ? AND grade = ? AND visibility = 'shared' AND approval_status = 'approved'"
+    if standard_codes:
+        # Use the function form instead of JSONB's `?|` operator: this module
+        # intentionally rewrites `?` placeholders before handing SQL to
+        # psycopg2, so the operator's question mark would be mistaken for a
+        # parameter marker.
+        where += " AND jsonb_exists_any(standard_codes, ?::text[])"
+        params.append(standard_codes)
+    if query_embedding is not None:
+        sql = f"""SELECT *, embedding <=> ?::vector AS similarity_distance
+                    FROM quiz_library_sets WHERE {where} AND embedding IS NOT NULL
+                    ORDER BY embedding <=> ?::vector LIMIT ?"""
+        params = [query_embedding, *params, query_embedding, max(1, min(int(limit), 20))]
+    else:
+        sql = f"""SELECT *, NULL::double precision AS similarity_distance
+                    FROM quiz_library_sets WHERE {where}
+                    ORDER BY updated_at DESC LIMIT ?"""
+        params.append(max(1, min(int(limit), 20)))
+    return [_hydrate_library_set(row) for row in _rows(sql, tuple(params))]
+
+
+def approve_quiz_library_set(user_id: str, library_id: str, *, permission_confirmed: bool) -> dict | None:
+    row = get_quiz_library_set(user_id, library_id)
+    if not row or row.get("creator_user_id") != user_id:
+        return None
+    updated = _write_returning(
+        """UPDATE quiz_library_sets
+              SET visibility = 'shared', approval_status = 'approved',
+                  permission_confirmed = ?, approved_at = ?, updated_at = ?
+            WHERE id = ? AND creator_user_id = ?
+            RETURNING *""",
+        (permission_confirmed, now(), now(), library_id, user_id),
+    )
+    return _hydrate_library_set(updated)
+
+
+def unpublish_quiz_library_set(user_id: str, library_id: str) -> dict | None:
+    updated = _write_returning(
+        """UPDATE quiz_library_sets
+              SET visibility = 'unpublished', approval_status = 'unpublished',
+                  unpublished_at = ?, updated_at = ?
+            WHERE id = ? AND creator_user_id = ?
+            RETURNING *""",
+        (now(), now(), library_id, user_id),
+    )
+    return _hydrate_library_set(updated)
+
+
+def increment_quiz_library_usage(library_id: str) -> None:
+    _write(
+        "UPDATE quiz_library_sets SET usage_count = usage_count + 1, updated_at = ? WHERE id = ?",
+        (now(), library_id),
+    )
+
+
+def report_quiz_library_set(library_id: str) -> None:
+    _write(
+        "UPDATE quiz_library_sets SET report_count = report_count + 1, updated_at = ? WHERE id = ?",
+        (now(), library_id),
+    )
 
 
 def delete_quiz(user_id: str, quiz_id: str) -> bool:
@@ -6004,7 +6385,8 @@ def delete_user_account(user_id: str) -> None:
     curriculum_progress and curriculum_chunks; plans takes plan_feedback and
     quizzes (which itself takes nothing further); chats takes messages.
     usage_events cascades from the users row itself (the one table that
-    already declared a real FK to users, per migration 17). Nothing here is
+    already declared a real FK to users, per migration 17), and
+    onboarding_events the same way (migration 75). Nothing here is
     reversible — routes/auth.py's delete_account is what gates reaching
     this behind re-entering a password.
 
@@ -6795,14 +7177,154 @@ def update_user_avatar(user_id: str, avatar: str | None) -> dict | None:
     return get_user_by_id(user_id)
 
 
-def mark_onboarding_seen(user_id: str) -> dict | None:
-    """Stamps NOW rather than a bare boolean — 'when' is worth having if this
-    ever needs a one-time re-prompt for a redesigned wizard later (compare
-    against a new "wizard version" cutoff), which a plain flag can't answer.
-    Idempotent: re-marking an already-seen account just moves the timestamp
-    forward, which is harmless since nothing reads it as a first-seen date."""
-    _write("UPDATE users SET onboarding_seen_at = ? WHERE id = ?", (now(), user_id))
+ONBOARDING_STATES = ("not_started", "in_progress", "skipped", "completed")
+
+
+def set_onboarding_progress(
+    user_id: str,
+    *,
+    step: str | None = None,
+    state: str | None = None,
+) -> dict | None:
+    """Record how far through setup this account is.
+
+    Three shapes, one function, because they all write the same two or three
+    columns and splitting them invites one path forgetting onboarding_seen_at:
+
+      step='format'      -> in_progress, remember the step. Fired on step ENTRY,
+                            fire-and-forget; the caller must swallow failures.
+                            This is bookkeeping and must never be able to block
+                            a teacher mid-setup.
+      state='completed'  -> stamp onboarding_seen_at, clear the step.
+      state='skipped'    -> stamp onboarding_seen_at AND onboarding_skipped_at,
+                            and KEEP onboarding_step — that retained value is
+                            the record of where they bailed, which is both the
+                            funnel's most useful column and where "Finish
+                            setup" sends them back to.
+
+    BOTH terminal states stamp onboarding_seen_at, which is the single most
+    important line in this file for onboarding. App.jsx's ClassRoutes guard
+    redirects any account without it straight back into the wizard, so a
+    terminal state that did NOT set it would be an inescapable loop — exactly
+    the bug lib/onboardingWizardBus.js's deferOnboarding() exists to escape
+    (offline or a 500 meant a teacher could not get into the app at all). The
+    guard keeps reading one boolean-shaped field; everything else here is
+    metadata it never consults. See migration 74.
+
+    Stamps NOW rather than a bare boolean — 'when' is worth having if this ever
+    needs a one-time re-prompt for a redesigned wizard later (compare against a
+    new "wizard version" cutoff), which a plain flag can't answer. Idempotent:
+    re-marking an already-seen account just moves the timestamp forward, which
+    is harmless since nothing reads it as a first-seen date.
+    """
+    if state is not None and state not in ONBOARDING_STATES:
+        raise ValueError(f"unknown onboarding state: {state!r}")
+
+    stamp = now()
+    if state == "completed":
+        _write(
+            "UPDATE users SET onboarding_seen_at = ?, onboarding_state = 'completed', onboarding_step = NULL WHERE id = ?",
+            (stamp, user_id),
+        )
+    elif state == "skipped":
+        # onboarding_step is deliberately left alone — see the docstring.
+        _write(
+            "UPDATE users SET onboarding_seen_at = ?, onboarding_skipped_at = ?, onboarding_state = 'skipped' WHERE id = ?",
+            (stamp, stamp, user_id),
+        )
+    elif step is not None:
+        # Never downgrades a finished account back to in_progress: re-running
+        # the wizard from Settings shouldn't make a completed teacher look
+        # stuck in the funnel, and shouldn't re-arm anything that reads the
+        # state as "needs to finish".
+        _write(
+            """
+            UPDATE users
+               SET onboarding_state = CASE WHEN onboarding_state = 'completed' THEN 'completed' ELSE 'in_progress' END,
+                   onboarding_step = ?
+             WHERE id = ?
+            """,
+            (step, user_id),
+        )
     return get_user_by_id(user_id)
+
+
+def mark_onboarding_seen(user_id: str) -> dict | None:
+    """Back-compat alias for the pre-migration-74 call, kept so a cached
+    client build still completes setup instead of 404ing on a route that
+    moved. New callers should use set_onboarding_progress directly and say
+    which terminal state they mean."""
+    return set_onboarding_progress(user_id, state="completed")
+
+
+def record_onboarding_events(user_id: str, events: list[dict]) -> int:
+    """Append funnel events. Returns how many rows landed.
+
+    `name` is expected to be pre-validated against the closed vocabulary by
+    routes/onboarding.py — this function is the storage, not the gate. `props`
+    is serialised here rather than by the caller so there is one place that
+    decides the on-disk shape.
+
+    executemany, not a loop of _write: a flush carries a whole step transition's
+    worth of events (and the pagehide beacon can carry a backlog), and this app
+    runs one worker on a small instance — twenty separate round trips for
+    twenty small rows is the kind of thing that shows up as latency on somebody
+    else's request.
+    """
+    if not events:
+        return 0
+    rows = [
+        (
+            new_id(),
+            user_id,
+            now(),
+            event["name"],
+            event.get("step"),
+            json.dumps(event.get("props") or {}, separators=(",", ":")),
+        )
+        for event in events
+    ]
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO onboarding_events (id, user_id, created_at, name, step, props)"
+                " VALUES (%s, %s, %s, %s, %s, %s)",
+                rows,
+            )
+        conn.commit()
+    return len(rows)
+
+
+def onboarding_funnel(days: int = 30) -> list[dict]:
+    """Where accounts created in the last `days` currently stand in setup.
+
+    This one GROUP BY is the whole drop-off report, which is why migration 74's
+    columns were worth adding before any of the redesign: it answers how many
+    are stuck, on which step, how many skipped and from where, and how many
+    finished — without an events table, an SDK, or a single extra write on the
+    teacher's critical path.
+
+    Grouped in Postgres rather than pulled and counted in Python for the same
+    reason weekly_usage_series does it: this is an aggregate over a table that
+    grows with signups, and the answer is a couple of dozen rows either way.
+    """
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
+    rows = _rows(
+        """
+        SELECT COALESCE(onboarding_state, 'not_started') AS state,
+               onboarding_step                           AS step,
+               COUNT(*)                                  AS accounts
+          FROM users
+         WHERE created_at >= ?
+      GROUP BY state, step
+      ORDER BY accounts DESC, state ASC
+        """,
+        (since,),
+    )
+    return [
+        {"state": r["state"], "step": r["step"], "accounts": int(r["accounts"] or 0)}
+        for r in rows
+    ]
 
 
 # claim_user() was here, and is deliberately gone.

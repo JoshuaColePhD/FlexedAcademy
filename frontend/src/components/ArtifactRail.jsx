@@ -20,18 +20,21 @@ import { orderedDays, unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { shortDateTime } from '../lib/dates'
-import { AccordionPanel } from './AccordionPanel'
+import { KIND_LABEL } from './documentKinds'
 import { ShareDialog } from './ShareDialog'
 import { DocxDownloadButton } from './DocxDownloadButton'
 
-const RailGroup = ({ title, defaultOpen, forceOpen, isBar, children }) => {
+const RailGroup = ({ title, isBar, children }) => {
   if (isBar) {
     return <div className="rail-group">{children}</div>
   }
   return (
-    <AccordionPanel title={title} defaultOpen={defaultOpen} forceOpen={forceOpen}>
-      <div className="rail-group border-none bg-transparent m-0 p-0">{children}</div>
-    </AccordionPanel>
+    <section className="mb-3 overflow-hidden rounded-xl border border-edge bg-paper-raised shadow-sm" aria-label={title}>
+      <div className="border-b border-edge bg-paper px-3 py-2.5">
+        <span className="text-sm font-semibold text-ink">{title}</span>
+      </div>
+      <div className="rail-group border-none bg-transparent p-1">{children}</div>
+    </section>
   )
 }
 import { WeekStrip } from './WeekStrip'
@@ -312,9 +315,9 @@ export function ArtifactRail({
   const teachingDays = 5 - closed.length
 
   return (
-    <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Materials">
+    <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Plan workspace">
       {planId || busy || artifactLoadError ? (
-        <RailGroup title="Materials" defaultOpen={true} isBar={isBar}>
+        <RailGroup title="This plan" isBar={isBar}>
           {planId ? (
           /* Reading is the primary action. The full content area is one real
              button, while download remains its separate, unambiguous sibling
@@ -390,48 +393,17 @@ export function ArtifactRail({
         <AccordionSkeleton color={color} onSuggestPrompt={onSuggestPrompt} />
       )}
 
-      {/* Quizzes over this plan — right under My Plans, ahead of Built From:
-          a quiz is a second artifact this conversation produced, the same
-          rank as the plan itself, not a citation the plan rests on. Reachable
-          in the phone bar too, unlike Built From below — a built quiz is a
-          real deliverable a teacher would want off their phone, not a
-          citation the plan rests on. Shown whenever there's something to
-          show (a build in progress, or an already-built quiz), not gated
-          behind planId the same strict way Built From is — quizBuilding can
-          be true for one render right after the request lands, before the
-          query below has anything cached yet. */}
-      {quizBuilding || quizzes.length > 0 ? (
-        <RailGroup title="Quizzes" defaultOpen={false} isBar={isBar}>
-          {quizBuilding ? (
-            <div className="rail-row fa-rise">
-              <span className="rail-row-tile">
-                <Loader2 size={13} className="animate-spin" aria-hidden="true" />
-              </span>
-              <span className="rail-text">
-                <span className="rail-row-label">Building quiz…</span>
-                <span className="rail-sub">grounded in this week's own plan</span>
-              </span>
-            </div>
-          ) : null}
-          {(quizzesExpanded ? quizzes : quizzes.slice(0, VISIBLE_QUIZZES)).map((quiz, i) => (
-            <QuizRow key={quiz.id} quiz={quiz} index={i} onOpen={onOpenQuiz} color={color} onShare={(quiz) => setShareTarget({ type: 'quiz', quiz })} />
-          ))}
-          {!quizzesExpanded && quizzes.length > VISIBLE_QUIZZES ? (
-            <RailRow
-              index={VISIBLE_QUIZZES}
-              icon={ChevronDown}
-              label={`${quizzes.length - VISIBLE_QUIZZES} earlier attempt${
-                quizzes.length - VISIBLE_QUIZZES === 1 ? '' : 's'
-              }`}
-              sub="Tap to show"
-              onClick={() => setQuizzesExpanded(true)}
-            />
-          ) : null}
+      {/* The day-by-day breakdown belongs directly after the current plan:
+          it answers "what happens this week?" before a teacher opens source
+          material or secondary deliverables. */}
+      {!isBar && (planId ? plan?.days?.length : busy) ? (
+        <RailGroup title="This week" isBar={isBar}>
+          <WeekStrip days={plan?.days} writing={!planId} loose />
         </RailGroup>
       ) : null}
 
       {planId && !isBar ? (
-        <RailGroup title="Built from" defaultOpen={false} isBar={isBar}>
+        <RailGroup title="Sources used" isBar={isBar}>
 
           <RailRow
             index={0}
@@ -451,8 +423,8 @@ export function ArtifactRail({
               key={doc.id}
               index={i + 1}
               icon={FileText}
-              label={doc.original_name}
-              sub={artifact?.unit || doc.kind?.replace(/_/g, ' ') || 'course document'}
+              label={KIND_LABEL[doc.kind] || doc.kind?.replace(/_/g, ' ') || 'Course document'}
+              sub={doc.original_name}
               title={doc.original_name}
               onClick={onOpenDocument ? () => onOpenDocument(doc) : undefined}
             />
@@ -490,21 +462,36 @@ export function ArtifactRail({
         </RailGroup>
       ) : null}
 
-      {/* The day-by-day breakdown — used to live in the chat message itself
-          (see Message.jsx and ChatPage's own writing-progress block, both of
-          which now skip it on desktop). Under everything else: "My plans"
-          and "Built from" are both about what the plan IS, this is about
-          what's actually written in it, the last thing worth checking once
-          the rest is settled. Not in the phone bar: there's no room for a
-          five-row list in a one-row bar, so phone keeps its copy inline in
-          chat instead — see the isPhone check at both those call sites. */}
-      {!isBar && (planId ? plan?.days?.length : busy) ? (
-        // forceOpen while a week is actually being written — a teacher
-        // shouldn't have to know to go click this open to watch Mon–Fri
-        // check off as they land; see AccordionPanel's own comment for why
-        // this is forceOpen and not just defaultOpen={busy}.
-        <RailGroup title="This week" defaultOpen={false} forceOpen={busy && !planId} isBar={isBar}>
-          <WeekStrip days={plan?.days} writing={!planId} loose />
+      {/* Quizzes are secondary deliverables, so keep them after the plan's
+          week and source context rather than mixing them into the materials
+          the plan depends on. */}
+      {quizBuilding || quizzes.length > 0 ? (
+        <RailGroup title="Deliverables" isBar={isBar}>
+          {quizBuilding ? (
+            <div className="rail-row fa-rise">
+              <span className="rail-row-tile">
+                <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+              </span>
+              <span className="rail-text">
+                <span className="rail-row-label">Building quiz…</span>
+                <span className="rail-sub">grounded in this week's own plan</span>
+              </span>
+            </div>
+          ) : null}
+          {(quizzesExpanded ? quizzes : quizzes.slice(0, VISIBLE_QUIZZES)).map((quiz, i) => (
+            <QuizRow key={quiz.id} quiz={quiz} index={i} onOpen={onOpenQuiz} color={color} onShare={(quiz) => setShareTarget({ type: 'quiz', quiz })} />
+          ))}
+          {!quizzesExpanded && quizzes.length > VISIBLE_QUIZZES ? (
+            <RailRow
+              index={VISIBLE_QUIZZES}
+              icon={ChevronDown}
+              label={`${quizzes.length - VISIBLE_QUIZZES} earlier attempt${
+                quizzes.length - VISIBLE_QUIZZES === 1 ? '' : 's'
+              }`}
+              sub="Tap to show"
+              onClick={() => setQuizzesExpanded(true)}
+            />
+          ) : null}
         </RailGroup>
       ) : null}
 

@@ -266,7 +266,15 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
           {/* Category rail — desktop only. A phone-width dropdown has no room
               for a second column, so it falls back to the plain scrolling
               list (still grouped, just without the jump-to-category rail). */}
-          {groups.length > 1 ? (
+          {/* Inline onboarding keeps its category rail even for one visible
+              group. Grade filtering can temporarily reduce the catalog to a
+              single subject; hiding the entire left pane in that state made
+              the full course browser collapse into a plain list and broke the
+              split-panel shape halfway through the same task. The one-item
+              rail still tells the teacher what catalog they are browsing, and
+              it expands naturally when another grade or search reveals more
+              groups. Popovers stay compact and retain the old >1 rule. */}
+          {(isInline ? groups.length > 0 : groups.length > 1) ? (
             <div
               className={`fw-picker-rail hidden ${isInline ? 'w-56' : 'w-40'} shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-2 sm:flex${isInline ? ' h-full' : ''}`}
               style={isInline ? undefined : { maxHeight: popoverMaxHeight || 'min(28rem, 70vh)' }}

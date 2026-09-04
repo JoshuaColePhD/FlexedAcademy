@@ -220,6 +220,8 @@
      purpose, not one of the semantic tokens above, but still a TOKEN rather
      than the raw rgba() literal it replaces, so it can adapt in dark mode. */
   --msg-user-bg-rgb: 167 139 250;
+  /* The only purple inside the app shell: onboarding's forward motion. */
+  --onboarding-forward-rgb: 111 64 170;
 
   /* ── the marketing brand ─────────────────────────────────────────────────
      Cyan, and DELIBERATELY not --accent.
@@ -310,6 +312,7 @@
   --accent-on: rgb(var(--ink-inverse-rgb));
   --accent-ring: rgb(var(--accent-rgb) / 0.32);
   --doc-blue: rgb(var(--doc-blue-rgb));
+  --onboarding-forward: rgb(var(--onboarding-forward-rgb));
   --brand: rgb(var(--brand-rgb));
   --brand-ink: rgb(var(--brand-ink-rgb));
   --brand-muted: rgb(var(--brand-muted-rgb));
@@ -451,6 +454,7 @@
      Message.jsx set it as a raw rgba() literal with no token behind it at
      all. */
   --msg-user-bg-rgb: 76 60 122;
+  --onboarding-forward-rgb: 193 156 255;
 
   /* No dark-mode override: the landing page and the /login, /signup pages are
      both a fixed brand world (see the light-mode comment above --brand-rgb),

@@ -97,7 +97,6 @@
      rasters are the usual cause of a transform that looks smooth in DevTools
      but hitches on a real phone. */
   :root[data-motion='lite'] .app-blob,
-  :root[data-motion='lite'] .onboarding-blob,
   :root[data-motion='lite'] .btn-blob::before {
     animation-play-state: paused !important;
   }
@@ -115,6 +114,83 @@
   :root[data-motion='lite'] .composer-shell,
   :root[data-motion='lite'] .mobile-composer-plan-sheet {
     transition-property: transform, opacity, border-color !important;
+  }
+}
+
+/* ══ RESPONSIVE WORKSPACE FIT ═══════════════════════════════════════════════
+   The desktop shell has enough room for two rounded surfaces and a generous
+   gutter. On touch-sized screens that same treatment wastes the exact pixels
+   needed by the content, so the frame becomes edge-to-edge on phones and
+   keeps a smaller, calmer inset on tablets. The reading surface still owns
+   the scroll; the viewport never becomes a second competing scroller. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .app-shell-frame {
+    gap: 0.5rem !important;
+    padding: 0.5rem !important;
+  }
+
+  .app-shell-main {
+    border-radius: var(--r-lg) !important;
+  }
+
+  .split-layout-sidebar {
+    width: 13.5rem;
+  }
+
+  .split-layout-content-inner {
+    padding: var(--sp-6) var(--sp-5) calc(var(--sp-12) + var(--safe-b)) !important;
+  }
+
+  .split-layout-mobile-tabs {
+    gap: 0.35rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .app-shell-frame {
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+
+  .app-shell-main {
+    border-radius: 0 !important;
+  }
+
+  .page {
+    padding: var(--sp-5) var(--sp-4) calc(var(--sp-8) + var(--safe-b));
+  }
+
+  .split-layout-shell {
+    background: var(--paper);
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .split-layout-content-inner {
+    width: 100%;
+    padding: var(--sp-4) var(--sp-4) calc(var(--sp-12) + var(--safe-b)) !important;
+  }
+
+  .split-layout-mobile-header {
+    margin-bottom: var(--sp-5) !important;
+  }
+
+  .split-layout-mobile-tabs {
+    margin-right: calc(var(--sp-2) * -1);
+    margin-bottom: var(--sp-5) !important;
+    padding-right: var(--sp-2);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .split-layout-mobile-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Wide data surfaces remain usable without widening the whole page. */
+  .page :is(table, .overflow-x-auto) {
+    max-width: 100%;
   }
 }
 
@@ -185,6 +261,955 @@
     background-size: 120px 120px;
   }
 
+  /* ══ ONBOARDING SHELL ═════════════════════════════════════════════════════
+     Guided setup: one centred card on the app's own ground, a persistent step
+     rail, one question per screen.
+
+     There is deliberately NO world class here, and that is the whole point of
+     this block. The page variant renders inside App.jsx's
+     `.app-texture .neo-world` root with `.app-blob` already drifting behind
+     it — the same ground /welcome uses one screen earlier. It used to paint
+     `.onboarding-mac-classic` over all of that: a hardcoded cool blue-grey
+     gradient, declared with `!important`, in an app whose paper is
+     deliberately warm (see tokens.css's header, which asks that nobody cool it
+     back toward blue-white). Every accent-tinted glass override that used to
+     live under `.onboarding-shell` existed only to make the app's own
+     components legible against that invented ground, so removing the cause
+     removes ~200 lines of `!important` with it.
+
+     Contrast `.auth-ground`, which IS a legitimate dedicated world: /login
+     borrows the LANDING page's dark brand ground so the door and the form you
+     sign into read as one place. That argument doesn't reach a post-auth setup
+     flow, and .auth-ground is dark — a teacher crossing dark door, cream
+     /welcome, cool-grey wizard, cream app in ninety seconds is the problem,
+     not the fix. */
+  .onboarding-ground {
+    display: flex;
+    height: var(--app-h);
+    width: 100%;
+    align-items: stretch;
+    justify-content: center;
+    /* --sp-2, matching AppShell's own `p-2` frame, not --gutter. First-run
+       setup IS the app for as long as it lasts, so it should sit in the window
+       the way the app does rather than as a small card adrift in a large empty
+       ground. */
+    padding: var(--sp-2);
+  }
+
+  .onboarding-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* --r-xl, not the old rounded-3xl. 24px isn't on the radius scale, and
+       every other card-shaped surface in the app — .app-rail,
+       .app-shell-main, .split-layout-shell — is rounded-2xl = --r-xl. */
+    border-radius: var(--r-xl);
+  }
+
+  /* The aurora, ON the mat.
+    
+     App.jsx's root already renders .app-blob behind everything, but at
+     z-index -1 and behind a pane that now fills the whole window — so the
+     orbs were reduced to a hint of blue in one corner. Rendering the same
+     layer INSIDE the card puts them where they read: above the glass's own
+     background fill, below the content, drifting under the question.
+    
+     Reusing .app-blob rather than declaring a second set of gradients is the
+     point. There WAS a second one (.onboarding-blob), with its own copy of the
+     same five radials and its own bug comment, and it went with the rest of
+     the bespoke world. One definition means the app and setup drift together,
+     and it picks up the data-motion='lite' pause for free, since that rule
+     targets .app-blob by name.
+    
+     z-index 0, not the inherited -1: at -1 it painted behind the card's own
+     background and vanished. */
+  .onboarding-card > .app-blob {
+    z-index: 0;
+  }
+
+  /* Above the aurora. Both are static in the flow, so without this the
+     gradients paint over the content rather than under it. */
+  .onboarding-topbar,
+  .onboarding-body {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* First run FILLS the window, like .app-shell-main does. It was a 58rem ×
+     40rem card centred in the viewport, which on a normal display read as a
+     small dialog floating in a lot of dead space — and setup is not a dialog,
+     it is the only thing this account can do yet.
+
+     The size is not what made the flow calm; a definite height was, because it
+     stopped the card resizing per step (which is what let SmoothHeight and its
+     ResizeObserver go). Filling keeps that: the pane's height is fixed by the
+     window, not by the content. */
+  .onboarding-card-fill {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+  }
+
+  /* The modal stays a dialog — it opens over an app already in use, so it has
+     something to be layered ON. `height`, not `min-height`, and on a
+     non-flex-child: an explicit height on a flex CHILD is only a BASIS, so a
+     short viewport was free to squeeze the old shell below the height it had
+     been given and clip whichever step's Continue button sat at the bottom.
+     SmoothHeight's `flexShrink: 0` was patching exactly that. */
+  .onboarding-card-dialog {
+    width: 100%;
+    max-width: 58rem;
+    height: min(40rem, calc(var(--app-h) - var(--sp-8)));
+  }
+
+  /* The modal variant is opaque, where the page variant is .glass-panel.
+     This is what retires .onboarding-blob: that blob's own comment described a
+     bug it could only mitigate — with Reduce Transparency on, in Low Power
+     Mode, or on a weak GPU the blur renders weaker than expected and the live
+     app showed through the panel. An opaque card makes that impossible, there
+     is nothing behind a scrim worth diffusing, and a dialog is one of the four
+     surfaces DESIGN.md rule 2 allows a shadow on. */
+  .onboarding-card.neo-panel {
+    background: var(--paper-raised);
+  }
+
+  .onboarding-topbar {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    /* Rule 1's own stated exception: a border survives where two surfaces of
+       identical tone meet. Same idiom as /welcome's header bar. */
+    border-bottom: 1px solid var(--edge);
+    padding: var(--sp-4);
+  }
+
+  .onboarding-wordmark {
+    color: var(--ink);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .onboarding-topbar-logo {
+    position: absolute;
+    left: var(--sp-4);
+    height: 1.375rem;
+    width: 1.375rem;
+    color: #7c3aed;
+  }
+
+  .onboarding-topbar-close {
+    position: absolute;
+    right: var(--sp-3);
+    display: grid;
+    height: 2rem;
+    width: 2rem;
+    place-items: center;
+    border-radius: var(--r-md);
+    color: var(--ink-muted);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  }
+  .onboarding-topbar-close:hover {
+    background: var(--paper-sunken);
+    color: var(--ink);
+  }
+  .onboarding-topbar-contact {
+    position: absolute;
+    right: var(--sp-3);
+    display: inline-flex;
+    height: 2rem;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-md);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  }
+  /* Only the modal variant also has a close button in this same corner —
+     shifted left of it there so neither one covers the other. */
+  .onboarding-topbar-contact-with-close {
+    right: 3.25rem;
+  }
+  .onboarding-topbar-contact:hover {
+    background: var(--paper-sunken);
+    color: var(--ink);
+  }
+
+  /* The frame that scrolls. The grid inside is content-height and centres
+     itself with auto margins, which is what stops a short step — the profile
+     question is barely 500px tall — from sitting in the top third of a
+     1200px-high window with the rest of the pane empty under it. */
+  .onboarding-scroll {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* Reserves the scrollbar's width whether or not a scrollbar is actually
+       needed. Without this, a step whose content just barely grows past the
+       visible height (School's field appearing once a state is picked) pops
+       a scrollbar into existence, which narrows the content box and nudges
+       everything centered in it a few pixels left — a shift with no visual
+       cause a teacher could point to. */
+    scrollbar-gutter: stable;
+  }
+
+  .onboarding-body {
+    display: grid;
+    width: 100%;
+    /* Fills the frame. Centring the whole grid took the rail down to the
+       middle with it, and the rail is a nav — it belongs at the top left,
+       travelling down, the way every other rail in the app sits. Only the
+       step CONTENT centres now; see .onboarding-content below. */
+    flex: 1;
+    min-height: 0;
+    /* 11rem holds the longest label ("Materials") plus its dot and gutter at
+       --fs-sm without wrapping. The content column is capped at --measure
+       rather than taking 1fr: the pane is the whole window now, and a question
+       and a short list stretched across 1400px is not what the extra room is
+       for. */
+    grid-template-columns: 11rem minmax(0, var(--measure));
+    /* Centres the rail-and-content pair, so the slack lands on both sides
+       instead of piling up to the right of a left-hugging column. */
+    justify-content: center;
+    gap: var(--sp-10);
+    padding: var(--sp-10) var(--sp-10) var(--sp-6);
+  }
+
+  .onboarding-column {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .onboarding-content {
+    display: flex;
+    /* Short questions reserve a lower action zone. That puts their plain-text
+       navigation in the second half of the page without pinning it to the
+       viewport; a taller step simply grows past this floor. */
+    min-height: min(32rem, calc(var(--app-h) - 16rem));
+    flex-direction: column;
+    /* Top-aligned, on purpose, and this is the third position it has had.
+    
+       Centred, it moved every step's question to a different height depending
+       on how much content that step happened to have — so the heading, the
+       first label and the first control all sat somewhere new on each screen,
+       and the rail's current item no longer lined up with the question it
+       labels. A flow is easier to move through when the thing you read and the
+       thing you click do not move. Top alignment costs empty space at the
+       bottom of the short steps; a stable layout is worth more than a filled
+       one. */
+    /* Keeps prose off the scrollbar rather than under it. */
+    padding-right: var(--sp-2);
+    /* Named container so a step can lay itself out against the space it
+       actually has. Steps sit inside a fixed 58rem card, so a viewport
+       breakpoint tells them almost nothing. */
+    container-type: inline-size;
+    container-name: onboarding-step;
+  }
+
+  /* Paired with .onboarding-step-center below: that rule centers the school
+     step's own content, but has nothing to center into until this box grows
+     past its min-height floor to the column's actual full height. */
+  .onboarding-content[data-center='true'] {
+    flex: 1;
+  }
+
+  /* One deliberate exception to .onboarding-content's top alignment above:
+     see the comment beside where this class is applied in
+     OnboardingWizard.jsx. flex:1 makes this step's own frame claim the
+     column's full min-height, so justify-content:center has real vertical
+     room to centre into instead of collapsing to the content's own height. */
+  .onboarding-step-center {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  /* The course step's own content IS a scroll region (FrameworkPicker's
+     variant="inline" rail + list). Two nested scrollers is what
+     .onboarding-course-browser's hand-rolled
+     `clamp(32rem, calc(100vh - 17rem), 46rem)` was fighting; now that the card
+     has a definite height, the step just hands it down and lets the picker own
+     the only scrollbar. */
+  .onboarding-content[data-fill='true'] {
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+  .onboarding-content[data-fill='true'] > * {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  /* ── the step rail ──────────────────────────────────────────────────────── */
+  .onboarding-rail-slot {
+    min-width: 0;
+    /* Start beside the question, not in the vertical middle of the viewport.
+       The old centre placement left a short step's first checkpoint hundreds
+       of pixels below its title: the rail read as a second, unrelated list
+       rather than the route through the form. Keeping the shared top edge
+       makes the marker a companion to the active question; its travel is now
+       the movement a teacher reads while advancing. */
+    align-self: start;
+  }
+
+  /* The positioned ancestor for the marker, and for the offsetTop the rail
+     measures against — one element owning both keeps the two in the same
+     coordinate space. */
+  .onboarding-rail-track {
+    position: relative;
+  }
+
+  .onboarding-rail {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* The travelling marker. framer animates its y; everything static about it
+     lives here. Centred on its own height so the measured mid-point of a row
+     is where it lands. */
+  .onboarding-rail-marker {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 0.5rem;
+    width: 0.5rem;
+    margin-top: -0.25rem;
+    border-radius: var(--r-full);
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.18);
+    pointer-events: none;
+    /* This is a route, not a press. A spring's overshoot made the marker look
+       as if it reconsidered its destination while the incoming question was
+       already calm; the panel glide keeps both halves of the same transition
+       moving with one deliberate cadence. */
+    transition: transform var(--t-panel) var(--ease-glide);
+  }
+
+  .onboarding-rail-step {
+    position: relative;
+    display: flex;
+    min-height: 2.25rem;
+    align-items: center;
+    gap: var(--sp-3);
+  }
+
+  /* One hairline per gap rather than one track behind the whole list, so a
+     segment already walked can be inked while one still ahead stays a
+     hairline — and neither needs to know how long the plan is. The plan is
+     4-7 steps depending on the account, so anything measured would need
+     re-measuring. */
+  .onboarding-rail-step::before {
+    position: absolute;
+    /* The dot is 0.5rem wide at the row's inline start, so its centre sits at
+       0.25rem; back off half the 1px line. */
+    left: calc(0.25rem - 0.5px);
+    bottom: 100%;
+    width: 1px;
+    height: 0.75rem;
+    content: '';
+    background: var(--edge-strong);
+    transition: background var(--t-base) var(--ease);
+  }
+  .onboarding-rail-step:first-child::before {
+    content: none;
+  }
+  .onboarding-rail-step[data-state='done']::before,
+  .onboarding-rail-step[data-state='current']::before {
+    /* Solid, not a low-alpha tint — the rail should read as a track FILLING
+       with purple on the way down, not a faint hint of one. */
+    background: var(--accent);
+  }
+
+  .onboarding-rail-dot {
+    height: 0.5rem;
+    width: 0.5rem;
+    flex-shrink: 0;
+    border-radius: var(--r-full);
+    /* --ink-faint is the CORRECT token for a dot: tokens.css scopes it to
+       "dividers, disabled marks, icons" — a mark, not text. It is never used
+       for a label below, which is where the old header misused it. */
+    background: var(--ink-faint);
+    transition: background var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
+  }
+  .onboarding-rail-step[data-state='done'] .onboarding-rail-dot {
+    /* Was --ink-soft (grey) — filled purple instead, matching the connector
+       above it, so a completed step reads as part of the same purple trail
+       rather than a neutral checkmark sitting on a purple road. */
+    background: var(--accent);
+  }
+  /* The current step's own dot goes INVISIBLE on the vertical rail, because
+     the sliding marker is sitting on top of it — two purple dots in the same
+     place, one of which lags behind the other during the slide, is worse than
+     one that moves. It keeps its place in the layout so nothing shifts, and
+     the mobile block below turns it back on, since the horizontal track has
+     no marker. */
+  .onboarding-rail-step[data-state='current'] .onboarding-rail-dot {
+    background: transparent;
+  }
+
+  .onboarding-rail-label {
+    min-width: 0;
+    text-align: left;
+    /* --ink-muted (4.7:1), never --ink-faint (2.4:1). tokens.css calls
+       --ink-muted "the floor for real content" and --ink-faint explicitly NOT
+       text; a rail label for a step you are about to reach is real content. */
+    color: var(--ink-muted);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-base) var(--ease);
+  }
+  .onboarding-rail-step[data-state='done'] .onboarding-rail-label {
+    color: var(--ink-soft);
+  }
+  .onboarding-rail-step[data-state='done'] .onboarding-rail-label:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .onboarding-rail-step[data-state='current'] .onboarding-rail-label {
+    /* --accent-text, not --accent: tokens.css keeps the fill and the
+       text-carrying step apart, and in .neo-world the text one is darkened to
+       97 55 165 specifically so it can hold a label at readable contrast. */
+    color: var(--accent-text);
+    font-weight: var(--fw-semibold);
+  }
+  .onboarding-rail-step[data-terminal='true'] .onboarding-rail-label {
+    letter-spacing: var(--tracking-tight);
+  }
+  .onboarding-rail-step[data-terminal='true'][data-state='upcoming'] .onboarding-rail-dot {
+    border: 1px solid rgb(var(--mark-rgb) / 0.42);
+    background: var(--paper-raised);
+  }
+  /* Ready's own dot is red rather than the purple every other completed step
+     gets — it's the finish line, not one more step in the same trail, so it
+     reads as a distinct destination rather than blending into the route. */
+  .onboarding-rail-step[data-terminal='true'][data-state='done'] .onboarding-rail-dot {
+    background: var(--mark);
+  }
+
+  .onboarding-rail-count {
+    display: none;
+  }
+
+  /* ── the question and its actions ───────────────────────────────────────── */
+  .onboarding-question {
+    /* The old StepHeader carried this as a `mb-8` utility on its wrapper.
+       Losing it when the component was replaced let the state chooser's pane
+       ride up over the question's descenders. */
+    margin-bottom: var(--sp-8);
+  }
+  /* A full-page step has room to let the question breathe; the dialog does
+     not, so this is scoped to the fill variant rather than applied to both.
+    
+     The min-height is a floor, so the first control below sits at the same
+     height on every step whether that step's question wrapped to two lines or
+     its lead to one. Reserving the space is the point: a question that is
+     shorter on one screen should leave a gap, not pull everything under it
+     upwards. 5.25rem is the tallest real block (a one-line question over a
+     two-line lead) measured in the browser rather than guessed. */
+  .onboarding-card-fill .onboarding-question {
+    min-height: 5.25rem;
+    margin-bottom: var(--sp-10);
+  }
+  .onboarding-question h2 {
+    /* A question is one sentence; let it break where the sentence wants to. */
+    text-wrap: balance;
+  }
+
+  /* ── "where do you teach" ─────────────────────────────────────────────────
+     The state's outline used to sit beside the fields in its own bordered
+     card — which, at the size a card needs to hold a header and a chip row,
+     never matched the two short selects next to it and read as a second,
+     disconnected widget. It's a large watermark filling the frame now,
+     behind the fields, which are centred rather than pinned to the left:
+     decoration, not confirmation (the select's own value already says which
+     state got chosen), so it doesn't need a box, a header, or size-tuning to
+     pair with anything. */
+  /* The shell just stacks the question above the body at full height — no
+     shift here, so the question sits at the exact inset from the rail every
+     other step's question uses. */
+  .onboarding-where-shell {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* This, not .onboarding-where-layout below, is what needs to fill the
+     step's remaining height — the watermark is sized as a fraction of THIS
+     box, so it stays small if this stays small. (.onboarding-content's own
+     data-center flag is what gives the shell above something taller than the
+     question to grow into in the first place — see OnboardingWizard.jsx.)
+
+     justify-content is flex-start, not center: centering the fields within
+     this box meant their vertical position depended on their own height, so
+     the State select visibly jumped the moment the School field (and, past
+     that, an un-ingested-state notice) appeared below it and grew the group
+     taller. Top-aligned, State stays exactly where it was the instant more
+     content appears beneath it — the watermark is still centered in the
+     full height regardless, since it has its own positioning independent of
+     this. */
+  .onboarding-where-body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: flex-start;
+    min-height: 0;
+  }
+  /* Centred within the CONTENT column, margin:auto (on the fields, below)
+     still lands right of the page's true centre — the rail column and its
+     gap (11rem + --sp-10) sit to the left of that column and are never
+     counted. Shifting the body left by half of that width re-centres both
+     the fields and the watermark behind them on the whole card instead of
+     just their own column — the question above the body, outside this box,
+     is untouched by the shift. Desktop-only: on the phone breakpoint the
+     rail collapses to a strip above the content and this column IS the full
+     width, so the same shift would push it off-centre the other way. */
+  @container onboarding-step (min-width: 34rem) {
+    .onboarding-where-body {
+      transform: translateX(calc(-1 * (11rem + var(--sp-10)) / 2));
+    }
+  }
+  .onboarding-where-fields {
+    position: relative;
+    z-index: 1;
+    max-width: 26rem;
+    margin-inline: auto;
+    text-align: center;
+  }
+  /* State and School sit over the watermark rather than plain paper, so the
+     small --fs-sm label the rest of onboarding uses is harder to read here.
+     Bigger, scoped to this step only — and left-aligned over the dropdown's
+     own left edge rather than following the centred text below it, so each
+     reads as a caption anchored to its field instead of a centred title. */
+  .onboarding-where-fields .onboarding-choice-label {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    text-align: left;
+    /* Tighter than the base label's --sp-3: sitting closer over its own
+       dropdown reads as a caption belonging to that field rather than a
+       floating title. */
+    margin-bottom: var(--sp-1);
+  }
+  /* More than the base label's --sp-8, so School gets real air below
+     State's dropdown instead of crowding straight up against it — the
+     opposite of the tight margin-bottom above, which pulls each label
+     toward its OWN control rather than the one before it.
+
+     A dedicated class, not :not(:first-child): School's label lives inside
+     its own AnimatePresence motion.div, so it's the first child of ITS
+     parent — sibling-position selectors never see it as anything but a
+     first child, no matter how many fields render before it. Specificity
+     has to beat .onboarding-choice-label:first-child (which also matches,
+     for the same reason), so this compounds onto the base class rather than
+     standing alone. */
+  .onboarding-where-fields .onboarding-choice-label.onboarding-where-school-label {
+    margin-top: var(--sp-10);
+  }
+  /* The label and the control both centre, not just the block around them —
+     a left-aligned line inside a centred column reads as an accident, not a
+     choice. The chevron stays pinned to its own inset on the right rather
+     than following the centred text, same as every other select in the
+     app. */
+  .onboarding-where-fields select,
+  .onboarding-where-fields input {
+    text-align: center;
+  }
+  .onboarding-where-watermark {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  /* A container query on the card, not a viewport breakpoint: this step
+     lives inside a pane whose width has nothing to do with the window's. */
+  @container onboarding-step (min-width: 34rem) {
+    .onboarding-where-watermark {
+      display: flex;
+    }
+    .onboarding-where-watermark-svg {
+      /* Sized against the shell, which now actually fills the step's full
+         height — a fixed rem height here would either float in a much
+         bigger box (too small to read as "most of the page") or, on a short
+         window, blow past it. */
+      width: min(64rem, 98%);
+      height: 105%;
+      /* Nudged down rather than dead-centred behind the fields: centred, the
+         shape sat fully underneath State/School with nothing peeking out
+         past them. Bigger than the shell's own box (height > 100%) so the
+         outline's shoulders reach up and genuinely overlap the dropdowns
+         instead of just filling the space below them. A margin, not a
+         transform — the svg already carries its own inline transform for
+         the entrance scale, and a second transform source here would only
+         replace it again. */
+      margin-top: 2%;
+    }
+    .onboarding-where-watermark-svg path {
+      stroke: var(--accent);
+      opacity: 0.16;
+    }
+  }
+
+  /* An un-ingested state: what works, what doesn't, and how to ask. --flag,
+     not --mark: nothing has gone wrong, this is a limit being stated. */
+  .onboarding-state-request {
+    margin-top: var(--sp-4);
+    display: grid;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border: 1px solid rgb(var(--flag-rgb) / 0.25);
+    border-radius: var(--r-lg);
+    background: var(--flag-tint);
+    color: var(--ink-soft);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-relaxed);
+  }
+  .onboarding-state-request .btn {
+    justify-self: start;
+  }
+  .onboarding-state-requested {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--ok);
+    font-weight: var(--fw-medium);
+  }
+
+  /* ── the state chooser ────────────────────────────────────────────────────
+     These four classes were referenced by the JSX with no definitions at all,
+     so `npm run check:classes` failed on them and the pill and the note
+     rendered as unstyled inline text. Defined here rather than deleted from
+     the markup, because the honest "Available now / Coming soon" framing is
+     the point of the step: only Alabama's standards are ingested, and saying
+     so plainly beats either hiding the other 49 or letting a teacher pick a
+     state that silently can't ground anything. */
+  .onboarding-state-layout {
+    display: grid;
+    align-items: start;
+    gap: var(--sp-5);
+  }
+
+  /* Two columns only once the CARD is wide enough for both to be readable,
+     which is a container question, not a viewport one — see the note at the
+     call site. `container-type: inline-size` is on .onboarding-column, so this
+     measures the space the step actually has. Equal-ish halves rather than the
+     old 0.78/1.22 split: the list is the control being operated and the map is
+     confirmation, so starving the list to give the map 22rem had it backwards. */
+  @container onboarding-step (min-width: 34rem) {
+    .onboarding-state-layout[data-has-state='true'] {
+      align-items: stretch;
+      grid-template-columns: minmax(15rem, 1fr) minmax(14rem, 1fr);
+      /* Caps the pair so the step fits the card without the whole column
+         scrolling. This is what the old `lg:h-[30rem]` utility was for; it
+         belongs here now, keyed on the container. */
+      height: 22rem;
+    }
+  }
+
+  /* Both panes fill the capped row and scroll their own overflow, rather than
+     growing the row and pushing Continue out of the card. */
+  .onboarding-state-layout[data-has-state='true'] > * {
+    min-height: 0;
+  }
+
+  .onboarding-state-chooser {
+    /* Composes the app's own emboss rather than hand-rolling a shadow, so it
+       picks up both skins (.neo-world and [data-skin='skeu']) for free. */
+    background: var(--paper-raised);
+  }
+
+  .onboarding-state-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    /* Capped, and scrolling inside the cap. Fifty rows at --touch-min each is
+       taller than any card, so without this the chooser pushed Continue off
+       the bottom and the whole step had to be scrolled to reach it -- on the
+       one screen where the teacher has exactly one thing to click. The step's
+       own lg: utilities take over in the two-column layout (lg:min-h-0
+       lg:flex-1), which is why this is a max and not a height. */
+    max-height: min(20rem, 42vh);
+    overflow-y: auto;
+    flex: 1;
+    overscroll-behavior: contain;
+    background: var(--paper-sunken);
+  }
+
+  /* Not a --ok/green "success" pill: nothing has succeeded, this is a
+     statement of fact about the catalog. --accent-text on --accent-tint is the
+     app's own "this is the live one" treatment. */
+  .onboarding-state-available {
+    flex-shrink: 0;
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-full);
+    background: var(--accent-tint);
+    color: var(--accent-text);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+
+
+  .onboarding-lead {
+    /* --measure-form, not --measure-narrow. The 30rem cap was set while the
+       card was 58rem wide; against the full-page column it wrapped a
+       two-line sentence onto four. Still capped -- a line of prose the full
+       46rem wide is past comfortable reading measure. */
+    max-width: var(--measure-form);
+    margin-top: var(--sp-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-relaxed);
+  }
+
+  .onboarding-choice-label {
+    /* Explicit, because this renders as a <label> when it names a field and a
+       <label> is inline by default — which put "The name on your plans" beside
+       its input instead of above it, and collapsed the margins below. */
+    display: block;
+    margin-top: var(--sp-8);
+    margin-bottom: var(--sp-3);
+    color: var(--ink);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+  }
+  .onboarding-choice-label:first-child {
+    margin-top: 0;
+  }
+
+  .onboarding-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--sp-4);
+  }
+
+  /* One shared footer makes the primary destination physically stable across
+     every question — especially important when a profile form, course browser,
+     and document list all have radically different heights. Skip shares this
+     fixed line, right-aligned as the alternate route rather than a peer of
+     Continue. */
+  .onboarding-footer {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    flex-shrink: 0;
+    grid-template-columns: 11rem minmax(0, var(--measure));
+    justify-content: center;
+    gap: var(--sp-10);
+    padding: var(--sp-3) var(--sp-10) calc(var(--sp-3) + var(--safe-b));
+    border-top: 1px solid rgb(var(--edge-rgb) / 0.7);
+    background: rgb(var(--paper-raised-rgb) / 0.68);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .onboarding-footer .onboarding-actions {
+    grid-column: 2;
+    justify-content: flex-end;
+    min-height: var(--touch-min-lg);
+    padding: 0;
+  }
+  /* The teacher's own chosen icon (or initials, if they left it on the
+     default), pinned to the footer's true corner — inset less than Back's
+     own rail-aligned column, so the two sit side by side rather than
+     overlapping on every step after Profile. */
+  .onboarding-footer-avatar {
+    position: absolute;
+    left: var(--sp-3);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--r-full);
+    background: var(--paper-sunken);
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    font-weight: var(--fw-bold);
+    line-height: 1;
+  }
+
+  /* A semantic button styled as a clear forward cue. Violet stays scoped to
+     onboarding's one moment of momentum; the typography remains the app's
+     normal interface face. */
+  .onboarding-continue {
+    display: inline-flex;
+    min-height: var(--touch-min-lg);
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) 0;
+    color: var(--onboarding-forward);
+    font-family: var(--font-ui);
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--lh-tight);
+    transition: color var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease-glide);
+  }
+  .onboarding-continue:hover:not(:disabled) {
+    color: var(--accent);
+    transform: translateX(var(--sp-1));
+  }
+  .onboarding-continue svg {
+    width: 1.15em;
+    height: 1.15em;
+    stroke-width: 1.7;
+    transition: transform var(--t-fast) var(--ease-glide);
+  }
+  .onboarding-continue:hover:not(:disabled) svg {
+    transform: translateX(var(--sp-2));
+  }
+  .onboarding-continue:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .onboarding-continue:focus-visible,
+  .onboarding-quiet:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+  }
+
+  .onboarding-quiet {
+    min-height: var(--touch-min);
+    padding: var(--sp-2) 0;
+    color: var(--ink-muted);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-fast) var(--ease);
+  }
+  .onboarding-quiet:hover {
+    color: var(--ink);
+  }
+  /* Grid column 1 is the footer's share of the same 11rem rail column
+     .onboarding-body uses — same width, same gap, same centred grid — so
+     Back sits directly under the rail instead of hugging the card's own
+     edge. Skip sits on the footer's centre line, independent of Continue's
+     grid column, so both stay put regardless of how wide the current step's
+     Continue label is. */
+  .onboarding-footer-back {
+    grid-column: 1;
+    align-self: center;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .onboarding-footer-skip {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* ── phone ──────────────────────────────────────────────────────────────── */
+  @media (max-width: 767.98px) {
+    .onboarding-ground {
+      padding: 0;
+    }
+    .onboarding-card {
+      max-width: none;
+      border-radius: 0;
+    }
+    .onboarding-column {
+      min-height: 0;
+    }
+    .onboarding-content {
+      min-height: 0;
+    }
+    .onboarding-card-dialog {
+      height: var(--app-h);
+    }
+    .onboarding-body {
+      grid-template-columns: minmax(0, 1fr);
+      justify-content: stretch;
+      gap: var(--sp-5);
+      padding: var(--sp-5) var(--sp-5) var(--sp-4);
+    }
+    /* A vertical rail with seven labels doesn't fit 375px, and a second
+       component for the same information is a second thing to keep in step. So
+       the ONE <ol> flips to a row of equal hairline segments — a slim progress
+       track — with every label clipped except the current step's. */
+    .onboarding-rail-slot {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+    .onboarding-rail {
+      flex-direction: row;
+      gap: var(--sp-1);
+    }
+    .onboarding-rail-step {
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+    .onboarding-rail-step::before {
+      content: none;
+    }
+    .onboarding-rail-dot {
+      height: 3px;
+      width: auto;
+      box-shadow: none;
+    }
+    .onboarding-rail-marker {
+      display: none;
+    }
+    /* The horizontal track has no marker to carry it, so the segment itself
+       takes the accent back. */
+    .onboarding-rail-step[data-state='current'] .onboarding-rail-dot {
+      background: var(--accent);
+      box-shadow: none;
+    }
+    /* Clipped, not display:none — the <ol> is still the accessible source of
+       truth for position, so every label has to stay in the a11y tree. */
+    .onboarding-rail-step:not([aria-current]) .onboarding-rail-label {
+      position: absolute;
+      height: 1px;
+      width: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .onboarding-rail-step[data-state='current'] .onboarding-rail-label {
+      margin-top: var(--sp-2);
+    }
+    .onboarding-rail-count {
+      display: block;
+    }
+    .onboarding-actions {
+      flex-wrap: wrap;
+    }
+    .onboarding-footer {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+      padding: var(--sp-3) var(--sp-5) calc(var(--sp-3) + var(--safe-b));
+    }
+    .onboarding-footer .onboarding-actions {
+      grid-column: 1;
+    }
+  }
+
   /* ══ THE RAIL ═════════════════════════════════════════════════════════════
      Was frosted glass (a blur, lit by .app-glow behind it) until the rail
      went neomorphic (.neo-world, on request) — an opaque emboss and a
@@ -211,12 +1236,14 @@
     z-index: -1;
     width: 100%;
     height: 100%;
-    /* Anchored closer to the center and slightly more opaque so they are visible through the glass panels more often */
-    background: radial-gradient(circle min(25vw, 400px) at 30% 30%, rgb(167 139 250 / 0.55) 0%, transparent 100%),
-      radial-gradient(circle min(22vw, 350px) at 70% 25%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
-      radial-gradient(circle min(24vw, 380px) at 75% 70%, rgb(251 146 60 / 0.45) 0%, transparent 100%),
-      radial-gradient(circle min(26vw, 420px) at 45% 75%, rgb(52 211 153 / 0.45) 0%, transparent 100%),
-      radial-gradient(circle min(22vw, 350px) at 25% 60%, rgb(96 165 250 / 0.45) 0%, transparent 100%);
+    /* Keep the app atmosphere airy and mostly neutral: cool blue and
+       periwinkle do the ambient work, while violet remains a small brand
+       accent instead of tinting every surface purple. */
+    background: radial-gradient(circle min(25vw, 400px) at 30% 30%, rgb(147 197 253 / 0.24) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 350px) at 70% 25%, rgb(224 231 255 / 0.3) 0%, transparent 100%),
+      radial-gradient(circle min(24vw, 380px) at 75% 70%, rgb(196 181 253 / 0.16) 0%, transparent 100%),
+      radial-gradient(circle min(26vw, 420px) at 45% 75%, rgb(226 232 240 / 0.28) 0%, transparent 100%),
+      radial-gradient(circle min(22vw, 350px) at 25% 60%, rgb(125 211 252 / 0.18) 0%, transparent 100%);
     /* Tighter background size so they don't drift completely off-screen */
     background-size: 140% 140%;
     /* Slightly faster than before but still slow and subtle */
@@ -242,37 +1269,7 @@
      of .app-blob). Positioned against the wizard's own `relative overflow-
      hidden` wrapper, not the scrim, so it never bleeds past the dialog's
      rounded corners. */
-  .onboarding-blob {
-    position: absolute;
-    inset: 0;
-    /* -1, not 0: the dialog panel beside it in markup is only position:
-       relative (no z-index of its own), which is enough to paint above a
-       NEGATIVE z-index sibling but not above a 0/auto one — same reasoning
-       as .app-blob under AppShell's #main. */
-    z-index: -1;
-    /* The four circles below all fade to transparent at their own edges —
-       between them (and there's real gap, four circles never tile edge to
-       edge) there was nothing but the dialog-scrim's own translucency and,
-       past that, the real page underneath. backdrop-filter on the panel in
-       front is supposed to blur that away regardless, but on a device with
-       Reduce Transparency on, in Low Power Mode, or just a weaker GPU, that
-       blur can render weaker than expected or not at all — and the panel
-       was still translucent enough (before this) that a stray "Good
-       evening" showed straight through the gaps, blur or no blur. A solid
-       base color under the gradients means there is never a truly empty
-       pixel here for the real page to occupy, independent of whether the
-       blur actually renders on a given device. */
-    background: radial-gradient(circle min(40vw, 320px) at 20% 20%, rgb(167 139 250 / 0.55) 0%, transparent 100%),
-      radial-gradient(circle min(35vw, 280px) at 80% 15%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
-      radial-gradient(circle min(38vw, 300px) at 85% 80%, rgb(251 146 60 / 0.45) 0%, transparent 100%),
-      radial-gradient(circle min(40vw, 320px) at 15% 85%, rgb(52 211 153 / 0.45) 0%, transparent 100%),
-      rgb(var(--paper-raised-rgb) / 0.92);
-    /* One size per gradient image layer — the trailing plain color above is
-       background-color, not a fifth sizeable image layer. */
-    background-size: 160% 160%;
-    animation: land-blob-drift 18s ease-in-out infinite alternate;
-    pointer-events: none;
-  }
+  
 
   /* One step's content sliding in past the last — --onboarding-dir is +1
      going forward, -1 going back (OnboardingWizard.jsx's own `direction`
@@ -281,49 +1278,410 @@
      SmoothHeight around it, which animates the step slot's height at the
      same time — a one-line welcome and the documents step's whole list
      shouldn't jump the dialog to a new size instantly. */
-  .onboarding-step {
-    animation: onboarding-step-enter 280ms var(--ease-out) both;
+  
+  /* Frosted Mac Classic: a pale, glassy desktop backdrop with cool window
+     light and just a trace of periwinkle. The onboarding card stays the focus;
+     the atmosphere should feel like a calm system surface behind it, not a
+     saturated purple hero. */
+  
+  
+  
+  
+  
+  
+  /* Course selection is the main decision on this step. Treat it as a
+     working surface, not a dropdown: the category rail and the course list
+     should occupy most of the card so teachers can scan before choosing. */
+  .onboarding-class-step {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
   }
-  @keyframes onboarding-step-enter {
-    from {
-      opacity: 0;
-      transform: translateX(calc(var(--onboarding-dir, 1) * 20px));
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
+  /* Three dashes, one per screen in the course step's own grade/discipline/
+     course flow — a sub-progress bar for a sub-flow, filling left to right
+     as each screen is reached. Distinct from the wizard's own rail, which
+     only advances once per whole step. */
+  .onboarding-subprogress {
+    display: flex;
+    /* Centred over the list's own width (shares its max-width), not spanning
+       the full card edge-to-edge — a small cluster of dashes sitting above
+       the "All grades" row, not a bar stretched under the question. */
+    justify-content: center;
+    gap: var(--sp-2);
+    max-width: var(--measure-form);
+    margin-bottom: var(--sp-4);
   }
+  .onboarding-subprogress-dash {
+    width: 2.5rem;
+    height: 0.25rem;
+    border-radius: var(--r-full);
+    background: rgb(var(--edge-strong-rgb) / 0.6);
+    transition: background var(--t-base) var(--ease);
+  }
+  .onboarding-subprogress-dash-filled {
+    background: var(--accent);
+  }
+  /* The escape hatch on the discipline screen, into SearchSubStep. Quiet on
+     purpose — a link, not a button — since browsing is the intended default
+     path and this is for the exception. */
+  .onboarding-course-search-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-4);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-fast) var(--ease);
+  }
+  .onboarding-course-search-link:hover {
+    color: var(--accent);
+  }
+  .onboarding-course-search-input {
+    display: block;
+    width: 100%;
+    max-width: var(--measure-form);
+    min-height: var(--touch-min-lg);
+    margin-bottom: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-lg);
+    color: var(--ink);
+    font-size: var(--fs-base);
+  }
+  /* The course step's three sequential screens (grade, discipline, course)
+     share this one row style — a big single-choice list, the reference
+     point being a typical "pick one to continue" onboarding quiz rather
+     than a dense browsable table. Replaced the old three-column browser
+     (a bordered box holding a grade rail, a discipline rail, and a
+     FrameworkPicker course list all visible at once) entirely — that
+     layout and this one don't mix, so there's nothing left to share with
+     .fw-picker's own styling here. */
+  .onboarding-bigchoice-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    max-width: var(--measure-form);
+  }
+  .onboarding-bigchoice {
+    display: flex;
+    min-height: var(--touch-min-lg);
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid rgb(var(--edge-rgb) / 0.7);
+    border-radius: var(--r-lg);
+    background: rgb(var(--paper-raised-rgb) / 0.6);
+    color: var(--ink);
+    text-align: left;
+    transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+  }
+  .onboarding-bigchoice:hover {
+    border-color: rgb(var(--edge-strong-rgb) / 0.9);
+    background: rgb(var(--paper-raised-rgb) / 0.9);
+  }
+  .onboarding-bigchoice-selected,
+  .onboarding-bigchoice-selected:hover {
+    border-color: var(--accent);
+    background: rgb(var(--accent-rgb) / 0.08);
+  }
+  .onboarding-bigchoice-icon {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--r-md);
+    background: rgb(var(--paper-sunken-rgb) / 0.8);
+    color: var(--ink-soft);
+  }
+  .onboarding-bigchoice-selected .onboarding-bigchoice-icon {
+    background: rgb(var(--accent-rgb) / 0.14);
+    color: var(--accent);
+  }
+  .onboarding-bigchoice-text {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+  .onboarding-bigchoice-label {
+    font-size: var(--fs-base);
+    font-weight: var(--fw-medium);
+  }
+  .onboarding-bigchoice-sublabel {
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+  }
+  .onboarding-bigchoice-count {
+    flex-shrink: 0;
+    color: var(--ink-faint);
+    font-size: var(--fs-xs);
+  }
+  .onboarding-bigchoice-radio {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.9);
+    border-radius: var(--r-full);
+    color: #fff;
+  }
+  .onboarding-bigchoice-selected .onboarding-bigchoice-radio {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
 
   /* How far in, and how much is left. The flow's only answer to that was the
      eyebrow's "Step 1 of 3" — which was hardcoded on three steps of a six-step
      wizard, so it was both the only progress signal and a wrong one. Dots
      rather than a bar: the count is small enough to read at a glance, and a
      bar at four segments reads as a loading indicator for something else. */
-  .onboarding-progress {
+  
+  
+  
+
+  /* The closing orientation is intentionally a small sequence rather than
+     three more feature cards. It gives a teacher a memorable path into the
+     planner without making the last setup screen feel like another form. */
+  .onboarding-next-steps {
+    position: relative;
     display: flex;
-    justify-content: center;
-    gap: var(--sp-2);
-    margin-top: var(--sp-6);
+    flex-direction: column;
+    gap: var(--sp-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
-  .onboarding-progress span {
-    width: 22px;
-    height: 3px;
+  .onboarding-setup-summary {
+    margin: 0;
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid rgb(var(--edge-rgb) / 0.78);
+    border-radius: var(--r-lg);
+    background: rgb(var(--paper-raised-rgb) / 0.42);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.48),
+      0 8px 18px rgb(var(--neo-dark-rgb) / 0.04);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .onboarding-launch-layout {
+    display: grid;
+    grid-template-columns: minmax(12rem, 0.72fr) minmax(0, 1.28fr);
+    align-items: start;
+    gap: var(--sp-5);
+  }
+  .onboarding-launch-guide {
+    min-width: 0;
+  }
+  .onboarding-launch-guide-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    margin: 0 0 var(--sp-3);
+  }
+  .onboarding-setup-summary-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+  }
+  .onboarding-setup-summary-ready {
     border-radius: 999px;
-    background: var(--edge-strong);
-    transition:
-      background var(--t-base) var(--ease),
-      width var(--t-base) var(--ease);
+    background: rgb(var(--ok-rgb) / 0.1);
+    color: var(--ok);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 0.25rem 0.5rem;
+    text-transform: uppercase;
   }
-  .onboarding-progress span.is-done {
-    background: var(--accent);
+  .onboarding-setup-summary-copy,
+  .onboarding-setup-summary-footer {
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .onboarding-step {
-      animation: none;
+  .onboarding-setup-summary-copy {
+    margin: -0.25rem 0 var(--sp-4);
+  }
+  .onboarding-setup-summary-footer {
+    margin: var(--sp-4) 0 0;
+    padding-top: var(--sp-3);
+    border-top: 1px solid rgb(var(--edge-rgb) / 0.58);
+  }
+  .onboarding-setup-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-4) var(--sp-3);
+  }
+  .onboarding-setup-summary-grid div {
+    min-width: 0;
+  }
+  .onboarding-setup-summary-item {
+    position: relative;
+    padding-right: 2.5rem;
+  }
+  .onboarding-setup-summary-grid span,
+  .onboarding-setup-summary-grid strong {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+  .onboarding-setup-summary-grid span {
+    color: var(--ink-faint);
+    font-size: var(--fs-2xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .onboarding-setup-summary-grid strong {
+    margin-top: 0.2rem;
+    color: var(--ink);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .onboarding-setup-summary-edit {
+    position: absolute;
+    top: -0.1rem;
+    right: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent-text);
+    cursor: pointer;
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    padding: 0.15rem 0;
+  }
+  .onboarding-setup-summary-edit:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .onboarding-next-steps::before {
+    content: '';
+    position: absolute;
+    top: 1.45rem;
+    bottom: 1.45rem;
+    left: 1.05rem;
+    width: 1px;
+    background: rgb(var(--accent-rgb) / 0.2);
+  }
+  .onboarding-next-step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2.1rem 2.25rem minmax(0, 1fr);
+    align-items: start;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    border: 1px solid rgb(var(--edge-rgb) / 0.78);
+    border-radius: var(--r-lg);
+    background: rgb(var(--paper-raised-rgb) / 0.48);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.48),
+      0 8px 18px rgb(var(--neo-dark-rgb) / 0.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .onboarding-next-step.is-primary {
+    border-color: rgb(var(--accent-rgb) / 0.3);
+    background: linear-gradient(120deg, rgb(var(--accent-rgb) / 0.11), rgb(var(--paper-raised-rgb) / 0.55));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.56),
+      0 10px 22px rgb(var(--accent-rgb) / 0.08);
+  }
+  .onboarding-next-step-number {
+    display: flex;
+    height: 2.1rem;
+    width: 2.1rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(var(--accent-rgb) / 0.24);
+    border-radius: 999px;
+    background: rgb(var(--accent-rgb) / 0.08);
+    color: var(--accent-text);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  .onboarding-next-step-icon {
+    display: flex;
+    height: 2.1rem;
+    width: 2.1rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-md);
+    background: rgb(var(--accent-rgb) / 0.1);
+  }
+  .onboarding-next-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+    margin-top: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-md);
+    background: rgb(var(--accent-rgb) / 0.07);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    line-height: 1.55;
+    /* Scoped .neo-raised primitives: this panel isn't under AppShell's own
+       .neo-world (onboarding renders standalone, pre-workspace), so the CTA
+       below would otherwise resolve rgb(var(--neo-dark-rgb) / …) against
+       nothing and render with no shadow at all. Same near-white recalibration
+       .land-bar's own block already does for the landing page's ground,
+       reused verbatim since this panel's paper is just as light. */
+    --neo-light-rgb: 255 255 255;
+    --neo-dark-rgb: 214 214 219;
+  }
+  .onboarding-next-note strong {
+    color: var(--ink);
+    font-weight: 650;
+  }
+  .onboarding-next-note svg {
+    flex: 0 0 auto;
+    margin-top: 0.1rem;
+    color: var(--accent-text);
+  }
+  .onboarding-next-note span {
+    flex: 1 1 auto;
+  }
+  .onboarding-next-note-cta {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding: 0.5rem var(--sp-4);
+    border: none;
+    border-radius: var(--r-md);
+    background: var(--paper-raised);
+    color: var(--accent-text);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    cursor: pointer;
+  }
+  .onboarding-next-note-cta:disabled {
+    color: var(--ink-faint);
+    cursor: default;
+  }
+  
+  
+  
+  
+  @media (max-width: 680px) {
+    .onboarding-launch-layout {
+      grid-template-columns: 1fr;
     }
-    .onboarding-progress span {
-      transition: none;
+    .onboarding-setup-summary-heading {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .onboarding-setup-summary-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--sp-3) var(--sp-4);
     }
   }
 
@@ -608,6 +1966,42 @@
     gap: var(--sp-2);
   }
 
+  .plan-feedback-form {
+    display: grid;
+    gap: var(--sp-2);
+    width: min(320px, 100%);
+    margin-top: var(--sp-2);
+    padding: var(--sp-3);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: var(--paper);
+    box-shadow: 2px 2px 6px rgb(var(--neo-dark-rgb) / 0.2);
+    font-size: var(--fs-xs);
+  }
+
+  .plan-feedback-form label {
+    display: grid;
+    gap: var(--sp-1);
+    font-weight: 600;
+  }
+
+  .plan-feedback-form select,
+  .plan-feedback-form textarea {
+    width: 100%;
+    padding: var(--sp-2);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
+  }
+
+  .plan-feedback-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+  }
+
   /* ── the plan, on a phone ────────────────────────────────────────────────
      One card per screen. The scroller owns horizontal panning and the page
      keeps vertical, which is what stops an iOS swipe two degrees off horizontal
@@ -728,6 +2122,34 @@
     color: var(--ink-muted);
     cursor: pointer;
     border-top: 1px solid var(--edge);
+  }
+
+  /* The settings control changes the actual reading surface, not just its
+     selected pill. Keep the three values scoped to plan content so labels and
+     app chrome retain their hierarchy while the lesson text becomes easier to
+     scan or more comfortable to read. */
+  .doc-shell {
+    --plan-editor-size: var(--fs-sm);
+    --plan-editor-leading: var(--lh-relaxed);
+  }
+  :root[data-editor-text='small'] .doc-shell {
+    --plan-editor-size: 0.75rem;
+    --plan-editor-leading: 1.55;
+  }
+  :root[data-editor-text='large'] .doc-shell {
+    --plan-editor-size: 0.9375rem;
+    --plan-editor-leading: 1.75;
+  }
+  .doc-shell .plan-table {
+    font-size: var(--plan-editor-size);
+  }
+  .doc-shell .plan-table th,
+  .doc-shell .plan-table td {
+    line-height: var(--plan-editor-leading);
+  }
+  .doc-shell .plan-day-card .plan-field-value {
+    font-size: var(--plan-editor-size);
+    line-height: var(--plan-editor-leading);
   }
 
   /* The escape hatch. The app promises the screen and the document agree, so a
@@ -2281,6 +3703,26 @@
     /* --ease-glide, not --ease-out — same curve swap as toast-in, above. */
     animation: dialog-in var(--t-base) var(--ease-glide) both;
   }
+  /* Support is a writing surface, not a confirmation prompt. Give the
+     teacher enough room to describe what happened without making the
+     composer feel like a tiny form inside a large overlay. */
+  .dialog.dialog-support {
+    width: min(700px, calc(100vw - 2rem));
+    max-height: min(88dvh, 780px);
+  }
+  .support-message-input {
+    min-height: clamp(240px, 40dvh, 390px);
+  }
+  @media (max-width: 640px) {
+    .dialog.dialog-support {
+      width: calc(100vw - 1rem);
+      max-height: calc(100dvh - 1rem);
+      padding: var(--sp-5);
+    }
+    .support-message-input {
+      min-height: clamp(210px, 36dvh, 320px);
+    }
+  }
   .dialog.is-closing {
     animation: dialog-out var(--t-fast) var(--ease) both;
   }
@@ -2308,6 +3750,493 @@
     padding: 0;
     display: flex;
     flex-direction: column;
+  }
+  .dialog.dialog-checkout {
+    width: min(760px, 96vw);
+    max-height: min(92dvh, 860px);
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--paper-raised);
+  }
+  .checkout-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-6) var(--sp-3);
+  }
+  .checkout-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .checkout-brand-mark {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid rgb(var(--accent-rgb) / 0.32);
+    border-radius: 10px;
+    color: var(--accent-text);
+    background: rgb(var(--accent-rgb) / 0.12);
+  }
+  .checkout-flow-label {
+    margin: 1px 0 0 !important;
+    color: var(--ink-muted) !important;
+    font-size: var(--fs-2xs) !important;
+  }
+  .checkout-summary {
+    display: grid;
+    grid-template-columns: 78px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--sp-4);
+    margin: 0 var(--sp-6);
+    padding: var(--sp-4);
+    border: 1px solid rgb(var(--accent-rgb) / 0.22);
+    border-radius: var(--r-md);
+    background: linear-gradient(135deg, rgb(var(--accent-rgb) / 0.13), rgb(var(--paper-inset-rgb) / 0.68));
+  }
+  .checkout-product-art {
+    display: grid;
+    width: 78px;
+    height: 78px;
+    place-items: center;
+    border: 1px solid rgb(var(--accent-rgb) / 0.26);
+    border-radius: 20px;
+    color: var(--accent-text);
+    background:
+      radial-gradient(circle at 30% 24%, rgb(var(--accent-rgb) / 0.7), transparent 44%),
+      linear-gradient(145deg, rgb(var(--accent-rgb) / 0.2), rgb(var(--paper-inset-rgb) / 0.84));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 12px 24px rgb(0 0 0 / 0.14);
+  }
+  .checkout-product-art img,
+  .billing-free-art img {
+    width: 62%;
+    height: 62%;
+    object-fit: contain;
+  }
+  .checkout-summary-kicker {
+    margin: 0 0 var(--sp-1) !important;
+    color: var(--accent-text) !important;
+    font-size: var(--fs-2xs) !important;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .checkout-summary-copy {
+    min-width: 0;
+  }
+  .checkout-summary-copy h2 {
+    margin: 0 !important;
+    font-size: var(--fs-lg) !important;
+    letter-spacing: -0.02em;
+  }
+  .checkout-summary-copy p {
+    max-width: 32rem;
+    margin: var(--sp-1) 0 0 !important;
+    color: var(--ink-muted) !important;
+    font-size: var(--fs-xs) !important;
+    line-height: 1.45;
+  }
+  .checkout-price-card {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .checkout-price-card strong {
+    color: var(--ink);
+    font-size: var(--fs-md);
+    font-weight: var(--fw-bold);
+    white-space: nowrap;
+  }
+  .checkout-price-card span {
+    color: var(--ink-muted);
+    font-size: var(--fs-2xs);
+  }
+  .checkout-kicker {
+    margin: 0 !important;
+    color: var(--accent) !important;
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs) !important;
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+  .checkout-price {
+    margin-top: var(--sp-1) !important;
+    color: var(--ink-soft) !important;
+    font-size: var(--fs-xs) !important;
+  }
+  .checkout-close {
+    display: inline-flex;
+    min-width: var(--touch-min);
+    min-height: var(--touch-min);
+    align-items: center;
+    justify-content: center;
+    margin: -8px -8px 0 0;
+    border: 0;
+    border-radius: var(--r-md);
+    color: var(--ink-muted);
+    background: transparent;
+    cursor: pointer;
+  }
+  .checkout-close:hover,
+  .checkout-close:focus-visible {
+    color: var(--ink);
+    background: rgb(var(--edge-rgb) / 0.45);
+  }
+  .checkout-trust-line,
+  .checkout-footnote {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+  }
+  .checkout-trust-line {
+    justify-content: space-between;
+    margin: var(--sp-3) var(--sp-6) 0;
+    padding: var(--sp-3) 0;
+    border-bottom: 1px solid var(--edge);
+  }
+  .checkout-trust-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    color: var(--ink-soft);
+    font-weight: var(--fw-medium);
+  }
+  .checkout-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-6) var(--sp-5);
+  }
+  .checkout-preview-notice {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: var(--sp-3) var(--sp-6) 0;
+    padding: var(--sp-3);
+    border: 1px solid rgb(var(--accent-rgb) / 0.2);
+    border-radius: var(--r-sm);
+    color: var(--ink-muted);
+    background: rgb(var(--accent-rgb) / 0.08);
+    font-size: var(--fs-xs);
+  }
+  .checkout-preview-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.13);
+  }
+  .checkout-payment-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    color: var(--ink-soft);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+  }
+  .checkout-payment-heading > span:last-child {
+    color: var(--ink-faint);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-regular);
+  }
+  .checkout-preview-express {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-2);
+  }
+  .checkout-preview-wallet {
+    min-height: var(--touch-min-lg);
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-sm);
+    color: var(--ink);
+    background: var(--paper-inset);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+  }
+  .checkout-preview-wallet:hover {
+    border-color: rgb(var(--accent-rgb) / 0.65);
+    background: rgb(var(--accent-rgb) / 0.08);
+    transform: translateY(-1px);
+  }
+  .checkout-preview-field {
+    display: grid;
+    gap: var(--sp-1);
+    color: var(--ink-soft);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+  }
+  .checkout-preview-field input,
+  .checkout-preview-card {
+    min-height: var(--touch-min-lg);
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--sp-3);
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--r-sm);
+    color: var(--ink-muted);
+    background: var(--paper-raised);
+    font: inherit;
+    font-weight: var(--fw-regular);
+  }
+  .checkout-preview-card {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: var(--sp-3);
+  }
+  .checkout-preview-card span:not(:first-child) {
+    padding-left: var(--sp-3);
+    border-left: 1px solid var(--edge);
+  }
+  .checkout-payment-block {
+    padding: var(--sp-3);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+    background: rgb(var(--paper-inset-rgb) / 0.55);
+  }
+  .checkout-express:empty {
+    display: none;
+  }
+  .checkout-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    color: var(--ink-faint);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+  .checkout-divider::before,
+  .checkout-divider::after {
+    height: 1px;
+    flex: 1;
+    content: '';
+    background: var(--edge);
+  }
+  .checkout-loading {
+    min-height: 280px;
+    display: grid;
+    place-items: center;
+    padding: var(--sp-6);
+    color: var(--ink-muted);
+    font-size: var(--fs-sm);
+  }
+  .checkout-error-state {
+    display: grid;
+    gap: var(--sp-4);
+    padding: var(--sp-6);
+  }
+  .checkout-error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+  .checkout-error-state p,
+  .checkout-error {
+    color: var(--mark) !important;
+  }
+  .checkout-submit {
+    width: 100%;
+    min-height: var(--touch-min-lg);
+    border-radius: var(--r-md);
+    font-weight: var(--fw-bold);
+  }
+  .checkout-footnote {
+    padding: var(--sp-3) var(--sp-6);
+    padding-bottom: calc(var(--sp-5) + var(--safe-b));
+    border-top: 1px solid var(--edge);
+    background: rgb(var(--paper-inset-rgb) / 0.42);
+  }
+  .billing-free-card {
+    color: var(--ink);
+  }
+  .billing-free-main {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--sp-5);
+    min-height: 250px;
+    padding: var(--sp-8);
+    background:
+      radial-gradient(circle at 8% 20%, rgb(var(--accent-rgb) / 0.18), transparent 32%),
+      linear-gradient(135deg, rgb(var(--accent-rgb) / 0.08), transparent 62%);
+  }
+  .billing-free-art {
+    display: grid;
+    width: 112px;
+    height: 112px;
+    place-items: center;
+    border: 1px solid rgb(var(--accent-rgb) / 0.26);
+    border-radius: 24px;
+    color: var(--accent-text);
+    background:
+      radial-gradient(circle at 30% 24%, rgb(var(--accent-rgb) / 0.78), transparent 44%),
+      linear-gradient(145deg, rgb(var(--accent-rgb) / 0.22), rgb(var(--paper-inset-rgb) / 0.88));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 14px 28px rgb(0 0 0 / 0.16);
+  }
+  .billing-free-kicker {
+    margin: 0 !important;
+    color: var(--accent-text) !important;
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs) !important;
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+  .billing-free-price {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    margin-top: var(--sp-4);
+  }
+  .billing-free-price strong {
+    color: var(--ink);
+    font-size: clamp(1.65rem, 4vw, 2.25rem);
+    letter-spacing: -0.04em;
+  }
+  .billing-free-price span {
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+  }
+  .billing-free-benefits {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    border-top: 1px solid var(--edge);
+    border-bottom: 1px solid var(--edge);
+    background: var(--edge);
+  }
+  .billing-free-benefits > div {
+    min-height: 112px;
+    padding: var(--sp-5) var(--sp-8);
+    background: rgb(var(--paper-sunken-rgb) / 0.56);
+  }
+  .billing-free-benefits p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    line-height: 1.45;
+  }
+  .billing-free-benefits .billing-free-benefit-title {
+    margin-bottom: var(--sp-1);
+    color: var(--ink);
+    font-weight: var(--fw-bold);
+  }
+  .billing-free-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    min-height: 104px;
+    padding: var(--sp-6) var(--sp-8);
+  }
+  .billing-free-action-copy {
+    min-width: 0;
+  }
+  .billing-free-action-copy p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    line-height: 1.45;
+  }
+  .billing-free-action-copy .billing-free-benefit-title {
+    margin-bottom: var(--sp-1);
+    color: var(--ink);
+    font-weight: var(--fw-bold);
+  }
+  .billing-free-cta {
+    min-width: 148px;
+  }
+  .billing-free-secure {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--fs-2xs);
+  }
+  @media (max-width: 640px) {
+    .dialog-scrim:has(.dialog-checkout) {
+      align-items: stretch;
+      padding: 0;
+    }
+    .dialog.dialog-checkout {
+      width: 100%;
+      min-height: 100dvh;
+      max-height: 100dvh;
+      border-right: 0;
+      border-left: 0;
+      border-radius: 0;
+    }
+    .dialog-checkout .checkout-header {
+      padding-top: calc(var(--sp-5) + var(--safe-t));
+      padding-right: calc(var(--sp-5) + var(--safe-r));
+      padding-left: calc(var(--sp-5) + var(--safe-l));
+    }
+    .dialog-checkout .checkout-trust-line,
+    .dialog-checkout .checkout-form,
+    .dialog-checkout .checkout-footnote {
+      padding-right: calc(var(--sp-5) + var(--safe-r));
+      padding-left: calc(var(--sp-5) + var(--safe-l));
+    }
+    .dialog-checkout .checkout-summary {
+      margin-right: calc(var(--sp-5) + var(--safe-r));
+      margin-left: calc(var(--sp-5) + var(--safe-l));
+      grid-template-columns: 64px minmax(0, 1fr);
+      align-items: start;
+    }
+    .dialog-checkout .checkout-product-art {
+      width: 64px;
+      height: 64px;
+      border-radius: 17px;
+    }
+    .dialog-checkout .checkout-price-card {
+      grid-column: 2;
+      align-items: flex-start;
+      margin-top: calc(var(--sp-1) * -1);
+    }
+    .billing-free-main {
+      grid-template-columns: 64px minmax(0, 1fr);
+      gap: var(--sp-3);
+      min-height: 0;
+      padding: var(--sp-5);
+    }
+    .billing-free-art {
+      width: 64px;
+      height: 64px;
+      border-radius: 17px;
+    }
+    .billing-free-benefits {
+      grid-template-columns: 1fr;
+    }
+    .billing-free-benefits > div,
+    .billing-free-action {
+      padding-right: var(--sp-5);
+      padding-left: var(--sp-5);
+    }
+    .billing-free-action {
+      align-items: stretch;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .billing-free-cta {
+      width: 100%;
+    }
+    .billing-free-secure {
+      justify-content: center;
+    }
   }
   @keyframes dialog-in {
     from {
@@ -3713,7 +5642,20 @@
     .doc-head .doc-download .font-medium { display: none; }
     .doc-head .btn-icon { min-width: 34px; min-height: 34px; }
   }
+  /* `container: doc-port / size`, not inline-size, because the quiz's sticky
+     passage pane needs the scroll port's HEIGHT (100cqh) and its WIDTH — both
+     of which .doc-body has independently of its contents: it is flex:1 with
+     min-height:0 inside a column flex, so size containment changes nothing
+     about how it lays out. It was previously guessing at both with
+     `calc(100vh - 150px)` and a `@media (max-width: 900px)` query, neither of
+     which describes this box: the overlay is inset left:64px, carries a 54px
+     .doc-head, and becomes a min(82vw, 680px) tablet side sheet or a
+     composer-height-capped phone bottom sheet. Safe for position:fixed
+     descendants — Citation.jsx portals its popover to document.body, and
+     .artifact-overlay's own backdrop-filter is already the containing block
+     for anything that didn't. */
   .doc-body {
+    container: doc-port / size;
     min-height: 0;
     flex: 1;
     overflow-y: auto;
@@ -3812,6 +5754,13 @@
     max-width: var(--artifact-w);
     margin: 0 auto;
     background: var(--paper-raised);
+  }
+  /* 900px minus .doc-sheet's own 42px gutters left the paired layout 816px to
+     split two ways — a ~370px column for prose. A quiz carrying passages is
+     the one body in this shell that is genuinely two documents wide, so it
+     takes the token set's wide measure instead. */
+  .doc-sheet-plain:has(.quiz-body.has-passages) {
+    max-width: var(--measure-wide);
   }
   .detail-card-stack {
     display: flex;
@@ -3918,6 +5867,353 @@
     font-size: var(--fs-sm);
     color: var(--ink);
   }
+  .quiz-body {
+    position: relative;
+  }
+
+  /* Every question already carries alignment.bloom and alignment.dok, and
+     schema.py's validate_quiz warns the backend when a quiz clusters on one
+     level of either — the teacher was shown none of it. One line, one rule,
+     no card: this must not become a fourth box. */
+  .quiz-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-5);
+    padding-bottom: var(--sp-3);
+    border-bottom: 1px solid var(--edge);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+  }
+  .quiz-summary strong {
+    color: var(--ink);
+    font-size: var(--fs-sm);
+  }
+
+  /* ══ PASSAGE ↔ QUESTION CORRESPONDENCE ═════════════════════════════════
+     One grid row PER PASSAGE, not one grid for the whole quiz. That is the
+     entire point: the old .quiz-paired-layout put every passage in one sticky
+     well and every question in the other column, so a two-passage quiz showed
+     two unrelated lists and "sticky" stopped meaning anything. A passage now
+     holds position while its OWN questions scroll past, then releases as the
+     next group pushes it up — the pairing is structural, and there is nothing
+     left to misread. */
+  .quiz-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+  }
+  .quiz-passage-group {
+    display: grid;
+    /* The prose column is the wider one now. It had 0.9fr — the SMALLER half —
+       while the questions, which are short chunks that tolerate narrow, had
+       1.1fr. */
+    grid-template-columns: minmax(18rem, 1.05fr) minmax(0, 0.95fr);
+    gap: var(--sp-5);
+    align-items: start;
+  }
+  .quiz-passage-group.is-standalone {
+    display: block;
+  }
+  .quiz-passage-pane,
+  .quiz-question-pane,
+  .quiz-library-suggestions {
+    min-width: 0;
+  }
+  .quiz-passage-pane {
+    position: sticky;
+    /* Not 0 — that pins the pane flush against the top of the scroll port,
+       hard up under .doc-head. */
+    top: var(--sp-3);
+    max-height: calc(100cqh - var(--sp-6));
+    overflow-y: auto;
+    padding: var(--sp-4);
+    background: var(--paper-inset);
+    border-radius: var(--r-lg);
+    border-left: 2px solid transparent;
+    transition: border-color var(--t-fast) var(--ease);
+  }
+  @supports not (container-type: size) {
+    .quiz-passage-pane {
+      max-height: calc(100dvh - 12rem);
+    }
+  }
+  /* Hovering a question marks the passage it belongs to. A 2px rule, the same
+     gesture .doc-head uses to carry a document's class colour — not a fill. */
+  .quiz-passage-group:has(.detail-card:hover, .detail-card:focus-within) .quiz-passage-pane {
+    border-left-color: var(--accent);
+  }
+  .quiz-pane-heading,
+  .quiz-library-toolbar,
+  .quiz-library-suggestion {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .quiz-pane-heading {
+    justify-content: space-between;
+    margin-bottom: var(--sp-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .quiz-pane-heading span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .quiz-question-count {
+    font-weight: var(--fw-regular);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .quiz-passage-group.is-standalone .quiz-pane-heading {
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--edge);
+  }
+
+  /* The card was --paper-raised + --shadow-sm INSIDE the --paper-inset pane,
+     on frosted glass: three surfaces, and a shadow on something that is not a
+     popover, toast, dialog or drawer — which DESIGN.md's own Floating-Only
+     Rule calls a bug. The pane is the surface; this only carries spacing. */
+  .quiz-passage-card {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .quiz-passage-card h3 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--sp-2);
+    margin: 0 0 var(--sp-2);
+    color: var(--ink);
+    font-size: var(--fs-sm);
+  }
+  /* Provenance was a footnote UNDER the prose, which read as a caveat on the
+     passage a student will actually be handed. It is a property of the
+     passage, so it sits with its title. */
+  .quiz-passage-source {
+    padding: 1px 6px;
+    color: var(--ink-muted);
+    background: var(--paper-sunken);
+    border-radius: var(--r-full);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-regular);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  /* A reading passage is quoted document text, which is the exact job
+     DESIGN.md reserves --font-serif for. Body only, weight 400: fonts.css
+     self-hosts Source Serif 4 at 400 normal and 400/500 italic and nothing
+     heavier, so the h3 above stays on Inter rather than asking the browser to
+     synthesise a bold. The register split is the point — Inter labels the
+     passage, the serif IS the passage. */
+  .quiz-passage-card p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-family: var(--font-serif);
+    font-size: var(--fs-base);
+    font-weight: 400;
+    line-height: var(--lh-relaxed);
+    white-space: pre-wrap;
+  }
+  .quiz-passage-editor {
+    min-height: 280px;
+    resize: vertical;
+    line-height: 1.55;
+  }
+  .quiz-passage-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+    margin-top: var(--sp-3);
+  }
+
+  /* ══ SHARED LIBRARY ════════════════════════════════════════════════════
+     Below the quiz, not above it. Publishing is a terminal action; it used to
+     open the panel, so the first thing a teacher saw on clicking a quiz was a
+     banner about approving it for other teachers. One region under one rule
+     now, instead of a toolbar box, a status box and a suggestions box stacked
+     in the document flow. */
+  .quiz-library {
+    display: block;
+    margin-top: var(--sp-6);
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--edge);
+  }
+  .quiz-library-toolbar {
+    justify-content: space-between;
+    margin-bottom: var(--sp-3);
+    padding: var(--sp-3);
+    background: var(--paper-inset);
+    border-radius: var(--r-lg);
+  }
+  .quiz-library-toolbar > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .quiz-library-toolbar strong {
+    color: var(--ink);
+    font-size: var(--fs-sm);
+  }
+  .quiz-library-toolbar span,
+  .quiz-library-suggestion span {
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+  }
+  .quiz-library-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: calc(var(--sp-2) * -1) 0 var(--sp-3);
+    color: var(--ok);
+    font-size: var(--fs-xs);
+  }
+  .quiz-approval-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .quiz-approval-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--ink-muted);
+    font-size: var(--fs-2xs);
+  }
+  .quiz-library-suggestions {
+    margin-top: var(--sp-4);
+  }
+  .quiz-library-suggestion {
+    justify-content: space-between;
+    padding: var(--sp-3);
+    background: var(--paper-inset);
+    border-radius: var(--r-md);
+  }
+  .quiz-library-suggestion > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .quiz-library-suggestion-main {
+    flex: 1;
+  }
+  .quiz-library-suggestion-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .quiz-library-question-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: var(--sp-2);
+  }
+  .quiz-library-question-picker label {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--ink-soft);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-regular);
+  }
+  .quiz-library-question-picker input {
+    margin-top: 2px;
+    flex: 0 0 auto;
+  }
+  .quiz-library-suggestion strong {
+    overflow: hidden;
+    color: var(--ink);
+    font-size: var(--fs-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .quiz-alignment-chip {
+    padding: 1px 6px;
+    color: var(--accent-text);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+  }
+  .quiz-alignment-editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--sp-2);
+    margin-top: var(--sp-3);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--edge);
+  }
+  .quiz-alignment-editor label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--ink-muted);
+    font-size: var(--fs-2xs);
+  }
+  .quiz-alignment-wide {
+    grid-column: 1 / -1;
+  }
+  .quiz-alignment-wide textarea {
+    min-height: 48px;
+  }
+  /* The panel, not the viewport. The real content column is .doc-sheet-plain
+     inside .doc-body — a `@media (max-width: 900px)` query could leave a
+     two-column split rendering inside a ~500px tablet side sheet. */
+  @container doc-port (max-width: 52rem) {
+    .quiz-passage-group {
+      grid-template-columns: 1fr;
+    }
+    .quiz-passage-pane {
+      position: static;
+      max-height: none;
+    }
+  }
+  /* On a phone bottom sheet the chips wrapped to three rows and pushed the
+     first question below the fold. One line that scrolls keeps the whole
+     distribution reachable without spending the sheet's opening screen on it. */
+  @container doc-port (max-width: 30rem) {
+    .quiz-summary {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: var(--sp-2);
+    }
+    .quiz-summary::-webkit-scrollbar {
+      display: none;
+    }
+    .quiz-summary > * {
+      flex: 0 0 auto;
+    }
+  }
+  /* This one stays a media query on purpose: it is about the device's own
+     width forcing controls full-bleed, not about how wide this panel is. */
+  @media (max-width: 520px) {
+    .quiz-library-toolbar,
+    .quiz-library-suggestion {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .quiz-library-toolbar .btn,
+    .quiz-library-suggestion .btn {
+      width: 100%;
+      justify-content: center;
+    }
+    .quiz-library-suggestion-actions {
+      width: 100%;
+    }
+    .quiz-library-suggestion-actions .btn {
+      flex: 1;
+    }
+  }
   .detail-card-answer {
     margin: var(--sp-1) 0 0;
     font-size: var(--fs-xs);
@@ -3970,39 +6266,117 @@
   /* ── the school calendar's own month grid ─────────────────────────────────
      A traditional wall calendar (ArtifactDetailPanel's CalendarBody) instead
      of a flat list of week rows — see that component's own header comment.
-     Weekends carry no per-day record from the backend (the school week is
-     Mon–Fri only) and are treated as off the same as a named closure; the
-     "flag" tint below is reserved for closures that carry a real reason
-     (`.has-note` — a holiday, a workday), so a plain Saturday and "No school:
-     Labor Day" don't compete for the same visual weight. */
-  .cal-months {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-6);
+     Only two states matter: a teaching day or not. A weekend and a named
+     closure render identically (muted gray) — the reason, if any, only shows
+     up in the day's hover tooltip. */
+  .cal-shell {
+    overflow: hidden;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-xl);
+    background: var(--paper-raised);
+    box-shadow: var(--shadow-raised);
   }
-  .cal-month {
-    display: flex;
-    flex-direction: column;
+  .cal-toolbar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 3.25rem;
+    padding: var(--sp-2) var(--sp-3);
+    border-bottom: 1px solid var(--edge);
+    background: rgb(var(--paper-raised-rgb) / 0.92);
   }
-  .cal-month-label {
-    margin: 0 0 var(--sp-2);
+  .cal-toolbar-label {
+    margin: 0;
     font-size: var(--fs-sm);
     font-weight: var(--fw-semibold);
     color: var(--ink);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .cal-toolbar-week {
+    margin-left: 7px;
+    padding: 3px 7px;
+    color: var(--accent-text);
+    background: var(--accent-tint);
+    border-radius: 999px;
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    vertical-align: 1px;
+  }
+  .cal-today-button,
+  .cal-nav button {
+    color: var(--ink-soft);
+    background: var(--paper-raised);
+    border: 1px solid var(--edge);
+    box-shadow: 1px 1px 2px rgb(var(--neo-dark-rgb) / 0.22), -1px -1px 2px rgb(var(--neo-light-rgb) / 0.45);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  }
+  .cal-today-button {
+    justify-self: start;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+  }
+  .cal-today-button:hover:not(:disabled),
+  .cal-nav button:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--paper-inset);
+  }
+  .cal-today-button:disabled,
+  .cal-nav button:disabled {
+    cursor: default;
+    opacity: 0.42;
+    box-shadow: none;
+  }
+  .cal-nav {
+    justify-self: end;
+    display: flex;
+    gap: 4px;
+  }
+  .cal-nav button {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    padding: 0;
+    border-radius: 999px;
+  }
+  .cal-months {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .cal-month {
+    flex: 0 0 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-2) var(--sp-3) var(--sp-3);
+    background: var(--paper-raised);
+    scroll-snap-align: start;
+  }
+  .cal-month-label {
+    display: none;
   }
   .cal-weekday-row,
   .cal-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
   .cal-weekday-row {
-    margin-bottom: 4px;
+    padding: 7px 0 6px;
+    color: var(--ink-faint);
     font-size: var(--fs-2xs);
     font-weight: var(--fw-semibold);
     letter-spacing: var(--tracking-caps);
     text-align: center;
-    color: var(--ink-faint);
+    text-transform: uppercase;
   }
   .cal-day-link {
     display: block;
@@ -4010,46 +6384,120 @@
     text-decoration: none;
   }
   .cal-day {
+    position: relative;
     display: flex;
-    aspect-ratio: 1;
+    min-height: 3.25rem;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    font-size: var(--fs-xs);
+    justify-content: flex-start;
+    padding: 5px 3px 6px;
     color: var(--ink);
+    font-size: var(--fs-xs);
     background: var(--paper-raised);
-    border-radius: var(--r-md);
+    box-shadow: inset 0 -1px 0 rgb(var(--edge-rgb) / 0.72);
+  }
+  .cal-day-number {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: 1.55rem;
+    height: 1.55rem;
+    place-items: center;
+    border-radius: 999px;
+    font-weight: var(--fw-medium);
   }
   .cal-day.is-pad {
-    background: transparent;
+    background: var(--paper-raised);
+    box-shadow: inset 0 -1px 0 rgb(var(--edge-rgb) / 0.72);
   }
   .cal-day.is-off {
     color: var(--ink-faint);
-    background: var(--paper-inset);
-  }
-  .cal-day.is-off.has-note {
-    color: var(--flag);
-    background: var(--flag-tint);
+    background: rgb(var(--paper-inset-rgb) / 0.3);
   }
   .cal-day.is-today {
-    box-shadow: inset 0 0 0 1.5px var(--ink-soft);
+    color: var(--ink);
     font-weight: var(--fw-semibold);
+  }
+  .cal-day.is-today .cal-day-number {
+    color: #fff;
+    background: #ef4444;
+  }
+  .cal-day-status {
+    width: 5px;
+    height: 5px;
+    margin-top: 5px;
+    border-radius: 999px;
+  }
+  .cal-day-status.is-work {
+    background: var(--ok);
+  }
+  .cal-day-status.is-off {
+    background: var(--ink-faint);
   }
   /* The week this plan is actually FOR — same "found it" job the old list's
      .is-current outline did, just per-day now. Accent, not --ok/--flag: this
      isn't a status judgement on the week, only a locator. */
   .cal-day.is-current-week {
-    box-shadow: inset 0 0 0 1.5px rgb(var(--accent-rgb) / 0.6);
+    background: rgb(var(--accent-rgb) / 0.1);
+    box-shadow: inset 0 2px 0 rgb(var(--accent-rgb) / 0.75), inset 0 -2px 0 rgb(var(--accent-rgb) / 0.75);
   }
   .cal-day.is-today.is-current-week {
-    box-shadow: inset 0 0 0 1.5px var(--ink-soft), inset 0 0 0 3px rgb(var(--accent-rgb) / 0.6);
+    box-shadow: inset 0 2px 0 rgb(var(--accent-rgb) / 0.75), inset 0 -2px 0 rgb(var(--accent-rgb) / 0.75);
   }
   .cal-day-link .cal-day.is-openable {
     cursor: pointer;
-    transition: box-shadow var(--t-fast) var(--ease);
+    transition: background var(--t-fast) var(--ease);
   }
   .cal-day-link:hover .cal-day.is-openable,
   .cal-day-link:active .cal-day.is-openable {
-    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.4), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.7);
+    background: var(--paper-inset);
+  }
+  .cal-key {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 8px var(--sp-3) var(--sp-3);
+    color: var(--ink-faint);
+    font-size: var(--fs-2xs);
+    border-top: 1px solid var(--edge);
+  }
+  .cal-key span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .cal-key-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+  }
+  .cal-key-dot.is-work {
+    background: var(--ok);
+  }
+  .cal-key-dot.is-off {
+    background: var(--ink-faint);
+  }
+  .cal-key-line {
+    display: inline-block;
+    width: 10px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+  /* Onboarding's own confirmed-calendar card is wider than the shared
+     .cal-shell's usual home (a sidebar panel or a compact Settings row), so
+     the legend earns a size bump here — scoped to this one wider context
+     rather than the shared component's default, which stays small where
+     it's still a compact aside. */
+  .onboarding-calendar-card .cal-key {
+    gap: 8px 16px;
+    font-size: var(--fs-xs);
+  }
+  .onboarding-calendar-card .cal-key-dot {
+    width: 8px;
+    height: 8px;
   }
   .detail-code {
     padding: 6px 10px;
@@ -4507,6 +6955,10 @@
     color: var(--flag);
     border-color: rgb(var(--flag-rgb) / 0.2);
   }
+  .composer-save-status.is-pending {
+    color: var(--accent-text);
+    border-color: rgb(var(--accent-rgb) / 0.2);
+  }
   .composer-save-status .composer-writing-status-mark {
     color: var(--ok);
     background: var(--ok-tint);
@@ -4514,6 +6966,10 @@
   .composer-save-status.is-error .composer-writing-status-mark {
     color: var(--flag);
     background: var(--flag-tint);
+  }
+  .composer-save-status.is-pending .composer-writing-status-mark {
+    color: var(--accent-text);
+    background: var(--accent-tint);
   }
   .composer-status-action,
   .composer-status-history {
@@ -5324,11 +7780,11 @@
     left: 0;
     width: 100%;
     height: min(60vw, 820px);
-    background: radial-gradient(circle min(15vw, 188px) at 22% 32%, rgb(167 139 250 / 0.36) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 46% 18%, rgb(244 114 182 / 0.32) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 68% 40%, rgb(251 146 60 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle min(14.5vw, 181px) at 50% 62%, rgb(52 211 153 / 0.3) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 28% 58%, rgb(96 165 250 / 0.3) 0%, transparent 100%);
+    background: radial-gradient(circle min(15vw, 188px) at 22% 32%, rgb(191 219 254 / 0.28) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 46% 18%, rgb(244 114 182 / 0.24) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 68% 40%, rgb(251 146 60 / 0.22) 0%, transparent 100%),
+      radial-gradient(circle min(14.5vw, 181px) at 50% 62%, rgb(52 211 153 / 0.2) 0%, transparent 100%),
+      radial-gradient(circle min(14vw, 175px) at 28% 58%, rgb(96 165 250 / 0.26) 0%, transparent 100%);
     pointer-events: none;
     /* Slow drift, on request — background-position, not transform: no
        transform is left on this box to fight (it used to carry a static
@@ -5978,7 +8434,7 @@
 
      Started scoped to the voice panel alone; now also the in-chat week
      strip and the main nav rail, each opted in by request one at a time —
-     .neo-world itself stays surface-agnostic, just the cream base + emboss
+     .neo-world itself stays surface-agnostic, just the lavender base + emboss
      primitives, so wherever it lands next doesn't need a new class.
 
      Soft-shadow "neomorphic" UI is a real accessibility tradeoff — edges
@@ -5988,14 +8444,14 @@
      user's explicit ask; it must never leak into any token the rest of the
      app reads. */
   .neo-world {
-    --paper-rgb: 241 239 235;
-    --paper-raised-rgb: 241 239 235;
-    --paper-sunken-rgb: 234 231 226;
-    --paper-inset-rgb: 234 231 226;
-    --edge-rgb: 223 219 213;
-    --edge-strong-rgb: 208 203 196;
-    --ink-rgb: 82 44 48;
-    --ink-soft-rgb: 124 92 94;
+    --paper-rgb: 249 248 253;
+    --paper-raised-rgb: 255 255 255;
+    --paper-sunken-rgb: 244 243 250;
+    --paper-inset-rgb: 237 235 247;
+    --edge-rgb: 232 230 240;
+    --edge-strong-rgb: 211 208 225;
+    --ink-rgb: 53 39 73;
+    --ink-soft-rgb: 89 75 106;
     /* ink-muted and ink-faint were originally 158/142/139 and 191/179/175 —
        2.7:1 and 1.8:1 against --paper-rgb, both well under even the 3:1 AA
        floor for large text/UI components, let alone the 4.5:1 normal-text
@@ -6006,17 +8462,13 @@
        each meant to hold: muted lands at ~4.6:1 (AA normal text), faint at
        ~3.3:1 (the large-text/UI floor, appropriate for something that's
        deliberately the least emphasized tone here, not invisible). */
-    --ink-muted-rgb: 130 100 102;
-    --ink-faint-rgb: 150 126 126;
+    --ink-muted-rgb: 110 99 126;
+    --ink-faint-rgb: 143 132 154;
     --ink-inverse-rgb: 255 255 255;
-    --accent-rgb: 216 84 120;
-    --accent-hover-rgb: 197 68 104;
-    --accent-tint-rgb: 250 231 236;
-    /* Was 197/68/104 — 4.16:1 against --paper-rgb, just under the 4.5:1 AA
-       floor for the normal-weight link/label text this actually renders as
-       (the "Create an account" link, citation labels). Same hue, darkened
-       to ~5.1:1. */
-    --accent-text-rgb: 182 52 88;
+    --accent-rgb: 116 76 196;
+    --accent-hover-rgb: 94 55 163;
+    --accent-tint-rgb: 239 232 253;
+    --accent-text-rgb: 97 55 165;
     /* Was 199/62/62 — 4.37:1, same reasoning as accent-text above. Darkened
        to ~5.3:1. */
     --mark-rgb: 182 48 48;
@@ -6091,21 +8543,21 @@
   }
 
   :root[data-theme='dark'] .neo-world {
-    --paper-rgb: 31 29 27;
-    --paper-raised-rgb: 41 39 36;
-    --paper-sunken-rgb: 24 22 20;
-    --paper-inset-rgb: 48 45 41;
-    --edge-rgb: 54 50 45;
-    --edge-strong-rgb: 79 73 64;
-    --ink-rgb: 234 237 242;
-    --ink-soft-rgb: 180 187 196;
-    --ink-muted-rgb: 140 148 159;
-    --ink-faint-rgb: 98 105 115;
+    --paper-rgb: 30 27 37;
+    --paper-raised-rgb: 40 35 49;
+    --paper-sunken-rgb: 23 20 29;
+    --paper-inset-rgb: 48 42 58;
+    --edge-rgb: 58 50 68;
+    --edge-strong-rgb: 83 71 96;
+    --ink-rgb: 242 239 250;
+    --ink-soft-rgb: 197 189 212;
+    --ink-muted-rgb: 166 155 181;
+    --ink-faint-rgb: 118 107 133;
     --ink-inverse-rgb: 16 18 22;
-    --accent-rgb: 122 162 240;
-    --accent-hover-rgb: 154 187 248;
-    --accent-tint-rgb: 26 39 63;
-    --accent-text-rgb: 122 162 240;
+    --accent-rgb: 179 154 255;
+    --accent-hover-rgb: 201 181 255;
+    --accent-tint-rgb: 55 42 78;
+    --accent-text-rgb: 179 154 255;
     --mark-rgb: 240 129 120;
     --mark-tint-rgb: 56 26 24;
 
@@ -6187,10 +8639,10 @@
        timed to match the mesh-like wash used elsewhere in the app
        (.app-blob) — big enough to fill the pill as one soft bubble, slow
        enough to read as a drift rather than blobs racing past. */
-    background: radial-gradient(circle 70px at 8% 25%, rgb(167 139 250 / 0.7) 0%, transparent 100%),
-      radial-gradient(circle 64px at 32% 75%, rgb(244 114 182 / 0.65) 0%, transparent 100%),
-      radial-gradient(circle 74px at 58% 30%, rgb(251 146 60 / 0.6) 0%, transparent 100%),
-      radial-gradient(circle 64px at 84% 70%, rgb(52 211 153 / 0.6) 0%, transparent 100%),
+    background: radial-gradient(circle 70px at 8% 25%, rgb(147 197 253 / 0.52) 0%, transparent 100%),
+      radial-gradient(circle 64px at 32% 75%, rgb(224 231 255 / 0.42) 0%, transparent 100%),
+      radial-gradient(circle 74px at 58% 30%, rgb(196 181 253 / 0.28) 0%, transparent 100%),
+      radial-gradient(circle 64px at 84% 70%, rgb(125 211 252 / 0.42) 0%, transparent 100%),
       rgb(var(--paper-raised-rgb) / 0.85);
     background-size: 220% 100%;
     filter: blur(6px) saturate(1.2);
@@ -6999,38 +9451,61 @@
   .chat-row-actions.is-open {
     opacity: 1;
   }
+  /* The rail normally clips its contents while it animates between the full
+     and collapsed widths. An open action menu is the intentional exception:
+     it should float into the workspace instead of being squeezed over the
+     chat title and clipped at the rail edge. */
+  .app-rail:has(.chat-row-menu),
+  .app-rail:has(.chat-row-menu) > div {
+    overflow: visible;
+  }
   .chat-row-menu {
     position: absolute;
-    top: calc(100% + var(--sp-1));
-    right: 0;
+    top: 50%;
+    left: calc(100% + 10px);
+    right: auto;
     z-index: 20;
-    min-width: 132px;
-    padding: var(--sp-1);
-    background: var(--paper-raised);
-    border: 1px solid var(--edge);
+    min-width: 148px;
+    padding: 5px;
+    /* This menu sits over the translucent rail and the neighboring chat
+       titles. Use an opaque raised surface so the actions never visually
+       merge with the rows beneath it, especially in the near-white palette. */
+    background: rgb(var(--paper-raised-rgb) / 1);
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.9);
     border-radius: var(--r-md);
-    box-shadow: var(--shadow-pop);
+    box-shadow: var(--shadow-pop), 0 8px 20px rgb(20 18 30 / 0.12);
+    transform: translateY(-50%);
   }
   .chat-row-menu-item {
     display: flex;
     width: 100%;
     align-items: center;
     gap: var(--sp-2);
-    min-height: 32px;
-    padding: 0 var(--sp-2);
-    color: var(--ink-soft);
+    min-height: 36px;
+    padding: 0 10px;
+    color: rgb(var(--ink-rgb));
     font-size: var(--fs-xs);
+    font-weight: 600;
     text-align: left;
+    white-space: nowrap;
     background: transparent;
     border: none;
     border-radius: var(--r-sm);
     cursor: pointer;
   }
+  .chat-row-menu-item.text-mark {
+    color: rgb(var(--mark-rgb));
+  }
   .chat-row-menu-item:hover,
   .chat-row-menu-item:focus-visible {
-    color: var(--ink);
-    background: var(--paper-sunken);
+    color: rgb(var(--ink-rgb));
+    background: rgb(var(--paper-sunken-rgb) / 1);
     outline: none;
+  }
+  .chat-row-menu-item.text-mark:hover,
+  .chat-row-menu-item.text-mark:focus-visible {
+    color: rgb(var(--mark-rgb));
+    background: rgb(var(--mark-tint-rgb) / 1);
   }
 
   /* ── touch targets ────────────────────────────────────────────────────────
@@ -7320,231 +9795,1116 @@
       0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
   }
 
-/* ══ ONBOARDING REFINEMENT ════════════════════════════════════════════════
-   Onboarding is the handoff into a warm, document-focused workspace. Keep
-   that promise here: one floating sheet is enough elevation; the choices
-   inside it use paper, type, and a quiet rule rather than more glass layers. */
-.onboarding-mac-classic {
-  --paper-rgb: 246 244 236;
-  --paper-raised-rgb: 253 251 246;
-  --paper-sunken-rgb: 236 233 223;
-  --paper-inset-rgb: 224 220 207;
-  --edge-rgb: 221 217 205;
-  --edge-strong-rgb: 195 189 172;
-  --ink-rgb: 20 22 26;
-  --ink-soft-rgb: 58 63 71;
-  --ink-muted-rgb: 102 109 120;
-  --ink-faint-rgb: 154 161 171;
-  --ink-inverse-rgb: 255 255 255;
-  --accent-rgb: 47 95 191;
-  --accent-hover-rgb: 36 74 154;
-  --accent-tint-rgb: 233 239 250;
-  --accent-text-rgb: 47 95 191;
-  --paper: rgb(var(--paper-rgb));
-  --paper-raised: rgb(var(--paper-raised-rgb));
-  --paper-sunken: rgb(var(--paper-sunken-rgb));
-  --paper-inset: rgb(var(--paper-inset-rgb));
-  --edge: rgb(var(--edge-rgb));
-  --edge-strong: rgb(var(--edge-strong-rgb));
-  --ink: rgb(var(--ink-rgb));
-  --ink-soft: rgb(var(--ink-soft-rgb));
-  --ink-muted: rgb(var(--ink-muted-rgb));
-  --ink-faint: rgb(var(--ink-faint-rgb));
-  --ink-inverse: rgb(var(--ink-inverse-rgb));
-  --accent: rgb(var(--accent-rgb));
-  --accent-hover: rgb(var(--accent-hover-rgb));
-  --accent-tint: rgb(var(--accent-tint-rgb));
-  --accent-text: rgb(var(--accent-text-rgb));
-  background: var(--paper) !important;
-}
-.onboarding-mac-classic::before,
-.onboarding-mac-classic::after,
-.onboarding-mac-classic .onboarding-blob {
-  display: none;
-}
-.onboarding-shell {
-  overflow-y: auto !important;
-  overscroll-behavior: contain;
-  background: var(--paper-raised) !important;
-  border: 1px solid var(--edge) !important;
-  border-radius: var(--r-xl) !important;
-  box-shadow: 0 14px 34px rgb(20 22 26 / 0.08) !important;
-  scrollbar-gutter: stable;
-}
-.onboarding-shell :is(
-  .onboarding-glass-pane,
-  .onboarding-neomorphic-pane,
-  .onboarding-neomorphic-list,
-  .onboarding-template-panel,
-  .onboarding-course-browser,
-  .onboarding-setup-summary,
-  .onboarding-template-preview,
-  .onboarding-analysis-card,
-  .onboarding-ingest-path,
-  .onboarding-template-upload,
+  /* Onboarding panes keep the shell's pale atmosphere visible through the
+     state picker and preview instead of reading as opaque white cards. */
+  .onboarding-template-panel {
+    background-color: rgb(var(--paper-raised-rgb) / 0.42) !important;
+    background-image: linear-gradient(
+      145deg,
+      rgb(255 255 255 / 0.56),
+      rgb(var(--accent-rgb) / 0.08)
+    ) !important;
+    backdrop-filter: blur(18px) saturate(135%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+    border: 1px solid rgb(255 255 255 / 0.7) !important;
+    box-shadow:
+      inset 0 1px 1px rgb(255 255 255 / 0.82),
+      0 14px 32px rgb(var(--neo-dark-rgb) / 0.08) !important;
+  }
+  .onboarding-template-kicker {
+    color: var(--accent-text);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+  .onboarding-template-status {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 0.35rem 0.65rem;
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .onboarding-template-status.is-needed {
+    background: rgb(var(--accent-rgb) / 0.1);
+    color: var(--accent-text);
+  }
+  .onboarding-template-status.is-ready {
+    background: rgb(var(--ok-rgb) / 0.1);
+    color: var(--ok);
+  }
+  .onboarding-template-choice {
+    border-top: 1px solid rgb(var(--edge-rgb) / 0.62);
+    padding-top: var(--sp-4);
+  }
+  .onboarding-template-choice > div {
+    margin-top: var(--sp-2);
+  }
+  .onboarding-template-input-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(14rem, 0.9fr);
+    align-items: stretch;
+    gap: var(--sp-4);
+  }
+  .onboarding-template-upload-wrap {
+    border-top: 1px solid rgb(var(--edge-rgb) / 0.62);
+    padding-top: var(--sp-4);
+  }
+  .onboarding-template-input-grid .onboarding-template-upload-wrap {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .onboarding-template-chip {
+    border: 1px solid rgb(var(--accent-rgb) / 0.16);
+    border-radius: 999px;
+    background: rgb(var(--accent-rgb) / 0.07);
+    color: var(--accent-text);
+    font-size: var(--fs-2xs);
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+  }
+  .onboarding-ingest-path {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-6);
+    padding: var(--sp-3);
+    border: 1px solid rgb(var(--edge-rgb) / 0.62);
+    border-radius: var(--r-md);
+    background: rgb(var(--paper-raised-rgb) / 0.32);
+  }
+  .onboarding-ingest-step {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+  .onboarding-ingest-step span {
+    display: grid;
+    height: 1.5rem;
+    width: 1.5rem;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid rgb(var(--edge-rgb) / 0.72);
+    border-radius: 999px;
+    color: var(--ink-faint);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+  }
+  .onboarding-ingest-step.is-active {
+    color: var(--ink);
+  }
+  .onboarding-ingest-step.is-active span {
+    border-color: rgb(var(--accent-rgb) / 0.28);
+    background: rgb(var(--accent-rgb) / 0.1);
+    color: var(--accent-text);
+  }
+  .onboarding-ingest-line {
+    height: 1px;
+    min-width: 1rem;
+    flex: 1 1 auto;
+    background: rgb(var(--edge-rgb) / 0.7);
+  }
+  /* The calendar-upload explainer reuses this stepper as a plain "here's
+     what happens" list rather than a live progress tracker — it already
+     sits inside a padded panel with its own paragraph above, so the
+     default --sp-6 top margin (sized for sitting directly under a bare
+     question) is too much on top of that. */
+  .onboarding-ingest-path-static {
+    margin-top: var(--sp-3);
+  }
+  .onboarding-template-preview {
+    min-width: 0;
+    margin-top: var(--sp-5);
+    padding: var(--sp-3);
+    border: 1px solid rgb(var(--edge-rgb) / 0.7);
+    border-radius: var(--r-lg);
+    background: rgb(var(--paper-raised-rgb) / 0.28);
+  }
+  .onboarding-template-input-grid .onboarding-template-preview {
+    height: 100%;
+    margin-top: 0;
+  }
+  .onboarding-template-preview-frame {
+    display: block;
+    width: 100%;
+    height: 14rem;
+    margin-top: var(--sp-3);
+    border: 1px solid rgb(var(--edge-rgb) / 0.7);
+    border-radius: var(--r-md);
+    background: var(--paper);
+  }
+  .onboarding-template-preview-file,
+  .onboarding-template-preview-empty {
+    display: flex;
+    min-height: 9rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-top: var(--sp-3);
+    padding: var(--sp-5);
+    border: 1px dashed rgb(var(--edge-rgb) / 0.8);
+    border-radius: var(--r-md);
+    text-align: center;
+  }
+  .onboarding-template-preview-empty {
+    gap: var(--sp-2);
+    color: var(--ink-faint);
+    font-size: var(--fs-xs);
+  }
   .onboarding-template-processing,
-  .onboarding-template-confirmed,
-  .onboarding-next-step,
-  .onboarding-ready-list
-) {
-  background: var(--paper-raised) !important;
-  background-image: none !important;
-  border-color: var(--edge) !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-.onboarding-shell .onboarding-neomorphic-list {
-  background: var(--paper-sunken) !important;
-}
-.onboarding-shell .onboarding-step > .mb-8,
-.onboarding-shell .dialog-actions {
-  border-color: var(--edge) !important;
-}
-.onboarding-shell .btn {
-  min-height: var(--touch-min);
-}
-
-/* The state picker now makes the real, available choice the primary content.
-   The map earns its space only after that choice is made. */
-.onboarding-state-available {
-  color: var(--ok);
-  font-size: var(--text-2xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.onboarding-state-list {
-  min-height: 0;
-}
-.onboarding-state-support-note {
-  margin: var(--sp-3) 0 0;
-  color: var(--ink-muted);
-  font-size: var(--text-xs);
-  line-height: var(--lh-relaxed);
-}
-.onboarding-state-selected {
-  box-shadow: inset 3px 0 0 var(--accent) !important;
-}
-
-/* Course selection is a focused browser, not a second full-screen surface.
-   The selected check stays beside the selected course; repeating it in the
-   footer made the layout louder without adding useful context. */
-.onboarding-course-browser {
-  height: min(30rem, calc(100dvh - 19rem));
-  min-height: 23rem;
-  border-radius: var(--r-lg) !important;
-}
-.onboarding-course-browser-actions {
-  grid-template-columns: auto auto;
-  justify-content: space-between;
-  padding: var(--sp-3) var(--sp-4);
-}
-
-/* Keep the successful finish memorable, but give the saved details enough
-   room to read. A two-column definition list avoids five narrow, wrapping
-   strips for the two longest values: school and course. */
-.onboarding-final {
-  gap: var(--sp-3);
-}
-.onboarding-final-stage {
-  height: clamp(7rem, 15vw, 10rem);
-  margin-top: var(--sp-3);
-}
-.onboarding-final-stage-glow {
-  height: 6.25rem;
-  width: 6.25rem;
-  filter: blur(18px);
-}
-.onboarding-final-ring {
-  height: 6.5rem;
-  width: 10.5rem;
-}
-.onboarding-final-ring-secondary {
-  height: 7.5rem;
-  width: 12rem;
-}
-.onboarding-final-logo {
-  height: 6.5rem;
-  width: 6.5rem;
-  box-shadow: 0 8px 20px rgb(20 22 26 / 0.1) !important;
-}
-.onboarding-final-logo img {
-  height: 5.4rem;
-  width: 5.4rem;
-}
-.onboarding-final-logo-check {
-  height: 1.8rem;
-  width: 1.8rem;
-  border-color: var(--paper-raised);
-}
-.onboarding-final-setup {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: min(100%, 36rem);
-  margin-top: var(--sp-3);
-}
-.onboarding-final-setup-item + .onboarding-final-setup-item {
-  border-left: 0;
-}
-.onboarding-final-setup-item:nth-child(even) {
-  border-left: 1px solid var(--edge);
-}
-.onboarding-final-setup-item:nth-child(n + 3) {
-  border-top: 1px solid var(--edge);
-}
-.onboarding-final-setup-item:last-child {
-  grid-column: 1 / -1;
-}
-
-@media (max-width: 767.98px) {
-  .onboarding-mac-classic {
-    align-items: flex-start;
+  .onboarding-template-confirmed {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    margin-top: var(--sp-6);
+    padding: var(--sp-5);
+    border: 1px solid rgb(var(--accent-rgb) / 0.2);
+    border-radius: var(--r-lg);
+    background: rgb(var(--accent-rgb) / 0.07);
+  }
+  .onboarding-template-processing > svg {
+    flex: 0 0 auto;
+  }
+  .onboarding-analysis-grid {
+    display: grid;
+    grid-template-columns: minmax(12rem, 0.8fr) minmax(0, 1.2fr);
+    gap: var(--sp-4);
+    align-items: stretch;
+  }
+  .onboarding-analysis-grid .onboarding-template-preview {
+    margin-top: 0;
+  }
+  .onboarding-analysis-grid .onboarding-template-preview-frame {
+    height: 100%;
+    min-height: 14rem;
+  }
+  .onboarding-analysis-grid .onboarding-template-preview-file,
+  .onboarding-analysis-grid .onboarding-template-preview-empty {
+    height: calc(100% - 1.5rem);
+    min-height: 14rem;
+  }
+  .onboarding-analysis-card {
+    min-width: 0;
+    padding: var(--sp-4);
+    border: 1px solid rgb(var(--edge-rgb) / 0.7);
+    border-radius: var(--r-lg);
+    background: rgb(var(--paper-raised-rgb) / 0.28);
+  }
+  .onboarding-detected-field {
+    border: 1px solid rgb(var(--accent-rgb) / 0.18);
+    border-radius: 999px;
+    background: rgb(var(--accent-rgb) / 0.08);
+    color: var(--accent-text);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    padding: 0.38rem 0.6rem;
+  }
+  .onboarding-analysis-notes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    border-top: 1px solid rgb(var(--edge-rgb) / 0.65);
+    padding-top: var(--sp-3);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+  }
+  .onboarding-analysis-notes .is-error {
+    color: var(--mark);
+  }
+  .onboarding-analysis-notes .is-warning {
+    color: var(--ink-muted);
+  }
+  .onboarding-template-confirmed-icon {
+    display: grid;
+    height: 2.75rem;
+    width: 2.75rem;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 999px;
+    background: rgb(var(--ok-rgb) / 0.12);
+    color: var(--ok);
+  }
+  .onboarding-template-upload {
+    background: rgb(var(--paper-raised-rgb) / 0.26) !important;
+    border-color: rgb(var(--edge-rgb) / 0.7) !important;
     padding: var(--sp-3) !important;
   }
-  .onboarding-shell {
-    max-height: calc(100dvh - (var(--sp-3) * 2));
-    padding: var(--sp-5) !important;
+  .onboarding-template-upload .bg-paper-sunken,
+  .onboarding-template-upload .bg-paper-raised {
+    background-color: rgb(var(--paper-raised-rgb) / 0.38) !important;
   }
-  .onboarding-state-chooser {
-    padding: var(--sp-4) !important;
+  :root[data-theme='dark'] .onboarding-template-panel {
+    background-color: rgb(15 23 42 / 0.34) !important;
+    background-image: linear-gradient(
+      145deg,
+      rgb(255 255 255 / 0.12),
+      rgb(99 102 241 / 0.08)
+    ) !important;
+    border-color: rgb(255 255 255 / 0.12) !important;
+    box-shadow:
+      inset 0 1px 1px rgb(255 255 255 / 0.14),
+      0 14px 32px rgb(0 0 0 / 0.22) !important;
   }
-  .onboarding-state-list {
-    flex: 0 0 auto !important;
+  :root[data-theme='dark'] .onboarding-template-upload {
+    background: rgb(15 23 42 / 0.22) !important;
   }
-  .onboarding-glass-pane {
-    display: none !important;
+  :root[data-theme='dark'] .onboarding-ingest-path {
+    background: rgb(15 23 42 / 0.22);
   }
-  .onboarding-course-browser {
-    height: min(26rem, calc(100dvh - 17rem));
-    min-height: 21rem;
+  @media (max-width: 520px) {
+    .onboarding-ingest-path {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .onboarding-ingest-line {
+      width: 1px;
+      min-height: 0.7rem;
+      min-width: 0;
+      margin-left: 0.75rem;
+    }
+    .onboarding-analysis-grid {
+      grid-template-columns: 1fr;
+    }
+    .onboarding-template-input-grid {
+      grid-template-columns: 1fr;
+    }
+    .onboarding-template-input-grid .onboarding-template-preview {
+      height: auto;
+    }
   }
-  .onboarding-course-browser-actions {
-    grid-template-columns: auto auto;
-    align-items: center;
+  .onboarding-glass-pane,
+  .onboarding-glass-list {
+    background-color: rgb(var(--paper-raised-rgb) / 0.36) !important;
+    background-image: linear-gradient(
+      135deg,
+      rgb(255 255 255 / 0.52),
+      rgb(var(--accent-rgb) / 0.06)
+    ) !important;
+    backdrop-filter: blur(16px) saturate(135%) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(135%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.62) !important;
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.78),
+      0 12px 30px rgba(31, 38, 135, 0.06) !important;
   }
-  .onboarding-course-browser-actions > .btn:first-child,
-  .onboarding-course-browser-actions > .btn:last-child {
-    grid-column: auto;
-    grid-row: auto;
+
+  :root[data-theme='dark'] .onboarding-glass-pane,
+  :root[data-theme='dark'] .onboarding-glass-list {
+    background-color: rgba(15, 23, 42, 0.32) !important;
+    background-image: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.12),
+      rgba(99, 102, 241, 0.08)
+    ) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.12),
+      0 12px 30px rgba(0, 0, 0, 0.22) !important;
   }
-  .onboarding-shell .dialog-actions {
-    position: sticky;
-    bottom: calc(var(--sp-5) * -1);
-    z-index: 2;
-    margin-inline: calc(var(--sp-5) * -1);
-    padding: var(--sp-3) var(--sp-5) calc(var(--sp-3) + var(--safe-b)) !important;
-    background: var(--paper-raised);
-    box-shadow: 0 -8px 18px rgb(20 22 26 / 0.05);
+
+  /* The wizard shell itself is glass too; the inner panes should feel like
+     layers sitting inside it, not cards floating on a solid white sheet. */
+  
+
+  
+
+  /* Keep the onboarding experience viewport-bound on shorter laptop windows.
+     Long lists still scroll inside their own panes, but the wizard shell and
+     the document page never become a second scrolling surface. */
+  
+
+  /* The state list is the primary decision surface, so give it the clearer
+     neomorphic treatment while leaving the map preview as frosted glass. */
+  .onboarding-neomorphic-pane {
+    background-color: rgb(var(--paper-raised-rgb)) !important;
+    background-image: none !important;
+    border: 1px solid rgb(var(--edge-rgb) / 0.72) !important;
+    box-shadow:
+      8px 8px 18px rgb(var(--neo-dark-rgb) / 0.28),
+      -8px -8px 18px rgb(var(--neo-light-rgb) / 0.82) !important;
   }
-  .onboarding-final-stage {
-    height: 7.5rem;
+
+  .onboarding-neomorphic-list {
+    background-color: rgb(var(--paper-sunken-rgb)) !important;
+    background-image: none !important;
+    border: 1px solid rgb(var(--edge-rgb) / 0.72) !important;
+    box-shadow:
+      inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.28),
+      inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.72) !important;
+    overscroll-behavior: contain;
   }
+
+  .onboarding-state-selected {
+    box-shadow:
+      3px 3px 7px rgb(var(--neo-dark-rgb) / 0.26),
+      -3px -3px 7px rgb(var(--neo-light-rgb) / 0.72) !important;
+  }
+
+  /* The chat rail has a lot of quiet space by design now that Recent is
+     limited. Keep that space visually calm and almost white instead of
+     letting the lavender page ground tint the whole rail. */
+  .app-rail.glass-panel {
+    background-color: rgb(252 252 252 / 0.94) !important;
+  }
+
+  :root[data-theme='dark'] .app-rail.glass-panel {
+    background-color: rgba(15, 23, 42, 0.54) !important;
+  }
+
+/* Accessibility preferences are applied after the skin rules so they remain
+   effective in both Neomorphic and Skeuomorphic modes. High contrast keeps the
+   visual character of the app, but promotes quiet text, dividers, controls,
+   and focus rings to a stronger contrast step instead of merely changing a
+   toggle's appearance. */
+:root[data-high-contrast='true'] .neo-world {
+  --ink-soft-rgb: 38 42 48;
+  --ink-muted-rgb: 73 78 87;
+  --ink-faint-rgb: 95 101 110;
+  --edge-rgb: 172 168 156;
+  --edge-strong-rgb: 112 108 98;
+  --accent-text-rgb: 36 74 154;
+}
+
+:root[data-theme='dark'][data-high-contrast='true'] .neo-world {
+  --ink-soft-rgb: 213 218 226;
+  --ink-muted-rgb: 177 185 196;
+  --ink-faint-rgb: 133 142 154;
+  --edge-rgb: 91 86 78;
+  --edge-strong-rgb: 130 123 111;
+  --accent-text-rgb: 147 185 255;
+}
+
+:root[data-high-contrast='true'] .neo-world :is(.text-ink-muted, .text-ink-faint) {
+  color: var(--ink-soft) !important;
+}
+
+:root[data-high-contrast='true'] .neo-world :is(.border-edge, .border-edge-strong) {
+  border-color: var(--edge-strong) !important;
+}
+
+:root[data-high-contrast='true'] .neo-world :focus-visible {
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent) !important;
+}
+
+/* The final onboarding screen is a launch moment, not another settings
+   confirmation. Keep the composition dense enough for a short viewport while
+   giving the teacher a clear snapshot of what was saved and one obvious next
+   action. */
+.onboarding-final {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.onboarding-final-cta {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--sp-3);
+  padding-block: 0.7rem;
+}
+.onboarding-final-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  text-align: center;
+}
+.onboarding-final-footer svg {
+  flex: 0 0 auto;
+  color: var(--ok);
+}
+
+
+@media (max-height: 860px) and (min-width: 681px) {
+  .onboarding-final {
+    gap: var(--sp-3);
+  }
+  
+  
+  
+  
+  
+  
+  .onboarding-final-cta {
+    margin-top: var(--sp-2);
+  }
+}
+
+/* Shared onboarding finish: every step should feel like the same glass
+   workspace, with a little chromatic edge to help the important surfaces read
+   against the pale Mac Classic backdrop. The color is deliberately carried by
+   hairline outlines and inner highlights rather than large purple fills. */
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* The completion screen should feel like a breath out after setup. Keep one
+   calm information surface, soften the labels, and let the first action sit
+   in the open instead of stacking several competing cards. */
+.onboarding-final {
+  gap: var(--sp-4);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.onboarding-final-cta {
+  width: auto;
+  min-width: 14rem;
+  margin-top: var(--sp-3);
+  padding-inline: 1.1rem;
+}
+.onboarding-final-footer {
+  color: var(--ink-faint);
+}
+
+@media (max-width: 680px) {
+  
+  .onboarding-final-cta {
+    width: 100%;
+  }
+}
+
+/* The completion receipt is the destination of the same route shown in the
+   rail, not a second mini-brand moment. These overrides intentionally retire
+   the old animated logo/orbits without needing a second background, gradient,
+   or glass recipe: one token-tinted checkpoint is enough to say "arrived". */
+.onboarding-final {
+  align-items: stretch;
+  gap: var(--sp-3);
+  text-align: left;
+}
+.onboarding-final-kicker {
+  color: var(--accent-text);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+}
+.onboarding-final-title {
+  max-width: var(--measure-form);
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-tight);
+}
+.onboarding-final-intro {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+/* The one moment on this screen allowed a little more motion than a plain
+   fade — see the comment beside where this renders in OnboardingWizard.jsx. */
+.onboarding-final-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-4) 0 var(--sp-2);
+}
+.onboarding-final-hero-logo {
+  width: 7rem;
+  height: 7rem;
+  color: var(--accent);
+  filter: drop-shadow(0 0 0 rgb(var(--accent-rgb) / 0));
+  animation: onboarding-final-hero-glow 2.6s ease-in-out 0.9s infinite;
+}
+.onboarding-final-hero-svg {
+  width: 100%;
+  height: 100%;
+}
+@keyframes onboarding-final-hero-glow {
+  0%, 100% { filter: drop-shadow(0 0 0.4rem rgb(var(--accent-rgb) / 0.18)); }
+  50% { filter: drop-shadow(0 0 1.1rem rgb(var(--accent-rgb) / 0.38)); }
+}
+.onboarding-final-hero-ready {
+  margin: 0;
+  color: var(--accent-text);
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+.onboarding-final-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(100%, var(--measure-form));
+}
+.onboarding-final-card {
+  /* .onboarding-setup-summary-edit (the "Edit" button rendered inside this
+     card) is position:absolute, top-right — written for a positioned
+     ancestor of its own size. Without this, it anchors to the nearest ONE
+     up the tree instead, which floated it to the corner of the whole page
+     rather than this card. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  padding-right: 3.25rem;
+  border: 1px solid rgb(var(--edge-rgb) / 0.8);
+  border-radius: var(--r-lg);
+  background: rgb(var(--paper-raised-rgb) / 0.5);
+}
+.onboarding-final-card-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: rgb(var(--accent-rgb) / 0.1);
+  color: var(--accent-text);
+}
+.onboarding-final-card-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.onboarding-final-card-label {
+  color: var(--ink-faint);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.onboarding-final-card-value {
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  line-height: 1.3;
+}
+.onboarding-final-footer {
+  width: min(100%, var(--measure-form));
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+}
+/* The base .onboarding-setup-summary-edit is top:-0.1rem — right for sitting
+   above a short dt/dd column. This card is a horizontal row instead, so it
+   needs to be centred in the row's own height, not pinned near its top. */
+.onboarding-final-card .onboarding-setup-summary-edit {
+  top: 50%;
+  right: var(--sp-4);
+  transform: translateY(-50%);
+}
+@media (max-width: 680px) {
+  .onboarding-final-title { max-width: none; font-size: var(--fs-xl); }
+  .onboarding-final-cards { width: 100%; }
+  .onboarding-final-footer { width: 100%; font-size: var(--fs-2xs); }
+}
+
+/* A quieter completion state: the mark is the destination, while the setup
+   details orbit it as one small visual system. Labels stay upright as they
+   travel so the motion remains useful rather than decorative noise. */
+.onboarding-final {
+  align-items: center;
+  gap: var(--sp-4);
+  text-align: center;
+}
+
+
+
+
+
+
+
+
+.onboarding-final-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  height: 7rem;
+  width: 7rem;
+  place-items: center;
+  border: 1px solid rgb(var(--accent-rgb) / 0.16);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.48);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.84),
+    0 10px 22px rgb(var(--neo-dark-rgb) / 0.09),
+    0 0 0 0.45rem rgb(var(--accent-rgb) / 0.045);
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+}
+.onboarding-final-logo img {
+  display: block;
+  height: 5.8rem;
+  width: 5.8rem;
+}
+
+
+
+.onboarding-final-cta {
+  width: min(100%, 17rem);
+  min-width: 15rem;
+  margin-top: 0;
+  padding-block: 0.85rem;
+  border-radius: 999px;
+  box-shadow:
+    0 8px 18px rgb(var(--accent-rgb) / 0.18),
+    inset 0 1px 0 rgb(255 255 255 / 0.22);
+}
+.onboarding-final-footer {
+  color: var(--ink-faint);
+}
+:root[data-theme='dark'] .onboarding-final-orbit-label-content,
+:root[data-theme='dark'] .onboarding-final-logo {
+  background: rgb(255 255 255 / 0.08);
+  border-color: rgb(147 185 255 / 0.18);
+}
+
+
+
+/* Orbit labels are information, not controls. Remove every pill/button cue
+   and let the logo, typography, and fine orbit line carry the composition. */
+
+
+
+
+
+
+.onboarding-final-logo {
+  height: 9rem;
+  width: 9rem;
+  margin-top: -4.5rem;
+  margin-left: -4.5rem;
+  background: rgb(255 255 255 / 0.52);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.9),
+    0 12px 26px rgb(var(--neo-dark-rgb) / 0.1),
+    0 0 0 0.55rem rgb(var(--accent-rgb) / 0.045);
+  transform: none;
+}
+.onboarding-final-logo img {
+  height: 7.6rem;
+  width: 7.6rem;
+}
+
+
+
+
+/* Responsive orbit tuning. The center stays fixed while the orbit radius,
+   logo, and label measure step down together, so nothing gets clipped at
+   phone or tablet widths. */
+@media (min-width: 681px) and (max-width: 980px) {
+  
+  
+  
+  
+  
   .onboarding-final-logo {
-    height: 5.75rem;
-    width: 5.75rem;
+    height: 8rem;
+    width: 8rem;
+    margin-top: -4rem;
+    margin-left: -4rem;
   }
   .onboarding-final-logo img {
-    height: 4.75rem;
-    width: 4.75rem;
+    height: 6.8rem;
+    width: 6.8rem;
   }
+}
+@media (max-width: 680px) {
+  
+  .dialog-scrim {
+    align-items: center;
+    padding: 0.75rem;
+  }
+  
+  .onboarding-final {
+    gap: var(--sp-3);
+  }
+  
+  
+  
+  
+  
+  
+  .onboarding-final-logo {
+    height: 6.75rem;
+    width: 6.75rem;
+    margin-top: -3.375rem;
+    margin-left: -3.375rem;
+  }
+  .onboarding-final-logo img {
+    height: 5.7rem;
+    width: 5.7rem;
+  }
+  .onboarding-final-cta {
+    width: 100%;
+    min-width: 0;
+  }
+  .onboarding-final-footer {
+    max-width: 18rem;
+    font-size: 0.6875rem;
+  }
+}
+
+/* Give the completion screen a wider confirmation line and a more generous
+   handoff to the primary action. The logo grows with the available canvas,
+   while the orbit gets the extra vertical room needed to keep that larger
+   mark optically centered. */
+.onboarding-final-footer {
+  width: min(100%, 34rem);
+  max-width: none;
+  text-wrap: balance;
+}
+.onboarding-final-cta {
+  margin-top: var(--sp-3);
+}
+
+.onboarding-final-logo {
+  height: 10rem;
+  width: 10rem;
+  margin-top: -5rem;
+  margin-left: -5rem;
+}
+.onboarding-final-logo img {
+  height: 8.5rem;
+  width: 8.5rem;
+}
+@media (min-width: 681px) and (max-width: 980px) {
+  
+  .onboarding-final-logo {
+    height: 9rem;
+    width: 9rem;
+    margin-top: -4.5rem;
+    margin-left: -4.5rem;
+  }
+  .onboarding-final-logo img {
+    height: 7.6rem;
+    width: 7.6rem;
+  }
+}
+@media (max-width: 680px) {
+  
+  .onboarding-final-logo {
+    height: 8rem;
+    width: 8rem;
+    margin-top: -4rem;
+    margin-left: -4rem;
+  }
+  .onboarding-final-logo img {
+    height: 6.8rem;
+    width: 6.8rem;
+  }
+  .onboarding-final-footer {
+    max-width: 22rem;
+  }
+}
+
+/* Orbit markers belong to the orbit, not to the copy. The marker is anchored
+   at the moving label's exact center, so it traces the ellipse as the label
+   circles; the text is offset outward from that point and counter-rotated
+   independently so it stays readable. */
+
+
+
+
+
+
+/* Keep the information legible and still while the markers carry the motion.
+   This gives the final screen a centered logo lockup instead of five moving
+   text blocks competing with the action below. */
+
+
+
+.onboarding-final-orbit-dot.is-secondary {
+  animation-delay: -21s;
+}
+
+
+
+
+/* Completion screen reset: a centered seal is calmer and more legible than
+   orbiting copy. Keep the older orbit rules above available for history, but
+   make the live finish screen use one deliberate visual hierarchy. */
+.onboarding-final {
+  align-items: center;
+  gap: 0.55rem;
+  text-align: center;
+}
+.onboarding-final-kicker {
+  color: var(--accent-text);
+  font-size: var(--fs-2xs);
+  font-weight: 750;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.onboarding-final-title {
+  max-width: 32rem;
+  margin: 0.15rem 0 0;
+  color: var(--ink);
+  font-size: clamp(1.65rem, 4vw, 2.25rem);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+.onboarding-final-intro {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+}
+.onboarding-final-stage {
+  position: relative;
+  display: grid;
+  height: clamp(12rem, 23vw, 15rem);
+  width: min(100%, 29rem);
+  place-items: center;
+  margin: 0.75rem auto 0.15rem;
+}
+.onboarding-final-stage-glow {
+  position: absolute;
+  height: 9rem;
+  width: 9rem;
+  border-radius: 999px;
+  background: rgb(var(--accent-rgb) / 0.13);
+  filter: blur(24px);
+}
+.onboarding-final-ring {
+  position: absolute;
+  height: 9rem;
+  width: 15rem;
+  border: 1px solid rgb(var(--accent-rgb) / 0.2);
+  border-radius: 50%;
+  transform: rotate(-10deg);
+}
+.onboarding-final-ring-secondary {
+  height: 10.25rem;
+  width: 16.5rem;
+  border-color: rgb(var(--accent-rgb) / 0.08);
+  border-style: dashed;
+  transform: rotate(12deg);
+}
+.onboarding-final-logo {
+  position: relative;
+  top: auto;
+  left: auto;
+  display: grid;
+  height: 9.25rem;
+  width: 9.25rem;
+  place-items: center;
+  margin: 0;
+  border: 1px solid rgb(var(--accent-rgb) / 0.22);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.68);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.94),
+    0 16px 32px rgb(var(--neo-dark-rgb) / 0.12),
+    0 0 0 0.65rem rgb(var(--accent-rgb) / 0.05);
+  transform: none;
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+}
+.onboarding-final-logo img {
+  height: 7.8rem;
+  width: 7.8rem;
+}
+.onboarding-final-logo-check {
+  position: absolute;
+  right: 0.1rem;
+  bottom: 0.35rem;
+  display: grid;
+  height: 2.15rem;
+  width: 2.15rem;
+  place-items: center;
+  border: 3px solid var(--paper-raised);
+  border-radius: 999px;
+  color: white;
+  background: var(--ok);
+  box-shadow: 0 5px 12px rgb(var(--neo-dark-rgb) / 0.18);
+}
+.onboarding-final-setup {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  width: min(100%, 44rem);
+  margin: 0.45rem auto 0;
+  border-top: 1px solid rgb(var(--accent-rgb) / 0.16);
+  border-bottom: 1px solid rgb(var(--accent-rgb) / 0.16);
+}
+.onboarding-final-setup-item {
+  min-width: 0;
+  padding: 0.7rem 0.8rem 0.8rem;
+  text-align: left;
+}
+.onboarding-final-setup-item + .onboarding-final-setup-item {
+  border-left: 1px solid rgb(var(--edge-rgb) / 0.7);
+}
+.onboarding-final-setup-item dt {
+  color: var(--ink-faint);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.onboarding-final-setup-item dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  line-height: 1.3;
+}
+.onboarding-final-cta {
+  width: min(100%, 19rem);
+  min-width: 0;
+  margin-top: 1rem;
+  padding-block: 0.85rem;
+}
+.onboarding-final-footer {
+  width: min(100%, 34rem);
+  max-width: none;
+  margin-top: 0.2rem;
+  color: var(--ink-faint);
+  text-wrap: balance;
+}
+:root[data-theme='dark'] .onboarding-final-logo {
+  background: rgb(255 255 255 / 0.09);
+}
+@media (max-width: 980px) {
+  .onboarding-final-stage {
+    height: 13rem;
+  }
+  .onboarding-final-logo {
+    height: 8.5rem;
+    width: 8.5rem;
+  }
+  .onboarding-final-logo img {
+    height: 7.15rem;
+    width: 7.15rem;
+  }
+  .onboarding-final-setup-item {
+    padding-inline: 0.55rem;
+  }
+}
+@media (max-width: 680px) {
+  .onboarding-final {
+    gap: 0.45rem;
+  }
+  .onboarding-final-title {
+    max-width: 19rem;
+    font-size: 1.6rem;
+  }
+  .onboarding-final-intro {
+    font-size: var(--fs-xs);
+  }
+  .onboarding-final-stage {
+    height: 12rem;
+    margin-top: 0.45rem;
+  }
+  .onboarding-final-ring {
+    height: 7.25rem;
+    width: 12rem;
+  }
+  .onboarding-final-ring-secondary {
+    height: 8.25rem;
+    width: 13rem;
+  }
+  .onboarding-final-logo {
+    height: 7.5rem;
+    width: 7.5rem;
+  }
+  .onboarding-final-logo img {
+    height: 6.3rem;
+    width: 6.3rem;
+  }
+  .onboarding-final-logo-check {
+    right: -0.05rem;
+    bottom: 0.15rem;
+    height: 1.9rem;
+    width: 1.9rem;
+  }
+  .onboarding-final-setup {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .onboarding-final-setup-item:nth-child(odd) {
+    border-left: 0;
+  }
+  .onboarding-final-setup-item:nth-child(n + 3) {
+    border-top: 1px solid rgb(var(--edge-rgb) / 0.7);
+  }
+  .onboarding-final-setup-item {
+    padding: 0.6rem 0.55rem 0.7rem;
+  }
+  .onboarding-final-cta {
+    width: 100%;
+    margin-top: 0.8rem;
+  }
+  .onboarding-final-footer {
+    max-width: 22rem;
+    font-size: 0.6875rem;
+  }
+}
+
+/* Live completion receipt overrides. This block follows the legacy completion
+   experiments above so the current screen cannot accidentally inherit the
+   abandoned orbit/logo geometry. */
+.onboarding-final { align-items: stretch; gap: var(--sp-3); text-align: left; }
+.onboarding-final-kicker { color: var(--accent-text); font-size: var(--fs-2xs); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-caps); }
+.onboarding-final-title { max-width: var(--measure-form); margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); line-height: var(--lh-tight); }
+.onboarding-final-intro { margin: 0; font-size: var(--fs-sm); }
+.onboarding-final-stage { display: flex; height: auto; width: min(100%, var(--measure-form)); align-items: center; gap: var(--sp-4); margin: var(--sp-2) 0 0; padding: var(--sp-4); border: 1px solid rgb(var(--accent-rgb) / 0.22); border-radius: var(--r-lg); background: rgb(var(--accent-rgb) / 0.08); }
+.onboarding-final-route-mark { display: grid; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; place-items: center; border-radius: var(--r-full); background: var(--accent); color: var(--ink-inverse); }
+.onboarding-final-stage-label { margin: 0; color: var(--accent-text); font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.onboarding-final-stage-copy { margin: var(--sp-1) 0 0; color: var(--ink-soft); font-size: var(--fs-sm); line-height: var(--lh-normal); }
+.onboarding-final-setup { width: min(100%, var(--measure-form)); margin: 0; border-color: rgb(var(--edge-rgb) / 0.8); }
+.onboarding-final-footer { width: min(100%, var(--measure-form)); margin: 0; color: var(--ink-muted); font-size: var(--fs-xs); }
+@media (max-width: 680px) {
+  .onboarding-final-title { max-width: none; font-size: var(--fs-xl); }
+  .onboarding-final-stage, .onboarding-final-setup, .onboarding-final-footer { width: 100%; }
+  .onboarding-final-footer { font-size: var(--fs-2xs); }
 }
