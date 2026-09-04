@@ -1200,13 +1200,66 @@
     .onboarding-actions {
       flex-wrap: wrap;
     }
+    /* The desktop footer leans entirely on absolute positioning for the
+       avatar (pinned to the footer's own corner) and Skip (centred on the
+       footer's full width) — both fine against one wide row, both broken
+       once this same breakpoint (below) turns that row into two stacked
+       ones: each lands wherever 50%/the corner falls across the COMBINED
+       height of both rows, nowhere near the row it's meant to sit in. A
+       two-row grid gives every element an explicit cell instead: Back and
+       Skip share a slim utility row on top, the teacher's icon and Continue
+       — the one destination every step shares — share the primary row
+       beneath it, echoing the single-row layout a step with neither Back
+       nor Skip already had. */
     .onboarding-footer {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 0;
+      position: relative;
+      display: grid;
+      /* minmax(0, 1fr), not 1fr auto — an auto track sizes to Skip's full
+         unwrapped intrinsic width, and Skip's sentence is wider than half
+         this row, so it pushed clean past the viewport's left edge instead
+         of wrapping. Bounding both tracks equally forces Skip (and Back) to
+         wrap within their own half, same as Skip's old centred-absolute
+         width used to. */
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      align-items: center;
+      row-gap: var(--sp-2);
+      column-gap: var(--sp-3);
       padding: var(--sp-3) var(--sp-5) calc(var(--sp-3) + var(--safe-b));
     }
-    .onboarding-footer .onboarding-actions {
+    .onboarding-footer-back {
+      position: static;
+      grid-row: 1;
       grid-column: 1;
+      align-self: start;
+      min-width: 0;
+    }
+    .onboarding-footer-skip {
+      position: static;
+      /* The desktop rule's translate(-50%, -50%) centred Skip on its old
+         absolutely-positioned box — switching `position` to static here
+         doesn't clear it, so without this it still shifts Skip up and left
+         by half its own (now much taller, wrapped) box. */
+      transform: none;
+      grid-row: 1;
+      grid-column: 2;
+      align-self: start;
+      justify-self: end;
+      min-width: 0;
+      max-width: 100%;
+      text-align: right;
+      white-space: normal;
+    }
+    .onboarding-footer-avatar {
+      position: static;
+      transform: none;
+      grid-row: 2;
+      grid-column: 1;
+    }
+    .onboarding-footer .onboarding-actions {
+      grid-row: 2;
+      grid-column: 2;
+      justify-content: flex-end;
     }
   }
 
@@ -6342,6 +6395,18 @@
     place-items: center;
     padding: 0;
     border-radius: 999px;
+  }
+  /* .cal-toolbar's three columns (Today | label | nav) give the two edge
+     columns whatever the centre label doesn't use — fine until the label's
+     "Week NN" pill pushes past ~170px, at which point the nav column's own
+     two round buttons no longer fit their share and the "next month" button
+     clips off the right edge. The pill duplicates the current-week row
+     highlight already visible in the grid below, so it's the one thing here
+     safe to drop rather than something every other rule has to shrink around. */
+  @media (max-width: 767.98px) {
+    .cal-toolbar-week {
+      display: none;
+    }
   }
   .cal-months {
     display: flex;
