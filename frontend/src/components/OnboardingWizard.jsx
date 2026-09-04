@@ -40,27 +40,33 @@ import { AvatarPicker } from './AvatarPicker'
 const ClassDocuments = lazy(() => import('./ClassDocuments.jsx').then((module) => ({ default: module.ClassDocuments })))
 
 
-/* Direction-aware, and actually wired up this time.
+/* Steps move UP the way a path does, not sideways like pages.
  *
- * `custom={direction}` was already being handed to AnimatePresence with no
- * variants to consume it — the visible animation was a CSS keyframe
- * (onboarding-step-enter) that had an enter and no exit, so mode="wait" was
- * waiting for nothing and a step leaving simply vanished.
+ * The rail beside them travels DOWN as setup progresses, so the content
+ * advancing upward is the same motion read from the other side: forward, the
+ * next question rises into place; back, the previous one drops in from above.
+ * A horizontal slide said "different page" instead, which is the opposite of
+ * what a numbered sequence wants to say.
  *
- * Asymmetric on purpose: mode="wait" plays exit fully before enter starts, so
- * two symmetric --t-base legs would total 440ms for a step swap. --t-fast out
- * and --t-base in lands around --t-enter instead. --ease-glide rather than
- * --ease-out, because --ease-out is already at full speed on its first frame,
- * which reads as a snap at panel size (see that token's own comment).
+ * 20px, where the app's own vertical reveals are 4-8px (--motion-reveal,
+ * .fa-rise, App.jsx's route transition). Deliberately larger: those are
+ * elements settling INTO a page, and this is the whole pane changing, which is
+ * one authored moment rather than the scattered motion DESIGN.md rules out.
+ *
+ * Asymmetric, because AnimatePresence mode="wait" plays exit fully before
+ * enter starts: two symmetric --t-base legs would total 440ms for one step.
+ * --t-fast out and --t-base in lands around --t-enter. --ease-glide rather
+ * than --ease-out, which is already at full speed on its first frame and
+ * reads as a snap at this size (see that token's own comment).
  *
  * <MotionConfig reducedMotion="user"> in App.jsx neutralises the transform for
  * anyone who asked; base.css's blanket prefers-reduced-motion block only
  * governs CSS, which is why the rail's own transitions stay in CSS.
  */
 const STEP_VARIANTS = {
-  enter: (dir) => ({ opacity: 0, x: dir * 16 }),
-  center: { opacity: 1, x: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
-  exit: (dir) => ({ opacity: 0, x: dir * -16, transition: { duration: 0.13, ease: [0.22, 1, 0.36, 1] } }),
+  enter: (dir) => ({ opacity: 0, y: dir * 20 }),
+  center: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
+  exit: (dir) => ({ opacity: 0, y: dir * -20, transition: { duration: 0.13, ease: [0.22, 1, 0.36, 1] } }),
 }
 
 /* Post-login guided setup — welcome, confirm the school & template, confirm
@@ -1565,9 +1571,14 @@ function CourseStep({ subject, setSubject, grade, setGrade, frameworks, saving, 
 
   return (
     <div className="onboarding-class-step">
+      {/* No className override and a lead like every other step. It used to
+          pass .onboarding-class-header, which tightened the bottom margin to
+          buy its browser more height — and that made this the one step whose
+          question block was 31px instead of 82px, so the controls under it
+          started fifty pixels higher than on every other screen. */}
       <OnboardingQuestion
-        className="onboarding-class-header"
         question="Which course are you teaching?"
+        lead="This picks the standards your plans are grounded in and the language they're written in, so it's the one answer worth getting exactly right."
       />
       <div className="onboarding-course-browser">
         <div className="onboarding-course-picker">

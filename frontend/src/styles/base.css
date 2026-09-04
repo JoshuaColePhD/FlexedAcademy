@@ -453,12 +453,16 @@
     display: flex;
     min-height: 0;
     flex-direction: column;
-    /* Centres the step in the column when there is spare room, and resolves to
-       zero when the step is taller than the frame. Auto margins rather than
-       `justify-content: center`, which inside a scroll container pushes the top
-       of a tall step out of reach — the format and materials steps are tall
-       enough to hit that. */
-    margin-block: auto;
+    /* Top-aligned, on purpose, and this is the third position it has had.
+    
+       Centred, it moved every step's question to a different height depending
+       on how much content that step happened to have — so the heading, the
+       first label and the first control all sat somewhere new on each screen,
+       and the rail's current item no longer lined up with the question it
+       labels. A flow is easier to move through when the thing you read and the
+       thing you click do not move. Top alignment costs empty space at the
+       bottom of the short steps; a stable layout is worth more than a filled
+       one. */
     /* Keeps prose off the scrollbar rather than under it. */
     padding-right: var(--sp-2);
     /* Named container so a step can lay itself out against the space it
@@ -589,8 +593,16 @@
     margin-bottom: var(--sp-8);
   }
   /* A full-page step has room to let the question breathe; the dialog does
-     not, so this is scoped to the fill variant rather than applied to both. */
+     not, so this is scoped to the fill variant rather than applied to both.
+    
+     The min-height is a floor, so the first control below sits at the same
+     height on every step whether that step's question wrapped to two lines or
+     its lead to one. Reserving the space is the point: a question that is
+     shorter on one screen should leave a gap, not pull everything under it
+     upwards. 5.25rem is the tallest real block (a one-line question over a
+     two-line lead) measured in the browser rather than guessed. */
   .onboarding-card-fill .onboarding-question {
+    min-height: 5.25rem;
     margin-bottom: var(--sp-10);
   }
   .onboarding-question h2 {
@@ -1031,9 +1043,6 @@
     height: 100%;
     min-height: 0;
     flex: 1 1 0;
-  }
-  .onboarding-class-header {
-    margin-bottom: var(--sp-4);
   }
   .onboarding-course-grade-control {
     display: flex;
