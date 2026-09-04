@@ -97,7 +97,6 @@
      rasters are the usual cause of a transform that looks smooth in DevTools
      but hitches on a real phone. */
   :root[data-motion='lite'] .app-blob,
-  :root[data-motion='lite'] .onboarding-blob,
   :root[data-motion='lite'] .btn-blob::before {
     animation-play-state: paused !important;
   }
@@ -262,6 +261,515 @@
     background-size: 120px 120px;
   }
 
+  /* ══ ONBOARDING SHELL ═════════════════════════════════════════════════════
+     Guided setup: one centred card on the app's own ground, a persistent step
+     rail, one question per screen.
+
+     There is deliberately NO world class here, and that is the whole point of
+     this block. The page variant renders inside App.jsx's
+     `.app-texture .neo-world` root with `.app-blob` already drifting behind
+     it — the same ground /welcome uses one screen earlier. It used to paint
+     `.onboarding-mac-classic` over all of that: a hardcoded cool blue-grey
+     gradient, declared with `!important`, in an app whose paper is
+     deliberately warm (see tokens.css's header, which asks that nobody cool it
+     back toward blue-white). Every accent-tinted glass override that used to
+     live under `.onboarding-shell` existed only to make the app's own
+     components legible against that invented ground, so removing the cause
+     removes ~200 lines of `!important` with it.
+
+     Contrast `.auth-ground`, which IS a legitimate dedicated world: /login
+     borrows the LANDING page's dark brand ground so the door and the form you
+     sign into read as one place. That argument doesn't reach a post-auth setup
+     flow, and .auth-ground is dark — a teacher crossing dark door, cream
+     /welcome, cool-grey wizard, cream app in ninety seconds is the problem,
+     not the fix. */
+  .onboarding-ground {
+    display: flex;
+    height: var(--app-h);
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    padding: var(--gutter);
+  }
+
+  .onboarding-card {
+    position: relative;
+    display: flex;
+    width: 100%;
+    max-width: 58rem;
+    /* A FIXED card, not one that resizes per step — the single biggest reason
+       the flow reads calm rather than busy, and what let SmoothHeight (and its
+       ResizeObserver) leave the wizard entirely.
+
+       `height`, not `min-height`, and on a non-flex-child: an explicit height
+       on a flex child is only a BASIS, so on a short viewport the browser was
+       free to squeeze the old shell below the height it had been given and
+       clip whichever step's Continue button sat at the bottom. SmoothHeight's
+       own `flexShrink: 0` was patching exactly that; a definite height here
+       removes the class of bug instead. Tall steps scroll inside
+       .onboarding-content. */
+    height: min(40rem, calc(var(--app-h) - var(--sp-8)));
+    flex-direction: column;
+    overflow: hidden;
+    /* --r-xl, not the old rounded-3xl. 24px isn't on the radius scale, and
+       every other card-shaped surface in the app — .app-rail,
+       .app-shell-main, .split-layout-shell — is rounded-2xl = --r-xl. */
+    border-radius: var(--r-xl);
+  }
+
+  /* The modal variant is opaque, where the page variant is .glass-panel.
+     This is what retires .onboarding-blob: that blob's own comment described a
+     bug it could only mitigate — with Reduce Transparency on, in Low Power
+     Mode, or on a weak GPU the blur renders weaker than expected and the live
+     app showed through the panel. An opaque card makes that impossible, there
+     is nothing behind a scrim worth diffusing, and a dialog is one of the four
+     surfaces DESIGN.md rule 2 allows a shadow on. */
+  .onboarding-card.neo-panel {
+    background: var(--paper-raised);
+  }
+
+  .onboarding-topbar {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    /* Rule 1's own stated exception: a border survives where two surfaces of
+       identical tone meet. Same idiom as /welcome's header bar. */
+    border-bottom: 1px solid var(--edge);
+    padding: var(--sp-4);
+  }
+
+  .onboarding-wordmark {
+    color: var(--ink);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .onboarding-topbar-close {
+    position: absolute;
+    right: var(--sp-3);
+    display: grid;
+    height: 2rem;
+    width: 2rem;
+    place-items: center;
+    border-radius: var(--r-md);
+    color: var(--ink-muted);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  }
+  .onboarding-topbar-close:hover {
+    background: var(--paper-sunken);
+    color: var(--ink);
+  }
+
+  .onboarding-body {
+    display: grid;
+    min-height: 0;
+    flex: 1;
+    /* 11rem holds the longest label ("Materials") plus its dot and gutter at
+       --fs-sm without wrapping. */
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: var(--sp-10);
+    padding: var(--sp-8) var(--sp-10) var(--sp-6);
+  }
+
+  .onboarding-column {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .onboarding-content {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* Keeps prose off the scrollbar rather than under it. */
+    padding-right: var(--sp-2);
+    /* Named container so a step can lay itself out against the space it
+       actually has. Steps sit inside a fixed 58rem card, so a viewport
+       breakpoint tells them almost nothing. */
+    container-type: inline-size;
+    container-name: onboarding-step;
+  }
+
+  /* The course step's own content IS a scroll region (FrameworkPicker's
+     variant="inline" rail + list). Two nested scrollers is what
+     .onboarding-course-browser's hand-rolled
+     `clamp(32rem, calc(100vh - 17rem), 46rem)` was fighting; now that the card
+     has a definite height, the step just hands it down and lets the picker own
+     the only scrollbar. */
+  .onboarding-content[data-fill='true'] {
+    overflow: hidden;
+  }
+  .onboarding-content[data-fill='true'] > * {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  /* ── the step rail ──────────────────────────────────────────────────────── */
+  .onboarding-rail-slot {
+    min-width: 0;
+  }
+
+  .onboarding-rail {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .onboarding-rail-step {
+    position: relative;
+    display: flex;
+    min-height: 2.25rem;
+    align-items: center;
+    gap: var(--sp-3);
+  }
+
+  /* One hairline per gap rather than one track behind the whole list, so a
+     segment already walked can be inked while one still ahead stays a
+     hairline — and neither needs to know how long the plan is. The plan is
+     4-7 steps depending on the account, so anything measured would need
+     re-measuring. */
+  .onboarding-rail-step::before {
+    position: absolute;
+    /* The dot is 0.5rem wide at the row's inline start, so its centre sits at
+       0.25rem; back off half the 1px line. */
+    left: calc(0.25rem - 0.5px);
+    bottom: 100%;
+    width: 1px;
+    height: 0.75rem;
+    content: '';
+    background: var(--edge-strong);
+    transition: background var(--t-base) var(--ease);
+  }
+  .onboarding-rail-step:first-child::before {
+    content: none;
+  }
+  .onboarding-rail-step[data-state='done']::before,
+  .onboarding-rail-step[data-state='current']::before {
+    background: var(--ink-soft);
+  }
+
+  .onboarding-rail-dot {
+    height: 0.5rem;
+    width: 0.5rem;
+    flex-shrink: 0;
+    border-radius: var(--r-full);
+    /* --ink-faint is the CORRECT token for a dot: tokens.css scopes it to
+       "dividers, disabled marks, icons" — a mark, not text. It is never used
+       for a label below, which is where the old header misused it. */
+    background: var(--ink-faint);
+    transition: background var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
+  }
+  .onboarding-rail-step[data-state='done'] .onboarding-rail-dot {
+    background: var(--ink-soft);
+  }
+  .onboarding-rail-step[data-state='current'] .onboarding-rail-dot {
+    background: var(--ink);
+    /* A halo, not a bigger dot — nothing reflows as the step advances. */
+    box-shadow: 0 0 0 3px rgb(var(--ink-rgb) / 0.1);
+  }
+
+  .onboarding-rail-label {
+    min-width: 0;
+    text-align: left;
+    /* --ink-muted (4.7:1), never --ink-faint (2.4:1). tokens.css calls
+       --ink-muted "the floor for real content" and --ink-faint explicitly NOT
+       text; a rail label for a step you are about to reach is real content. */
+    color: var(--ink-muted);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-base) var(--ease);
+  }
+  .onboarding-rail-step[data-state='done'] .onboarding-rail-label {
+    color: var(--ink-soft);
+  }
+  .onboarding-rail-step[data-state='done'] .onboarding-rail-label:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .onboarding-rail-step[data-state='current'] .onboarding-rail-label {
+    color: var(--ink);
+    font-weight: var(--fw-semibold);
+  }
+
+  .onboarding-rail-count {
+    display: none;
+  }
+
+  /* ── the question and its actions ───────────────────────────────────────── */
+  .onboarding-question {
+    /* The old StepHeader carried this as a `mb-8` utility on its wrapper.
+       Losing it when the component was replaced let the state chooser's pane
+       ride up over the question's descenders. */
+    margin-bottom: var(--sp-8);
+  }
+  .onboarding-question h2 {
+    /* A question is one sentence; let it break where the sentence wants to. */
+    text-wrap: balance;
+  }
+
+  /* ── the state chooser ────────────────────────────────────────────────────
+     These four classes were referenced by the JSX with no definitions at all,
+     so `npm run check:classes` failed on them and the pill and the note
+     rendered as unstyled inline text. Defined here rather than deleted from
+     the markup, because the honest "Available now / Coming soon" framing is
+     the point of the step: only Alabama's standards are ingested, and saying
+     so plainly beats either hiding the other 49 or letting a teacher pick a
+     state that silently can't ground anything. */
+  .onboarding-state-layout {
+    display: grid;
+    align-items: start;
+    gap: var(--sp-5);
+  }
+
+  /* Two columns only once the CARD is wide enough for both to be readable,
+     which is a container question, not a viewport one — see the note at the
+     call site. `container-type: inline-size` is on .onboarding-column, so this
+     measures the space the step actually has. Equal-ish halves rather than the
+     old 0.78/1.22 split: the list is the control being operated and the map is
+     confirmation, so starving the list to give the map 22rem had it backwards. */
+  @container onboarding-step (min-width: 34rem) {
+    .onboarding-state-layout[data-has-state='true'] {
+      align-items: stretch;
+      grid-template-columns: minmax(15rem, 1fr) minmax(14rem, 1fr);
+      /* Caps the pair so the step fits the card without the whole column
+         scrolling. This is what the old `lg:h-[30rem]` utility was for; it
+         belongs here now, keyed on the container. */
+      height: 22rem;
+    }
+  }
+
+  /* Both panes fill the capped row and scroll their own overflow, rather than
+     growing the row and pushing Continue out of the card. */
+  .onboarding-state-layout[data-has-state='true'] > * {
+    min-height: 0;
+  }
+
+  .onboarding-state-chooser {
+    /* Composes the app's own emboss rather than hand-rolling a shadow, so it
+       picks up both skins (.neo-world and [data-skin='skeu']) for free. */
+    background: var(--paper-raised);
+  }
+
+  .onboarding-state-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    /* Capped, and scrolling inside the cap. Fifty rows at --touch-min each is
+       taller than any card, so without this the chooser pushed Continue off
+       the bottom and the whole step had to be scrolled to reach it -- on the
+       one screen where the teacher has exactly one thing to click. The step's
+       own lg: utilities take over in the two-column layout (lg:min-h-0
+       lg:flex-1), which is why this is a max and not a height. */
+    max-height: min(20rem, 42vh);
+    overflow-y: auto;
+    flex: 1;
+    overscroll-behavior: contain;
+    background: var(--paper-sunken);
+  }
+
+  /* Not a --ok/green "success" pill: nothing has succeeded, this is a
+     statement of fact about the catalog. --accent-text on --accent-tint is the
+     app's own "this is the live one" treatment. */
+  .onboarding-state-available {
+    flex-shrink: 0;
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-full);
+    background: var(--accent-tint);
+    color: var(--accent-text);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+
+  .onboarding-state-support-note {
+    margin-top: var(--sp-3);
+    /* --ink-muted, not --ink-faint: tokens.css puts the faint step below the
+       floor for real content, and this sentence is the one that tells a
+       teacher outside Alabama what to expect. */
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    line-height: var(--lh-normal);
+  }
+
+  .onboarding-lead {
+    max-width: var(--measure-narrow);
+    margin-top: var(--sp-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-relaxed);
+  }
+
+  .onboarding-choice-label {
+    margin-top: var(--sp-7);
+    margin-bottom: var(--sp-3);
+    color: var(--ink);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+  }
+  .onboarding-choice-label:first-child {
+    margin-top: 0;
+  }
+
+  .onboarding-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--sp-4);
+    /* Sticky, because each step renders its own actions and therefore sits
+       INSIDE the scrolling content area. On a tall step (fifty states, a
+       documents list, a template review) the primary action would otherwise
+       scroll out of reach on the one screen where the teacher has exactly one
+       thing to press.
+
+       The structurally cleaner fix is to hoist the actions out of the scroller
+       and render them once, as a sibling, from the wizard -- which is what the
+       `flex-shrink: 0` here is really for. That needs every step to expose its
+       action config rather than render its own footer, so it is a follow-up;
+       this is six lines and holds for every step and every viewport in the
+       meantime.
+
+       The gradient rather than a flat fill: a hard edge across a translucent
+       glass card reads as a docked toolbar the design doesn't otherwise have,
+       while a fade just says "there is more above". */
+    position: sticky;
+    bottom: 0;
+    margin-top: auto;
+    padding-top: var(--sp-6);
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--paper-raised-rgb) / 0),
+      rgb(var(--paper-raised-rgb) / 0.92) var(--sp-4)
+    );
+  }
+
+  /* The one filled control on any step, and deliberately the dark ink pill
+     rather than .btn-primary's --accent fill. tokens.css rule 4 reserves
+     district blue for what is actionable inside the product; every linear
+     one-way flow the app already has carries ink instead (/welcome's "Open my
+     year", /signup, /reset). This wizard opens straight off /welcome's own
+     Continue, so the button must not change colour mid-flow.
+
+     No emboss: rule 2 keeps elevation for floating layers, and /welcome's
+     equivalent doesn't wear one. .fa-press carries the press instead. */
+  .onboarding-continue {
+    display: inline-flex;
+    min-height: var(--touch-min-lg);
+    align-items: center;
+    gap: var(--sp-2);
+    padding-inline: var(--sp-6);
+    border-radius: var(--r-lg);
+    background: var(--ink);
+    color: var(--ink-inverse);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    transition: background var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+  }
+  .onboarding-continue:hover:not(:disabled) {
+    background: var(--ink-soft);
+  }
+  .onboarding-continue:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .onboarding-quiet {
+    min-height: var(--touch-min);
+    padding-inline: var(--sp-2);
+    border-radius: var(--r-sm);
+    color: var(--ink-muted);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    transition: color var(--t-fast) var(--ease);
+  }
+  .onboarding-quiet:hover {
+    color: var(--ink);
+  }
+  /* Pushed to the far end: a skip is a legitimate choice and should be
+     reachable, but it should not sit shoulder to shoulder with Back as if the
+     two were a pair. */
+  .onboarding-skip {
+    margin-left: auto;
+  }
+
+  /* ── phone ──────────────────────────────────────────────────────────────── */
+  @media (max-width: 767.98px) {
+    .onboarding-ground {
+      padding: 0;
+    }
+    .onboarding-card {
+      max-width: none;
+      height: var(--app-h);
+      border-radius: 0;
+    }
+    .onboarding-body {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--sp-5);
+      padding: var(--sp-5) var(--sp-5) var(--sp-4);
+    }
+    /* A vertical rail with seven labels doesn't fit 375px, and a second
+       component for the same information is a second thing to keep in step. So
+       the ONE <ol> flips to a row of equal hairline segments — a slim progress
+       track — with every label clipped except the current step's. */
+    .onboarding-rail-slot {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+    .onboarding-rail {
+      flex-direction: row;
+      gap: var(--sp-1);
+    }
+    .onboarding-rail-step {
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+    .onboarding-rail-step::before {
+      content: none;
+    }
+    .onboarding-rail-dot {
+      height: 3px;
+      width: auto;
+      box-shadow: none;
+    }
+    .onboarding-rail-step[data-state='current'] .onboarding-rail-dot {
+      box-shadow: none;
+    }
+    /* Clipped, not display:none — the <ol> is still the accessible source of
+       truth for position, so every label has to stay in the a11y tree. */
+    .onboarding-rail-step:not([aria-current]) .onboarding-rail-label {
+      position: absolute;
+      height: 1px;
+      width: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .onboarding-rail-step[data-state='current'] .onboarding-rail-label {
+      margin-top: var(--sp-2);
+    }
+    .onboarding-rail-count {
+      display: block;
+    }
+    .onboarding-actions {
+      flex-wrap: wrap;
+    }
+  }
+
   /* ══ THE RAIL ═════════════════════════════════════════════════════════════
      Was frosted glass (a blur, lit by .app-glow behind it) until the rail
      went neomorphic (.neo-world, on request) — an opaque emboss and a
@@ -321,37 +829,7 @@
      of .app-blob). Positioned against the wizard's own `relative overflow-
      hidden` wrapper, not the scrim, so it never bleeds past the dialog's
      rounded corners. */
-  .onboarding-blob {
-    position: absolute;
-    inset: 0;
-    /* -1, not 0: the dialog panel beside it in markup is only position:
-       relative (no z-index of its own), which is enough to paint above a
-       NEGATIVE z-index sibling but not above a 0/auto one — same reasoning
-       as .app-blob under AppShell's #main. */
-    z-index: -1;
-    /* The four circles below all fade to transparent at their own edges —
-       between them (and there's real gap, four circles never tile edge to
-       edge) there was nothing but the dialog-scrim's own translucency and,
-       past that, the real page underneath. backdrop-filter on the panel in
-       front is supposed to blur that away regardless, but on a device with
-       Reduce Transparency on, in Low Power Mode, or just a weaker GPU, that
-       blur can render weaker than expected or not at all — and the panel
-       was still translucent enough (before this) that a stray "Good
-       evening" showed straight through the gaps, blur or no blur. A solid
-       base color under the gradients means there is never a truly empty
-       pixel here for the real page to occupy, independent of whether the
-       blur actually renders on a given device. */
-    background: radial-gradient(circle min(40vw, 320px) at 20% 20%, rgb(191 219 254 / 0.34) 0%, transparent 100%),
-      radial-gradient(circle min(35vw, 280px) at 80% 15%, rgb(224 231 255 / 0.34) 0%, transparent 100%),
-      radial-gradient(circle min(38vw, 300px) at 85% 80%, rgb(196 181 253 / 0.18) 0%, transparent 100%),
-      radial-gradient(circle min(40vw, 320px) at 15% 85%, rgb(186 230 253 / 0.24) 0%, transparent 100%),
-      rgb(var(--paper-raised-rgb) / 0.96);
-    /* One size per gradient image layer — the trailing plain color above is
-       background-color, not a fifth sizeable image layer. */
-    background-size: 160% 160%;
-    animation: land-blob-drift 18s ease-in-out infinite alternate;
-    pointer-events: none;
-  }
+  
 
   /* One step's content sliding in past the last — --onboarding-dir is +1
      going forward, -1 going back (OnboardingWizard.jsx's own `direction`
@@ -360,57 +838,17 @@
      SmoothHeight around it, which animates the step slot's height at the
      same time — a one-line welcome and the documents step's whole list
      shouldn't jump the dialog to a new size instantly. */
-  .onboarding-step {
-    min-height: 0;
-    animation: onboarding-step-enter 280ms var(--ease-out) both;
-  }
+  
   /* Frosted Mac Classic: a pale, glassy desktop backdrop with cool window
      light and just a trace of periwinkle. The onboarding card stays the focus;
      the atmosphere should feel like a calm system surface behind it, not a
      saturated purple hero. */
-  .onboarding-mac-classic {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    background:
-      linear-gradient(135deg, rgb(250 251 253 / 0.96), rgb(239 243 249 / 0.9) 48%, rgb(247 246 252 / 0.96)) !important;
-  }
-  .onboarding-mac-classic::before {
-    position: absolute;
-    inset: -12%;
-    z-index: -1;
-    content: '';
-    background:
-      radial-gradient(circle at 18% 20%, rgb(180 205 238 / 0.22), transparent 32%),
-      radial-gradient(circle at 84% 18%, rgb(220 214 247 / 0.18), transparent 30%),
-      radial-gradient(circle at 70% 88%, rgb(196 218 239 / 0.18), transparent 34%),
-      linear-gradient(120deg, rgb(255 255 255 / 0.5), rgb(224 232 243 / 0.18));
-    filter: blur(24px);
-    transform: translateZ(0);
-  }
-  .onboarding-mac-classic::after {
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    content: '';
-    pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-    mix-blend-mode: soft-light;
-    opacity: 0.8;
-  }
-  .onboarding-mac-classic > .onboarding-shell {
-    z-index: 1;
-  }
-  :root[data-theme='dark'] .onboarding-mac-classic {
-    background: linear-gradient(135deg, rgb(24 28 36 / 0.98), rgb(33 39 50 / 0.96) 48%, rgb(29 28 40 / 0.98)) !important;
-  }
-  :root[data-theme='dark'] .onboarding-mac-classic::before {
-    background:
-      radial-gradient(circle at 18% 20%, rgb(103 147 201 / 0.18), transparent 32%),
-      radial-gradient(circle at 84% 18%, rgb(144 119 208 / 0.15), transparent 30%),
-      radial-gradient(circle at 70% 88%, rgb(62 122 158 / 0.16), transparent 34%),
-      linear-gradient(120deg, rgb(255 255 255 / 0.06), rgb(7 12 20 / 0.2));
-  }
+  
+  
+  
+  
+  
+  
   /* Course selection is the main decision on this step. Treat it as a
      working surface, not a dropdown: the category rail and the course list
      should occupy most of the card so teachers can scan before choosing. */
@@ -577,40 +1015,16 @@
       padding-block: 0.3rem;
     }
   }
-  @keyframes onboarding-step-enter {
-    from {
-      opacity: 0;
-      transform: translateX(calc(var(--onboarding-dir, 1) * 20px));
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
+  
 
   /* How far in, and how much is left. The flow's only answer to that was the
      eyebrow's "Step 1 of 3" — which was hardcoded on three steps of a six-step
      wizard, so it was both the only progress signal and a wrong one. Dots
      rather than a bar: the count is small enough to read at a glance, and a
      bar at four segments reads as a loading indicator for something else. */
-  .onboarding-progress {
-    display: flex;
-    justify-content: center;
-    gap: var(--sp-2);
-    margin-top: var(--sp-6);
-  }
-  .onboarding-progress span {
-    width: 22px;
-    height: 3px;
-    border-radius: 999px;
-    background: var(--edge-strong);
-    transition:
-      background var(--t-base) var(--ease),
-      width var(--t-base) var(--ease);
-  }
-  .onboarding-progress span.is-done {
-    background: var(--accent);
-  }
+  
+  
+  
 
   /* The closing orientation is intentionally a small sequence rather than
      three more feature cards. It gives a teacher a memorable path into the
@@ -809,14 +1223,7 @@
   
   
   
-  @media (prefers-reduced-motion: reduce) {
-    .onboarding-step {
-      animation: none;
-    }
-    .onboarding-progress span {
-      transition: none;
-    }
-  }
+  
   @media (max-width: 680px) {
     .onboarding-launch-layout {
       grid-template-columns: 1fr;
@@ -9248,68 +9655,14 @@
 
   /* The wizard shell itself is glass too; the inner panes should feel like
      layers sitting inside it, not cards floating on a solid white sheet. */
-  .onboarding-shell {
-    min-height: 0;
-    overflow: hidden !important;
-    overscroll-behavior: none;
-    background-color: rgb(var(--paper-raised-rgb) / 0.52) !important;
-    background-image: linear-gradient(
-      135deg,
-      rgb(255 255 255 / 0.58),
-      rgb(var(--accent-rgb) / 0.08)
-    ) !important;
-    backdrop-filter: blur(24px) saturate(130%) !important;
-    -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.72) !important;
-    box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, 0.82),
-      0 20px 46px rgba(31, 38, 135, 0.1) !important;
-  }
+  
 
-  :root[data-theme='dark'] .onboarding-shell {
-    background-color: rgba(15, 23, 42, 0.48) !important;
-    background-image: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.14),
-      rgba(99, 102, 241, 0.1)
-    ) !important;
-    border-color: rgba(255, 255, 255, 0.12) !important;
-    box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, 0.14),
-      0 20px 46px rgba(0, 0, 0, 0.28) !important;
-  }
+  
 
   /* Keep the onboarding experience viewport-bound on shorter laptop windows.
      Long lists still scroll inside their own panes, but the wizard shell and
      the document page never become a second scrolling surface. */
-  @media (max-height: 860px) {
-    .onboarding-shell {
-      padding-block: 0.75rem !important;
-    }
-    .onboarding-shell .onboarding-step .mb-8 {
-      margin-bottom: 1rem !important;
-    }
-    .onboarding-shell .onboarding-template-panel {
-      padding: 1.25rem !important;
-    }
-    .onboarding-shell .onboarding-template-panel .onboarding-ingest-path {
-      margin-top: 1rem;
-      padding: 0.5rem;
-    }
-    .onboarding-shell .onboarding-template-input-grid {
-      margin-top: 1rem !important;
-    }
-    .onboarding-shell .onboarding-template-input-grid .onboarding-template-upload {
-      gap: 0.5rem;
-      padding: 0.5rem !important;
-    }
-    .onboarding-shell .dialog-actions {
-      margin-top: 0.75rem !important;
-    }
-    .onboarding-shell .onboarding-progress {
-      margin-top: 0 !important;
-    }
-  }
+  
 
   /* The state list is the primary decision surface, so give it the clearer
      neomorphic treatment while leaving the map preview as frosted glass. */
@@ -9454,122 +9807,18 @@
    workspace, with a little chromatic edge to help the important surfaces read
    against the pale Mac Classic backdrop. The color is deliberately carried by
    hairline outlines and inner highlights rather than large purple fills. */
-.onboarding-shell {
-  background-color: rgb(var(--paper-raised-rgb) / 0.42) !important;
-  background-image: linear-gradient(
-    135deg,
-    rgb(255 255 255 / 0.64),
-    rgb(var(--accent-rgb) / 0.1)
-  ) !important;
-  border-color: rgb(var(--accent-rgb) / 0.2) !important;
-  box-shadow:
-    inset 0 1px 1px rgb(255 255 255 / 0.86),
-    0 0 0 1px rgb(var(--accent-rgb) / 0.07),
-    0 20px 46px rgb(var(--neo-dark-rgb) / 0.1) !important;
-}
-.onboarding-shell .onboarding-step > .mb-8 {
-  padding-bottom: var(--sp-4);
-  border-bottom: 1px solid rgb(var(--accent-rgb) / 0.16);
-}
-.onboarding-shell .dialog-actions {
-  padding-top: var(--sp-4);
-  border-top: 1px solid rgb(var(--accent-rgb) / 0.14);
-}
-.onboarding-shell :is(
-  .onboarding-glass-pane,
-  .onboarding-template-panel,
-  .onboarding-course-browser,
-  .onboarding-setup-summary,
-  .onboarding-final-summary,
-  .onboarding-final-start
-) {
-  border-color: rgb(var(--accent-rgb) / 0.22) !important;
-  background-image: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 0.58),
-    rgb(var(--accent-rgb) / 0.08)
-  ) !important;
-  backdrop-filter: blur(18px) saturate(138%) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(138%) !important;
-  box-shadow:
-    inset 0 1px 1px rgb(255 255 255 / 0.78),
-    0 0 0 1px rgb(var(--accent-rgb) / 0.045),
-    0 14px 32px rgb(var(--neo-dark-rgb) / 0.07) !important;
-}
-.onboarding-shell :is(
-  .onboarding-template-preview,
-  .onboarding-analysis-card,
-  .onboarding-ingest-path,
-  .onboarding-template-upload,
-  .onboarding-template-processing,
-  .onboarding-template-confirmed,
-  .onboarding-next-step,
-  .onboarding-ready-list
-) {
-  border-color: rgb(var(--accent-rgb) / 0.2) !important;
-  background-color: rgb(var(--paper-raised-rgb) / 0.3) !important;
-  background-image: linear-gradient(
-    135deg,
-    rgb(255 255 255 / 0.34),
-    rgb(var(--accent-rgb) / 0.045)
-  );
-  backdrop-filter: blur(12px) saturate(125%);
-  -webkit-backdrop-filter: blur(12px) saturate(125%);
-}
-.onboarding-shell :is(.onboarding-neomorphic-pane, .onboarding-neomorphic-list) {
-  border-color: rgb(var(--accent-rgb) / 0.2) !important;
-}
-.onboarding-shell .onboarding-neomorphic-pane {
-  box-shadow:
-    8px 8px 18px rgb(var(--neo-dark-rgb) / 0.24),
-    -8px -8px 18px rgb(var(--neo-light-rgb) / 0.78),
-    0 0 0 1px rgb(var(--accent-rgb) / 0.04) !important;
-}
-.onboarding-shell .onboarding-class-step .fw-picker-rail {
-  border-right: 1px solid rgb(var(--accent-rgb) / 0.16);
-}
-.onboarding-shell .onboarding-class-step .fw-picker-panel {
-  background-image: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 0.48),
-    rgb(var(--accent-rgb) / 0.05)
-  );
-}
-.onboarding-shell .onboarding-progress span {
-  box-shadow: 0 0 0 1px rgb(var(--accent-rgb) / 0.08);
-}
-:root[data-theme='dark'] .onboarding-shell {
-  background-color: rgb(15 23 42 / 0.42) !important;
-  background-image: linear-gradient(
-    135deg,
-    rgb(255 255 255 / 0.13),
-    rgb(99 102 241 / 0.1)
-  ) !important;
-  border-color: rgb(147 185 255 / 0.2) !important;
-}
-:root[data-theme='dark'] .onboarding-shell :is(
-  .onboarding-glass-pane,
-  .onboarding-template-panel,
-  .onboarding-course-browser,
-  .onboarding-setup-summary,
-  .onboarding-final-summary,
-  .onboarding-final-start,
-  .onboarding-template-preview,
-  .onboarding-analysis-card,
-  .onboarding-ingest-path,
-  .onboarding-template-upload,
-  .onboarding-template-processing,
-  .onboarding-template-confirmed,
-  .onboarding-next-step,
-  .onboarding-ready-list
-) {
-  background-image: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 0.13),
-    rgb(99 102 241 / 0.08)
-  ) !important;
-  border-color: rgb(147 185 255 / 0.18) !important;
-}
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* The completion screen should feel like a breath out after setup. Keep one
    calm information surface, soften the labels, and let the first action sit
@@ -9705,9 +9954,7 @@
    logo, and label measure step down together, so nothing gets clipped at
    phone or tablet widths. */
 @media (min-width: 681px) and (max-width: 980px) {
-  .onboarding-shell {
-    padding: 2rem !important;
-  }
+  
   
   
   
@@ -9724,17 +9971,12 @@
   }
 }
 @media (max-width: 680px) {
-  .onboarding-mac-classic {
-    padding: 0.75rem !important;
-  }
+  
   .dialog-scrim {
     align-items: center;
     padding: 0.75rem;
   }
-  .onboarding-shell {
-    padding: 1.25rem !important;
-    border-radius: 1.5rem !important;
-  }
+  
   .onboarding-final {
     gap: var(--sp-3);
   }

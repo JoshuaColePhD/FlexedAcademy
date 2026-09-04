@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import usaMap from '@svg-maps/usa'
 import {
-  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   FileText,
@@ -28,6 +27,9 @@ import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
 import { CalendarBody } from './ArtifactDetailPanel'
 import { UploadDropzone } from './UploadDropzone'
+import { OnboardingStepRail } from './onboarding/OnboardingStepRail'
+import { OnboardingQuestion } from './onboarding/OnboardingQuestion'
+import { OnboardingActions } from './onboarding/OnboardingActions'
 // ClassDocuments used to live inside ClassPage.jsx and was re-exported from
 // there; it later moved out to its own file (components/ClassDocuments.jsx)
 // with nothing left behind at the old path, so this lazy import silently
@@ -63,49 +65,44 @@ const TIPS = [
 // the UI will then enable it automatically in the same alphabetical list.
 const INGESTED_STANDARDS_STATES = new Set(['AL'])
 
-/* Animates the step slot's height between whatever each step's content
- * happens to be (a one-line welcome vs. the documents step's whole list) —
- * same technique and same bug-fix reasoning as VoiceModePanel's own
- * SmoothHeight: measuring in a layout effect, before paint, is what keeps a
- * step swap from rendering one frame at the new height before the animation
- * has even started. Copied rather than imported/shared — VoiceModePanel's
- * copy isn't exported, and this one is small enough that a shared-component
- * refactor isn't worth it for a single second caller. */
-export function SmoothHeight({ children }) {
-  const contentRef = useRef(null)
-  const [height, setHeight] = useState(null)
+/* One label per plan key, for the step rail.
+ *
+ * A short noun, not a sentence: it sits beside a question that already asks
+ * the sentence, and the rail column is 11rem wide. These are the CURRENT plan
+ * keys; when the flow re-sequencing lands they come from
+ * lib/onboardingPlan.js's ONBOARDING_STEPS instead, which is where the labels
+ * for the new keys already live.
+ */
+const STEP_LABELS = {
+  welcome: 'State',
+  school: 'School',
+  class: 'Course',
+  template: 'Format',
+  documents: 'Materials',
+  tips: 'Review',
+}
 
-  useLayoutEffect(() => {
-    const el = contentRef.current
-    if (!el) return undefined
-    const measure = () => {
-      const next = el.getBoundingClientRect().height
-      setHeight((prev) => (prev !== null && Math.abs(prev - next) < 0.5 ? prev : next))
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [children])
-
-  return (
-    <div
-      style={{
-        height: height === null ? 'auto' : `${height}px`,
-        transition: 'height 260ms cubic-bezier(0.4, 0, 0.2, 1)',
-        overflow: 'hidden',
-        // The panel above this is a flex column with its own overflow-y-auto
-        // and a shrinking max-height (calc(100vh-4rem)). Without this, a flex
-        // child's explicit height is only a *basis* — the browser was free to
-        // squeeze it below its set height to fit the panel on a short
-        // viewport, clipping the bottom of whichever step (and its Continue
-        // button) rather than letting the panel scroll to it.
-        flexShrink: 0,
-      }}
-    >
-      <div ref={contentRef}>{children}</div>
-    </div>
-  )
+/* Direction-aware, and actually wired up this time.
+ *
+ * `custom={direction}` was already being handed to AnimatePresence with no
+ * variants to consume it — the visible animation was a CSS keyframe
+ * (onboarding-step-enter) that had an enter and no exit, so mode="wait" was
+ * waiting for nothing and a step leaving simply vanished.
+ *
+ * Asymmetric on purpose: mode="wait" plays exit fully before enter starts, so
+ * two symmetric --t-base legs would total 440ms for a step swap. --t-fast out
+ * and --t-base in lands around --t-enter instead. --ease-glide rather than
+ * --ease-out, because --ease-out is already at full speed on its first frame,
+ * which reads as a snap at panel size (see that token's own comment).
+ *
+ * <MotionConfig reducedMotion="user"> in App.jsx neutralises the transform for
+ * anyone who asked; base.css's blanket prefers-reduced-motion block only
+ * governs CSS, which is why the rail's own transitions stay in CSS.
+ */
+const STEP_VARIANTS = {
+  enter: (dir) => ({ opacity: 0, x: dir * 16 }),
+  center: { opacity: 1, x: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
+  exit: (dir) => ({ opacity: 0, x: dir * -16, transition: { duration: 0.13, ease: [0.22, 1, 0.36, 1] } }),
 }
 
 /* Post-login guided setup — welcome, confirm the school & template, confirm
@@ -307,11 +304,13 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
    * real decision (state), so excluding it here made the next screen reset
    * from "Step 1 of 6" to "Step 1 of 5". The closing celebration is the only
    * screen that should stay outside the numbered sequence. */
-  const progressSteps = plan.filter((s) => s !== 'done')
-  const progressIndex = progressSteps.indexOf(stepKey)
-  const eyebrow = progressIndex >= 0 ? `Step ${progressIndex + 1} of ${progressSteps.length}` : null
-  const currentStep = progressIndex >= 0 ? progressIndex + 1 : 0
-  const totalSteps = progressSteps.length
+  /* The rail owns progress now, so this is just the sequence it renders.
+     What used to be here as well -- an `eyebrow` string, plus `currentStep`
+     and `totalSteps` -- was three ways of saying the same thing, and two of
+     them were dead: five step components passed currentStep/totalSteps into a
+     StepHeader signature that never accepted them, so they rendered nothing at
+     all while looking like they were doing the work. */
+  const progressSteps = plan.filter((key) => key !== 'done')
 
   const saveSchool = async () => {
     setSavingSchool(true)
@@ -442,39 +441,61 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   if (!mounted || !cls) return null
 
-  const steps = (
-    <>
-      <button
-        type="button"
-        className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
-        onClick={finish}
-        aria-label="Close"
-        title="Skip for now"
-      >
-        <X size={20} aria-hidden="true" />
-      </button>
+  const railSteps = progressSteps.map((key) => ({ key, label: STEP_LABELS[key] || key }))
 
-      {/* SmoothHeight was written in this file, exported from this file,
-          and then only ever used by VoiceModePanel — so the one panel it
-          was named for snapped between step heights while the panel that
-          borrowed it animated. The steps differ by a lot (a two-line
-          welcome vs. the documents list), and that snap is the single
-          most visible rough edge in the flow. */}
-      <SmoothHeight>
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.div key={stepKey} className="onboarding-step" style={{ '--onboarding-dir': direction }}>
+  const card = (
+    <>
+      {/* Slim top bar, wordmark centred — the reference layout's chrome, and
+          the same treatment /welcome's own header gives it. */}
+      <div className="onboarding-topbar">
+        <span className="onboarding-wordmark">FlexEd Academy</span>
+        {/* The page variant gets NO close button, and that gate is
+            load-bearing: App.jsx's ClassRoutes guard routes any account
+            without onboarding_seen_at straight back here, so an X on first run
+            promises an exit that doesn't exist. The modal IS genuinely
+            dismissible — it's Settings' "take the tour again", over an app the
+            teacher is already using. (This gate existed, was removed, and is
+            restored here.) */}
+        {variant !== 'page' ? (
+          <button
+            type="button"
+            className="onboarding-topbar-close"
+            onClick={finish}
+            aria-label="Close"
+            title="Skip for now"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
+
+      <div className="onboarding-body">
+        <OnboardingStepRail steps={railSteps} activeKey={stepKey} onGoTo={goTo} />
+        <div className="onboarding-column">
+          {/* data-fill hands the card's own height down to a step whose
+              content is itself a scroll region (the course browser), so there
+              is only ever one scrollbar. */}
+          <div className="onboarding-content" data-fill={stepKey === 'class' ? 'true' : undefined}>
+
+            <AnimatePresence mode="wait" custom={direction} initial={false}>
+              <motion.div
+                key={stepKey}
+                custom={direction}
+                variants={STEP_VARIANTS}
+                initial="enter"
+                animate="center"
+                exit="exit"
+              >
             {stepKey === 'welcome' ? (
               <WelcomeStep
                 state={state}
                 setState={(value) => { setState(value); setStateError(false) }}
                 stateError={stateError}
                 saving={savingState}
-                progressLabel={`Step ${currentStep} of ${totalSteps}`}
                 onNext={saveState}
               />
             ) : stepKey === 'school' ? (
               <SchoolStep
-                eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
                 school={school}
                 onSchoolChange={(value) => {
                   setSchool(value)
@@ -493,7 +514,6 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
               />
             ) : stepKey === 'template' ? (
               <TemplateStep
-                eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
                 schoolName={selectedSchool?.name || school}
                 templates={schoolTemplates}
                 templatesLoading={schoolTemplatesLoading}
@@ -534,7 +554,6 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
               />
             ) : stepKey === 'class' ? (
               <ClassStep
-                eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
                 subject={subject}
                 setSubject={setSubject}
                 grade={grade}
@@ -546,12 +565,9 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 onNext={saveClass}
               />
             ) : stepKey === 'documents' ? (
-              <DocumentsStep eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps} cls={cls} onBack={goBack} onNext={goNext} />
+              <DocumentsStep cls={cls} onBack={goBack} onNext={goNext} />
             ) : stepKey === 'tips' ? (
               <TipsStep
-                eyebrow={eyebrow}
-                currentStep={currentStep}
-                totalSteps={totalSteps}
                 stateLabel={US_STATES.find(([value]) => value === state)?.[1]}
                 schoolName={selectedSchool?.name || school}
                 courseName={frameworks.find((framework) => framework.id === subject)?.label || subject}
@@ -573,34 +589,29 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 formatName={schoolHasUsableTemplate || templatePhase === 'confirmed' ? 'School format' : 'Add later'}
               />
             )}
-          </motion.div>
-        </AnimatePresence>
-      </SmoothHeight>
-
-      {/* Where am I, and how much is left — the flow had no answer to
-          either beyond a line of text that was counting wrong. */}
-      {progressSteps.length > 1 && progressIndex >= 0 ? (
-        <div className="onboarding-progress" aria-hidden="true">
-          {progressSteps.map((s, i) => (
-            <span key={s} className={i <= progressIndex ? 'is-done' : undefined} />
-          ))}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
-      ) : null}
+      </div>
     </>
   )
 
   if (variant === 'page') {
     /* No scrim, no dialog role: there is no app underneath to layer over yet
        (see the comment on `variant` above) and nothing here should read as
-       dismissible-by-clicking-past, since there's nothing behind it to reach. */
+       dismissible-by-clicking-past, since there's nothing behind it to reach.
+
+       No ground of its own either, which is the change. This route already
+       renders inside App.jsx's `.app-texture .neo-world` root with `.app-blob`
+       drifting behind it — the same ground /welcome uses one screen earlier.
+       It used to paint `.onboarding-mac-classic` over all of that: a
+       hardcoded cool blue-grey gradient with `!important`, in an app whose
+       paper is deliberately warm. Every accent-tinted glass override under
+       `.onboarding-shell` existed only to compensate for that. */
     return (
-      <div className="onboarding-mac-classic flex h-app w-full items-center justify-center bg-paper p-gutter">
-        <div className="onboarding-blob" aria-hidden="true" />
-        <div
-          className="onboarding-shell relative flex max-h-full w-full max-w-4xl flex-col overflow-y-auto rounded-3xl p-8 shadow-2xl sm:p-12"
-        >
-          {steps}
-        </div>
+      <div className="onboarding-ground">
+        <div className="onboarding-card glass-panel fa-rise-panel">{card}</div>
       </div>
     )
   }
@@ -616,44 +627,26 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       className={`dialog-scrim${closing ? ' is-closing' : ''}`}
       onMouseDown={(e) => e.target === e.currentTarget && finish()}
     >
+      {/* Opaque, not glass. .onboarding-blob is gone with it: that blob's own
+          comment described a bug it could only mitigate — with Reduce
+          Transparency, in Low Power Mode, or on a weak GPU the blur renders
+          weaker than expected and the live app showed through the panel. There
+          is nothing behind a scrim worth diffusing anyway. */}
       <div
-        className={`relative overflow-hidden rounded-3xl shadow-2xl ${closing ? ' is-closing' : ''}`}
-        style={{ width: '100%', maxWidth: '58rem' }} // max-w-4xl equivalent
+        className={`onboarding-card neo-panel${closing ? ' is-closing' : ''}`}
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="onboarding-title"
       >
-        <div className="onboarding-blob" aria-hidden="true" />
-        <div
-          className="onboarding-shell relative flex max-h-[calc(100vh-4rem)] w-full flex-col overflow-hidden p-8 sm:p-12"
-        >
-          {steps}
-        </div>
+        {card}
       </div>
     </div>
   )
 }
 
-function StepHeader({ eyebrow, title, body, progressLabel, className = '' }) {
-  return (
-    <div className={`mb-8 ${className}`}>
-      {progressLabel ? (
-        <p className="mb-3 text-2xs font-semibold uppercase tracking-[0.18em] text-ink-faint">{progressLabel}</p>
-      ) : null}
-      {eyebrow ? (
-        <p className="text-xs font-semibold uppercase tracking-widest text-accent-text">{eyebrow}</p>
-      ) : null}
-      <h2 id="onboarding-title" className="mt-2 flex items-center gap-2 text-3xl font-bold tracking-display text-ink">
-        {title}
-      </h2>
-      {body ? <p className="mt-3 text-base text-ink-muted leading-relaxed">{body}</p> : null}
-    </div>
-  )
-}
-
-function WelcomeStep({ state, setState, stateError, saving, progressLabel, onNext }) {
+function WelcomeStep({ state, setState, stateError, saving, onNext }) {
   const stateListRef = useRef(null)
   const availableStates = US_STATES
   const firstAvailableStateIndex = 0
@@ -684,12 +677,16 @@ function WelcomeStep({ state, setState, stateError, saving, progressLabel, onNex
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-      <StepHeader
-        progressLabel={progressLabel}
-        eyebrow="Welcome to FlexEd"
-        title="What state are you coming from?"
+      <OnboardingQuestion
+        question="What state are you coming from?"
       />
-      <div className={`onboarding-state-layout grid items-stretch gap-6 ${state ? 'lg:h-[30rem] lg:max-h-[calc(100vh-20rem)] lg:grid-cols-[minmax(0,0.78fr)_minmax(22rem,1.22fr)]' : 'lg:max-w-md'}`}>
+      {/* The two-column split lives in CSS now, keyed on the CARD's width
+          rather than the viewport's. It was `lg:grid-cols-[minmax(0,0.78fr)_minmax(22rem,1.22fr)]`
+          — viewport breakpoints for a layout inside a fixed 58rem card, so at
+          1440px the utilities fired while the content column was still only
+          ~640px wide: the 22rem minimum on the map left ~290px for the list,
+          and "Teaching state" and "Coming soon" both wrapped. */}
+      <div className="onboarding-state-layout" data-has-state={state ? 'true' : undefined}>
         <div className="onboarding-neomorphic-pane onboarding-state-chooser flex min-h-0 flex-col rounded-2xl p-6 lg:h-full">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-medium text-ink">Teaching state</p>
@@ -727,19 +724,7 @@ function WelcomeStep({ state, setState, stateError, saving, progressLabel, onNex
         </div>
         {state ? <StateMapPreview stateCode={state} /> : null}
       </div>
-      <div className="dialog-actions mt-6">
-        <motion.button 
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          type="button" 
-          className="btn btn-primary ml-auto" 
-          disabled={!state || saving}
-          onClick={onNext}
-        >
-          {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
-          {saving ? 'Saving…' : 'Continue'} <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-        </motion.button>
-      </div>
+      <OnboardingActions onNext={onNext} busy={saving} disabled={!state} />
     </motion.div>
   )
 }
@@ -811,9 +796,6 @@ function StateMapPreview({ stateCode }) {
 }
 
 function SchoolStep({
-  eyebrow,
-  currentStep,
-  totalSteps,
   school,
   onSchoolChange,
   schools,
@@ -823,9 +805,8 @@ function SchoolStep({
 }) {
   return (
     <div>
-      <StepHeader
-        eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
-        title="Which school do you teach at?"
+      <OnboardingQuestion
+        question="Which school do you teach at?"
         body="Choose your school, then continue to its format and calendar."
       />
       <SchoolSelect
@@ -848,23 +829,12 @@ function SchoolStep({
           <ConfirmedCalendarReview schoolId={school} />
         </motion.div>
       ) : null}
-<div className="dialog-actions mt-6">
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
-          <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext} disabled={saving}>
-          {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
-          {saving ? 'Saving…' : 'Continue'}
-        </motion.button>
-      </div>
+<OnboardingActions onNext={onNext} busy={saving} onBack={onBack} />
     </div>
   )
 }
 
 function TemplateStep({
-  eyebrow,
-  currentStep,
-  totalSteps,
   schoolName,
   templates,
   templatesLoading,
@@ -918,11 +888,8 @@ function TemplateStep({
 
   return (
     <div>
-      <StepHeader
-        eyebrow={eyebrow}
-        currentStep={currentStep}
-        totalSteps={totalSteps}
-        title={title}
+      <OnboardingQuestion
+        question={title}
         body={body}
       />
       <div className="onboarding-template-panel rounded-2xl p-5 sm:p-7">
@@ -1053,36 +1020,37 @@ function TemplateStep({
           </>
         )}
       </div>
-      <div className="dialog-actions mt-6">
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
-          <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </motion.button>
-        {phase === 'upload' ? (
-          <>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onSkip} disabled={saving}>
-              Skip for now
-            </motion.button>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext} disabled={saving}>
-              {hasInput ? 'Analyze format' : 'Continue'} <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-            </motion.button>
-          </>
-        ) : phase === 'processing' ? (
-          <p className="ml-auto flex items-center gap-2 text-sm text-ink-muted"><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Working on it…</p>
-        ) : phase === 'review' ? (
-          <>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onEdit}>
-              Choose another file
-            </motion.button>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onConfirm} disabled={!reviewable}>
-              Use this format <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-            </motion.button>
-          </>
-        ) : (
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext}>
-            Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-          </motion.button>
-        )}
-      </div>
+      {/* One footer per phase of the nested upload -> processing -> review ->
+          confirmed machine, each with exactly one filled control. `processing`
+          has no button on purpose: there is nothing to press while soffice
+          works, and offering a disabled Continue there just invites clicking
+          it. */}
+      {phase === 'upload' ? (
+        <OnboardingActions
+          onNext={onNext}
+          nextLabel={hasInput ? 'Analyze format' : 'Continue'}
+          busy={saving}
+          onBack={onBack}
+          onSkip={onSkip}
+          skipLabel="Skip — use a neutral layout for now"
+        />
+      ) : phase === 'processing' ? (
+        <div className="onboarding-actions">
+          <p className="flex items-center gap-2 text-sm text-ink-muted">
+            <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Working on it…
+          </p>
+        </div>
+      ) : phase === 'review' ? (
+        <OnboardingActions
+          onNext={onConfirm}
+          nextLabel="Use this format"
+          disabled={!reviewable}
+          onBack={onEdit}
+          backLabel="Choose another file"
+        />
+      ) : (
+        <OnboardingActions onNext={onNext} onBack={onBack} />
+      )}
     </div>
   )
 }
@@ -1203,15 +1171,14 @@ function OnboardingTemplateChoices({ templates, loading, selectingTemplateId, on
     </div>
   )
 }
-function ClassStep({ eyebrow, currentStep, totalSteps, subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
+function ClassStep({ subject, setSubject, grade, setGrade, frameworks, saving, error, onBack, onNext }) {
   return (
     <div className="onboarding-class-step">
-      <StepHeader
-        eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
+      <OnboardingQuestion
         className="onboarding-class-header"
-        title={<span>Confirm your teaching context</span>}
+        question="Which course are you teaching?"
       />
-      <div className="onboarding-course-browser onboarding-course-browser-focus">
+      <div className="onboarding-course-browser">
         <motion.div
           className="onboarding-course-picker"
           animate={error ? { x: [-5, 5, -5, 5, 0] } : {}}
@@ -1244,56 +1211,44 @@ function ClassStep({ eyebrow, currentStep, totalSteps, subject, setSubject, grad
           {error && <p className="mt-1.5 text-xs text-mark font-medium px-1">Please select a course to continue</p>}
         </motion.div>
         <div className="onboarding-course-browser-actions">
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
-            <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-          </motion.button>
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary" onClick={onNext} disabled={saving}>
-            {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : null}
-            {saving ? 'Saving…' : 'Continue'}
-          </motion.button>
+          <OnboardingActions onNext={onNext} busy={saving} onBack={onBack} />
         </div>
       </div>
     </div>
   )
 }
-function DocumentsStep({ eyebrow, currentStep, totalSteps, cls, onBack, onNext }) {
+function DocumentsStep({ cls, onBack, onNext }) {
   return (
     <div>
-      <StepHeader
-        eyebrow={eyebrow} currentStep={currentStep} totalSteps={totalSteps}
-        title="Add your teaching materials"
+      <OnboardingQuestion
+        question="Add your teaching materials"
         body="Optional. Add the planning source FlexEd should use to organize new plans. You can add supporting materials later."
       />
       <Suspense fallback={<p className="text-xs text-ink-muted">Loading documents…</p>}>
         <ClassDocuments cls={cls} variant="onboarding" />
       </Suspense>
-      <div className="dialog-actions mt-6">
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
-          <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onNext}>
-          Skip for now
-        </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext}>
-          Continue <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-        </motion.button>
-      </div>
+      {/* The skip states its own cost, rather than a bare "Skip for now".
+          A teacher who skips this keeps planning fine; they just don't get
+          plans that follow their pacing guide, and nothing said so before. */}
+      <OnboardingActions
+        onNext={onNext}
+        onBack={onBack}
+        onSkip={onNext}
+        skipLabel="Skip — I’ll add these later"
+      />
     </div>
   )
 }
 
-function TipsStep({ eyebrow, currentStep, totalSteps, stateLabel, schoolName, courseName, gradeName, formatName, editableSteps = [], onEdit, onBack, onNext }) {
+function TipsStep({ stateLabel, schoolName, courseName, gradeName, formatName, editableSteps = [], onEdit, onBack, onNext }) {
   const editButton = (target, label) => editableSteps.includes(target) ? (
     <button type="button" className="onboarding-setup-summary-edit" onClick={() => onEdit(target)}>{label || 'Edit'}</button>
   ) : null
 
   return (
     <div>
-      <StepHeader
-        eyebrow={eyebrow}
-        currentStep={currentStep}
-        totalSteps={totalSteps}
-        title="You’re ready to start"
+      <OnboardingQuestion
+        question="You’re ready to start"
         body="Your workspace is ready. Here’s how to turn it into your next plan."
       />
       <div className="onboarding-launch-layout">
@@ -1347,14 +1302,7 @@ function TipsStep({ eyebrow, currentStep, totalSteps, stateLabel, schoolName, co
           </div>
         </div>
       </div>
-      <div className="dialog-actions mt-6">
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn" onClick={onBack}>
-          <ArrowLeft size={14} className="mr-1.5" aria-hidden="true" /> Back
-        </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" className="btn btn-primary ml-auto" onClick={onNext}>
-          Finish setup <ArrowRight size={14} className="ml-1.5" aria-hidden="true" />
-        </motion.button>
-      </div>
+      <OnboardingActions onNext={onNext} onBack={onBack} nextLabel="Finish setup" />
     </div>
   )
 }
@@ -1404,18 +1352,16 @@ function DoneStep({ finishing, onFinish, stateLabel, schoolName, courseName, gra
         ))}
       </dl>
 
-      <motion.button
-        whileHover={{ scale: 1.015 }}
-        whileTap={{ scale: 0.985 }}
+      <button
         type="button"
         disabled={finishing}
-        className="btn btn-primary onboarding-final-cta"
+        className="onboarding-continue onboarding-final-cta fa-press"
         onClick={onFinish}
       >
         {finishing ? <Loader2 size={17} className="mr-2 animate-spin" aria-hidden="true" /> : null}
         {finishing ? 'Opening your workspace…' : 'Open my workspace'}
         {!finishing ? <ArrowRight size={17} className="ml-2" aria-hidden="true" /> : null}
-      </motion.button>
+      </button>
 
       <div className="onboarding-final-footer">
         <span>Your setup is saved. You can change anything later in Settings.</span>

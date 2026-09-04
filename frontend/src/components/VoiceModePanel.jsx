@@ -4,7 +4,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useVoice } from '../lib/voiceContext'
 import { WeekStrip } from './WeekStrip'
 import { DecisionStack } from './DecisionStack'
-import { SmoothHeight } from './OnboardingWizard'
+import { SmoothHeight } from './SmoothHeight'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { DocxDownloadButton } from './DocxDownloadButton'
 
