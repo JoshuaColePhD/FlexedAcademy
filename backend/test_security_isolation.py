@@ -120,3 +120,99 @@ def test_api_responses_are_private_and_uncacheable(monkeypatch):
         assert response.headers["cache-control"] == "private, no-store"
     finally:
         _clear_overrides()
+
+
+def test_onboarding_events_store_nothing_but_the_allowlist(monkeypatch):
+    """Setup telemetry must not be ABLE to carry teacher or student content.
+
+    routes/onboarding.py drops unrecognised prop keys rather than rejecting the
+    batch, deliberately: /events is called from a sendBeacon on pagehide, where
+    a 400 loses the drop-off signal at exactly the moment it matters most. That
+    makes the allowlist the entire privacy boundary, so it is worth a test that
+    goes through the real HTTP path — Pydantic, the route, and all — rather than
+    trusting a reading of the filter.
+
+    The payload below is everything the boundary exists to stop: a district
+    document filename, a school id already stored on users.school, a free-text
+    error message with a student's essay path in it, and a bare student name.
+    """
+    _clear_overrides()
+    monkeypatch.setattr(settings, "require_login", True)
+    stored: list[dict] = []
+
+    monkeypatch.setattr(
+        db,
+        "record_onboarding_events",
+        lambda user_id, events: stored.extend(events) or len(events),
+    )
+
+    client = _client(monkeypatch, "account-a")
+    try:
+        response = client.post(
+            "/api/onboarding/events",
+            json={
+                "events": [
+                    {
+                        "name": "template_analyzed",
+                        "step": "format",
+                        "props": {
+                            "section_count": 7,
+                            "analysis_status": "analyzed",
+                            "filename": "Florence HS Lesson Plan Template 2026.docx",
+                            "school_id": "florence-high-school",
+                            "message": "could not parse /Users/josh/Desktop/Smith_essay.docx",
+                            "student_name": "Jane Doe",
+                        },
+                    },
+                    # An event name the server doesn't know is dropped whole,
+                    # not stored and not 400'd — same reasoning as prop keys.
+                    {"name": "definitely_not_a_real_event", "step": "format"},
+                    # A real name with a step that isn't a step.
+                    {"name": "step_viewed", "step": "../../etc/passwd"},
+                ]
+            },
+        )
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 200
+    assert response.json() == {"recorded": 1, "dropped": 2}
+
+    assert len(stored) == 1
+    props = stored[0]["props"]
+    assert props == {"section_count": 7, "analysis_status": "analyzed"}
+
+    # Belt and braces: nothing sensitive survived anywhere in the stored row.
+    blob = repr(stored)
+    for leaked in ("Florence HS", ".docx", "florence-high-school", "Smith_essay", "Jane Doe"):
+        assert leaked not in blob, f"{leaked!r} reached the events table"
+
+
+def test_onboarding_progress_rejects_steps_and_states_it_does_not_know(monkeypatch):
+    """The step name lands in a column the admin funnel groups by, so unlike
+    /events this one does reject rather than drop — a bad value here is a
+    client bug worth surfacing, not a lost metric."""
+    _clear_overrides()
+    monkeypatch.setattr(settings, "require_login", True)
+    writes: list[tuple] = []
+
+    monkeypatch.setattr(
+        db,
+        "set_onboarding_progress",
+        lambda user_id, step=None, state=None: writes.append((user_id, step, state))
+        or {"onboarding_state": state or "in_progress", "onboarding_step": step, "onboarding_seen_at": None},
+    )
+
+    client = _client(monkeypatch, "account-a")
+    try:
+        assert client.post("/api/onboarding/progress", json={"step": "not-a-step"}).status_code == 400
+        assert client.post("/api/onboarding/progress", json={"state": "finished-ish"}).status_code == 400
+        # Neither a step nor a state is a no-op request, not a silent success.
+        assert client.post("/api/onboarding/progress", json={}).status_code == 400
+        assert client.post("/api/onboarding/progress", json={"step": "format"}).status_code == 200
+        assert client.post("/api/onboarding/progress", json={"state": "skipped"}).status_code == 200
+    finally:
+        _clear_overrides()
+
+    # Only the two valid calls reached the database.
+    assert writes == [("account-a", "format", None), ("account-a", None, "skipped")]

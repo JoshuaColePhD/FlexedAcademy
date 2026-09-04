@@ -3455,6 +3455,92 @@ MIGRATIONS: list[str] = [
     REVOKE ALL ON TABLE quiz_library_sets FROM anon, authenticated;
     REVOKE ALL ON TABLE quiz_library_versions FROM anon, authenticated;
     """,
+
+    # ── 74: tell a skipped setup apart from an unfinished one ────────────────
+    #
+    # Migration 36 deliberately collapsed "finished every step" and "skipped
+    # every step" into one nullable timestamp, and said so in its own comment:
+    # "skipping every step and finishing every step both mean the same thing
+    # here." That was right when the only consumer was "should the wizard
+    # auto-open." It is wrong now, for two reasons.
+    #
+    # The wizard's close button calls the same finish() as its final button
+    # (OnboardingWizard.jsx, title="Skip for now"), so a teacher who dismissed
+    # screen one is permanently indistinguishable from one who uploaded a
+    # template and a pacing guide — and skipping is irreversible, because the
+    # only thing that would bring the wizard back is the timestamp both paths
+    # set. And nothing records WHICH step anyone reached, so the flow cannot be
+    # resumed and its drop-off cannot be measured at all.
+    #
+    # onboarding_seen_at is KEPT, with its exact current meaning ("don't
+    # auto-open this again"), and BOTH terminal states still set it. That is
+    # deliberate and load-bearing: App.jsx's ClassRoutes guard redirects any
+    # account without it back into the wizard, so a state where the guard says
+    # "go back" while the wizard cannot record "done" is an inescapable loop —
+    # the bug lib/onboardingWizardBus.js's deferOnboarding() exists to escape.
+    # Keeping ONE boolean-shaped gate, set by skip and by complete alike, means
+    # no state added here can reintroduce it. Everything below is additive
+    # metadata the guard never consults.
+    #
+    # Two columns rather than a JSON blob because every consumer filters or
+    # groups by exactly these fields ("who is stuck on format?", "how many
+    # skipped, and from where?"). Note what is deliberately NOT stored: any
+    # per-step ANSWER. Those already live in classes.subject/grade/state/school,
+    # users.school, user_school_template_preferences and the class-document
+    # tables. A blob invites duplicating them and letting the two disagree,
+    # which is the bug class migration 38 is a monument to.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_state TEXT NOT NULL DEFAULT 'not_started';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_step TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_skipped_at TEXT;
+    UPDATE users SET onboarding_state = 'completed' WHERE onboarding_seen_at IS NOT NULL;
+    """,
+
+    # ── 75: onboarding funnel events ─────────────────────────────────────────
+    #
+    # users.onboarding_step (migration 74) already answers "where are they
+    # stuck" as a point-in-time snapshot, and that one GROUP BY is the whole
+    # drop-off report. This answers only what a snapshot cannot: how long a step
+    # took, which steps get retried or backed out of, which skip was chosen,
+    # and whether the format preview rendered or degraded.
+    #
+    # Deliberately NOT usage_events (migration 17). That table is the token
+    # meter — entitlement.py sums tokens_in + tokens_out over its trailing 7
+    # days against a weekly cap, and its own comment insists the sum can't
+    # drift from what it's summing. Funnel rows have no business inside the
+    # entitlement query, zero-token or not.
+    #
+    # No free text and no teacher content, by construction. `name` comes from a
+    # closed vocabulary the frontend owns (src/lib/onboardingPlan.js's
+    # ONBOARDING_EVENTS) and the route validates against an allowlist; `props`
+    # is small and holds only enums, ids and integers. Specifically excluded:
+    # template filenames (a district document name — section_count carries the
+    # same signal) and the school id (already on users.school and joinable
+    # server-side). This is a K-12 product; setup telemetry must not be ABLE to
+    # contain a student name, a lesson, or a district filename.
+    #
+    # Cascades from users, so db.delete_user_account sweeps it with no code
+    # change — that function enumerates its cascades by hand, and a new table is
+    # exactly what such a list forgets.
+    """
+    CREATE TABLE IF NOT EXISTS onboarding_events (
+        id         TEXT PRIMARY KEY,
+        user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        step       TEXT,
+        props      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_onboarding_events_user ON onboarding_events(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_onboarding_events_name ON onboarding_events(name, created_at);
+    ALTER TABLE onboarding_events ENABLE ROW LEVEL SECURITY;
+
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own onboarding events" ON onboarding_events USING (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    REVOKE ALL ON TABLE onboarding_events FROM anon, authenticated;
+    """,
 ]
 
 
@@ -6277,7 +6363,8 @@ def delete_user_account(user_id: str) -> None:
     curriculum_progress and curriculum_chunks; plans takes plan_feedback and
     quizzes (which itself takes nothing further); chats takes messages.
     usage_events cascades from the users row itself (the one table that
-    already declared a real FK to users, per migration 17). Nothing here is
+    already declared a real FK to users, per migration 17), and
+    onboarding_events the same way (migration 75). Nothing here is
     reversible — routes/auth.py's delete_account is what gates reaching
     this behind re-entering a password.
 
@@ -7068,14 +7155,154 @@ def update_user_avatar(user_id: str, avatar: str | None) -> dict | None:
     return get_user_by_id(user_id)
 
 
-def mark_onboarding_seen(user_id: str) -> dict | None:
-    """Stamps NOW rather than a bare boolean — 'when' is worth having if this
-    ever needs a one-time re-prompt for a redesigned wizard later (compare
-    against a new "wizard version" cutoff), which a plain flag can't answer.
-    Idempotent: re-marking an already-seen account just moves the timestamp
-    forward, which is harmless since nothing reads it as a first-seen date."""
-    _write("UPDATE users SET onboarding_seen_at = ? WHERE id = ?", (now(), user_id))
+ONBOARDING_STATES = ("not_started", "in_progress", "skipped", "completed")
+
+
+def set_onboarding_progress(
+    user_id: str,
+    *,
+    step: str | None = None,
+    state: str | None = None,
+) -> dict | None:
+    """Record how far through setup this account is.
+
+    Three shapes, one function, because they all write the same two or three
+    columns and splitting them invites one path forgetting onboarding_seen_at:
+
+      step='format'      -> in_progress, remember the step. Fired on step ENTRY,
+                            fire-and-forget; the caller must swallow failures.
+                            This is bookkeeping and must never be able to block
+                            a teacher mid-setup.
+      state='completed'  -> stamp onboarding_seen_at, clear the step.
+      state='skipped'    -> stamp onboarding_seen_at AND onboarding_skipped_at,
+                            and KEEP onboarding_step — that retained value is
+                            the record of where they bailed, which is both the
+                            funnel's most useful column and where "Finish
+                            setup" sends them back to.
+
+    BOTH terminal states stamp onboarding_seen_at, which is the single most
+    important line in this file for onboarding. App.jsx's ClassRoutes guard
+    redirects any account without it straight back into the wizard, so a
+    terminal state that did NOT set it would be an inescapable loop — exactly
+    the bug lib/onboardingWizardBus.js's deferOnboarding() exists to escape
+    (offline or a 500 meant a teacher could not get into the app at all). The
+    guard keeps reading one boolean-shaped field; everything else here is
+    metadata it never consults. See migration 74.
+
+    Stamps NOW rather than a bare boolean — 'when' is worth having if this ever
+    needs a one-time re-prompt for a redesigned wizard later (compare against a
+    new "wizard version" cutoff), which a plain flag can't answer. Idempotent:
+    re-marking an already-seen account just moves the timestamp forward, which
+    is harmless since nothing reads it as a first-seen date.
+    """
+    if state is not None and state not in ONBOARDING_STATES:
+        raise ValueError(f"unknown onboarding state: {state!r}")
+
+    stamp = now()
+    if state == "completed":
+        _write(
+            "UPDATE users SET onboarding_seen_at = ?, onboarding_state = 'completed', onboarding_step = NULL WHERE id = ?",
+            (stamp, user_id),
+        )
+    elif state == "skipped":
+        # onboarding_step is deliberately left alone — see the docstring.
+        _write(
+            "UPDATE users SET onboarding_seen_at = ?, onboarding_skipped_at = ?, onboarding_state = 'skipped' WHERE id = ?",
+            (stamp, stamp, user_id),
+        )
+    elif step is not None:
+        # Never downgrades a finished account back to in_progress: re-running
+        # the wizard from Settings shouldn't make a completed teacher look
+        # stuck in the funnel, and shouldn't re-arm anything that reads the
+        # state as "needs to finish".
+        _write(
+            """
+            UPDATE users
+               SET onboarding_state = CASE WHEN onboarding_state = 'completed' THEN 'completed' ELSE 'in_progress' END,
+                   onboarding_step = ?
+             WHERE id = ?
+            """,
+            (step, user_id),
+        )
     return get_user_by_id(user_id)
+
+
+def mark_onboarding_seen(user_id: str) -> dict | None:
+    """Back-compat alias for the pre-migration-74 call, kept so a cached
+    client build still completes setup instead of 404ing on a route that
+    moved. New callers should use set_onboarding_progress directly and say
+    which terminal state they mean."""
+    return set_onboarding_progress(user_id, state="completed")
+
+
+def record_onboarding_events(user_id: str, events: list[dict]) -> int:
+    """Append funnel events. Returns how many rows landed.
+
+    `name` is expected to be pre-validated against the closed vocabulary by
+    routes/onboarding.py — this function is the storage, not the gate. `props`
+    is serialised here rather than by the caller so there is one place that
+    decides the on-disk shape.
+
+    executemany, not a loop of _write: a flush carries a whole step transition's
+    worth of events (and the pagehide beacon can carry a backlog), and this app
+    runs one worker on a small instance — twenty separate round trips for
+    twenty small rows is the kind of thing that shows up as latency on somebody
+    else's request.
+    """
+    if not events:
+        return 0
+    rows = [
+        (
+            new_id(),
+            user_id,
+            now(),
+            event["name"],
+            event.get("step"),
+            json.dumps(event.get("props") or {}, separators=(",", ":")),
+        )
+        for event in events
+    ]
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO onboarding_events (id, user_id, created_at, name, step, props)"
+                " VALUES (%s, %s, %s, %s, %s, %s)",
+                rows,
+            )
+        conn.commit()
+    return len(rows)
+
+
+def onboarding_funnel(days: int = 30) -> list[dict]:
+    """Where accounts created in the last `days` currently stand in setup.
+
+    This one GROUP BY is the whole drop-off report, which is why migration 74's
+    columns were worth adding before any of the redesign: it answers how many
+    are stuck, on which step, how many skipped and from where, and how many
+    finished — without an events table, an SDK, or a single extra write on the
+    teacher's critical path.
+
+    Grouped in Postgres rather than pulled and counted in Python for the same
+    reason weekly_usage_series does it: this is an aggregate over a table that
+    grows with signups, and the answer is a couple of dozen rows either way.
+    """
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
+    rows = _rows(
+        """
+        SELECT COALESCE(onboarding_state, 'not_started') AS state,
+               onboarding_step                           AS step,
+               COUNT(*)                                  AS accounts
+          FROM users
+         WHERE created_at >= ?
+      GROUP BY state, step
+      ORDER BY accounts DESC, state ASC
+        """,
+        (since,),
+    )
+    return [
+        {"state": r["state"], "step": r["step"], "accounts": int(r["accounts"] or 0)}
+        for r in rows
+    ]
 
 
 # claim_user() was here, and is deliberately gone.

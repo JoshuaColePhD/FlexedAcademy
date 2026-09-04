@@ -31,6 +31,7 @@
 import assert from 'node:assert/strict'
 import { GENERIC_SCHOOL, hasChosenSchool, hasUsableSchoolTemplate } from '../src/lib/schools.js'
 import {
+  ONBOARDING_EVENTS,
   ONBOARDING_STEPS,
   STEP_ORDER,
   derivePlan,
@@ -293,4 +294,39 @@ assert.deepEqual(
   'STEP_ORDER and ONBOARDING_STEPS describe the same set of steps'
 )
 
-console.log(`onboarding step tests passed (${FIXTURES.length} fixtures)`)
+// ── the JS vocabulary and the Python allowlist must agree ─────────────────
+/* routes/onboarding.py re-declares the step keys and event names as frozensets,
+ * because the alternative is trusting the client to name its own steps and
+ * those values land in a column the admin funnel groups by. That is a
+ * duplication across a language boundary, which is precisely the shape of the
+ * problem this whole file was rewritten to fix — a second copy of a list, with
+ * a comment asserting it stays in step and nothing checking.
+ *
+ * So check it. Parsing Python from a Node test is admittedly crude, but the
+ * failure it prevents is real and silent: a step renamed on one side only means
+ * every event for it is dropped server-side (routes/onboarding.py drops
+ * unknown names rather than erroring, deliberately, so a beacon on pagehide
+ * can't 400), and the funnel quietly loses a column with nothing on fire.
+ */
+import { readFileSync } from 'node:fs'
+
+const pySource = readFileSync(new URL('../../backend/routes/onboarding.py', import.meta.url), 'utf8')
+
+function pyFrozenset(name) {
+  const match = pySource.match(new RegExp(`${name} = frozenset\\(\\{([^}]*)\\}`))
+  assert.ok(match, `${name} not found in backend/routes/onboarding.py`)
+  return [...match[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).sort()
+}
+
+assert.deepEqual(
+  pyFrozenset('STEPS'),
+  [...STEP_ORDER].sort(),
+  'backend STEPS and frontend STEP_ORDER must describe the same steps'
+)
+assert.deepEqual(
+  pyFrozenset('EVENT_NAMES'),
+  Object.values(ONBOARDING_EVENTS).sort(),
+  'backend EVENT_NAMES and frontend ONBOARDING_EVENTS must describe the same events'
+)
+
+console.log(`onboarding step tests passed (${FIXTURES.length} fixtures, vocabulary in sync with backend)`)

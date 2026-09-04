@@ -102,6 +102,19 @@ def usage_trend(_admin: str = Depends(get_current_admin)):
     return {"weeks": db.weekly_usage_series()}
 
 
+@router.get("/onboarding-funnel")
+def onboarding_funnel(_admin: str = Depends(get_current_admin)):
+    """Where recently-created accounts currently stand in setup.
+
+    One GROUP BY over users, not a scan of an events table — see
+    db.onboarding_funnel's docstring. This is the whole drop-off report: how
+    many are stuck, on which step, how many skipped and from where, how many
+    finished. It exists because none of that was knowable before, so there was
+    no way to tell whether a change to the flow helped.
+    """
+    return {"rows": db.onboarding_funnel()}
+
+
 @router.get("/qa/standards-check")
 def standards_check(_admin: str = Depends(get_current_admin)):
     """Every plan, admin-wide, whose cited standards don't hold up against
