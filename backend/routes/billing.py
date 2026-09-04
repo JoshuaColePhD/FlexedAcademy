@@ -71,8 +71,8 @@ def public_price():
     no price yet.
     """
     if not settings.billing_enabled:
-        # Fallback price so the landing page can list $11.99/mo before Stripe is live.
-        mock_price = {"amount": 1199, "currency": "USD", "interval": "month", "interval_count": 1}
+        # Fallback price so the landing page can list $7.99/mo before Stripe is live.
+        mock_price = {"amount": 799, "currency": "USD", "interval": "month", "interval_count": 1}
         return {
             "price": mock_price,
             "free_weekly_token_cap": settings.free_weekly_token_cap,
@@ -105,8 +105,8 @@ def billing_status(request: Request, user_id: str = Depends(get_current_user)):
             # real one, which is the number that actually binds anyway.
             log.warning("could not read price %s", settings.stripe_price_id)
     else:
-        # Fallback price so the paywall can list $11.99/mo before Stripe is live.
-        price = {"amount": 1199, "currency": "USD", "interval": "month", "interval_count": 1}
+        # Fallback price so the paywall can list $7.99/mo before Stripe is live.
+        price = {"amount": 799, "currency": "USD", "interval": "month", "interval_count": 1}
     return {
         **ent,
         "price": price,

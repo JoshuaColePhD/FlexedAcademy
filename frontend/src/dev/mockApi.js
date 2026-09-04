@@ -733,12 +733,12 @@ export function installMockApi() {
         // Keep the public landing quote identical to /api/billing and the
         // backend's pre-Stripe fallback. Divergent fixtures made a teacher
         // see one price before signup and another at the paywall.
-        price: { amount: 1199, currency: 'USD', interval: 'month', interval_count: 1 },
+        price: { amount: 799, currency: 'USD', interval: 'month', interval_count: 1 },
         free_weekly_token_cap: 150_000,
         trial_period_days: 7,
       })
     if (path === '/api/billing')
-      return json({ ...state.entitlement, price: { amount: 1199, currency: 'USD', interval: 'month', interval_count: 1 }, trial_period_days: 7 })
+      return json({ ...state.entitlement, price: { amount: 799, currency: 'USD', interval: 'month', interval_count: 1 }, trial_period_days: 7 })
     if (path === '/api/billing/cancel' && method === 'POST') {
       state.entitlement.cancel_at_period_end = true
       return json({
