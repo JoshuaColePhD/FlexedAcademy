@@ -10,11 +10,36 @@
  * layout with nothing on screen saying so.
  *
  * It went unnoticed because the failure is an ABSENCE — no error, no blank
- * screen, just one fewer question. These assertions are the tripwire: they
- * pin the predicate the gate depends on, and the plan derivation itself.
+ * screen, just one fewer question. These assertions are the tripwire: they pin
+ * the predicate the gate depends on, and the plan derivation itself.
+ *
+ * ── why this file changed ────────────────────────────────────────────────────
+ * It used to re-implement the derivation in a local planFor(), with a comment
+ * claiming the copy was "kept in step with it by these tests failing if either
+ * the predicate or this shape drifts." That was not true, and could not be:
+ * nothing imported the real derivation, so this file validated its own copy
+ * against itself. The copy had drifted — no `variant` branch, no
+ * schoolTemplateSelectionStep term, and it pushed 'school' where the wizard
+ * pushed 'template' — and CI (.github/workflows/quality.yml runs
+ * `npm run test:all`) stayed green through all of it.
+ *
+ * It now imports derivePlan from lib/onboardingPlan.js. That is the entire
+ * point of the file: assertions about the real function, not about a replica.
+ * Keep it dependency-free — this runs under plain Node, so lib/onboardingPlan.js
+ * must never import React, api.js, or queryKeys.
  */
 import assert from 'node:assert/strict'
 import { GENERIC_SCHOOL, hasChosenSchool, hasUsableSchoolTemplate } from '../src/lib/schools.js'
+import {
+  ONBOARDING_STEPS,
+  STEP_ORDER,
+  derivePlan,
+  isSkippable,
+  nextStep,
+  planRail,
+  prevStep,
+  resumeStep,
+} from '../src/lib/onboardingPlan.js'
 
 // ── the predicate ─────────────────────────────────────────────────────────
 assert.equal(hasChosenSchool(GENERIC_SCHOOL), false, "'generic' is a placeholder, not a choice")
@@ -24,59 +49,248 @@ assert.equal(hasChosenSchool(''), false, 'empty string is not a choice')
 assert.equal(hasChosenSchool('florence-high-school'), true, 'a real school id is a choice')
 assert.equal(hasChosenSchool('weeden-elementary-school'), true, 'any real school id is a choice')
 
-// ── the step plan ─────────────────────────────────────────────────────────
-// Mirrors OnboardingWizard's own livePlan derivation. Kept in step with it by
-// these tests failing if either the predicate or this shape drifts.
-function planFor({ school, schools = [], subject }) {
-  const chosenSchool = hasChosenSchool(school)
-  const selectedSchool = schools.find((s) => s.id === school)
-  const schoolHasUsableTemplate = hasUsableSchoolTemplate(selectedSchool)
-  const schoolNeedsTemplate = chosenSchool && selectedSchool && !schoolHasUsableTemplate
-  const next = ['welcome']
-  if (!chosenSchool || schoolNeedsTemplate) next.push('school')
-  if (!subject) next.push('class')
-  next.push('documents', 'tips', 'done')
-  return next
-}
-
 const SCHOOLS = [
   { id: 'florence-high-school', template_status: 'active', builder_readiness: 'ready' },
   { id: 'weeden-elementary-school', template_status: 'active', builder_readiness: 'ready' },
   { id: 'another-ingested-school', template_status: 'pending', builder_readiness: 'ready_unverified' },
+  { id: 'unconfigured-school', template_status: 'pending', builder_readiness: 'pending' },
 ]
 
-// The regression itself: a brand-new account, holding the default 'generic',
-// MUST still be asked. This is what silently stopped happening.
+assert.equal(hasUsableSchoolTemplate(SCHOOLS[0]), true, 'an active template is usable')
+assert.equal(hasUsableSchoolTemplate(SCHOOLS[2]), true, 'a verified builder is usable while review lags')
+assert.equal(hasUsableSchoolTemplate(SCHOOLS[3]), false, 'nothing usable means nothing usable')
+assert.equal(hasUsableSchoolTemplate(undefined), false, 'a school that is not in the table has no template')
+
+// A fully set-up account, used as the base every fixture varies from.
+const SETTLED = {
+  hasAvatar: true,
+  subject: 'ap-lang',
+  grade: '11',
+  state: 'AL',
+  school: 'florence-high-school',
+  schools: SCHOOLS,
+  schoolTemplates: [{ id: 't1' }],
+  schoolTemplatesLoading: false,
+  calendarStatus: 'confirmed',
+  hasMaterials: true,
+}
+
+// ── the 'generic' regression, now against the REAL function ───────────────
+// A brand-new account, holding the default 'generic', MUST still be asked.
+// This is what silently stopped happening.
 assert.ok(
-  planFor({ school: GENERIC_SCHOOL, schools: SCHOOLS, subject: null }).includes('school'),
+  derivePlan({ ...SETTLED, school: GENERIC_SCHOOL }).includes('school'),
   'a new account on the default school must still be asked where it teaches'
 )
-// Same for an account with no school value at all.
 assert.ok(
-  planFor({ school: undefined, schools: SCHOOLS, subject: null }).includes('school'),
+  derivePlan({ ...SETTLED, school: undefined }).includes('school'),
   'an account with no school must be asked'
 )
-
-// A school whose template is already active has nothing left to ask.
 assert.ok(
-  !planFor({ school: 'florence-high-school', schools: SCHOOLS, subject: 'ELA' }).includes('school'),
-  'a school with an active template does not re-ask'
+  !derivePlan(SETTLED).includes('school'),
+  'an account with a real school is not asked again'
 )
-// ...but one with no usable template still does — that half must keep working.
+
+// ── the format step ───────────────────────────────────────────────────────
 assert.ok(
-  planFor({ school: 'unconfigured-school', schools: [{ id: 'unconfigured-school', template_status: 'pending', builder_readiness: 'pending' }], subject: 'ELA' }).includes('school'),
+  !derivePlan(SETTLED).includes('format'),
+  'a school with an active template and one file on record does not re-ask'
+)
+assert.ok(
+  derivePlan({ ...SETTLED, school: 'unconfigured-school' }).includes('format'),
   'a school with no usable template is asked for one'
 )
-
-// A usable built-in or verified builder is enough, even while separate
-// template-content review is still pending.
 assert.ok(
-  !planFor({ school: 'another-ingested-school', schools: SCHOOLS, subject: 'ELA' }).includes('school'),
+  !derivePlan({ ...SETTLED, school: 'another-ingested-school' }).includes('format'),
   'any school with a usable builder is not asked for a duplicate template'
 )
+assert.ok(
+  derivePlan({ ...SETTLED, schoolTemplates: [{ id: 't1' }, { id: 't2' }] }).includes('format'),
+  'more than one template on file is a choice for the teacher, so the step stays'
+)
+assert.ok(
+  derivePlan({ ...SETTLED, schoolTemplatesLoading: true }).includes('format'),
+  'while templates are still loading we do not yet know, so keep the step'
+)
 
-// The class step is independent of any of this.
-assert.ok(planFor({ school: 'florence-high-school', schools: SCHOOLS }).includes('class'))
-assert.ok(!planFor({ school: 'florence-high-school', schools: SCHOOLS, subject: 'ELA' }).includes('class'))
+// ── course is present exactly when course or grade is missing ─────────────
+// The double-ask bug: /welcome collected both, then the wizard asked again,
+// because the derivation branched on `variant === 'page'` instead of on the
+// data. There is one flow and one condition now.
+for (const [subject, grade, expected] of [
+  ['ap-lang', '11', false],
+  [null, '11', true],
+  ['ap-lang', null, true],
+  [null, null, true],
+]) {
+  assert.equal(
+    derivePlan({ ...SETTLED, subject, grade }).includes('course'),
+    expected,
+    `course step for subject=${subject} grade=${grade}`
+  )
+}
 
-console.log('onboarding step tests passed')
+// ── the payoff always renders ─────────────────────────────────────────────
+assert.ok(derivePlan(SETTLED).includes('preview'), 'the preview step is the one screen that always shows')
+assert.ok(
+  derivePlan(SETTLED).indexOf('preview') < derivePlan(SETTLED).indexOf('materials') ||
+    !derivePlan(SETTLED).includes('materials'),
+  'the payoff comes before the biggest upload ask, never after'
+)
+
+// ── every fixture, checked for the structural properties ──────────────────
+// A combinatorial sweep rather than a handful of cases, because the bugs this
+// file exists to catch were all shape bugs, not value bugs.
+const FIXTURES = []
+for (const hasAvatar of [true, false]) {
+  for (const subject of ['ap-lang', null]) {
+    for (const state of ['AL', null]) {
+      for (const school of [null, GENERIC_SCHOOL, 'florence-high-school', 'unconfigured-school']) {
+        for (const calendarStatus of ['confirmed', 'pending', 'none']) {
+          for (const hasMaterials of [true, false]) {
+            FIXTURES.push({
+              ...SETTLED,
+              hasAvatar,
+              subject,
+              grade: subject ? '11' : null,
+              state,
+              school,
+              calendarStatus,
+              hasMaterials,
+            })
+          }
+        }
+      }
+    }
+  }
+}
+
+for (const fixture of FIXTURES) {
+  const plan = derivePlan(fixture)
+  const where = JSON.stringify({
+    school: fixture.school,
+    subject: fixture.subject,
+    calendarStatus: fixture.calendarStatus,
+  })
+
+  /* The assertion that would have caught the double course ask the day it
+     landed. A push-based derivation can emit the same key twice; derivePlan
+     filters STEP_ORDER precisely so it cannot. */
+  assert.equal(new Set(plan).size, plan.length, `no plan contains a step twice — ${where}`)
+
+  /* Catches a typo'd key, which the old re-implemented planFor() structurally
+     could not: it asserted against its own literals. */
+  assert.ok(
+    plan.every((key) => key in ONBOARDING_STEPS),
+    `every plan key has metadata — ${where}`
+  )
+
+  // Order is STEP_ORDER's order, always. No branch may reorder two steps.
+  const canonical = STEP_ORDER.filter((key) => plan.includes(key))
+  assert.deepEqual(plan, canonical, `plan follows STEP_ORDER — ${where}`)
+
+  // The step rail's contract: a step with no label is an unlabelled dot.
+  assert.ok(
+    planRail(plan).every((s) => s.label && s.title),
+    `every step has a rail label and a question — ${where}`
+  )
+
+  // Required steps can never be skipped out of a plan that still needs them.
+  for (const key of plan) {
+    if (ONBOARDING_STEPS[key].required) {
+      assert.equal(isSkippable(key), false, `${key} is required — ${where}`)
+    } else {
+      assert.ok(
+        key === 'preview' || ONBOARDING_STEPS[key].skipLabel,
+        `optional step ${key} states its own cost — ${where}`
+      )
+    }
+  }
+
+  // Stepping stays inside the plan and is reversible.
+  assert.equal(prevStep(plan, plan[0]), plan[0], `back from the first step stays put — ${where}`)
+  assert.equal(
+    nextStep(plan, plan[plan.length - 1]),
+    plan[plan.length - 1],
+    `forward from the last step stays put — ${where}`
+  )
+  for (let i = 0; i < plan.length - 1; i += 1) {
+    assert.equal(nextStep(plan, plan[i]), plan[i + 1], `next walks forward — ${where}`)
+    assert.equal(prevStep(plan, plan[i + 1]), plan[i], `prev walks back — ${where}`)
+  }
+
+  // Resume never lands on an answered question, and never off the plan.
+  assert.ok(plan.includes(resumeStep(plan, 'format')), `resume stays inside the plan — ${where}`)
+  assert.equal(resumeStep(plan, 'a-step-that-no-longer-exists'), plan[0], `a stale step falls back — ${where}`)
+}
+
+// ── monotonicity: a step may drop out, but must never APPEAR ──────────────
+/* This is the property frozenPlan was defending, and the reason it is worth a
+ * test rather than a state variable: a plan that can GROW moves the rail under
+ * the teacher and renumbers everything they have already done. Shrinking is
+ * allowed and expected — answering a question removes it — and frozenPlan in
+ * the component is what hides that shrink mid-flow.
+ *
+ * The sweep walks each fixture through its own plan, applying the answer each
+ * step writes, and asserts the freshly derived plan never contains a key the
+ * original did not. The `!chosenSchool` terms on `format` and `calendar` are
+ * what make this hold: both are properties of a school and unknowable before
+ * one is picked, so both are assumed necessary until proven otherwise.
+ */
+const ANSWERS = {
+  avatar: () => ({ hasAvatar: true }),
+  course: () => ({ subject: 'ap-lang', grade: '11' }),
+  state: () => ({ state: 'AL' }),
+  /* Picking a school REVEALS two things that were unknowable before it: whether
+     that school has a usable format, and what state its calendar is in. Model
+     the worst case for both — a school with no template and a calendar still
+     awaiting review — because that is the combination that would make a step
+     appear if either guard were dropped. An earlier version of this answer left
+     calendarStatus untouched, and the monotonicity sweep passed even with the
+     `!chosenSchool` guard removed from `calendar`; it was asserting over a case
+     it never actually reached. */
+  school: () => ({ school: 'unconfigured-school', calendarStatus: 'pending' }),
+  calendar: () => ({ calendarStatus: 'confirmed' }),
+  format: () => ({ schoolTemplates: [{ id: 't1' }], schoolTemplatesLoading: false }),
+  preview: () => ({}),
+  materials: () => ({ hasMaterials: true }),
+}
+
+for (const fixture of FIXTURES) {
+  const original = derivePlan(fixture)
+  const originalKeys = new Set(original)
+  let answers = { ...fixture }
+
+  for (const key of original) {
+    answers = { ...answers, ...ANSWERS[key]() }
+    const now = derivePlan(answers)
+    const appeared = now.filter((k) => !originalKeys.has(k))
+    assert.deepEqual(
+      appeared,
+      [],
+      `answering '${key}' must not make a new step appear (got ${appeared.join(', ')}) — ` +
+        `from ${JSON.stringify({ school: fixture.school, calendarStatus: fixture.calendarStatus })}`
+    )
+  }
+}
+
+// ── the skippability policy, pinned ───────────────────────────────────────
+/* Deliberately a deep-equal on the whole set rather than a spot check, so
+ * loosening it (or tightening it) is a deliberate, reviewed edit and not a
+ * one-word change nobody notices. retrieval filters on course AND grade, and
+ * service._resolve_subject_grade's silent fallback to grade 11 is the
+ * documented catastrophic failure (db.py migration 38). */
+assert.deepEqual(
+  Object.keys(ONBOARDING_STEPS).filter((key) => ONBOARDING_STEPS[key].required),
+  ['course', 'state'],
+  'only course and state are required; everything else states its cost and can be skipped'
+)
+
+// Metadata and order can never disagree about which steps exist.
+assert.deepEqual(
+  [...STEP_ORDER].sort(),
+  Object.keys(ONBOARDING_STEPS).sort(),
+  'STEP_ORDER and ONBOARDING_STEPS describe the same set of steps'
+)
+
+console.log(`onboarding step tests passed (${FIXTURES.length} fixtures)`)
