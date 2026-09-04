@@ -444,21 +444,15 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
 
   const steps = (
     <>
-      {/* First-run onboarding is a full page, not a dismissible dialog. A
-          close icon there suggested that setup was optional while the route
-          guard immediately returns unfinished accounts to this flow. Keep
-          the escape hatch for the Settings dialog only. */}
-      {variant !== 'page' ? (
-        <button
-          type="button"
-          className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
-          onClick={finish}
-          aria-label="Close"
-          title="Skip for now"
-        >
-          <X size={20} aria-hidden="true" />
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className="absolute right-4 top-4 p-1.5 text-ink-muted transition-colors hover:text-ink rounded-md"
+        onClick={finish}
+        aria-label="Close"
+        title="Skip for now"
+      >
+        <X size={20} aria-hidden="true" />
+      </button>
 
       {/* SmoothHeight was written in this file, exported from this file,
           and then only ever used by VoiceModePanel — so the one panel it
@@ -661,7 +655,7 @@ function StepHeader({ eyebrow, title, body, progressLabel, className = '' }) {
 
 function WelcomeStep({ state, setState, stateError, saving, progressLabel, onNext }) {
   const stateListRef = useRef(null)
-  const availableStates = US_STATES.filter(([value]) => INGESTED_STANDARDS_STATES.has(value))
+  const availableStates = US_STATES
   const firstAvailableStateIndex = 0
 
   const moveState = (event, index) => {
@@ -704,22 +698,26 @@ function WelcomeStep({ state, setState, stateError, saving, progressLabel, onNex
           <div ref={stateListRef} role="listbox" aria-label="Teaching state" className="onboarding-neomorphic-list onboarding-state-list mt-3 rounded-xl p-1.5 lg:min-h-0 lg:flex-1">
             {availableStates.map(([value, label], index) => {
               const isSelected = state === value
+              const isAvailable = INGESTED_STANDARDS_STATES.has(value)
               return (
                 <button
                   key={value}
                   type="button"
                   role="option"
                   aria-selected={isSelected}
-                  tabIndex={isSelected || (!state && index === firstAvailableStateIndex) ? 0 : -1}
+                  tabIndex={isAvailable && (isSelected || (!state && index === firstAvailableStateIndex)) ? 0 : -1}
+                  disabled={!isAvailable}
                   onClick={() => setState(value)}
                   onKeyDown={(event) => moveState(event, index)}
-                  className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isSelected
-                    ? 'onboarding-state-selected border-accent/30 bg-accent/10 font-semibold text-ink'
-                    : 'border-transparent text-ink-soft hover:border-edge hover:bg-paper-sunken hover:text-ink'
+                  className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${!isAvailable
+                    ? 'cursor-not-allowed border-transparent text-ink-faint opacity-55'
+                    : isSelected
+                      ? 'onboarding-state-selected border-accent/30 bg-accent/10 font-semibold text-ink'
+                      : 'border-transparent text-ink-soft hover:border-edge hover:bg-paper-sunken hover:text-ink'
                   }`}
                 >
                   <span>{label}</span>
-                  <span className={`text-2xs font-semibold tracking-wider ${isSelected ? 'text-accent-text' : 'text-ink-faint'}`}>{value}</span>
+                  <span className={`text-2xs font-semibold tracking-wider ${isAvailable && isSelected ? 'text-accent-text' : 'text-ink-faint'}`}>{isAvailable ? value : 'Coming soon'}</span>
                 </button>
               )
             })}

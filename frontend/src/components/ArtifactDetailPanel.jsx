@@ -25,7 +25,7 @@ import { DocxDownloadButton } from './DocxDownloadButton'
  * artifact.
  */
 
-function QuizQuestionCard({ q, index, onUpdate }) {
+function QuizQuestionCard({ q, index, stagger = index, onUpdate, describedBy }) {
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(q)
 
@@ -56,7 +56,7 @@ function QuizQuestionCard({ q, index, onUpdate }) {
 
   if (isEditing) {
     return (
-      <div className="detail-card neo-raised fa-rise" style={{ animationDelay: `${index * 60}ms` }}>
+      <div className="detail-card neo-raised fa-rise" style={{ animationDelay: `${Math.min(stagger, 6) * 60}ms` }}>
         <div className="detail-card-head mb-2">
           <span className="detail-card-index">Q{index + 1} Edit</span>
           <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
@@ -155,7 +155,11 @@ function QuizQuestionCard({ q, index, onUpdate }) {
   }
 
   return (
-    <div className="detail-card neo-raised fa-rise group" style={{ animationDelay: `${index * 60}ms` }}>
+    <div
+      className="detail-card neo-raised fa-rise group"
+      style={{ animationDelay: `${Math.min(stagger, 6) * 60}ms` }}
+      aria-describedby={describedBy}
+    >
       <div className="detail-card-head">
         <span className="detail-card-index">Q{index + 1}</span>
         <span className="detail-card-type">{QUESTION_TYPE_LABELS[q.type] || q.type}</span>
@@ -164,7 +168,7 @@ function QuizQuestionCard({ q, index, onUpdate }) {
         {alignment.dok ? <span className="quiz-alignment-chip">DOK {alignment.dok}</span> : null}
         <button 
           type="button" 
-          className="ml-auto p-1 text-ink-faint hover:text-ink transition-colors opacity-0 group-hover:opacity-100" 
+          className="ml-auto p-1 text-ink-faint hover:text-ink transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100" 
           onClick={() => setIsEditing(true)}
           title="Edit Question"
         >
@@ -172,7 +176,6 @@ function QuizQuestionCard({ q, index, onUpdate }) {
         </button>
       </div>
       <p className="detail-card-prompt">{q.prompt}</p>
-      {q.passage_id ? <p className="detail-card-answer"><BookOpen size={12} aria-hidden="true" /> Passage-linked item</p> : null}
 
       {q.type === 'multiple_choice' ? (
         <ul className="detail-choice-list">
@@ -242,6 +245,76 @@ function QuizSkeleton() {
   )
 }
 
+/* Q-numbers are GLOBAL — they are the numbers the .docx export prints, in
+ * quiz_json.questions order — so grouping by passage below must never
+ * renumber. This turns a group's global indexes into the label a teacher can
+ * check against the handout: a run reads "Q1–Q3", a lone item reads "Q4", and
+ * a scattered set falls back to a count rather than lying about a range. */
+function itemRangeLabel(indexes) {
+  if (!indexes.length) return 'no items yet'
+  if (indexes.length === 1) return `Q${indexes[0] + 1}`
+  const contiguous = indexes.every((n, i) => i === 0 || n === indexes[i - 1] + 1)
+  if (contiguous) return `Q${indexes[0] + 1}–Q${indexes[indexes.length - 1] + 1}`
+  return `${indexes.length} items`
+}
+
+const PASSAGE_SOURCE_LABELS = {
+  teacher_provided: 'Teacher-provided',
+  shared_library: 'Shared library',
+  ai_generated: 'AI-generated',
+}
+
+/* The left half of a group. Sticky is handled entirely in CSS (see
+ * .quiz-passage-pane) against .doc-body's container height — the pane holds
+ * position while its OWN questions scroll past, then releases when the next
+ * group pushes it up. That only works because each passage is its own grid
+ * row; the previous single-well layout made "sticky" meaningless the moment a
+ * quiz had two passages. */
+function PassagePane({ passage, headingId, cardId, rangeLabel, isEditing, draft, onDraftChange, onEdit, onCancel, onSave }) {
+  return (
+    <aside className="quiz-passage-pane">
+      <div className="quiz-pane-heading">
+        <span id={headingId}>
+          <BookOpen size={15} aria-hidden="true" /> Passage · {rangeLabel}
+        </span>
+        {!isEditing ? (
+          <button
+            type="button"
+            className="btn-icon fa-press"
+            onClick={onEdit}
+            aria-label={`Edit the passage "${passage.title || 'Passage'}"`}
+            title="Edit passage"
+          >
+            <Edit2 size={14} />
+          </button>
+        ) : null}
+      </div>
+      <div className="quiz-passage-card" id={cardId}>
+        <h3>
+          {passage.title || 'Passage'}
+          <span className="quiz-passage-source">{PASSAGE_SOURCE_LABELS[passage.source] || 'AI-generated'}</span>
+        </h3>
+        {isEditing ? (
+          <>
+            <textarea
+              className="input quiz-passage-editor"
+              value={draft}
+              onChange={(e) => onDraftChange(e.target.value)}
+              aria-label={`Passage text for "${passage.title || 'Passage'}"`}
+            />
+            <div className="quiz-passage-edit-actions">
+              <button type="button" className="btn fa-press" onClick={onCancel}>Cancel</button>
+              <button type="button" className="btn btn-primary fa-press" onClick={onSave}><Save size={14} /> Save passage</button>
+            </div>
+          </>
+        ) : (
+          <p>{passage.text}</p>
+        )}
+      </div>
+    </aside>
+  )
+}
+
 function QuizBody({ quiz }) {
   const [questions, setQuestions] = useState(quiz?.quiz_json?.questions || [])
   const [passages, setPassages] = useState(quiz?.quiz_json?.passages || [])
@@ -252,7 +325,11 @@ function QuizBody({ quiz }) {
   const [suggestions, setSuggestions] = useState([])
   const [selectedLibraryQuestions, setSelectedLibraryQuestions] = useState({})
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
-  const [isPassageEditing, setIsPassageEditing] = useState(false)
+  /* One id, not a boolean: the old isPassageEditing flipped EVERY passage into
+   * a textarea at once, which is not the model QuizQuestionCard uses two
+   * columns away. */
+  const [editingPassageId, setEditingPassageId] = useState(null)
+  const [passageDraft, setPassageDraft] = useState('')
   const toast = useToast()
 
   useEffect(() => {
@@ -260,6 +337,8 @@ function QuizBody({ quiz }) {
     setPassages(quiz?.quiz_json?.passages || [])
     setLibraryItem(null)
     setPermissionConfirmed(false)
+    setEditingPassageId(null)
+    setPassageDraft('')
   }, [quiz])
 
   useEffect(() => {
@@ -274,6 +353,44 @@ function QuizBody({ quiz }) {
       .finally(() => setSuggestionsLoading(false))
     return () => controller.abort()
   }, [quiz?.plan_id])
+
+  /* The split's whole claim is "these questions go with THAT passage." It used
+   * to render two independent stacks side by side and leave the teacher to
+   * infer the pairing from a generic "Passage-linked item" line that never said
+   * WHICH passage. Grouping makes the claim structural instead. */
+  const groups = useMemo(() => {
+    const indexed = questions.map((q, i) => ({ q, i }))
+    const known = new Set(passages.map((p) => p.id))
+    return {
+      byPassage: passages.map((passage) => ({
+        passage,
+        items: indexed.filter(({ q }) => q.passage_id === passage.id),
+      })),
+      // An unresolvable passage_id (a shared set copied without its passage)
+      // lands here rather than vanishing from the panel entirely.
+      standalone: indexed.filter(({ q }) => !q.passage_id || !known.has(q.passage_id)),
+    }
+  }, [questions, passages])
+
+  /* schema.py already warns the BACKEND when a quiz clusters on one Bloom or
+   * DOK level (validate_quiz, "fewer than two levels"); the teacher was never
+   * shown the distribution that warning is about. */
+  const summary = useMemo(() => {
+    const bloom = new Map()
+    const dok = new Map()
+    let linked = 0
+    for (const q of questions) {
+      if (q.passage_id) linked += 1
+      const alignment = q.alignment || {}
+      if (alignment.bloom) bloom.set(alignment.bloom, (bloom.get(alignment.bloom) || 0) + 1)
+      if (alignment.dok) dok.set(alignment.dok, (dok.get(alignment.dok) || 0) + 1)
+    }
+    return {
+      linked,
+      bloom: [...bloom.entries()].sort((a, b) => BLOOM_LEVELS.indexOf(a[0]) - BLOOM_LEVELS.indexOf(b[0])),
+      dok: [...dok.entries()].sort((a, b) => a[0] - b[0]),
+    }
+  }, [questions])
 
   if (!questions.length) {
     return <p className="note">This quiz has no questions to show.</p>
@@ -340,13 +457,12 @@ function QuizBody({ quiz }) {
   }
 
   const handleUseSuggestion = async (suggestion) => {
+    const selectedIndexes = selectedLibraryQuestions[suggestion.id]
+    if (!selectedIndexes?.length) return
     try {
       const reusable = await api.useQuizLibrarySet(suggestion.id)
       const allQuestions = reusable.questions || []
-      const selectedIndexes = selectedLibraryQuestions[suggestion.id]
-      const chosenQuestions = selectedIndexes?.length
-        ? allQuestions.filter((_, index) => selectedIndexes.includes(index))
-        : allQuestions
+      const chosenQuestions = allQuestions.filter((_, index) => selectedIndexes.includes(index))
       const passageIdMap = {}
       const copiedPassages = (reusable.passages || []).map((passage, index) => {
         let nextId = passage.id || `shared_passage_${index + 1}`
@@ -359,6 +475,7 @@ function QuizBody({ quiz }) {
         passage_id: passageIdMap[question.passage_id] || question.passage_id || '',
       }))
       await saveQuiz({ questions: [...questions, ...remappedQuestions], passages: [...passages, ...copiedPassages] })
+      setSelectedLibraryQuestions((current) => ({ ...current, [suggestion.id]: [] }))
       toast.success('Added shared questions', 'The copied questions are now editable in this quiz.')
     } catch (err) {
       toast.apiError('Could not reuse shared item', err)
@@ -384,9 +501,30 @@ function QuizBody({ quiz }) {
     })
   }
 
-  const updatePassage = (passage, value) => {
-    setPassages(passages.map((item) => item.id === passage.id ? { ...item, text: value } : item))
+  const startPassageEdit = (passage) => {
+    setEditingPassageId(passage.id)
+    setPassageDraft(passage.text || '')
   }
+
+  const savePassageEdit = async (passage) => {
+    setEditingPassageId(null)
+    await saveQuiz({ questions, passages: passages.map((item) => item.id === passage.id ? { ...item, text: passageDraft } : item) })
+  }
+
+  const renderQuestions = (items, describedBy) => (
+    <div className="detail-card-stack">
+      {items.map(({ q, i }, position) => (
+        <QuizQuestionCard
+          key={i}
+          q={q}
+          index={i}
+          stagger={position}
+          describedBy={describedBy}
+          onUpdate={(updated) => handleUpdate(i, updated)}
+        />
+      ))}
+    </div>
+  )
 
   return (
     <div className={`quiz-body${passages.length ? ' has-passages' : ''}`}>
@@ -395,95 +533,132 @@ function QuizBody({ quiz }) {
           <Loader2 size={12} className="animate-spin" /> Saving...
         </div>
       )}
-      <div className="quiz-library-toolbar">
-        <div>
-          <strong>Reusable assessment set</strong>
-          <span>Keep this quiz private, or approve a reviewed passage set for other teachers.</span>
-        </div>
-        {!libraryItem ? (
-          <button type="button" className="btn-secondary fa-press" onClick={handleSaveToLibrary} disabled={isSavingToLibrary || !passages.length}>
-            {isSavingToLibrary ? <Loader2 size={14} className="animate-spin" /> : <Library size={14} />}
-            Save to library
-          </button>
-        ) : libraryItem.approval_status === 'approved' ? (
-          <button type="button" className="btn-secondary fa-press" onClick={handleUnpublish}><Undo2 size={14} /> Unpublish</button>
-        ) : (
-          <span className="quiz-approval-controls">
-            {libraryItem.passage_source === 'teacher_provided' ? (
-              <label><input type="checkbox" checked={permissionConfirmed} onChange={(e) => setPermissionConfirmed(e.target.checked)} /> I have permission to share this passage</label>
-            ) : null}
-            <button type="button" className="btn-primary fa-press" onClick={handleApprove} disabled={libraryItem.passage_source === 'teacher_provided' && !permissionConfirmed}><CheckCircle2 size={14} /> Approve for sharing</button>
-          </span>
-        )}
+
+      <div className="quiz-summary">
+        <strong>{questions.length} item{questions.length === 1 ? '' : 's'}</strong>
+        {summary.linked ? <span>{summary.linked} passage-linked</span> : null}
+        {summary.bloom.map(([level, count]) => (
+          <span key={level} className="quiz-alignment-chip">{bloomLabel(level)} ×{count}</span>
+        ))}
+        {summary.dok.map(([level, count]) => (
+          <span key={level} className="quiz-alignment-chip">DOK {level} ×{count}</span>
+        ))}
       </div>
 
-      {libraryItem ? (
-        <div className="quiz-library-status" role="status">
-          <Library size={14} aria-hidden="true" />
-          {libraryItem.approval_status === 'approved' ? 'Approved and available to teachers in matching contexts.' : 'Saved privately as a draft. Review before sharing.'}
-        </div>
-      ) : null}
-
       {passages.length ? (
-        <div className="quiz-paired-layout">
-          <aside className="quiz-passage-pane">
-            <div className="quiz-pane-heading">
-              <span><BookOpen size={15} aria-hidden="true" /> Passage</span>
-              <button type="button" className="btn-icon fa-press" onClick={() => setIsPassageEditing(!isPassageEditing)} aria-label={isPassageEditing ? 'Stop editing passage' : 'Edit passage'} title={isPassageEditing ? 'Stop editing passage' : 'Edit passage'}>
-                {isPassageEditing ? <X size={14} /> : <Edit2 size={14} />}
-              </button>
-            </div>
-            {passages.map((passage) => (
-              <div key={passage.id} className="quiz-passage-card">
-                <h3>{passage.title || 'Passage'}</h3>
-                {isPassageEditing ? (
-                  <textarea className="input quiz-passage-editor" value={passage.text || ''} onChange={(e) => updatePassage(passage, e.target.value)} />
-                ) : (
-                  <p>{passage.text}</p>
-                )}
-                <small>{passage.source === 'teacher_provided' ? 'Teacher-provided' : 'AI-generated'} · shared only after approval</small>
+        <div className="quiz-groups">
+          {groups.byPassage.map(({ passage, items }) => {
+            const headingId = `passage-heading-${passage.id}`
+            const cardId = `passage-card-${passage.id}`
+            return (
+              <section key={passage.id} className="quiz-passage-group" aria-labelledby={headingId}>
+                <PassagePane
+                  passage={passage}
+                  headingId={headingId}
+                  cardId={cardId}
+                  rangeLabel={itemRangeLabel(items.map(({ i }) => i))}
+                  isEditing={editingPassageId === passage.id}
+                  draft={passageDraft}
+                  onDraftChange={setPassageDraft}
+                  onEdit={() => startPassageEdit(passage)}
+                  onCancel={() => setEditingPassageId(null)}
+                  onSave={() => savePassageEdit(passage)}
+                />
+                <div className="quiz-question-pane">
+                  {items.length
+                    ? renderQuestions(items, cardId)
+                    : <p className="note">No questions use this passage yet.</p>}
+                </div>
+              </section>
+            )
+          })}
+
+          {groups.standalone.length ? (
+            <section className="quiz-passage-group is-standalone" aria-labelledby="quiz-standalone-heading">
+              <div className="quiz-pane-heading">
+                <span id="quiz-standalone-heading">Independent items</span>
+                <span className="quiz-question-count">not tied to a passage</span>
               </div>
-            ))}
-            {isPassageEditing ? <button type="button" className="btn-primary fa-press mt-3" onClick={() => { setIsPassageEditing(false); saveQuiz({ questions, passages }) }}><Save size={14} /> Save passage</button> : null}
-          </aside>
-          <section className="quiz-question-pane" aria-label="Passage questions">
-            <div className="quiz-pane-heading"><span>Questions</span><span className="quiz-question-count">{questions.length} item{questions.length === 1 ? '' : 's'}</span></div>
-            <div className="detail-card-stack">
-              {questions.map((q, i) => <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} />)}
-            </div>
-          </section>
+              {renderQuestions(groups.standalone)}
+            </section>
+          ) : null}
         </div>
       ) : (
-        <div className="detail-card-stack">
-          {questions.map((q, i) => <QuizQuestionCard key={i} q={q} index={i} onUpdate={(updated) => handleUpdate(i, updated)} />)}
-        </div>
+        renderQuestions(questions.map((q, i) => ({ q, i })))
       )}
 
-      <section className="quiz-library-suggestions" aria-label="Shared library suggestions">
-        <div className="quiz-pane-heading"><span><Library size={15} aria-hidden="true" /> Matching shared sets</span>{suggestionsLoading ? <Loader2 size={14} className="animate-spin" /> : null}</div>
-        {!suggestionsLoading && !suggestions.length ? <p className="note">No approved sets match this plan yet.</p> : null}
-        {suggestions.map((suggestion) => (
-          <div key={suggestion.id} className="quiz-library-suggestion">
-            <div className="quiz-library-suggestion-main">
-              <strong>{suggestion.title}</strong>
-              <span>{suggestion.provenance_label} · {suggestion.usage_count || 0} reuse{suggestion.usage_count === 1 ? '' : 's'}</span>
-              {suggestion.quiz_json?.questions?.length ? (
-                <div className="quiz-library-question-picker">
-                  {suggestion.quiz_json.questions.map((question, index) => (
-                    <label key={index}>
-                      <input type="checkbox" checked={(selectedLibraryQuestions[suggestion.id] || []).includes(index)} onChange={() => toggleLibraryQuestion(suggestion.id, index)} />
-                      <span>Q{index + 1}: {question.prompt}</span>
-                    </label>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <div className="quiz-library-suggestion-actions">
-              <button type="button" className="btn-secondary fa-press" onClick={() => handleUseSuggestion(suggestion)}>Add selected</button>
-              <button type="button" className="btn-icon fa-press" onClick={() => handleReportSuggestion(suggestion)} aria-label={`Report ${suggestion.title}`} title="Report shared item"><AlertTriangle size={14} /></button>
-            </div>
+      {/* Publishing is a terminal action and used to open the panel, above the
+          quiz the teacher came to read. It sits under the work now, and the
+          status line + suggestions share its one region rather than stacking
+          three separate boxes. */}
+      <section className="quiz-library" aria-label="Shared library">
+        <div className="quiz-library-toolbar">
+          <div>
+            <strong>Reusable assessment set</strong>
+            <span>Keep this quiz private, or approve a reviewed passage set for other teachers.</span>
           </div>
-        ))}
+          {!libraryItem ? (
+            <button type="button" className="btn fa-press" onClick={handleSaveToLibrary} disabled={isSavingToLibrary || !passages.length}>
+              {isSavingToLibrary ? <Loader2 size={14} className="animate-spin" /> : <Library size={14} />}
+              Save to library
+            </button>
+          ) : libraryItem.approval_status === 'approved' ? (
+            <button type="button" className="btn fa-press" onClick={handleUnpublish}><Undo2 size={14} /> Unpublish</button>
+          ) : (
+            <span className="quiz-approval-controls">
+              {libraryItem.passage_source === 'teacher_provided' ? (
+                <label><input type="checkbox" checked={permissionConfirmed} onChange={(e) => setPermissionConfirmed(e.target.checked)} /> I have permission to share this passage</label>
+              ) : null}
+              <button type="button" className="btn btn-primary fa-press" onClick={handleApprove} disabled={libraryItem.passage_source === 'teacher_provided' && !permissionConfirmed}><CheckCircle2 size={14} /> Approve for sharing</button>
+            </span>
+          )}
+        </div>
+
+        {libraryItem ? (
+          <div className="quiz-library-status" role="status">
+            <Library size={14} aria-hidden="true" />
+            {libraryItem.approval_status === 'approved' ? 'Approved and available to teachers in matching contexts.' : 'Saved privately as a draft. Review before sharing.'}
+          </div>
+        ) : null}
+
+        <div className="quiz-library-suggestions">
+          <div className="quiz-pane-heading"><span><Library size={15} aria-hidden="true" /> Matching shared sets</span>{suggestionsLoading ? <Loader2 size={14} className="animate-spin" /> : null}</div>
+          {!suggestionsLoading && !suggestions.length ? <p className="note">No approved sets match this plan yet.</p> : null}
+          {suggestions.map((suggestion) => {
+            const selectedCount = (selectedLibraryQuestions[suggestion.id] || []).length
+            return (
+              <div key={suggestion.id} className="quiz-library-suggestion">
+                <div className="quiz-library-suggestion-main">
+                  <strong>{suggestion.title}</strong>
+                  <span>{suggestion.provenance_label} · {suggestion.usage_count || 0} reuse{suggestion.usage_count === 1 ? '' : 's'}</span>
+                  {suggestion.quiz_json?.questions?.length ? (
+                    <div className="quiz-library-question-picker">
+                      {suggestion.quiz_json.questions.map((question, index) => (
+                        <label key={index}>
+                          <input type="checkbox" checked={(selectedLibraryQuestions[suggestion.id] || []).includes(index)} onChange={() => toggleLibraryQuestion(suggestion.id, index)} />
+                          <span>Q{index + 1}: {question.prompt}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="quiz-library-suggestion-actions">
+                  {/* Was: an empty selection silently copied EVERY question. */}
+                  <button
+                    type="button"
+                    className="btn fa-press"
+                    onClick={() => handleUseSuggestion(suggestion)}
+                    disabled={!selectedCount}
+                    title={selectedCount ? undefined : 'Tick the questions you want first'}
+                  >
+                    {selectedCount ? `Add ${selectedCount} selected` : 'Add selected'}
+                  </button>
+                  <button type="button" className="btn-icon fa-press" onClick={() => handleReportSuggestion(suggestion)} aria-label={`Report ${suggestion.title}`} title="Report shared item"><AlertTriangle size={14} /></button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </section>
     </div>
   )

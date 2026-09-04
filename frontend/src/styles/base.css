@@ -4839,7 +4839,20 @@
     .doc-head .doc-download .font-medium { display: none; }
     .doc-head .btn-icon { min-width: 34px; min-height: 34px; }
   }
+  /* `container: doc-port / size`, not inline-size, because the quiz's sticky
+     passage pane needs the scroll port's HEIGHT (100cqh) and its WIDTH — both
+     of which .doc-body has independently of its contents: it is flex:1 with
+     min-height:0 inside a column flex, so size containment changes nothing
+     about how it lays out. It was previously guessing at both with
+     `calc(100vh - 150px)` and a `@media (max-width: 900px)` query, neither of
+     which describes this box: the overlay is inset left:64px, carries a 54px
+     .doc-head, and becomes a min(82vw, 680px) tablet side sheet or a
+     composer-height-capped phone bottom sheet. Safe for position:fixed
+     descendants — Citation.jsx portals its popover to document.body, and
+     .artifact-overlay's own backdrop-filter is already the containing block
+     for anything that didn't. */
   .doc-body {
+    container: doc-port / size;
     min-height: 0;
     flex: 1;
     overflow-y: auto;
@@ -4938,6 +4951,13 @@
     max-width: var(--artifact-w);
     margin: 0 auto;
     background: var(--paper-raised);
+  }
+  /* 900px minus .doc-sheet's own 42px gutters left the paired layout 816px to
+     split two ways — a ~370px column for prose. A quiz carrying passages is
+     the one body in this shell that is genuinely two documents wide, so it
+     takes the token set's wide measure instead. */
+  .doc-sheet-plain:has(.quiz-body.has-passages) {
+    max-width: var(--measure-wide);
   }
   .detail-card-stack {
     display: flex;
@@ -5047,11 +5067,51 @@
   .quiz-body {
     position: relative;
   }
-  .quiz-paired-layout {
+
+  /* Every question already carries alignment.bloom and alignment.dok, and
+     schema.py's validate_quiz warns the backend when a quiz clusters on one
+     level of either — the teacher was shown none of it. One line, one rule,
+     no card: this must not become a fourth box. */
+  .quiz-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-5);
+    padding-bottom: var(--sp-3);
+    border-bottom: 1px solid var(--edge);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+  }
+  .quiz-summary strong {
+    color: var(--ink);
+    font-size: var(--fs-sm);
+  }
+
+  /* ══ PASSAGE ↔ QUESTION CORRESPONDENCE ═════════════════════════════════
+     One grid row PER PASSAGE, not one grid for the whole quiz. That is the
+     entire point: the old .quiz-paired-layout put every passage in one sticky
+     well and every question in the other column, so a two-passage quiz showed
+     two unrelated lists and "sticky" stopped meaning anything. A passage now
+     holds position while its OWN questions scroll past, then releases as the
+     next group pushes it up — the pairing is structural, and there is nothing
+     left to misread. */
+  .quiz-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+  }
+  .quiz-passage-group {
     display: grid;
-    grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.1fr);
-    gap: var(--sp-4);
+    /* The prose column is the wider one now. It had 0.9fr — the SMALLER half —
+       while the questions, which are short chunks that tolerate narrow, had
+       1.1fr. */
+    grid-template-columns: minmax(18rem, 1.05fr) minmax(0, 0.95fr);
+    gap: var(--sp-5);
     align-items: start;
+  }
+  .quiz-passage-group.is-standalone {
+    display: block;
   }
   .quiz-passage-pane,
   .quiz-question-pane,
@@ -5060,12 +5120,26 @@
   }
   .quiz-passage-pane {
     position: sticky;
-    top: 0;
-    max-height: calc(100vh - 150px);
+    /* Not 0 — that pins the pane flush against the top of the scroll port,
+       hard up under .doc-head. */
+    top: var(--sp-3);
+    max-height: calc(100cqh - var(--sp-6));
     overflow-y: auto;
-    padding: var(--sp-3);
+    padding: var(--sp-4);
     background: var(--paper-inset);
     border-radius: var(--r-lg);
+    border-left: 2px solid transparent;
+    transition: border-color var(--t-fast) var(--ease);
+  }
+  @supports not (container-type: size) {
+    .quiz-passage-pane {
+      max-height: calc(100dvh - 12rem);
+    }
+  }
+  /* Hovering a question marks the passage it belongs to. A 2px rule, the same
+     gesture .doc-head uses to carry a document's class colour — not a fill. */
+  .quiz-passage-group:has(.detail-card:hover, .detail-card:focus-within) .quiz-passage-pane {
+    border-left-color: var(--accent);
   }
   .quiz-pane-heading,
   .quiz-library-toolbar,
@@ -5089,38 +5163,86 @@
     gap: 5px;
   }
   .quiz-question-count {
-    font-weight: var(--fw-normal);
+    font-weight: var(--fw-regular);
     text-transform: none;
     letter-spacing: 0;
   }
+  .quiz-passage-group.is-standalone .quiz-pane-heading {
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--edge);
+  }
+
+  /* The card was --paper-raised + --shadow-sm INSIDE the --paper-inset pane,
+     on frosted glass: three surfaces, and a shadow on something that is not a
+     popover, toast, dialog or drawer — which DESIGN.md's own Floating-Only
+     Rule calls a bug. The pane is the surface; this only carries spacing. */
   .quiz-passage-card {
-    padding: var(--sp-3);
-    background: var(--paper-raised);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow-sm);
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
   }
   .quiz-passage-card h3 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--sp-2);
     margin: 0 0 var(--sp-2);
     color: var(--ink);
     font-size: var(--fs-sm);
   }
+  /* Provenance was a footnote UNDER the prose, which read as a caveat on the
+     passage a student will actually be handed. It is a property of the
+     passage, so it sits with its title. */
+  .quiz-passage-source {
+    padding: 1px 6px;
+    color: var(--ink-muted);
+    background: var(--paper-sunken);
+    border-radius: var(--r-full);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-regular);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  /* A reading passage is quoted document text, which is the exact job
+     DESIGN.md reserves --font-serif for. Body only, weight 400: fonts.css
+     self-hosts Source Serif 4 at 400 normal and 400/500 italic and nothing
+     heavier, so the h3 above stays on Inter rather than asking the browser to
+     synthesise a bold. The register split is the point — Inter labels the
+     passage, the serif IS the passage. */
   .quiz-passage-card p {
     margin: 0;
     color: var(--ink-soft);
-    font-size: var(--fs-sm);
-    line-height: 1.65;
+    font-family: var(--font-serif);
+    font-size: var(--fs-base);
+    font-weight: 400;
+    line-height: var(--lh-relaxed);
     white-space: pre-wrap;
-  }
-  .quiz-passage-card small {
-    display: block;
-    margin-top: var(--sp-3);
-    color: var(--ink-faint);
-    font-size: var(--fs-2xs);
   }
   .quiz-passage-editor {
     min-height: 280px;
     resize: vertical;
     line-height: 1.55;
+  }
+  .quiz-passage-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+    margin-top: var(--sp-3);
+  }
+
+  /* ══ SHARED LIBRARY ════════════════════════════════════════════════════
+     Below the quiz, not above it. Publishing is a terminal action; it used to
+     open the panel, so the first thing a teacher saw on clicking a quiz was a
+     banner about approving it for other teachers. One region under one rule
+     now, instead of a toolbar box, a status box and a suggestions box stacked
+     in the document flow. */
+  .quiz-library {
+    display: block;
+    margin-top: var(--sp-6);
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--edge);
   }
   .quiz-library-toolbar {
     justify-content: space-between;
@@ -5164,9 +5286,7 @@
     font-size: var(--fs-2xs);
   }
   .quiz-library-suggestions {
-    margin-top: var(--sp-5);
-    padding-top: var(--sp-4);
-    border-top: 1px solid var(--edge);
+    margin-top: var(--sp-4);
   }
   .quiz-library-suggestion {
     justify-content: space-between;
@@ -5200,7 +5320,7 @@
     gap: 6px;
     color: var(--ink-soft);
     font-size: var(--fs-xs);
-    font-weight: var(--fw-normal);
+    font-weight: var(--fw-regular);
   }
   .quiz-library-question-picker input {
     margin-top: 2px;
@@ -5242,8 +5362,11 @@
   .quiz-alignment-wide textarea {
     min-height: 48px;
   }
-  @media (max-width: 900px) {
-    .quiz-paired-layout {
+  /* The panel, not the viewport. The real content column is .doc-sheet-plain
+     inside .doc-body — a `@media (max-width: 900px)` query could leave a
+     two-column split rendering inside a ~500px tablet side sheet. */
+  @container doc-port (max-width: 52rem) {
+    .quiz-passage-group {
       grid-template-columns: 1fr;
     }
     .quiz-passage-pane {
@@ -5251,22 +5374,40 @@
       max-height: none;
     }
   }
+  /* On a phone bottom sheet the chips wrapped to three rows and pushed the
+     first question below the fold. One line that scrolls keeps the whole
+     distribution reachable without spending the sheet's opening screen on it. */
+  @container doc-port (max-width: 30rem) {
+    .quiz-summary {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: var(--sp-2);
+    }
+    .quiz-summary::-webkit-scrollbar {
+      display: none;
+    }
+    .quiz-summary > * {
+      flex: 0 0 auto;
+    }
+  }
+  /* This one stays a media query on purpose: it is about the device's own
+     width forcing controls full-bleed, not about how wide this panel is. */
   @media (max-width: 520px) {
     .quiz-library-toolbar,
     .quiz-library-suggestion {
       align-items: flex-start;
       flex-direction: column;
     }
-    .quiz-library-toolbar .btn-primary,
-    .quiz-library-toolbar .btn-secondary,
-    .quiz-library-suggestion .btn-secondary {
+    .quiz-library-toolbar .btn,
+    .quiz-library-suggestion .btn {
       width: 100%;
       justify-content: center;
     }
     .quiz-library-suggestion-actions {
       width: 100%;
     }
-    .quiz-library-suggestion-actions .btn-secondary {
+    .quiz-library-suggestion-actions .btn {
       flex: 1;
     }
   }
@@ -10431,302 +10572,5 @@
   .onboarding-final-footer {
     max-width: 22rem;
     font-size: 0.6875rem;
-  }
-}
-
-/* ══ ONBOARDING REFINEMENT ════════════════════════════════════════════════
-   Onboarding is the handoff into a warm, document-focused workspace. Keep
-   the matte macOS canvas and its drifting light behind one legible sheet;
-   the choices inside it use paper, type, and a quiet rule. */
-.onboarding-mac-classic {
-  --paper-rgb: 246 244 236;
-  --paper-raised-rgb: 253 251 246;
-  --paper-sunken-rgb: 236 233 223;
-  --paper-inset-rgb: 224 220 207;
-  --edge-rgb: 221 217 205;
-  --edge-strong-rgb: 195 189 172;
-  --ink-rgb: 20 22 26;
-  --ink-soft-rgb: 58 63 71;
-  --ink-muted-rgb: 102 109 120;
-  --ink-faint-rgb: 154 161 171;
-  --ink-inverse-rgb: 255 255 255;
-  --accent-rgb: 47 95 191;
-  --accent-hover-rgb: 36 74 154;
-  --accent-tint-rgb: 233 239 250;
-  --accent-text-rgb: 47 95 191;
-  --neo-light-rgb: 255 255 255;
-  --neo-dark-rgb: 202 197 184;
-  --paper: rgb(var(--paper-rgb));
-  --paper-raised: rgb(var(--paper-raised-rgb));
-  --paper-sunken: rgb(var(--paper-sunken-rgb));
-  --paper-inset: rgb(var(--paper-inset-rgb));
-  --edge: rgb(var(--edge-rgb));
-  --edge-strong: rgb(var(--edge-strong-rgb));
-  --ink: rgb(var(--ink-rgb));
-  --ink-soft: rgb(var(--ink-soft-rgb));
-  --ink-muted: rgb(var(--ink-muted-rgb));
-  --ink-faint: rgb(var(--ink-faint-rgb));
-  --ink-inverse: rgb(var(--ink-inverse-rgb));
-  --accent: rgb(var(--accent-rgb));
-  --accent-hover: rgb(var(--accent-hover-rgb));
-  --accent-tint: rgb(var(--accent-tint-rgb));
-  --accent-text: rgb(var(--accent-text-rgb));
-  background: var(--paper) !important;
-}
-.onboarding-mac-classic .onboarding-blob {
-  /* The original blob sat at -1, beneath the matte canvas' opaque base.
-     Keep it above that canvas but below the shell so the background remains
-     visibly alive at the edges and softly shows through the glass. */
-  display: block;
-  z-index: 0;
-  opacity: 0.92;
-}
-.onboarding-shell {
-  overflow-y: auto !important;
-  overscroll-behavior: contain;
-  background: var(--paper-raised) !important;
-  border: 0 !important;
-  border-radius: var(--r-xl) !important;
-  box-shadow:
-    12px 12px 28px rgb(var(--neo-dark-rgb) / 0.42),
-    -12px -12px 28px rgb(var(--neo-light-rgb) / 0.82) !important;
-  scrollbar-gutter: stable;
-}
-.onboarding-shell :is(
-  .onboarding-glass-pane,
-  .onboarding-neomorphic-pane,
-  .onboarding-neomorphic-list,
-  .onboarding-template-panel,
-  .onboarding-course-browser,
-  .onboarding-setup-summary,
-  .onboarding-template-preview,
-  .onboarding-analysis-card,
-  .onboarding-ingest-path,
-  .onboarding-template-upload,
-  .onboarding-template-processing,
-  .onboarding-template-confirmed,
-  .onboarding-next-step,
-  .onboarding-ready-list
-) {
-  background: var(--paper-raised) !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow:
-    5px 5px 12px rgb(var(--neo-dark-rgb) / 0.32),
-    -5px -5px 12px rgb(var(--neo-light-rgb) / 0.8) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-.onboarding-shell .onboarding-neomorphic-list {
-  background: var(--paper-sunken) !important;
-  box-shadow:
-    inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.34),
-    inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.74) !important;
-}
-.onboarding-shell .onboarding-step > .mb-8,
-.onboarding-shell .dialog-actions {
-  border-color: transparent !important;
-}
-.onboarding-shell :is(input, select, textarea, .onboarding-state-list) {
-  border-color: transparent !important;
-  box-shadow:
-    inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.3),
-    inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.72) !important;
-}
-.onboarding-shell .btn:not(.btn-primary) {
-  border-color: transparent !important;
-  box-shadow:
-    3px 3px 7px rgb(var(--neo-dark-rgb) / 0.34),
-    -3px -3px 7px rgb(var(--neo-light-rgb) / 0.78) !important;
-}
-.onboarding-shell .btn:not(.btn-primary):active {
-  box-shadow:
-    inset 3px 3px 7px rgb(var(--neo-dark-rgb) / 0.34),
-    inset -3px -3px 7px rgb(var(--neo-light-rgb) / 0.78) !important;
-}
-/* Onboarding deliberately keeps its warm neomorphic material in either app
-   theme. These selectors match the earlier dark-mode glass rules so that the
-   dark app preference cannot turn the sheet back into a glass exception. */
-:root[data-theme='dark'] .onboarding-shell {
-  background: var(--paper-raised) !important;
-  border-color: transparent !important;
-  box-shadow:
-    12px 12px 28px rgb(var(--neo-dark-rgb) / 0.42),
-    -12px -12px 28px rgb(var(--neo-light-rgb) / 0.82) !important;
-}
-:root[data-theme='dark'] .onboarding-shell :is(
-  .onboarding-glass-pane,
-  .onboarding-neomorphic-pane,
-  .onboarding-neomorphic-list,
-  .onboarding-template-panel,
-  .onboarding-course-browser,
-  .onboarding-setup-summary,
-  .onboarding-template-preview,
-  .onboarding-analysis-card,
-  .onboarding-ingest-path,
-  .onboarding-template-upload,
-  .onboarding-template-processing,
-  .onboarding-template-confirmed,
-  .onboarding-next-step,
-  .onboarding-ready-list
-) {
-  background: var(--paper-raised) !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow:
-    5px 5px 12px rgb(var(--neo-dark-rgb) / 0.32),
-    -5px -5px 12px rgb(var(--neo-light-rgb) / 0.8) !important;
-}
-:root[data-theme='dark'] .onboarding-shell .onboarding-neomorphic-list {
-  background: var(--paper-sunken) !important;
-  box-shadow:
-    inset 4px 4px 9px rgb(var(--neo-dark-rgb) / 0.34),
-    inset -4px -4px 9px rgb(var(--neo-light-rgb) / 0.74) !important;
-}
-.onboarding-shell .btn {
-  min-height: var(--touch-min);
-}
-
-/* The state picker now makes the real, available choice the primary content.
-   The map earns its space only after that choice is made. */
-.onboarding-state-available {
-  color: var(--ok);
-  font-size: var(--text-2xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.onboarding-state-list {
-  min-height: 0;
-}
-.onboarding-state-support-note {
-  margin: var(--sp-3) 0 0;
-  color: var(--ink-muted);
-  font-size: var(--text-xs);
-  line-height: var(--lh-relaxed);
-}
-.onboarding-state-selected {
-  box-shadow: inset 3px 0 0 var(--accent) !important;
-}
-
-/* Course selection is a focused browser, not a second full-screen surface.
-   The selected check stays beside the selected course; repeating it in the
-   footer made the layout louder without adding useful context. */
-.onboarding-course-browser {
-  height: min(30rem, calc(100dvh - 19rem));
-  min-height: 23rem;
-  border-radius: var(--r-lg) !important;
-}
-.onboarding-course-browser-actions {
-  grid-template-columns: auto auto;
-  justify-content: space-between;
-  padding: var(--sp-3) var(--sp-4);
-}
-
-/* Keep the successful finish memorable, but give the saved details enough
-   room to read. A two-column definition list avoids five narrow, wrapping
-   strips for the two longest values: school and course. */
-.onboarding-final {
-  gap: var(--sp-3);
-}
-.onboarding-final-stage {
-  height: clamp(7rem, 15vw, 10rem);
-  margin-top: var(--sp-3);
-}
-.onboarding-final-stage-glow {
-  height: 6.25rem;
-  width: 6.25rem;
-  filter: blur(18px);
-}
-.onboarding-final-ring {
-  height: 6.5rem;
-  width: 10.5rem;
-}
-.onboarding-final-ring-secondary {
-  height: 7.5rem;
-  width: 12rem;
-}
-.onboarding-final-logo {
-  height: 6.5rem;
-  width: 6.5rem;
-  box-shadow: 0 8px 20px rgb(20 22 26 / 0.1) !important;
-}
-.onboarding-final-logo img {
-  height: 5.4rem;
-  width: 5.4rem;
-}
-.onboarding-final-logo-check {
-  height: 1.8rem;
-  width: 1.8rem;
-  border-color: var(--paper-raised);
-}
-.onboarding-final-setup {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: min(100%, 36rem);
-  margin-top: var(--sp-3);
-}
-.onboarding-final-setup-item + .onboarding-final-setup-item {
-  border-left: 0;
-}
-.onboarding-final-setup-item:nth-child(even) {
-  border-left: 1px solid var(--edge);
-}
-.onboarding-final-setup-item:nth-child(n + 3) {
-  border-top: 1px solid var(--edge);
-}
-.onboarding-final-setup-item:last-child {
-  grid-column: 1 / -1;
-}
-
-@media (max-width: 767.98px) {
-  .onboarding-mac-classic {
-    align-items: flex-start;
-    padding: var(--sp-3) !important;
-  }
-  .onboarding-shell {
-    max-height: calc(100dvh - (var(--sp-3) * 2));
-    padding: var(--sp-5) !important;
-  }
-  .onboarding-state-chooser {
-    padding: var(--sp-4) !important;
-  }
-  .onboarding-state-list {
-    flex: 0 0 auto !important;
-  }
-  .onboarding-glass-pane {
-    display: none !important;
-  }
-  .onboarding-course-browser {
-    height: min(26rem, calc(100dvh - 17rem));
-    min-height: 21rem;
-  }
-  .onboarding-course-browser-actions {
-    grid-template-columns: auto auto;
-    align-items: center;
-  }
-  .onboarding-course-browser-actions > .btn:first-child,
-  .onboarding-course-browser-actions > .btn:last-child {
-    grid-column: auto;
-    grid-row: auto;
-  }
-  .onboarding-shell .dialog-actions {
-    position: sticky;
-    bottom: calc(var(--sp-5) * -1);
-    z-index: 2;
-    margin-inline: calc(var(--sp-5) * -1);
-    padding: var(--sp-3) var(--sp-5) calc(var(--sp-3) + var(--safe-b)) !important;
-    background: var(--paper-raised);
-    box-shadow: 0 -8px 18px rgb(20 22 26 / 0.05);
-  }
-  .onboarding-final-stage {
-    height: 7.5rem;
-  }
-  .onboarding-final-logo {
-    height: 5.75rem;
-    width: 5.75rem;
-  }
-  .onboarding-final-logo img {
-    height: 4.75rem;
-    width: 4.75rem;
   }
 }

@@ -279,6 +279,12 @@ const state = {
     plan1: [
       {
         id: 'quiz1',
+        // Without this every save posted to /api/plans/undefined/quizzes/quiz1
+        // and 404'd, and QuizBody's library-suggestions fetch (keyed on
+        // quiz.plan_id) never fired at all — so neither path was reachable in
+        // the preview harness. The chat-built quiz at the POST handler below
+        // has always carried one; only the seed was missing it.
+        plan_id: 'plan1',
         title: 'Week 03 Quiz — Voice & Tone',
         question_types: ['multiple_choice', 'true_false', 'short_answer', 'matching'],
         has_qti: true,
@@ -293,8 +299,14 @@ const state = {
             {
               id: 'passage_1',
               title: 'The narrator’s attitude',
-              text: 'The narrator describes the evening as calm, but his clipped sentences and repeated warnings make the calm feel carefully staged.',
+              text: 'The narrator describes the evening as calm, but his clipped sentences and repeated warnings make the calm feel carefully staged.\n\nHe tells us twice that nothing is wrong. The second telling is shorter than the first, and by then the reader has stopped believing him — not because he has said anything false, but because he has said it too often, and too quickly, for a man at ease.',
               source: 'ai_generated',
+            },
+            {
+              id: 'passage_2',
+              title: 'A letter home, 1943',
+              text: 'Dear Mother — the food is good and the men are kind. I have not been cold once. You would laugh at how much I sleep.\n\nDo not send the coat. I have no use for it here and it would only take up room. Give it to Thomas, who is always cold, and tell him I said so.',
+              source: 'teacher_provided',
             },
           ],
           questions: [
@@ -320,6 +332,27 @@ const state = {
               pairs: [],
             },
             {
+              type: 'multiple_choice',
+              prompt: 'The narrator repeats his reassurance a second time. What does the repetition most likely signal?',
+              standard_code: 'RHS-2A',
+              passage_id: 'passage_1',
+              alignment: {
+                bloom: 'evaluate',
+                dok: 4,
+                cras: {
+                  content_target: 'Unreliable narration',
+                  cognitive_operation: 'Judge credibility from pattern',
+                  evidence_basis: 'The second telling is shorter than the first',
+                  rationale: 'Students weigh an unstated implication against the narrator’s stated claim.',
+                },
+              },
+              choices: ['That he is telling the truth', 'That he doubts his own calm', 'That the evening was uneventful', 'That the reader misread the first line'],
+              correct_index: 1,
+              correct_bool: false,
+              accepted_answers: [],
+              pairs: [],
+            },
+            {
               type: 'true_false',
               prompt: 'Diction and syntax are two of the tools a writer uses to establish tone.',
               standard_code: 'RHS-2A',
@@ -333,9 +366,9 @@ const state = {
             },
             {
               type: 'short_answer',
-              prompt: 'Name one connotative word choice from Monday’s reading and the tone it creates.',
-              standard_code: '',
-              passage_id: '',
+              prompt: 'The writer refuses the coat. Quote the line that shows the refusal is about someone other than himself.',
+              standard_code: 'RHS-3B',
+              passage_id: 'passage_2',
               alignment: { bloom: 'analyze', dok: 3, cras: { content_target: 'Connotation', cognitive_operation: 'Explain effect', evidence_basis: 'Student-selected word', rationale: 'Requires a claim supported by a textual choice.' } },
               choices: [],
               correct_index: -1,
@@ -358,6 +391,49 @@ const state = {
                 { term: 'Pathos', match: 'An appeal to emotion' },
                 { term: 'Logos', match: 'An appeal to logic' },
               ],
+            },
+          ],
+        },
+      },
+      /* A quiz with NO passages, so the flat-list fallback (and the normal
+         --artifact-w sheet width) stays reachable in the harness — the paired
+         layout is conditional on quiz_json.passages being non-empty, and
+         every seeded quiz used to have one. */
+      {
+        id: 'quiz2',
+        plan_id: 'plan1',
+        title: 'Week 03 Vocabulary Check',
+        question_types: ['multiple_choice', 'true_false'],
+        has_qti: false,
+        has_docx: true,
+        warnings: [],
+        quiz_json: {
+          title: 'Week 03 Vocabulary Check',
+          passages: [],
+          questions: [
+            {
+              type: 'multiple_choice',
+              prompt: 'Which term names a writer’s attitude toward the subject?',
+              standard_code: 'RHS-1',
+              passage_id: '',
+              alignment: { bloom: 'remember', dok: 1, cras: { content_target: 'Rhetorical terms', cognitive_operation: 'Recall', evidence_basis: 'Term list', rationale: 'Checks recall before applied analysis.' } },
+              choices: ['Tone', 'Plot', 'Meter', 'Setting'],
+              correct_index: 0,
+              correct_bool: false,
+              accepted_answers: [],
+              pairs: [],
+            },
+            {
+              type: 'true_false',
+              prompt: 'Connotation and denotation mean the same thing.',
+              standard_code: 'RHS-1',
+              passage_id: '',
+              alignment: { bloom: 'understand', dok: 1, cras: { content_target: 'Connotation', cognitive_operation: 'Distinguish', evidence_basis: 'Definitions', rationale: 'Separates two terms students routinely conflate.' } },
+              choices: [],
+              correct_index: -1,
+              correct_bool: false,
+              accepted_answers: [],
+              pairs: [],
             },
           ],
         },
