@@ -197,19 +197,36 @@ def check_ingest(
         if not report_row.get("pdf"):
             _issue(issues, "error", "report_fields", "report is missing its PDF path", course)
 
-        for field in ("source_case_id", "source_version", "source_package_sha256", "source_pdf_sha256"):
+        for field in ("source_case_id", "source_version", "source_package_sha256"):
             values = {row.get(field) for row in rows}
             if len(values) != 1 or report_row.get(field) not in values or _missing(report_row.get(field)):
                 _issue(issues, "error", "source_provenance", f"chunk/report `{field}` values disagree", course)
+
+        # A CI runner intentionally has the tracked CASE package but not the
+        # human-readable PDFs stored outside this repository. In that mode the
+        # ingester records ``None`` for the PDF fingerprint; that is an honest
+        # absence of verification, not a provenance mismatch. Keep the field
+        # strict for normal/local runs and only relax it behind the explicit
+        # allow-unverified-source flag.
+        pdf_values = {row.get("source_pdf_sha256") for row in rows}
+        pdf_hash_missing = not require_pdf_verification and report_row.get("pdf_text_available") is not True
+        if pdf_hash_missing:
+            if len(pdf_values) != 1 or report_row.get("source_pdf_sha256") not in pdf_values:
+                _issue(issues, "error", "source_provenance", "chunk/report `source_pdf_sha256` values disagree", course)
+        elif len(pdf_values) != 1 or report_row.get("source_pdf_sha256") not in pdf_values or _missing(report_row.get("source_pdf_sha256")):
+            _issue(issues, "error", "source_provenance", "chunk/report `source_pdf_sha256` values disagree", course)
 
         if report_row.get("pdf_text_available") is not True:
             level = "error" if require_pdf_verification else "warning"
             _issue(issues, level, "pdf_verification", "the local PDF was unavailable; source fidelity was not checked", course)
 
-        if derived["wordwise_rate"] < 90.0:
+        if report_row.get("pdf_text_available") is True:
+            if derived["wordwise_rate"] < 90.0:
+                _issue(issues, "warning", "source_fidelity", f"wording verification is {derived['wordwise_rate']:.1f}%", course)
+            if derived["wordwise_rate"] < 60.0:
+                _issue(issues, "error", "source_fidelity", f"wording verification is critically low at {derived['wordwise_rate']:.1f}%", course)
+        else:
             _issue(issues, "warning", "source_fidelity", f"wording verification is {derived['wordwise_rate']:.1f}%", course)
-        if derived["wordwise_rate"] < 60.0:
-            _issue(issues, "error", "source_fidelity", f"wording verification is critically low at {derived['wordwise_rate']:.1f}%", course)
 
         summaries[course] = derived | {
             "reported_wordwise_rate": report_row.get("wordwise_rate"),
