@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { CheckoutElementsProvider, ExpressCheckoutElement, PaymentElement, useCheckoutElements } from '@stripe/react-stripe-js/checkout'
 import { loadStripe } from '@stripe/stripe-js'
-import { LockKeyhole, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { LockKeyhole, ShieldCheck, X } from 'lucide-react'
 
 const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 const stripePromise = publishableKey ? loadStripe(publishableKey) : null
@@ -12,7 +12,9 @@ function CheckoutHeader({ onClose, priceLabel }) {
     <>
       <div className="checkout-header">
         <div className="checkout-brand">
-          <span className="checkout-brand-mark"><Sparkles size={15} aria-hidden="true" /></span>
+          <span className="checkout-brand-logo" aria-hidden="true">
+            <img src="/icon-512.png" alt="" />
+          </span>
           <div>
             <p className="checkout-kicker">FlexEd Academy</p>
             <p className="checkout-flow-label">Monthly membership</p>
@@ -24,11 +26,7 @@ function CheckoutHeader({ onClose, priceLabel }) {
       </div>
 
       <div className="checkout-summary">
-        <div className="checkout-product-art" aria-hidden="true">
-          <img src="/icon-512.png" alt="" />
-        </div>
         <div className="checkout-summary-copy">
-          <p className="checkout-summary-kicker">FlexEd Academy</p>
           <h2 id="checkout-title">Pay FlexEd Academy</h2>
           <p>More room for the lesson plans, activities, and ideas you build each week.</p>
         </div>
@@ -62,8 +60,6 @@ function LocalCheckoutPreview({ onClose, priceLabel }) {
         </div>
         <div className="checkout-preview-express">
           <button type="button" className="checkout-preview-wallet">Apple Pay</button>
-          <button type="button" className="checkout-preview-wallet">Google Pay</button>
-          <button type="button" className="checkout-preview-wallet">Link</button>
         </div>
         <div className="checkout-divider"><span>or pay another way</span></div>
         <label className="checkout-preview-field">

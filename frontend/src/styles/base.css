@@ -3808,29 +3808,40 @@
     padding: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: var(--paper-raised);
+    background:
+      radial-gradient(circle at 50% -8%, rgb(var(--accent-rgb) / 0.14), transparent 24rem),
+      var(--paper-raised);
   }
   .checkout-header {
+    position: relative;
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    justify-content: center;
     gap: var(--sp-4);
-    padding: var(--sp-5) var(--sp-6) var(--sp-3);
+    padding: var(--sp-6) var(--sp-6) var(--sp-4);
   }
   .checkout-brand {
     display: flex;
+    flex-direction: column;
     align-items: center;
     gap: var(--sp-2);
+    text-align: center;
   }
-  .checkout-brand-mark {
+  .checkout-brand-logo {
     display: grid;
-    width: 30px;
-    height: 30px;
+    width: clamp(5.5rem, 11vw, 7rem);
+    height: clamp(5.5rem, 11vw, 7rem);
     place-items: center;
-    border: 1px solid rgb(var(--accent-rgb) / 0.32);
-    border-radius: 10px;
-    color: var(--accent-text);
-    background: rgb(var(--accent-rgb) / 0.12);
+    border: 1px solid rgb(var(--accent-rgb) / 0.28);
+    border-radius: 24px;
+    background:
+      radial-gradient(circle at 30% 24%, rgb(var(--accent-rgb) / 0.7), transparent 44%),
+      linear-gradient(145deg, rgb(var(--accent-rgb) / 0.2), rgb(var(--paper-inset-rgb) / 0.84));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 12px 24px rgb(0 0 0 / 0.14);
+  }
+  .checkout-brand-logo img {
+    width: 62%;
+    height: 62%;
+    object-fit: contain;
   }
   .checkout-flow-label {
     margin: 1px 0 0 !important;
@@ -3839,7 +3850,7 @@
   }
   .checkout-summary {
     display: grid;
-    grid-template-columns: 78px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--sp-4);
     margin: 0 var(--sp-6);
@@ -3848,20 +3859,6 @@
     border-radius: var(--r-md);
     background: linear-gradient(135deg, rgb(var(--accent-rgb) / 0.13), rgb(var(--paper-inset-rgb) / 0.68));
   }
-  .checkout-product-art {
-    display: grid;
-    width: 78px;
-    height: 78px;
-    place-items: center;
-    border: 1px solid rgb(var(--accent-rgb) / 0.26);
-    border-radius: 20px;
-    color: var(--accent-text);
-    background:
-      radial-gradient(circle at 30% 24%, rgb(var(--accent-rgb) / 0.7), transparent 44%),
-      linear-gradient(145deg, rgb(var(--accent-rgb) / 0.2), rgb(var(--paper-inset-rgb) / 0.84));
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 12px 24px rgb(0 0 0 / 0.14);
-  }
-  .checkout-product-art img,
   .billing-free-art img {
     width: 62%;
     height: 62%;
@@ -3881,6 +3878,7 @@
   .checkout-summary-copy h2 {
     margin: 0 !important;
     font-size: var(--fs-lg) !important;
+    font-optical-sizing: auto;
     letter-spacing: -0.02em;
   }
   .checkout-summary-copy p {
@@ -3922,6 +3920,9 @@
     font-size: var(--fs-xs) !important;
   }
   .checkout-close {
+    position: absolute;
+    top: var(--sp-4);
+    right: var(--sp-5);
     display: inline-flex;
     min-width: var(--touch-min);
     min-height: var(--touch-min);
@@ -3933,11 +3934,15 @@
     color: var(--ink-muted);
     background: transparent;
     cursor: pointer;
+    transition: color 120ms ease-out, background 120ms ease-out, transform 100ms ease-out;
   }
   .checkout-close:hover,
   .checkout-close:focus-visible {
     color: var(--ink);
     background: rgb(var(--edge-rgb) / 0.45);
+  }
+  .checkout-close:active {
+    transform: scale(0.95);
   }
   .checkout-trust-line,
   .checkout-footnote {
@@ -4114,27 +4119,25 @@
   }
   .billing-free-main {
     display: grid;
-    grid-template-columns: 112px minmax(0, 1fr);
+    grid-template-columns: 64px minmax(0, 1fr) auto auto;
     align-items: center;
-    gap: var(--sp-5);
-    min-height: 250px;
-    padding: var(--sp-8);
-    background:
-      radial-gradient(circle at 8% 20%, rgb(var(--accent-rgb) / 0.18), transparent 32%),
-      linear-gradient(135deg, rgb(var(--accent-rgb) / 0.08), transparent 62%);
+    gap: var(--sp-4);
+    padding: var(--sp-6);
   }
   .billing-free-art {
     display: grid;
-    width: 112px;
-    height: 112px;
+    width: 64px;
+    height: 64px;
     place-items: center;
-    border: 1px solid rgb(var(--accent-rgb) / 0.26);
-    border-radius: 24px;
+    border: 1px solid rgb(var(--accent-rgb) / 0.22);
+    border-radius: 18px;
     color: var(--accent-text);
-    background:
-      radial-gradient(circle at 30% 24%, rgb(var(--accent-rgb) / 0.78), transparent 44%),
-      linear-gradient(145deg, rgb(var(--accent-rgb) / 0.22), rgb(var(--paper-inset-rgb) / 0.88));
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 14px 28px rgb(0 0 0 / 0.16);
+    background: rgb(var(--accent-rgb) / 0.12);
+  }
+  .billing-free-art img {
+    width: 62%;
+    height: 62%;
+    object-fit: contain;
   }
   .billing-free-kicker {
     margin: 0 !important;
@@ -4147,76 +4150,34 @@
   }
   .billing-free-price {
     display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: var(--sp-2);
-    margin-top: var(--sp-4);
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
   }
   .billing-free-price strong {
     color: var(--ink);
-    font-size: clamp(1.65rem, 4vw, 2.25rem);
+    font-size: var(--fs-lg);
     letter-spacing: -0.04em;
+    white-space: nowrap;
   }
   .billing-free-price span {
     color: var(--ink-muted);
-    font-size: var(--fs-xs);
-  }
-  .billing-free-benefits {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1px;
-    border-top: 1px solid var(--edge);
-    border-bottom: 1px solid var(--edge);
-    background: var(--edge);
-  }
-  .billing-free-benefits > div {
-    min-height: 112px;
-    padding: var(--sp-5) var(--sp-8);
-    background: rgb(var(--paper-sunken-rgb) / 0.56);
-  }
-  .billing-free-benefits p {
-    margin: 0;
-    color: var(--ink-muted);
-    font-size: var(--fs-xs);
-    line-height: 1.45;
-  }
-  .billing-free-benefits .billing-free-benefit-title {
-    margin-bottom: var(--sp-1);
-    color: var(--ink);
-    font-weight: var(--fw-bold);
-  }
-  .billing-free-action {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-4);
-    min-height: 104px;
-    padding: var(--sp-6) var(--sp-8);
-  }
-  .billing-free-action-copy {
-    min-width: 0;
-  }
-  .billing-free-action-copy p {
-    margin: 0;
-    color: var(--ink-muted);
-    font-size: var(--fs-xs);
-    line-height: 1.45;
-  }
-  .billing-free-action-copy .billing-free-benefit-title {
-    margin-bottom: var(--sp-1);
-    color: var(--ink);
-    font-weight: var(--fw-bold);
+    font-size: var(--fs-2xs);
   }
   .billing-free-cta {
-    min-width: 148px;
+    min-width: 178px;
   }
   .billing-free-secure {
     display: flex;
     align-items: center;
-    gap: var(--sp-1);
+    justify-content: center;
+    gap: var(--sp-2);
     margin: 0;
+    padding: var(--sp-3) var(--sp-6);
+    border-top: 1px solid var(--edge);
     color: var(--ink-muted);
     font-size: var(--fs-2xs);
+    text-align: center;
   }
   @media (max-width: 640px) {
     .dialog-scrim:has(.dialog-checkout) {
@@ -4245,23 +4206,21 @@
     .dialog-checkout .checkout-summary {
       margin-right: calc(var(--sp-5) + var(--safe-r));
       margin-left: calc(var(--sp-5) + var(--safe-l));
-      grid-template-columns: 64px minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
       align-items: start;
     }
-    .dialog-checkout .checkout-product-art {
-      width: 64px;
-      height: 64px;
-      border-radius: 17px;
+    .dialog-checkout .checkout-brand-logo {
+      width: 78px;
+      height: 78px;
+      border-radius: 20px;
     }
     .dialog-checkout .checkout-price-card {
-      grid-column: 2;
       align-items: flex-start;
-      margin-top: calc(var(--sp-1) * -1);
+      margin-top: var(--sp-2);
     }
     .billing-free-main {
       grid-template-columns: 64px minmax(0, 1fr);
       gap: var(--sp-3);
-      min-height: 0;
       padding: var(--sp-5);
     }
     .billing-free-art {
@@ -4269,24 +4228,22 @@
       height: 64px;
       border-radius: 17px;
     }
-    .billing-free-benefits {
-      grid-template-columns: 1fr;
-    }
-    .billing-free-benefits > div,
-    .billing-free-action {
-      padding-right: var(--sp-5);
-      padding-left: var(--sp-5);
-    }
-    .billing-free-action {
-      align-items: stretch;
-      flex-direction: column;
-      min-height: 0;
+    .billing-free-price {
+      grid-column: 2;
+      align-items: flex-start;
     }
     .billing-free-cta {
+      grid-column: 1 / -1;
       width: 100%;
     }
     .billing-free-secure {
-      justify-content: center;
+      padding-right: var(--sp-5);
+      padding-left: var(--sp-5);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .checkout-close {
+      transition: color 120ms ease-out, background 120ms ease-out;
     }
   }
   @keyframes dialog-in {
@@ -7674,9 +7631,26 @@
     background: rgb(var(--brand-rgb) / 0.6);
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border-bottom: 1px solid rgb(var(--brand-ink-rgb) / 0.06);
     transform: translateY(0);
     transition: transform var(--t-base) var(--ease);
+  }
+  /* Was a flat 1px border-bottom — a hard cut where content actually keeps
+     scrolling underneath a translucent, floating bar (apple-design's
+     "scroll edge effects, not hard dividers"). This fades the seam instead:
+     a soft tint that dissolves to nothing just past the bar's own box, so
+     content passing beneath reads as sliding under glass, not hitting a
+     drawn line. Sits outside .land-bar's own box (top: 100%) rather than as
+     part of its background, so hiding the bar on scroll-down doesn't leave
+     a stray edge behind. */
+  .land-bar::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, rgb(var(--brand-ink-rgb) / 0.05), transparent);
+    pointer-events: none;
   }
   /* Slid up off-screen rather than removed/faded — LandingPage's own scroll
      listener toggles this class, translateY keeps the bar's sticky
@@ -7912,6 +7886,13 @@
     max-width: 16ch;
     margin: 0;
     font-family: var(--font-display);
+    /* Rare/first-paint only (once per visit, not re-triggered by anything a
+       visitor does), so a fade-up entrance is in scope — same reasoning
+       .land-seal-disc's own fade-in above already uses. --ease-out/--t-enter
+       are the existing tokens (tokens.css), not a parallel timing system;
+       reduced motion is handled by the app's global @media block (top of
+       this file), which collapses animation-duration to 0.01ms everywhere. */
+    animation: land-hero-in var(--t-enter) var(--ease-out) both;
     /* Was clamp(2.5rem, 7vw, 5.5rem) — 7vw hits the 5.5rem ceiling at
        ~1257px, so every screen wider than a small laptop rendered the exact
        same fixed-size headline while the empty margin on either side kept
@@ -7983,6 +7964,9 @@
     z-index: 1;
     max-width: 42ch;
     margin: clamp(var(--sp-6), 4vw, var(--sp-8)) auto 0;
+    /* Same entrance as .land-title, staggered ~70ms behind it — see that
+       rule's own comment. */
+    animation: land-hero-in var(--t-enter) var(--ease-out) 70ms both;
     /* Was the fixed --fs-lg token — fine under the old fixed-size headline,
        undersized under the bigger one above. A gentle vw component keeps it
        proportional without turning it into a second display size. */
@@ -7994,6 +7978,9 @@
   .land-actions {
     position: relative;
     z-index: 1;
+    /* Same entrance as .land-title, staggered ~140ms behind it — see that
+       rule's own comment. */
+    animation: land-hero-in var(--t-enter) var(--ease-out) 140ms both;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -8009,24 +7996,28 @@
     border-radius: var(--r-full);
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
-    color: var(--brand);
+    color: #fff;
+    /* Solid black now (per direct request), not frosted glass — the fill is
+       plain --brand-ink at full opacity, no backdrop-filter, so it reads as
+       an opaque object rather than a pane over the aurora blob behind it.
+       Violet stays exactly where it was: the border and the glow, never the
+       fill. */
     background: var(--brand-ink);
+    border: 1px solid rgb(var(--land-gold-rgb) / 0.55);
     text-decoration: none;
-    /* The page's one filled action gets the page's one raised surface — same
-       reasoning as the app-side "New plan" button being the rail's only
-       embossed control. Uses .land's own --neo-light/--neo-dark (declared
-       above), not .neo-raised's class (that reads .neo-world's cream-
-       calibrated pair, which was never in scope here). */
-    box-shadow: 9px 9px 20px rgb(var(--neo-dark-rgb) / 0.9), -9px -9px 20px rgb(var(--neo-light-rgb) / 0.85);
-    transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease);
+    box-shadow: 0 0 22px rgb(var(--land-gold-rgb) / 0.45), 0 8px 24px rgb(0 0 0 / 0.35);
+    transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease),
+      border-color var(--t-fast) var(--ease);
   }
   .land-cta:hover {
     transform: translateY(-2px);
-    box-shadow: 12px 12px 26px rgb(var(--neo-dark-rgb) / 0.95), -7px -7px 18px rgb(var(--neo-light-rgb) / 0.9);
+    border-color: rgb(var(--land-gold-rgb) / 0.8);
+    box-shadow: 0 0 30px rgb(var(--land-gold-rgb) / 0.6), 0 12px 32px rgb(0 0 0 / 0.4);
   }
   .land-cta:active {
-    box-shadow: inset 5px 5px 11px rgb(var(--neo-dark-rgb) / 0.8), inset -5px -5px 11px rgb(var(--neo-light-rgb) / 0.6);
     transform: translateY(0);
+    border-color: rgb(var(--land-gold-rgb) / 0.65);
+    box-shadow: 0 0 16px rgb(var(--land-gold-rgb) / 0.4), 0 4px 12px rgb(0 0 0 / 0.3);
   }
   .land-cta:focus-visible,
   .land-signin:focus-visible,
@@ -8051,6 +8042,19 @@
     margin-top: var(--sp-5);
     font-size: var(--fs-md);
     color: var(--brand-muted);
+    /* Mounts whenever the pricing fetch resolves — usually after the rest of
+       the hero has already finished its own entrance (land-hero-in, above),
+       so without this it just teleports in over already-settled content. Same
+       token, no delay: the fetch itself is the delay. */
+    animation: land-hero-in var(--t-enter) var(--ease-out) both;
+  }
+  /* The figure itself, not the whole sentence — same darker violet
+     (--land-gold-ink) the proof section's citation mark uses, since this
+     also sits on the near-white ground and a straight --land-gold only
+     clears ~2.1:1 there (see .land-proof .land-seal's own comment). */
+  .land-price-amount {
+    color: var(--land-gold-ink);
+    font-weight: var(--fw-semibold);
   }
 
   /* ── proof: one shade off the page's white ground ───────────────────── */
@@ -8234,10 +8238,24 @@
        and blur instead, the same emboss everything else on this page now
        carries, scaled to a 12px mark rather than a button. */
     box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.7), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.5);
-    transform: scale(0);
-    transition: transform var(--t-base) var(--ease-out) 900ms;
+    /* Was scale(0) — nothing in the real world appears from nothing; a dot
+       still fades in from a fraction of its size rather than materializing.
+       Opacity added alongside so it reads as arriving, not just growing. */
+    opacity: 0;
+    transform: scale(0.4);
+    transition: transform var(--t-base) var(--ease-out) 900ms, opacity var(--t-base) var(--ease-out) 900ms;
+  }
+  /* Each dot a beat behind the last, same 40-ish ms stagger the mech-steps
+     below already use for their own three-item entrance — three dots
+     popping in at once read as a glitch, not a sequence. */
+  .land-node:nth-of-type(2) .land-node-dot {
+    transition-delay: 945ms;
+  }
+  .land-node:nth-of-type(3) .land-node-dot {
+    transition-delay: 990ms;
   }
   .land-pipeline.is-inview .land-node-dot {
+    opacity: 1;
     transform: scale(1);
   }
   .land-stage {
@@ -8254,11 +8272,6 @@
     font-size: var(--fs-md);
     line-height: var(--lh-relaxed);
     color: var(--brand-muted);
-  }
-  .land-scope {
-    margin-top: clamp(var(--sp-8), 5vw, var(--sp-10));
-    font-size: var(--fs-sm);
-    color: rgb(var(--brand-ink-rgb) / 0.5);
   }
 
   /* ── mechanism: one concrete pass, not another abstract description ────
@@ -8349,6 +8362,37 @@
     }
     .land-mech-arrow {
       transform: rotate(90deg);
+    }
+  }
+
+  /* Apple's HIG treats reduced transparency as its own accessibility signal,
+     separate from reduced motion: every glass surface on this page (the
+     nav bar, the CTA, the proof/mechanism cards, the tag pills) goes frostier
+     instead — backdrop-filter dropped, background raised to a near-solid
+     fill from the same paper/ink tokens already scoped to .land — rather
+     than picking and choosing which surfaces stay translucent. */
+  @media (prefers-reduced-transparency: reduce) {
+    .land-bar {
+      background: var(--land-paper);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .land-cta {
+      background: var(--brand-ink);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .land-excerpt-plan,
+    .land-excerpt-source,
+    .land-mech-step {
+      background: var(--land-paper);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .land-tag {
+      background: rgb(var(--brand-ink-rgb) / 0.08);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
     }
   }
 
@@ -9427,6 +9471,20 @@
 @keyframes land-seal-disc-in {
   to {
     opacity: 1;
+  }
+}
+
+/* transform+opacity only, starting from a real offset (never scale(0)/
+   nothing-to-something) — see .land-title's own comment for why this exists
+   on the hero specifically and not elsewhere on the page. */
+@keyframes land-hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

@@ -52,9 +52,19 @@ function priceLine(data) {
   // it (routes/billing.py) — not hardcoded here, so this line can't
   // promise a number Stripe isn't actually configured to honor.
   const days = data?.trial_period_days
-  return days > 0
-    ? `Try FlexEd free for ${days} days — no credit card required. Then ${money} a ${every}.`
-    : `Join early access — ${money} a ${every}.`
+  // The figure itself gets the page's one violet accent (.land-price-amount)
+  // — everywhere else on this line stays the neutral --brand-muted gray, so
+  // the price is the thing the eye lands on, not the whole sentence.
+  const amount = (
+    <span className="land-price-amount">
+      {money} a {every}
+    </span>
+  )
+  return days > 0 ? (
+    <>Try FlexEd free for {days} days — no credit card required. Then {amount}.</>
+  ) : (
+    <>Join early access — {amount}.</>
+  )
 }
 
 /* Reveal-on-scroll, with a backstop that does not depend on
@@ -415,20 +425,13 @@ export function LandingPage() {
 
       <section className="land-hero">
         <div className="land-blob" aria-hidden="true" />
-        {/* .land-eyebrow already existed in base.css (the glass pill sized
-            and positioned for exactly this spot, over the aurora blob) but
-            had no caller — wired up here rather than inventing a new class.
-            Honest about where the product actually is right now: several
-            subjects' relevance floors are still unmeasured (README's own
-            "Multi-subject" section) and onboarding itself only started
-            working reliably today. A visitor deciding whether to trust this
-            with real curriculum should know that going in, not discover it
-            from a rough edge. */}
-        <span className="land-eyebrow">Early access</span>
+        {/* The "Early access" eyebrow pill was dropped: "Join early access" already
+            says it on the CTA button below, and the two together read as the same
+            claim printed twice above the fold. */}
         <h1 className="land-title">A week of lesson plans, cited to the standard</h1>
         <p className="land-sub">
-          Generated from the verbatim text of the Alabama Course of Study — not a model's
-          memory of it. Downloads as your district's own .docx.
+          Word for word from your state's real course of study — no guessing, no vibes.
+          Just download it.
         </p>
         <div className="land-actions">
           <Link
@@ -436,7 +439,7 @@ export function LandingPage() {
             className="land-cta"
             onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
           >
-            Join early access
+            Join Early Access
             <ArrowIcon />
           </Link>
           <span className="land-note">Built by an Alabama high school teacher</span>
@@ -509,9 +512,6 @@ export function LandingPage() {
             <p>Every code in the output is checked against what retrieval supplied. Anything else is flagged, not hidden.</p>
           </div>
         </div>
-        <p className="land-scope">
-          Grades 9–12 across all Alabama Course of Study subjects are in the corpus.
-        </p>
       </section>
 
       <section ref={mechRef} className={`land-mech${mechInView ? ' is-inview' : ''}`}>
@@ -547,7 +547,7 @@ export function LandingPage() {
           className="land-foot-cta"
           onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
         >
-          Join early access
+          Join Early Access
           <ArrowIcon />
         </Link>
         <div className="land-foot-legal mt-4 flex-col gap-2">

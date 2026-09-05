@@ -25,6 +25,9 @@ import { EmbeddedCheckout } from './EmbeddedCheckout'
 
 const PENDING_RETRIES = 6
 const RETRY_MS = 1500
+// Matches the server-side fallback in routes/billing.py.  The live Stripe
+// amount replaces this whenever the price request succeeds.
+const FALLBACK_PRICE_LABEL = '$7.99 / month'
 
 function formatPrice(price) {
   if (!price?.amount) return null
@@ -207,7 +210,10 @@ export function BillingProvider({ children }) {
     // location.search is the trigger; pollForSubscription is memoized.
   }, [location.pathname, location.search, navigate, pollForSubscription, toast])
 
-  const priceLabel = formatPrice(price)
+  // Content blockers can reject a request merely because its path contains
+  // "billing". Do not leave the checkout surface claiming it is still loading
+  // forever when that happens; Stripe remains the source of truth at checkout.
+  const priceLabel = formatPrice(price) || FALLBACK_PRICE_LABEL
   const trialExpired = !!entitlement?.trial_expired
   /* Same reasoning as ConfirmProvider/ToastProvider: this sits above <Gate/>
      (see App.jsx), so the paywall renders as AppShell's sibling and never

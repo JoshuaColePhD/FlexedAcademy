@@ -172,12 +172,12 @@ class Settings(BaseSettings):
     # scripted caller burn 2M tokens in well under 15 minutes, every single
     # week. At the gpt-4o-era blended rate free_weekly_token_cap's own
     # comment already leans on (~$5/1M tokens, mixed input/output), that was
-    # $35-75/month in worst-case API spend against $11.99 of revenue — a
+    # $35-75/month in worst-case API spend against $7.99 of revenue — a
     # guaranteed loss on any account that actually hit it, not a remote edge
     # case.
     #
     # 110,000/week keeps worst-case spend (maxed out, every week, all month)
-    # at roughly 20% of $11.99 — a COGS ceiling, not the number normal use is
+    # at roughly 30% of $7.99 — a COGS ceiling, not the number normal use is
     # expected to approach. A real subscriber planning several classes runs
     # nowhere near this any more than they ran near the old 2M; this just
     # means an account that DOES hit it costs at most ~$2.40/month instead of
