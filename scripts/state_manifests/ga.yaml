@@ -1,0 +1,58 @@
+# Georgia — state standards ingestion manifest.
+#
+# SCAFFOLD. `sources` and `course_map` are deliberately empty, and this state is
+# not ingestable until they are filled in. Two different things fill them:
+#
+#   * `sources` is written by scripts/fetch_state_sources.py --state GA, which
+#     walks the CASE server's CFDocuments, records each package's id, title,
+#     official source URL and SHA-256, and opens a PR with the snapshots. It is
+#     machine-written provenance; nothing here should be typed by hand.
+#
+#   * `course_map` is authored by a person reading GaDOE's published course list
+#     against the frameworks that fetch actually returned, and reviewed in that
+#     same PR. It is the reviewable artifact of adding a state.
+#
+# The skill's rule applies to both: do not guess a course, grade, framework or
+# code mapping. A (subject, grade) that cannot be bound with confidence goes in
+# `unmapped` with a reason, and a teacher who selects it is told there are no
+# standards yet — never handed the nearest-looking framework.
+#
+# Why Georgia is the reference second state:
+#   * GaDOE was the first state agency to publish its standards in CASE format,
+#     and case.georgiastandards.org serves the same /ims/case/v1p0 endpoints the
+#     Alabama adapter already speaks — so the adapter is exercised, not rewritten.
+#   * It publishes a full spread (ELA, Math, Science, Social Studies, Health, and
+#     the CTAE career clusters), not just the core four.
+#   * Its code shapes (ELAGSE11-12RL1, SSUSH1, SB1) are structurally unlike
+#     Alabama's (ELA21.11.R2, MA19.GDA.5), which is exactly what exposes any
+#     Alabama-specific assumption still hiding in the shared path.
+#   * Georgia's social studies frameworks are COURSE-based (SSUSH is US History)
+#     where Alabama's are grade-based. That is the case course_map exists for:
+#     the grade band is declared here, never inferred from the framework text.
+
+state: Georgia
+state_code: GA
+ingestion_contract_version: 1
+authority: Georgia Department of Education (GaDOE)
+case_api: https://case.georgiastandards.org/ims/case/v1p0
+
+# TO BE RECORDED FROM GaDOE'S ACTUAL TERMS during the fetch PR. Left explicitly
+# unknown rather than assumed permissive: "state standards are public" is a
+# reasonable guess and a guess is not what this field is for.
+license_or_usage: UNKNOWN — record GaDOE's published terms before ingesting.
+
+# K-12, unlike Alabama's 9-12. Alabama is narrow because widening it would move
+# its calibrated relevance floors; Georgia has no floors to preserve yet, so it
+# is ingested at full range and calibrated once.
+default_grades: "0-12"
+
+pdf_dir: data/raw/source_docs/GA
+output: data/processed/ga_chunks.json
+
+# Populated by scripts/fetch_state_sources.py --state GA.
+sources: []
+
+# Authored and reviewed once the frameworks above exist.
+course_map: []
+
+unmapped: []

@@ -101,10 +101,10 @@ def with_subject(plan: dict, *, cls: dict | None = None, subject: str | None = N
     return out
 
 
-def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
-    """(subject_code, grade) to retrieve and audit against — from the class's
-    OWN subject/grade when given, else the account's most-recently-touched
-    settings row.
+def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int, str]:
+    """(subject_code, grade, state) to retrieve and audit against — from the
+    class's OWN subject/grade/state when given, else the account's
+    most-recently-touched settings row.
 
     That fallback is the one _chat_class's own docstring (routes/generate.py)
     describes catching live: a teacher with more than one prep got whichever
@@ -119,17 +119,25 @@ def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
     if cls:
         subject = cls.get("subject", "AP Language & Composition")
         grade_str = cls.get("grade", "11")
+        state = cls.get("state")
     else:
         s = db.get_settings_row(user_id)
         subject = s.get("subject", "AP Language & Composition")
         grade_str = s.get("grade", "11")
+        state = None
 
     try:
         grade = int(grade_str)
     except (ValueError, TypeError):
         grade = 11
 
-    return _subject_code(subject), grade
+    # Every class that predates migration 76 is an Alabama class — that column
+    # was added because the corpus was about to stop being Alabama-only, not
+    # because the existing rows were ever in doubt. Defaulting keeps those
+    # classes retrieving exactly what they retrieve today; it is NOT a general
+    # fallback, and a state that is set but has no ingested corpus still fails
+    # in retrieval.corpus_tables rather than quietly landing here.
+    return _subject_code(subject), grade, (state or retrieval.DEFAULT_STATE)
 
 
 def identity_for(user_id: str, cls: dict | None) -> dict:
@@ -170,7 +178,7 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
     _resolve_subject_grade's own docstring for why this matters and what
     omitting it means.
     """
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    subject_code, grade, state = _resolve_subject_grade(user_id, cls)
 
     off_scope = retrieval.out_of_scope_grades(query, corpus_grade=grade)
     if off_scope:
@@ -186,7 +194,8 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
         contextual_query, 
         subject_code=subject_code, 
         grade=grade, 
-        extra_queries=llm.expand_query(user_id, contextual_query)
+        extra_queries=llm.expand_query(user_id, contextual_query),
+        state=state,
     )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
@@ -659,7 +668,7 @@ def revise_day(
     # to the account default, same as _resolve_subject_grade does for a
     # class-less chat.
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    subject_code, grade, state = _resolve_subject_grade(user_id, cls)
 
     # A tweak scoped to a field that cannot carry a standard code — do_now,
     # during, learning_targets — has nothing to retrieve FOR. Re-retrieving
@@ -676,7 +685,8 @@ def revise_day(
         result = retrieval.retrieve_grounded(
             contextual_feedback,
             subject_code=subject_code,
-            grade=grade
+            grade=grade,
+            state=state,
         )
         if result.empty:
             # A revision is allowed to proceed ungrounded — it inherits the week's
@@ -830,7 +840,9 @@ def set_day_field(
 
     original = days[day_index]
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    # Underscored: this path AUDITS an existing retrieval (row['retrieved_ids'])
+    # rather than performing one, so it needs no corpus and no state.
+    subject_code, grade, _state = _resolve_subject_grade(user_id, cls)
 
     merged = {**original, field: value}
     updated, warnings = schema.validate_day(merged, path=f"days[{day_index}]")
@@ -922,7 +934,8 @@ def edit_day_field(
         value = [part.strip() for part in re.split(r"[\n,]+", text) if part.strip()]
 
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    # Same as set_day_field: audits row['retrieved_ids'], never re-retrieves.
+    subject_code, grade, _state = _resolve_subject_grade(user_id, cls)
     row_class = cls
     school_for_revision = (
         db.class_school(row_class, user_id)
@@ -1026,7 +1039,7 @@ def revise_days(
         )
 
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    subject_code, grade, state = _resolve_subject_grade(user_id, cls)
     needs_retrieval = field in schema.CODE_BEARING_FIELDS
 
     import json as _json
@@ -1040,7 +1053,7 @@ def revise_days(
             contextual_feedback = (
                 f"Course: {subject_code}, Grade: {grade} - {feedback} {original.get('learning_targets', '')}"
             )
-            result = retrieval.retrieve_grounded(contextual_feedback, subject_code=subject_code, grade=grade)
+            result = retrieval.retrieve_grounded(contextual_feedback, subject_code=subject_code, grade=grade, state=state)
             if result.empty:
                 result = RetrievalResult(chunks=[], rejected=result.rejected, floor=result.floor)
         else:

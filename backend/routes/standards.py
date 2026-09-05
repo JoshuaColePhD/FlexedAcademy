@@ -49,6 +49,11 @@ class SearchRequest(BaseModel):
     # calibrated corpus: AP Lang, grade 11.
     subject: str = Field(default="AP_Lang", max_length=120)
     grade: int = Field(default=11, ge=0, le=12)
+    # Which state's corpus to inspect. Same default as the rest of this
+    # endpoint's calibrated defaults; an unrecognised or un-ingested state is
+    # refused by retrieval.corpus_tables rather than silently searching another
+    # state's standards.
+    state: str = Field(default="AL", min_length=2, max_length=2)
 
 
 def _slim(chunk: dict) -> dict:
@@ -204,7 +209,9 @@ def search(req: SearchRequest):
     "your query's nearest standard was 0.83, above the 0.78 cutoff" instead of
     being handed five confident-looking irrelevant results.
     """
-    raw = retrieval.retrieve_raw(req.query, n=req.top_k, course=req.subject, grade=req.grade)
+    raw = retrieval.retrieve_raw(
+        req.query, n=req.top_k, course=req.subject, grade=req.grade, state=req.state
+    )
     raw.sort(key=lambda c: c["distance"])
     floor = settings.retrieval_max_distance
     return {

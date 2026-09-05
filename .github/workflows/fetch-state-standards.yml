@@ -1,0 +1,121 @@
+# Snapshot a state's published standards, and open a PR with the evidence.
+#
+# This is the only part of the ingest that reaches the network, and it lives in
+# CI rather than in a developer session for a concrete reason: Claude Code web
+# sessions run behind an egress policy that denies alabamastandards.org and
+# case.georgiastandards.org outright, so the code can be written where the
+# sources cannot be reached. Putting the fetch here means the snapshots — and
+# their hashes — are produced somewhere reproducible, and arrive as a diff
+# somebody reviews.
+#
+# It deliberately does NOT ingest, embed, or deploy. It records what the state
+# published, on a date, with a hash. Turning that into a corpus is a separate,
+# reviewed step, because the course_map it depends on is a human judgement about
+# that state's course catalogue.
+name: Fetch state standards
+
+on:
+  workflow_dispatch:
+    inputs:
+      state:
+        description: "Two-letter state code (must already have a manifest in scripts/state_manifests/)"
+        required: true
+        type: string
+      refresh:
+        description: "Re-download packages and PDFs that are already cached"
+        required: false
+        type: boolean
+        default: false
+      pdfs:
+        description: "Also download the source PDFs used for verbatim verification"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the manifest loader's only dependency
+        run: python -m pip install --quiet pyyaml
+
+      - name: Normalise the state code
+        id: state
+        run: echo "code=$(echo '${{ inputs.state }}' | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z')" >> "$GITHUB_OUTPUT"
+
+      - name: Snapshot the CASE packages and source PDFs
+        run: |
+          python scripts/fetch_state_sources.py \
+            --state "${{ steps.state.outputs.code }}" \
+            ${{ inputs.refresh && '--refresh' || '' }} \
+            ${{ inputs.pdfs && ' ' || '--no-pdfs' }}
+
+      - name: Summarise what the state published
+        run: |
+          CODE="${{ steps.state.outputs.code }}"
+          {
+            echo "## ${CODE} standards snapshot"
+            echo
+            echo '| source_id | course | framework | pdf | package sha256 |'
+            echo '|---|---|---|---|---|'
+            python - <<'PY'
+          import json, os, pathlib
+          code = os.environ["CODE"]
+          rows = json.loads(pathlib.Path(f"data/raw/{code}_FETCH.json").read_text())
+          for r in rows:
+              course = r["course"]
+              mark = "**TODO**" if course == "TODO" else course
+              print(f"| {r['source_id']} | {mark} | {r['framework']} | "
+                    f"{r.get('pdf') or '—'} | `{(r.get('package_sha256') or '')[:12]}` |")
+          todo = [r for r in rows if r["course"] == "TODO"]
+          if todo:
+              print()
+              print(f"> {len(todo)} framework(s) still need a `course` and a "
+                    f"`course_map` entry. Until then `ingest_case_state.py "
+                    f"--state {code}` will refuse to run — which is the intent: "
+                    f"a binding nobody chose is a binding nobody reviewed.")
+          PY
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          CODE: ${{ steps.state.outputs.code }}
+
+      - name: Open a PR with the snapshot
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: standards/fetch-${{ steps.state.outputs.code }}
+          base: ${{ github.ref_name }}
+          draft: true
+          commit-message: |
+            Snapshot ${{ steps.state.outputs.code }} standards sources
+
+            Machine-written provenance from the state's CASE server: package
+            ids, framework titles, the publisher's own officialSourceURL, and
+            SHA-256 for each package and PDF.
+
+            `course` is left as TODO for any framework not already mapped. Which
+            course a teacher selects to reach a framework is a judgement about
+            the state's course catalogue and belongs in review, not in a fetch.
+          title: "Snapshot ${{ steps.state.outputs.code }} standards sources"
+          body: |
+            Automated snapshot from `scripts/fetch_state_sources.py --state ${{ steps.state.outputs.code }}`.
+            The per-framework table is in the workflow run summary.
+
+            **Before this state can be ingested**, in `scripts/state_manifests/${{ steps.state.outputs.code }}.yaml`:
+
+            - [ ] Replace every `course: TODO` with the course code a teacher actually selects.
+            - [ ] Author the `course_map` — one `(subject_code, grades)` binding per framework, `target: national_only` for AP courses, and anything that cannot be bound with confidence listed under `unmapped` with a reason.
+            - [ ] Record `license_or_usage` from the publisher's actual terms, replacing `UNKNOWN`.
+
+            Then `python scripts/check_state_ingest.py --state ${{ steps.state.outputs.code }}` enforces
+            course_map totality in both directions — no binding pointing at a framework that produced
+            nothing, and no parsed standard that no binding can reach.

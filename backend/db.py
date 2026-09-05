@@ -3563,6 +3563,143 @@ MIGRATIONS: list[str] = [
     UPDATE schools SET state = 'AL' WHERE state IS NULL;
     CREATE INDEX IF NOT EXISTS idx_schools_state ON schools(state);
     """,
+
+    # ── 77: one standards corpus per state ───────────────────────────────────
+    #
+    # `chunks` held two different kinds of row in one table: Alabama's course of
+    # study, and the national AP/College Board/ACT rows every state shares.
+    # Retrieval told them apart with metadata predicates. That does not survive a
+    # second state, for two reasons:
+    #
+    #   * A metadata filter has to be correct in EVERY WHERE clause forever. Miss
+    #     one and another state's standards reach a lesson plan carrying
+    #     correct-looking citations — the exact failure this app's grounding
+    #     audit exists to prevent, arriving through the one door the audit
+    #     cannot see, because every code IS real, just not for this teacher.
+    #   * pgvector applies metadata filters during HNSW traversal, so a filter
+    #     selecting 1/50th of the rows makes the search walk far more of the
+    #     graph and can return fewer than LIMIT rows. Filtered top-k over one
+    #     shared million-row index degrades exactly as states are added; an
+    #     unfiltered top-k over a ~20k-row index per state does not.
+    #
+    # So each corpus gets its own table and its own indexes: chunks_al here,
+    # chunks_national for the shared rows, chunks_<state> for each state after.
+    # `standards_corpora` is the registry — the validated table-name allowlist
+    # (table names cannot be SQL parameters), the health-reporting source, and
+    # the check that every corpus was embedded with the same model and dims.
+    #
+    # Alabama is COPIED, not rebuilt: vectors move as bytes inside the database,
+    # no embedding API call, no re-parse, no id change. The three DO blocks are
+    # the proof — an unexpected state value, a lost row, or a single altered
+    # byte aborts the whole migration rather than shipping a corpus nobody
+    # checked. Fail closed: a state value this split does not recognise means
+    # someone must map it deliberately, not have it default into Alabama.
+    #
+    # The old table is RENAMED, not dropped. Dropping it would make this
+    # irreversible on the strength of one migration run; chunks_pre_split is the
+    # rollback, removed in a later change once a second state is stable.
+    """
+    CREATE TABLE IF NOT EXISTS standards_corpora (
+        state_code       TEXT PRIMARY KEY,
+        table_name       TEXT NOT NULL UNIQUE,
+        row_count        INTEGER NOT NULL DEFAULT 0,
+        embedding_model  TEXT,
+        embedding_dims   INTEGER,
+        manifest_sha256  TEXT,
+        ingested_at      TEXT
+    );
+    ALTER TABLE standards_corpora ENABLE ROW LEVEL SECURITY;
+
+    DO $$
+    DECLARE unexpected TEXT;
+    BEGIN
+        SELECT string_agg(DISTINCT COALESCE(metadata->>'state', '<null>'), ', ')
+          INTO unexpected
+          FROM chunks
+         WHERE COALESCE(metadata->>'state', '<null>') NOT IN ('AL', 'AP', 'National');
+        IF unexpected IS NOT NULL THEN
+            RAISE EXCEPTION
+                'chunks holds unrecognised state values (%). Refusing to split: '
+                'map them to a corpus deliberately instead of defaulting them into Alabama.',
+                unexpected;
+        END IF;
+    END $$;
+
+    CREATE TABLE chunks_al (
+        id                TEXT PRIMARY KEY,
+        document          TEXT NOT NULL,
+        metadata          JSONB,
+        embedding         vector(384),
+        document_tsvector tsvector GENERATED ALWAYS AS (to_tsvector('english', document)) STORED
+    );
+    CREATE TABLE chunks_national (
+        id                TEXT PRIMARY KEY,
+        document          TEXT NOT NULL,
+        metadata          JSONB,
+        embedding         vector(384),
+        document_tsvector tsvector GENERATED ALWAYS AS (to_tsvector('english', document)) STORED
+    );
+
+    INSERT INTO chunks_al (id, document, metadata, embedding)
+    SELECT id, document, metadata, embedding FROM chunks
+     WHERE metadata->>'state' = 'AL';
+
+    INSERT INTO chunks_national (id, document, metadata, embedding)
+    SELECT id, document, metadata, embedding FROM chunks
+     WHERE metadata->>'state' IN ('AP', 'National');
+
+    DO $$
+    DECLARE src BIGINT; al BIGINT; nat BIGINT;
+    BEGIN
+        SELECT count(*) INTO src FROM chunks;
+        SELECT count(*) INTO al  FROM chunks_al;
+        SELECT count(*) INTO nat FROM chunks_national;
+        IF al + nat <> src THEN
+            RAISE EXCEPTION
+                'corpus split lost rows: chunks=%, chunks_al=%, chunks_national=%',
+                src, al, nat;
+        END IF;
+    END $$;
+
+    DO $$
+    DECLARE before_hash TEXT; after_hash TEXT;
+    BEGIN
+        SELECT md5(string_agg(row_hash, '' ORDER BY row_hash)) INTO before_hash
+          FROM (
+            SELECT md5(id || chr(31) || document || chr(31) || COALESCE(embedding::text, '')) AS row_hash
+              FROM chunks
+          ) t;
+        SELECT md5(string_agg(row_hash, '' ORDER BY row_hash)) INTO after_hash
+          FROM (
+            SELECT md5(id || chr(31) || document || chr(31) || COALESCE(embedding::text, '')) AS row_hash
+              FROM chunks_al
+            UNION ALL
+            SELECT md5(id || chr(31) || document || chr(31) || COALESCE(embedding::text, '')) AS row_hash
+              FROM chunks_national
+          ) t;
+        IF before_hash IS DISTINCT FROM after_hash THEN
+            RAISE EXCEPTION
+                'corpus split altered content: chunks=%, split=%', before_hash, after_hash;
+        END IF;
+    END $$;
+
+    CREATE INDEX idx_chunks_al_embedding ON chunks_al USING hnsw (embedding vector_cosine_ops);
+    CREATE INDEX idx_chunks_al_tsvector  ON chunks_al USING GIN (document_tsvector);
+    CREATE INDEX idx_chunks_national_embedding ON chunks_national USING hnsw (embedding vector_cosine_ops);
+    CREATE INDEX idx_chunks_national_tsvector  ON chunks_national USING GIN (document_tsvector);
+
+    ALTER TABLE chunks_al       ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE chunks_national ENABLE ROW LEVEL SECURITY;
+
+    INSERT INTO standards_corpora (state_code, table_name, row_count, embedding_dims)
+    SELECT 'AL', 'chunks_al', count(*), 384 FROM chunks_al
+    ON CONFLICT (state_code) DO NOTHING;
+    INSERT INTO standards_corpora (state_code, table_name, row_count, embedding_dims)
+    SELECT 'NATIONAL', 'chunks_national', count(*), 384 FROM chunks_national
+    ON CONFLICT (state_code) DO NOTHING;
+
+    ALTER TABLE chunks RENAME TO chunks_pre_split;
+    """,
 ]
 
 
@@ -3796,6 +3933,35 @@ def _rows(sql: str, params: tuple = ()) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+# Which corpus table holds which state. A table name cannot be a bound SQL
+# parameter, so every name that reaches an f-string is matched against this
+# first — the registry is data, and data that names a table is an injection
+# surface however trustworthy its source looks.
+CORPUS_TABLE_RE = re.compile(r"^chunks_(?:[a-z]{2}|national)$")
+
+# The registry row for the AP/College Board/ACT rows every state shares.
+NATIONAL_CORPUS = "NATIONAL"
+
+
+def list_standards_corpora() -> list[dict]:
+    """Every registered standards corpus, newest schema's source of truth.
+
+    Migration 77 replaced the single `chunks` table with one table per state
+    plus `chunks_national`. This is what tells the app which of those exist,
+    and it is the only place a corpus table name may come from.
+    """
+    rows = _rows(
+        "SELECT state_code, table_name, row_count, embedding_model, embedding_dims "
+        "FROM standards_corpora ORDER BY state_code"
+    )
+    for row in rows:
+        if not CORPUS_TABLE_RE.fullmatch(row["table_name"] or ""):
+            raise ValueError(
+                f"standards_corpora holds an unusable table name: {row['table_name']!r}"
+            )
+    return rows
+
+
 def list_standard_chunks() -> list[dict]:
     """Return the canonical standards corpus without embedding vectors.
 
@@ -3803,8 +3969,30 @@ def list_standard_chunks() -> list[dict]:
     checks.  Similarity search still happens independently in retrieval.py;
     this read only replaces the old runtime download of the same corpus from
     Supabase Storage.
+
+    Reads every registered corpus, so a code that exists in ANY state still
+    resolves here. Callers that need to know which state a chunk belongs to
+    read it from the chunk's own metadata, which has always carried it.
     """
-    return _rows("SELECT id, metadata FROM chunks ORDER BY id")
+    corpora = list_standards_corpora()
+    if not corpora:
+        return []
+    union = " UNION ALL ".join(
+        f"SELECT id, metadata FROM {row['table_name']}" for row in corpora
+    )
+    return _rows(f"SELECT id, metadata FROM ({union}) c ORDER BY id")
+
+
+def count_standard_chunks() -> int:
+    """Total rows across every registered corpus, for the health endpoint."""
+    corpora = list_standards_corpora()
+    if not corpora:
+        return 0
+    union = " UNION ALL ".join(
+        f"SELECT count(*) AS n FROM {row['table_name']}" for row in corpora
+    )
+    row = _row(f"SELECT COALESCE(sum(n), 0) AS n FROM ({union}) c")
+    return int(row["n"]) if row else 0
 
 
 def _row(sql: str, params: tuple = ()) -> dict | None:

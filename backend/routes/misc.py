@@ -86,7 +86,10 @@ def health(user_id: str | None = Depends(get_current_user_optional)):
         out["builder_found"] = False
         out["builder_error"] = e.message
     try:
-        out["chunks"] = db._row("SELECT COUNT(*) AS n FROM chunks")["n"]
+        out["chunks"] = db.count_standard_chunks()
+        out["corpora"] = {
+            row["state_code"]: row["row_count"] for row in db.list_standards_corpora()
+        }
     except Exception as e:  # noqa: BLE001 — health check reports any DB failure, doesn't crash on one
         out["ok"] = False
         out["pg_error"] = str(e)

@@ -1,0 +1,196 @@
+# Alabama — state standards ingestion manifest.
+#
+# Transcribed from scripts/alabama_ingest_config.py and the provenance already
+# recorded in data/raw/ALCOS_INGEST_REPORT.json. No new facts: the CASE ids,
+# framework titles, PDF names and official source URLs are the ones the live
+# Alabama corpus was actually built from.
+#
+# `sha256`/`package_sha256` are deliberately absent here rather than copied.
+# They are properties of a fetch, and scripts/fetch_state_sources.py writes them
+# when it takes a snapshot. Alabama was ingested before that existed, so its
+# hashes live in the ingest report until the next refresh writes them here.
+
+state: Alabama
+state_code: AL
+ingestion_contract_version: 1
+authority: Alabama State Department of Education (ALSDE)
+case_api: https://alabamastandards.org/ims/case/v1p0
+
+# ALSDE publishes the Course of Study documents and the CASE feed openly, with
+# no registration or API key. Recorded as a reviewed note, not a legal opinion.
+license_or_usage: >-
+  Published openly by ALSDE for public use; keyless CASE 1.0 feed. Reviewed
+  2026-09-05. Re-check before redistributing source PDFs.
+
+# Grades to ingest by default. Alabama is deliberately 9-12: this is the live
+# corpus the app serves today, and widening it would change which standards are
+# in each course's candidate pool, which moves the calibrated relevance floors.
+default_grades: "9-12"
+
+pdf_dir: "../Florence High School 2026-2027/_Shared/Alabama Standards"
+output: data/processed/alcos_chunks.json
+
+sources:
+  - source_id: ELA
+    course: ELA
+    framework: "English Language Arts (2021)"
+    case_id: d5af742b-1042-4647-a45a-027e4c4a2f1f
+    pdf: "English Language Arts (2021).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2021/08/2021-Alabama-English-Language-Arts-Course-of-Study.pdf
+
+  - source_id: Math
+    course: Math
+    framework: "Mathematics (2019)"
+    case_id: 0c01a9eb-4d20-4578-89fb-3876b435c3d4
+    pdf: "Mathematics (2019, rev 2021).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2022/09/AS_2022923_2019-Alabama-Mathematics-COS_V1.0.pdf
+
+  - source_id: Science
+    course: Science
+    framework: "Science (2023)"
+    case_id: d90c97ad-c327-4799-97bc-37789308baab
+    pdf: "Science (2023).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2024/02/AS_20240213_2023-Alabama-Course-of-Study-Science_V1.0.pdf
+
+  - source_id: Social_Studies
+    course: Social_Studies
+    framework: "Social Studies (2024)"
+    case_id: 5936b8cf-ae38-49ca-aa4c-85707bbdef07
+    pdf: "Social Studies (2024).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2025/01/AS_20250110_2024-Alabama-Course-of-Study-Social-Studies_V1.0.pdf
+
+  - source_id: Arts
+    course: Arts
+    framework: "Arts Education (2024)"
+    case_id: 1de51ebf-fdb5-4a4a-bc68-3fab6e6ed7d6
+    pdf: "Arts Education (2024).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2025/01/AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf
+
+  - source_id: DLCS
+    course: DLCS
+    framework: "Digital Literacy and Computer Science (2025)"
+    case_id: 8ab34547-b2e8-4189-9aad-ea232df02fbd
+    pdf: "Digital Literacy and Computer Science (2025).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2026/05/AS_2026511_DigLitCS_v1.pdf
+
+  - source_id: Health
+    course: Health
+    framework: "Health Education (2019)"
+    case_id: 2adb1f52-c078-4c1c-b559-62f58832fc68
+    pdf: "Health Education (2019).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2021/03/2019-Alabama-Course-of-Study-Health-Education.pdf
+
+  - source_id: PE
+    course: PE
+    framework: "Physical Education (2019)"
+    case_id: 98581f63-d6b5-4cad-982e-73c26ff0ff57
+    pdf: "Physical Education (2019).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2021/03/2019-Alabama-Course-of-Study-Physical-Education.pdf
+
+  - source_id: World_Languages
+    course: World_Languages
+    framework: "World Languages (2017)"
+    case_id: 63b660d5-e540-49ae-84f5-0cd99cdf1eb9
+    pdf: "World Languages (2017).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2021/03/2017-World-Languages-COS.pdf
+
+  - source_id: Counseling
+    course: Counseling
+    framework: "School Counseling (2026)"
+    case_id: 93710213-5d54-4326-b1d5-660a933dd3bd
+    pdf: "Comprehensive School Counseling (2024-2026).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2026/03/CG_20260317_FY26-2024_2026CompSchoolCounseling_v1.pdf
+
+  - source_id: Math_AWF
+    course: Math_AWF
+    framework: "Mathematics: Algebra with Finance (2015)"
+    case_id: edd52d0d-4c05-4f4b-bcd4-f51897db339f
+    pdf: "_Superseded/Mathematics - Algebra with Finance (2015).pdf"
+    format: case
+    source_type: state_course_of_study
+    url: https://www.alabamaachieves.org/wp-content/uploads/2021/03/Algebra-with-Finance-Revised.pdf
+
+# ── class -> standards binding ───────────────────────────────────────────
+#
+# Which framework a teacher's (subject, grade) actually grounds in. Authored
+# and reviewed as data, NOT inferred from whatever course strings the parse
+# happened to emit — inference is how "ELA" in one state silently binds to a
+# different state's idea of ELA.
+#
+# NOT WIRED INTO RETRIEVAL FOR ALABAMA. Alabama keeps the existing
+# normalize_course()/course_variants() path, because changing how its bindings
+# resolve would break the guarantee that its retrieval results are unchanged.
+# This block exists so the totality checks in check_state_ingest.py can run
+# against Alabama too, and so the eventual migration has something to be
+# proven equal to.
+course_map:
+  - subject_code: ELA
+    source_id: ELA
+    grades: [9, 10, 11, 12]
+  - subject_code: Math
+    source_id: Math
+    grades: [9, 10, 11, 12]
+  - subject_code: Science
+    source_id: Science
+    grades: [9, 10, 11, 12]
+  - subject_code: Social_Studies
+    source_id: Social_Studies
+    grades: [9, 10, 11, 12]
+  - subject_code: Arts
+    source_id: Arts
+    grades: [9, 10, 11, 12]
+  - subject_code: DLCS
+    source_id: DLCS
+    grades: [9, 10, 11, 12]
+  - subject_code: Health
+    source_id: Health
+    grades: [9, 10, 11, 12]
+  - subject_code: PE
+    source_id: PE
+    grades: [9, 10, 11, 12]
+  - subject_code: World_Languages
+    source_id: World_Languages
+    grades: [9, 10, 11, 12]
+  - subject_code: Counseling
+    source_id: Counseling
+    grades: [9, 10, 11, 12]
+  - subject_code: Math_AWF
+    source_id: Math_AWF
+    grades: [9, 10, 11, 12]
+
+  # An AP course grounds in the College Board framework, never in the state
+  # course of study — see backend/retrieval.py's _SHARED_VARIANTS note. It is
+  # bound explicitly rather than left unmapped, because "no state framework"
+  # is a real answer here, not a gap.
+  - subject_code: AP_Lang
+    target: national_only
+    grades: [9, 10, 11, 12]
+
+# Subjects the app offers that Alabama has no course-of-study framework for.
+# Declared so the totality check can tell "deliberately unbound" from
+# "someone forgot", which is the only reason that check is worth running.
+unmapped:
+  - subject_code: Special_Education
+    reason: >-
+      ALSDE publishes no separate Special Education course of study; those
+      classes ground in the general framework for the subject being taught.
