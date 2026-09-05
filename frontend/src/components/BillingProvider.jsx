@@ -116,6 +116,8 @@ export function BillingProvider({ children }) {
     poll()
   }, [closeCheckout, refresh, toast])
 
+  // Returns whether a checkout session actually opened — startCheckout
+  // (below) needs to tell success from failure, not just fire-and-forget.
   const subscribe = useCallback(async () => {
     setBusy(true)
     try {
@@ -124,23 +126,34 @@ export function BillingProvider({ children }) {
       setCheckoutSessionId(session.session_id || '')
       setCheckoutClientSecret(session.client_secret)
       setBusy(false)
+      return true
     } catch (err) {
       setBusy(false)
       toast.error(err.message || 'Couldn’t open checkout.')
+      return false
     }
   }, [toast])
 
   /* Settings' own billing card already states the pitch this dialog exists
      to make (the same three benefit lines, the same price) before a teacher
      ever clicks Subscribe there — showing the confirmation screen again
-     would just be the same argument twice in a row. This opens the dialog
-     shell (for its focus trap/Escape handling) straight into checkout,
-     skipping the paywall content entirely. Every other Subscribe entry
-     point (ChatPage's usage-limit prompts, AccountMenu) still calls
-     openPaywall — those contexts haven't already made the case. */
-  const startCheckout = useCallback(() => {
-    setOpen(true)
-    subscribe()
+     would just be the same argument twice in a row. This is meant to open
+     the dialog shell (for its focus trap/Escape handling) straight into
+     checkout, skipping the paywall content entirely — every other Subscribe
+     entry point (ChatPage's usage-limit prompts, AccountMenu) still calls
+     openPaywall, since those contexts haven't already made the case.
+
+     setOpen(true) only happens AFTER subscribe() succeeds, not before: the
+     dialog's own render is `checkoutClientSecret ? <EmbeddedCheckout/> :
+     <paywall pitch content>` — open it before checkoutClientSecret exists
+     and a failed request (a network blip, Stripe down, the bad price ID
+     this was actually caught with) falls through to that pitch content,
+     putting the very confirmation screen this exists to skip back on
+     screen. On failure this now shows only subscribe()'s own error toast —
+     no dialog opens at all. */
+  const startCheckout = useCallback(async () => {
+    const ok = await subscribe()
+    if (ok) setOpen(true)
   }, [subscribe])
 
   const retryCheckout = useCallback(() => {
