@@ -840,7 +840,9 @@ def set_day_field(
 
     original = days[day_index]
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade, state = _resolve_subject_grade(user_id, cls)
+    # Underscored: this path AUDITS an existing retrieval (row['retrieved_ids'])
+    # rather than performing one, so it needs no corpus and no state.
+    subject_code, grade, _state = _resolve_subject_grade(user_id, cls)
 
     merged = {**original, field: value}
     updated, warnings = schema.validate_day(merged, path=f"days[{day_index}]")
@@ -932,7 +934,8 @@ def edit_day_field(
         value = [part.strip() for part in re.split(r"[\n,]+", text) if part.strip()]
 
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade, state = _resolve_subject_grade(user_id, cls)
+    # Same as set_day_field: audits row['retrieved_ids'], never re-retrieves.
+    subject_code, grade, _state = _resolve_subject_grade(user_id, cls)
     row_class = cls
     school_for_revision = (
         db.class_school(row_class, user_id)

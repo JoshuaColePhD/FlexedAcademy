@@ -29,7 +29,7 @@ import pytest
 
 psycopg2 = pytest.importorskip("psycopg2")
 
-from backend.retrieval import _hybrid_search_params, _hybrid_search_sql  # noqa: E402
+from backend.retrieval import _hybrid_search_params, _hybrid_search_sql
 
 DSN = os.environ.get("TEST_PG_DSN", "host=/tmp port=55432 user=postgres dbname=postgres")
 
@@ -102,8 +102,8 @@ def cur():
                     f"INSERT INTO {table} (id, document, metadata, embedding) "
                     f"VALUES (%s, %s, %s::jsonb, %s)",
                     (chunk_id, document,
-                     f'{{"state": "{state}", "source_type": "{source_type}", '
-                     f'"course": "ELA", "grade": 11}}',
+                     (f'{{"state": "{state}", "source_type": "{source_type}", '
+                      f'"course": "ELA", "grade": 11}}'),
                      vec),
                 )
         try:
