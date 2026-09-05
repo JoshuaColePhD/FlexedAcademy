@@ -83,10 +83,11 @@
          Inter + JetBrains Mono alone. -->
     <link rel="stylesheet" href="/src/styles/fonts.css" />
 
-    <!-- Set the theme before first paint so a dark-mode load doesn't flash white. -->
+    <!-- Set the theme before first paint. New visitors start in light mode;
+         an explicitly saved System or Dark choice is still honored. -->
     <script>
       try {
-        var saved = localStorage.getItem('aplang.theme') || 'system'
+        var saved = localStorage.getItem('aplang.theme') || 'light'
         var dark =
           saved === 'dark' ||
           (saved === 'system' &&

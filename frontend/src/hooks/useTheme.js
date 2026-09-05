@@ -10,9 +10,11 @@ function systemTheme() {
 function readMode() {
   try {
     const saved = localStorage.getItem(KEY)
-    return MODES.includes(saved) ? saved : 'system'
+    // Light is the first-run default. Once a teacher chooses System or Dark,
+    // that explicit preference remains stored and is returned above.
+    return MODES.includes(saved) ? saved : 'light'
   } catch {
-    return 'system'
+    return 'light'
   }
 }
 

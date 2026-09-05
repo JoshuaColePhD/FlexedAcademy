@@ -1186,38 +1186,19 @@ function BillingSection() {
             <img src="/icon-512.png" alt="" />
           </div>
           <div className="billing-free-summary">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="billing-free-kicker">FlexEd Academy</p>
-              <span className={`rounded-full px-2.5 py-1 text-2xs font-semibold ${statusClassName}`}>{statusLabel}</span>
-            </div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink">Build more with FlexEd</h2>
-            <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-muted">
+            <p className="billing-free-kicker">FlexEd Academy</p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight text-ink">
+              {trialExpired ? 'Keep building with FlexEd' : 'Build more with FlexEd'}
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-ink-muted">
               {trialExpired
-                ? 'Your free access has ended. Keep your school context, standards, and plans in one place.'
-                : 'Keep your school context and standards grounded while you build more lesson plans each week.'}
+                ? 'Keep your plans, standards, and school context in one place.'
+                : 'More room for plans, activities, and ideas each week.'}
             </p>
-            <div className="billing-free-price" aria-label={`FlexEd subscription ${priceLabel || 'monthly price'}`}>
-              <strong>{priceLabel || 'Loading price…'}</strong>
-              <span>Cancel anytime</span>
-            </div>
           </div>
-        </div>
-
-        <div className="billing-free-benefits">
-          <div>
-            <p className="billing-free-benefit-title">More room to build</p>
-            <p>Higher weekly usage limits for plans, activities, and ideas.</p>
-          </div>
-          <div>
-            <p className="billing-free-benefit-title">Nothing gets lost</p>
-            <p>Everything you’ve already made stays yours.</p>
-          </div>
-        </div>
-
-        <div className="billing-free-action">
-          <div className="billing-free-action-copy">
-            <p className="billing-free-benefit-title">Ready when you are</p>
-            <p>Start a secure monthly checkout and keep your plans moving.</p>
+          <div className="billing-free-price" aria-label={`FlexEd subscription ${priceLabel || 'monthly price'}`}>
+            <strong>{priceLabel || 'Loading price…'}</strong>
+            <span>per month</span>
           </div>
           <button
             type="button"
@@ -1225,14 +1206,13 @@ function BillingSection() {
             disabled={busy}
             className="fa-press btn btn-primary billing-free-cta"
           >
-            <Sparkles size={15} aria-hidden="true" />
-            {busy ? 'Opening…' : 'Subscribe'}
+            {busy ? 'Opening…' : `Subscribe · ${priceLabel || '$7.99 / month'}`}
           </button>
-          <p className="billing-free-secure">
-            <ShieldCheck size={13} className="text-ok" aria-hidden="true" />
-            Secure checkout handled by Stripe
-          </p>
         </div>
+        <p className="billing-free-secure">
+          <ShieldCheck size={14} className="text-ok" aria-hidden="true" />
+          Cancel anytime · Card or Apple Pay through Stripe
+        </p>
       </div>
     )
   }

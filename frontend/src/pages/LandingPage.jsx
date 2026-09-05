@@ -430,8 +430,8 @@ export function LandingPage() {
             claim printed twice above the fold. */}
         <h1 className="land-title">A week of lesson plans, cited to the standard</h1>
         <p className="land-sub">
-          Generated from the verbatim text of the Alabama Course of Study — not a model's
-          memory of it. Downloads as your district's own .docx.
+          Word for word from your state's real course of study — no guessing, no vibes.
+          Just download it.
         </p>
         <div className="land-actions">
           <Link
