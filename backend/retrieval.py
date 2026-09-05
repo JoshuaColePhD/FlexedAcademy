@@ -673,6 +673,43 @@ def load_chunks() -> list[dict]:
     return out
 
 
+@functools.lru_cache(maxsize=8)
+def load_chunks_for_state(state: str) -> list[dict]:
+    """One state's chunk records — the scoped counterpart to load_chunks().
+
+    load_chunks() holds the ENTIRE corpus in memory for the life of the
+    process, which its own docstring documents OOM-ing a 512MB worker once
+    the corpus reached ~33k records. That ceiling is the binding constraint
+    on adding states: four core subjects across fifty states is several
+    hundred thousand records, and no single request has ever needed more
+    than one state's worth.
+
+    maxsize=8, not 1: an instance serves whichever states its teachers are
+    in, so a handful of neighbours should stay warm together, but the bound
+    is what keeps a national corpus from arriving through the back door one
+    cache entry at a time.
+
+    Falls back to filtering the full in-memory corpus when there's no
+    database (the offline/file path load_chunks() documents) so development
+    without Postgres keeps working.
+    """
+    state = (state or "AL").upper()
+    if settings.database_url:
+        try:
+            rows = db.list_standard_chunks(state=state)
+            if rows and all(isinstance(row.get("metadata"), dict) for row in rows):
+                out = []
+                for row in rows:
+                    chunk = dict(row["metadata"])
+                    chunk["id"] = row["id"]
+                    out.append(chunk)
+                log.info("loaded %d standards chunks for %s from Postgres", len(out), state)
+                return out
+        except Exception as exc:  # noqa: BLE001 — the file path below stays a recovery route
+            log.warning("could not load %s chunks from Postgres: %s; filtering full corpus", state, exc)
+    return [c for c in load_chunks() if c.get("state") == state]
+
+
 @functools.lru_cache(maxsize=1)
 def chunks_by_code() -> dict[str, dict]:
     """Code -> one chunk, ignoring which course it belongs to.
@@ -727,6 +764,19 @@ def chunk_for_code(code: str, subject_code: str | None = None, state: str = "AL"
     """
     norm = _norm_code(code)
     state = (state or "AL").upper()
+    if settings.database_url:
+        variants = [norm, norm.replace("-", " "), norm.replace(" ", "-")]
+        try:
+            if subject_code:
+                for course in course_variants(subject_code):
+                    hits = db.find_standard_chunks_by_code(variants, state=state, courses=[course])
+                    if hits:
+                        return hits[0]
+            hits = db.find_standard_chunks_by_code(variants, state=state)
+            if hits:
+                return hits[0]
+        except Exception as exc:  # noqa: BLE001 — cache-backed fallback remains available
+            log.warning("database standard code lookup failed for %s: %s", code, exc)
     if subject_code:
         by_course = _chunks_by_state_course_and_code()
         for course in course_variants(subject_code):

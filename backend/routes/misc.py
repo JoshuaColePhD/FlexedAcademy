@@ -159,7 +159,14 @@ def known_course_ids() -> set[str]:
     guarantee. A class created with an unresolvable subject doesn't fail
     loud until the teacher tries to generate a plan for it.
     """
-    ids = {c.get("course") for c in retrieval.load_chunks() if c.get("course")}
+    if settings.database_url:
+        try:
+            ids = db.standard_course_ids()
+        except Exception as exc:  # noqa: BLE001 — file-backed fallback remains available
+            log.warning("framework course query failed; using file fallback: %s", exc)
+            ids = {c.get("course") for c in retrieval.load_chunks() if c.get("course")}
+    else:
+        ids = {c.get("course") for c in retrieval.load_chunks() if c.get("course")}
     ids.add("Special_Education")
     return ids
 
@@ -177,34 +184,53 @@ def get_frameworks(state: str = "AL"):
     apart, since two states can both have e.g. a "Mathematics (2019)".
     """
     state = state.upper()
-    grades: dict[str, set[int]] = {}
-    counts: Counter = Counter()
-    verbatim: Counter = Counter()
     # Georgia's "ELA" is not Alabama's "English Language Arts (2021)" —
     # each state's own adopted title (public.standards_frameworks) takes
     # priority over the hardcoded SUBJECT_LABELS below, which only applies
     # where a course has no manifest row yet.
     titles = db.framework_titles(state)
 
-    for c in retrieval.load_chunks():
-        if c.get("state") != state:
-            continue
-        course = c.get("course")
-        if not course:
-            continue
-        counts[course] += 1
-        if c.get("verbatim_ok"):
-            verbatim[course] += 1
-        if course.startswith(("AP", "Pre-AP")):
-            grades.setdefault(course, set()).update([9, 10, 11, 12])
-        else:
-            grade = c.get("grade")
-            # `if course and grade` was the old test, which dropped every
-            # Kindergarten chunk: grade 0 is falsy. It also admitted 99, a
-            # "grade unknown" sentinel from an earlier ingest that no teacher can
-            # select and that matches nothing when used as a filter.
-            if isinstance(grade, int) and 0 <= grade <= 12:
-                grades.setdefault(course, set()).add(grade)
+    if settings.database_url:
+        try:
+            aggregates = db.standard_frameworks(state=state)
+            grades: dict[str, set[int]] = {}
+            counts: Counter = Counter()
+            verbatim: Counter = Counter()
+            for row in aggregates:
+                course = row.get("course")
+                if not course:
+                    continue
+                counts[course] += int(row.get("chunks") or 0)
+                verbatim[course] += int(row.get("verbatim_ok") or 0)
+                if course.startswith(("AP", "Pre-AP")):
+                    grades.setdefault(course, set()).update([9, 10, 11, 12])
+                else:
+                    raw_grade = row.get("grade")
+                    if raw_grade is not None and str(raw_grade).isdigit() and 0 <= int(raw_grade) <= 12:
+                        grades.setdefault(course, set()).add(int(raw_grade))
+        except Exception as exc:  # noqa: BLE001 — file-backed fallback stays available
+            log.warning("framework aggregate query failed; filtering file corpus: %s", exc)
+            aggregates = None
+    else:
+        aggregates = None
+
+    if aggregates is None:
+        grades = {}
+        counts = Counter()
+        verbatim = Counter()
+        for c in retrieval.load_chunks_for_state(state):
+            course = c.get("course")
+            if not course:
+                continue
+            counts[course] += 1
+            if c.get("verbatim_ok"):
+                verbatim[course] += 1
+            if course.startswith(("AP", "Pre-AP")):
+                grades.setdefault(course, set()).update([9, 10, 11, 12])
+            else:
+                grade = c.get("grade")
+                if isinstance(grade, int) and 0 <= grade <= 12:
+                    grades.setdefault(course, set()).add(grade)
 
     result = [
         {

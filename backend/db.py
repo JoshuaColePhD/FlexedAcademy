@@ -3563,6 +3563,18 @@ MIGRATIONS: list[str] = [
     UPDATE schools SET state = 'AL' WHERE state IS NULL;
     CREATE INDEX IF NOT EXISTS idx_schools_state ON schools(state);
     """,
+
+    # ── 77: state-scoped standards catalog indexes ───────────────────────────
+    # The standards browser queries one state/course/grade page at a time.
+    # These expression indexes keep those filters database-side as the corpus
+    # grows, instead of making the Render process download every state's JSONB
+    # metadata and filter it in Python.
+    """
+    CREATE INDEX IF NOT EXISTS idx_chunks_state_course_grade
+      ON chunks ((metadata->>'state'), (metadata->>'course'), (metadata->>'grade'));
+    CREATE INDEX IF NOT EXISTS idx_chunks_state_code
+      ON chunks ((metadata->>'state'), (metadata->>'code'));
+    """,
 ]
 
 
@@ -3823,15 +3835,174 @@ def active_standards_states() -> list[str]:
     return [r["state"] for r in rows]
 
 
-def list_standard_chunks() -> list[dict]:
+def list_standard_chunks(
+    state: str | None = None,
+    *,
+    subject: str | None = None,
+    grade: int | None = None,
+) -> list[dict]:
     """Return the canonical standards corpus without embedding vectors.
 
     The retrieval module uses this for the standards browser and grounding
     checks.  Similarity search still happens independently in retrieval.py;
     this read only replaces the old runtime download of the same corpus from
     Supabase Storage.
+
+    `state` filters to one state's records at the database instead of loading
+    every state and discarding the rest in Python. That distinction stops
+    mattering only while the corpus is small: retrieval.load_chunks()'s own
+    docstring records this corpus OOM-ing a 512MB worker at ~33k records, and
+    a national corpus is several times that. A request only ever concerns one
+    teacher's state, so it should only ever pay for one.
     """
-    return _rows("SELECT id, metadata FROM chunks ORDER BY id")
+    clauses = []
+    params: list[Any] = []
+    if state:
+        clauses.append("metadata->>'state' = %s")
+        params.append(state.upper())
+    if subject:
+        clauses.append("metadata->>'course' = %s")
+        params.append(subject)
+    if grade is not None:
+        clauses.append("metadata->>'grade' = %s")
+        params.append(str(grade))
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    return _rows(f"SELECT id, metadata FROM chunks{where} ORDER BY id", tuple(params))
+
+
+def list_standard_chunks_page(
+    *,
+    state: str = "AL",
+    subject: str | None = None,
+    grade: int | None = None,
+    source_type: str | None = None,
+    strand: str | None = None,
+    query: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Fetch one filtered standards page and its total without full-corpus load."""
+    clauses = ["metadata->>'state' = %s"]
+    params: list[Any] = [state.upper()]
+    if subject:
+        clauses.append("metadata->>'course' = %s")
+        params.append(subject)
+    if grade is not None:
+        clauses.append("metadata->>'grade' = %s")
+        params.append(str(grade))
+    if source_type:
+        clauses.append("metadata->>'source_type' = %s")
+        params.append(source_type)
+    if strand:
+        clauses.append("COALESCE(metadata->>'strand', '') = %s")
+        params.append(strand)
+    if query:
+        clauses.append(
+            "(metadata->>'code' ILIKE %s OR "
+            "metadata->>'description' ILIKE %s OR "
+            "metadata->>'notes' ILIKE %s)"
+        )
+        needle = f"%{query}%"
+        params.extend([needle, needle, needle])
+
+    where = " AND ".join(clauses)
+    bounded_limit = max(1, min(int(limit), 500))
+    bounded_offset = max(0, int(offset))
+    with borrow() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT COUNT(*) AS total FROM chunks WHERE {where}", tuple(params))
+        total = int(cur.fetchone()["total"])
+        cur.execute(
+            f"SELECT id, metadata FROM chunks WHERE {where} ORDER BY id LIMIT %s OFFSET %s",
+            tuple(params + [bounded_limit, bounded_offset]),
+        )
+        rows = [dict(row) for row in cur.fetchall()]
+    return rows, total
+
+
+def standard_stats(
+    *,
+    state: str | None = None,
+    subject: str | None = None,
+    grade: int | None = None,
+) -> dict:
+    """Aggregate standards stats in Postgres without materializing records."""
+    clauses = []
+    params: list[Any] = []
+    if state:
+        clauses.append("metadata->>'state' = %s")
+        params.append(state.upper())
+    if subject:
+        clauses.append("metadata->>'course' = %s")
+        params.append(subject)
+    if grade is not None:
+        clauses.append("metadata->>'grade' = %s")
+        params.append(str(grade))
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    with borrow() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) AS total, "
+            "COUNT(*) FILTER (WHERE metadata->>'verbatim_ok' = 'true') AS verbatim_ok "
+            f"FROM chunks{where}",
+            tuple(params),
+        )
+        summary = cur.fetchone()
+
+        def grouped(expression: str, fallback: str) -> dict[str, int]:
+            cur.execute(
+                f"SELECT COALESCE({expression}, %s) AS value, COUNT(*) AS count "
+                f"FROM chunks{where} GROUP BY 1 ORDER BY 1",
+                tuple([fallback, *params]),
+            )
+            return {str(row["value"]): int(row["count"]) for row in cur.fetchall()}
+
+        return {
+            "total": int(summary["total"]),
+            "by_source_type": grouped("metadata->>'source_type'", "?"),
+            "by_source_document": grouped("metadata->>'source_document'", "?"),
+            "by_strand": grouped("metadata->>'strand'", "—"),
+            "verbatim_ok": int(summary["verbatim_ok"]),
+        }
+
+
+def standard_frameworks(*, state: str = "AL") -> list[dict]:
+    """Return course/grade aggregates for the framework picker."""
+    rows = _rows(
+        "SELECT metadata->>'course' AS course, metadata->>'grade' AS grade, "
+        "COUNT(*) AS chunks, "
+        "COUNT(*) FILTER (WHERE metadata->>'verbatim_ok' = 'true') AS verbatim_ok "
+        "FROM chunks WHERE metadata->>'state' = %s "
+        "GROUP BY metadata->>'course', metadata->>'grade' "
+        "ORDER BY metadata->>'course', metadata->>'grade'",
+        (state.upper(),),
+    )
+    return rows
+
+
+def standard_course_ids() -> set[str]:
+    """Return distinct ingested course ids without loading chunk metadata."""
+    rows = _rows(
+        "SELECT DISTINCT metadata->>'course' AS course FROM chunks "
+        "WHERE metadata->>'course' IS NOT NULL"
+    )
+    return {row["course"] for row in rows if row.get("course")}
+
+
+def find_standard_chunks_by_code(
+    codes: list[str], *, state: str = "AL", courses: list[str] | None = None
+) -> list[dict]:
+    """Look up a small set of standards without warming the full corpus."""
+    if not codes:
+        return []
+    clauses = ["metadata->>'state' = %s", "upper(metadata->>'code') = ANY(%s)"]
+    params: list[Any] = [state.upper(), [code.upper() for code in codes]]
+    if courses:
+        clauses.append("metadata->>'course' = ANY(%s)")
+        params.append(courses)
+    rows = _rows(
+        "SELECT id, metadata FROM chunks WHERE " + " AND ".join(clauses) + " ORDER BY id",
+        tuple(params),
+    )
+    return [{**(row.get("metadata") or {}), "id": row["id"]} for row in rows]
 
 
 def list_standard_code_metadata() -> list[dict]:

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowLeft, BarChart3, BookOpen, Check, Layers3, Loader2, Plus, Search, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useActiveClass } from '../hooks/useAppData'
 import { useToast } from '../lib/toastContext'
@@ -103,9 +103,21 @@ export function StandardsPage() {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [standardsView, setStandardsView] = useState('browse')
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['standards', subject, grade, state],
-    queryFn: () => api.listStandards({ subject, grade, state }),
+  const {
+    data,
+    isLoading,
+    isError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['standards', subject, grade, state, search],
+    queryFn: ({ pageParam = 0 }) => api.listStandards({ subject, grade, state, q: search, limit: 200, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((sum, page) => sum + (page.items?.length || 0), 0)
+      return loaded < (lastPage.total || 0) ? loaded : undefined
+    },
     staleTime: Infinity,
     enabled: !!subject && grade !== undefined,
   })
@@ -119,12 +131,14 @@ export function StandardsPage() {
 
   const standards = useMemo(() => {
     const seen = new Set()
-    return (data?.items || EMPTY_STANDARDS).filter((standard) => {
+    const loaded = data?.pages?.flatMap((page) => page.items || []) || EMPTY_STANDARDS
+    return loaded.filter((standard) => {
       if (seen.has(standard.code)) return false
       seen.add(standard.code)
       return true
     })
   }, [data])
+  const totalStandards = data?.pages?.[0]?.total || 0
   const coverage = useMemo(() => coverageData || {}, [coverageData])
 
   const categories = useMemo(() => {
@@ -378,7 +392,7 @@ export function StandardsPage() {
 
           <div className="mt-6 flex items-center justify-between gap-3 px-1 text-xs text-ink-muted" aria-live="polite">
             <span>
-              {isLoading ? 'Loading standards…' : `${filtered.length} ${filtered.length === 1 ? 'standard' : 'standards'}`}
+              {isLoading ? 'Loading standards…' : `${filtered.length}${totalStandards > filtered.length ? ` of ${totalStandards}` : ''} ${filtered.length === 1 ? 'standard' : 'standards'}`}
             </span>
             {matchingLabel ? <span>{matchingLabel}</span> : null}
           </div>
@@ -421,6 +435,16 @@ export function StandardsPage() {
                   </div>
                 </section>
               ))}
+              {hasNextPage ? (
+                <button
+                  type="button"
+                  className="btn mx-auto mt-2"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? 'Loading more…' : `Load more standards (${Math.max(0, totalStandards - standards.length)} remaining)`}
+                </button>
+              ) : null}
             </div>
           )}
           </> ) : null}

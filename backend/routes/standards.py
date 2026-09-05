@@ -7,6 +7,7 @@ the teacher can look up.
 """
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 
@@ -21,6 +22,7 @@ from ..errors import AppError
 from ..prompts import known_gaps
 
 router = APIRouter(prefix="/api/standards", tags=["standards"])
+log = logging.getLogger("flexedacademy.routes.standards")
 
 # Fields returned in list view — the full record is available per-code.
 _LIST_FIELDS = (
@@ -72,7 +74,26 @@ def list_standards(
     # state's corpus exists — same reasoning as every other endpoint here.
     # Defaults to 'AL' for backward compatibility with classes predating
     # multi-state support.
-    items = [c for c in retrieval.load_chunks() if c.get("state") == state.upper()]
+    if settings.database_url:
+        try:
+            rows, total = db.list_standard_chunks_page(
+                state=state,
+                subject=subject,
+                grade=grade,
+                source_type=source_type,
+                strand=strand,
+                query=q,
+                limit=limit,
+                offset=offset,
+            )
+            return {
+                "items": [_slim({**(row.get("metadata") or {}), "id": row["id"]}) for row in rows],
+                "total": total,
+            }
+        except Exception as exc:  # noqa: BLE001 — local/file fallback stays available
+            log.warning("standards page query failed; using file fallback: %s", exc)
+
+    items = retrieval.load_chunks_for_state(state)
 
     if subject:
         items = [c for c in items if c.get("course") == subject]
@@ -167,8 +188,18 @@ def upload_global_standards(
 @router.get("/stats")
 def stats(
     subject: str | None = Query(None, max_length=120),
-    grade: int | None = Query(None)
+    grade: int | None = Query(None),
+    state: str | None = Query(None, max_length=2),
 ):
+    if settings.database_url:
+        try:
+            return {
+                **db.standard_stats(state=state, subject=subject, grade=grade),
+                "retrieval_floor": settings.retrieval_max_distance,
+            }
+        except Exception as exc:  # noqa: BLE001 — local/file fallback stays available
+            log.warning("standards stats query failed; using file fallback: %s", exc)
+
     items = retrieval.load_chunks()
     
     if subject:
