@@ -894,6 +894,143 @@ _ITERATIVE_SCAN = (
 _INFLIGHT = threading.Semaphore(max(1, min(settings.retrieval_workers, settings.db_pool_size)))
 
 
+# ── which corpus a search reads ──────────────────────────────────────────────
+#
+# Migration 77 replaced one `chunks` table filtered by metadata->>'state' with
+# one table per state plus chunks_national. Isolation is now structural: a state
+# a query does not name is not merely filtered out, it is not in the table being
+# read, so a WHERE clause that someone forgets to add cannot leak it.
+#
+# The national rows (AP, College Board, ACT) are shared by every state and live
+# in their own corpus, because they belong to no state and duplicating them per
+# state would make one standard N rows with N ids.
+NATIONAL_SOURCE_TYPES = frozenset(
+    {"college_board", "ap_skills", "act_standards", "act_recurring"}
+)
+
+DEFAULT_STATE = "AL"
+
+
+def corpus_tables(state: str | None, source_type: str | None = None) -> tuple[str, ...]:
+    """The corpus table(s) one search must read, in a stable order.
+
+    A stratum that asks for a national source type reads only the national
+    corpus; `state_course_of_study` reads only the state's. `source_type=None`
+    — which retrieve_grounded issues for every query alongside the strata —
+    reads BOTH, because its own predicates already decide what qualifies and
+    dropping either table would silently change which rows exist to be ranked.
+
+    Raises for a state with no ingested corpus rather than falling back to a
+    default. Grounding a Georgia teacher in Alabama's standards while citing
+    real-looking codes is the failure this whole design exists to prevent, and
+    a silent fallback is exactly how it would happen.
+    """
+    from . import db
+
+    registry = {row["state_code"].upper(): row["table_name"] for row in db.list_standards_corpora()}
+    national = registry.get(db.NATIONAL_CORPUS)
+
+    if source_type in NATIONAL_SOURCE_TYPES:
+        return (national,) if national else ()
+
+    code = (state or DEFAULT_STATE).strip().upper()
+    if code == db.NATIONAL_CORPUS or not re.fullmatch(r"[A-Z]{2}", code):
+        raise AppError(
+            "unknown_standards_state",
+            "That class isn't set to a state we have standards for yet.",
+            status=400,
+        )
+    table = registry.get(code)
+    if table is None:
+        raise AppError(
+            "state_not_ingested",
+            f"We don't have {code} standards loaded yet.",
+            status=400,
+        )
+
+    if source_type == "state_course_of_study":
+        return (table,)
+    return (table, national) if national else (table,)
+
+
+def _hybrid_search_sql(tables: tuple[str, ...], where_clause: str) -> str:
+    """The RRF hybrid query, reading one branch per corpus table.
+
+    Each branch does its own `ORDER BY ... LIMIT n` so it can use its own HNSW
+    and GIN indexes, and the union is then re-sorted and re-limited to n.
+
+    That is not an approximation of the old single-table query, it is the same
+    answer: any row in the global top-n by distance is necessarily in the top-n
+    of the table it lives in, so re-limiting the union of per-table top-n yields
+    exactly the global top-n. Same for ts_score. The ROW_NUMBER ranks are
+    computed after the union, so RRF is unchanged too.
+    """
+    semantic_branches = " UNION ALL ".join(
+        f"""(SELECT id, document, metadata, embedding <=> %s::vector AS distance
+             FROM {table} WHERE {where_clause}
+             ORDER BY embedding <=> %s::vector LIMIT %s)"""
+        for table in tables
+    )
+    keyword_branches = " UNION ALL ".join(
+        f"""(SELECT id, document, metadata, embedding <=> %s::vector AS distance,
+                    ts_rank(document_tsvector, websearch_to_tsquery('english', %s)) AS ts_score
+             FROM {table}
+             WHERE document_tsvector @@ websearch_to_tsquery('english', %s)
+               AND {where_clause}
+             ORDER BY ts_rank(document_tsvector, websearch_to_tsquery('english', %s)) DESC
+             LIMIT %s)"""
+        for table in tables
+    )
+    return f"""
+    WITH semantic_search AS (
+        SELECT id, document, metadata, distance,
+               ROW_NUMBER() OVER (ORDER BY distance) AS semantic_rank
+        FROM ({semantic_branches}) u
+        ORDER BY distance LIMIT %s
+    ),
+    keyword_search AS (
+        SELECT id, document, metadata, distance, ts_score,
+               ROW_NUMBER() OVER (ORDER BY ts_score DESC) AS keyword_rank
+        FROM ({keyword_branches}) u
+        ORDER BY ts_score DESC LIMIT %s
+    )
+    SELECT
+        COALESCE(s.id, k.id) AS id,
+        COALESCE(s.document, k.document) AS document,
+        COALESCE(s.metadata, k.metadata) AS metadata,
+        COALESCE(s.distance, k.distance) AS distance,
+        COALESCE(1.0 / (60 + s.semantic_rank), 0.0) +
+        COALESCE(1.0 / (60 + k.keyword_rank), 0.0) AS rrf_score
+    FROM semantic_search s
+    FULL OUTER JOIN keyword_search k ON s.id = k.id
+    ORDER BY rrf_score DESC
+    LIMIT %s
+    """
+
+
+def _hybrid_search_params(
+    tables: tuple[str, ...],
+    query: str,
+    query_vector: list[float],
+    where_params: list,
+    n: int,
+) -> tuple:
+    """Bind values for _hybrid_search_sql, in the order its placeholders appear.
+
+    Kept immediately beside the query it fills so the two are read together:
+    with one branch per table, a mismatch here is a silently wrong search rather
+    than an error, which is why test_hybrid_search_params_match_placeholders
+    asserts the counts agree for every table count.
+    """
+    semantic: list = []
+    for _table in tables:
+        semantic += [query_vector] + where_params + [query_vector, n]
+    keyword: list = []
+    for _table in tables:
+        keyword += [query_vector, query, query] + where_params + [query, n]
+    return tuple(semantic + [n] + keyword + [n] + [n])
+
+
 def retrieve_raw(
     query: str,
     n: int,
@@ -901,6 +1038,7 @@ def retrieve_raw(
     grade: int,
     source_type: str | None = None,
     query_vector: list[float] | None = None,
+    state: str | None = None,
 ) -> list[dict]:
     # `query_vector` lets the caller embed once and search many times.
     if query_vector is None:
@@ -945,39 +1083,12 @@ def retrieve_raw(
             where_clause += " AND metadata->>'source_type' = %s"
             params.append(source_type)
 
-    sql = f"""
-    WITH semantic_search AS (
-        SELECT id, document, metadata, embedding <=> %s::vector AS distance,
-               ROW_NUMBER() OVER (ORDER BY embedding <=> %s::vector) AS semantic_rank
-        FROM chunks
-        WHERE {where_clause}
-        ORDER BY embedding <=> %s::vector LIMIT %s
-    ),
-    keyword_search AS (
-        SELECT id, document, metadata, embedding <=> %s::vector AS distance,
-               ts_rank(document_tsvector, websearch_to_tsquery('english', %s)) AS ts_score,
-               ROW_NUMBER() OVER (ORDER BY ts_rank(document_tsvector, websearch_to_tsquery('english', %s)) DESC) AS keyword_rank
-        FROM chunks
-        WHERE document_tsvector @@ websearch_to_tsquery('english', %s)
-        AND {where_clause}
-        ORDER BY ts_score DESC LIMIT %s
-    )
-    SELECT
-        COALESCE(s.id, k.id) AS id,
-        COALESCE(s.document, k.document) AS document,
-        COALESCE(s.metadata, k.metadata) AS metadata,
-        COALESCE(s.distance, k.distance) AS distance,
-        COALESCE(1.0 / (60 + s.semantic_rank), 0.0) +
-        COALESCE(1.0 / (60 + k.keyword_rank), 0.0) AS rrf_score
-    FROM semantic_search s
-    FULL OUTER JOIN keyword_search k ON s.id = k.id
-    ORDER BY rrf_score DESC
-    LIMIT %s
-    """
+    tables = corpus_tables(state, source_type)
+    if not tables:
+        return []
+    sql = _hybrid_search_sql(tables, where_clause)
 
-    semantic_params = [query_vector, query_vector] + params + [query_vector, n]
-    keyword_params = [query_vector, query, query, query] + params + [n]
-    full_params = semantic_params + keyword_params + [n]
+    full_params = _hybrid_search_params(tables, query, query_vector, params, n)
 
     # The memory ceiling is held HERE, around the buffered fetch, rather than
     # around the whole function: everything above is string building, and
@@ -1011,7 +1122,7 @@ def retrieve_raw(
 STRATA = ("ap_skills", "state_course_of_study", "act_standards", "act_recurring")
 
 
-def lookup_codes(query: str, course: str, grade: int) -> list[dict]:
+def lookup_codes(query: str, course: str, grade: int, state: str | None = None) -> list[dict]:
     """Chunks whose code the query names outright.
 
     Vector search cannot do identifiers. Embeddings put "LO.3.A.3.1" and
@@ -1043,19 +1154,30 @@ def lookup_codes(query: str, course: str, grade: int) -> list[dict]:
         return []
     from . import db
 
-    sql = (
-        "SELECT id, document, metadata FROM chunks "
-        "WHERE upper(metadata->>'code') = ANY(%s) "
+    where = (
+        "upper(metadata->>'code') = ANY(%s) "
         "AND metadata->>'course' = ANY(%s) "
         "AND ((metadata->>'grade')::int = %s "
         "     OR metadata->>'source_type' IN ('college_board', 'ap_skills', 'act_standards'))"
     )
-    params: list = [sorted(codes), list(course_variants(course)), grade]
     # Enforce AP vs General course standards
     if is_ap_course(course):
-        sql += " AND metadata->>'source_type' <> 'state_course_of_study'"
+        where += " AND metadata->>'source_type' <> 'state_course_of_study'"
     else:
-        sql += " AND metadata->>'source_type' NOT IN ('college_board', 'ap_skills')"
+        where += " AND metadata->>'source_type' NOT IN ('college_board', 'ap_skills')"
+
+    # Reads the state's corpus and the national one. There is no LIMIT here, so
+    # the union is the same set the single pre-split table returned — an exact
+    # code match is not a ranking, it either exists or it does not.
+    tables = corpus_tables(state, None)
+    if not tables:
+        return []
+    sql = " UNION ALL ".join(
+        f"SELECT id, document, metadata FROM {table} WHERE {where}" for table in tables
+    )
+    params: list = []
+    for _table in tables:
+        params += [sorted(codes), list(course_variants(course)), grade]
     try:
         rows = db._rows(sql, tuple(params))
     except Exception as e:  # noqa: BLE001 — an exact-match bonus must never break retrieval
@@ -1078,9 +1200,17 @@ def retrieve_grounded(
     top_k: int | None = None,
     max_distance: float | None = None,
     extra_queries: list[str] | None = None,
+    state: str | None = None,
 ) -> RetrievalResult:
     top_k = top_k or settings.retrieval_top_k
     floor = settings.floor_for(subject_code) if max_distance is None else max_distance
+
+    # Resolve the corpus ONCE, here, before any work. The executor below
+    # deliberately swallows a failing stratum so one bad query cannot sink the
+    # rest — which would turn "this state has no standards" into an empty
+    # result indistinguishable from "nothing was relevant". Failing here makes
+    # an unknown state say so.
+    corpus_tables(state, None)
 
     searches = [query, *(extra_queries or [])]
     best: dict[str, dict] = {}
@@ -1115,7 +1245,7 @@ def retrieve_grounded(
     # Exact identifier matches first, so they win the per-code dedup in
     # consider() against any approximate hit for the same standard.
     for q in searches:
-        consider(lookup_codes(q, subject_code, grade))
+        consider(lookup_codes(q, subject_code, grade, state))
 
     # Bounded by BOTH settings — never more in-flight queries than the pool has
     # connections, because a worker past that just blocks in db.borrow() while
@@ -1127,7 +1257,7 @@ def retrieve_grounded(
         futures = []
         for q, n, source_type in jobs:
             futures.append(executor.submit(
-                retrieve_raw, q, n, subject_code, grade, source_type, vectors[q]
+                retrieve_raw, q, n, subject_code, grade, source_type, vectors[q], state
             ))
             
         for future in futures:

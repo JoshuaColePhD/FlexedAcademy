@@ -215,8 +215,12 @@ def test_grade_3_has_real_standards_for_core_subjects():
     from backend import db
 
     for subject in ("ELA", "Math", "Science", "Social_Studies"):
+        union = " UNION ALL ".join(
+            f"SELECT metadata FROM {row['table_name']}"
+            for row in db.list_standards_corpora()
+        )
         rows = db._rows(
-            "SELECT count(*) AS n FROM chunks "
+            f"SELECT count(*) AS n FROM ({union}) c "
             "WHERE metadata->>'course' = ? AND metadata->>'grade' = '3'",
             (subject,),
         )
