@@ -72,6 +72,19 @@ services:
         value: "0.65"
       - key: RETRIEVAL_FLOORS
         value: '{"Math": 0.52, "Science": 0.55, "PE": 0.60, "AP_Lang": 0.64}'
+      # Keep the free Render instance inside its memory budget. Retrieval
+      # queries hold a sizeable transient result set, so one in-flight query
+      # is safer than allowing concurrent generations to multiply that peak.
+      - key: RETRIEVAL_WORKERS
+        value: "1"
+      - key: DB_POOL_SIZE
+        value: "2"
+      # Builder codegen shells out to LibreOffice and rasterizes pages. It is
+      # an onboarding feature, not part of ordinary lesson-plan generation;
+      # leave it off on the 512MB service until that workload has a larger
+      # memory budget. Re-enable with BUILDER_CODEGEN_ENABLED=true when ready.
+      - key: BUILDER_CODEGEN_ENABLED
+        value: "false"
       # Vite inlines this at BUILD time, so it must exist before the build runs,
       # not merely at boot. Without it GoogleOAuthProvider receives clientId
       # undefined and the Google button on the login page renders but fails.
