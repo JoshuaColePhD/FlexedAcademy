@@ -44,7 +44,7 @@ export function WorkActivityCard({
     return (
       <div className={`work-activity-card is-compact${failed ? ' is-error' : ''}`} aria-busy={active}>
         <span className="work-activity-mark" aria-hidden="true">
-          {active ? <Sparkle size={18} className="fa-activity-icon" fill="currentColor" strokeWidth={1.8} /> : <TriangleAlert size={14} />}
+          {active ? <Sparkle size={18} fill="currentColor" strokeWidth={1.8} /> : <TriangleAlert size={14} />}
         </span>
         <span className="work-activity-compact-copy" role="status" aria-live="polite">{compactSummary}</span>
         {failed && onRetry ? (

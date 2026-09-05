@@ -1,8 +1,8 @@
 """Signup, login, logout — see backend/auth.py for the hashing/cookie mechanics."""
 from __future__ import annotations
 
-import logging
 import hashlib
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 

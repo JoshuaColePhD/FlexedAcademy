@@ -5,7 +5,6 @@ from zipfile import ZipFile
 
 from backend import qti_build, quiz_docx, quiz_library, schema
 
-
 QUIZ = {
     "title": "Tone Passage Set",
     "passages": [{

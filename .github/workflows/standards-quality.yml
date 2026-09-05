@@ -30,8 +30,16 @@ jobs:
           python-version: "3.12"
       - name: Install backend dependencies
         run: pip install -e ".[dev]"
+      - name: Build deterministic Alabama quality fixture
+        # Generated chunk files are intentionally storage-backed and ignored by
+        # Git. Rebuild the CASE-derived fixture from the tracked source package
+        # so a clean runner exercises the same quality gate as a local checkout.
+        # The human-readable PDFs live outside this repository, so CI verifies
+        # CASE structure/provenance while treating PDF wording verification as
+        # an optional local-only signal.
+        run: python scripts/01d_ingest_alcos_case.py --grades 0-12 --allow-unverified-source
       - name: Run standards quality report
-        run: python scripts/generate_quality_report.py
+        run: python scripts/generate_quality_report.py --allow-unverified-source
       - name: Upload quality report
         if: always()
         uses: actions/upload-artifact@v4

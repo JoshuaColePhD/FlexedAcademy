@@ -1,6 +1,7 @@
 """Run the cheap, reproducible standards quality checks and save a report."""
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -13,8 +14,18 @@ OUTPUT = PROJECT_ROOT / "quality_results.json"
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--allow-unverified-source",
+        action="store_true",
+        help="allow the Alabama gate to run when CI does not have the local PDFs",
+    )
+    args = ap.parse_args()
+    alabama_command = [sys.executable, "scripts/check_alabama_ingest.py", "--grades", "0-12"]
+    if args.allow_unverified_source:
+        alabama_command.append("--allow-unverified-source")
     checks = [
-        ("alabama_ingest", [sys.executable, "scripts/check_alabama_ingest.py", "--grades", "0-12"]),
+        ("alabama_ingest", alabama_command),
         ("fast_regression", [sys.executable, "eval/run_all.py", "--fast"]),
     ]
     report = {

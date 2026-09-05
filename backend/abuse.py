@@ -29,7 +29,7 @@ def client_ip(request: Request) -> str:
 
 def signal_hash(value: str, purpose: str) -> str:
     """Hash an abuse signal so the database never stores the raw value."""
-    message = f"{purpose}:{value.strip()}".encode("utf-8")
+    message = f"{purpose}:{value.strip()}".encode()
     return hmac.new(settings.session_secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 

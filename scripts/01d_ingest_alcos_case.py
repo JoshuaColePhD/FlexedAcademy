@@ -573,6 +573,8 @@ def main() -> int:
                     help="course codes to ingest (default: all)")
     ap.add_argument("--strict", action="store_true",
                     help="drop chunks whose text isn't found verbatim in the PDF")
+    ap.add_argument("--allow-unverified-source", action="store_true",
+                    help="allow the ingest gate to run without local PDFs (CASE provenance is still recorded)")
     ap.add_argument("--refresh", action="store_true",
                     help="re-download the CASE packages instead of using the cache")
     ap.add_argument("--grades", default="9-12", metavar="RANGE",
@@ -630,6 +632,7 @@ def main() -> int:
         report,
         expected_courses={course for course, _case_id, _pdf in selected},
         expected_grades=keep_grades,
+        require_pdf_verification=not args.allow_unverified_source,
     )
     for issue in quality["errors"]:
         log.error("QUALITY ERROR [%s] %s: %s", issue.get("course", "-"), issue["check"], issue["message"])

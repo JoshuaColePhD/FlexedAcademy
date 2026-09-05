@@ -3951,7 +3951,7 @@ def standard_stats(
             cur.execute(
                 f"SELECT COALESCE({expression}, %s) AS value, COUNT(*) AS count "
                 f"FROM chunks{where} GROUP BY 1 ORDER BY 1",
-                tuple([fallback, *params]),
+                (fallback, *params),
             )
             return {str(row["value"]): int(row["count"]) for row in cur.fetchall()}
 

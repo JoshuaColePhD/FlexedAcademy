@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from typing import ClassVar
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,8 +20,8 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from . import db, demo, service
 from .config import settings
-from .docx_build import assert_builder_contract
 from .deps import COOKIE_NAME, _verify_current
+from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
 from .ratelimit import limiter, rate_limit_exceeded_handler
 from .routes import (
@@ -316,10 +317,10 @@ class ReadOnlyDemoMiddleware:
     mutation is refused before it reaches a route or an external API.
     """
 
-    _SAFE_MUTATIONS = {
+    _SAFE_MUTATIONS: ClassVar[frozenset[str]] = frozenset({
         "/api/auth/logout",
         "/api/auth/sign_out_everywhere",
-    }
+    })
 
     def __init__(self, app):
         self.app = app
