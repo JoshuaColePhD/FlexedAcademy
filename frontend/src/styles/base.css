@@ -3887,11 +3887,6 @@
     border-radius: var(--r-md);
     background: linear-gradient(135deg, rgb(var(--accent-rgb) / 0.13), rgb(var(--paper-inset-rgb) / 0.68));
   }
-  .billing-free-art img {
-    width: 62%;
-    height: 62%;
-    object-fit: contain;
-  }
   .checkout-summary-kicker {
     margin: 0 0 var(--sp-1) !important;
     color: var(--accent-text) !important;
@@ -4166,55 +4161,115 @@
   .billing-free-card {
     color: var(--ink);
   }
+  /* The top third — a big mark over its own soft atmosphere, standing in
+     for the reference's hero photo. Two radial washes off the app's own
+     accent rather than a flat tint, so it reads as a real backdrop instead
+     of a colored rectangle behind the logo. */
+  .billing-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--sp-8) var(--sp-6) var(--sp-6);
+    background:
+      radial-gradient(circle at 28% 20%, rgb(var(--accent-rgb) / 0.32), transparent 55%),
+      radial-gradient(circle at 78% 78%, rgb(var(--accent-rgb) / 0.22), transparent 50%),
+      var(--paper-sunken);
+    text-align: center;
+  }
+  .billing-hero-logo {
+    width: 84px;
+    height: 84px;
+    object-fit: contain;
+    filter: drop-shadow(0 10px 20px rgb(0 0 0 / 0.16));
+  }
+  .billing-hero-title {
+    margin: var(--sp-1) 0 0;
+    color: var(--ink);
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-bold);
+    letter-spacing: -0.01em;
+  }
+  /* The free-tier hero's title sits directly under the logo now — the
+     "FLEXED ACADEMY" kicker that used to separate them said the same thing
+     "Build more with FlexEd" already says right below it, so it's gone
+     (the subscribed-state hero never had one; its own status pill isn't
+     redundant with the name above it the same way). Needs the kicker's old
+     margin back since nothing else provides that gap now. */
+  .billing-hero-title--top {
+    margin-top: var(--sp-4);
+  }
+  /* The subscribed-state hero's own mark — same footprint as
+     .billing-hero-logo (84px) so the two cards read as the same template
+     with a different subject, not two different layouts. */
+  .billing-hero-avatar {
+    width: 84px;
+    height: 84px;
+    color: #fff;
+    box-shadow: 0 10px 20px rgb(0 0 0 / 0.16);
+  }
+  .billing-hero-avatar-emoji {
+    font-size: 2.25rem;
+    line-height: 1;
+  }
+  .billing-hero-avatar-initials {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.02em;
+  }
+  .billing-hero-status {
+    display: inline-flex;
+    align-items: center;
+    margin-top: var(--sp-2);
+    padding: var(--sp-1) var(--sp-3);
+    border-radius: var(--r-full);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+  }
   .billing-free-main {
-    display: grid;
-    grid-template-columns: 64px minmax(0, 1fr) auto auto;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     gap: var(--sp-4);
     padding: var(--sp-6);
+    text-align: center;
   }
-  .billing-free-art {
-    display: grid;
-    width: 64px;
-    height: 64px;
-    place-items: center;
-    border: 1px solid rgb(var(--accent-rgb) / 0.22);
-    border-radius: 18px;
-    color: var(--accent-text);
-    background: rgb(var(--accent-rgb) / 0.12);
-  }
-  .billing-free-art img {
-    width: 62%;
-    height: 62%;
-    object-fit: contain;
-  }
-  .billing-free-kicker {
-    margin: 0 !important;
-    color: var(--accent-text) !important;
-    font-family: var(--font-mono);
-    font-size: var(--fs-2xs) !important;
-    font-weight: var(--fw-bold);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-  }
-  .billing-free-price {
+  /* The same three lines the paywall dialog states, as a checkmark list
+     (Josh's own reference for this) rather than a paragraph — left-aligned
+     text reads better than centered once it wraps to a second line, even
+     though the list itself sits in a centered column. */
+  .billing-benefit-list {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 0;
+    gap: var(--sp-2);
+    width: 100%;
+    max-width: 30rem;
+    text-align: left;
   }
-  .billing-free-price strong {
+  .billing-benefit-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    color: var(--ink-soft);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-snug);
+  }
+  .billing-benefit-list li svg {
+    flex-shrink: 0;
+    margin-top: 0.15em;
+  }
+  /* The one place the price appears now — was split across three spots in
+     this same card (a price block, a "per month" span under it, and the
+     button label). */
+  .billing-free-price {
     color: var(--ink);
-    font-size: var(--fs-lg);
-    letter-spacing: -0.04em;
-    white-space: nowrap;
+    font-size: var(--fs-2xl);
+    letter-spacing: -0.03em;
   }
-  .billing-free-price span {
-    color: var(--ink-muted);
-    font-size: var(--fs-2xs);
-  }
+  /* "A big Subscribe button" (Josh's own words) — full width under the
+     price, not a fixed-width button sharing a row with it. */
   .billing-free-cta {
-    min-width: 178px;
+    width: 100%;
+    max-width: 30rem;
   }
   .billing-free-secure {
     display: flex;
@@ -4267,23 +4322,12 @@
       align-items: flex-start;
       margin-top: var(--sp-2);
     }
+    .billing-hero {
+      padding: var(--sp-6) var(--sp-5) var(--sp-5);
+    }
     .billing-free-main {
-      grid-template-columns: 64px minmax(0, 1fr);
-      gap: var(--sp-3);
+      gap: var(--sp-4);
       padding: var(--sp-5);
-    }
-    .billing-free-art {
-      width: 64px;
-      height: 64px;
-      border-radius: 17px;
-    }
-    .billing-free-price {
-      grid-column: 2;
-      align-items: flex-start;
-    }
-    .billing-free-cta {
-      grid-column: 1 / -1;
-      width: 100%;
     }
     .billing-free-secure {
       padding-right: var(--sp-5);

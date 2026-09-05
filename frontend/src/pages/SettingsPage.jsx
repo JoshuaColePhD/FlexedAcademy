@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Building2, CheckCircle2, ChevronDown, CreditCard, Download, FileText, HardDrive, Loader2, Mail, MessageCircle, PencilLine, Save, Settings, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Building2, Check, CheckCircle2, ChevronDown, CreditCard, Download, FileText, HardDrive, Loader2, Mail, MessageCircle, PencilLine, Save, Settings, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useAuth } from '../lib/authContext'
+import { getAvatar, getInitials } from '../lib/avatars'
 import { useBilling } from '../lib/billingContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
@@ -1148,7 +1149,8 @@ function formatRenewal(iso) {
 /* Subscription state and usage. Hidden entirely while billing is unconfigured,
  * same reasoning as AccountMenu's own version. */
 function BillingSection() {
-  const { entitlement, billingEnabled, priceLabel, openPaywall, manage, busy } = useBilling()
+  const { entitlement, billingEnabled, priceLabel, startCheckout, manage, busy } = useBilling()
+  const { user } = useAuth()
 
   if (!billingEnabled || !entitlement) return null
 
@@ -1181,32 +1183,56 @@ function BillingSection() {
   if (!entitlement.subscribed) {
     return (
       <div className="billing-free-card neo-panel max-w-3xl overflow-hidden rounded-3xl bg-paper-raised/70 backdrop-blur-2xl">
+        {/* Top third: a big logo over its own atmosphere, not the icon+
+            title crammed alongside price/button that used to live here —
+            modeled on the mobile paywall reference Josh sent (hero image,
+            then everything else stacked below it), swapping the
+            reference's photo for the one image this product actually has:
+            its own mark. */}
+        <div className="billing-hero">
+          <img src="/icon-512.png" alt="" className="billing-hero-logo" />
+          <h2 className="billing-hero-title billing-hero-title--top">
+            {trialExpired ? 'Keep building with FlexEd' : 'Build more with FlexEd'}
+          </h2>
+        </div>
+
         <div className="billing-free-main">
-          <div className="billing-free-art" aria-hidden="true">
-            <img src="/icon-512.png" alt="" />
-          </div>
-          <div className="billing-free-summary">
-            <p className="billing-free-kicker">FlexEd Academy</p>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight text-ink">
-              {trialExpired ? 'Keep building with FlexEd' : 'Build more with FlexEd'}
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-              {trialExpired
-                ? 'Keep your plans, standards, and school context in one place.'
-                : 'More room for plans, activities, and ideas each week.'}
-            </p>
-          </div>
-          <div className="billing-free-price" aria-label={`FlexEd subscription ${priceLabel || 'monthly price'}`}>
-            <strong>{priceLabel || 'Loading price…'}</strong>
-            <span>per month</span>
-          </div>
+          {/* The same three lines the paywall dialog already states when a
+              teacher hits a usage limit (BillingProvider.jsx) — this card is
+              the OTHER place that decision gets made, so it should make the
+              identical case, not a different one, just as a checkmark list
+              instead of a paragraph. */}
+          <ul className="billing-benefit-list">
+            {[
+              'A much higher weekly usage limit',
+              'Grounded in your standards and pacing guide',
+              'Everything you’ve already made stays yours',
+            ].map((line) => (
+              <li key={line}>
+                <Check size={15} aria-hidden="true" className="text-ok" />
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+
+          {/* priceLabel already reads "$7.99 / month" (BillingProvider's
+              formatPrice bakes the interval in), so it's said once here and
+              the button underneath just says "Subscribe" — not a second
+              "per month" caption, not the price repeated a third time
+              inside the button label. */}
+          <strong
+            className="billing-free-price"
+            aria-label={`FlexEd subscription ${priceLabel || 'monthly price'}`}
+          >
+            {priceLabel || 'Loading price…'}
+          </strong>
           <button
             type="button"
-            onClick={openPaywall}
+            onClick={startCheckout}
             disabled={busy}
             className="fa-press btn btn-primary billing-free-cta"
           >
-            {busy ? 'Opening…' : `Subscribe · ${priceLabel || '$7.99 / month'}`}
+            {busy ? 'Opening…' : 'Subscribe'}
           </button>
         </div>
         <p className="billing-free-secure">
@@ -1217,89 +1243,56 @@ function BillingSection() {
     )
   }
 
+  // Only ever reached once the free-tier early return above has ruled out
+  // !entitlement.subscribed, so this card's whole job is "here's your
+  // account, here's how to manage it" — not a second pitch.
+  const avatar = getAvatar(user?.avatar)
+  const name = user?.name || user?.email || 'Your account'
+
   return (
-    <div className="neo-panel max-w-4xl overflow-hidden rounded-3xl bg-paper-raised/60 backdrop-blur-2xl">
-      <div className="bg-gradient-to-b from-accent/15 via-accent/5 to-transparent px-6 pb-7 pt-6">
-        <div className="flex items-center justify-between gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-accent/10 text-accent-text">
-            {entitlement.subscribed ? <CreditCard size={18} aria-hidden="true" /> : <Sparkles size={18} aria-hidden="true" />}
+    <div className="billing-free-card neo-panel max-w-3xl overflow-hidden rounded-3xl bg-paper-raised/70 backdrop-blur-2xl">
+      {/* Same hero as the free-tier card above, but the teacher's own
+          identity where the app mark sat — Josh's own reference for this
+          (a profile photo, a name, a plan badge) reads as "this is your
+          account," which is the point once someone's already subscribed. */}
+      <div className="billing-hero">
+        {avatar ? (
+          <span aria-hidden="true" className={`billing-hero-avatar grid place-items-center rounded-full ${avatar.bg}`}>
+            <span className="billing-hero-avatar-emoji">{avatar.emoji}</span>
           </span>
-          <span className={`rounded-full px-2.5 py-1 text-2xs font-semibold ${statusClassName}`}>{statusLabel}</span>
-        </div>
-        <p className="mt-5 text-2xs font-semibold uppercase tracking-[0.16em] text-ink-muted">Your FlexEd plan</p>
-        <p className="mt-1 text-2xl font-semibold tracking-tight text-ink">
-          {entitlement.subscribed ? 'Subscription active' : trialExpired ? 'Trial ended' : 'Free plan'}
-        </p>
-        {priceLabel ? <p className="mt-1 text-sm font-medium text-ink-soft">{priceLabel}</p> : null}
-        <p className="mt-2 max-w-md text-xs leading-relaxed text-ink-muted">
-          {entitlement.subscribed
-            ? cancellationScheduled
-              ? `You can keep building through ${periodEnd || 'the end of this billing period'}.`
-              : paymentNeedsAttention
-                ? 'Update your payment method to keep your higher usage limit active.'
-                : 'Your higher usage limit and grounded planning tools are active.'
-            : trialExpired
-              ? 'Subscribe to keep building lesson plans after your free trial.'
-              : 'Subscribe whenever you want a higher weekly usage limit.'}
-        </p>
+        ) : (
+          <span aria-hidden="true" className="billing-hero-avatar grid place-items-center rounded-full bg-paper-inset text-ink-muted">
+            <span className="billing-hero-avatar-initials">{getInitials(user?.name)}</span>
+          </span>
+        )}
+        <p className="billing-hero-title">{name}</p>
+        <span className={`billing-hero-status ${statusClassName}`}>{statusLabel}</span>
       </div>
 
-      <div className="mx-6 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-edge/70 bg-paper-sunken px-4 py-4">
-          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Plan</p>
-          <p className="mt-1 text-xs font-semibold text-ink">{entitlement.subscribed ? 'FlexEd subscription' : 'Free plan'}</p>
-          <p className="mt-1 text-2xs text-ink-muted">{entitlement.subscribed ? 'Higher weekly limit' : 'Free weekly limit'}</p>
-        </div>
-        <div className="rounded-2xl border border-edge/70 bg-paper-sunken px-4 py-4">
-          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-ink-muted">{cancellationScheduled ? 'Access until' : entitlement.subscribed ? 'Renews' : 'Price'}</p>
-          <p className="mt-1 text-xs font-semibold text-ink">
-            {cancellationScheduled ? periodEnd || 'End of billing period' : entitlement.subscribed ? periodEnd || 'Managed by Stripe' : priceLabel || 'Loading price…'}
-          </p>
-          <p className="mt-1 text-2xs text-ink-muted">{cancellationScheduled ? 'No further charges' : entitlement.subscribed ? 'Automatic monthly renewal' : 'Cancel anytime'}</p>
-        </div>
-        <div className="rounded-2xl border border-edge/70 bg-paper-sunken px-4 py-4">
-          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Payment</p>
-          <p className="mt-1 text-xs font-semibold text-ink">{entitlement.subscribed ? 'Managed by Stripe' : 'Not set up'}</p>
-          <p className="mt-1 text-2xs text-ink-muted">Secure payment details</p>
-        </div>
-      </div>
-
-      <div className="px-6 pb-6 pt-5">
-        {entitlement.subscribed ? (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-edge/70 bg-paper-sunken px-4 py-4">
-            <div>
-              <p className="text-xs font-semibold text-ink">Payment method & receipts</p>
-              <p className="mt-1 text-2xs text-ink-muted">Update payment details or view receipts securely in Stripe.</p>
-            </div>
-            <button
-              type="button"
-              onClick={manage}
-              disabled={busy}
-              className="neo-raised inline-flex shrink-0 items-center rounded-lg px-3 py-2 text-xs font-semibold text-ink transition-colors hover:bg-paper-raised disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Open Stripe
-            </button>
-          </div>
-        ) : null}
+      <div className="billing-free-main">
         {cancellationScheduled ? (
-          <div className="mb-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-xs text-amber-800">
-            Your subscription is set to end on <strong>{periodEnd || 'the end of this billing period'}</strong>. You will not be charged again.
-          </div>
+          <p className="w-full max-w-[30rem] rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-xs text-amber-800">
+            You can keep building through <strong>{periodEnd || 'the end of this billing period'}</strong>. You will not be charged again.
+          </p>
+        ) : paymentNeedsAttention ? (
+          <p className="w-full max-w-[30rem] rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-xs text-red-700">
+            Update your payment method to keep your higher usage limit active.
+          </p>
         ) : null}
         <button
           type="button"
-          onClick={entitlement.subscribed ? manage : openPaywall}
+          onClick={manage}
           disabled={busy}
-          className={`fa-press flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${entitlement.subscribed ? 'btn' : 'btn btn-primary'}`}
+          className="fa-press btn billing-free-cta"
         >
-          {entitlement.subscribed ? <CreditCard size={14} aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
-          {busy ? 'Opening…' : entitlement.subscribed ? paymentNeedsAttention ? 'Update payment' : 'Manage subscription' : 'Subscribe'}
+          <CreditCard size={14} aria-hidden="true" />
+          {busy ? 'Opening…' : paymentNeedsAttention ? 'Update payment' : 'Manage subscription'}
         </button>
-        <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-2xs text-ink-muted">
-          <ShieldCheck size={13} className="text-ok" aria-hidden="true" />
-          Securely handled by Stripe
-        </p>
       </div>
+      <p className="billing-free-secure">
+        <ShieldCheck size={14} className="text-ok" aria-hidden="true" />
+        {cancellationScheduled ? 'Managed by Stripe' : `Renews ${periodEnd || 'monthly'} · Managed by Stripe`}
+      </p>
     </div>
   )
 }

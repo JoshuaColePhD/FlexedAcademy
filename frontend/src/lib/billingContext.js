@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 
-/** { entitlement, mayGenerate, openPaywall, subscribe, manage, busy }
+/** { entitlement, mayGenerate, openPaywall, startCheckout, subscribe, manage, busy }
  *  — see components/BillingProvider.jsx. */
 export const BillingContext = createContext(null)
 

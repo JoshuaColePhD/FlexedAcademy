@@ -130,6 +130,19 @@ export function BillingProvider({ children }) {
     }
   }, [toast])
 
+  /* Settings' own billing card already states the pitch this dialog exists
+     to make (the same three benefit lines, the same price) before a teacher
+     ever clicks Subscribe there — showing the confirmation screen again
+     would just be the same argument twice in a row. This opens the dialog
+     shell (for its focus trap/Escape handling) straight into checkout,
+     skipping the paywall content entirely. Every other Subscribe entry
+     point (ChatPage's usage-limit prompts, AccountMenu) still calls
+     openPaywall — those contexts haven't already made the case. */
+  const startCheckout = useCallback(() => {
+    setOpen(true)
+    subscribe()
+  }, [subscribe])
+
   const retryCheckout = useCallback(() => {
     setCheckoutClientSecret('')
     setCheckoutSessionId('')
@@ -226,7 +239,7 @@ export function BillingProvider({ children }) {
 
   return (
     <BillingContext.Provider
-      value={{ entitlement, mayGenerate, billingEnabled, priceLabel, openPaywall, subscribe, manage, cancelSubscription, busy }}
+      value={{ entitlement, mayGenerate, billingEnabled, priceLabel, openPaywall, startCheckout, subscribe, manage, cancelSubscription, busy }}
     >
       {children}
       {open ? (
