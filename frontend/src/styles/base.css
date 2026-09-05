@@ -1797,6 +1797,34 @@
     }
   }
 
+  /* Every label/list this docked rail only shows while expanded (the
+     wordmark, the plans list, "Workspace Tools", the nav item labels) used
+     to mount at full opacity the instant `collapsed` flipped false — while
+     .app-rail's own width was still animating from 68px (that inline
+     transition-[width] over --t-base, above in AppShell.jsx). A whole
+     column of text — sometimes a full chat list — reflowing/overflowing
+     visibly as the rail widened underneath it read as broken. Collapsing
+     never showed the same problem: that content just vanishes instantly
+     with nothing left on screen to reflow. This holds newly-mounted content
+     invisible until the width transition has actually finished, then fades
+     it in on its own — so the two animations settle one after the other
+     instead of visibly fighting mid-flight.
+
+     Scoped to :not(.rail-drawer): the phone drawer reuses this same Rail
+     component and the same markup/classes, but it slides via `transform`
+     at a constant width (rail-drawer-in, above) — nothing there ever
+     reflows, so its content has never needed this delay and shouldn't
+     gain one. */
+  .app-rail:not(.rail-drawer) .rail-reveal {
+    opacity: 0;
+    animation: rail-reveal-in var(--t-fast) var(--ease-out) var(--t-base) both;
+  }
+  @keyframes rail-reveal-in {
+    to {
+      opacity: 1;
+    }
+  }
+
   /* The docked nav rail's own collapse handle — same groove language as
      .artifact-drawer-handle on the other side of the screen, mirrored: that
      one sits at the LEFT edge of a panel that grows leftward, this one sits

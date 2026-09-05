@@ -407,7 +407,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
             wordmark itself — not the button — is what should give, since
             "FlexEd Aca…" reads worse truncated than it does simply smaller. */}
         {collapsed ? null : (
-          <span className="min-w-0 flex-1 truncate text-[13.5px] font-bold tracking-tight text-ink">
+          <span className="rail-reveal min-w-0 flex-1 truncate text-[13.5px] font-bold tracking-tight text-ink">
             FlexEd Academy
           </span>
         )}
@@ -529,7 +529,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
       </div>
 
       {collapsed ? null : (
-        <nav className="min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
+        <nav className="rail-reveal min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
           <div
             ref={spacious ? pullToRefresh.containerRef : undefined}
             // .scroll-y, not plain overflow-y-auto: without its
@@ -650,7 +650,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         
         {/* Every plan this class has ever built, placed at the bottom near account settings. */}
         <div className="mt-2 mb-2">
-          {collapsed ? null : <p className="eyebrow px-4 pb-2">Workspace Tools</p>}
+          {collapsed ? null : <p className="rail-reveal eyebrow px-4 pb-2">Workspace Tools</p>}
           <ul className={`flex flex-col gap-0 ${collapsed ? 'px-1 items-center' : 'px-2'}`}>
             <li>
               <NavLink
@@ -666,7 +666,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 }
               >
                 <Database size={spacious ? 19 : 17} aria-hidden="true" />
-                {collapsed ? null : <span>Standards</span>}
+                {collapsed ? null : <span className="rail-reveal">Standards</span>}
               </NavLink>
             </li>
             <li>
@@ -684,7 +684,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 }
               >
                 <Users size={spacious ? 19 : 17} aria-hidden="true" />
-                {collapsed ? null : <span>Classroom Profile</span>}
+                {collapsed ? null : <span className="rail-reveal">Classroom Profile</span>}
               </NavLink>
             </li>
             <li>
@@ -701,7 +701,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 }
               >
                 <FileText size={spacious ? 19 : 17} aria-hidden="true" />
-                {collapsed ? null : <span>Library</span>}
+                {collapsed ? null : <span className="rail-reveal">Library</span>}
               </NavLink>
             </li>
           </ul>

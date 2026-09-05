@@ -195,25 +195,25 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           {avatarNode}
         </button>
       ) : (
-        <div className="flex min-w-0 flex-1 items-center">
-          <Link
-            to={`${classPath}/settings`}
-            onClick={() => setOpen(false)}
+        <div className="rail-reveal flex min-w-0 flex-1 items-center">
+          {/* One control, not two — this used to be a Link straight to
+              Settings sitting beside a separate chevron button that opened
+              this same popover, and the popover already has its own
+              Settings row (below). Both pieces did the same job of "find
+              your account," just at different distances, so they're merged
+              into the single toggle the collapsed state above already
+              uses. */}
+          <button
+            type="button"
             className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left transition-colors hover:bg-paper-inset ${spacious ? 'min-h-[48px] px-2.5 py-2.5' : 'gap-2 px-2 py-1.5'}`}
-            title="Open settings"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-label={`Open account menu for ${name}`}
+            title={name}
           >
             {avatarNode}
             <span className={`min-w-0 flex-1 truncate font-medium text-ink-soft ${spacious ? 'text-sm' : 'text-xs'}`}>{name}</span>
-          </Link>
-          <button
-            type="button"
-            className="grid shrink-0 place-items-center rounded-md p-2 text-ink-faint transition-colors hover:bg-paper-inset hover:text-ink"
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-            aria-label="Open account menu"
-            title="Account menu"
-          >
-            <ChevronUp size={spacious ? 15 : 13} aria-hidden="true" />
+            <ChevronUp size={spacious ? 15 : 13} className="shrink-0 text-ink-faint" aria-hidden="true" />
           </button>
         </div>
       )}
