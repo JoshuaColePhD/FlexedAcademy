@@ -21,6 +21,7 @@ PY = sys.executable
 # (script, needs_corpus) — needs_corpus means it queries the live DB + embeddings.
 SUITES: list[tuple[str, bool]] = [
     ("test_alabama_ingest_quality.py", False),
+    ("test_alabama_parity_diff.py", False),
     ("test_golden_corpus_alignment.py", False),
     ("test_current_golden_recall.py", True),
     ("test_embedding_cache.py", False),
