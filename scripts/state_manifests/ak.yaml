@@ -1,0 +1,41 @@
+# Alaska — state standards ingestion manifest.
+#
+# SCAFFOLD, written by scripts/state_queue.py. Not ingestable until `sources`
+# and `course_map` are filled in, and they are filled in by different things:
+#
+#   * `sources` comes from scripts/fetch_state_sources.py --state AK, which
+#     records package ids, official source URLs and SHA-256 hashes. Machine
+#     -written provenance; do not type it by hand.
+#   * `course_map` is authored by a person reading Alaska's published course
+#     list against the frameworks that fetch actually returned. It is the
+#     reviewable artifact of adding a state, and the reason a state cannot be
+#     added by running a script alone.
+#
+# A (subject, grade) that cannot be bound with confidence goes in `unmapped`
+# with a reason. A teacher who selects it is told there are no standards yet,
+# never handed the nearest-looking framework.
+
+state: Alaska
+state_code: AK
+ingestion_contract_version: 1
+
+# TO BE CONFIRMED before fetching. If Alaska runs its own CASE server, use it:
+# the state's own feed is the authoritative publication, and its packages carry
+# an officialSourceURL pointing at the PDF that verifies them. Only fall back to
+# a mirror when the state publishes no CASE feed of its own — and record which
+# was used, because it changes what "verbatim" can be checked against.
+authority: TODO — the Alaska department of education
+case_api: TODO
+
+# TO BE RECORDED from the publisher's actual terms. Left explicitly unknown
+# rather than assumed permissive.
+license_or_usage: UNKNOWN — record the publisher's published terms before ingesting.
+
+default_grades: "0-12"
+
+pdf_dir: data/raw/source_docs/AK
+output: data/processed/ak_chunks.json
+
+sources: []
+course_map: []
+unmapped: []
