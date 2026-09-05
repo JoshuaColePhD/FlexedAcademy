@@ -921,8 +921,8 @@ export function ClassPage() {
   const { classes, activeClass, isLoading: classesLoading } = useActiveClass()
 
   const frameworksState = useQuery({
-    queryKey: qk.frameworks,
-    queryFn: () => api.getFrameworks(),
+    queryKey: qk.frameworks(activeClass?.state),
+    queryFn: () => api.getFrameworks({ state: activeClass?.state }),
     staleTime: Infinity,
   })
   const frameworks = frameworksState.data || []

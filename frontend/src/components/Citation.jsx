@@ -26,29 +26,32 @@ let closeOpenPopover = null
 
 const normalize = normalizeCode
 
-function Popover({ code, subject, anchorRef, onClose, popoverId }) {
+function Popover({ code, subject, state, anchorRef, onClose, popoverId }) {
   // The lookup and its cache both live in lib/standardsCache.js now, shared
-  // with the rail's Standards panel — see that module for why `subject` is
-  // part of the cache key, not just the request.
-  const [record, setRecord] = useState(() => getCached(code, subject))
+  // with the rail's Standards panel — see that module for why `subject` (and
+  // now `state`) is part of the cache key, not just the request. Omitting
+  // `state` would fall back to Alabama server-side (backend/retrieval.py's
+  // chunk_for_code default) regardless of the class's own state — exactly
+  // the cross-state leak a Georgia teacher's own cited code must never hit.
+  const [record, setRecord] = useState(() => getCached(code, subject, state))
   const [error, setError] = useState(null)
   const [pos, setPos] = useState(null)
   const popRef = useRef(null)
 
   useEffect(() => {
-    const cached = getCached(code, subject)
+    const cached = getCached(code, subject, state)
     if (cached !== undefined) {
       setRecord(cached)
       return
     }
     const controller = new AbortController()
-    fetchStandard(code, { subject, signal: controller.signal })
+    fetchStandard(code, { subject, state, signal: controller.signal })
       .then(setRecord)
       .catch((e) => {
         if (e?.name !== 'AbortError') setError(e)
       })
     return () => controller.abort()
-  }, [code, subject])
+  }, [code, subject, state])
 
   /* Below --md this is a bottom sheet, not a popover.
      A getBoundingClientRect-positioned card is fiddly on a phone and lands
@@ -149,7 +152,7 @@ function Popover({ code, subject, anchorRef, onClose, popoverId }) {
 
 let citeSeq = 0
 
-export function Cite({ code, subject, grounded }) {
+export function Cite({ code, subject, state, grounded }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const idRef = useRef(null)
@@ -199,7 +202,7 @@ export function Cite({ code, subject, grounded }) {
         {code}
       </button>
       {open ? (
-        <Popover code={code} subject={subject} anchorRef={ref} onClose={close} popoverId={idRef.current} />
+        <Popover code={code} subject={subject} state={state} anchorRef={ref} onClose={close} popoverId={idRef.current} />
       ) : null}
     </>
   )
@@ -210,7 +213,7 @@ export function Cite({ code, subject, grounded }) {
  * `groundedCodes` is the set retrieval actually supplied; anything else is
  * flagged rather than quietly rendered as fact.
  */
-export function CitedText({ text, groundedCodes, subject }) {
+export function CitedText({ text, groundedCodes, subject, state }) {
   if (!text) return null
   // Normalize BOTH sides. The backend stores retrieved ids upper-cased, but a
   // plan loaded from elsewhere may not be, and a case mismatch would falsely
@@ -225,7 +228,7 @@ export function CitedText({ text, groundedCodes, subject }) {
     <>
       {parts.map((part, i) =>
         i % 2 === 1 ? (
-          <Cite key={i} code={part} subject={subject} grounded={!checking || known.has(normalize(part))} />
+          <Cite key={i} code={part} subject={subject} state={state} grounded={!checking || known.has(normalize(part))} />
         ) : (
           part
         )

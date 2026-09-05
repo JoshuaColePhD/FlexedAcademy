@@ -50,7 +50,7 @@ const RETRY_DELAY_MS = 600
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-export function useLessonStream({ onDone, onError } = {}) {
+export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [status, setStatus] = useState(null)
   const [text, setText] = useState('')
@@ -124,8 +124,12 @@ export function useLessonStream({ onDone, onError } = {}) {
   // Latest callbacks without making them dependencies of `start`.
   const onDoneRef = useRef(onDone)
   const onErrorRef = useRef(onError)
+  const onStatusRef = useRef(onStatus)
+  const onStartRef = useRef(onStart)
   onDoneRef.current = onDone
   onErrorRef.current = onError
+  onStatusRef.current = onStatus
+  onStartRef.current = onStart
 
   /* Stopping CLEARS the half-written week.
    *
@@ -164,14 +168,14 @@ export function useLessonStream({ onDone, onError } = {}) {
   // One attempt: opens the SSE connection and either returns the finished
   // result or throws. Retrying lives in `start`, not here — see useChatStream
   // for why that split matters (onDone must fire at most once per call).
-  const attempt = useCallback(async (query, { chatId, weekNumber, classId, conversationContext, referenceContext, controller }) => {
+  const attempt = useCallback(async (query, { chatId, weekNumber, classId, conversationContext, referenceContext, controller, requestId, attempt }) => {
     cancelQueuedPlan()
     setText('')
     setPreview(null)
     setGrounding(null)
     setDayNames(null)
     groundingRef.current = null
-    setStatus({ phase: 'accepted', label: 'Accepted' })
+    setStatus({ phase: 'accepted', label: 'Accepted', requestId })
     perf.mark('lesson-stream:start')
 
     let accumulated = ''
@@ -190,6 +194,8 @@ export function useLessonStream({ onDone, onError } = {}) {
         // own, and the backend now refuses to guess one. See generate.py's
         // GenerateRequest.class_id for the write-side half of this fix.
         class_id: classId ?? null,
+        request_id: requestId,
+        attempt,
       }),
       signal: controller.signal,
       credentials: 'include',
@@ -251,7 +257,20 @@ export function useLessonStream({ onDone, onError } = {}) {
               context_ready: 'Class context ready',
             }
             const phase = typeof event.status === 'string' ? event.status : event.status.phase
-            setStatus({ phase, label: event.status.label || labels[phase] || phase })
+            const nextStatus = {
+              phase,
+              label: event.status.label || labels[phase] || phase,
+              requestId: event.request_id || requestId,
+              attempt: event.attempt ?? 0,
+            }
+            setStatus(nextStatus)
+            onStatusRef.current?.({
+              code: phase,
+              label: nextStatus.label,
+              requestId: nextStatus.requestId,
+              attempt: nextStatus.attempt,
+              step: phase === 'retrieving' ? 'retrieval' : phase === 'writing' ? 'building' : phase === 'thinking' ? 'planning' : phase === 'context_ready' ? 'planning' : phase === 'accepted' ? 'context' : undefined,
+            })
           }
           if (Array.isArray(event.template_days) && event.template_days.length) {
             setDayNames(event.template_days)
@@ -290,17 +309,21 @@ export function useLessonStream({ onDone, onError } = {}) {
     perf.measure('lesson-stream:duration', 'lesson-stream:start', 'lesson-stream:end')
     // Grounding rides along, because `finished` (the done event) has none and
     // the caller's `stream.grounding` is a stale read.
-    return { ...finished, grounding: groundingRef.current }
+    return { ...finished, grounding: groundingRef.current, requestId }
   }, [cancelQueuedPlan, flushPlanUpdate, queuePlanUpdate])
 
   const start = useCallback(
-    async (query, { chatId, weekNumber, classId, conversationContext = '', referenceContext = '' } = {}) => {
+    async (query, { chatId, weekNumber, classId, conversationContext = '', referenceContext = '', requestId: requestedRequestId } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
+      const requestId = requestedRequestId || (typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      onStartRef.current?.({ requestId, attempt: 0 })
 
       setIsStreaming(true)
-      setStatus({ phase: 'accepted', label: 'Accepted' })
+      setStatus({ phase: 'accepted', label: 'Accepted', requestId })
 
       try {
         let lastErr = null
@@ -314,13 +337,17 @@ export function useLessonStream({ onDone, onError } = {}) {
               conversationContext,
               referenceContext,
               controller,
+              requestId,
+              attempt: tryNum,
             })
             onDoneRef.current?.(result)
             return result
           } catch (err) {
             if (err.name === 'AbortError') return null // user pressed Stop
             lastErr = err
-            setStatus({ phase: 'retrying', label: tryNum < MAX_AUTO_RETRIES ? 'Reconnecting…' : 'Could not finish' })
+            const retryStatus = { phase: 'retrying', label: tryNum < MAX_AUTO_RETRIES ? 'Reconnecting…' : 'Could not finish', requestId, attempt: tryNum }
+            setStatus(retryStatus)
+            onStatusRef.current?.({ code: retryStatus.phase, label: retryStatus.label, requestId, attempt: tryNum, step: 'building' })
             const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
             if (!retryable || tryNum === MAX_AUTO_RETRIES) break
           }

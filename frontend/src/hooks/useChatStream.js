@@ -115,7 +115,7 @@ function openerCut(s) {
   return -1
 }
 
-export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onRetry, onStatus } = {}) {
+export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onRetry, onStatus, onStart } = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [text, setText] = useState('')
   const [status, setStatus] = useState(null)
@@ -183,12 +183,14 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   const onSentenceRef = useRef(onSentence)
   const onRetryRef = useRef(onRetry)
   const onStatusRef = useRef(onStatus)
+  const onStartRef = useRef(onStart)
   onDoneRef.current = onDone
   onErrorRef.current = onError
   onGeneratePlanRef.current = onGeneratePlan
   onSentenceRef.current = onSentence
   onRetryRef.current = onRetry
   onStatusRef.current = onStatus
+  onStartRef.current = onStart
 
   const stop = useCallback(() => {
     abortRef.current?.abort()
@@ -210,7 +212,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, referenceContext, controller, requestId }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, referenceContext, controller, requestId, attempt }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -229,6 +231,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           voice: Boolean(voice),
           week_number: weekNumber ?? null,
           request_id: requestId,
+          attempt,
         }),
         signal: controller.signal,
         credentials: 'include',
@@ -373,6 +376,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
               code: event.status_code || event.status,
               label: event.label || event.message || event.status_label || event.status,
               requestId: event.request_id || requestId,
+              attempt: event.attempt ?? 0,
             }
             setStatus(nextStatus)
             perf.mark(`chat-stream:status:${nextStatus.code}`)
@@ -381,7 +385,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
 
           if (event.tool_call === 'generate_lesson_plan') {
             toolCalled = true
-            onGeneratePlanRef.current?.(accumulated)
+            onGeneratePlanRef.current?.(accumulated, requestId)
           }
 
           // The clarifying-questions alternative — see backend/llm.py's
@@ -391,6 +395,16 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           // event already carries the finished array.
           if (event.tool_call === 'ask_clarifying_questions') {
             questions = event.questions || []
+          }
+
+          if (event.tool_call) {
+            onStatusRef.current?.({
+              code: 'tool_call',
+              label: event.tool_call === 'generate_quiz' ? 'Quiz action selected' : 'Planning action selected',
+              requestId,
+              attempt: event.attempt ?? 0,
+              tool: event.tool_call,
+            })
           }
 
           if (event.research_sources) {
@@ -493,6 +507,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     // piece by piece, so its own end-of-turn speak() would be a duplicate.
     return {
       text: accumulated,
+      requestId,
       toolCalled,
       questions,
       quizRequested,
@@ -505,14 +520,15 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   }, [cancelQueuedText, queueText, flushText])
 
   const start = useCallback(
-    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, referenceContext = '' } = {}) => {
+    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, referenceContext = '', requestId: requestedRequestId } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
-      const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
+      const requestId = requestedRequestId || (typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
       activeRequestRef.current = requestId
+      onStartRef.current?.({ requestId, attempt: 0 })
       window.clearTimeout(slowTimerRef.current)
 
       setIsStreaming(true)
@@ -521,7 +537,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       onStatusRef.current?.({ code: 'connecting', label: 'Connecting…', requestId })
       slowTimerRef.current = window.setTimeout(() => {
         if (activeRequestRef.current !== requestId) return
-        const slowStatus = { code: 'still_working', label: 'Still working…', requestId }
+        const slowStatus = { code: 'still_working', label: 'Still working…', requestId, attempt: 0 }
         setStatus(slowStatus)
         onStatusRef.current?.(slowStatus)
       }, 7500)
@@ -541,6 +557,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
               referenceContext,
               controller,
               requestId,
+              attempt: tryNum,
             })
             onDoneRef.current?.(result)
             setStatus({ code: 'complete', label: 'Ready', requestId })
@@ -555,7 +572,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
             // before retrying the model, otherwise the retry speaks the same
             // opening sentence twice.
             onRetryRef.current?.()
-            const retryStatus = { code: 'retrying', label: `Retrying… (${tryNum + 1}/${MAX_AUTO_RETRIES})`, requestId }
+            const retryStatus = { code: 'retrying', label: `Retrying… (${tryNum + 1}/${MAX_AUTO_RETRIES})`, requestId, attempt: tryNum }
             setStatus(retryStatus)
             onStatusRef.current?.(retryStatus)
           }

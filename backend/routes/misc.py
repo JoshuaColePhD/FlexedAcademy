@@ -165,17 +165,30 @@ def known_course_ids() -> set[str]:
 
 
 @router.get("/frameworks")
-def get_frameworks():
+def get_frameworks(state: str = "AL"):
     """What the Subject Framework and Grade Level dropdowns are built from.
 
     Derived from the chunks, so a framework is offered only while it is actually
     ingested — the UI can't present a subject retrieval would fail to ground.
+
+    Scoped to one state at a time (default 'AL', matching every class created
+    before multi-state support existed) — without this, a second state's
+    frameworks would list interleaved with Alabama's with no way to tell them
+    apart, since two states can both have e.g. a "Mathematics (2019)".
     """
+    state = state.upper()
     grades: dict[str, set[int]] = {}
     counts: Counter = Counter()
     verbatim: Counter = Counter()
+    # Georgia's "ELA" is not Alabama's "English Language Arts (2021)" —
+    # each state's own adopted title (public.standards_frameworks) takes
+    # priority over the hardcoded SUBJECT_LABELS below, which only applies
+    # where a course has no manifest row yet.
+    titles = db.framework_titles(state)
 
     for c in retrieval.load_chunks():
+        if c.get("state") != state:
+            continue
         course = c.get("course")
         if not course:
             continue
@@ -196,7 +209,7 @@ def get_frameworks():
     result = [
         {
             "id": course,
-            "label": SUBJECT_LABELS.get(course, course.replace("_", " ")),
+            "label": titles.get(course) or SUBJECT_LABELS.get(course, course.replace("_", " ")),
             "grades": sorted(grades.get(course, set())),
             "chunks": counts[course],
             "verbatim_ok": verbatim[course],

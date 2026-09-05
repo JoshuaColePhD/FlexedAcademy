@@ -6375,7 +6375,7 @@
     border: 1px solid var(--edge);
     border-radius: var(--r-xl);
     background: var(--paper-raised);
-    box-shadow: var(--shadow-raised);
+    box-shadow: var(--shadow-sm);
   }
   .cal-toolbar {
     display: grid;
@@ -9907,6 +9907,219 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+}
+
+/* A turn-owned activity surface: live work stays close to the composer while
+   the completion receipt remains attached to the teacher's request. It
+   describes observable work only; hidden model deliberation is never rendered. */
+.work-activity-card {
+  width: min(100%, 38rem);
+  margin-top: 0.65rem;
+  padding: 0.35rem 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  animation: fa-rise 0.2s var(--ease) both;
+}
+
+.work-activity-card.is-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding-top: 0.25rem;
+}
+
+.work-activity-card.is-compact .work-activity-mark {
+  width: 1.35rem;
+  height: 1.35rem;
+  background: transparent;
+  animation: fa-work-sparkle 3.8s ease-in-out infinite;
+}
+
+.work-activity-compact-copy {
+  color: var(--ink-muted);
+  font-size: var(--fs-2xs);
+  line-height: 1.4;
+}
+
+@keyframes fa-work-sparkle {
+  0%, 18%, 44%, 100% { opacity: 0.58; transform: scale(0.94) rotate(0deg); }
+  8% { opacity: 1; transform: scale(1.08) rotate(16deg); }
+  14% { opacity: 0.82; transform: scale(1) rotate(28deg); }
+  27% { opacity: 0.66; transform: scale(0.96) rotate(28deg); }
+  36% { opacity: 1; transform: scale(1.06) rotate(8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-activity-card.is-compact .work-activity-mark {
+    animation: none;
+  }
+}
+
+.work-activity-card.is-complete {
+  background: transparent;
+}
+
+.work-activity-card.is-error {
+  background: transparent;
+}
+
+.work-activity-card.is-cancelled {
+  background: transparent;
+}
+
+.work-activity-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.work-activity-mark {
+  display: grid;
+  width: 1.65rem;
+  height: 1.65rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  background: rgb(var(--accent-rgb) / 0.11);
+  color: var(--accent-text);
+}
+
+.is-complete .work-activity-mark {
+  background: rgb(var(--ok-rgb) / 0.13);
+  color: var(--ok);
+}
+
+.is-error .work-activity-mark {
+  background: rgb(var(--mark-rgb) / 0.13);
+  color: var(--mark);
+}
+
+.work-activity-title,
+.work-activity-summary {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-activity-title {
+  color: var(--ink);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+.work-activity-summary {
+  margin-top: 0.12rem;
+  color: var(--ink-muted);
+  font-size: var(--fs-2xs);
+}
+
+.work-activity-stop,
+.work-activity-action,
+.work-activity-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.work-activity-stop {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgb(var(--edge-rgb) / 0.75);
+  border-radius: 999px;
+  color: var(--ink-soft);
+}
+
+.work-activity-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.36rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.work-activity-step {
+  display: flex;
+  align-items: center;
+  gap: 0.48rem;
+  color: var(--ink-faint);
+  font-size: var(--fs-2xs);
+}
+
+.work-activity-step-icon {
+  display: grid;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.work-activity-step.is-active {
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+}
+
+.work-activity-step.is-complete {
+  color: var(--ink-soft);
+}
+
+.work-activity-step.is-error {
+  color: var(--mark);
+}
+
+.work-activity-step-detail {
+  margin-left: auto;
+  color: var(--ink-muted);
+}
+
+.work-activity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 0.7rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgb(var(--edge-rgb) / 0.65);
+}
+
+.work-activity-details-toggle {
+  margin-top: 0.65rem;
+  padding: 0;
+  color: var(--ink-muted);
+  font-weight: var(--fw-medium);
+}
+
+.work-activity-details {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgb(var(--edge-rgb) / 0.55);
+  color: var(--ink-muted);
+  font-size: var(--fs-2xs);
+  line-height: 1.45;
+}
+
+.work-activity-details p {
+  margin: 0.2rem 0;
+}
+
+@media (max-width: 680px) {
+  .work-activity-card {
+    width: 100%;
+    padding: 0.3rem 0 0;
+  }
+
+  .work-activity-step:nth-child(n + 4) {
+    display: none;
+  }
+
 }
 
 .chat-context-strip {

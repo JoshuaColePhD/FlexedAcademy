@@ -1,0 +1,992 @@
+/* Codex-inspired workspace layer.
+ *
+ * This intentionally sits after the historical stylesheet: the product keeps
+ * its established component semantics while the application shell changes from
+ * soft/neomorphic surfaces to a compact pane-and-divider workspace.
+ */
+
+:root {
+  --sidebar-w: 15rem;
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --t-fast: 100ms;
+  --t-base: 160ms;
+  --t-enter: 180ms;
+  --t-panel: 220ms;
+  --t-slow: 220ms;
+  --motion-lift: 1px;
+  --motion-reveal: 2px;
+  --paper-rgb: 247 247 248;
+  --paper-raised-rgb: 255 255 255;
+  --paper-sunken-rgb: 242 242 244;
+  --paper-inset-rgb: 235 235 238;
+  --edge-rgb: 225 225 229;
+  --edge-strong-rgb: 203 203 210;
+  --ink-rgb: 30 30 34;
+  --ink-soft-rgb: 64 64 71;
+  --ink-muted-rgb: 105 105 115;
+  --ink-faint-rgb: 155 155 166;
+  --accent-rgb: 111 87 221;
+  --accent-hover-rgb: 91 70 190;
+  --accent-tint-rgb: 239 236 255;
+  --accent-text-rgb: 91 70 190;
+  --msg-user-bg-rgb: 111 87 221;
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-sm: 0 2px 6px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 6px 18px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 12px 28px rgb(0 0 0 / 0.14);
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.16);
+  --shadow-panel: -1px 0 0 var(--edge);
+}
+
+/* The legacy skin declares its own palette on each portal and app root.
+ * Inherit the shared primitives so portals and the canvas cannot drift apart. */
+.neo-world {
+  --paper-rgb: inherit !important;
+  --paper-raised-rgb: inherit !important;
+  --paper-sunken-rgb: inherit !important;
+  --paper-inset-rgb: inherit !important;
+  --edge-rgb: inherit !important;
+  --edge-strong-rgb: inherit !important;
+  --ink-rgb: inherit !important;
+  --ink-soft-rgb: inherit !important;
+  --ink-muted-rgb: inherit !important;
+  --ink-faint-rgb: inherit !important;
+  --ink-inverse-rgb: inherit !important;
+  --accent-rgb: inherit !important;
+  --accent-hover-rgb: inherit !important;
+  --accent-tint-rgb: inherit !important;
+  --accent-text-rgb: inherit !important;
+  --shadow-xs: inherit !important;
+  --shadow-sm: inherit !important;
+  --shadow-md: inherit !important;
+  --shadow-lg: inherit !important;
+  --shadow-pop: inherit !important;
+  --shadow-panel: inherit !important;
+}
+
+:root[data-theme='dark'] {
+  --paper-rgb: 23 23 25;
+  --paper-raised-rgb: 30 30 33;
+  --paper-sunken-rgb: 20 20 22;
+  --paper-inset-rgb: 38 38 42;
+  --edge-rgb: 57 57 63;
+  --edge-strong-rgb: 79 79 87;
+  --ink-rgb: 242 242 245;
+  --ink-soft-rgb: 209 209 216;
+  --ink-muted-rgb: 166 166 177;
+  --ink-faint-rgb: 112 112 124;
+  --accent-rgb: 151 132 255;
+  --accent-hover-rgb: 174 160 255;
+  --accent-tint-rgb: 54 48 82;
+  --accent-text-rgb: 183 171 255;
+  --msg-user-bg-rgb: 151 132 255;
+}
+
+/* The workspace is one quiet application surface, not several floating cards. */
+.app-texture,
+.neo-world {
+  background: var(--paper) !important;
+}
+.app-blob,
+.app-shell-frame > .app-blob,
+.app-texture > .app-blob {
+  display: none !important;
+}
+.app-shell-frame {
+  gap: 0 !important;
+  padding: 0 !important;
+  background: var(--paper) !important;
+}
+:root[data-theme] .app-rail,
+:root[data-theme] .app-shell-main,
+:root[data-theme] .glass-panel {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+:root[data-theme] .app-rail.glass-panel,
+:root[data-theme] .app-rail {
+  border-right: 1px solid var(--edge) !important;
+  background: var(--paper-sunken) !important;
+}
+:root[data-theme] .app-shell-main.glass-panel {
+  background: var(--paper) !important;
+}
+/* Dense, predictable navigation. */
+.app-rail .neo-raised,
+.app-rail .neo-inset,
+.app-rail .btn-blob,
+.app-rail .rail-card {
+  box-shadow: none !important;
+}
+.app-rail .rail-new-plan-row,
+.app-rail .btn-blob {
+  border-radius: var(--r-md) !important;
+}
+.app-rail .btn-blob {
+  border: 1px solid var(--edge) !important;
+  background: var(--paper-raised) !important;
+}
+.app-rail .btn-blob:hover,
+.app-rail .btn-blob:focus-visible {
+  border-color: rgb(var(--accent-rgb) / 0.65) !important;
+  background: var(--accent-tint) !important;
+}
+.app-rail a,
+.app-rail button {
+  transition-property: color, background-color, border-color, transform !important;
+  transition-duration: var(--t-fast) !important;
+}
+.app-rail .neo-inset {
+  background: var(--accent-tint) !important;
+  color: var(--accent-text) !important;
+}
+.app-rail .rail-reveal {
+  animation-delay: 60ms !important;
+}
+
+/* Conversation canvas. */
+.chat-topbar,
+.chat-header,
+.chat-context-bar {
+  border-color: var(--edge) !important;
+  background: var(--paper) !important;
+  box-shadow: none !important;
+}
+.msg-bubble.neo-raised,
+.msg-bubble-assistant,
+.msg-bubble-user {
+  box-shadow: none !important;
+}
+.msg-bubble-assistant {
+  max-width: min(100%, 48rem) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+.msg-bubble-user {
+  border: 1px solid rgb(var(--accent-rgb) / 0.28) !important;
+  border-radius: var(--r-md) !important;
+  background: rgb(var(--msg-user-bg-rgb) / 0.12) !important;
+}
+.message-row .fa-press,
+.message-row button {
+  box-shadow: none !important;
+}
+
+/* A command-like composer: clear edge, quiet controls, one strong send. */
+.composer-shell {
+  border: 1px solid var(--edge-strong) !important;
+  border-radius: var(--r-lg) !important;
+  background: var(--paper-raised) !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05) !important;
+  transition-property: border-color, box-shadow !important;
+  transition-duration: var(--t-fast) !important;
+}
+.composer-shell:focus-within {
+  border-color: rgb(var(--accent-rgb) / 0.75) !important;
+  box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.12) !important;
+}
+.composer-shell .btn-icon,
+.composer-shell button {
+  border-radius: var(--r-sm) !important;
+  box-shadow: none !important;
+}
+.composer-shell button[type='submit'],
+.composer-shell .composer-send {
+  background: var(--accent) !important;
+  color: var(--ink-inverse) !important;
+}
+
+/* Documents become an inspector, with an unobtrusive full-screen reader. */
+.artifact-overlay {
+  border: 0 !important;
+  border-left: 1px solid var(--edge) !important;
+  border-radius: 0 !important;
+  background: var(--paper-raised) !important;
+  box-shadow: none !important;
+  animation-duration: var(--t-panel) !important;
+}
+
+:root[data-high-contrast='true'] {
+  --ink-muted-rgb: 64 64 71;
+  --ink-faint-rgb: 85 85 94;
+  --edge-rgb: 130 130 140;
+  --edge-strong-rgb: 90 90 100;
+}
+:root[data-theme='dark'][data-high-contrast='true'] {
+  --ink-muted-rgb: 215 215 222;
+  --ink-faint-rgb: 190 190 200;
+  --edge-rgb: 130 130 142;
+  --edge-strong-rgb: 170 170 182;
+}
+.doc-shell,
+.doc-head,
+.doc-body {
+  background: var(--paper-raised) !important;
+  box-shadow: none !important;
+}
+.doc-head {
+  min-height: 44px;
+  border-bottom: 1px solid var(--edge) !important;
+  border-radius: 0 !important;
+}
+.doc-body {
+  scrollbar-gutter: stable;
+}
+.doc-sheet {
+  max-width: none !important;
+}
+.doc-shell .plan-table,
+.doc-shell .plan-table th,
+.doc-shell .plan-table td {
+  border-color: var(--edge) !important;
+  box-shadow: none !important;
+}
+@media (min-width: 900px) {
+  .artifact-overlay.is-composer-overlay:not(.is-overlay-fullscreen) {
+    /* Use the viewport as the reference so the panel stays stable while the
+       chat pane is resized. Start just beyond the 15rem rail and its handle,
+       then let the document run to the viewport edge. */
+    position: fixed !important;
+    inset: 0 0 0 calc(var(--sidebar-w) + 0.5rem) !important;
+    width: auto !important;
+    pointer-events: auto;
+    animation: workspace-document-in 220ms var(--ease-out) both !important;
+    backdrop-filter: none !important;
+    will-change: auto !important;
+  }
+  .is-composer-overlay .doc-body {
+    padding: 20px 24px calc(24px + var(--composer-h, 0px));
+    scroll-padding-bottom: calc(24px + var(--composer-h, 0px));
+  }
+  /* The desktop inspector is wide enough to be a comparison surface. Keep
+     every weekday in the same frame instead of making the district table's
+     intrinsic content width push Friday and the actions off-canvas. Narrower
+     layouts retain the scrollable table behavior below the desktop break. */
+  .is-composer-overlay .plan-table-scroll {
+    overflow-x: hidden;
+  }
+  .is-composer-overlay .plan-table {
+    min-width: 0;
+    width: 100%;
+    table-layout: fixed;
+  }
+  .is-composer-overlay .plan-table th,
+  .is-composer-overlay .plan-table td {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .artifact-overlay.is-composer-overlay.is-closing:not(.is-overlay-fullscreen) {
+    animation: workspace-document-out 130ms var(--ease-out) both !important;
+    pointer-events: none;
+  }
+  .is-composer-overlay .doc-sheet {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+}
+
+@keyframes workspace-document-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes workspace-document-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .artifact-overlay.is-composer-overlay,
+  .artifact-overlay.is-composer-overlay.is-closing {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+.workspace-chat { min-width: 0; container-type: inline-size; }
+.workspace-panes,
+.split-layout-content { min-width: 0; min-height: 0; }
+.rail-collapse-collapsed {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.rail-collapse-collapsed:hover,
+.rail-collapse-collapsed:focus-visible {
+  background: var(--paper-inset) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.workspace-artifact-toggle {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.workspace-artifact-toggle:hover,
+.workspace-artifact-toggle:focus-visible {
+  background: var(--paper-inset) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.workspace-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 28px;
+  padding: 0;
+  color: var(--ink-muted);
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: var(--r-sm);
+  box-shadow: none !important;
+}
+.workspace-sidebar-toggle:hover,
+.workspace-sidebar-toggle:focus-visible {
+  color: var(--ink);
+  background: var(--paper-inset) !important;
+  outline: none;
+}
+.checkout-preview,
+.onboarding-course-search-results { min-width: 0; }
+.onboarding-skip { white-space: nowrap; }
+.details-chevron { flex-shrink: 0; transition: transform var(--t-fast); }
+.workspace-topbar { gap: 12px; }
+  .workspace-topbar button { box-shadow: none !important; }
+.workspace-topbar .chat-head { max-width: 45%; }
+.workspace-topbar .chat-week { min-width: 0; }
+.workspace-topbar .chat-week select { min-width: 0; width: 100%; }
+@container (max-width: 700px) {
+  .workspace-school { display: none !important; }
+  .workspace-topbar .chat-head { max-width: 40%; }
+  .workspace-topbar .chat-head button { font-family: var(--font-ui); }
+}
+.is-composer-overlay .doc-head { gap: 8px; padding-inline: 12px; }
+.is-composer-overlay .doc-shell { animation: none; }
+.is-composer-overlay .doc-head { position: relative; z-index: 2; }
+.is-composer-overlay .doc-head > div:last-child {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  z-index: 4;
+}
+.is-composer-overlay .doc-body { position: relative; z-index: 1; }
+.is-composer-overlay .doc-head > * { position: relative; z-index: 3; pointer-events: auto; }
+.is-composer-overlay .doc-head > .flex-1 { display: none; }
+.is-composer-overlay .doc-titles { flex: 1; min-width: 0; }
+.is-composer-overlay .doc-head > div { flex-shrink: 0; gap: 4px; }
+.is-composer-overlay .plan-day-card { border-color: var(--edge); }
+.is-composer-overlay .plan-day-card-head { background: var(--paper-inset); color: var(--ink); }
+.artifact-rail,
+.artifact-rail .rail-card,
+.artifact-rail .rail-open,
+.artifact-rail .rail-row,
+.artifact-rail section {
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  background: transparent !important;
+}
+.artifact-rail {
+  border-left: 1px solid var(--edge) !important;
+  border-radius: 0 !important;
+}
+.artifact-rail .rail-card,
+.artifact-rail section {
+  border: 1px solid var(--edge) !important;
+  border-radius: var(--r-md) !important;
+}
+.artifact-rail button:hover { background: var(--paper-inset) !important; }
+
+/* Rails should read like navigation, not a stack of floating cards. This is
+   the Codex treatment: one quiet surface, compact rows, and weight reserved
+   for the active destination or the one primary artifact. */
+@media (min-width: 768px) {
+  .chat-context-strip {
+    justify-content: flex-start;
+    padding-left: 32px;
+    padding-right: 16px;
+    text-align: left;
+  }
+  .workspace-panes:has(.artifact-drawer.is-open) .chat-context-strip {
+    padding-right: clamp(316px, 28vw, 384px);
+  }
+
+  /* The chat header used to be a 44px utility row while .chat-head itself
+     requires 54px. That mismatch lifted the controls above the visible pane.
+     Give the row the space it already asked for so the entire header is
+     inside the workspace instead of clipped at its top edge. */
+  .workspace-topbar {
+    height: 54px !important;
+    min-height: 54px !important;
+    overflow: visible !important;
+  }
+  .workspace-topbar .chat-head {
+    min-height: 54px !important;
+    box-sizing: border-box;
+  }
+  .app-rail:not(.rail-drawer) > div:first-child > div:first-child {
+    height: 48px !important;
+    margin-top: 0 !important;
+    padding-inline: 10px !important;
+    border-bottom: 1px solid var(--edge);
+  }
+  .app-rail:not(.rail-drawer) .rail-brand-row.is-collapsed {
+    gap: 4px !important;
+    padding-inline: 8px !important;
+  }
+  .app-rail:not(.rail-drawer) > div:first-child > div:nth-child(2) {
+    padding: 8px 10px 6px !important;
+  }
+  .app-rail:not(.rail-drawer) .rail-new-plan-row,
+  .app-rail:not(.rail-drawer) .rail-new-plan-content {
+    gap: 6px;
+  }
+  .app-rail:not(.rail-drawer) .rail-new-plan-content > a,
+  .app-rail:not(.rail-drawer) .rail-search-trigger {
+    min-height: 32px !important;
+    border: 1px solid var(--edge) !important;
+    border-radius: var(--r-md) !important;
+    background: var(--paper-raised) !important;
+  }
+  .app-rail:not(.rail-drawer) .rail-new-plan-content > a {
+    padding-inline: 10px !important;
+  }
+  .app-rail:not(.rail-drawer) .rail-search-trigger {
+    width: 32px !important;
+  }
+  .app-rail:not(.rail-drawer) nav.rail-reveal {
+    padding-top: 4px !important;
+  }
+  .app-rail:not(.rail-drawer) nav.rail-reveal .eyebrow {
+    color: var(--ink-muted) !important;
+    font-size: 10px !important;
+    letter-spacing: 0.12em;
+  }
+  .app-rail:not(.rail-drawer) nav.rail-reveal a {
+    border: 1px solid transparent;
+    transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast) !important;
+  }
+  .app-rail:not(.rail-drawer) nav.rail-reveal a.neo-inset {
+    border-color: rgb(var(--accent-rgb) / 0.22) !important;
+    border-left: 2px solid var(--accent) !important;
+    background: var(--accent-tint) !important;
+    color: var(--accent-text) !important;
+    filter: none !important;
+  }
+  .app-rail:not(.rail-drawer) nav.rail-reveal a:not(.neo-inset):hover {
+    background: var(--paper-inset) !important;
+  }
+  .app-rail:not(.rail-drawer) > div:first-child > div:last-child > .mt-auto {
+    margin-inline: 8px;
+    border-top: 1px solid var(--edge);
+    padding-top: 8px;
+  }
+  .app-rail:not(.rail-drawer) > div:first-child > div:last-child > .mt-2 {
+    margin-top: 8px !important;
+  }
+  .app-rail:not(.rail-drawer) > div:first-child > div:last-child .eyebrow {
+    color: var(--ink-muted) !important;
+    font-size: 10px !important;
+    letter-spacing: 0.12em;
+  }
+  .app-rail:not(.rail-drawer) > div:first-child > div:last-child ul {
+    padding-inline: 10px !important;
+  }
+  .app-rail:not(.rail-drawer) > div:first-child > div:last-child ul a {
+    min-height: 32px !important;
+    padding: 6px 8px !important;
+    border: 1px solid transparent;
+    border-radius: var(--r-md) !important;
+  }
+  /* The materials rail is an inspector, not a column in the chat grid. Float
+     it over the right edge like the reference app so opening it cannot move
+     the transcript or resize the composer. */
+  .workspace-panes {
+    position: relative;
+    align-items: stretch !important;
+  }
+  .workspace-panes > .artifact-drawer {
+    position: absolute;
+    /* Start at the header's bottom edge. The inspector owns the right side of
+       the context strip now, so there is no visual gap between the header and
+       the panel. */
+    top: 54px;
+    right: 12px;
+    bottom: auto;
+    height: min(560px, calc(100% - 66px));
+    z-index: 40;
+    width: clamp(292px, 26vw, 360px);
+    border: 1px solid var(--edge) !important;
+    border-radius: 0 0 var(--r-xl) var(--r-xl) !important;
+    background: var(--paper-raised) !important;
+    box-shadow: var(--shadow-lg) !important;
+    transition: width var(--t-panel) var(--ease-out), box-shadow var(--t-fast) var(--ease-out) !important;
+  }
+  .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    height: auto !important;
+    min-width: 0;
+    min-height: 0;
+  }
+  .workspace-panes > .artifact-drawer.is-open .artifact-rail {
+    flex: 1 1 auto;
+    height: auto !important;
+    min-height: 0;
+    border-left: 0 !important;
+  }
+
+  .artifact-rail:not(.is-bar) {
+    padding: 10px 12px !important;
+    background: var(--paper-raised) !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Outputs'] {
+    order: 0;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Deliverables'] {
+    order: 1;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'] {
+    order: 2;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Sources used'] {
+    order: 3;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Context'] {
+    order: 4;
+    margin-top: auto;
+    margin-bottom: 0 !important;
+    border: 0 !important;
+    border-top: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Outputs'] > div:first-child {
+    padding: 10px 12px !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Outputs'] > div:first-child span {
+    font-size: 13px !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Outputs'] .rail-group {
+    padding: 8px !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Context'] > div:first-child {
+    padding: 10px 2px 8px !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Context'] > div:first-child span {
+    color: var(--ink) !important;
+    font-size: 13px !important;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Context'] .rail-group {
+    padding: 0 !important;
+  }
+  .rail-context-label {
+    margin: 0 2px 7px;
+    color: var(--ink-muted);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .rail-connector-row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 4px;
+    color: var(--ink-soft);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+    background: var(--paper-raised);
+    transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast) !important;
+  }
+  .rail-connector-row:hover,
+  .rail-connector-row:focus-visible {
+    color: var(--ink);
+    border-color: var(--edge-strong);
+    background: var(--paper-inset);
+  }
+  .rail-connector-tile {
+    color: var(--accent-text);
+  }
+  .rail-connector-arrow {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: var(--ink-faint);
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'],
+  .artifact-rail:not(.is-bar) section[aria-label='Sources used'],
+  .artifact-rail:not(.is-bar) section[aria-label='Deliverables'] {
+    margin-bottom: 12px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'] > div:first-child,
+  .artifact-rail:not(.is-bar) section[aria-label='Sources used'] > div:first-child,
+  .artifact-rail:not(.is-bar) section[aria-label='Deliverables'] > div:first-child {
+    padding: 4px 2px 8px !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'] > div:first-child span,
+  .artifact-rail:not(.is-bar) section[aria-label='Sources used'] > div:first-child span,
+  .artifact-rail:not(.is-bar) section[aria-label='Deliverables'] > div:first-child span {
+    color: var(--ink-muted) !important;
+    font-size: 10px !important;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'] .rail-group,
+  .artifact-rail:not(.is-bar) section[aria-label='Sources used'] .rail-group,
+  .artifact-rail:not(.is-bar) section[aria-label='Deliverables'] .rail-group {
+    padding: 0 !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'] ul {
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'] li {
+    padding: 7px 4px !important;
+    border-top: 1px solid var(--edge);
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'] li:first-child {
+    border-top: 0;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='This week'] li > span:first-child,
+  .artifact-rail:not(.is-bar) .rail-row-tile {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: var(--paper-inset) !important;
+    box-shadow: none !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Sources used'] .rail-row,
+  .artifact-rail:not(.is-bar) section[aria-label='Deliverables'] .rail-card {
+    padding: 8px 4px !important;
+    border-radius: var(--r-sm) !important;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Deliverables'] .rail-card {
+    border: 1px solid var(--edge) !important;
+    background: var(--paper-raised) !important;
+  }
+  /* Keep the connector block pinned in the inspector footer. The content
+     above it can scroll independently, matching the reference rail's
+     always-available Context area. */
+  .artifact-rail:not(.is-bar) {
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+  .artifact-rail-scroll {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 12px 14px;
+    scrollbar-gutter: stable;
+  }
+  .artifact-rail-scroll > section {
+    flex: 0 0 auto;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] {
+    order: 0;
+    margin-bottom: 14px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] > div:first-child {
+    display: flex;
+    align-items: center;
+    padding: 4px 2px 8px !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] > div:first-child span {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ink) !important;
+    font-size: 14px !important;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-group {
+    padding: 0 !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card {
+    min-height: 48px;
+    gap: 6px;
+    padding: 8px 4px !important;
+    border: 0 !important;
+    border-top: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    transition: background-color var(--t-fast), color var(--t-fast) !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card:first-child {
+    border-top: 0 !important;
+    border-radius: var(--r-lg) !important;
+    background: var(--paper-sunken) !important;
+    padding-inline: 10px !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card:hover,
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card:focus-within {
+    background: var(--accent-tint) !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card-head {
+    gap: 7px;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-tile {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-sm);
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-title {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.25;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-sub {
+    display: none;
+  }
+  .artifact-rail-scroll > section[aria-label='Deliverables'] {
+    order: 1;
+  }
+  .artifact-rail-scroll > section[aria-label='This week'] {
+    order: 2;
+  }
+  .artifact-rail-scroll > section[aria-label='Sources used'] {
+    order: 3;
+  }
+  .artifact-rail-scroll > section[aria-label='This week'],
+  .artifact-rail-scroll > section[aria-label='Sources used'],
+  .artifact-rail-scroll > section[aria-label='Deliverables'] {
+    margin-bottom: 12px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll > section[aria-label='This week'] > div:first-child,
+  .artifact-rail-scroll > section[aria-label='Sources used'] > div:first-child,
+  .artifact-rail-scroll > section[aria-label='Deliverables'] > div:first-child {
+    padding: 4px 2px 8px !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll > section[aria-label='This week'] > div:first-child span,
+  .artifact-rail-scroll > section[aria-label='Sources used'] > div:first-child span,
+  .artifact-rail-scroll > section[aria-label='Deliverables'] > div:first-child span {
+    color: var(--ink) !important;
+    font-size: 14px !important;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .artifact-rail-scroll > section[aria-label='This week'] .rail-group,
+  .artifact-rail-scroll > section[aria-label='Sources used'] .rail-group,
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-group {
+    padding: 0 !important;
+  }
+  .artifact-rail-scroll > section[aria-label='This week'] ul {
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .artifact-rail-scroll > section[aria-label='This week'] li {
+    padding: 7px 4px !important;
+    border-top: 1px solid var(--edge);
+  }
+  .artifact-rail-scroll > section[aria-label='This week'] li:first-child {
+    border-top: 0;
+  }
+  .artifact-rail-scroll > section[aria-label='This week'] li > span:first-child,
+  .artifact-rail-scroll .rail-row-tile {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: var(--paper-inset) !important;
+    box-shadow: none !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Sources used'] .rail-row,
+  .artifact-rail:not(.is-bar) .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card {
+    padding: 8px 4px !important;
+    border-radius: var(--r-sm) !important;
+  }
+  .artifact-rail:not(.is-bar) .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card {
+    border: 0 !important;
+    border-top: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    min-height: 52px;
+    gap: 6px;
+    padding: 7px 2px !important;
+    transition: background-color var(--t-fast), color var(--t-fast) !important;
+  }
+  .artifact-rail:not(.is-bar) .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card:first-child {
+    border-top: 0 !important;
+  }
+  .artifact-rail:not(.is-bar) .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card:hover,
+  .artifact-rail:not(.is-bar) .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card:focus-within {
+    background: var(--accent-tint) !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card-head {
+    gap: 7px;
+  }
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-tile {
+    width: 9px;
+    height: 9px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent) !important;
+    box-shadow: none !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-tile svg {
+    display: none;
+  }
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-title {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1.25;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-sub {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-sub + .rail-sub {
+    display: none;
+  }
+  .artifact-rail:not(.is-bar) section[aria-label='Context'] > div:first-child span {
+    font-size: 14px !important;
+    font-weight: 600;
+  }
+  .artifact-rail:not(.is-bar) .rail-connector-row {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    position: relative;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--edge) !important;
+    border-radius: var(--r-md);
+    background: var(--paper-raised) !important;
+  }
+  .artifact-rail:not(.is-bar) .rail-connector-tile {
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    background: var(--paper-inset) !important;
+  }
+  .artifact-rail:not(.is-bar) .rail-connector-row .rail-text {
+    flex: 1 1 auto;
+  }
+  .artifact-rail:not(.is-bar) .rail-connector-row .rail-sub,
+  .artifact-rail:not(.is-bar) .rail-connector-arrow {
+    display: none;
+  }
+  .artifact-rail-scroll .rail-actions {
+    opacity: 0;
+    transition: opacity var(--t-fast) var(--ease-out) !important;
+  }
+  .artifact-rail-scroll .rail-card:hover .rail-actions,
+  .artifact-rail-scroll .rail-card:focus-within .rail-actions,
+  .artifact-rail-scroll .rail-row:hover .rail-actions,
+  .artifact-rail-scroll .rail-row:focus-within .rail-actions {
+    opacity: 1;
+  }
+  .artifact-rail-scroll .rail-actions button:focus-visible,
+  .artifact-rail-scroll .rail-actions a:focus-visible {
+    opacity: 1;
+  }
+
+  /* Keep the transcript readable behind the floating inspector. The rail
+     should feel like a companion surface, not a reason for message lines to
+     span the entire viewport. */
+  .chat-transcript-column {
+    max-width: 52rem !important;
+  }
+  .workspace-panes:has(.artifact-drawer.is-open) .chat-transcript-column {
+    width: min(100%, 32rem) !important;
+    max-width: 32rem !important;
+    margin-right: auto !important;
+    margin-left: 32px !important;
+  }
+  .chat-transcript-column .msg-bubble-assistant,
+  .chat-transcript-column .msg-bubble-user {
+    max-width: 32rem !important;
+    font-size: 0.9rem !important;
+    line-height: 1.5 !important;
+  }
+  .artifact-rail:not(.is-bar) > section[aria-label='Context'] {
+    flex: 0 0 auto;
+    margin: 0 !important;
+    padding: 0 12px 12px;
+  }
+}
+
+/* Shared floating primitives now use compact desktop chrome. */
+.dialog,
+.popover,
+.tooltip,
+.toast,
+.panel-scrim + .app-rail {
+  border: 1px solid var(--edge) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.14) !important;
+  backdrop-filter: none !important;
+}
+.neo-raised,
+.neo-inset {
+  box-shadow: none !important;
+}
+.fa-press:active {
+  transform: translateY(1px) !important;
+}
+
+@media (max-width: 767.98px) {
+  .app-rail,
+  .app-shell-main,
+  .artifact-overlay,
+  .doc-head {
+    border-radius: 0 !important;
+  }
+  .artifact-overlay {
+    border-left: 0 !important;
+    border-top: 1px solid var(--edge) !important;
+  }
+}

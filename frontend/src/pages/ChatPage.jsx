@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, Download, History, Loader2, Save, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -29,6 +29,7 @@ import { useInterfacePreferences } from '../hooks/useInterfacePreferences'
 import { durableTurnSnapshot, readTurnOutbox, removeTurnOutbox, writeTurnOutbox } from '../lib/turnOutbox'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
+import { createWorkActivity, updateWorkActivity } from '../lib/workActivity'
 import { Composer } from '../components/Composer'
 import { AddDocumentDialog } from '../components/AddDocumentDialog'
 import { WeekPicker } from '../components/WeekPicker'
@@ -41,10 +42,11 @@ import { ArtifactPanel } from '../components/ArtifactPanel'
 import { ArtifactDetailPanel } from '../components/ArtifactDetailPanel'
 import { PlanPeek } from '../components/PlanPeek'
 import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
-import { LessonPlanProgressTray } from '../components/LessonPlanProgressTray'
+import { WorkActivityCard } from '../components/WorkActivityCard'
 import { Greeting } from '../components/Greeting'
 import { MobileChatHome } from '../components/MobileChatHome'
 import { ChatHeaderSheet } from '../components/ChatHeaderSheet'
+import { WorkspaceRailContext } from '../lib/workspaceRailContext'
 
 /* One chat, one plan.
  *
@@ -76,6 +78,21 @@ import { ChatHeaderSheet } from '../components/ChatHeaderSheet'
 
 let idSeq = 0
 const nextId = () => `m${++idSeq}`
+
+// The composer is a command surface, not a child of whichever side rail is
+// currently open. Its portal follows the live middle column so the input can
+// sit evenly between the navigation rail and the materials inspector.
+const COMPOSER_HOST_MAX_WIDTH = 960
+const COMPOSER_VIEWPORT_GUTTER = 16
+const ARTIFACT_RAIL_MIN_WIDTH = 292
+const ARTIFACT_RAIL_MAX_WIDTH = 360
+const ARTIFACT_RAIL_VW = 0.26
+const ARTIFACT_RAIL_RIGHT_GUTTER = 12
+
+const artifactRailWidth = (viewportWidth) => Math.min(
+  ARTIFACT_RAIL_MAX_WIDTH,
+  Math.max(ARTIFACT_RAIL_MIN_WIDTH, viewportWidth * ARTIFACT_RAIL_VW),
+)
 
 const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
 
@@ -465,6 +482,7 @@ export function ChatPage() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const toast = useToast()
+  const workspaceRail = useContext(WorkspaceRailContext)
   const persistMessage = useCallback(
     async (chatId, payload) => {
       if (!chatId) return null
@@ -491,6 +509,7 @@ export function ChatPage() {
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
   const isTablet = mode === 'tablet'
+  const desktopInspector = useMediaQuery('(min-width: 900px)')
   const tabletPortrait = useMediaQuery('(orientation: portrait)')
   /* An iPhone in landscape commonly reports a tablet-width CSS viewport. It
      still has phone-height space, though, so the desktop header and an
@@ -770,6 +789,69 @@ export function ChatPage() {
      appeared, and then nothing: no spinner, no "Building…", nothing to show
      the app had even heard them. */
   const [preparing, setPreparing] = useState(false)
+  // One inline activity per request. The key is the stream's request_id, while
+  // anchorId keeps the completion receipt attached to the teacher message
+  // that started it even when the request changes from chat routing to plan
+  // generation. Live work is shown above the composer.
+  const [workActivities, setWorkActivities] = useState({})
+  const activityAnchorRef = useRef(null)
+  const activeActivityRequestRef = useRef(null)
+  const pendingActivityKindRef = useRef(null)
+
+  const activityTitle = useCallback((kind) => ({
+    plan: 'Building your lesson plan',
+    revision: 'Updating your lesson plan',
+    quiz: 'Building your quiz',
+    research: 'Gathering research',
+  }[kind] || 'Working on your request'), [])
+
+  const startWorkActivity = useCallback((requestId, kind = 'plan') => {
+    const anchorId = activityAnchorRef.current
+    if (!requestId || !anchorId) return
+    const priorActiveId = activeActivityRequestRef.current
+    activeActivityRequestRef.current = requestId
+    setWorkActivities((previous) => {
+      const previousId = priorActiveId && previous[priorActiveId]?.anchorId === anchorId
+        ? priorActiveId
+        : Object.keys(previous).find((id) => previous[id]?.anchorId === anchorId && previous[id]?.status === 'active')
+      const inherited = previousId ? previous[previousId] : null
+      const next = inherited
+        ? { ...inherited, requestId, kind, title: activityTitle(kind) }
+        : createWorkActivity({ requestId, anchorId, kind, title: activityTitle(kind) })
+      const result = { ...previous, [requestId]: next }
+      if (previousId && previousId !== requestId) delete result[previousId]
+      return result
+    })
+  }, [activityTitle])
+
+  const updateActiveWorkActivity = useCallback((event = {}) => {
+    const requestId = event.requestId || activeActivityRequestRef.current
+    if (!requestId) return
+    setWorkActivities((previous) => {
+      const current = previous[requestId]
+      if (!current) return previous
+      return { ...previous, [requestId]: updateWorkActivity(current, event) }
+    })
+  }, [])
+
+  const finishWorkActivity = useCallback((requestId, patch = {}) => {
+    const id = requestId || activeActivityRequestRef.current
+    if (!id) return
+    setWorkActivities((previous) => {
+      const current = previous[id]
+      if (!current) return previous
+      return {
+        ...previous,
+        [id]: updateWorkActivity({ ...current, ...patch }, {
+          status: patch.status || 'complete',
+          done: patch.status !== 'error' && patch.status !== 'cancelled',
+          label: patch.summary,
+          step: patch.status === 'error' ? current.activeStep : 'saving',
+        }),
+      }
+    })
+    if (activeActivityRequestRef.current === id) activeActivityRequestRef.current = null
+  }, [])
   // Whether the live voice-conversation overlay is open. What "Chat" opens
   // now, everywhere it appears (Composer's icon, Greeting's pill) — see
   // VoiceModePanel for why this replaced a quiet on/off toggle.
@@ -886,7 +968,8 @@ export function ChatPage() {
     // visible, so resizing cannot leave the dock using an old layout.
     // The bottom inset always follows the anchor's live bottom edge, so
     // browser scaling and the lesson-plan overlay cannot strand the dock.
-    el.style.transition = `left 520ms var(--ease-glide), width 520ms var(--ease-glide)`
+    // Follow the measured column directly; a second transition trails its resize.
+    el.style.transition = 'none'
     return el
   })
   /* The document opens over the chat, but it uses the SAME composer geometry
@@ -901,6 +984,7 @@ export function ChatPage() {
 
   const composerAnchorRef = useRef(null)
   const composerDockRef = useRef(null)
+  const stableRailWidthRef = useRef(null)
   const [composerDockH, setComposerDockH] = useState(0)
   // Keeps the host's left/width and shared bottom inset matched to the
   // anchor's live rect. The anchor never moves for its OWN reasons (it's a
@@ -913,12 +997,27 @@ export function ChatPage() {
     if (!anchor) return
     const sync = () => {
       const r = anchor.getBoundingClientRect()
-      // Horizontal geometry always comes from the current anchor. In the
-      // regular view this is the chat column; when the document opens the
-      // rail is removed from the row, so the same calculation naturally
-      // recenters the same composer in the wider available space.
+      // Keep the command surface in the usable middle column. The drawer is
+      // an overlay, so its left edge is the only boundary the anchor cannot
+      // observe through flex sizing; watching that edge here prevents the
+      // composer from stretching underneath an open inspector.
       portalHost.style.left = `${r.left}px`
-      portalHost.style.width = `${r.width}px`
+      const viewportWidth = window.visualViewport?.width || window.innerWidth
+      const drawer = document.querySelector('.artifact-drawer')
+      const drawerRect = drawer?.getBoundingClientRect()
+      if (drawerRect?.width > 0) stableRailWidthRef.current = drawerRect.width
+      // When the rail is closed, retain its last measured width so the
+      // composer does not expand into the inspector's former lane. On the
+      // first open, railOpen supplies the same stable desktop estimate before
+      // the drawer has painted and can be measured directly.
+      const railWidth = stableRailWidthRef.current || (railOpen ? artifactRailWidth(viewportWidth) : 0)
+      const rightBoundary = drawerRect && drawerRect.left > r.left
+        ? drawerRect.left
+        : railWidth > 0
+          ? viewportWidth - ARTIFACT_RAIL_RIGHT_GUTTER - railWidth
+          : viewportWidth - COMPOSER_VIEWPORT_GUTTER
+      const middleColumnWidth = Math.max(0, rightBoundary - r.left)
+      portalHost.style.width = `${Math.min(COMPOSER_HOST_MAX_WIDTH, middleColumnWidth)}px`
       // The same bottom inset applies whether the plan overlay is open or not.
       // Positioning from the anchor's top made the composer depend on the
       // flex transcript's available height; positioning from a special
@@ -927,15 +1026,19 @@ export function ChatPage() {
       portalHost.style.top = 'auto'
       portalHost.style.bottom = `${Math.max(0, window.innerHeight - r.bottom)}px`
       portalHost.style.height = 'auto'
-      portalHost.style.transition = `left 520ms var(--ease-glide), width 520ms var(--ease-glide)`
+      portalHost.style.transition = 'none'
     }
     sync()
     const ro = new ResizeObserver(sync)
     ro.observe(anchor)
+    const drawer = document.querySelector('.artifact-drawer')
+    const drawerRo = drawer ? new ResizeObserver(sync) : null
+    drawerRo?.observe(drawer)
     window.addEventListener('resize', sync)
     window.visualViewport?.addEventListener('resize', sync)
     return () => {
       ro.disconnect()
+      drawerRo?.disconnect()
       window.removeEventListener('resize', sync)
       window.visualViewport?.removeEventListener('resize', sync)
     }
@@ -943,7 +1046,7 @@ export function ChatPage() {
   // first render when the browser reports its real viewport. The composer
   // then moves between normal flow and the portal, so the anchor and portal
   // geometry must be rebound instead of retaining the boot-time bounds.
-  }, [composerDockH, portalHost, isPhone])
+  }, [composerDockH, portalHost, isPhone, railOpen])
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
   // needs — otherwise the transcript would sit a fixed guess-height short of
@@ -1469,7 +1572,18 @@ export function ChatPage() {
   }, [lastChange, artifact, revising, persistMessage, toast])
 
   const stream = useLessonStream({
+    onStart: ({ requestId }) => {
+      const kind = pendingActivityKindRef.current || 'plan'
+      startWorkActivity(requestId, kind)
+      pendingActivityKindRef.current = null
+    },
+    onStatus: (event) => updateActiveWorkActivity(event),
     onDone: (done) => {
+      finishWorkActivity(done.requestId, {
+        status: 'complete',
+        summary: `${done.plan?.days?.length || 0} days built and checked.`,
+        planId: done.plan_id,
+      })
       showReadyNotice('Lesson plan ready')
       setPlanSaveState('saved')
       setLastSavedLabel('Lesson plan saved')
@@ -1543,6 +1657,7 @@ export function ChatPage() {
       refreshAuth()
     },
     onError: (err) => {
+      finishWorkActivity(null, { status: 'error', error: err.message })
       setMessages((prev) => [
         ...prev,
         { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
@@ -1587,7 +1702,36 @@ export function ChatPage() {
     }
   }, [stream.preview, stream.isStreaming, showReadyNotice])
 
+  useEffect(() => {
+    if (!stream.isStreaming || !stream.status?.requestId) return
+    updateActiveWorkActivity({
+      requestId: stream.status.requestId,
+      label: stream.status.label,
+      previewDays: stream.preview?.days || [],
+      dayNames: stream.dayNames || undefined,
+      step: stream.status.phase === 'writing' ? 'building' : stream.status.phase === 'retrieving' ? 'retrieval' : stream.status.phase === 'thinking' ? 'planning' : undefined,
+      code: stream.status.phase,
+    })
+  }, [stream.dayNames, stream.isStreaming, stream.preview, stream.status, updateActiveWorkActivity])
+
   const chatStream = useChatStream({
+    onStart: ({ requestId }) => {
+      if (pendingActivityKindRef.current) {
+        startWorkActivity(requestId, pendingActivityKindRef.current)
+        pendingActivityKindRef.current = null
+      }
+    },
+    onStatus: (event) => {
+      if (event.code === 'tool_call') {
+        const kind = event.tool === 'generate_quiz'
+          ? 'quiz'
+          : event.tool === 'update_lesson_day'
+            ? 'revision'
+            : 'plan'
+        startWorkActivity(event.requestId, kind)
+      }
+      updateActiveWorkActivity(event)
+    },
     onRetry: () => {
       if (voiceOpen) voice.cancelSpeech()
     },
@@ -1634,6 +1778,10 @@ export function ChatPage() {
       // reopening the chat still shows what was asked, even though it's no
       // longer clickable.
       if (result?.questions?.length) {
+        finishWorkActivity(result.requestId, {
+          status: 'complete',
+          summary: 'A few details are needed before building the result.',
+        })
         // Just the first line, even though the prompt (generate.py) now
         // asks the model for one short line here and nothing more — a
         // model that still narrates every question in prose duplicates
@@ -1668,6 +1816,14 @@ export function ChatPage() {
       // If it called the tool, we save the text (e.g. "I'll make that plan now!") and then
       // trigger the actual plan build from the submit function.
       if (result?.text?.trim()) {
+        if (chatMode === 'research') {
+          finishWorkActivity(result.requestId, {
+            status: 'complete',
+            summary: result.researchSources?.length
+              ? `${result.researchSources.length} research sources ready.`
+              : 'Research context is ready.',
+          })
+        }
         settle({
           role: 'assistant',
           content: result.text,
@@ -1715,6 +1871,7 @@ export function ChatPage() {
       }
     },
     onError: (err) => {
+      finishWorkActivity(null, { status: 'error', error: err.message })
       // Same placeholder as onDone above — a request that fails still owns
       // one, and it should turn into the error rather than leave an empty,
       // permanently-streaming bubble sitting above a second, separate one.
@@ -1734,6 +1891,12 @@ export function ChatPage() {
   })
 
   const busy = stream.isStreaming || revising || chatStream.isStreaming || preparing
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')
+  const liveWorkActivity = latestUserMessage
+    ? Object.values(workActivities).find((activity) => (
+        activity.anchorId === latestUserMessage.id && (activity.status === 'active' || activity.status === 'error')
+      ))
+    : null
 
   useEffect(() => {
     if (!isPhone) {
@@ -1937,6 +2100,8 @@ export function ChatPage() {
       // and clears it, so the reply that's about to arrive doesn't drag the
       // view any further than this turn's own opening line.
       followLatestIdRef.current = newUserMessage.id
+      activityAnchorRef.current = newUserMessage.id
+      pendingActivityKindRef.current = null
 
       setMessages(nextMessages)
 
@@ -2102,6 +2267,7 @@ export function ChatPage() {
 
         if (isClearlySpecifiedPlanRequest(typed)) {
           setPreparing(false)
+          pendingActivityKindRef.current = 'plan'
           if (voiceOpen) voice.speak(VOICE_BUILDING)
           // No chat placeholder is needed here: the progress tray is the
           // live response surface, and the completed-plan callback adds the
@@ -2112,11 +2278,13 @@ export function ChatPage() {
             classId,
             conversationContext: priorConversation,
             referenceContext,
+            requestId: options.requestId,
           }).catch(() => {})
           return
         }
 
         setPreparing(false)
+        if (chatMode === 'research') pendingActivityKindRef.current = 'research'
         liveMessageIdRef.current = nextId()
         setMessages((prev) => [
           ...prev,
@@ -2132,6 +2300,7 @@ export function ChatPage() {
           mode: chatMode,
           weekNumber: effectiveWeek,
           referenceContext,
+          requestId: options.requestId,
         })
 
         // Asked instead of building — onDone (above) already rendered the
@@ -2167,6 +2336,7 @@ export function ChatPage() {
           classId,
           conversationContext: firstHistory,
           referenceContext,
+          requestId: firstResult.requestId,
         }).catch(() => {})
         return
       }
@@ -2183,6 +2353,7 @@ export function ChatPage() {
       // synchronously, so busy stays continuously true across this call even
       // though we're about to `await` its whole run rather than fire-and-forget.
       setPreparing(false)
+      if (chatMode === 'research') pendingActivityKindRef.current = 'research'
       /* conversationWeek, not effectiveWeek — and no longer omitted. This
          used to send no week at all, because effectiveWeek had drifted to
          the class's next unplanned week by now and would have named the
@@ -2204,6 +2375,7 @@ export function ChatPage() {
         mode: chatMode,
         weekNumber: conversationWeek,
         referenceContext,
+        requestId: options.requestId,
       })
 
       // The generate_quiz alternative — a distinct request from
@@ -2211,6 +2383,7 @@ export function ChatPage() {
       // useChatStream), handled and returned from here entirely rather
       // than falling into the revise-the-plan branch below.
       if (chatResult?.quizRequested) {
+        startWorkActivity(chatResult.requestId, 'quiz')
         if (!artifact?.planId) {
           // The system prompt already tells the model not to call this
           // tool with no plan built yet (see routes/generate.py's
@@ -2225,6 +2398,7 @@ export function ChatPage() {
               content: "I need to build this week's plan before I can make a quiz for it.",
             },
           ])
+          finishWorkActivity(chatResult.requestId, { status: 'error', error: "I need to build this week's plan first." })
           return
         }
         setQuizBuilding(true)
@@ -2287,7 +2461,12 @@ export function ChatPage() {
                 : `Built "${quiz.title}." Download the Word document or QTI package from the plan panel.`,
             },
           ])
+          finishWorkActivity(chatResult.requestId, {
+            status: 'complete',
+            summary: revisingQuizId ? 'Quiz updated and saved.' : 'Quiz built and saved.',
+          })
         } catch (err) {
+          finishWorkActivity(chatResult.requestId, { status: 'error', error: err.message })
           toast.apiError(revisingQuizId ? 'Could not update the quiz' : 'Could not build the quiz', err)
         } finally {
           setQuizBuilding(false)
@@ -2302,6 +2481,7 @@ export function ChatPage() {
       // uses, rather than inventing a second revision path — one surgical
       // rewrite, two ways to ask for it.
       if (chatResult?.dayRevisionRequested) {
+        startWorkActivity(chatResult.requestId, 'revision')
         const { day: dayName, field, feedback } = chatResult.dayRevisionRequested
         const dayIndex = DAYS.indexOf(dayName)
         // Recomputed here rather than closing over the top-level `livePlan`
@@ -2328,6 +2508,7 @@ export function ChatPage() {
           return
         }
         await reviseDayRef.current?.(dayIndex, day, feedback, field)
+        finishWorkActivity(chatResult.requestId, { status: 'complete', summary: `${dayName} was updated and saved.` })
         return
       }
 
@@ -2396,7 +2577,9 @@ export function ChatPage() {
           void persistMessage(activeChatId, { role: 'assistant', content: reply.content, plan_id: row.id })
         }
         recordRevision('Lesson plan update', previousPlan)
+        finishWorkActivity(chatResult.requestId, { status: 'complete', summary: 'The lesson plan was updated and saved.' })
       } catch (err) {
+        finishWorkActivity(chatResult.requestId, { status: 'error', error: err.message })
         setPlanSaveState('error')
         setMessages((prev) => [
           ...prev,
@@ -2407,7 +2590,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2754,12 +2937,13 @@ export function ChatPage() {
      with no indication anything had happened. */
   const stopGenerating = useCallback(() => {
     stream.stop()
+    finishWorkActivity(null, { status: 'cancelled', summary: 'Stopped. Nothing was saved.' })
     const content = 'Stopped. Nothing was saved — ask again when you’re ready.'
     setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content, isError: true }])
     if (localFor.current) {
       void persistMessage(localFor.current, { role: 'assistant', content })
     }
-  }, [stream, persistMessage])
+  }, [stream, persistMessage, finishWorkActivity])
 
   /* useChatStream.stop() has worked since it was written; nothing ever called
      it. The composer's own fallback — a spinner captioned "this can't be
@@ -2767,6 +2951,7 @@ export function ChatPage() {
      reply, which is interruptible and just wasn't wired. */
   const stopChatting = useCallback(() => {
     chatStream.stop()
+    finishWorkActivity(null, { status: 'cancelled', summary: 'Stopped. Nothing was saved.' })
     // Aborting never reaches onDone/onError, so the live placeholder (see
     // liveMessageIdRef) would otherwise sit there permanently mid-stream —
     // settle it (or drop it, if nothing had streamed yet) before adding the
@@ -2777,16 +2962,16 @@ export function ChatPage() {
     if (localFor.current) {
       void persistMessage(localFor.current, { role: 'assistant', content })
     }
-  }, [chatStream, persistMessage, finalizeLiveMessage])
+  }, [chatStream, persistMessage, finalizeLiveMessage, finishWorkActivity])
 
   /* Rebuild the last turn from the same prompt. Keep the original user row and
      remove only the terminal error row; retrying must not duplicate the prompt
      in the transcript or in the model's history. */
-  const retryLast = useCallback(() => {
+  const retryLast = useCallback((requestId) => {
     const last = messages[messages.length - 1]
     if (!last?.isError) return
     const lastAsk = [...messages].reverse().find((m) => m.role === 'user')
-    if (lastAsk) submit(lastAsk.content, { retryMessageId: lastAsk.id, retryErrorId: last.id })
+    if (lastAsk) submit(lastAsk.content, { retryMessageId: lastAsk.id, retryErrorId: last.id, requestId })
   }, [messages, submit])
 
   /* Both of these exist to keep <Message>'s props referentially stable, which
@@ -2920,27 +3105,17 @@ export function ChatPage() {
   // Follow the latest content while the teacher remains at the bottom. A
   // deliberate upward scroll flips atBottom false, so streaming does not
   // wrestle the viewport back under the teacher's cursor.
-  // Was requestAnimationFrame, to coalesce several SSE chunks landing in the
-  // same frame into one scroll call — but rAF is throttled to roughly
-  // nothing the moment a tab is backgrounded (switching tabs while the AI
-  // is still writing, then coming back, is an ordinary thing to do), and a
-  // pin that silently never fires is worse than a few redundant scroll
-  // calls. The pin itself only ever needs to run once per turn regardless
-  // (mode flips to 'pinned' and everything after returns early), so there
-  // was nothing left to actually coalesce.
+  // Coalesce streamed chunks into one update per frame. Only move this
+  // scroller: scrollIntoView also moves ancestor panes. A queued frame runs
+  // when a background tab becomes visible again, using the latest height.
   useEffect(() => {
-    const followId = followLatestIdRef.current
-    if (followId) {
+    if (!followLatestIdRef.current && !atBottom) return undefined
+    const frame = requestAnimationFrame(() => {
       followLatestIdRef.current = null
-      endRef.current?.scrollIntoView({ block: 'end' })
-      return
-    }
-    if (!atBottom) return
-    // chatStream.text (the live reply streaming in below, before it lands in
-    // `messages`) grows the transcript's height without changing `messages`
-    // itself. Plan preview now lives in the composer progress tray, so it
-    // must not wake this scroll effect on every partial-JSON update.
-    endRef.current?.scrollIntoView({ block: 'end' })
+      const scroller = scrollRef.current
+      if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'instant' })
+    })
+    return () => cancelAnimationFrame(frame)
   }, [messages, atBottom, chatStream.text])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
@@ -3057,15 +3232,7 @@ export function ChatPage() {
 
   const isEmpty = messages.length === 0
   const hasArtifact = Boolean(liveArtifact && livePlan?.days?.length)
-  /* Declared before chatPane, which reads it. The document always opens as a
-     full glass overlay now (2026-08-27) — there is no more docked
-     side-by-side mode, at any width. There used to be a `docOpen` sibling
-     to this (below --xl was overlay, --xl and up docked chat+document as a
-     three-column layout), removed because a docked document narrowed the
-     chat pane's own composer anchor and its width math never actually
-     matched the overlay's, which is what produced the "glass panel doesn't
-     reach the rail" bug this replaced. One code path instead of two that
-     had to be kept in sync. */
+  // On desktop the document slides over the workspace, underneath the composer.
   const overlayOpen = expanded && hasArtifact
   const overlayExit = useExitTransition(overlayOpen, 130)
   const mobileReaderOpen = isPhone && viewKind === 'plan' && overlayExit.mounted
@@ -3073,56 +3240,28 @@ export function ChatPage() {
   // sheet. Portrait preserves chat focus with a right-hand side sheet; in
   // landscape the plan earns a stable pane beside the conversation.
   const tabletLandscapePlanOpen = isTablet && !tabletPortrait && overlayOpen && viewKind === 'plan'
+  const desktopInspectorOpen = desktopInspector && overlayExit.mounted
+  // Keep the composer above the document in both docked and fullscreen
+  // reading modes. Fullscreen expands the lesson plan's reading surface, but
+  // it should not take away the command surface the teacher is actively using.
+  const desktopComposerOverlay = desktopInspectorOpen
+  useEffect(() => {
+    // Keep the composer interactive above the desktop document, including the
+    // fullscreen reader. The document remains the visual canvas underneath;
+    // the composer is still the persistent command surface.
+    portalHost.style.zIndex = overlayOpen && !desktopComposerOverlay ? '90' : '200'
+  }, [portalHost, overlayOpen, desktopComposerOverlay])
   // See overlayPortalHost's own creation comment: this host spans the full
   // viewport (or the docked box) at all times, so it must stop intercepting
   // clicks the instant there's nothing shown inside it, not just while it's
-  // sized to zero.
+  // sized to zero. Fullscreen owns the whole host, so it gets pointer events
+  // even though the persistent composer remains in its separate top layer.
   useEffect(() => {
     // The phone reader lives in ChatPage's normal tree. Its unused desktop
     // portal must remain inert or it can sit above the reader and eat taps.
-    overlayPortalHost.style.pointerEvents = overlayExit.mounted && !mobileReaderOpen && !tabletLandscapePlanOpen ? 'auto' : 'none'
-  }, [mobileReaderOpen, overlayExit.mounted, overlayPortalHost, tabletLandscapePlanOpen])
-  /* Measured live (rAF timestamps during the slide-in): the animation
-     itself was a rock-solid ~13ms/frame for its whole duration, EXCEPT the
-     first two frames (26.7ms, then 39.9ms) — that's not the CSS transform
-     struggling, it's React mounting artifactEl's real DOM (the district
-     table, potentially dozens of cells) in the exact same commit the slide
-     starts in, which the browser has to lay out and paint before the very
-     first frame of the animation can even begin compositing. Rendering
-     nothing (just the empty glass panel — see .artifact-overlay's own
-     background) for the first couple of frames, THEN mounting the real
-     content, moves that cost off the animation's own opening beat instead
-     of trying to make the mount itself cheaper. Two rAFs, not one: the
-     first is "the browser has now painted whatever we rendered this tick";
-     the second is where the CSS animation has actually started running on
-     its own, so the table mount lands once the compositor is already
-     carrying the motion rather than fighting it for the same frame. */
-  const [artifactContentReady, setArtifactContentReady] = useState(false)
-  useEffect(() => {
-    if (!overlayOpen) {
-      setArtifactContentReady(false)
-      return undefined
-    }
-    // The desktop panel has enough GPU headroom for a two-frame delayed mount
-    // that makes its slide-in look smoother. On a phone that delay can leave a
-    // full-screen, focus-trapping sheet with no document in it while Safari is
-    // also recompositing its blur. Mount the already-available plan directly.
-    if (isPhone || tabletLandscapePlanOpen) {
-      setArtifactContentReady(true)
-      return undefined
-    }
-    let timer = null
-    const raf1 = requestAnimationFrame(() => {
-      // Let the overlay claim a few compositor frames before mounting its
-      // dense document table. Rendering the table during the first transform
-      // frame is what made otherwise-smooth panel motion stutter on desktop.
-      timer = window.setTimeout(() => setArtifactContentReady(true), 120)
-    })
-    return () => {
-      cancelAnimationFrame(raf1)
-      if (timer != null) window.clearTimeout(timer)
-    }
-  }, [overlayOpen, isPhone, tabletLandscapePlanOpen])
+    overlayPortalHost.style.pointerEvents = overlayOpen && !mobileReaderOpen && !tabletLandscapePlanOpen && (!desktopComposerOverlay || artifactFullscreen) ? 'auto' : 'none'
+  }, [artifactFullscreen, mobileReaderOpen, overlayOpen, overlayPortalHost, tabletLandscapePlanOpen, desktopComposerOverlay])
+  // Render ready document content with its shell; no blank-panel delay.
   /* While the document overlay covers the transcript, a reply has nowhere
      visible to land — so it surfaces as a toast instead. Watches the last
      message rather than hooking every place this file appends one (there
@@ -3132,7 +3271,7 @@ export function ChatPage() {
      this fires once, when the reply actually finishes. */
   const lastToastedReplyId = useRef(null)
   useEffect(() => {
-    if (!overlayOpen) return
+    if (!overlayOpen || desktopComposerOverlay) return
     const last = messages[messages.length - 1]
     if (!last || last.role !== 'assistant' || last.streaming || last.isError) return
     if (last.id === lastToastedReplyId.current) return
@@ -3141,7 +3280,7 @@ export function ChatPage() {
     const text = last.content?.trim()
     if (!text) return
     toast.success('New reply', text.length > 160 ? `${text.slice(0, 160)}…` : text)
-  }, [messages, overlayOpen, toast])
+  }, [messages, overlayOpen, desktopComposerOverlay, toast])
   /* Voice mode used to be a full-screen/dialog takeover, mounted and
      unmounted outright with no exit of its own. Now it's a dock that grows
      out of the chat box itself, right above the composer — same
@@ -3377,6 +3516,7 @@ export function ChatPage() {
         artifact={{ ...liveArtifact, plan: livePlan }}
         classId={classId}
         subject={activeClass?.subject}
+        state={activeClass?.state}
         missingDays={stream.isStreaming ? 'pending' : artifact?.planId ? 'no_school' : 'incomplete'}
         onCollapse={collapse}
         onReviseDay={artifact?.planId ? reviseDay : undefined}
@@ -3393,16 +3533,18 @@ export function ChatPage() {
         flashCells={flashCells}
         onFullscreenChange={setArtifactFullscreen}
         mobileReader={isPhone && viewKind === 'plan'}
-        readerMode={tabletLandscapePlanOpen}
+        readerMode={tabletLandscapePlanOpen || desktopInspectorOpen}
       />
     ) : (
       <ArtifactDetailPanel
+        readerMode={desktopInspectorOpen}
         kind={viewKind}
         classId={classId}
         planId={artifact?.planId}
         onFullscreenChange={setArtifactFullscreen}
         plan={livePlan}
         subject={activeClass?.subject}
+        state={activeClass?.state}
         quiz={viewingQuiz}
         quizBuilding={quizBuilding}
         doc={viewingDoc}
@@ -3429,7 +3571,7 @@ export function ChatPage() {
        right at that seam — a visible tinted line between two panels that
        otherwise sit flush. The other three edges keep the glass border;
        only the shared seam drops it. */
-    <div className="relative flex h-full min-h-0 flex-col bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-r-0 border-white/5 shadow-inner shadow-white/5">
+    <div className="workspace-chat relative flex h-full min-h-0 flex-col">
       {/* Always on, unlike chat-head below it — right-aligned so it sits at
           the seam with whatever's docked on the right (the plans rail, or
           the open document), not lost against the far edge of the screen. */}
@@ -3440,7 +3582,18 @@ export function ChatPage() {
           against the same left edge as the message list and composer below
           it, not floating apart from the rest of the pane's own left
           margin. */}
-      <div className="flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10">
+      <div className="workspace-topbar flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10">
+        {!isPhone && !isLandscapePhone && workspaceRail.toggle ? (
+          <button
+            type="button"
+            className="workspace-sidebar-toggle shrink-0"
+            aria-label={workspaceRail.collapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
+            title={workspaceRail.collapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
+            onClick={workspaceRail.toggle}
+          >
+            <PanelLeft size={16} aria-hidden="true" />
+          </button>
+        ) : null}
         {isPhone || isLandscapePhone ? (
           /* The old dense row (ClassSwitcher + a pacing dot + WeekPicker + a
              calendar dot, all inline) doesn't fit a phone width without
@@ -3572,27 +3725,26 @@ export function ChatPage() {
             </div>
           ) : null}
           {!isPhone && !isLandscapePhone && calendar?.school?.name ? (
-            <span className="hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
+            <span className="workspace-school hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
               {calendar.school.name}
             </span>
           ) : null}
           {hasArtifact ? (
             <button
               type="button"
-              className="fa-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--paper-raised)] text-[var(--accent-text)] shadow-[2px_2px_5px_rgba(var(--neo-dark-rgb),0.4),-2px_-2px_5px_rgba(var(--neo-light-rgb),0.75)] active:shadow-[inset_2px_2px_4px_rgba(var(--neo-dark-rgb),0.5),inset_-2px_-2px_4px_rgba(var(--neo-light-rgb),0.7)]"
-              aria-label="Open downloads"
-              title="Downloads ready"
-              /* Opens the docked rail (ArtifactDrawer), not the full document —
-                 on Josh's own ask, this button surfaces "a download is ready"
-                 and lets the rail's own Download row take it from there,
-                 instead of jumping straight into the lesson plan itself.
-                 A phone has no docked rail to open (see the isPhone-only
-                 ArtifactRail "bar" variant above the composer, which has no
-                 open/close state of its own), so there openDocument() is
-                 still the only way to reach it. */
-              onClick={() => (isPhone ? openDocument() : setRailOpen(true))}
+              className="workspace-artifact-toggle fa-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--accent-text)]"
+              aria-label={isPhone ? 'Open lesson plan' : railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
+              title={isPhone ? 'Open lesson plan' : railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
+              aria-expanded={isPhone ? undefined : railOpen}
+              aria-controls={isPhone ? undefined : 'artifacts-panel'}
+              /* Desktop keeps this control persistent in the complete header:
+                 it opens and closes the docked inspector without changing the
+                 document surface or the composer lane. A phone has no docked
+                 rail (the compact ArtifactRail bar lives above its composer),
+                 so the same control continues to open the lesson-plan reader. */
+              onClick={() => (isPhone ? openDocument() : setRailOpen((open) => !open))}
             >
-              <Download size={18} aria-hidden="true" />
+              {isPhone ? <PanelRightOpen size={18} aria-hidden="true" /> : <PanelRight size={18} aria-hidden="true" />}
               {!railOpen ? (
                 <span
                   className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
@@ -3684,6 +3836,7 @@ export function ChatPage() {
                     <Message
                       message={m}
                       subject={activeClass?.subject}
+                      state={activeClass?.state}
                       isLast={i === messages.length - 1}
                       onRetry={m.isError && !busy ? retryLast : undefined}
                       /* The pencil rendered unguarded while this was never passed, so
@@ -3707,6 +3860,18 @@ export function ChatPage() {
                       showTail={groupEnd}
                       bubbleGroup={bubbleGroup}
                     />
+                    {(() => {
+                      const activity = Object.values(workActivities).find((item) => item.anchorId === m.id)
+                      if (!activity || (activity.status !== 'complete' && activity.status !== 'cancelled')) return null
+                      return (
+                        <WorkActivityCard
+                          activity={activity}
+                          onViewPlan={artifact?.planId ? () => openDocument() : undefined}
+                          onViewSources={artifact?.planId ? openStandards : undefined}
+                          onUndo={artifact?.planId && activity.status === 'complete' && lastChange ? undoLastChange : undefined}
+                        />
+                      )
+                    })()}
                   </div>
                 </div>
               )
@@ -3766,27 +3931,6 @@ export function ChatPage() {
                 not scrolling away with the transcript — so this keeps only
                 the eyebrow label here; isPhone still gets the full list,
                 since phone has no rail to carry it. */}
-            {revising ? (
-              <p className="eyebrow">Revising…</p>
-            ) : stream.isStreaming && stream.status?.label ? (
-              <p className="eyebrow chat-live-status" role="status" aria-live="polite">
-                <span className="chat-live-status-dot" aria-hidden="true" />
-                {stream.status.label}
-              </p>
-            ) : chatStream.isStreaming && chatStream.status?.label ? (
-              <p className="eyebrow chat-live-status" role="status" aria-live="polite">
-                <span className="chat-live-status-dot" aria-hidden="true" />
-                {chatStream.status.label}
-              </p>
-            ) : preparing ? (
-              // The gap this covers: submit()'s first await, for a brand-new
-              // chat, is api.createChat — which can run long on a cold Render
-              // instance or a slow phone connection, and none of the other
-              // busy flags exist yet. Without this line the message just sent
-              // sat on screen with literally nothing happening beneath it.
-              <p className="eyebrow">Sending…</p>
-            ) : null}
-
             <div ref={endRef} />
           </div>
         </div>
@@ -4038,6 +4182,14 @@ export function ChatPage() {
               </button>
             </div>
           ) : null}
+          {liveWorkActivity ? (
+            <WorkActivityCard
+              activity={liveWorkActivity}
+              compact
+              onStop={liveWorkActivity.status === 'active' ? (stream.isStreaming ? stopGenerating : chatStream.isStreaming ? stopChatting : undefined) : undefined}
+              onRetry={liveWorkActivity.status === 'error' && !busy ? () => retryLast(liveWorkActivity.requestId) : undefined}
+            />
+          ) : null}
           <div className={`mobile-composer-plan-sheet${artifact?.planId && hasArtifact && isPhone && !expanded ? ' has-plan' : ''}${planPeekOpen ? ' is-plan-open' : ''}`}>
           {artifact?.planId && hasArtifact && isPhone && !expanded ? (
             <PlanPeek
@@ -4049,6 +4201,7 @@ export function ChatPage() {
                 artifact={{ ...liveArtifact, plan: livePlan }}
                 classId={classId}
                 subject={activeClass?.subject}
+                state={activeClass?.state}
                 missingDays="no_school"
                 onCollapse={() => setPlanPeekOpen(false)}
                 onReviseDay={reviseDay}
@@ -4067,12 +4220,6 @@ export function ChatPage() {
                 mobileReader
               />
             </PlanPeek>
-          ) : null}
-          {stream.isStreaming ? (
-            <LessonPlanProgressTray
-              days={stream.preview?.days}
-              dayNames={stream.dayNames}
-            />
           ) : null}
           <Composer
             value={query}
@@ -4230,7 +4377,7 @@ export function ChatPage() {
     // fa-rise — see fa-rise-panel's own comment in base.css for why a
     // full-viewport container inside AppShell's blurred "main" panel
     // shouldn't animate opacity.
-    <div ref={overlayAnchorRef} className={`flex h-full w-full min-w-0 gap-2${isPhone ? ' fa-rise-panel' : ''}`}>
+    <div ref={overlayAnchorRef} className={`workspace-panes flex h-full w-full min-w-0${isPhone ? ' fa-rise-panel' : ''}${railOpen && !isPhone ? ' artifacts-open' : ''}`}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document
@@ -4255,30 +4402,21 @@ export function ChatPage() {
                   : ''}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col glass-panel rounded-2xl shadow-sm overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {chatPane}
       </div>
 
-      {/* The rail docks from 768 up. Below 768 it is the bar inside chatPane
+      {/* The rail floats from 768 up. Below 768 it is the bar inside chatPane
           instead (the isPhone-only ArtifactRail "bar" variant above the
           composer).
 
-          Excluded once overlayOpen: this drawer reserves real flex width in
-          the SAME row as the chat pane, which is what the composer's
-          portal anchor measures (see composerAnchorRef's own comment) —
-          leaving it mounted while the full-screen .artifact-overlay is open
-          shrank that anchor to `row width - drawer width`, so the
-          "edge-to-edge, composer included" overlay described just below
-          never actually reached the left edge, and the composer it was
-          supposed to float above sat at the shrunk width instead of the
-          full one. The overlay already shows everything this drawer shows
-          (Download, "Built from", grounding) at full size, so there is
-          nothing this adds once it is open — it should get out of the way,
-          not sit underneath eating width nobody can see it use. */}
-      {!isPhone && !overlayOpen ? (
+          Excluded once overlayOpen: the full document already exposes
+          everything this drawer shows (Download, sources, grounding) at full
+          size, so the floating inspector should get out of the way rather
+          than sit underneath the document. */}
+      {!isPhone && !overlayExit.mounted ? (
         <ArtifactDrawer
           open={railOpen}
-          onToggle={() => setRailOpen((o) => !o)}
           hasArtifact={hasArtifact}
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
@@ -4300,25 +4438,8 @@ export function ChatPage() {
           {artifactEl}
         </aside>
       ) : null}
-
-      {/* The document always opens as a full glass overlay (2026-08-27) —
-          there is no more docked side-by-side mode at any width, so this is
-          the only way `artifactEl` ever renders. On desktop it goes
-          edge-to-edge, composer included — the composer dock is portaled
-          above this (see its own comment near chatPane's return), floating
-          on TOP of the panel rather than being carved out of its bounds.
-          On phone, that same "floats on top" composer would otherwise sit
-          directly over the bottom ~130px of the sheet (both anchor to the
-          screen's own bottom edge), which doesn't just look wrong — a
-          touch landing in that band hits the composer's textarea instead
-          of the sheet underneath it, and "I cannot scroll down to view
-          more" (reported 2026-08-27) was exactly that: the last stretch of
-          the sheet's own scrollable content was there, just underneath an
-          invisible composer sitting on top of it. --composer-h feeds
-          composerDockH (the portal dock's own live-measured height,
-          already tracked for the anchor above) into the sheet's bottom
-          media query in base.css, so the sheet's own bottom edge stops
-          short of the composer instead of running underneath it. */}
+      {/* No flex spacer: the document overlays the right two-thirds without
+          narrowing the composer. The portal survives fullscreen transitions. */}
       {/* Always portaled into overlayPortalHost (see its own comment near
           artifactFullscreen) — never switched between rendered-in-place and
           portaled, which is what used to remount ArtifactPanel (and reset
@@ -4329,28 +4450,17 @@ export function ChatPage() {
       {overlayExit.mounted && !mobileReaderOpen && !tabletLandscapePlanOpen
         ? createPortal(
             <>
-              <button
+              {!desktopComposerOverlay ? <button
                 type="button"
                 aria-label={`Close ${viewLabel}`}
                 className={`panel-scrim${overlayExit.closing ? ' is-closing' : ''}`}
                 onClick={collapse}
-              />
+              /> : null}
               <div
-                className={`artifact-overlay${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${isTablet && tabletPortrait ? ' is-tablet-side-sheet' : ''}`}
+                className={`artifact-overlay${desktopComposerOverlay ? ' is-composer-overlay' : ''}${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${isTablet && tabletPortrait ? ' is-tablet-side-sheet' : ''}`}
                 style={{ '--composer-h': `${composerDockH}px` }}
               >
-                {/* artifactContentReady: see its own comment near overlayOpen —
-                    the real content (the district table, potentially dozens of
-                    cells) mounts a couple of frames late on purpose, so laying
-                    it out doesn't compete with the slide-in's own opening
-                    frames. Empty glass for a ~30ms blink, not a spinner: at
-                    this duration a loading indicator would just be visual
-                    noise flashing in and out, and the panel's own background
-                    already reads as "something is here." Skipped entirely
-                    while closing — the exit is fast (130ms) and this has
-                    already been showing real content the whole time it was
-                    open, so there is nothing to stagger on the way out. */}
-                {artifactContentReady || overlayExit.closing ? artifactEl : null}
+                {artifactEl}
               </div>
             </>,
             overlayPortalHost

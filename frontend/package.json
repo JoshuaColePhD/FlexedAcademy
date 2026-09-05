@@ -12,6 +12,7 @@
     "test:onboarding": "node scripts/test-onboarding-steps.mjs",
     "test:auth": "node scripts/test-auth-state.mjs",
     "test:return-to": "node scripts/test-return-to.mjs",
+    "test:work-activity": "node scripts/test-work-activity.mjs",
     "test:e2e": "playwright test",
     "test:all": "npm run test:voice && npm run test:contextual && npm run test:onboarding && npm run test:auth && npm run test:return-to && npm run test:e2e",
     "check:tokens": "node scripts/check-tokens.mjs",

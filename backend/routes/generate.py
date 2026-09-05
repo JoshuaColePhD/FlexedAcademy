@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 import openai
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -47,6 +48,11 @@ class GenerateRequest(BaseModel):
     # and naming it explicitly in the query text is what makes `week_of`
     # deterministic instead of a coin flip.
     week_number: int | None = None
+    # Shared client/server identity for the inline work activity. The server
+    # supplies one when an older client omits it, so every lifecycle frame can
+    # still be attached to the correct teacher turn.
+    request_id: str | None = None
+    attempt: int = Field(default=0, ge=0)
 
 
 def _with_week(query: str, week_number: int | None, school_id: str) -> str:
@@ -168,6 +174,7 @@ class ChatStreamRequest(BaseModel):
     # in lifecycle events so a delayed frame from an older attempt can never
     # be mistaken for progress on the current turn.
     request_id: str | None = None
+    attempt: int = Field(default=0, ge=0)
 
 
 class DecisionsRequest(BaseModel):
@@ -217,6 +224,40 @@ class ReviseDaysRequest(BaseModel):
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+def _activity_sse(
+    payload: dict,
+    request_id: str,
+    *,
+    step: str | None = None,
+    step_state: str | None = None,
+    artifact_type: str = "lesson_plan",
+    attempt: int = 0,
+) -> str:
+    """Add the stable lifecycle envelope used by the inline work activity.
+
+    The existing stream payload remains intact for older clients; these fields
+    are additive and deliberately describe observable work, never hidden model
+    reasoning or raw prompts.
+    """
+    event = dict(payload)
+    effective_state = step_state or ("complete" if event.get("done") else "active")
+    effective_status = event.get("status") or (
+        "complete" if effective_state == "complete" else
+        "error" if effective_state == "error" else
+        "working"
+    )
+    effective_step = step or "planning"
+    event.setdefault("status", effective_status)
+    event.setdefault("label", event.get("message") or effective_step.replace("_", " ").title())
+    event.setdefault("request_id", request_id)
+    event.setdefault("run_id", request_id)
+    event.setdefault("attempt", attempt)
+    event.setdefault("artifact_type", artifact_type)
+    event.setdefault("step", effective_step)
+    event.setdefault("step_state", effective_state)
+    return _sse(event)
 
 
 def _openai_error_event(e: Exception) -> dict:
@@ -316,6 +357,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
         conversation_context=req.conversation_context,
         reference_context=req.reference_context,
     )
+    request_id = req.request_id or str(uuid.uuid4())
 
     def event_stream():
         chunks: list[str] = []
@@ -331,10 +373,10 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
             # Additive: useLessonStream.js only reads the keys it knows
             # (grounding/chunk/done/error) and ignores anything else, so an
             # older client is unaffected by a new frame type.
-            yield _sse({"status": "retrieving", "template_days": template_days})
+            yield _activity_sse({"status": "retrieving", "template_days": template_days}, request_id, step="retrieval", step_state="active", attempt=req.attempt)
             result = service.prepare(user_id, query, cls=cls)
-            yield _sse({"status": "context_ready", "template_days": template_days})
-            yield _sse(
+            yield _activity_sse({"status": "context_ready", "template_days": template_days}, request_id, step="planning", step_state="active", attempt=req.attempt)
+            yield _activity_sse(
                 {
                     "grounding": {
                         "codes": sorted(result.codes),
@@ -342,13 +384,17 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
                         "count": len(result.chunks),
                         "floor": result.floor,
                     }
-                }
+                },
+                request_id,
+                step="retrieval",
+                step_state="complete",
+                attempt=req.attempt,
             )
-            yield _sse({"status": "thinking", "template_days": template_days})
-            yield _sse({"status": "writing", "template_days": template_days})
+            yield _activity_sse({"status": "thinking", "template_days": template_days}, request_id, step="planning", step_state="active", attempt=req.attempt)
+            yield _activity_sse({"status": "writing", "template_days": template_days}, request_id, step="building", step_state="active", attempt=req.attempt)
             for delta in llm.stream_plan(user_id, model_query, result, school_id=school_id, class_id=cls["id"] if cls else None):
                 chunks.append(delta)
-                yield _sse({"chunk": delta})
+                yield _activity_sse({"chunk": delta}, request_id, step="building", step_state="active", attempt=req.attempt)
 
             from ..schema import loads_lenient
 
@@ -366,7 +412,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
                 subject=cls["subject"] if cls else None,
                 grade=cls["grade"] if cls else None,
             )
-            yield _sse(
+            yield _activity_sse(
                 {
                     "done": True,
                     "plan_id": row["id"],
@@ -374,13 +420,17 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
                     "warnings": row["warnings"],
                     "week_label": row["week_label"],
                     "unit": row["unit"],
-                }
+                },
+                request_id,
+                step="complete",
+                step_state="complete",
+                attempt=req.attempt,
             )
         except (AppError, SchemaError) as e:
             log.warning("stream failed code=%s", e.code)
-            yield _sse({"error": e.payload().get("error", e.payload())})
+            yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="validation", step_state="error", attempt=req.attempt)
         except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
-            yield _sse({"error": _openai_error_event(e)})
+            yield _activity_sse({"error": _openai_error_event(e), "status": "error"}, request_id, step="building", step_state="error", attempt=req.attempt)
 
     return StreamingResponse(
         event_stream(),
@@ -773,22 +823,20 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
 
     def event_stream():
         try:
-            request_id = req.request_id
+            request_id = req.request_id or str(uuid.uuid4())
             # Send an acknowledgement before database lookups, template
             # resolution, or retrieval. A browser should never have to infer
             # that a click worked from the absence of a response.
-            yield _sse({
+            yield _activity_sse({
                 "status": "accepted",
                 "status_code": "accepted",
                 "label": "Request received",
-                "request_id": request_id,
-            })
-            yield _sse({
+            }, request_id, step="context", step_state="active", artifact_type="conversation", attempt=req.attempt)
+            yield _activity_sse({
                 "status": "preparing_context",
                 "status_code": "preparing_context",
                 "label": "Preparing your class context…",
-                "request_id": request_id,
-            })
+            }, request_id, step="context", step_state="active", artifact_type="conversation", attempt=req.attempt)
             plans_for_chat = db.list_plans(user_id, chat_id=req.chat_id, limit=1)["items"] if req.chat_id else []
             has_plan = bool(plans_for_chat)
             has_quiz = has_plan and bool(db.list_quizzes_for_plan(user_id, plans_for_chat[0]["id"]))
@@ -803,19 +851,17 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 grade=(request_class or {}).get("grade", ""),
             ) if req.mode == "research" else []
             if req.mode == "research":
-                yield _sse({
+                yield _activity_sse({
                     "status": "research_ready" if research_sources else "research_unavailable",
                     "status_code": "research_ready" if research_sources else "research_unavailable",
                     "label": "Sources ready" if research_sources else "Using practical coaching context",
-                    "request_id": request_id,
-                })
-                yield _sse({
+                }, request_id, step="retrieval", step_state="complete", artifact_type="research", attempt=req.attempt)
+                yield _activity_sse({
                     "research_sources": [
                         {key: source.get(key) for key in ("title", "year", "authors", "url", "doi")}
                         for source in research_sources
                     ],
-                    "request_id": request_id,
-                })
+                }, request_id, step="retrieval", step_state="complete", artifact_type="research", attempt=req.attempt)
             system_prompt = _build_chat_system_prompt(
                 user_id, req.chat_id, req.week_number, req.mode, last_user, class_id=req.class_id,
                 research_context=research.prompt_context(research_sources),
@@ -840,12 +886,11 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     "Use `generate_lesson_plan` only for a whole-week revision or a change spanning several "
                     "days.\n"
                 )
-            yield _sse({
+            yield _activity_sse({
                 "status": "context_ready",
                 "status_code": "context_ready",
                 "label": "Class context ready",
-                "request_id": request_id,
-            })
+            }, request_id, step="planning", step_state="active", artifact_type="conversation", attempt=req.attempt)
 
             # How many ask_clarifying_questions rounds have happened since the
             # last real commitment (a build/revision confirmation) — not a
@@ -1002,16 +1047,21 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
 
-            yield _sse({
+            yield _activity_sse({
                 "status": "thinking",
                 "status_code": "thinking",
                 "label": "Thinking…",
-                "request_id": request_id,
-            })
+            }, request_id, step="planning", step_state="active", artifact_type="conversation", attempt=req.attempt)
+            tool_artifacts = {
+                "generate_lesson_plan": "lesson_plan",
+                "update_lesson_day": "lesson_plan_revision",
+                "generate_quiz": "quiz",
+            }
             for event in llm.stream_chat(user_id, messages, voice=req.voice):
                 if isinstance(event, dict):
                     event.setdefault("request_id", request_id)
-                yield _sse(event)
+                artifact_type = event.get("artifact_type") or tool_artifacts.get(event.get("tool_call"), "conversation")
+                yield _activity_sse(event, request_id, step="planning", step_state="active", artifact_type=artifact_type, attempt=req.attempt)
 
             if req.chat_id and not req.voice:
                 memory_messages = [
@@ -1028,12 +1078,12 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                         req.chat_id,
                         memory_messages,
                     )
-            yield _sse({"done": True, "request_id": request_id})
+            yield _activity_sse({"done": True}, request_id, step="complete", step_state="complete", artifact_type="conversation", attempt=req.attempt)
         except (AppError, SchemaError) as e:
             log.warning("chat stream failed code=%s", e.code)
-            yield _sse({"error": e.payload().get("error", e.payload()), "request_id": req.request_id})
+            yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="planning", step_state="error", artifact_type="conversation", attempt=req.attempt)
         except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
-            yield _sse({"error": _openai_error_event(e), "request_id": req.request_id})
+            yield _activity_sse({"error": _openai_error_event(e), "status": "error"}, request_id, step="planning", step_state="error", artifact_type="conversation", attempt=req.attempt)
 
     return StreamingResponse(
         event_stream(),

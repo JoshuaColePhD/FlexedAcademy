@@ -309,8 +309,16 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const [finishing, setFinishing] = useState(false)
 
   const { data: frameworks = [] } = useQuery({
-    queryKey: qk.frameworks,
-    queryFn: () => api.getFrameworks(),
+    queryKey: qk.frameworks(state),
+    queryFn: () => api.getFrameworks({ state }),
+    staleTime: Infinity,
+    enabled: open,
+  })
+  // Which states' standards are actually verified and live — see
+  // states.js's isStandardsReady for why this replaces a hardcoded list.
+  const { data: activeStates } = useQuery({
+    queryKey: qk.activeStandardsStates,
+    queryFn: () => api.getActiveStandardsStates().then((r) => new Set(r.states)),
     staleTime: Infinity,
     enabled: open,
   })
@@ -522,7 +530,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       setStateError('Choose your state — it decides which standards your plans quote.')
       return
     }
-    if (!isStandardsReady(state)) {
+    if (!isStandardsReady(state, activeStates)) {
       setStateError(
         "We don't have that state's standards yet. Ask for it above, then pick Alabama to carry on for now.",
       )
@@ -867,6 +875,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                   setTemplateAnalysisStatus(null)
                 }}
                 schools={schools}
+                activeStates={activeStates}
                 state={state}
                 setState={(value) => { setState(value); setStateError(null) }}
                 error={stateError}
@@ -1198,6 +1207,7 @@ function SchoolStep({
   school,
   onSchoolChange,
   schools,
+  activeStates,
   state,
   setState,
   error,
@@ -1209,7 +1219,7 @@ function SchoolStep({
   onNext,
   onSkip,
 }) {
-  const ready = Boolean(state) && isStandardsReady(state)
+  const ready = Boolean(state) && isStandardsReady(state, activeStates)
   useOnboardingActions({
     onNext,
     busy: saving,
@@ -1254,7 +1264,7 @@ function SchoolStep({
                  than find forty-nine greyed rows and no way to register that
                  they turned up. */
               <option key={value} value={value}>
-                {isStandardsReady(value) ? label : `${label} — not ready yet`}
+                {isStandardsReady(value, activeStates) ? label : `${label} — not ready yet`}
               </option>
             ))}
           </select>

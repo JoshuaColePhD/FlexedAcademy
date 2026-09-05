@@ -6,13 +6,15 @@ import {
   BookOpen,
   Calendar,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Download,
+  ExternalLink,
   FileText,
+  HardDrive,
   ListChecks,
   Loader2,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
@@ -24,14 +26,14 @@ import { KIND_LABEL } from './documentKinds'
 import { ShareDialog } from './ShareDialog'
 import { DocxDownloadButton } from './DocxDownloadButton'
 
-const RailGroup = ({ title, isBar, children }) => {
+const RailGroup = ({ title, headerTitle = title, isBar, children }) => {
   if (isBar) {
     return <div className="rail-group">{children}</div>
   }
   return (
     <section className="mb-3 overflow-hidden rounded-xl border border-edge bg-paper-raised shadow-sm" aria-label={title}>
       <div className="border-b border-edge bg-paper px-3 py-2.5">
-        <span className="text-sm font-semibold text-ink">{title}</span>
+      <span className="text-sm font-semibold text-ink">{headerTitle}</span>
       </div>
       <div className="rail-group border-none bg-transparent p-1">{children}</div>
     </section>
@@ -63,13 +65,8 @@ import { useToast } from '../lib/toastContext'
  * version history in a compliance document is the worst kind of decoration.
  */
 
-/** The one row shape the rail's secondary lines share.
- *  `index` drives a staggered entrance — "Built from" fills in one line at a
- *  time rather than appearing as a block, which is the one place this rail
- *  can honestly gesture at the living-document framing: the calendar, the
- *  documents and the standards really did resolve in roughly that order, even
- *  though the stagger itself is a fixed 60ms, not a trace of real timing. */
-function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
+/** Secondary source rows appear immediately, without staggered animation. */
+function RailRow({ icon: Icon, label, sub, flag, onClick, title }) {
   const body = (
     <>
       <span className="rail-row-tile">
@@ -83,15 +80,12 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
   )
   if (!onClick) {
     return (
-      <motion.div
+      <div
         className="rail-row"
         title={title}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: index * 0.06 }}
       >
         {body}
-      </motion.div>
+      </div>
     )
   }
   // Hover used to also carry a framer-motion whileHover (scale/lift/tint) on
@@ -99,17 +93,14 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title, index = 0 }) {
   // fired twice, fighting each other on every mouseenter and reading as
   // bouncy next to the plan card's plain CSS hover. CSS-only now, everywhere.
   return (
-    <motion.button
+    <button
       type="button"
       className="rail-row is-interactive fa-press"
       title={title}
       onClick={onClick}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.06 }}
     >
       {body}
-    </motion.button>
+    </button>
   )
 }
 
@@ -171,17 +162,19 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
           <button
             type="button"
             className="rail-text rail-open-title"
+            aria-label={`${quiz.title} Quiz`}
+            title={quiz.title}
             onClick={(e) => {
               e.stopPropagation()
               onOpen(quiz)
             }}
           >
-            <span className="rail-title">{quiz.title}</span>
+            <span className="rail-title">{compactQuizTitle(quiz.title)}</span>
             {subLine}
           </button>
         ) : (
           <span className="rail-text">
-            <span className="rail-title">{quiz.title}</span>
+            <span className="rail-title">{compactQuizTitle(quiz.title)}</span>
             {subLine}
           </span>
         )}
@@ -227,6 +220,14 @@ function QuizRow({ quiz, index = 0, onOpen, color, onShare }) {
 // "Built from" or "This week" below. Collapsing anything past the two most
 // recent behind a tap keeps the common case exactly as it was.
 const VISIBLE_QUIZZES = 2
+
+function compactQuizTitle(title) {
+  const value = String(title || '').trim()
+  if (!value) return 'Quiz'
+  return value
+    .replace(/^Week\s+\d+\s*/i, '')
+    .replace(/\s+—\s+/g, ' · ')
+}
 
 export function ArtifactRail({
   artifact,
@@ -301,9 +302,16 @@ export function ArtifactRail({
     retry: false,
     staleTime: 5 * 60_000,
   })
+  const { data: driveStatus } = useQuery({
+    queryKey: qk.driveStatus,
+    queryFn: () => api.driveStatus(),
+    enabled: Boolean(classId) && !isBar,
+    retry: false,
+    staleTime: 60_000,
+  })
 
   const retrieved = artifact?.grounding?.codes || artifact?.retrievedIds || []
-  const { grounded, ungrounded, checking } = scanGrounding(plan, retrieved)
+  const { grounded, checking } = scanGrounding(plan, retrieved)
 
   /* The calendar's contribution to this week, read off the plan the calendar
      shaped — backend/schoolcal.py is what put the no_school flags there. */
@@ -316,8 +324,13 @@ export function ArtifactRail({
 
   return (
     <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Plan workspace">
+      <div className={isBar ? 'artifact-rail-bar-content' : 'artifact-rail-scroll'}>
       {planId || busy || artifactLoadError ? (
-        <RailGroup title="This plan" isBar={isBar}>
+        <RailGroup
+          title="Outputs"
+          headerTitle={plan?.week_of || 'Outputs'}
+          isBar={isBar}
+        >
           {planId ? (
           /* Reading is the primary action. The full content area is one real
              button, while download remains its separate, unambiguous sibling
@@ -438,14 +451,7 @@ export function ArtifactRail({
                 ? `${grounded.length} standard${grounded.length === 1 ? '' : 's'}`
                 : 'Standards'
             }
-            sub={
-              !checking
-                ? 'grounding not recorded'
-                : ungrounded.length
-                  ? `${ungrounded.length} not retrieved`
-                  : 'all retrieved'
-            }
-            flag={checking && ungrounded.length > 0}
+            sub="Standards library"
             // Capped rather than the full list: a plan citing a few dozen
             // standards turned this into one giant, unwrapped tooltip line.
             // Click-through to the Standards row itself is still the real
@@ -495,6 +501,29 @@ export function ArtifactRail({
         </RailGroup>
       ) : null}
 
+      </div>
+      {!isBar ? (
+        <RailGroup title="Context" isBar={isBar}>
+          <div className="rail-context-label">Connectors</div>
+          <Link
+            to={`/c/${classId}/settings`}
+            className="rail-connector-row"
+            title="Manage Google Drive in settings"
+          >
+            <span className="rail-row-tile rail-connector-tile">
+              <HardDrive size={14} aria-hidden="true" />
+            </span>
+            <span className="rail-text">
+              <span className="rail-row-label">Google Drive</span>
+              <span className="rail-sub">
+                {driveStatus?.connected ? 'Connected' : 'Connect in settings'}
+              </span>
+            </span>
+            <ExternalLink size={13} aria-hidden="true" className="rail-connector-arrow" />
+          </Link>
+        </RailGroup>
+      ) : null}
+
       <ShareDialog
         open={!!shareTarget}
         onClose={() => setShareTarget(null)}
@@ -507,77 +536,30 @@ export function ArtifactRail({
   )
 }
 
-/* The persistent shell around ArtifactRail — always mounted, always showing
- * at least the coloured handle, whether or not this chat has built anything
- * yet. Kept separate from ArtifactRail itself rather than folded in: the
- * "bar" variant (phone, rendered inline above the composer) never goes
- * through a drawer at all, and mixing that concern into the same component
- * would mean every prop here needing an isBar escape hatch.
+/* The persistent floating shell around ArtifactRail — mounted as a quiet
+ * inspector card once a plan exists. Kept separate from ArtifactRail itself
+ * rather than folded in: the "bar" variant (phone, rendered inline above the
+ * composer) never goes through a drawer at all, and mixing that concern into
+ * the same component would mean every prop here needing an isBar escape hatch.
  *
  * Auto-opens the moment a build starts or a plan exists (ChatPage owns that
  * effect); afterward it is the teacher's to open or close, and closing it
  * once does not get silently overridden on the next render.
  *
- * A bare conditional {open ? <div>…</div> : null} — same as the nav rail's
- * own collapse on the other side of the screen (AppShell.jsx), which only
- * ever animates its own width and lets the content just be there or not.
- * This used to also keep the body mounted for an extra tick to play its own
- * mirrored slide-and-fade on top of that width change, on the theory that a
- * plain unmount read as unpolished. In practice the two competing motions —
- * the container's width easing open while the content separately slides in
- * from its own offset — read as the panel glitching or shrinking rather
- * than opening cleanly, which is exactly what the nav rail's plainer version
- * doesn't do. One motion, not two: the width transition below is the whole
- * animation now.
+ * The side seam no longer carries a second chevron button: the card itself is
+ * the affordance, matching the reference inspector. `open` is still owned by
+ * ChatPage so the panel can be hidden while a document overlay is active.
  */
-export function ArtifactDrawer({ open, onToggle, hasArtifact, busy, ...railProps }) {
+export function ArtifactDrawer({ open, hasArtifact, busy, ...railProps }) {
+  if (!open) return null
+
   return (
     // glass-panel + rounded-2xl, same treatment as the left nav rail's own
-    // outer wrapper (AppShell.jsx's .app-rail) and the chat pane itself —
-    // this was the one docked panel still opaque (bg-paper-raised) instead
-    // of showing the drifting background orbs through it. Applied to the
-    // OUTER .artifact-drawer div, not just .artifact-drawer-body, so the
-    // collapsed 18px handle strip reads as the same glass panel narrowed,
-    // rather than a flat sliver in front of a glass panel that only exists
-    // once open.
-    <div className={`artifact-drawer glass-panel rounded-2xl shadow-sm overflow-hidden${open ? ' is-open' : ''}`}>
-      <button
-        type="button"
-        /* No .fa-press here — that class's :active state applies
-           translateY+scale(0.98), a real shrink-and-drop the instant the
-           button is pressed, independent of the open/close width transition
-           entirely. The left nav rail's own handle (AppShell.jsx's
-           .app-rail-handle) never had it and only ever fades its opacity on
-           press — this now matches that. */
-        className={`artifact-drawer-handle tap-target${busy ? ' is-busy' : ''}`}
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-label={open ? 'Collapse my plans' : 'Open my plans'}
-        title={
-          open
-            ? 'Collapse'
-            : hasArtifact || busy
-              ? 'See what this week was built from'
-              : 'Your plan will appear here'
-        }
-      >
-        {/* Always drawn, not just while closed, so the handle reads as
-            clickable in both states — the nav rail's own handle on the
-            other side of the screen (AppShell.jsx) does the same. Points
-            the way this click will move the drawer: left while closed
-            (pulls this edge OUT into a panel that grows leftward), right
-            once open (collapses it back). */}
-        {open ? (
-          <ChevronRight className="artifact-drawer-arrow" aria-hidden="true" />
-        ) : (
-          <ChevronLeft className="artifact-drawer-arrow" aria-hidden="true" />
-        )}
-      </button>
-      {open ? (
-        <div className="artifact-drawer-body h-full">
-          <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
-        </div>
-      ) : null}
+    // outer wrapper (AppShell.jsx's .app-rail) and the chat pane itself.
+    <div id="artifacts-panel" className={`artifact-drawer glass-panel rounded-2xl shadow-sm overflow-hidden${open ? ' is-open' : ''}`}>
+      <div className="artifact-drawer-body h-full">
+        <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
+      </div>
     </div>
   )
 }

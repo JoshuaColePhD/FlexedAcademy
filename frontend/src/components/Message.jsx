@@ -59,6 +59,7 @@ function useCopy() {
 function MessageImpl({
   message,
   subject,
+  state,
   onRetry,
   onEdit,
   isLast,
@@ -177,14 +178,23 @@ function MessageImpl({
     )
   }
 
-  /* The placeholder ChatPage pushes right before a reply starts streaming
-     (see liveMessageIdRef in ChatPage.jsx) has nothing in it yet — a bare
-     assistant row reads as "nothing is happening," and it duplicates the
-     single progress line ChatPage renders directly above the composer. Keep
-     the placeholder in state so the real reply can take its place, but let
-     ChatPage's `Preparing…` / `Thinking…` status own the waiting state. */
+  /* Keep the empty assistant placeholder in the transcript so ordinary chat
+     replies have a quiet, Claude-like waiting state in the exact slot where
+     the reply will land. Action runs get their richer WorkActivityCard from
+     ChatPage instead; this remains intentionally lightweight. */
   const isThinking = !isUser && message.streaming && !message.content?.trim()
-  if (isThinking) return null
+  if (isThinking) {
+    return (
+      <motion.div
+        className="message-row group flex w-full justify-start"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <ThinkingIndicator />
+      </motion.div>
+    )
+  }
 
   /* fa-rise was written for exactly this and then never attached to anything,
      so every message simply appeared — which is most of why the transcript felt
@@ -382,9 +392,9 @@ function MessageImpl({
         ) : null}
 
         {/* THE VERIFICATION.
-            With the document closed by default, this is where proof lives:
-            which codes were retrieved and which one wasn't, always — and,
-            on phone (hideWeekStrip), the five days and what's on each too,
+            With the document closed by default, this is where the grounded
+            source codes live — and, on phone (hideWeekStrip), the five days
+            and what's on each too,
             since a phone has no side rail to carry that instead (see
             ArtifactRail's own "This week" section, which is where this
             lives everywhere else now). It is what makes a bad week
@@ -393,30 +403,12 @@ function MessageImpl({
         {!isUser && message.plan?.days?.length ? (
           <div className="mt-3 flex w-full flex-col gap-3.5">
             {hideWeekStrip ? null : <WeekStrip days={message.plan.days} loose />}
-            {grounded.length || ungrounded.length ? (
+            {grounded.length ? (
               <div className="grounding-line">
                 <span>Grounded:</span>
                 {grounded.map((c) => (
-                  <Cite key={c} code={c} subject={subject} grounded />
+                  <Cite key={c} code={c} subject={subject} state={state} grounded />
                 ))}
-                {ungrounded.length ? (
-                  <>
-                    <span className="grounding-line-sep" aria-hidden="true">
-                      ·
-                    </span>
-                    {/* The code and its verdict wrap as one unit. Split across
-                        a line break, a bare "4.C※" reads as just another
-                        citation and the warning loses its subject. */}
-                    {ungrounded.map((u) => (
-                      <span className="grounding-line-miss-group" key={u.code}>
-                        <Cite code={u.code} subject={subject} grounded={false} />
-                        <span className="grounding-line-miss">
-                          not retrieved — {u.dayName}
-                        </span>
-                      </span>
-                    ))}
-                  </>
-                ) : null}
               </div>
             ) : null}
             {/* message.thin is only ever set on the assistant message ChatPage

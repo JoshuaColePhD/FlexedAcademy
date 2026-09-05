@@ -3796,6 +3796,33 @@ def _rows(sql: str, params: tuple = ()) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def framework_titles(state: str) -> dict[str, str]:
+    """course -> that state's own adopted_title from the ingest manifest
+    (public.standards_frameworks) — e.g. Georgia's "ELA" should read
+    "Georgia's K-12 English Language Arts Standards (2025)", not Alabama's
+    "English Language Arts (2021)". Falls back to the hardcoded
+    SUBJECT_LABELS in routes/misc.py for any course with no manifest row yet
+    (or for a state, like 'AL', whose original frameworks predate this
+    table)."""
+    rows = _rows(
+        "SELECT course, adopted_title FROM public.standards_frameworks WHERE state = %s",
+        (state,),
+    )
+    return {r["course"]: r["adopted_title"] for r in rows}
+
+
+def active_standards_states() -> list[str]:
+    """Postal codes with at least one 'active' row in the standards ingest
+    manifest (public.standards_frameworks) — what the frontend's standards
+    catalog can actually ground a plan in. Lets the frontend read this
+    instead of hardcoding a state list that drifts from what's really live;
+    see frontend/src/lib/states.js's INGESTED_STANDARDS_STATES."""
+    rows = _rows(
+        "SELECT DISTINCT state FROM public.standards_frameworks WHERE status = 'active' ORDER BY state"
+    )
+    return [r["state"] for r in rows]
+
+
 def list_standard_chunks() -> list[dict]:
     """Return the canonical standards corpus without embedding vectors.
 

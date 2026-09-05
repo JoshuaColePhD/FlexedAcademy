@@ -17,7 +17,10 @@ export const qk = {
   me: ['me'],
   classes: ['classes'],
   settings: (subject) => ['settings', subject ?? null],
-  frameworks: ['frameworks'],
+  /** Two states can each have their own "Mathematics (2019)" — keyed by
+   *  state so the cache doesn't hand one state's frameworks to another. */
+  frameworks: (state) => ['frameworks', state ?? 'AL'],
+  activeStandardsStates: ['standards', 'active-states'],
   /** Whitelisted schools for the settings page dropdown — fixed lookup, not
    *  account data, so it isn't invalidated by anything account-related. */
   schools: ['schools'],

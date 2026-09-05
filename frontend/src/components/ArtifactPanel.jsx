@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as Sentry from '@sentry/react'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -14,7 +14,6 @@ import { unitSuffix } from '../lib/planShape'
 import { LessonPlanTable } from './LessonPlanTable'
 import { WeedenLessonPlanTable } from './WeedenLessonPlanTable'
 import { WeedenPlanDayCards } from './WeedenPlanDayCards'
-import { Marginalia } from './Marginalia'
 import { ShareDialog } from './ShareDialog'
 import { DocxDownloadButton } from './DocxDownloadButton'
 import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
@@ -64,6 +63,7 @@ export function ArtifactPanel({
   artifact,
   classId,
   subject,
+  state,
   onCollapse,
   onReviseDay,
   onReviseDays,
@@ -118,21 +118,20 @@ const location = useLocation()
     return () => clearTimeout(timer)
   }, [busy, artifact?.planId])
 
-  /* The document always covers the chat now (2026-08-27) — there is no more
-     docked-beside-it mode at any width, so this panel is always the overlay
-     dialog. `isPhone` still decides what SHAPE the document takes (days vs.
-     the district table) — that's a real, ongoing distinction; whether the
-     panel COVERS the chat stopped being one. */
+  // Docked documents are non-modal; fullscreen owns focus until dismissed.
   // Phone plans are rendered as a destination in the app, rather than a
   // dialog layered over chat. That keeps the reader's semantics and scroll
   // behavior honest without changing the desktop document surface.
-  const isOverlay = !mobileReader && !readerMode
+  const isOverlay = !mobileReader && (!readerMode || isFullscreen)
   const isPhone = useLayoutMode() === 'phone'
 
   // Days is the phone shape — the district table has a min-width and a
   // teacher on a phone reads one day at a time anyway. Everyone else gets
   // Print, the actual district table: no picking required, because there is
   // nothing left to pick between.
+  // Desktop inspectors keep the complete district table in view so standards
+  // and lesson fields can be compared across the week without horizontal day
+  // paging. Only the phone reader uses the compact swipeable day cards.
   const view = isPhone ? 'days' : 'print'
   /* Escape peels one layer at a time, innermost first: an open cell tweak, then
      the document. It has to be decided HERE rather than in the tweak input,
@@ -141,7 +140,7 @@ const location = useLocation()
      down in the input is already too late. Cancelling a two-word tweak used to
      throw away the whole document you were working in. */
   useFocusTrap(panelRef, {
-    active: !mobileReader && !readerMode,
+    active: isOverlay,
     trap: isOverlay,
     initialFocus: titleRef,
     onEscape: () => {
@@ -181,7 +180,10 @@ const location = useLocation()
       })
     }
   }, [documentStatus, documentJob.data?.attempts, documentJob.data?.error_message, planId])
-  const grounded = new Set(artifact?.grounding?.codes || artifact?.retrievedIds || [])
+  const grounded = useMemo(
+    () => new Set(artifact?.grounding?.codes || artifact?.retrievedIds || []),
+    [artifact?.grounding?.codes, artifact?.retrievedIds],
+  )
 
   return (
     <section
@@ -249,7 +251,7 @@ const location = useLocation()
                   </Tooltip>
                 ) : null}
                 <Download size={14} aria-hidden="true" className="text-ink-muted" />
-                <span className="font-medium">Download as DOCX</span>
+                <span className="font-medium">{readerMode && !isFullscreen ? 'DOCX' : 'Download as DOCX'}</span>
               </DocxDownloadButton> : (
                 <button
                   key={`document-${documentStatus}`}
@@ -274,7 +276,7 @@ const location = useLocation()
             </span>
           )}
 
-          {!mobileReader && !readerMode ? (
+          {!mobileReader ? (
             <button
               type="button"
               className="btn-icon fa-press ml-1"
@@ -309,6 +311,7 @@ const location = useLocation()
               plan={plan}
               planId={planId}
               subject={subject}
+              state={state}
               groundedCodes={grounded}
               onReviseDay={planId ? onReviseDay : undefined}
               onReviseDays={planId ? onReviseDays : undefined}
@@ -322,12 +325,6 @@ const location = useLocation()
               openTweak={openTweak}
               setOpenTweak={setOpenTweak}
             />}
-            <Marginalia
-              warnings={artifact?.warnings}
-              plan={plan}
-              retrievedCodes={artifact?.grounding?.codes || artifact?.retrievedIds}
-              onFixCitation={onReviseDay ? setOpenTweak : undefined}
-            />
           </div>
         ) : streamingText ? (
           <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-paper-sunken p-4 font-mono text-sm text-ink-soft">

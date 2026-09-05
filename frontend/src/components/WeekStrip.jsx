@@ -118,7 +118,7 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
                     own `width` open/closed — without a reserved height, a
                     line straddling the 1-line/2-line boundary visibly
                     resizes mid-transition as the drawer's width changes. */}
-                <span className="min-w-0 flex-1 line-clamp-2 min-h-[2.7em] leading-[1.35] text-sm text-ink">
+                <span className="min-w-0 flex-1 line-clamp-2 min-h-[1.35em] leading-[1.35] text-sm text-ink">
                   {isOff ? (
                     <span className="text-ink-faint">{title || 'No school'}</span>
                   ) : day ? (

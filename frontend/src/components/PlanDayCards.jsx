@@ -52,7 +52,13 @@ function Field({ label, field, dayName, dayIndex, kit, children }) {
   )
 }
 
-function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
+function PlanDayCard({ day, index, groundedCodes, subject, usState, kit }) {
+  // Named `usState` (the postal code passed for citation lookups), not
+  // `state`, on purpose — `state` below is this day's OWN completion status
+  // ('ok'/'pending'/'no_school'), an unrelated concept that already owned
+  // this name throughout the file; shadowing it here would have silently
+  // fed a day-status string into the standards lookup instead of a state
+  // code.
   const state = dayState(day)
 
   if (state !== 'ok') {
@@ -121,7 +127,7 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
           dayIndex={index}
           kit={kit}
         >
-          <CitedText text={day.standards} groundedCodes={groundedCodes} subject={subject} />
+          <CitedText text={day.standards} groundedCodes={groundedCodes} subject={subject} state={usState} />
         </Field>
       ) : null}
 
@@ -144,7 +150,7 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
                   kit={kit}
                 >
                   {cited ? (
-                    <CitedText text={day[key]} groundedCodes={groundedCodes} subject={subject} />
+                    <CitedText text={day[key]} groundedCodes={groundedCodes} subject={subject} state={usState} />
                   ) : (
                     tags ? list.map((strategy) => (
                       <span className="strategy-tag" key={strategy}>{strategy}</span>
@@ -163,6 +169,7 @@ function PlanDayCard({ day, index, groundedCodes, subject, kit }) {
 export function PlanDayCards({
   plan,
   subject,
+  state: usState,
   groundedCodes,
   missingDays,
   busy,
@@ -281,7 +288,7 @@ export function PlanDayCards({
         aria-label="The week, one day per card — scrolls sideways"
       >
         {days.map((d, i) => (
-          <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} subject={subject} kit={kit} />
+          <PlanDayCard key={d.name} day={d} index={i} groundedCodes={groundedCodes} subject={subject} usState={usState} kit={kit} />
         ))}
       </div>
     </div>

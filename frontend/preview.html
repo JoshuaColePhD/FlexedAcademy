@@ -38,12 +38,7 @@
          are identifiers and should look like identifiers. Newsreader used to be
          requested for a serif greeting on the home screen — the week board
          replaced that screen, so the font was being downloaded for nothing. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <link rel="stylesheet" href="/src/styles/fonts.css" />
 
     <!-- Set the theme before first paint so a dark-mode load doesn't flash white. -->
     <script>
@@ -58,7 +53,7 @@
         // Literal hex because a meta tag can't read a custom property; these are
         // the two --paper-rgb values in tokens.css.
         var tc = document.querySelector('meta[name="theme-color"]')
-        if (tc) tc.setAttribute('content', dark ? '#101216' : '#fbfbfc')
+        if (tc) tc.setAttribute('content', dark ? '#171719' : '#f7f7f8')
       } catch (e) {
         document.documentElement.setAttribute('data-theme', 'light')
       }

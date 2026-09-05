@@ -694,38 +694,60 @@ def chunks_by_code() -> dict[str, dict]:
 
 
 @functools.lru_cache(maxsize=1)
-def _chunks_by_course_and_code() -> dict[tuple[str, str], dict]:
-    """(normalized course, normalized code) -> chunk — the scoped companion to
-    chunks_by_code(). Built once, alongside it, for the same reason
-    _codes_by_course() sits next to codes_for_course()."""
-    out: dict[tuple[str, str], dict] = {}
+def _chunks_by_state_course_and_code() -> dict[tuple[str, str, str], dict]:
+    """(state, normalized course, normalized code) -> chunk — the scoped
+    companion to chunks_by_code(). Built once, alongside it, for the same
+    reason _codes_by_course() sits next to codes_for_course(). State-scoped
+    for the same reason retrieve_raw() filters on state: two states can
+    both have e.g. a numeric-only code like "1.1", and without this a
+    Georgia citation could resolve to Alabama's chunk of the same code."""
+    out: dict[tuple[str, str, str], dict] = {}
     for c in load_chunks():
-        course, code = c.get("course"), c.get("code")
-        if course and code:
-            out[(normalize_course(course), _norm_code(code))] = c
+        course, code, state = c.get("course"), c.get("code"), c.get("state")
+        if course and code and state:
+            out[(state, normalize_course(course), _norm_code(code))] = c
     return out
 
 
-def chunk_for_code(code: str, subject_code: str | None = None) -> dict | None:
-    """One chunk for this code — scoped to subject_code's course when given.
+def chunk_for_code(code: str, subject_code: str | None = None, state: str = "AL") -> dict | None:
+    """One chunk for this code — scoped to this state and subject_code's
+    course when given.
 
     Tries every course_variants() match for subject_code first, so a code
-    that collides across courses resolves to the plan's OWN course's chunk,
-    not whichever course chunks_by_code() happened to keep. Falls back to
-    the course-blind lookup when subject_code is omitted (the Standards
-    browser has no one course in mind) or when this course doesn't carry
-    the code at all (a teacher-typed code from memory, say) — a fallback
-    match is still more useful than a bare 404, it just isn't guaranteed to
-    be THIS course's own text.
+    that collides across courses (or across states) resolves to the plan's
+    OWN course and state, not whichever one chunks_by_code() happened to
+    keep. Falls back to the state-scoped but course-blind lookup when
+    subject_code is omitted (the Standards browser has no one course in
+    mind) or when this course doesn't carry the code at all (a
+    teacher-typed code from memory, say) — a fallback match is still more
+    useful than a bare 404, it just isn't guaranteed to be THIS course's
+    own text. Never falls back across states — a code with no match in the
+    caller's own state is a 404, not another state's standard wearing this
+    one's citation.
     """
     norm = _norm_code(code)
+    state = (state or "AL").upper()
     if subject_code:
-        by_course = _chunks_by_course_and_code()
+        by_course = _chunks_by_state_course_and_code()
         for course in course_variants(subject_code):
-            hit = by_course.get((normalize_course(course), norm))
+            hit = by_course.get((state, normalize_course(course), norm))
             if hit:
                 return hit
-    return chunks_by_code().get(norm)
+    return _state_scoped_chunk_by_code(state).get(norm)
+
+
+@functools.lru_cache(maxsize=1)
+def _state_scoped_chunk_by_code_cache() -> dict[str, dict[str, dict]]:
+    out: dict[str, dict[str, dict]] = {}
+    for c in load_chunks():
+        code, state = c.get("code"), c.get("state")
+        if code and state:
+            out.setdefault(state, {})[_norm_code(code)] = c
+    return out
+
+
+def _state_scoped_chunk_by_code(state: str) -> dict[str, dict]:
+    return _state_scoped_chunk_by_code_cache().get(state, {})
 
 
 @functools.lru_cache(maxsize=1)
@@ -901,15 +923,23 @@ def retrieve_raw(
     grade: int,
     source_type: str | None = None,
     query_vector: list[float] | None = None,
+    state: str = "AL",
 ) -> list[dict]:
     # `query_vector` lets the caller embed once and search many times.
     if query_vector is None:
         query_vector = embed_query(query)
     from . import db
-    
-    where_clause = "1=1"
-    params = []
-    
+
+    # Every state's standards live in the same `chunks` table, distinguished
+    # only by metadata->>'state'. Before a second state existed this filter
+    # was unnecessary — every row already was Alabama — but without it here,
+    # a Georgia teacher's plan can get grounded against an Alabama standard
+    # purely because its embedding happens to be the nearest neighbor.
+    # Defaults to 'AL' so existing classes with no `state` set keep their
+    # current behavior exactly.
+    where_clause = "metadata->>'state' = %s"
+    params = [state]
+
     if source_type == "act_standards":
         # Section-scoped, not cross-course — see act_sections_for().
         sections = act_sections_for(course)
@@ -1011,7 +1041,7 @@ def retrieve_raw(
 STRATA = ("ap_skills", "state_course_of_study", "act_standards", "act_recurring")
 
 
-def lookup_codes(query: str, course: str, grade: int) -> list[dict]:
+def lookup_codes(query: str, course: str, grade: int, state: str = "AL") -> list[dict]:
     """Chunks whose code the query names outright.
 
     Vector search cannot do identifiers. Embeddings put "LO.3.A.3.1" and
@@ -1045,12 +1075,13 @@ def lookup_codes(query: str, course: str, grade: int) -> list[dict]:
 
     sql = (
         "SELECT id, document, metadata FROM chunks "
-        "WHERE upper(metadata->>'code') = ANY(%s) "
+        "WHERE metadata->>'state' = %s "
+        "AND upper(metadata->>'code') = ANY(%s) "
         "AND metadata->>'course' = ANY(%s) "
         "AND ((metadata->>'grade')::int = %s "
         "     OR metadata->>'source_type' IN ('college_board', 'ap_skills', 'act_standards'))"
     )
-    params: list = [sorted(codes), list(course_variants(course)), grade]
+    params: list = [state, sorted(codes), list(course_variants(course)), grade]
     # Enforce AP vs General course standards
     if is_ap_course(course):
         sql += " AND metadata->>'source_type' <> 'state_course_of_study'"
@@ -1078,6 +1109,7 @@ def retrieve_grounded(
     top_k: int | None = None,
     max_distance: float | None = None,
     extra_queries: list[str] | None = None,
+    state: str = "AL",
 ) -> RetrievalResult:
     top_k = top_k or settings.retrieval_top_k
     floor = settings.floor_for(subject_code) if max_distance is None else max_distance
@@ -1115,7 +1147,7 @@ def retrieve_grounded(
     # Exact identifier matches first, so they win the per-code dedup in
     # consider() against any approximate hit for the same standard.
     for q in searches:
-        consider(lookup_codes(q, subject_code, grade))
+        consider(lookup_codes(q, subject_code, grade, state=state))
 
     # Bounded by BOTH settings — never more in-flight queries than the pool has
     # connections, because a worker past that just blocks in db.borrow() while
@@ -1127,7 +1159,7 @@ def retrieve_grounded(
         futures = []
         for q, n, source_type in jobs:
             futures.append(executor.submit(
-                retrieve_raw, q, n, subject_code, grade, source_type, vectors[q]
+                retrieve_raw, q, n, subject_code, grade, source_type, vectors[q], state
             ))
             
         for future in futures:

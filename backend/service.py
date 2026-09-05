@@ -132,6 +132,17 @@ def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
     return _subject_code(subject), grade
 
 
+def _resolve_state(cls: dict | None) -> str:
+    """Which state's standards corpus to ground against — from the class's
+    own `state` column, defaulting to 'AL' for a legacy class/plan with none
+    set (every class before multi-state support existed). See
+    _resolve_subject_grade just above for the same reasoning applied to
+    subject/grade; kept as its own small helper since state, unlike
+    subject/grade, has no account-level settings fallback to consult."""
+    state = (cls or {}).get("state")
+    return state.upper() if state else "AL"
+
+
 def identity_for(user_id: str, cls: dict | None) -> dict:
     """teacher/course/period to stamp onto a plan.
 
@@ -171,6 +182,7 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
     omitting it means.
     """
     subject_code, grade = _resolve_subject_grade(user_id, cls)
+    state = _resolve_state(cls)
 
     off_scope = retrieval.out_of_scope_grades(query, corpus_grade=grade)
     if off_scope:
@@ -181,12 +193,13 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
     # abstract skill statements. See llm.expand_query.
     # Prepending the course and grade gives massive semantic context for the embeddings API.
     contextual_query = f"Course: {subject_code}, Grade: {grade} - {query}"
-    
+
     result = retrieval.retrieve_grounded(
-        contextual_query, 
-        subject_code=subject_code, 
-        grade=grade, 
-        extra_queries=llm.expand_query(user_id, contextual_query)
+        contextual_query,
+        subject_code=subject_code,
+        grade=grade,
+        extra_queries=llm.expand_query(user_id, contextual_query),
+        state=state,
     )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
@@ -676,7 +689,8 @@ def revise_day(
         result = retrieval.retrieve_grounded(
             contextual_feedback,
             subject_code=subject_code,
-            grade=grade
+            grade=grade,
+            state=_resolve_state(cls),
         )
         if result.empty:
             # A revision is allowed to proceed ungrounded — it inherits the week's
@@ -1040,7 +1054,7 @@ def revise_days(
             contextual_feedback = (
                 f"Course: {subject_code}, Grade: {grade} - {feedback} {original.get('learning_targets', '')}"
             )
-            result = retrieval.retrieve_grounded(contextual_feedback, subject_code=subject_code, grade=grade)
+            result = retrieval.retrieve_grounded(contextual_feedback, subject_code=subject_code, grade=grade, state=_resolve_state(cls))
             if result.empty:
                 result = RetrievalResult(chunks=[], rejected=result.rejected, floor=result.floor)
         else:

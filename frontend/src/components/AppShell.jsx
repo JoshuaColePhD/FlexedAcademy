@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronLeft, ChevronRight, Database, FileText, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react'
+import { ChevronDown, Database, FileText, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
@@ -14,9 +14,9 @@ import { NARROW, PHONE, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
-import { OnboardingWizard } from './OnboardingWizard'
 import { onOpenOnboardingWizard } from '../lib/onboardingWizardBus'
 import { readAccountStorage, writeAccountStorage } from '../lib/accountStorage'
+import { WorkspaceRailContext } from '../lib/workspaceRailContext'
 
 /* The frame. A chat client's shape, which is what this is now.
  *
@@ -28,6 +28,7 @@ import { readAccountStorage, writeAccountStorage } from '../lib/accountStorage'
 // Width of the revealed pin/rename/delete strip on a spacious (mobile) swipe —
 // three .btn-icon-lg targets plus the row's own internal gaps/padding.
 const SWIPE_ACTIONS_WIDTH = 132
+const OnboardingWizard = lazy(() => import('./OnboardingWizard').then((module) => ({ default: module.OnboardingWizard })))
 
 function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOpen, onSwipeOpenChange }) {
   const rename = useRenameChat()
@@ -312,6 +313,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   const toast = useToast()
   const navigate = useNavigate()
   const classPath = `/c/${classId}`
+  const isChatRoute = /^\/c\/[^/]+(?:\/chat\/[^/]+)?$/.test(location.pathname)
   // Only one row's swipe strip open at a time — opening a second one closes
   // whichever was already open, same as every native swipe-action list.
   const [swipeOpenId, setSwipeOpenId] = useState(null)
@@ -393,7 +395,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
 
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center gap-2 px-3 mt-2">
+      <div className={`rail-brand-row flex h-14 shrink-0 items-center gap-2 px-3 mt-2${collapsed ? ' is-collapsed' : ''}`}>
         <svg viewBox="0 0 64 64" className="w-6 h-6 shrink-0 text-[#7c3aed] drop-shadow-sm" aria-hidden="true">
           <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
           <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
@@ -411,20 +413,15 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
             FlexEd Academy
           </span>
         )}
-        {/* Same collapse toggle as the app-rail-handle groove on the sidebar's
-            own edge (AppShell's docked wrapper below) — that one's easy to
-            miss since it's a hover/touch strip with no label of its own.
-            This copy lives right in the header, next to the wordmark it
-            collapses away, so the control is visible without having to find
-            the seam first. Collapsed state already has its own re-expand
-            affordance (the edge handle), so this only needs to render
-            expanded — same reasoning as the wordmark it sits beside. */}
-        {!collapsed && onToggleCollapse ? (
+        {/* Chat pages place this control at the seam beside the workspace
+            selector. Other pages keep it here because they do not render the
+            chat topbar that owns that shared control. */}
+        {onToggleCollapse && !isChatRoute ? (
           <button
             type="button"
-            className="btn-icon shrink-0 !h-6 !w-6"
-            aria-label="Collapse the sidebar"
-            title="Collapse the sidebar"
+            className="workspace-sidebar-toggle shrink-0"
+            aria-label={collapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
+            title={collapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
             onClick={onToggleCollapse}
           >
             <PanelLeft size={14} aria-hidden="true" />
@@ -463,7 +460,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
             rail instead — still the rarest warm note, just this world's
             warm note. Solid fill now, not a pastel tint — the one button in
             the rail that should read as unmistakably "press me." */}
-        <motion.div whileHover={{ scale: 1.02, y: -1 }} className={collapsed ? 'flex justify-center' : ''}>
+        <div className={collapsed ? 'flex justify-center' : ''}>
           {collapsed ? (
             <Link
               to={classPath}
@@ -474,7 +471,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
               <Plus size={spacious ? 18 : 15} aria-hidden="true" className="shrink-0" />
             </Link>
           ) : (
-            <motion.div layout className="rail-new-plan-row">
+            <div className="rail-new-plan-row">
               <AnimatePresence initial={false} mode="wait">
                 {searchOpen ? (
                   <motion.div
@@ -523,9 +520,9 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                   </motion.div>
                 )}
               </AnimatePresence>
-            </motion.div>
+            </div>
           )}
-        </motion.div>
+        </div>
       </div>
 
       {collapsed ? null : (
@@ -632,7 +629,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         </nav>
       )}
 
-      <motion.div layout className={`pt-2 pb-1 flex flex-col ${collapsed ? 'flex-1' : 'shrink-0'}`}>
+      <div className={`pt-2 pb-1 flex flex-col ${collapsed ? 'flex-1' : 'shrink-0'}`}>
         {isFreeTier && !collapsed && (
           <div className="px-4 pb-3">
             <div className="flex justify-between text-[10px] font-medium text-ink-muted mb-1.5 uppercase tracking-wider">
@@ -709,7 +706,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         <div className="mt-auto">
           <AccountMenu classPath={classPath} collapsed={collapsed} spacious={spacious} />
         </div>
-      </motion.div>
+      </div>
     </>
   )
 }
@@ -738,7 +735,10 @@ function OnboardingWizardHost() {
 
   const cls = classes.find((c) => c.id === classId) || classes[0]
 
+  if (!open) return null
+
   return (
+    <Suspense fallback={<div role="status" className="fixed bottom-4 right-4 z-[220] rounded-md bg-paper-raised p-3 text-sm">Opening setup…</div>}>
     <OnboardingWizard
       open={open}
       cls={cls}
@@ -748,13 +748,13 @@ function OnboardingWizardHost() {
         if (opts?.prefill && target) navigate(`/c/${target}`, { state: { prefill: opts.prefill } })
       }}
     />
+    </Suspense>
   )
 }
 
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
   const isPhone = useMediaQuery(PHONE)
-  const prefersReducedMotion = useReducedMotion()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerRef = useRef(null)
   const drawerExit = useExitTransition(drawerOpen, 130)
@@ -790,7 +790,8 @@ export function AppShell({ children }) {
   }
 
   return (
-    <div className="app-shell-frame flex h-full w-full overflow-hidden p-2 gap-2 relative z-10">
+    <WorkspaceRailContext.Provider value={{ collapsed: railCollapsed, toggle: toggleRailCollapsed }}>
+      <div className="app-shell-frame flex h-full w-full overflow-hidden p-2 gap-2 relative z-10">
       <div className="app-blob" aria-hidden="true" />
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
@@ -801,10 +802,7 @@ export function AppShell({ children }) {
 
       {/* docked */}
       {!isNarrow && !isFocusMode ? (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 30 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1], delay: 0.04 }}
+        <div
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
             width: railCollapsed ? '68px' : 'var(--sidebar-w)',
@@ -815,28 +813,7 @@ export function AppShell({ children }) {
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <Rail collapsed={railCollapsed} onToggleCollapse={toggleRailCollapsed} />
           </div>
-          {/* Same seam-handle language as the artifact rail's own collapse
-              control on the other side of the screen (ArtifactRail.jsx) —
-              a groove found by hover/touch, not a labeled button competing
-              with everything else in the header. The chevron is always
-              drawn (not just while collapsed) so the handle reads as
-              clickable in both states; it just flips to point whichever
-              way this click will move the rail. */}
-          <button
-            type="button"
-            className="app-rail-handle tap-target"
-            onClick={toggleRailCollapsed}
-            aria-expanded={!railCollapsed}
-            aria-label={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
-            title={railCollapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
-          >
-            {railCollapsed ? (
-              <ChevronRight className="app-rail-handle-arrow" aria-hidden="true" />
-            ) : (
-              <ChevronLeft className="app-rail-handle-arrow" aria-hidden="true" />
-            )}
-          </button>
-        </motion.div>
+        </div>
       ) : null}
 
       {/* drawer */}
@@ -860,10 +837,7 @@ export function AppShell({ children }) {
         )
       ) : null}
 
-      <motion.div
-        initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.32, ease: [0.22, 0.8, 0.24, 1] }}
+      <div
         className="app-shell-main relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
         id="main"
       >
@@ -896,7 +870,8 @@ export function AppShell({ children }) {
         ) : (
           <div className="min-h-0 flex-1">{children}</div>
         )}
-      </motion.div>
-    </div>
+      </div>
+      </div>
+    </WorkspaceRailContext.Provider>
   )
 }

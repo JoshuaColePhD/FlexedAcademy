@@ -719,7 +719,7 @@ function StandardStub({ code, record, flag, where, index = 0 }) {
   )
 }
 
-function StandardsBody({ grounded = [], ungrounded = [], subject }) {
+function StandardsBody({ grounded = [], subject, state }) {
   // One request for every code this plan cites, instead of one per stub —
   // see StandardStub's own comment and lib/standardsCache.js. Keyed by
   // subject + the joined code list so re-mounting with the same plan (the
@@ -727,15 +727,15 @@ function StandardsBody({ grounded = [], ungrounded = [], subject }) {
   // shared cache with no new request, while a genuinely different plan's
   // codes still trigger one.
   const codes = useMemo(
-    () => [...grounded, ...ungrounded.map((u) => u.code)],
-    [grounded, ungrounded]
+    () => grounded,
+    [grounded]
   )
   const [records, setRecords] = useState({})
 
   useEffect(() => {
     if (!codes.length) return undefined
     const controller = new AbortController()
-    fetchStandardsBatch(codes, { subject, signal: controller.signal })
+    fetchStandardsBatch(codes, { subject, state, signal: controller.signal })
       .then(setRecords)
       .catch((e) => {
         // A failed batch leaves every code showing "not in the corpus"
@@ -744,25 +744,15 @@ function StandardsBody({ grounded = [], ungrounded = [], subject }) {
         if (e?.name !== 'AbortError') setRecords(Object.fromEntries(codes.map((c) => [c, null])))
       })
     return () => controller.abort()
-  }, [codes, subject])
+  }, [codes, subject, state])
 
-  if (!grounded.length && !ungrounded.length) {
-    return <p className="note">No grounding was recorded for this plan.</p>
+  if (!grounded.length) {
+    return <p className="note">Standards will appear here when available.</p>
   }
   return (
     <div className="detail-card-stack">
       {grounded.map((code, i) => (
         <StandardStub key={code} code={code} record={records[code]} index={i} />
-      ))}
-      {ungrounded.map((u, i) => (
-        <StandardStub
-          key={`${u.code}-${u.dayName}`}
-          code={u.code}
-          record={records[u.code]}
-          flag
-          where={u.dayName}
-          index={grounded.length + i}
-        />
       ))}
     </div>
   )
@@ -1072,8 +1062,8 @@ const TITLES = {
 
 const SUBS = {
   quiz: (quiz) => questionTypesLabel(quiz?.question_types),
-  standards: (_d, { grounded = [], ungrounded = [] }) =>
-    `${grounded.length} retrieved${ungrounded.length ? ` · ${ungrounded.length} not retrieved` : ''}`,
+  standards: (_d, { grounded = [] }) =>
+    `${grounded.length} standard${grounded.length === 1 ? '' : 's'}`,
   calendar: (_d, { weeks = [] }) => `${weeks.length} week${weeks.length === 1 ? '' : 's'} on file`,
   document: (doc) => (doc?.chars ? `${doc.chars.toLocaleString()} characters` : ''),
 }
@@ -1088,19 +1078,17 @@ export function ArtifactDetailPanel({
   plan,
   planId,
   subject,
+  state,
   grounded = [],
   ungrounded = [],
   weeks = [],
   currentWeek,
   onFullscreenChange,
+  readerMode = false,
 }) {
   const panelRef = useRef(null)
   const titleRef = useRef(null)
   const color = classColor(classId)
-  // The document always covers the chat now (2026-08-27) — there is no more
-  // docked-beside-it mode at any width, so this panel is always the overlay
-  // dialog. See ArtifactPanel's own comment on the same change.
-  const isOverlay = true
   const toast = useToast()
   // Was rail-card-only — sharing a quiz meant collapsing back out of the
   // very view you were reading it in, unlike the plan viewer (ArtifactPanel),
@@ -1109,6 +1097,7 @@ export function ArtifactDetailPanel({
   // from here too now.
   const [shareOpen, setShareOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const isOverlay = !readerMode || isFullscreen
   // .artifact-overlay (ChatPage.jsx) is what actually needs to grow: it sits
   // inset from the left rail with backdrop-filter + will-change: transform,
   // both of which make it the real containing block for ANY position:fixed
@@ -1127,7 +1116,7 @@ export function ArtifactDetailPanel({
   }, [isFullscreen])
 
   useFocusTrap(panelRef, {
-    active: true,
+    active: isOverlay,
     trap: isOverlay,
     initialFocus: titleRef,
     onEscape: () => {
@@ -1246,7 +1235,7 @@ export function ArtifactDetailPanel({
             quizBuilding ? <QuizSkeleton /> : <QuizBody quiz={quiz} />
           ) : null}
           {kind === 'standards' ? (
-            <StandardsBody grounded={grounded} ungrounded={ungrounded} subject={subject} />
+            <StandardsBody grounded={grounded} ungrounded={ungrounded} subject={subject} state={state} />
           ) : null}
           {kind === 'calendar' ? (
             <CalendarBody weeks={weeks} currentWeek={currentWeek} classId={classId} />

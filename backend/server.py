@@ -219,16 +219,18 @@ async def lifespan(app: FastAPI):
     misc.purge_legacy_temp()
     # retrieval.chunk_for_code() — GET /api/standards/{code}, which both the
     # Standards rail panel and every chat citation hit — reads through
-    # chunks_by_code() AND _chunks_by_course_and_code(), each an
-    # `lru_cache(maxsize=1)` that independently parses every *chunks.json in
-    # data/processed/ (~21MB) the first time it's called. Left lazy, that
-    # one-time cost landed on whichever teacher's click happened to be first
-    # after a boot/redeploy, who watched a blank card for the whole parse.
-    # Warming both here, off the request path, pays it during boot instead —
-    # in a background thread so it doesn't hold up the app becoming ready.
+    # chunks_by_code(), _chunks_by_state_course_and_code(), and
+    # _state_scoped_chunk_by_code_cache(), each an `lru_cache(maxsize=1)`
+    # that independently parses every *chunks.json in data/processed/
+    # (~21MB) the first time it's called. Left lazy, that one-time cost
+    # landed on whichever teacher's click happened to be first after a
+    # boot/redeploy, who watched a blank card for the whole parse. Warming
+    # them here, off the request path, pays it during boot instead — in a
+    # background thread so it doesn't hold up the app becoming ready.
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, retrieval.chunks_by_code)
-    loop.run_in_executor(None, retrieval._chunks_by_course_and_code)
+    loop.run_in_executor(None, retrieval._chunks_by_state_course_and_code)
+    loop.run_in_executor(None, retrieval._state_scoped_chunk_by_code_cache)
 
     global _codegen_worker_task
     if settings.builder_codegen_enabled:

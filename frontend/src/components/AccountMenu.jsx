@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronUp, Info, LogOut, Mail, Settings, ShieldCheck } from 'lucide-react'
 import { getAvatar, getInitials } from '../lib/avatars'
@@ -137,15 +138,48 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
   const { mounted, closing } = useExitTransition(open, 150)
   const ref = useRef(null)
   const popoverRef = useRef(null)
+  const [popoverStyle, setPopoverStyle] = useState(null)
 
   useEffect(() => {
     if (!open) return
     const onDown = (e) => {
-      if (!ref.current?.contains(e.target)) setOpen(false)
+      if (!ref.current?.contains(e.target) && !popoverRef.current?.contains(e.target)) setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [open])
+
+  // The rail is intentionally clipped so its collapsed state stays narrow.
+  // Render the account menu in the document layer and anchor it to the footer
+  // trigger instead of letting that clipping context cut the menu to 68px.
+  useLayoutEffect(() => {
+    if (!mounted || !ref.current) return undefined
+    const position = () => {
+      const anchor = ref.current?.getBoundingClientRect()
+      if (!anchor) return
+      const width = collapsed ? 280 : Math.max(anchor.width, 220)
+      const left = Math.max(8, Math.min(
+        collapsed ? anchor.right + 8 : anchor.left,
+        window.innerWidth - width - 8,
+      ))
+      setPopoverStyle({
+        position: 'fixed',
+        left,
+        bottom: Math.max(8, window.innerHeight - anchor.top + 4),
+        width,
+        maxWidth: 'calc(100vw - 16px)',
+        maxHeight: 'min(70vh, 520px)',
+        zIndex: 1000,
+      })
+    }
+    position()
+    window.addEventListener('resize', position)
+    window.addEventListener('scroll', position, true)
+    return () => {
+      window.removeEventListener('resize', position)
+      window.removeEventListener('scroll', position, true)
+    }
+  }, [mounted, collapsed])
 
   /* This claimed role="menu"/role="menuitem" — real ARIA menu semantics,
      which come with a contract: arrow keys move between items, Home/End jump
@@ -219,11 +253,13 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
       )}
 
       {mounted ? (
-        <div
-          ref={popoverRef}
-          tabIndex={-1}
-          className={`neo-panel fa-pop-up absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-2xl bg-paper-raised py-1${closing ? ' fa-chip-exit' : ''}`}
-        >
+        createPortal(
+          <div
+            ref={popoverRef}
+            tabIndex={-1}
+            style={popoverStyle || { visibility: 'hidden' }}
+            className={`neo-panel fa-pop-up overflow-hidden rounded-2xl bg-paper-raised py-1${closing ? ' fa-chip-exit' : ''}`}
+          >
           {/* --ink-muted: an email address is identity, not decoration —
               --ink-faint reads under 3:1 against --paper in light mode. */}
           {user?.email ? (
@@ -268,7 +304,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
                 setSupportOpen(true)
               }}
               title="Contact support"
-              className="flex min-h-touch min-w-0 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              className="flex min-h-touch w-full min-w-0 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
             >
               <Mail size={14} aria-hidden="true" /> Contact support
             </button>
@@ -306,7 +342,9 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
               </button>
             </div>
           </div>
-        </div>
+          </div>,
+          document.body,
+        )
       ) : null}
       <SupportDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
     </div>

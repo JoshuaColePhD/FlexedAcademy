@@ -15,23 +15,23 @@ import { normalizeCode } from './codes'
  */
 const cache = new Map()
 
-export function cacheKey(code, subject) {
-  return `${normalizeCode(code)}::${subject || ''}`
+export function cacheKey(code, subject, state) {
+  return `${normalizeCode(code)}::${subject || ''}::${state || ''}`
 }
 
 /** Cached record for one code, or undefined if never fetched. */
-export function getCached(code, subject) {
-  return cache.get(cacheKey(code, subject))
+export function getCached(code, subject, state) {
+  return cache.get(cacheKey(code, subject, state))
 }
 
 /**
  * One code, deduped against any request already in flight for the same key
  * (a Standards panel and a citation popover can want the same code at once).
  */
-export function fetchStandard(code, { subject, signal } = {}) {
-  const key = cacheKey(code, subject)
+export function fetchStandard(code, { subject, state, signal } = {}) {
+  const key = cacheKey(code, subject, state)
   if (cache.has(key)) return Promise.resolve(cache.get(key))
-  return api.getStandard(code, { subject, signal }).then((r) => {
+  return api.getStandard(code, { subject, state, signal }).then((r) => {
     cache.set(key, r)
     return r
   })
@@ -44,15 +44,15 @@ export function fetchStandard(code, { subject, signal } = {}) {
  * panel or a chat citation). Returns {code: record | null} for ALL requested
  * codes, cached ones included.
  */
-export async function fetchStandardsBatch(codes, { subject, signal } = {}) {
-  const uncached = codes.filter((code) => !cache.has(cacheKey(code, subject)))
+export async function fetchStandardsBatch(codes, { subject, state, signal } = {}) {
+  const uncached = codes.filter((code) => !cache.has(cacheKey(code, subject, state)))
   if (uncached.length) {
-    const fetched = await api.getStandardsBatch(uncached, { subject, signal })
+    const fetched = await api.getStandardsBatch(uncached, { subject, state, signal })
     for (const code of uncached) {
-      cache.set(cacheKey(code, subject), fetched[code] ?? null)
+      cache.set(cacheKey(code, subject, state), fetched[code] ?? null)
     }
   }
   const out = {}
-  for (const code of codes) out[code] = cache.get(cacheKey(code, subject))
+  for (const code of codes) out[code] = cache.get(cacheKey(code, subject, state))
   return out
 }

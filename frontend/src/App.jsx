@@ -9,7 +9,7 @@ import {
 } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { motion, AnimatePresence, MotionConfig, useReducedMotion } from 'framer-motion'
+import { motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { onboardingDeferred } from './lib/onboardingWizardBus'
 import { ToastProvider } from './components/ToastProvider'
 import { ConfirmProvider } from './components/ConfirmProvider'
@@ -23,15 +23,18 @@ import { readAccountStorage, writeAccountStorage } from './lib/accountStorage'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
 import { CommandPalette } from './components/CommandPalette'
-import { ClassPage } from './pages/ClassPage.jsx'
-import { PlansPage } from './pages/PlansPage.jsx'
-import { StandardsPage } from './pages/StandardsPage.jsx'
 import { useClasses } from './hooks/useAppData'
 import { useInterfacePreferences } from './hooks/useInterfacePreferences'
 import './styles/base.css'
+import './styles/codex.css'
+import { useTheme } from './hooks/useTheme'
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })))
-const ChatPage = lazyNamed(() => import('./pages/ChatPage.jsx'), 'ChatPage')
+const loadChatPage = () => import('./pages/ChatPage.jsx')
+const ChatPage = lazyNamed(loadChatPage, 'ChatPage')
+const ClassPage = lazyNamed(() => import('./pages/ClassPage.jsx'), 'ClassPage')
+const PlansPage = lazyNamed(() => import('./pages/PlansPage.jsx'), 'PlansPage')
+const StandardsPage = lazyNamed(() => import('./pages/StandardsPage.jsx'), 'StandardsPage')
 const SettingsPage = lazyNamed(() => import('./pages/SettingsPage.jsx'), 'SettingsPage')
 const HistoryPage = lazyNamed(() => import('./pages/HistoryPage.jsx'), 'HistoryPage')
 const OnboardingSetupPage = lazyNamed(() => import('./pages/onboarding/OnboardingSetupPage.jsx'), 'OnboardingSetupPage')
@@ -126,6 +129,12 @@ function RememberClass() {
 function ClassRoutes() {
   const { user } = useAuth()
   const { classId } = useParams()
+  // The chat is the authenticated default destination. Starting its request
+  // while the route shell resolves removes a network round trip from the first
+  // useful screen without eagerly evaluating it for anonymous visitors.
+  useEffect(() => {
+    void loadChatPage().catch(() => { /* Route loading can retry a failed prefetch. */ })
+  }, [])
   // First run, enforced here rather than trusted to whichever page linked in:
   // A brand-new account starts at /onboarding, which creates its class, but
   // RootRedirect and AfterAuthRedirect both land on plain `/c/:classId` for
@@ -189,18 +198,15 @@ function RouteTransition({ children }) {
     .replace(/\/chat(?:\/[^/]+)?$/, '/chat')
     .replace(/^(\/c\/[^/]+)$/, '$1/chat')
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={transitionKey}
-        className="route-stage"
-        initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: -2 }}
-        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 0.8, 0.24, 1] }}
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <motion.div
+      key={transitionKey}
+      className="route-stage"
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 2 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
   )
 }
 
@@ -448,6 +454,7 @@ function MotionProfile() {
 }
 
 export default function App() {
+  useTheme()
   useInterfacePreferences()
 
   return (

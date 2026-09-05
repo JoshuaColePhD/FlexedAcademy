@@ -10,11 +10,9 @@ function systemTheme() {
 function readMode() {
   try {
     const saved = localStorage.getItem(KEY)
-    // Light is the first-run default. Once a teacher chooses System or Dark,
-    // that explicit preference remains stored and is returned above.
-    return MODES.includes(saved) ? saved : 'light'
+    return MODES.includes(saved) ? saved : 'system'
   } catch {
-    return 'light'
+    return 'system'
   }
 }
 
@@ -22,7 +20,7 @@ function readMode() {
  *  so the CSS needs exactly one dark selector instead of duplicating every value
  *  across a prefers-color-scheme media query. */
 export function useTheme() {
-  const [mode, setMode] = useState(readMode)
+  const [mode, updateMode] = useState(readMode)
   const [resolved, setResolved] = useState(() =>
     readMode() === 'system' ? systemTheme() : readMode()
   )
@@ -38,15 +36,9 @@ export function useTheme() {
       // tag cannot read a custom property — these are --paper-rgb in tokens.css.
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', next === 'dark' ? '#1f1d1b' : '#f6f4ec')
+        ?.setAttribute('content', next === 'dark' ? '#171719' : '#f7f7f8')
     }
     apply()
-
-    try {
-      localStorage.setItem(KEY, mode)
-    } catch {
-      // Private browsing — the theme just won't persist.
-    }
 
     if (mode !== 'system') return undefined
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -54,9 +46,29 @@ export function useTheme() {
     return () => mq.removeEventListener('change', apply)
   }, [mode])
 
-  const cycle = useCallback(() => {
-    setMode((m) => MODES[(MODES.indexOf(m) + 1) % MODES.length])
+  useEffect(() => {
+    const sync = (event) => {
+      if (event.type === 'storage' && event.key !== KEY && event.key !== null) return
+      updateMode(event.detail || readMode())
+    }
+    window.addEventListener('storage', sync)
+    window.addEventListener('flexed-theme', sync)
+    return () => {
+      window.removeEventListener('storage', sync)
+      window.removeEventListener('flexed-theme', sync)
+    }
   }, [])
+
+  const setMode = useCallback((next) => {
+    if (!MODES.includes(next)) return
+    try { localStorage.setItem(KEY, next) } catch { /* Session-only preference. */ }
+    updateMode(next)
+    window.dispatchEvent(new CustomEvent('flexed-theme', { detail: next }))
+  }, [])
+
+  const cycle = useCallback(() => {
+    setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length])
+  }, [mode, setMode])
 
   return { mode, resolved, setMode, cycle }
 }

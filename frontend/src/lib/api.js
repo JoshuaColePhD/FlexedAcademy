@@ -304,7 +304,9 @@ export const api = {
 
   getSettings: ({ subject, signal } = {}) => request(subject ? `/api/settings?subject=${encodeURIComponent(subject)}` : '/api/settings', { signal }),
   putSettings: (payload) => request('/api/settings', { method: 'PUT', body: payload }),
-  getFrameworks: ({ signal } = {}) => request('/api/frameworks', { signal }),
+  getFrameworks: ({ state, signal } = {}) =>
+    request(state ? `/api/frameworks?state=${encodeURIComponent(state)}` : '/api/frameworks', { signal }),
+  getActiveStandardsStates: ({ signal } = {}) => request('/api/standards/active-states', { signal }),
 
   /** `classId` scopes the sidebar to one prep. Omitted, the server returns
    *  every chat, which is what this meant before. */
@@ -613,17 +615,20 @@ export const api = {
   // Japanese Language and Culture" (same code, wrong course; see
   // backend/retrieval.py's chunk_for_code). Only the Standards browser,
   // which has no one course in mind, should ever omit it.
-  getStandard: (code, { subject, signal } = {}) =>
-    request(
-      `/api/standards/${encodeURIComponent(code)}${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`,
-      { signal }
-    ),
+  getStandard: (code, { subject, state, signal } = {}) => {
+    const qs = new URLSearchParams()
+    if (subject) qs.set('subject', subject)
+    if (state) qs.set('state', state)
+    const query = qs.toString()
+    return request(`/api/standards/${encodeURIComponent(code)}${query ? `?${query}` : ''}`, { signal })
+  },
   // Same lookup as getStandard, for every code a plan cites in one request —
   // see backend/routes/standards.py's get_standards_batch for why. Returns
   // {code: chunk | null}.
-  getStandardsBatch: (codes, { subject, signal } = {}) => {
+  getStandardsBatch: (codes, { subject, state, signal } = {}) => {
     const qs = new URLSearchParams({ codes: codes.join(',') })
     if (subject) qs.set('subject', subject)
+    if (state) qs.set('state', state)
     return request(`/api/standards/batch?${qs}`, { signal })
   },
   getStandardsCoverage: (classId, { signal } = {}) =>

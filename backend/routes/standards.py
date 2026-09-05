@@ -49,6 +49,7 @@ class SearchRequest(BaseModel):
     # calibrated corpus: AP Lang, grade 11.
     subject: str = Field(default="AP_Lang", max_length=120)
     grade: int = Field(default=11, ge=0, le=12)
+    state: str = Field(default="AL", max_length=2)
 
 
 def _slim(chunk: dict) -> dict:
@@ -62,10 +63,16 @@ def list_standards(
     q: str | None = Query(None, max_length=200),
     subject: str | None = Query(None, max_length=120),
     grade: int | None = Query(None),
+    state: str = Query("AL", max_length=2),
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    items = retrieval.load_chunks()
+    # Without this, the Standards browser would list two states' "Mathematics
+    # (2019)" interleaved with no way to tell them apart the moment a second
+    # state's corpus exists — same reasoning as every other endpoint here.
+    # Defaults to 'AL' for backward compatibility with classes predating
+    # multi-state support.
+    items = [c for c in retrieval.load_chunks() if c.get("state") == state.upper()]
 
     if subject:
         items = [c for c in items if c.get("course") == subject]
@@ -196,6 +203,14 @@ def gaps():
     }
 
 
+@router.get("/active-states")
+def active_states():
+    """Postal codes whose standards are actually live for grounding — drives
+    frontend/src/lib/states.js's isStandardsReady instead of a hardcoded set
+    that can drift from the real ingest manifest."""
+    return {"states": db.active_standards_states()}
+
+
 @router.post("/search")
 def search(req: SearchRequest):
     """Semantic search that SHOWS what the floor rejected, rather than hiding it.
@@ -204,7 +219,7 @@ def search(req: SearchRequest):
     "your query's nearest standard was 0.83, above the 0.78 cutoff" instead of
     being handed five confident-looking irrelevant results.
     """
-    raw = retrieval.retrieve_raw(req.query, n=req.top_k, course=req.subject, grade=req.grade)
+    raw = retrieval.retrieve_raw(req.query, n=req.top_k, course=req.subject, grade=req.grade, state=req.state)
     raw.sort(key=lambda c: c["distance"])
     floor = settings.retrieval_max_distance
     return {
@@ -222,7 +237,7 @@ def search(req: SearchRequest):
 
 
 @router.get("/batch")
-def get_standards_batch(codes: str = Query(..., max_length=4000), subject: str | None = Query(None)):
+def get_standards_batch(codes: str = Query(..., max_length=4000), subject: str | None = Query(None), state: str = Query("AL", max_length=2)):
     """The same lookup as GET /{code}, for every code a plan cites at once.
 
     The Standards rail panel used to call GET /{code} once per cited code —
@@ -236,7 +251,7 @@ def get_standards_batch(codes: str = Query(..., max_length=4000), subject: str |
     that a querystring doesn't need the ceremony of a request model.
     """
     requested = [c.strip() for c in codes.split(",") if c.strip()]
-    return {code: retrieval.chunk_for_code(code, subject_code=subject) for code in requested}
+    return {code: retrieval.chunk_for_code(code, subject_code=subject, state=state) for code in requested}
 
 @router.get("/coverage")
 def get_coverage(class_id: str = Query(...), user_id: str = Depends(get_current_user)):
@@ -262,9 +277,9 @@ def get_standard_lessons(
 
 
 @router.get("/{code:path}/deconstruct")
-def deconstruct_standard(code: str, subject: str | None = Query(None), user_id: str = Depends(get_current_user)):
+def deconstruct_standard(code: str, subject: str | None = Query(None), state: str = Query("AL", max_length=2), user_id: str = Depends(get_current_user)):
     """Uses LLM to simplify a dense standard into an 'I can' statement."""
-    chunk = retrieval.chunk_for_code(code, subject_code=subject)
+    chunk = retrieval.chunk_for_code(code, subject_code=subject, state=state)
     if not chunk:
         raise AppError("standard_not_found", f"No standard with code {code!r}.", status=404)
         
@@ -274,13 +289,15 @@ def deconstruct_standard(code: str, subject: str | None = Query(None), user_id: 
 
 
 @router.get("/{code:path}")
-def get_standard(code: str, subject: str | None = Query(None)):
+def get_standard(code: str, subject: str | None = Query(None), state: str = Query("AL", max_length=2)):
     """A code alone is not a safe key across the whole corpus — see
     chunk_for_code()'s own docstring. `subject` is optional only because the
     Standards browser has no one course in mind; every plan-facing caller
     (a chat citation, the rail's Standards panel) has a course and MUST send
-    it, or a cross-course collision renders as this plan's own standard."""
-    chunk = retrieval.chunk_for_code(code, subject_code=subject)
+    it, or a cross-course collision renders as this plan's own standard.
+    `state` defaults to 'AL' for the same backward-compatibility reason
+    every other standards endpoint does."""
+    chunk = retrieval.chunk_for_code(code, subject_code=subject, state=state)
     if not chunk:
         raise AppError("standard_not_found", f"No standard with code {code!r}.", status=404)
     return chunk

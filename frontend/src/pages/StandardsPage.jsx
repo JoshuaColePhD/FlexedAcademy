@@ -98,13 +98,14 @@ export function StandardsPage() {
   const { activeClass, classId } = useActiveClass()
   const subject = activeClass?.subject
   const grade = activeClass?.grade
+  const state = activeClass?.state
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [standardsView, setStandardsView] = useState('browse')
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['standards', subject, grade],
-    queryFn: () => api.listStandards({ subject, grade }),
+    queryKey: ['standards', subject, grade, state],
+    queryFn: () => api.listStandards({ subject, grade, state }),
     staleTime: Infinity,
     enabled: !!subject && grade !== undefined,
   })
@@ -124,7 +125,7 @@ export function StandardsPage() {
       return true
     })
   }, [data])
-  const coverage = coverageData || {}
+  const coverage = useMemo(() => coverageData || {}, [coverageData])
 
   const categories = useMemo(() => {
     const counts = new Map()

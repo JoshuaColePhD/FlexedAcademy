@@ -36,11 +36,14 @@ test.describe('onboarding progress journey', () => {
 
     await page.locator('#onboarding-state').selectOption('AL')
     await page.getByRole('button', { name: /Skip the school/ }).click()
-    await expect(page.getByRole('heading', { name: 'Which course are you teaching?' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'What grade do you teach?' })).toBeVisible()
+    await page.getByRole('option', { name: '11th', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Which subject area?' })).toBeVisible()
+    await page.getByRole('option', { name: /English \/ Language Arts/ }).click()
+    await expect(page.getByRole('heading', { name: 'Which course, exactly?' })).toBeVisible()
     expect(await footerBottom()).toBeCloseTo(profileFooterBottom, 0)
 
-    await page.locator('#onboarding-framework-listbox-AP_Lang').click()
-    await page.locator('#onboarding-grade').selectOption('11')
+    await page.getByRole('option', { name: /AP English Language/ }).click()
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByRole('heading', { name: 'Is this your school year?' })).toBeVisible()
     expect(await footerBottom()).toBeCloseTo(profileFooterBottom, 0)

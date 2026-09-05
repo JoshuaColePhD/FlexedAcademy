@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
@@ -35,10 +35,11 @@ import { cellKit } from './cellTweakKit'
  * with a toggle back to the real table — because the app's whole promise is that
  * the screen and the .docx agree, and a teacher must always be able to check
  * that, even sideways. */
-export function LessonPlanTable({
+export const LessonPlanTable = memo(function LessonPlanTable({
   plan,
   planId,
   subject,
+  state,
   groundedCodes,
   onReviseDay,
   onEditDay,
@@ -231,6 +232,7 @@ export function LessonPlanTable({
           <PlanDayCards
             plan={plan}
             subject={subject}
+            state={state}
             groundedCodes={groundedCodes}
             missingDays={missingDays}
             busy={busy}
@@ -248,6 +250,7 @@ export function LessonPlanTable({
             ordered={ordered}
             groundedCodes={groundedCodes}
             subject={subject}
+            state={state}
             busy={busy}
             flashCells={flashCells}
             canTweak={canTweak}
@@ -262,7 +265,7 @@ export function LessonPlanTable({
       </div>
     </div>
   )
-}
+})
 
 /* The district table itself. It mirrors the .docx and its faithfulness is the
    product, so the only thing in-cell editing is allowed to change is what
@@ -271,6 +274,7 @@ function PlanTable({
   ordered,
   groundedCodes,
   subject,
+  state,
   busy,
   flashCells,
   canTweak,
@@ -441,7 +445,7 @@ function PlanTable({
                       className={`${editing ? 'is-selected' : cellProps.className || ''}`}
                     >
                       {editing ? tweakBody(dayIndex, row.key, day.name) : row.cited ? (
-                        <CitedText text={day[row.key]} groundedCodes={groundedCodes} subject={subject} />
+                        <CitedText text={day[row.key]} groundedCodes={groundedCodes} subject={subject} state={state} />
                       ) : (
                         day[row.key]
                       )}
