@@ -8009,30 +8009,30 @@
     border-radius: var(--r-full);
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
-    color: var(--land-gold-ink);
-    /* Frosted violet glass (per direct request), not a flat tint or the
-       neumorphic gloss this used to carry — same recipe as .land-eyebrow's
-       pill (blur+saturate over the hero's aurora blob), tinted with the
-       page's one accent color instead of the ground's white so the fill
-       reads as matte purple glass rather than clear glass. */
-    background: rgb(var(--land-gold-rgb) / 0.22);
+    color: #fff;
+    /* Black frosted glass with a violet glow around it (per direct request),
+       not the lighter violet-tinted glass this carried before — the fill
+       itself goes dark (--brand-ink, this theme's near-black) so white text
+       sits on it, while the accent color moves to the border/glow instead of
+       the fill. Still the same blur+saturate recipe as .land-eyebrow's pill. */
+    background: rgb(var(--brand-ink-rgb) / 0.72);
     backdrop-filter: blur(14px) saturate(180%);
     -webkit-backdrop-filter: blur(14px) saturate(180%);
-    border: 1px solid rgb(var(--land-gold-rgb) / 0.35);
+    border: 1px solid rgb(var(--land-gold-rgb) / 0.55);
     text-decoration: none;
-    box-shadow: 0 8px 24px rgb(var(--land-gold-rgb) / 0.18);
+    box-shadow: 0 0 22px rgb(var(--land-gold-rgb) / 0.45), 0 8px 24px rgb(0 0 0 / 0.35);
     transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease),
       background var(--t-fast) var(--ease);
   }
   .land-cta:hover {
     transform: translateY(-2px);
-    background: rgb(var(--land-gold-rgb) / 0.3);
-    box-shadow: 0 12px 32px rgb(var(--land-gold-rgb) / 0.25);
+    background: rgb(var(--brand-ink-rgb) / 0.8);
+    box-shadow: 0 0 30px rgb(var(--land-gold-rgb) / 0.6), 0 12px 32px rgb(0 0 0 / 0.4);
   }
   .land-cta:active {
     transform: translateY(0);
-    background: rgb(var(--land-gold-rgb) / 0.38);
-    box-shadow: 0 4px 12px rgb(var(--land-gold-rgb) / 0.2);
+    background: rgb(var(--brand-ink-rgb) / 0.85);
+    box-shadow: 0 0 16px rgb(var(--land-gold-rgb) / 0.4), 0 4px 12px rgb(0 0 0 / 0.3);
   }
   .land-cta:focus-visible,
   .land-signin:focus-visible,
