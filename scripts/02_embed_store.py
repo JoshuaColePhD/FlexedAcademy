@@ -188,9 +188,32 @@ def main() -> int:
                     help="add to the existing collection instead of rebuilding it")
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would be embedded, then stop")
+    ap.add_argument("--state", default=None, metavar="CODE",
+                    help="build ONE corpus: a two-letter state code, or NATIONAL "
+                         "for the shared AP/College Board/ACT rows. Required now "
+                         "that each state has its own table.")
     args = ap.parse_args()
 
+    if not args.state:
+        print("Error: --state is required. Each state now has its own corpus table\n"
+              "       (migration 77), so a rebuild has to say which one it is "
+              "rebuilding.\n"
+              "       e.g. --state AL, --state GA, --state NATIONAL")
+        return 1
+    state = args.state.strip().upper()
+    if not re.fullmatch(r"[A-Z]{2}|NATIONAL", state):
+        print(f"Error: --state {args.state!r} is not a two-letter code or NATIONAL.")
+        return 1
+    target_table = "chunks_national" if state == "NATIONAL" else f"chunks_{state.lower()}"
+
     chunks, notes = load_all_chunks()
+    # Select by the chunk's OWN state, not by which file it came from. That is
+    # the same rule migration 77 split the live table with, so a rebuild lands
+    # each row exactly where the migration put it.
+    wanted = {"AP", "National"} if state == "NATIONAL" else {state}
+    before = len(chunks)
+    chunks = [c for c in chunks if (c.get("state") or "") in wanted]
+    notes.append(f"  --state {state}: kept {len(chunks)} of {before} chunks")
     if not chunks:
         print("Error: no *chunks.json found. Run the step-1 parsers first.")
         return 1
@@ -260,12 +283,11 @@ def main() -> int:
     # semaphore permit; entering without exiting leaks both. Harmless in a
     # script that exits immediately, wrong everywhere else, and this file is
     # the example someone copies.
-    target_table = "chunks"
     # A unique run suffix prevents the next staging table from colliding with
     # indexes left on the live table by a prior successful swap. Indexes are
     # normalized to stable names after the old table is removed at cutover.
     run_token = f"{datetime.now(UTC):%Y%m%d%H%M%S}_{os.getpid()}"
-    staging_table = f"chunks__rebuild_staging_{run_token}"
+    staging_table = f"{target_table}__rebuild_staging_{run_token}"
     if not args.upsert:
         # Build beside the live table. A transient API or database failure must
         # not leave the live site with a partial corpus.
@@ -273,9 +295,6 @@ def main() -> int:
             # Clean up the old fixed-name staging attempt from pre-suffix
             # versions. New runs use a unique name and therefore need no
             # broad catalog scan or destructive wildcard cleanup.
-            cur.execute("DROP INDEX IF EXISTS chunks__rebuild_staging_embedding_idx")
-            cur.execute("DROP INDEX IF EXISTS chunks__rebuild_staging_tsvector_idx")
-            cur.execute("DROP TABLE IF EXISTS chunks__rebuild_staging")
             cur.execute(f"DROP TABLE IF EXISTS {staging_table}")
             cur.execute(f"""
                     CREATE TABLE {staging_table} (
@@ -357,24 +376,44 @@ def main() -> int:
                 )
             # Brief atomic cutover. Any exception before commit leaves the
             # original chunks table in place.
-            cur.execute("LOCK TABLE chunks IN ACCESS EXCLUSIVE MODE")
-            cur.execute("ALTER TABLE chunks RENAME TO chunks__rebuild_previous")
-            cur.execute(f"ALTER TABLE {staging_table} RENAME TO chunks")
-            cur.execute("DROP TABLE chunks__rebuild_previous")
+            # Only THIS state's table is touched. Every other corpus keeps its
+            # rows and its indexes throughout — which is the point of the split:
+            # rebuilding Georgia must not be able to disturb Alabama.
+            cur.execute(f"LOCK TABLE {target_table} IN ACCESS EXCLUSIVE MODE")
+            cur.execute(f"ALTER TABLE {target_table} RENAME TO {target_table}__rebuild_previous")
+            cur.execute(f"ALTER TABLE {staging_table} RENAME TO {target_table}")
+            cur.execute(f"DROP TABLE {target_table}__rebuild_previous")
             cur.execute(
                 f"ALTER INDEX {staging_table}_embedding_idx "
-                "RENAME TO chunks_embedding_idx"
+                f"RENAME TO idx_{target_table}_embedding"
             )
             cur.execute(
                 f"ALTER INDEX {staging_table}_tsvector_idx "
-                "RENAME TO chunks_tsvector_idx"
+                f"RENAME TO idx_{target_table}_tsvector"
             )
+            cur.execute(f"ALTER TABLE {target_table} ENABLE ROW LEVEL SECURITY")
             conn.commit()
-            print("Atomically swapped the validated staging corpus into chunks.")
+            print(f"Atomically swapped the validated staging corpus into {target_table}.")
 
-        print(f"\\nStored {final} chunks in PostgreSQL 'chunks' table.")
+        # The registry is how retrieval finds this table at all, and how the
+        # post-cutover checks confirm every corpus shares one embedding model.
+        cur.execute(
+            "INSERT INTO standards_corpora "
+            "  (state_code, table_name, row_count, embedding_model, embedding_dims, ingested_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (state_code) DO UPDATE SET "
+            "  table_name = EXCLUDED.table_name, row_count = EXCLUDED.row_count, "
+            "  embedding_model = EXCLUDED.embedding_model, "
+            "  embedding_dims = EXCLUDED.embedding_dims, "
+            "  ingested_at = EXCLUDED.ingested_at",
+            (state, target_table, final, EMBED_MODEL, EMBED_DIMS,
+             datetime.now(UTC).isoformat(timespec="seconds")),
+        )
+        conn.commit()
 
-        cur.execute("SELECT id, metadata FROM chunks LIMIT 1")
+        print(f"\\nStored {final} chunks in PostgreSQL {target_table!r}.")
+
+        cur.execute(f"SELECT id, metadata FROM {target_table} LIMIT 1")
         sample = cur.fetchone()
 
         if sample:
