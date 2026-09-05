@@ -21,7 +21,10 @@ PY = sys.executable
 # (script, needs_corpus) — needs_corpus means it queries the live DB + embeddings.
 SUITES: list[tuple[str, bool]] = [
     ("test_alabama_ingest_quality.py", False),
-    ("test_golden_corpus_alignment.py", False),
+    # Generated *chunks.json files are intentionally storage-backed and ignored
+    # by Git. Keep this corpus alignment diagnostic out of --fast CI runs on a
+    # clean checkout; run it in the full/local corpus gate after restoring data.
+    ("test_golden_corpus_alignment.py", True),
     ("test_current_golden_recall.py", True),
     ("test_embedding_cache.py", False),
     ("test_retrieval_reranker.py", False),
