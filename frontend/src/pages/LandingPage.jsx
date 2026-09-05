@@ -52,9 +52,19 @@ function priceLine(data) {
   // it (routes/billing.py) — not hardcoded here, so this line can't
   // promise a number Stripe isn't actually configured to honor.
   const days = data?.trial_period_days
-  return days > 0
-    ? `Try FlexEd free for ${days} days — no credit card required. Then ${money} a ${every}.`
-    : `Join early access — ${money} a ${every}.`
+  // The figure itself gets the page's one violet accent (.land-price-amount)
+  // — everywhere else on this line stays the neutral --brand-muted gray, so
+  // the price is the thing the eye lands on, not the whole sentence.
+  const amount = (
+    <span className="land-price-amount">
+      {money} a {every}
+    </span>
+  )
+  return days > 0 ? (
+    <>Try FlexEd free for {days} days — no credit card required. Then {amount}.</>
+  ) : (
+    <>Join early access — {amount}.</>
+  )
 }
 
 /* Reveal-on-scroll, with a backstop that does not depend on

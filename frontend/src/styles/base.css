@@ -8070,6 +8070,19 @@
     margin-top: var(--sp-5);
     font-size: var(--fs-md);
     color: var(--brand-muted);
+    /* Mounts whenever the pricing fetch resolves — usually after the rest of
+       the hero has already finished its own entrance (land-hero-in, above),
+       so without this it just teleports in over already-settled content. Same
+       token, no delay: the fetch itself is the delay. */
+    animation: land-hero-in var(--t-enter) var(--ease-out) both;
+  }
+  /* The figure itself, not the whole sentence — same darker violet
+     (--land-gold-ink) the proof section's citation mark uses, since this
+     also sits on the near-white ground and a straight --land-gold only
+     clears ~2.1:1 there (see .land-proof .land-seal's own comment). */
+  .land-price-amount {
+    color: var(--land-gold-ink);
+    font-weight: var(--fw-semibold);
   }
 
   /* ── proof: one shade off the page's white ground ───────────────────── */
@@ -8253,10 +8266,24 @@
        and blur instead, the same emboss everything else on this page now
        carries, scaled to a 12px mark rather than a button. */
     box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.7), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.5);
-    transform: scale(0);
-    transition: transform var(--t-base) var(--ease-out) 900ms;
+    /* Was scale(0) — nothing in the real world appears from nothing; a dot
+       still fades in from a fraction of its size rather than materializing.
+       Opacity added alongside so it reads as arriving, not just growing. */
+    opacity: 0;
+    transform: scale(0.4);
+    transition: transform var(--t-base) var(--ease-out) 900ms, opacity var(--t-base) var(--ease-out) 900ms;
+  }
+  /* Each dot a beat behind the last, same 40-ish ms stagger the mech-steps
+     below already use for their own three-item entrance — three dots
+     popping in at once read as a glitch, not a sequence. */
+  .land-node:nth-of-type(2) .land-node-dot {
+    transition-delay: 945ms;
+  }
+  .land-node:nth-of-type(3) .land-node-dot {
+    transition-delay: 990ms;
   }
   .land-pipeline.is-inview .land-node-dot {
+    opacity: 1;
     transform: scale(1);
   }
   .land-stage {
