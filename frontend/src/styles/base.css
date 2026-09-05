@@ -4033,11 +4033,6 @@
     font-size: var(--fs-2xs);
     font-weight: var(--fw-regular);
   }
-  .checkout-preview-express {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--sp-2);
-  }
   .checkout-preview-wallet {
     min-height: var(--touch-min-lg);
     border: 1px solid var(--edge-strong);
@@ -4052,6 +4047,12 @@
     border-color: rgb(var(--accent-rgb) / 0.65);
     background: rgb(var(--accent-rgb) / 0.08);
     transform: translateY(-1px);
+  }
+  /* The Apple Pay preview tab has one control, not a 3-up grid of wallet
+     buttons — full width, same as the real ExpressCheckoutElement button
+     it's standing in for. */
+  .checkout-preview-wallet--wide {
+    width: 100%;
   }
   .checkout-preview-field {
     display: grid;
@@ -4091,22 +4092,42 @@
   .checkout-express:empty {
     display: none;
   }
-  .checkout-divider {
+  /* The segmented Card/Apple Pay switcher — same track-and-pill language as
+     the reference this was modeled on: a sunken track, a raised pill for
+     whichever tab is active. Two tabs only, so this stays a plain flex
+     row rather than a measured sliding indicator. */
+  .checkout-method-tabs {
     display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    color: var(--ink-faint);
-    font-family: var(--font-mono);
-    font-size: var(--fs-2xs);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-full);
+    background: var(--paper-sunken);
   }
-  .checkout-divider::before,
-  .checkout-divider::after {
-    height: 1px;
+  .checkout-method-tab {
     flex: 1;
-    content: '';
-    background: var(--edge);
+    min-height: 34px;
+    border-radius: var(--r-full);
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  }
+  .checkout-method-tab:hover {
+    color: var(--ink);
+  }
+  .checkout-method-tab[aria-selected='true'] {
+    background: var(--paper-raised);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+  }
+  .checkout-applepay-unavailable {
+    padding: var(--sp-3);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    color: var(--ink-muted);
+    background: rgb(var(--paper-inset-rgb) / 0.55);
+    font-size: var(--fs-xs);
+    line-height: var(--lh-relaxed);
   }
   .checkout-loading {
     min-height: 280px;

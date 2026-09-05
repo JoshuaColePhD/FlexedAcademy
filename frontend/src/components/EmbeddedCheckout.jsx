@@ -40,6 +40,7 @@ function CheckoutHeader({ onClose, priceLabel }) {
 }
 
 function LocalCheckoutPreview({ onClose, priceLabel }) {
+  const [method, setMethod] = useState('card')
   return (
     <>
       <CheckoutHeader onClose={onClose} priceLabel={priceLabel} />
@@ -58,22 +59,46 @@ function LocalCheckoutPreview({ onClose, priceLabel }) {
           <span>Choose a payment method</span>
           <span>Securely processed</span>
         </div>
-        <div className="checkout-preview-express">
-          <button type="button" className="checkout-preview-wallet">Apple Pay</button>
+        <div className="checkout-method-tabs" role="tablist" aria-label="Payment method">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={method === 'card'}
+            className="checkout-method-tab"
+            onClick={() => setMethod('card')}
+          >
+            Card
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={method === 'applepay'}
+            className="checkout-method-tab"
+            onClick={() => setMethod('applepay')}
+          >
+            Apple Pay
+          </button>
         </div>
-        <div className="checkout-divider"><span>or pay another way</span></div>
-        <label className="checkout-preview-field">
-          Email
-          <input type="email" value="teacher@example.com" readOnly aria-label="Email preview" />
-        </label>
-        <label className="checkout-preview-field">
-          Card information
-          <div className="checkout-preview-card">
-            <span>Card number</span>
-            <span>MM / YY</span>
-            <span>CVC</span>
-          </div>
-        </label>
+        {method === 'applepay' ? (
+          <button type="button" className="checkout-preview-wallet checkout-preview-wallet--wide" disabled>
+            Apple Pay
+          </button>
+        ) : (
+          <>
+            <label className="checkout-preview-field">
+              Email
+              <input type="email" value="teacher@example.com" readOnly aria-label="Email preview" />
+            </label>
+            <label className="checkout-preview-field">
+              Card information
+              <div className="checkout-preview-card">
+                <span>Card number</span>
+                <span>MM / YY</span>
+                <span>CVC</span>
+              </div>
+            </label>
+          </>
+        )}
         <button type="button" className="btn btn-primary checkout-submit" disabled>
           Subscribe · {priceLabel || 'monthly'}
         </button>
@@ -91,6 +116,14 @@ function CheckoutForm({ onClose, onPaymentSubmitted, onRetry, priceLabel }) {
   const result = useCheckoutElements()
   const [errorMessage, setErrorMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Two explicit tabs instead of stacking the express button above a divider
+  // above the card form — a teacher picks how they're paying up front, same
+  // as the reference this was modeled on. Defaults to card since it's the
+  // one guaranteed to work in every browser; Apple Pay's own eligibility
+  // (Safari, a device with a saved card, this domain verified with Apple)
+  // is unknown until ExpressCheckoutElement itself reports back below.
+  const [method, setMethod] = useState('card')
+  const [applePayAvailable, setApplePayAvailable] = useState(true)
 
   const confirmCheckout = async () => {
     if (result.type !== 'success' || !result.checkout.canConfirm || isSubmitting) return
@@ -142,23 +175,71 @@ function CheckoutForm({ onClose, onPaymentSubmitted, onRetry, priceLabel }) {
           <span>Choose a payment method</span>
           <span>Securely processed</span>
         </div>
-        <div className="checkout-express">
+        <div className="checkout-method-tabs" role="tablist" aria-label="Payment method">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={method === 'card'}
+            className="checkout-method-tab"
+            onClick={() => setMethod('card')}
+          >
+            Card
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={method === 'applepay'}
+            className="checkout-method-tab"
+            onClick={() => setMethod('applepay')}
+          >
+            Apple Pay
+          </button>
+        </div>
+        {/* Kept mounted (not conditionally rendered) so Stripe's own onReady
+            eligibility check — the only way to know Apple Pay actually works
+            in this browser/device — fires whether or not the tab is
+            currently showing. Just visually hidden on the Card tab instead. */}
+        <div className="checkout-express" hidden={method !== 'applepay'}>
           <ExpressCheckoutElement
+            options={{
+              paymentMethods: {
+                applePay: 'always',
+                googlePay: 'never',
+                link: 'never',
+                amazonPay: 'never',
+                paypal: 'never',
+              },
+            }}
+            onReady={(event) => setApplePayAvailable(Boolean(event.availablePaymentMethods?.applePay))}
             onConfirm={confirmCheckout}
-            onLoadError={(event) => setErrorMessage(event.error.message || 'Express checkout is unavailable.')}
+            onLoadError={(event) => setErrorMessage(event.error.message || 'Apple Pay is unavailable.')}
           />
+          {/* Stripe renders nothing at all when the browser/device can't do
+              Apple Pay (not Safari, no card in Wallet, this domain not yet
+              verified with Apple) — an empty tab reads as broken, not
+              "unavailable," without this. */}
+          {applePayAvailable ? null : (
+            <p className="checkout-applepay-unavailable">
+              Apple Pay isn't available in this browser. Try Safari on your iPhone or Mac, or use a card instead.
+            </p>
+          )}
         </div>
-        <div className="checkout-divider"><span>or pay another way</span></div>
-        <div className="checkout-payment-block">
-          <PaymentElement
-            options={{ layout: 'accordion' }}
-            onChange={(event) => setErrorMessage(event.error?.message || '')}
-          />
-        </div>
-        {errorMessage ? <p className="checkout-error" role="alert">{errorMessage}</p> : null}
-        <button type="submit" className="btn btn-primary checkout-submit" disabled={!checkout.canConfirm || isSubmitting}>
-          {isSubmitting ? 'Processing…' : `Subscribe · ${priceLabel || 'monthly'}`}
-        </button>
+        {method === 'card' ? (
+          <>
+            <div className="checkout-payment-block">
+              <PaymentElement
+                options={{ layout: 'accordion', paymentMethodOrder: ['card'] }}
+                onChange={(event) => setErrorMessage(event.error?.message || '')}
+              />
+            </div>
+            {errorMessage ? <p className="checkout-error" role="alert">{errorMessage}</p> : null}
+            <button type="submit" className="btn btn-primary checkout-submit" disabled={!checkout.canConfirm || isSubmitting}>
+              {isSubmitting ? 'Processing…' : `Subscribe · ${priceLabel || 'monthly'}`}
+            </button>
+          </>
+        ) : (
+          errorMessage ? <p className="checkout-error" role="alert">{errorMessage}</p> : null
+        )}
       </form>
 
       <p className="checkout-footnote">
