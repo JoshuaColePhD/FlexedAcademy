@@ -3834,6 +3834,24 @@ def list_standard_chunks() -> list[dict]:
     return _rows("SELECT id, metadata FROM chunks ORDER BY id")
 
 
+def list_standard_code_metadata() -> list[dict]:
+    """Return only scalar fields needed by grounding audits.
+
+    The standards browser needs full metadata, but generation-time grounding
+    checks only need to know whether a cited code exists, which course it
+    belongs to, and whether it is an ACT companion code. Keeping this query
+    narrow avoids transferring the full JSONB metadata payload into Python for
+    every generated plan.
+    """
+    return _rows(
+        "SELECT metadata->>'code' AS code, "
+        "metadata->>'course' AS course, "
+        "metadata->>'state' AS state, "
+        "metadata->>'source_type' AS source_type "
+        "FROM chunks WHERE metadata->>'code' IS NOT NULL"
+    )
+
+
 def _row(sql: str, params: tuple = ()) -> dict | None:
     with borrow() as conn, conn.cursor() as cur:
         cur.execute(sql.replace("?", "%s"), params)

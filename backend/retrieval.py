@@ -1041,6 +1041,53 @@ def retrieve_raw(
 STRATA = ("ap_skills", "state_course_of_study", "act_standards", "act_recurring")
 
 
+@dataclass(frozen=True)
+class _CodeInventory:
+    """Compact corpus vocabulary used by the generation-time grounding audit."""
+
+    anywhere: frozenset[str]
+    by_course: dict[str, frozenset[str]]
+    act: frozenset[str]
+
+
+@functools.lru_cache(maxsize=1)
+def _code_inventory() -> _CodeInventory | None:
+    """Load only code/course scalars when Postgres is available.
+
+    `audit_grounding()` used to call `load_chunks()` and retain a 33k-row
+    metadata corpus just to validate the handful of codes in one generated
+    plan. The compact query keeps that hot path small. Returning ``None`` for
+    local/file-backed mode preserves the existing offline behavior and tests.
+    """
+    if not settings.database_url:
+        return None
+    try:
+        rows = db.list_standard_code_metadata()
+    except Exception as exc:  # noqa: BLE001 — file fallback remains available
+        log.warning("could not load compact standards code inventory: %s", exc)
+        return None
+
+    anywhere: set[str] = set()
+    by_course: dict[str, set[str]] = {}
+    act: set[str] = set()
+    for row in rows:
+        raw_code = row.get("code")
+        if not raw_code:
+            continue
+        code = _norm_code(raw_code)
+        anywhere.add(code)
+        if row.get("source_type") in ("act_standards", "act_recurring"):
+            act.add(code)
+        course = row.get("course")
+        if course:
+            by_course.setdefault(normalize_course(course), set()).add(code)
+    return _CodeInventory(
+        anywhere=frozenset(anywhere),
+        by_course={k: frozenset(v) for k, v in by_course.items()},
+        act=frozenset(act),
+    )
+
+
 def lookup_codes(query: str, course: str, grade: int, state: str = "AL") -> list[dict]:
     """Chunks whose code the query names outright.
 
@@ -1365,8 +1412,21 @@ def cited_standards(plan: dict, allowed: set[str], subject_code: str | None = No
                       family like ACT Reading, which this app's corpus never
                       covers
     """
-    if subject_code:
-        known_course: frozenset[str] = codes_for_course(subject_code)
+    # Prefer the compact Postgres vocabulary on the production hot path. The
+    # file-backed fallback keeps offline development and existing callers
+    # unchanged, but no generated plan should need to materialize every full
+    # metadata record merely to validate a few cited codes.
+    inventory = _code_inventory()
+    if inventory is not None:
+        known_course = (
+            inventory.by_course.get(normalize_course(subject_code), frozenset())
+            | inventory.act
+            if subject_code
+            else inventory.anywhere
+        )
+        known_anywhere = inventory.anywhere
+    elif subject_code:
+        known_course = codes_for_course(subject_code)
         # ACT standards are cross-course by design and are never filed under the
         # course being planned, so they would all read as "not in this course".
         known_course = known_course | {
@@ -1374,12 +1434,12 @@ def cited_standards(plan: dict, allowed: set[str], subject_code: str | None = No
             for c in load_chunks()
             if c.get("source_type") in ("act_standards", "act_recurring") and c.get("code")
         }
+        # Corpus-wide, ignoring course — used only to tell "real code, wrong
+        # course" apart from "not a real code anywhere".
+        known_anywhere = chunks_by_code()
     else:
         known_course = frozenset(chunks_by_code().keys())
-    # Corpus-wide, ignoring course — used only to tell "real code, wrong
-    # course" apart from "not a real code anywhere". See chunks_by_code()'s
-    # own warning about not using it to decide legitimacy FOR a course.
-    known_anywhere = chunks_by_code()
+        known_anywhere = chunks_by_code()
 
     entries: list[dict] = []
     for day_index, day in enumerate(plan.get("days", [])):
