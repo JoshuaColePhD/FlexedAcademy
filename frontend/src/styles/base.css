@@ -7674,9 +7674,26 @@
     background: rgb(var(--brand-rgb) / 0.6);
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border-bottom: 1px solid rgb(var(--brand-ink-rgb) / 0.06);
     transform: translateY(0);
     transition: transform var(--t-base) var(--ease);
+  }
+  /* Was a flat 1px border-bottom — a hard cut where content actually keeps
+     scrolling underneath a translucent, floating bar (apple-design's
+     "scroll edge effects, not hard dividers"). This fades the seam instead:
+     a soft tint that dissolves to nothing just past the bar's own box, so
+     content passing beneath reads as sliding under glass, not hitting a
+     drawn line. Sits outside .land-bar's own box (top: 100%) rather than as
+     part of its background, so hiding the bar on scroll-down doesn't leave
+     a stray edge behind. */
+  .land-bar::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, rgb(var(--brand-ink-rgb) / 0.05), transparent);
+    pointer-events: none;
   }
   /* Slid up off-screen rather than removed/faded — LandingPage's own scroll
      listener toggles this class, translateY keeps the bar's sticky
@@ -8023,28 +8040,26 @@
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
     color: #fff;
-    /* Black frosted glass with a violet glow around it (per direct request),
-       not the lighter violet-tinted glass this carried before — the fill
-       itself goes dark (--brand-ink, this theme's near-black) so white text
-       sits on it, while the accent color moves to the border/glow instead of
-       the fill. Still the same blur+saturate recipe as .land-eyebrow's pill. */
-    background: rgb(var(--brand-ink-rgb) / 0.72);
-    backdrop-filter: blur(14px) saturate(180%);
-    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    /* Solid black now (per direct request), not frosted glass — the fill is
+       plain --brand-ink at full opacity, no backdrop-filter, so it reads as
+       an opaque object rather than a pane over the aurora blob behind it.
+       Violet stays exactly where it was: the border and the glow, never the
+       fill. */
+    background: var(--brand-ink);
     border: 1px solid rgb(var(--land-gold-rgb) / 0.55);
     text-decoration: none;
     box-shadow: 0 0 22px rgb(var(--land-gold-rgb) / 0.45), 0 8px 24px rgb(0 0 0 / 0.35);
     transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease),
-      background var(--t-fast) var(--ease);
+      border-color var(--t-fast) var(--ease);
   }
   .land-cta:hover {
     transform: translateY(-2px);
-    background: rgb(var(--brand-ink-rgb) / 0.8);
+    border-color: rgb(var(--land-gold-rgb) / 0.8);
     box-shadow: 0 0 30px rgb(var(--land-gold-rgb) / 0.6), 0 12px 32px rgb(0 0 0 / 0.4);
   }
   .land-cta:active {
     transform: translateY(0);
-    background: rgb(var(--brand-ink-rgb) / 0.85);
+    border-color: rgb(var(--land-gold-rgb) / 0.65);
     box-shadow: 0 0 16px rgb(var(--land-gold-rgb) / 0.4), 0 4px 12px rgb(0 0 0 / 0.3);
   }
   .land-cta:focus-visible,
@@ -8301,11 +8316,6 @@
     line-height: var(--lh-relaxed);
     color: var(--brand-muted);
   }
-  .land-scope {
-    margin-top: clamp(var(--sp-8), 5vw, var(--sp-10));
-    font-size: var(--fs-sm);
-    color: rgb(var(--brand-ink-rgb) / 0.5);
-  }
 
   /* ── mechanism: one concrete pass, not another abstract description ────
      The pipeline section above states retrieve/generate/audit as prose; this
@@ -8395,6 +8405,37 @@
     }
     .land-mech-arrow {
       transform: rotate(90deg);
+    }
+  }
+
+  /* Apple's HIG treats reduced transparency as its own accessibility signal,
+     separate from reduced motion: every glass surface on this page (the
+     nav bar, the CTA, the proof/mechanism cards, the tag pills) goes frostier
+     instead — backdrop-filter dropped, background raised to a near-solid
+     fill from the same paper/ink tokens already scoped to .land — rather
+     than picking and choosing which surfaces stay translucent. */
+  @media (prefers-reduced-transparency: reduce) {
+    .land-bar {
+      background: var(--land-paper);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .land-cta {
+      background: var(--brand-ink);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .land-excerpt-plan,
+    .land-excerpt-source,
+    .land-mech-step {
+      background: var(--land-paper);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .land-tag {
+      background: rgb(var(--brand-ink-rgb) / 0.08);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
     }
   }
 

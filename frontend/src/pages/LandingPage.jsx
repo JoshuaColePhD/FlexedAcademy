@@ -439,7 +439,7 @@ export function LandingPage() {
             className="land-cta"
             onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
           >
-            Join early access
+            Join Early Access
             <ArrowIcon />
           </Link>
           <span className="land-note">Built by an Alabama high school teacher</span>
@@ -512,9 +512,6 @@ export function LandingPage() {
             <p>Every code in the output is checked against what retrieval supplied. Anything else is flagged, not hidden.</p>
           </div>
         </div>
-        <p className="land-scope">
-          Grades 9–12 across all Alabama Course of Study subjects are in the corpus.
-        </p>
       </section>
 
       <section ref={mechRef} className={`land-mech${mechInView ? ' is-inview' : ''}`}>
@@ -550,7 +547,7 @@ export function LandingPage() {
           className="land-foot-cta"
           onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
         >
-          Join early access
+          Join Early Access
           <ArrowIcon />
         </Link>
         <div className="land-foot-legal mt-4 flex-col gap-2">
