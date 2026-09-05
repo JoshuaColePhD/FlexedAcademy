@@ -47,6 +47,11 @@ export function WorkActivityCard({
           {active ? <Sparkle size={18} className="fa-activity-icon" fill="currentColor" strokeWidth={1.8} /> : <TriangleAlert size={14} />}
         </span>
         <span className="work-activity-compact-copy" role="status" aria-live="polite">{compactSummary}</span>
+        {failed && onRetry ? (
+          <button type="button" className="work-activity-inline-action fa-press" onClick={onRetry}>
+            Retry
+          </button>
+        ) : null}
       </div>
     )
   }

@@ -764,8 +764,8 @@ export function ChatPage() {
   const [planPeekOpen, setPlanPeekOpen] = useState(false)
   const planBuildStartedRef = useRef(false)
   const [revising, setRevising] = useState(false)
-  // The latest successful plan change stays actionable in the writing-status
-  // row above the composer. Keep a short in-session trail for the history
+  // The latest successful plan change stays actionable in its completion
+  // receipt. Keep a short in-session trail for the history
   // popover; the server remains the source of truth when Undo is applied.
   const [lastChange, setLastChange] = useState(null)
   const [revisionHistory, setRevisionHistory] = useState([])
@@ -792,7 +792,7 @@ export function ChatPage() {
   // One inline activity per request. The key is the stream's request_id, while
   // anchorId keeps the completion receipt attached to the teacher message
   // that started it even when the request changes from chat routing to plan
-  // generation. Live work is shown above the composer.
+  // generation. Live work is shown directly beneath that teacher message.
   const [workActivities, setWorkActivities] = useState({})
   const activityAnchorRef = useRef(null)
   const activeActivityRequestRef = useRef(null)
@@ -1674,7 +1674,8 @@ export function ChatPage() {
   })
 
   /* Same "This week" list ArtifactRail already shows while building — one
-     more place it lands: each day pops up here, above the composer, the
+     more place it lands: each day updates the activity attached to the
+     teacher's message,
      moment its own title is known, then gets replaced by the next one
      (showReadyNotice's own clearTimeout+reset already does the "new one
      replaces the old" and "fades after a few seconds" behavior). Friday
@@ -1891,13 +1892,6 @@ export function ChatPage() {
   })
 
   const busy = stream.isStreaming || revising || chatStream.isStreaming || preparing
-  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')
-  const liveWorkActivity = latestUserMessage
-    ? Object.values(workActivities).find((activity) => (
-        activity.anchorId === latestUserMessage.id && (activity.status === 'active' || activity.status === 'error')
-      ))
-    : null
-
   useEffect(() => {
     if (!isPhone) {
       planBuildStartedRef.current = false
@@ -2269,9 +2263,9 @@ export function ChatPage() {
           setPreparing(false)
           pendingActivityKindRef.current = 'plan'
           if (voiceOpen) voice.speak(VOICE_BUILDING)
-          // No chat placeholder is needed here: the progress tray is the
-          // live response surface, and the completed-plan callback adds the
-          // assistant handoff when the document is ready.
+          // No chat placeholder is needed here: the activity line attached to
+          // the teacher's message is the live response surface, and the
+          // completed-plan callback adds the assistant handoff when ready.
           stream.start(modelQuery, {
             chatId: activeChatId,
             weekNumber: effectiveWeek,
@@ -3310,7 +3304,8 @@ export function ChatPage() {
   const latestPill = useExitTransition(!atBottom && !isEmpty, 150)
 
   /* Opens the drawer after a plan actually exists; while a build starts, the
-     progress tray above the composer is the single live surface. After
+     activity line attached to the teacher's message is the single live
+     surface. After
      that it is the teacher's to open or close. Fires at most ONCE per chat
      (railAutoOpenedRef) — `busy` flips true and back false on every later
      turn too (a revision, a follow-up, a quiz), and without the guard each
@@ -3561,7 +3556,13 @@ export function ChatPage() {
   // anchor after a plan is built, putting its file controls over the header.
   // Keep the phone dock in the chat's normal flex flow instead.
   const renderComposerDock = (dock) => (isPhone ? dock : createPortal(dock, portalHost))
-  const writingInProgress = revising || (chatStream.isStreaming && !stream.isStreaming) || preparing
+  // Action runs now announce themselves in the transcript directly below the
+  // teacher's message. Keeping the older composer banner visible as well
+  // would make one run look like two separate statuses.
+  const hasLiveWorkActivity = Object.values(workActivities).some((activity) => (
+    activity.status === 'active' || activity.status === 'error'
+  ))
+  const writingInProgress = !hasLiveWorkActivity && (revising || (chatStream.isStreaming && !stream.isStreaming) || preparing)
 
   const chatPane = (
     /* border-r-0, not a plain `border`: this pane's own background is only
@@ -3862,13 +3863,17 @@ export function ChatPage() {
                     />
                     {(() => {
                       const activity = Object.values(workActivities).find((item) => item.anchorId === m.id)
-                      if (!activity || (activity.status !== 'complete' && activity.status !== 'cancelled')) return null
+                      if (!activity) return null
+                      const isLive = activity.status === 'active' || activity.status === 'error'
                       return (
                         <WorkActivityCard
                           activity={activity}
-                          onViewPlan={artifact?.planId ? () => openDocument() : undefined}
-                          onViewSources={artifact?.planId ? openStandards : undefined}
-                          onUndo={artifact?.planId && activity.status === 'complete' && lastChange ? undoLastChange : undefined}
+                          compact={isLive}
+                          onStop={activity.status === 'active' ? (stream.isStreaming ? stopGenerating : chatStream.isStreaming ? stopChatting : undefined) : undefined}
+                          onRetry={activity.status === 'error' && !busy ? () => retryLast(activity.requestId) : undefined}
+                          onViewPlan={activity.status === 'complete' && artifact?.planId ? () => openDocument() : undefined}
+                          onViewSources={activity.status === 'complete' && artifact?.planId ? openStandards : undefined}
+                          onUndo={activity.status === 'complete' && artifact?.planId && lastChange ? undoLastChange : undefined}
                         />
                       )
                     })()}
@@ -4181,14 +4186,6 @@ export function ChatPage() {
                 <X size={13} aria-hidden="true" />
               </button>
             </div>
-          ) : null}
-          {liveWorkActivity ? (
-            <WorkActivityCard
-              activity={liveWorkActivity}
-              compact
-              onStop={liveWorkActivity.status === 'active' ? (stream.isStreaming ? stopGenerating : chatStream.isStreaming ? stopChatting : undefined) : undefined}
-              onRetry={liveWorkActivity.status === 'error' && !busy ? () => retryLast(liveWorkActivity.requestId) : undefined}
-            />
           ) : null}
           <div className={`mobile-composer-plan-sheet${artifact?.planId && hasArtifact && isPhone && !expanded ? ' has-plan' : ''}${planPeekOpen ? ' is-plan-open' : ''}`}>
           {artifact?.planId && hasArtifact && isPhone && !expanded ? (

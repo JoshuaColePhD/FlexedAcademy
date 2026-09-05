@@ -9925,22 +9925,40 @@
 .work-activity-card.is-compact {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.4rem;
-  padding-top: 0.25rem;
+  width: fit-content;
+  max-width: 100%;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+  padding: 0;
+  color: var(--accent-text);
 }
 
 .work-activity-card.is-compact .work-activity-mark {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.15rem;
+  height: 1.25rem;
   background: transparent;
+  color: currentColor;
   animation: fa-work-sparkle 3.8s ease-in-out infinite;
 }
 
 .work-activity-compact-copy {
-  color: var(--ink-muted);
-  font-size: var(--fs-2xs);
+  color: currentColor;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
   line-height: 1.4;
+}
+
+.work-activity-inline-action {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.work-activity-card.is-compact.is-error {
+  color: var(--mark);
 }
 
 @keyframes fa-work-sparkle {
