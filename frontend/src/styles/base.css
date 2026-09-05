@@ -7912,6 +7912,13 @@
     max-width: 16ch;
     margin: 0;
     font-family: var(--font-display);
+    /* Rare/first-paint only (once per visit, not re-triggered by anything a
+       visitor does), so a fade-up entrance is in scope — same reasoning
+       .land-seal-disc's own fade-in above already uses. --ease-out/--t-enter
+       are the existing tokens (tokens.css), not a parallel timing system;
+       reduced motion is handled by the app's global @media block (top of
+       this file), which collapses animation-duration to 0.01ms everywhere. */
+    animation: land-hero-in var(--t-enter) var(--ease-out) both;
     /* Was clamp(2.5rem, 7vw, 5.5rem) — 7vw hits the 5.5rem ceiling at
        ~1257px, so every screen wider than a small laptop rendered the exact
        same fixed-size headline while the empty margin on either side kept
@@ -7983,6 +7990,9 @@
     z-index: 1;
     max-width: 42ch;
     margin: clamp(var(--sp-6), 4vw, var(--sp-8)) auto 0;
+    /* Same entrance as .land-title, staggered ~70ms behind it — see that
+       rule's own comment. */
+    animation: land-hero-in var(--t-enter) var(--ease-out) 70ms both;
     /* Was the fixed --fs-lg token — fine under the old fixed-size headline,
        undersized under the bigger one above. A gentle vw component keeps it
        proportional without turning it into a second display size. */
@@ -7994,6 +8004,9 @@
   .land-actions {
     position: relative;
     z-index: 1;
+    /* Same entrance as .land-title, staggered ~140ms behind it — see that
+       rule's own comment. */
+    animation: land-hero-in var(--t-enter) var(--ease-out) 140ms both;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -9433,6 +9446,20 @@
 @keyframes land-seal-disc-in {
   to {
     opacity: 1;
+  }
+}
+
+/* transform+opacity only, starting from a real offset (never scale(0)/
+   nothing-to-something) — see .land-title's own comment for why this exists
+   on the hero specifically and not elsewhere on the page. */
+@keyframes land-hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
