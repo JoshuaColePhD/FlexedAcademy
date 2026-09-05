@@ -111,7 +111,7 @@ def get_pending_calendar(school_id: str, _user_id: str = Depends(get_current_use
     from .. import schoolcal
     return {
         **submission,
-        "weeks": [{**week, "days": schoolcal.week_days(school_id, week)} for week in submission["weeks"]],
+        "weeks": [{**week, "days": schoolcal.week_days(school_id, week)} for week in (submission.get("weeks") or [])],
     }
 
 
