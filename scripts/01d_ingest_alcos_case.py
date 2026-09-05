@@ -651,6 +651,7 @@ def main() -> int:
         log.info("Merging with %d preserved chunks from other frameworks", len(preserved))
         all_chunks = preserved + all_chunks
 
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(all_chunks, f, indent=2, ensure_ascii=False)
 
