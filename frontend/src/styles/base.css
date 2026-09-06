@@ -4885,6 +4885,7 @@
      at the bottom. That single silhouette is the difference between an app
      drawer and the old floating white band. */
   .mobile-composer-plan-sheet.has-plan {
+    --plan-peek-open-height: min(calc(100dvh - 9rem), 720px);
     overflow: hidden;
     background: var(--paper-raised);
     border: 1px solid var(--edge);
@@ -4915,15 +4916,21 @@
     border-top: 1px solid transparent;
   }
   .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body {
-    max-height: min(76dvh, 720px);
+    height: var(--plan-peek-open-height);
+    max-height: var(--plan-peek-open-height);
     border-top-color: var(--edge);
   }
-  .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body-inner,
-  .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek-body-inner > .doc-shell {
-    max-height: min(76dvh, 720px);
+  .mobile-composer-plan-sheet.has-plan .plan-peek-body-inner,
+  .mobile-composer-plan-sheet.has-plan .plan-peek-body-inner > .doc-shell {
+    height: 100%;
+    max-height: none;
+  }
+  .mobile-composer-plan-sheet.has-plan .plan-peek.is-drag-preview .plan-peek-body {
+    height: var(--plan-peek-drag);
   }
   .mobile-composer-plan-sheet.has-plan.is-plan-open .plan-peek.is-drag-preview .plan-peek-body {
-    max-height: max(0px, calc(min(76dvh, 720px) - var(--plan-peek-drag)));
+    height: max(0px, calc(var(--plan-peek-open-height) - var(--plan-peek-drag)));
+    max-height: max(0px, calc(var(--plan-peek-open-height) - var(--plan-peek-drag)));
   }
   .mobile-composer-plan-sheet.has-plan:not(.is-plan-open) .plan-peek.is-drag-preview .plan-peek-body {
     max-height: var(--plan-peek-drag);
@@ -7123,6 +7130,15 @@
     background: var(--paper-sunken);
     box-shadow:
       inset 0 -2px 6px rgb(var(--neo-light-rgb) / 0.28);
+  }
+  /* Once the phone plan is fully open, the 12px dock breathing room would
+     leave a visible lip between the sheet and the transcript. Let the sheet
+     meet the transcript edge so a long thumb pull feels like one continuous
+     surface. The collapsed composer keeps its original breathing room. */
+  @media (max-width: 767.98px) {
+    .composer-dock-surface.is-plan-peek-open {
+      padding-top: 0;
+    }
   }
   /* The dock is a quiet continuation of the chat surface. Its former top
      border and centered ::before highlight read as a floating horizontal rule

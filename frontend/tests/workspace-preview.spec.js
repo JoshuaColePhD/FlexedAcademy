@@ -160,3 +160,28 @@ test('phone keeps its dedicated reader and fits the viewport', async ({ page }) 
   await expect(page.locator('.is-mobile-reader')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
+
+test('phone lesson-plan peek follows a long thumb pull to the transcript edge', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto(seed)
+
+  const sheet = page.locator('.mobile-composer-plan-sheet.has-plan')
+  const handle = sheet.locator('.plan-peek-handle')
+  await expect(sheet).toBeVisible()
+  await expect(handle).toBeVisible()
+
+  const initialBody = await sheet.locator('.plan-peek-body').boundingBox()
+  const handleBox = await handle.boundingBox()
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + handleBox.width / 2, Math.max(1, handleBox.y - 600), { steps: 8 })
+  await page.mouse.up()
+
+  await expect(handle).toHaveAttribute('aria-expanded', 'true')
+  const openBody = await sheet.locator('.plan-peek-body').boundingBox()
+  const transcript = await page.locator('.workspace-chat .scroll-y').boundingBox()
+  const openSheet = await sheet.boundingBox()
+  expect(openBody.height).toBeGreaterThan(initialBody.height + 200)
+  expect(Math.abs(openSheet.y - transcript.y)).toBeLessThanOrEqual(2)
+})

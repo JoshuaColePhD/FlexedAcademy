@@ -13,14 +13,32 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
   const suppressClickRef = useRef(false)
   const sheetRef = useRef(null)
   const previewRef = useRef(false)
+  const openHeightRef = useRef(0)
   const [previewing, setPreviewing] = useState(false)
   const [dragging, setDragging] = useState(false)
 
-  // These are intentionally short: the sheet should feel like a deliberate
-  // thumb flick, rather than requiring a long pull that fights Safari's page
-  // scroll. The visible body follows the finger continuously in between.
-  const OPEN_DRAG_DISTANCE = 104
+  // The old 104px cap made a long thumb pull feel like it hit an invisible
+  // wall. This is only the minimum; the real distance is measured from the
+  // handle to the bottom of the phone's header so a pull can reach the full
+  // available reader height on every device.
+  const MIN_OPEN_DRAG_DISTANCE = 104
   const CLOSE_DRAG_DISTANCE = 88
+
+  const measureOpenHeight = () => {
+    const sheet = sheetRef.current
+    if (!sheet) return MIN_OPEN_DRAG_DISTANCE
+    // The transcript is the flexible region that the dock compresses. Using
+    // its top, rather than a hard-coded viewport inset, keeps the reader below
+    // the phone header, context strip, and any visible banner on this account.
+    const transcript = document.querySelector('.workspace-chat .scroll-y')
+    const header = document.querySelector('.workspace-topbar')
+    const topBoundary = transcript?.getBoundingClientRect().top || header?.getBoundingClientRect().bottom || 0
+    const available = Math.round(sheet.getBoundingClientRect().top - topBoundary)
+    const height = Math.max(MIN_OPEN_DRAG_DISTANCE, available)
+    openHeightRef.current = height
+    sheet.style.setProperty('--plan-peek-open-height', `${height}px`)
+    return height
+  }
 
   const releasePointer = (event) => {
     event.currentTarget.releasePointerCapture?.(event.pointerId)
@@ -62,12 +80,14 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     // A quick, confident flick snaps the sheet even before it crosses the
     // distance threshold. A slow gesture has to travel far enough to make the
     // intended resting point unambiguous.
+    const openDistance = openHeightRef.current || MIN_OPEN_DRAG_DISTANCE
     if (open && (delta > CLOSE_DRAG_DISTANCE * 0.7 || velocity > 0.7)) onToggle(false)
-    else if (!open && (-delta > OPEN_DRAG_DISTANCE * 0.36 || velocity < -0.5)) onToggle(true)
+    else if (!open && (-delta > openDistance * 0.24 || velocity < -0.5)) onToggle(true)
   }
 
   const onPointerDown = (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
+    if (!open) measureOpenHeight()
     pointerRef.current = { y: event.clientY, at: performance.now() }
     setDragging(true)
     setPreview(0)
@@ -85,7 +105,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     // instead of translating a handle over a still-hidden panel.
     const next = open
       ? Math.min(CLOSE_DRAG_DISTANCE, Math.max(0, delta))
-      : Math.min(OPEN_DRAG_DISTANCE, Math.max(0, -delta))
+      : Math.min(openHeightRef.current || MIN_OPEN_DRAG_DISTANCE, Math.max(0, -delta))
     setPreview(next)
     if (event.cancelable) event.preventDefault()
   }
@@ -100,6 +120,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
 
   const handleClick = () => {
     if (suppressClickRef.current) return
+    if (!open) measureOpenHeight()
     onToggle(!open)
   }
 
