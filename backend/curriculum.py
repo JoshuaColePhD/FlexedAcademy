@@ -19,6 +19,7 @@ import functools
 import json
 import logging
 import re
+import time
 import uuid
 
 from .config import settings
@@ -83,7 +84,7 @@ def embed_map(map_id: str, user_id: str, subject: str, text: str) -> int:
     chunks = chunk_text(text)
     if not chunks:
         return 0
-    vectors = embed_texts(chunks)
+    vectors = embed_texts(chunks, user_id=user_id, kind="embed_curriculum_map")
     return db.replace_curriculum_chunks(map_id, user_id, list(zip(chunks, vectors)))
 
 
@@ -260,13 +261,16 @@ row's year). Leave them '' otherwise — an empty date is honest; a guessed one
 is not."""
 
 
-def parse_curriculum_progress(text: str, subject: str) -> list[dict]:
+def parse_curriculum_progress(
+    text: str, subject: str, user_id: str | None = None
+) -> list[dict]:
     """LLM structured-output parse of the map's schedule.
 
     Truncated to a generous but bounded window — a full-year pacing guide is a
     few thousand words, well inside context, but this must not silently accept
     an arbitrarily large upload.
     """
+    started_at = time.perf_counter()
     resp = _client().chat.completions.create(
         model=settings.openai_model,
         max_completion_tokens=4000,
@@ -279,6 +283,28 @@ def parse_curriculum_progress(text: str, subject: str) -> list[dict]:
             {"role": "user", "content": f"Subject: {subject}\n\n{text[:40000]}"},
         ],
     )
+    from . import costs, db
+
+    usage = getattr(resp, "usage", None)
+    if user_id and usage:
+        tokens_in = getattr(usage, "prompt_tokens", 0) or 0
+        tokens_out = getattr(usage, "completion_tokens", 0) or 0
+        cached_tokens = costs.cached_tokens_from_usage(usage)
+        db.record_usage(
+            user_id,
+            "parse_curriculum_progress",
+            tokens_in,
+            tokens_out,
+            tokens_cached=cached_tokens,
+            model=settings.openai_model,
+            estimated_cost_usd=costs.estimate_text_cost(
+                settings.openai_model,
+                tokens_in,
+                tokens_out,
+                cached_tokens=cached_tokens,
+            ),
+            duration_ms=int((time.perf_counter() - started_at) * 1000),
+        )
     msg = resp.choices[0].message
     refusal = getattr(msg, "refusal", None)
     if refusal:

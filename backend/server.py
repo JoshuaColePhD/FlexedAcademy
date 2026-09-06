@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
 from fastapi import FastAPI, Request
@@ -150,6 +151,14 @@ async def lifespan(app: FastAPI):
     # will surface the same AppError with its hint; health reports pg_error.
     try:
         db.connect()
+        purged = db.purge_expired_llm_cache(
+            (datetime.now(UTC) - timedelta(days=settings.llm_cache_retention_days)).isoformat(
+                timespec="seconds"
+            ),
+            limit=settings.llm_cache_cleanup_batch,
+        )
+        if purged:
+            log.info("removed %d expired LLM cache entries", purged)
         if settings.demo_account_enabled:
             try:
                 demo.ensure_demo_account()

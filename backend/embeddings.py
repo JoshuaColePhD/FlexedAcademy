@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import time
 
+from . import costs, db
 from .errors import AppError
 
 log = logging.getLogger("flexedacademy.embeddings")
@@ -47,16 +48,29 @@ def _client():
     return client()
 
 
-def _embed_batch(texts: list[str]) -> list[list[float]]:
+def _embed_batch(texts: list[str], *, user_id: str | None = None, kind: str = "embedding") -> list[list[float]]:
     """One API call, retried on transient failure with exponential backoff."""
     last: Exception | None = None
     for attempt in range(_MAX_ATTEMPTS):
+        started_at = time.perf_counter()
         try:
             resp = _client().embeddings.create(
                 model=EMBED_MODEL,
                 input=texts,
                 dimensions=EMBED_DIMS,
             )
+            usage = getattr(resp, "usage", None)
+            if user_id and usage:
+                tokens = getattr(usage, "prompt_tokens", 0) or 0
+                db.record_usage(
+                    user_id,
+                    kind,
+                    tokens,
+                    0,
+                    model=EMBED_MODEL,
+                    estimated_cost_usd=costs.estimate_embedding_cost(EMBED_MODEL, tokens),
+                    duration_ms=int((time.perf_counter() - started_at) * 1000),
+                )
             # The API documents order preservation, but this is a silent-corruption
             # class of bug if it ever stops holding: a mismatched vector attaches
             # the wrong standard to a query and nothing looks broken.
@@ -79,14 +93,14 @@ def _embed_batch(texts: list[str]) -> list[list[float]]:
     ) from last
 
 
-def embed_query(text: str) -> list[float]:
+def embed_query(text: str, *, user_id: str | None = None) -> list[float]:
     """A single query vector. One API call."""
     if not text or not text.strip():
         raise AppError("empty_query", "Nothing to search for.", status=422)
-    return _embed_batch([text])[0]
+    return _embed_batch([text], user_id=user_id)[0]
 
 
-def embed_queries(texts: list[str]) -> dict[str, list[float]]:
+def embed_queries(texts: list[str], *, user_id: str | None = None) -> dict[str, list[float]]:
     """Vectors for several queries in ONE API call, keyed by the query text.
 
     Retrieval issues the same handful of query strings against five strata, and
@@ -101,10 +115,12 @@ def embed_queries(texts: list[str]) -> dict[str, list[float]]:
     uniq = [t for t in dict.fromkeys(t for t in texts if t and t.strip())]
     if not uniq:
         raise AppError("empty_query", "Nothing to search for.", status=422)
-    return dict(zip(uniq, _embed_batch(uniq)))
+    return dict(zip(uniq, _embed_batch(uniq, user_id=user_id)))
 
 
-def embed_texts(texts: list[str], *, on_progress=None) -> list[list[float]]:
+def embed_texts(
+    texts: list[str], *, on_progress=None, user_id: str | None = None, kind: str = "embedding"
+) -> list[list[float]]:
     """Vectors for a whole corpus, batched.
 
     `on_progress(done, total)` is called after each batch so the ingest script
@@ -116,7 +132,11 @@ def embed_texts(texts: list[str], *, on_progress=None) -> list[list[float]]:
         batch = texts[i : i + BATCH]
         # The API rejects empty strings; a blank document is a bug upstream but
         # should not abort a 26k-row ingest.
-        out.extend(_embed_batch([t if t and t.strip() else " " for t in batch]))
+        out.extend(
+            _embed_batch(
+                [t if t and t.strip() else " " for t in batch], user_id=user_id, kind=kind
+            )
+        )
         if on_progress:
             on_progress(min(i + BATCH, total), total)
     return out

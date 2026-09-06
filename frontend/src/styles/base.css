@@ -7229,6 +7229,98 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* A queued follow-up is a real composer state, not a toast. Keep it close
+     to the input and give it the same compact, tactile treatment as the
+     reference composer: the teacher can see what is waiting, steer it back
+     into the draft, or remove it without opening another surface. */
+  .composer-queued-message {
+    display: flex;
+    min-width: 0;
+    min-height: 42px;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.35rem 0.5rem;
+    overflow: hidden;
+    color: var(--ink-soft);
+    font-size: var(--fs-xs);
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.55);
+    border-radius: var(--r-lg);
+    background: var(--paper-raised);
+    box-shadow:
+      3px 4px 10px rgb(var(--neo-dark-rgb) / 0.18),
+      -3px -3px 9px rgb(var(--neo-light-rgb) / 0.58);
+    animation: composer-writing-in var(--t-fast) var(--ease-out) both;
+  }
+  .composer-queued-message-icon {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    color: var(--accent-text);
+    border-radius: var(--r-sm);
+    background: var(--accent-tint);
+  }
+  .composer-queued-message-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: baseline;
+    gap: 0.45rem;
+  }
+  .composer-queued-message-label {
+    flex: 0 0 auto;
+    color: var(--ink-muted);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .composer-queued-message-text {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ink);
+    font-weight: var(--fw-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .composer-queued-message-steer,
+  .composer-queued-message-action {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    border-radius: var(--r-sm);
+    color: var(--ink-muted);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+  }
+  .composer-queued-message-steer {
+    gap: 0.3rem;
+    padding: 0.2rem 0.45rem;
+  }
+  .composer-queued-message-action {
+    width: 30px;
+  }
+  .composer-queued-message-steer:hover,
+  .composer-queued-message-action:hover {
+    color: var(--ink);
+    background: var(--paper-sunken);
+  }
+  @media (max-width: 480px) {
+    .composer-queued-message-label {
+      display: none;
+    }
+    .composer-queued-message-steer span {
+      display: none;
+    }
+    .composer-queued-message-steer {
+      width: 30px;
+      padding: 0;
+    }
+  }
   .composer-save-status {
     color: var(--ok);
     border-color: rgb(var(--ok-rgb) / 0.18);

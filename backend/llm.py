@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 
 from openai import OpenAI
 
-from . import curriculum, db
+from . import costs, curriculum, db
 from .config import settings
 from .embeddings import embed_query
 from .errors import AppError
@@ -113,15 +113,30 @@ def _check_refusal(message) -> None:
         raise AppError("model_refusal", f"The model declined this request: {refusal}", status=422)
 
 
-def _record(user_id: str, kind: str, usage) -> None:
+def _record(user_id: str, kind: str, usage, *, started_at: float | None = None) -> None:
     """The other half of entitlement.py's weekly cap — every real model call
     reports what it actually spent here. Never worth failing the call over,
     which is why db.record_usage already swallows its own errors; this just
     skips the call entirely if OpenAI didn't hand back a usage object."""
     if not usage:
         return
+    tokens_in = getattr(usage, "prompt_tokens", 0) or 0
+    tokens_out = getattr(usage, "completion_tokens", 0) or 0
+    cached_tokens = costs.cached_tokens_from_usage(usage)
     db.record_usage(
-        user_id, kind, getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0
+        user_id,
+        kind,
+        tokens_in,
+        tokens_out,
+        tokens_cached=cached_tokens,
+        model=settings.openai_model,
+        estimated_cost_usd=costs.estimate_text_cost(
+            settings.openai_model,
+            tokens_in,
+            tokens_out,
+            cached_tokens=cached_tokens,
+        ),
+        duration_ms=(int((time.perf_counter() - started_at) * 1000) if started_at is not None else None),
     )
 
 
@@ -154,7 +169,7 @@ def map_context_for(user_id: str, subject: str, query: str, class_id: str | None
     # the function's total contribution is bounded, not just the back half
     # of it.
     deadline = time.monotonic() + _MAP_CONTEXT_TIMEOUT_S
-    embed_future = _context_pool.submit(embed_query, query)
+    embed_future = _context_pool.submit(embed_query, query, user_id=user_id)
     _embed_done, embed_pending = wait([embed_future], timeout=max(0.0, deadline - time.monotonic()))
     if embed_pending:
         embed_future.cancel()
@@ -366,7 +381,9 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
         log.info("LLM cache hit for %s", kind)
         return cached
 
+    started_at = time.perf_counter()
     resp = client().chat.completions.create(**kwargs)
+    _record(user_id, kind, resp.usage, started_at=started_at)
     choice = resp.choices[0]
     if getattr(choice, "finish_reason", None) == "length":
         raise SchemaError(
@@ -376,7 +393,6 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
         )
     msg = choice.message
     _check_refusal(msg)
-    _record(user_id, kind, resp.usage)
     
     if msg.content:
         db.set_llm_cache(hash_key, msg.content)
@@ -448,6 +464,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
     template_days = day_names_for_school(school_id, user_id=user_id)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
+    started_at = time.perf_counter()
     stream = client().chat.completions.create(
         model=settings.openai_model,
         max_completion_tokens=plan_completion_tokens_for(user_id),
@@ -483,7 +500,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
-                _record(user_id, "stream_plan", chunk.usage)
+                _record(user_id, "stream_plan", chunk.usage, started_at=started_at)
             if not chunk.choices:
                 continue
             finish_reason = getattr(chunk.choices[0], "finish_reason", None) or finish_reason
@@ -1193,8 +1210,8 @@ def judge_builder_render(
         ],
     )
     msg = resp.choices[0].message
-    _check_refusal(msg)
     _record(user_id, "judge_builder_render", resp.usage)
+    _check_refusal(msg)
     return loads_lenient(msg.content or "")
 
 
@@ -1416,8 +1433,8 @@ def generate_bell_ringer(user_id: str, subject: str, grade: str, topic: str | No
         ],
     )
     msg = resp.choices[0].message
-    _check_refusal(msg)
     _record(user_id, "bell_ringer", resp.usage)
+    _check_refusal(msg)
     data = json.loads(msg.content or "{}")
     prompt = str(data.get("prompt", "")).strip()
     if not prompt:
@@ -1438,6 +1455,7 @@ def _no_speech_prob(segment) -> float:
 
 
 def transcribe(user_id: str, path: str) -> str:
+    started_at = time.perf_counter()
     with open(path, "rb") as f:
         result = client().audio.transcriptions.create(
             model="whisper-1",
@@ -1461,7 +1479,15 @@ def transcribe(user_id: str, path: str) -> str:
     # enforce. ~1200 is Whisper's per-minute cost ($0.006) converted to
     # gpt-4o-equivalent tokens at that model's own blended rate, assuming a
     # generous one-minute clip — approximate on purpose, not a real invoice.
-    db.record_usage(user_id, "transcribe", 1200, 0)
+    db.record_usage(
+        user_id,
+        "transcribe",
+        1200,
+        0,
+        model="whisper-1",
+        estimated_cost_usd=0.006,
+        duration_ms=int((time.perf_counter() - started_at) * 1000),
+    )
     # Pinning the language stops Whisper from hallucinating in a RANDOM one,
     # but it can still confidently invent a fluent English sentence from
     # background noise or near-silence — a VAD false positive (the mic
@@ -1535,7 +1561,13 @@ def stream_speech(user_id: str, text: str) -> Iterator[bytes]:
     # Same reasoning as transcribe(): TTS bills per character, converted to a
     # gpt-4o-equivalent token count so it draws from the same cap rather than
     # being a free channel.
-    db.record_usage(user_id, "synthesize_speech", len(text) * 3, 0)
+    db.record_usage(
+        user_id,
+        "synthesize_speech",
+        len(text) * 3,
+        0,
+        model=settings.tts_model,
+    )
     with client().audio.speech.with_streaming_response.create(
         model=settings.tts_model,
         voice=settings.tts_voice,
@@ -1816,6 +1848,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     prevent over a long conversation.
     """
 
+    started_at = time.perf_counter()
     stream = client().chat.completions.create(
         model=settings.openai_model,
         # Required, not tuning: the configured model rejects function tools
@@ -1862,7 +1895,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
-                _record(user_id, "stream_chat", chunk.usage)
+                _record(user_id, "stream_chat", chunk.usage, started_at=started_at)
             if not chunk.choices:
                 continue
             choice = chunk.choices[0]

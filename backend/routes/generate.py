@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from .. import curriculum, db, llm, prompts, research, schoolcal, service
+from .. import costs, curriculum, db, llm, prompts, research, schoolcal, service
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
@@ -854,7 +854,16 @@ def voice_usage(req: VoiceUsageRequest, request: Request, user_id: str = Depends
     already feed (db.tokens_used_since sums across every `kind`) — before
     this, the audio-transport half of a voice session was invisible to the
     app's own cost accounting entirely."""
-    db.record_usage(user_id, "realtime_voice", req.input_tokens, req.output_tokens)
+    db.record_usage(
+        user_id,
+        "realtime_voice",
+        req.input_tokens,
+        req.output_tokens,
+        model=settings.realtime_model,
+        estimated_cost_usd=costs.estimate_text_cost(
+            settings.realtime_model, req.input_tokens, req.output_tokens
+        ),
+    )
     return {"ok": True}
 
 

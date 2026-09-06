@@ -1012,10 +1012,11 @@ def retrieve_raw(
     source_type: str | None = None,
     query_vector: list[float] | None = None,
     state: str = "AL",
+    user_id: str | None = None,
 ) -> list[dict]:
     # `query_vector` lets the caller embed once and search many times.
     if query_vector is None:
-        query_vector = embed_query(query)
+        query_vector = embed_query(query, user_id=user_id) if user_id else embed_query(query)
     from . import db
 
     # State standards, AP/Pre-AP standards, and ACT standards occupy distinct
@@ -1254,6 +1255,7 @@ def retrieve_grounded(
     max_distance: float | None = None,
     extra_queries: list[str] | None = None,
     state: str = "AL",
+    user_id: str | None = None,
 ) -> RetrievalResult:
     top_k = top_k or settings.retrieval_top_k
     floor = settings.floor_for(subject_code) if max_distance is None else max_distance
@@ -1282,7 +1284,7 @@ def retrieve_grounded(
     # Every vector we will need, in ONE embeddings call, before any searching.
     # This used to be 30 sequential API round trips for 6 distinct strings —
     # 58% of retrieval, and retrieval was 68% of the whole generation.
-    vectors = embed_queries(searches)
+    vectors = embed_queries(searches, user_id=user_id) if user_id else embed_queries(searches)
 
     # db.py now has a ThreadedConnectionPool, so we execute these queries concurrently.
     jobs = [(q, max(top_k * 3, top_k), None) for q in searches]

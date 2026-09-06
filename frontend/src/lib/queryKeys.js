@@ -34,6 +34,7 @@ export const qk = {
    *  on a totally different cadence (never, from the UI) than the accounts
    *  list (every comp/cap change). */
   adminUsageTrend: ['admin', 'usage-trend'],
+  adminUsageCosts: ['admin', 'usage-costs'],
   /** Admin-wide plan history and the one full plan currently open in it. */
   adminPlans: (filters = {}) => ['admin', 'plans', filters],
   adminPlan: (id) => ['admin', 'plan', id],

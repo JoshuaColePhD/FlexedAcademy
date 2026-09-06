@@ -78,6 +78,14 @@ function formatCents(cents, currency = 'USD') {
   }).format(cents / 100)
 }
 
+function formatUsd(amount) {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: Number(amount || 0) < 0.01 ? 4 : 2,
+  }).format(Number(amount || 0))
+}
+
 /* One human-readable line per admin_audit_log row (backend/db.py migration
    28). Kept next to the log fetch rather than in a shared util — nothing
    else in the app renders this shape, and it would be one more file to open
@@ -1670,6 +1678,10 @@ function BillingAdmin() {
     queryKey: ['admin', 'billing'],
     queryFn: () => api.adminBilling(),
   })
+  const { data: costData, isLoading: costsLoading, isError: costsError } = useQuery({
+    queryKey: qk.adminUsageCosts,
+    queryFn: () => api.adminUsageCosts(),
+  })
 
   if (isLoading || !data) return <p className="mt-8 text-sm text-ink-muted">Loading…</p>
   if (isError) return <p className="mt-8 text-sm text-mark">Could not load billing data.</p>
@@ -1705,6 +1717,100 @@ function BillingAdmin() {
               </div>
             </div>
           </div>
+        )}
+      </div>
+
+      <div className="neo-world neo-panel rounded-xl p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">AI costs & usage</h2>
+            <p className="mt-1 text-2xs text-ink-muted">
+              Estimated OpenAI spend from the last 30 days and this month.
+            </p>
+          </div>
+          {costData?.month?.alert_state ? (
+            <span
+              className={`rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide ${
+                costData.month.alert_state === 'hard_review'
+                  ? 'bg-mark-tint text-mark'
+                  : costData.month.alert_state === 'alert'
+                    ? 'bg-flag-tint text-flag'
+                    : 'bg-ok-tint text-ok'
+              }`}
+            >
+              {costData.month.alert_state === 'hard_review' ? 'Hard review' : costData.month.alert_state}
+            </span>
+          ) : null}
+        </div>
+
+        {costsLoading ? (
+          <p className="mt-5 text-sm text-ink-muted">Loading usage…</p>
+        ) : costsError || !costData ? (
+          <p className="mt-5 text-sm text-mark">Could not load AI cost data.</p>
+        ) : (
+          <>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-paper-inset/60 p-3">
+                <div className="text-2xs uppercase tracking-wide text-ink-muted">This month</div>
+                <div className="mt-1 font-mono text-lg text-ink">
+                  {formatUsd(costData.month.estimated_cost_usd)}
+                </div>
+                <div className="mt-1 text-2xs text-ink-muted">
+                  Alert at {formatUsd(costData.month.alert_usd)}
+                </div>
+              </div>
+              <div className="rounded-lg bg-paper-inset/60 p-3">
+                <div className="text-2xs uppercase tracking-wide text-ink-muted">Last 30 days</div>
+                <div className="mt-1 font-mono text-lg text-ink">
+                  {formatUsd(costData.period.estimated_cost_usd)}
+                </div>
+                <div className="mt-1 text-2xs text-ink-muted">
+                  {costData.period.by_feature?.reduce((sum, row) => sum + row.calls, 0).toLocaleString()} calls
+                </div>
+              </div>
+              <div className="rounded-lg bg-paper-inset/60 p-3">
+                <div className="text-2xs uppercase tracking-wide text-ink-muted">Unpriced calls</div>
+                <div className="mt-1 font-mono text-lg text-ink">
+                  {(costData.month.uncosted_calls || 0).toLocaleString()}
+                </div>
+                <div className="mt-1 text-2xs text-ink-muted">Review before trusting totals</div>
+              </div>
+            </div>
+
+            <div className="mt-6 overflow-x-auto">
+              <div className="mb-2 text-2xs uppercase tracking-wide text-ink-muted">Cost by feature</div>
+              {costData.period.by_feature?.length ? (
+                <table className="w-full min-w-[620px] text-left text-sm">
+                  <thead className="border-b border-edge text-2xs uppercase tracking-wide text-ink-muted">
+                    <tr>
+                      <th className="py-2 pr-3 font-medium">Feature</th>
+                      <th className="py-2 pr-3 font-medium">Model</th>
+                      <th className="py-2 pr-3 font-medium">Calls</th>
+                      <th className="py-2 pr-3 font-medium">Tokens</th>
+                      <th className="py-2 text-right font-medium">Est. cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-edge">
+                    {costData.period.by_feature.map((row) => (
+                      <tr key={`${row.kind}-${row.model}`}>
+                        <td className="py-2 pr-3 font-medium text-ink">{row.kind}</td>
+                        <td className="py-2 pr-3 font-mono text-2xs text-ink-muted">{row.model}</td>
+                        <td className="py-2 pr-3 font-mono text-ink-soft">{row.calls.toLocaleString()}</td>
+                        <td className="py-2 pr-3 font-mono text-ink-soft">
+                          {(row.tokens_in + row.tokens_out).toLocaleString()}
+                        </td>
+                        <td className="py-2 text-right font-mono text-ink">
+                          {row.uncosted_calls ? 'Needs pricing' : formatUsd(row.estimated_cost_usd)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-sm text-ink-muted">No AI usage has been recorded yet.</p>
+              )}
+            </div>
+          </>
         )}
       </div>
 

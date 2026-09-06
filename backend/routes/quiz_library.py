@@ -44,11 +44,13 @@ def _public_row(row: dict, user_id: str) -> dict:
     return payload
 
 
-def _embedding_for(*, context_text: str, quiz_json: dict) -> list[float] | None:
+def _embedding_for(*, context_text: str, quiz_json: dict, user_id: str | None = None) -> list[float] | None:
     passages = "\n\n".join(str(p.get("text") or "") for p in (quiz_json.get("passages") or []))
     prompts = "\n".join(str(q.get("prompt") or "") for q in (quiz_json.get("questions") or []))
     try:
-        return embeddings.embed_query(f"{context_text}\n{passages}\n{prompts}"[:12000])
+        return embeddings.embed_query(
+            f"{context_text}\n{passages}\n{prompts}"[:12000], user_id=user_id
+        )
     except Exception as exc:  # noqa: BLE001 - exact filters still provide a useful fallback
         log.warning("quiz library embedding failed; storing an exact-filter-only item: %s", exc)
         return None
@@ -71,7 +73,9 @@ def library_suggestions(
     plan_json = {**(plan.get("plan_json") or {}), "course": plan.get("course") or ""}
     context = quiz_library.context_values(plan=plan_json, quiz_json={}, subject=subject, grade=grade)
     plan_standards = quiz_library.standards_from_plan(plan_json)
-    vector = _embedding_for(context_text=context["context_text"], quiz_json=plan_json)
+    vector = _embedding_for(
+        context_text=context["context_text"], quiz_json=plan_json, user_id=user_id
+    )
     rows = db.search_quiz_library_sets(
         course=context["course"],
         subject=context["subject"],
@@ -174,7 +178,9 @@ def save_quiz_to_library(
         grade=context["grade"],
         standard_codes=context["standard_codes"],
         context_text=context["context_text"],
-        embedding=_embedding_for(context_text=context["context_text"], quiz_json=quiz_json),
+        embedding=_embedding_for(
+            context_text=context["context_text"], quiz_json=quiz_json, user_id=user_id
+        ),
         content_hash=digest,
         passage_source=source,
         permission_confirmed=body.permission_confirmed if source == "teacher_provided" else True,

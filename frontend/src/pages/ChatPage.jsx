@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -19,7 +19,7 @@ import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
 import { splitDecisions } from '../lib/decisionChecklist'
-import { dayLabel, isSameDay, shortRange } from '../lib/dates'
+import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import * as perf from '../lib/performanceMetrics'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -3783,17 +3783,6 @@ export function ChatPage() {
       <TemplateBanner />
       <TrialBanner />
 
-      <div className="chat-context-strip" aria-label="Current plan context">
-        <span>
-          Using <strong>{activeClass?.name || 'this class'}</strong> template
-        </span>
-        <span className="chat-context-separator" aria-hidden="true">·</span>
-        <span>
-          {conversationWeek ? `Week ${conversationWeek}` : 'Week not set'}
-          {displayWeek?.start && displayWeek?.end ? ` · ${shortRange(displayWeek.start, displayWeek.end)}` : ''}
-        </span>
-      </div>
-
       {isEmpty ? (
         <Greeting
           className={activeClass?.name}
@@ -4166,29 +4155,40 @@ export function ChatPage() {
           {/* The only visible sign a queued follow-up exists at all — without
               it, Enter clearing the box while busy would look identical to
               the text just vanishing. Sent automatically the moment `busy`
-              clears (see the effect near queueOrSubmit); the × here is the
-              one way to change your mind and get the text back instead. */}
+              clears (see the effect near queueOrSubmit); Steer puts it back
+              into the draft, while the trash action removes it. */}
           {queuedMessage ? (
-            <div className="neo-inset mb-2 flex items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-soft">
-              <Clock size={13} className="shrink-0 text-ink-faint" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate">
-                Will send when ready:{' '}
-                <span className="text-ink">
+            <div className="composer-queued-message mb-2" role="status" aria-live="polite">
+              <span className="composer-queued-message-icon" aria-hidden="true">
+                <CornerDownLeft size={14} />
+              </span>
+              <span className="composer-queued-message-copy">
+                <span className="composer-queued-message-label">Queued</span>
+                <span className="composer-queued-message-text">
                   {queuedMessage.text || `Sent ${queuedMessage.attachments.length} file(s)`}
                 </span>
               </span>
               <button
                 type="button"
-                className="btn-icon shrink-0"
-                aria-label="Cancel queued message"
-                title="Cancel — puts the text and attachments back in the box"
+                className="composer-queued-message-steer fa-press"
                 onClick={() => {
                   setQuery(queuedMessage.text)
                   setAttachments(queuedMessage.attachments)
                   setQueuedTurn(null)
+                  requestAnimationFrame(() => document.getElementById('composer-input')?.focus())
                 }}
               >
-                <X size={13} aria-hidden="true" />
+                <CornerDownLeft size={13} aria-hidden="true" />
+                <span>Steer</span>
+              </button>
+              <button
+                type="button"
+                className="composer-queued-message-action fa-press"
+                aria-label="Cancel queued message"
+                title="Remove queued message"
+                onClick={() => setQueuedTurn(null)}
+              >
+                <Trash2 size={14} aria-hidden="true" />
               </button>
             </div>
           ) : null}

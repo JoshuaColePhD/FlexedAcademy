@@ -264,7 +264,13 @@ def search(req: SearchRequest):
     "your query's nearest standard was 0.83, above the 0.78 cutoff" instead of
     being handed five confident-looking irrelevant results.
     """
-    raw = retrieval.retrieve_raw(req.query, n=req.top_k, course=req.subject, grade=req.grade, state=req.state)
+    raw = retrieval.retrieve_raw(
+        req.query,
+        n=req.top_k,
+        course=req.subject,
+        grade=req.grade,
+        state=req.state,
+    )
     raw.sort(key=lambda c: c["distance"])
     floor = settings.retrieval_max_distance
     return {

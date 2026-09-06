@@ -186,7 +186,7 @@ def upload_curriculum_map(
         chunk_count = 0
 
     try:
-        weeks = curriculum.parse_curriculum_progress(text, subject)
+        weeks = curriculum.parse_curriculum_progress(text, subject, user_id)
         db.replace_curriculum_progress(user_id, map_id, subject, weeks)
     except Exception as e:  # noqa: BLE001 — same: upload succeeds even if the LLM parse fails
         log.warning("progress parse failed for map %s: %s", map_id, e)

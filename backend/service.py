@@ -202,6 +202,7 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
         grade=grade,
         extra_queries=llm.expand_query(user_id, contextual_query),
         state=state,
+        user_id=user_id,
     )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
@@ -702,6 +703,7 @@ def revise_day(
             subject_code=subject_code,
             grade=grade,
             state=_resolve_state(cls),
+            user_id=user_id,
         )
         if result.empty:
             # A revision is allowed to proceed ungrounded — it inherits the week's
@@ -1065,7 +1067,13 @@ def revise_days(
             contextual_feedback = (
                 f"Course: {subject_code}, Grade: {grade} - {feedback} {original.get('learning_targets', '')}"
             )
-            result = retrieval.retrieve_grounded(contextual_feedback, subject_code=subject_code, grade=grade, state=_resolve_state(cls))
+            result = retrieval.retrieve_grounded(
+                contextual_feedback,
+                subject_code=subject_code,
+                grade=grade,
+                state=_resolve_state(cls),
+                user_id=user_id,
+            )
             if result.empty:
                 result = RetrievalResult(chunks=[], rejected=result.rejected, floor=result.floor)
         else:

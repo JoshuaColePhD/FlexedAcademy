@@ -538,6 +538,8 @@ export const api = {
   adminDownloadPlan: (id, options = {}) =>
     downloadFile(`${API_BASE}/api/admin/plans/${encodeURIComponent(id)}/download`, options),
   adminUsageTrend: ({ signal } = {}) => request('/api/admin/usage-trend', { signal }),
+  adminUsageCosts: ({ days = 30, signal } = {}) =>
+    request(`/api/admin/usage-costs?days=${days}`, { signal }),
   adminStandardsCheck: ({ signal } = {}) => request('/api/admin/qa/standards-check', { signal }),
   adminSetComped: (accountId, comped) =>
     request(`/api/admin/accounts/${accountId}/comp`, { method: 'POST', body: { comped } }),

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import secrets
 import string
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
@@ -100,6 +101,42 @@ def usage_trend(_admin: str = Depends(get_current_admin)):
     db.weekly_usage_series's own docstring for why this is a separate,
     bucketed query rather than something list_accounts already carries."""
     return {"weeks": db.weekly_usage_series()}
+
+
+@router.get("/usage-costs")
+def usage_costs(
+    days: int = Query(default=30, ge=1, le=365),
+    _admin: str = Depends(get_current_admin),
+):
+    """Estimated AI spend, grouped by feature/model, with monthly guardrails.
+
+    This is intentionally admin-only and based on the app's usage ledger. It
+    is an operating estimate, not a replacement for reconciling the vendor
+    invoice; unpriced calls are reported separately rather than shown as $0.
+    """
+    now = datetime.now(UTC)
+    since = (now - timedelta(days=days)).isoformat(timespec="seconds")
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    period = db.cost_usage_summary(since)
+    month = db.cost_usage_summary(month_start)
+    monthly_cost = month["estimated_cost_usd"]
+    if monthly_cost >= settings.openai_monthly_hard_review_usd:
+        alert_state = "hard_review"
+    elif monthly_cost >= settings.openai_monthly_alert_usd:
+        alert_state = "alert"
+    else:
+        alert_state = "ok"
+    return {
+        "since": since,
+        "days": days,
+        "period": period,
+        "month": {
+            **month,
+            "alert_state": alert_state,
+            "alert_usd": settings.openai_monthly_alert_usd,
+            "hard_review_usd": settings.openai_monthly_hard_review_usd,
+        },
+    }
 
 
 @router.get("/onboarding-funnel")

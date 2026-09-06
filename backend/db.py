@@ -3575,6 +3575,19 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_chunks_state_code
       ON chunks ((metadata->>'state'), (metadata->>'code'));
     """,
+
+    # ── 78: cost-aware usage ledger and cache cleanup index ──────────────────
+    # Entitlement still counts tokens_in + tokens_out exactly as before. These
+    # additional columns make the same event stream useful for operating-cost
+    # decisions without introducing a second usage table.
+    """
+    ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS tokens_cached INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS model TEXT;
+    ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS estimated_cost_usd DOUBLE PRECISION;
+    ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS duration_ms INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_usage_events_created_at ON usage_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_llm_cache_created_at ON llm_cache(created_at);
+    """,
 ]
 
 
@@ -6697,15 +6710,57 @@ def set_llm_cache(hash_key: str, response: str) -> None:
         log.warning("llm cache write failed: %s", e)
 
 
-def record_usage(user_id: str, kind: str, tokens_in: int, tokens_out: int) -> None:
+def purge_expired_llm_cache(older_than_iso: str, *, limit: int = 10_000) -> int:
+    """Delete a bounded batch of stale model responses.
+
+    Cache rows are disposable. The bounded subquery keeps startup cleanup from
+    holding a large delete lock if this app has accumulated years of entries.
+    """
+    return _write(
+        """
+        DELETE FROM llm_cache
+        WHERE hash_key IN (
+            SELECT hash_key FROM llm_cache
+            WHERE created_at < ?
+            ORDER BY created_at ASC
+            LIMIT ?
+        )
+        """,
+        (older_than_iso, max(1, int(limit))),
+    )
+
+
+def record_usage(
+    user_id: str,
+    kind: str,
+    tokens_in: int,
+    tokens_out: int,
+    *,
+    tokens_cached: int = 0,
+    model: str | None = None,
+    estimated_cost_usd: float | None = None,
+    duration_ms: int | None = None,
+) -> None:
     """One row per model call. Metering must never be why the call it's
     metering fails — a teacher's plan should not error out because logging
     its cost did."""
     try:
         _write(
-            "INSERT INTO usage_events (id, user_id, created_at, kind, tokens_in, tokens_out) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (new_id(), user_id, now(), kind, int(tokens_in or 0), int(tokens_out or 0)),
+            "INSERT INTO usage_events "
+            "(id, user_id, created_at, kind, tokens_in, tokens_out, tokens_cached, model, estimated_cost_usd, duration_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                new_id(),
+                user_id,
+                now(),
+                kind,
+                int(tokens_in or 0),
+                int(tokens_out or 0),
+                int(tokens_cached or 0),
+                model,
+                estimated_cost_usd,
+                int(duration_ms) if duration_ms is not None else None,
+            ),
         )
     except Exception:
         log.exception("failed to record usage user_id=%s kind=%s", user_id, kind)
@@ -7100,6 +7155,60 @@ def weekly_usage_series(weeks: int = 8) -> list[dict]:
         {"week_start": r["week_start"].isoformat(), "tokens": int(r["tokens"] or 0)}
         for r in rows
     ]
+
+
+def cost_usage_summary(since_iso: str) -> dict:
+    """Aggregate estimated spend by feature and model for admin operations.
+
+    Unknown-cost events stay visible through ``uncosted_calls`` instead of
+    being silently treated as free. That makes a model or vendor change an
+    obvious follow-up rather than a misleadingly low total.
+    """
+    rows = _rows(
+        """
+        SELECT kind,
+               COALESCE(NULLIF(model, ''), 'unknown') AS model,
+               COUNT(*) AS calls,
+               COALESCE(SUM(tokens_in), 0) AS tokens_in,
+               COALESCE(SUM(tokens_out), 0) AS tokens_out,
+               COALESCE(SUM(tokens_cached), 0) AS tokens_cached,
+               SUM(estimated_cost_usd) AS estimated_cost_usd,
+               COUNT(*) FILTER (WHERE estimated_cost_usd IS NULL) AS uncosted_calls,
+               AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS avg_duration_ms
+        FROM usage_events
+        WHERE created_at >= ?
+        GROUP BY kind, model
+        ORDER BY estimated_cost_usd DESC NULLS LAST, calls DESC, kind, model
+        """,
+        (since_iso,),
+    )
+    by_feature = []
+    total_cost = 0.0
+    uncosted_calls = 0
+    for row in rows:
+        cost = float(row["estimated_cost_usd"] or 0)
+        total_cost += cost
+        uncosted_calls += int(row["uncosted_calls"] or 0)
+        by_feature.append(
+            {
+                "kind": row["kind"],
+                "model": row["model"],
+                "calls": int(row["calls"] or 0),
+                "tokens_in": int(row["tokens_in"] or 0),
+                "tokens_out": int(row["tokens_out"] or 0),
+                "tokens_cached": int(row["tokens_cached"] or 0),
+                "estimated_cost_usd": round(cost, 6),
+                "uncosted_calls": int(row["uncosted_calls"] or 0),
+                "avg_duration_ms": round(float(row["avg_duration_ms"]), 1)
+                if row["avg_duration_ms"] is not None
+                else None,
+            }
+        )
+    return {
+        "estimated_cost_usd": round(total_cost, 6),
+        "uncosted_calls": uncosted_calls,
+        "by_feature": by_feature,
+    }
 
 
 def list_plans_for_standards_qa() -> list[dict]:

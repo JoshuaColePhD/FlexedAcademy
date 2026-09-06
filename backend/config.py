@@ -43,6 +43,12 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-luna"
+    # Operating guardrails. These thresholds are surfaced in the admin usage
+    # report; configure matching notifications in the OpenAI billing dashboard.
+    openai_monthly_alert_usd: float = Field(default=50.0, ge=0)
+    openai_monthly_hard_review_usd: float = Field(default=100.0, ge=0)
+    llm_cache_retention_days: int = Field(default=90, ge=1, le=3650)
+    llm_cache_cleanup_batch: int = Field(default=10_000, ge=100, le=100_000)
     common_standards_api_key: str = ""
 
     # ── voice replies ────────────────────────────────────────────────────────
