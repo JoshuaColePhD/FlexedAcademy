@@ -62,6 +62,11 @@ services:
         sync: false
       - key: OPENAI_MODEL
         value: "gpt-5.6-luna"
+      # Public HTTPS origin used by ChatGPT/Claude OAuth discovery and DOCX
+      # capability links. Set this to the deployed API origin, including no
+      # trailing slash (for example https://flexed-academy-backend.onrender.com).
+      - key: MCP_PUBLIC_URL
+        sync: false
       - key: COMMON_STANDARDS_API_KEY
         sync: false
       # Not secrets, so tracked directly here rather than left to the

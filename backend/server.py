@@ -14,7 +14,7 @@ from typing import ClassVar
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -23,6 +23,7 @@ from .config import settings
 from .deps import COOKIE_NAME, _verify_current
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
+from .mcp_server import mcp, mcp_app, oauth_router
 from .ratelimit import limiter, rate_limit_exceeded_handler
 from .routes import (
     account,
@@ -36,12 +37,16 @@ from .routes import (
     curriculum,
     drive,
     generate,
+    mcp_artifacts,
     misc,
     onboarding,
     plans,
     quiz_library,
     school_calendars,
     standards,
+)
+from .routes import (
+    mcp as mcp_routes,
 )
 from .schema import SchemaError
 
@@ -238,7 +243,14 @@ async def lifespan(app: FastAPI):
     # rejected generated spec was incorrectly marked verified.
     loop.run_in_executor(None, service.repair_weeden_plans)
 
-    yield
+    # Mounted Starlette applications do not automatically enter their own
+    # lifespans when the parent FastAPI app starts. The MCP SDK's Streamable
+    # HTTP manager needs this task group alive for every authenticated request.
+    if settings.mcp_enabled:
+        async with mcp.session_manager.run():
+            yield
+    else:
+        yield
 
     if _codegen_worker_task:
         _codegen_worker_task.cancel()
@@ -389,14 +401,25 @@ class SecurityHeadersMiddleware:
                     if key.lower() not in {
                         b"content-security-policy",
                         b"x-content-type-options",
+                        b"x-frame-options",
                         b"referrer-policy",
+                        b"strict-transport-security",
                     }
                 ]
                 headers.extend([
                     (b"content-security-policy", self._CSP.encode()),
                     (b"x-content-type-options", b"nosniff"),
+                    (b"x-frame-options", b"SAMEORIGIN"),
                     (b"referrer-policy", b"strict-origin-when-cross-origin"),
                 ])
+                # HSTS must not be emitted during plain-HTTP local development,
+                # where it would make a later localhost request fail before it
+                # reaches the app. Production sets COOKIE_SECURE=true and is
+                # served behind TLS, so advertise HTTPS there for one year.
+                if settings.cookie_secure:
+                    headers.append(
+                        (b"strict-transport-security", b"max-age=31536000")
+                    )
                 message = {**message, "headers": headers}
             await send(message)
 
@@ -466,6 +489,19 @@ app.include_router(canvas.router)
 app.include_router(bell_ringer.router)
 app.include_router(coaching.router)
 app.include_router(onboarding.router)
+app.include_router(mcp_routes.router)
+app.include_router(mcp_artifacts.router)
+app.include_router(oauth_router)
+
+# Streamable HTTP is the current MCP transport. The mounted app applies
+# bearer authentication before any tool can reach FlexEd's user-scoped data.
+# Keep this before the SPA fallback below, which otherwise catches every path.
+if settings.mcp_enabled:
+    @app.api_route("/mcp", methods=["GET", "POST", "DELETE"], include_in_schema=False)
+    async def mcp_trailing_slash():
+        return RedirectResponse("/mcp/", status_code=307)
+
+    app.mount("/mcp", mcp_app, name="mcp")
 import os
 
 from fastapi.responses import FileResponse

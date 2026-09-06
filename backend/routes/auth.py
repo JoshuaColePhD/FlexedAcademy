@@ -5,6 +5,7 @@ import hashlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
+from html import escape
 
 import psycopg2.errors
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -237,7 +238,7 @@ def signup(body: SignupBody, request: Request, response: Response):
             to=user["email"],
             subject="Verify your FlexEd Academy email",
             html=(
-                f"<p>Hi {user['name']},</p><p><a href=\"{link}\">Verify your email and start your free week</a></p>"
+                f"<p>Hi {escape(user['name'])},</p><p><a href=\"{link}\">Verify your email and start your free week</a></p>"
                 f"<p>This link works for {settings.email_verification_hours} hours. If you did not create this account, you can ignore this message.</p>"
             ),
         )

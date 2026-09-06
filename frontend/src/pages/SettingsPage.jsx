@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Building2, Check, CheckCircle2, ChevronDown, CreditCard, Download, FileText, HardDrive, Loader2, Mail, MessageCircle, PencilLine, Save, Settings, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Building2, Check, CheckCircle2, ChevronDown, CircleHelp, Code2, CreditCard, Download, FileText, HardDrive, Loader2, Mail, MessageCircle, PencilLine, RefreshCw, Save, Settings, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
@@ -1632,6 +1632,53 @@ function IntegrationPlaceholder({ name, description, icon }) {
   )
 }
 
+const MCP_PROVIDERS = [
+  {
+    id: 'chatgpt',
+    name: 'ChatGPT',
+    description: 'Use FlexEd inside ChatGPT to create, revise, and open lesson plans through conversation.',
+    mark: '✳',
+  },
+  {
+    id: 'claude',
+    name: 'Claude',
+    description: 'Bring your FlexEd classes, standards, and planning workflow into Claude.',
+    mark: '✦',
+  },
+]
+
+function McpIntegrationsSection() {
+  return (
+    <div className="mt-5">
+      <div className="rounded-2xl border border-edge bg-paper-raised/40 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-paper-sunken text-ink-muted"><Code2 size={17} aria-hidden="true" /></div>
+            <div>
+              <h2 className="text-sm font-semibold text-ink">AI assistant connections</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-muted">We’re preparing a way to use FlexEd from ChatGPT and Claude. These connections will be available soon.</p>
+            </div>
+          </div>
+          <span className="inline-flex shrink-0 items-center rounded-full bg-paper-sunken px-2.5 py-1 text-xs font-medium text-ink-muted">Coming soon</span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-col gap-3">
+        {MCP_PROVIDERS.map((provider) => (
+          <IntegrationPlaceholder
+            key={provider.id}
+            name={provider.name}
+            description={provider.description}
+            icon={<span className="text-sm font-semibold">{provider.mark}</span>}
+          />
+        ))}
+      </div>
+
+      <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-muted"><CircleHelp size={13} aria-hidden="true" /> You can still create and revise plans directly inside FlexEd today.</p>
+    </div>
+  )
+}
+
 export
 function AvatarSelect() {
   return (
@@ -2068,31 +2115,38 @@ export function SettingsPage() {
             <div id="section-integrations" className={activeTab === 'integrations' ? '' : 'hidden'}>
               <section>
                 <GoogleDriveSection />
-                
-                <div className="mt-8">
-                  <h2 className="text-sm font-semibold text-ink">Other Integrations</h2>
-                  <p className="mt-1 text-xs text-ink-muted">
-                    Connect your external accounts to push and pull assignments seamlessly.
-                  </p>
-                  
+                <div className="mt-8 border-t border-edge pt-2">
+                  <div className="flex flex-wrap items-start justify-between gap-3 py-3">
+                    <div>
+                      <h2 className="text-base font-semibold text-ink">AI assistants</h2>
+                      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-muted">
+                        Connect FlexEd to the chat tools you already use. You’ll finish the provider’s sign-in and approval flow in its own settings.
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-paper-sunken px-2.5 py-1 text-xs font-medium text-ink-muted"><RefreshCw size={12} aria-hidden="true" /> MCP</span>
+                  </div>
+                  <McpIntegrationsSection />
+                </div>
+
+                <div className="mt-10 border-t border-edge pt-6">
+                  <h2 className="text-sm font-semibold text-ink">More integrations</h2>
+                  <p className="mt-1 text-xs text-ink-muted">Connect school services as they become available.</p>
+
                   <IntegrationPlaceholder
                     name="Google Classroom"
                     description="Bring assignments, classwork, and course context into FlexEd."
                     icon={<span className="font-bold">G</span>}
                   />
-
                   <IntegrationPlaceholder
                     name="Google Calendar"
                     description="Sync teaching schedules, holidays, and school events."
                     icon={<span className="font-bold">31</span>}
                   />
-
                   <IntegrationPlaceholder
                     name="Outlook Calendar"
                     description="Sync teaching schedules and school events from Microsoft 365."
                     icon={<span className="font-bold">O</span>}
                   />
-
                   <IntegrationPlaceholder
                     name="OneDrive"
                     description="Save and sync documents with OneDrive."

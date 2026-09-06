@@ -477,6 +477,12 @@ const state = {
   drive: {
     connected: typeof sessionStorage !== 'undefined' && sessionStorage.getItem('mock.driveConnected') === 'true',
   },
+  // The real MCP connection is completed by ChatGPT or Claude and then
+  // reflected by /api/mcp/status. A session flag lets the preview exercise the
+  // same connected/disconnected states without an external OAuth round trip.
+  mcp: {
+    connected: typeof sessionStorage !== 'undefined' && sessionStorage.getItem('mock.mcpConnected') === 'true',
+  },
   // planId -> [{email, role, created_at}], plus the Doc link once "created".
   // Seeded empty; a share POST below fills it in, same shape
   // db.list_plan_shares/plans.drive_web_link return for real.
@@ -1236,6 +1242,22 @@ export function installMockApi() {
     if (path === '/api/drive/status') {
       await wait(150)
       return json({ enabled: true, connected: state.drive.connected })
+    }
+
+    if (path === '/api/mcp/status') {
+      await wait(150)
+      return json({
+        enabled: true,
+        connected: state.mcp.connected,
+        server_url: `${window.location.origin}/mcp/`,
+        oauth_metadata_url: `${window.location.origin}/mcp/.well-known/oauth-authorization-server`,
+      })
+    }
+
+    if (path === '/api/mcp/disconnect' && method === 'POST') {
+      state.mcp.connected = false
+      sessionStorage.removeItem('mock.mcpConnected')
+      return json({ connected: false })
     }
 
     if (path === '/api/canvas/export_quiz' && method === 'POST') {

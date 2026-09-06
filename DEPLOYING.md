@@ -30,6 +30,21 @@ The build runs the whole pipeline — `npm ci`, `vite build`, `pip install` — 
 even a one-word change is several minutes on the free plan, and **the site is
 down while it swaps**. Batch your changes; don't push ten times in a row.
 
+## Enabling the MCP connector
+
+Set `MCP_PUBLIC_URL` in Render to the deployed API origin, without a trailing
+slash. After deployment, the MCP server is available at
+`https://your-api-origin/mcp/`. ChatGPT Apps SDK and Claude connectors can use
+OAuth discovery, dynamic registration, PKCE, and the FlexEd browser consent
+page; no OpenAI or Anthropic API key is placed in the connector.
+
+The connector uses the account's own `OPENAI_API_KEY` for FlexEd's calibrated
+generation pipeline. It does not consume the connected teacher's ChatGPT or
+Claude subscription quota. To smoke-test a private client locally, sign into
+FlexEd and `POST /api/mcp/token`; the response includes a per-user bearer token
+and the MCP URL. Keep `MCP_ACCESS_TOKEN` disabled unless a temporary single-user
+bootstrap token is genuinely needed.
+
 ## The one thing that is NOT isolated
 
 Your laptop and the live site share **one Supabase database**.

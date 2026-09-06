@@ -3615,7 +3615,11 @@ def _new_connection() -> psycopg2.extensions.connection:
         # Supabase's move to IPv6-only direct connections: db.<ref>.supabase.co
         # has no A record any more, so a host without IPv6 egress gets
         # "No route to host". The pooler is dual-stack, which is the fix.
-        detail = str(exc).strip().splitlines()[0] if str(exc).strip() else "connection failed"
+        # psycopg2 includes the complete DSN in many OperationalError messages.
+        # That DSN can contain DATABASE_URL's username and password, so never
+        # copy the provider exception into an API error or a normal log line.
+        log.warning("database connection failed (%s)", type(exc).__name__)
+        detail = "connection failed"
         hint = (
             "Check DATABASE_URL. If the host is db.<ref>.supabase.co it resolves "
             "IPv6-only, and any machine without IPv6 egress cannot reach it — "
@@ -3623,7 +3627,7 @@ def _new_connection() -> psycopg2.extensions.connection:
             "→ Database → Connection pooling). Note the username becomes "
             "postgres.<project-ref>."
         )
-        raise AppError("database_unreachable", f"Can't reach the database: {detail}", status=503, hint=hint) from exc
+        raise AppError("database_unreachable", f"Can't reach the database: {detail}", status=503, hint=hint) from None
 
     conn.autocommit = False
 

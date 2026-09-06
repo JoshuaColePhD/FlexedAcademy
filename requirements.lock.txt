@@ -3,6 +3,20 @@
 # by the following command:
 #
 #    pip-compile --generate-hashes --output-file=requirements.lock.txt pyproject.toml
+
+# MCP SDK entries are kept explicit here so environments that install the lock
+# file get the same connector stack. Regenerate this file with pip-compile when
+# the deployment environment has package-index access; this workspace's
+# resolver was offline during the MCP build.
+attrs==26.1.0
+httpx-sse==0.4.3
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+mcp==1.29.1
+pyjwt==2.13.0
+referencing==0.37.0
+rpds-py==2026.6.3
+sse-starlette==3.4.11
 #
 annotated-doc==0.0.5 \
     --hash=sha256:117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101 \

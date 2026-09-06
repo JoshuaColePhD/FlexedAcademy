@@ -87,9 +87,12 @@ def health(user_id: str | None = Depends(get_current_user_optional)):
         out["builder_error"] = e.message
     try:
         out["chunks"] = db._row("SELECT COUNT(*) AS n FROM chunks")["n"]
-    except Exception as e:  # noqa: BLE001 — health check reports any DB failure, doesn't crash on one
+    except Exception:  # noqa: BLE001 — health check reports any DB failure, doesn't crash on one
         out["ok"] = False
-        out["pg_error"] = str(e)
+        # Database driver errors can echo DATABASE_URL, including its password.
+        # Health is an operator diagnostic, but it is still an HTTP response and
+        # must never become a credential oracle.
+        out["pg_error"] = "database query failed"
     return out
 
 
@@ -192,7 +195,7 @@ def get_frameworks(state: str = "AL"):
 
     if settings.database_url:
         try:
-            aggregates = db.standard_frameworks(state=state)
+            aggregates = db.standard_frameworks(state=state, include_national=True)
             grades: dict[str, set[int]] = {}
             counts: Counter = Counter()
             verbatim: Counter = Counter()
@@ -602,7 +605,8 @@ def read_text_from_path(path: Path, ext: str) -> str:
 
 
 @router.post("/extract_text")
-def extract_text(file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+def extract_text(request: Request, file: UploadFile = File(...), user_id: str = Depends(get_current_user)):
     # Plain `def` for the same reason /transcribe is — see its docstring. This
     # one was arguably worse while it lasted: read_text_from_path shells out to
     # pdftotext with a 30-second timeout, so a slow PDF could hold the event

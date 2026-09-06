@@ -27,6 +27,8 @@ export const qk = {
   /** Connected/not for the signed-in teacher — same status ShareDialog's own
    *  fetch checks, just also readable from Settings' proactive connect row. */
   driveStatus: ['drive-status'],
+  /** Remote AI-assistant access to the teacher's FlexEd workspace. */
+  mcpStatus: ['mcp-status'],
   /** Site-wide weekly token usage for the admin panel's trend chart —
    *  its own key, not nested under admin accounts, since it's invalidated
    *  on a totally different cadence (never, from the UI) than the accounts

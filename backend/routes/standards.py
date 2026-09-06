@@ -17,7 +17,7 @@ from pypdf import PdfReader
 
 from .. import db, llm, retrieval
 from ..config import settings
-from ..deps import get_current_user
+from ..deps import get_current_admin, get_current_user
 from ..errors import AppError
 from ..prompts import known_gaps
 
@@ -58,6 +58,15 @@ def _slim(chunk: dict) -> dict:
     return {k: chunk.get(k) for k in _LIST_FIELDS}
 
 
+def _standards_partition(state: str, subject: str | None, source_type: str | None = None) -> str:
+    """Map a class-facing request to the stored standards partition."""
+    if source_type == "act_standards":
+        return "National"
+    if subject and retrieval.is_ap_course(subject):
+        return "AP"
+    return (state or "AL").upper()
+
+
 @router.get("")
 def list_standards(
     source_type: str | None = Query(None, max_length=60),
@@ -74,10 +83,11 @@ def list_standards(
     # state's corpus exists — same reasoning as every other endpoint here.
     # Defaults to 'AL' for backward compatibility with classes predating
     # multi-state support.
+    partition = _standards_partition(state, subject, source_type)
     if settings.database_url:
         try:
             rows, total = db.list_standard_chunks_page(
-                state=state,
+                state=partition,
                 subject=subject,
                 grade=grade,
                 source_type=source_type,
@@ -93,7 +103,7 @@ def list_standards(
         except Exception as exc:  # noqa: BLE001 — local/file fallback stays available
             log.warning("standards page query failed; using file fallback: %s", exc)
 
-    items = retrieval.load_chunks_for_state(state)
+    items = retrieval.load_chunks_for_state(partition)
 
     if subject:
         items = [c for c in items if c.get("course") == subject]
@@ -137,7 +147,7 @@ def upload_global_standards(
     subject: str = Form(...),
     grade: str = Form(...),
     file: UploadFile = File(...),
-    user_id: str = Depends(get_current_user)
+    _admin_id: str = Depends(get_current_admin)
 ):
     """
     Upload a standards PDF, parse it using the LLM, and save it to the global database.
@@ -178,7 +188,7 @@ def upload_global_standards(
         raise AppError("no_standards_found", "The AI could not find any standards in this document.", status=400)
 
     try:
-        db.insert_global_standards(user_id, state.strip(), subject.strip(), grade.strip(), extracted_standards)
+        db.insert_global_standards(_admin_id, state.strip(), subject.strip(), grade.strip(), extracted_standards)
     except Exception:  # noqa: BLE001 — translated into an AppError for the route to return
         raise AppError("db_save_error", "Failed to save standards to the database.", status=500)
 
@@ -194,13 +204,17 @@ def stats(
     if settings.database_url:
         try:
             return {
-                **db.standard_stats(state=state, subject=subject, grade=grade),
+                **db.standard_stats(
+                    state=_standards_partition(state or "AL", subject),
+                    subject=subject,
+                    grade=grade,
+                ),
                 "retrieval_floor": settings.retrieval_max_distance,
             }
         except Exception as exc:  # noqa: BLE001 — local/file fallback stays available
             log.warning("standards stats query failed; using file fallback: %s", exc)
 
-    items = retrieval.load_chunks()
+    items = retrieval.load_chunks_for_state(_standards_partition(state or "AL", subject))
     
     if subject:
         items = [c for c in items if c.get("course") == subject]

@@ -14,6 +14,7 @@ boolean-shaped gate is what stops a redirect loop from being reintroduced.
 from __future__ import annotations
 
 import logging
+from html import escape
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -147,9 +148,9 @@ class StateRequestBody(BaseModel):
 
 
 # Mirrors US_STATES in frontend/src/lib/states.js. Only the codes, because the
-# label is presentational and the request only needs to say WHICH state.
+# label is presentational and the request only needs to say WHICH jurisdiction.
 US_STATE_CODES = frozenset({
-    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DC", "DE", "FL", "GA", "HI", "ID",
     "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
     "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
     "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
@@ -194,8 +195,8 @@ def request_state(
             subject=f"FlexEd: standards requested for {code}",
             html=(
                 f"<p><strong>{code}</strong> standards requested.</p>"
-                f"<p>{(user or {}).get('name') or 'A teacher'} "
-                f"&lt;{(user or {}).get('email') or 'unknown'}&gt;</p>"
+                f"<p>{escape(str((user or {}).get('name') or 'A teacher'))} "
+                f"&lt;{escape(str((user or {}).get('email') or 'unknown'))}&gt;</p>"
                 "<p>Counts by state are in the onboarding funnel "
                 "(GET /api/admin/onboarding-funnel reads the snapshot; "
                 "onboarding_events holds one row per request).</p>"

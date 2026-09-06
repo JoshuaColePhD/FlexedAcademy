@@ -103,6 +103,28 @@ performs the atomic table swap; retries never write a partial live corpus.
 - `python-docx` and LibreOffice-compatible document generation
 - Google OAuth and Google Drive integration
 - Stripe billing, Resend email, Sentry monitoring, and Render deployment
+- MCP Streamable HTTP connector with OAuth 2.1/PKCE and Apps SDK lesson-plan output
+
+## MCP / ChatGPT connection
+
+FlexEd exposes a remote MCP server at `/mcp/`. A compatible ChatGPT custom app,
+Claude connector, or MCP client can authenticate with OAuth discovery, approve
+access in the teacher's FlexEd account, and then call the same calibrated
+retrieval → generation → grounding → database → DOCX pipeline used by the web
+application.
+
+For a local smoke test, log into FlexEd and `POST /api/mcp/token`; the response
+contains a short-lived per-user bearer token and the MCP server URL. For a
+shared deployment, set `MCP_PUBLIC_URL` to the public HTTPS origin. The OAuth
+client-registration and consent endpoints are then discovered from the MCP
+server automatically. Do not commit `MCP_ACCESS_TOKEN`, `SESSION_SECRET`, or
+any generated connector token.
+
+The first Apps SDK surface includes class/week context, plan listing and
+retrieval, plan generation, day-level revision, a secure DOCX capability URL,
+and an in-chat lesson-plan widget. The short-lived OAuth grant records are
+currently process-local; before running multiple API instances, move those
+records into a shared store such as Postgres or Redis.
 
 ## Repository layout
 

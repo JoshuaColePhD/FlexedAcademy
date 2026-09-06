@@ -16,8 +16,9 @@ directory would have silently dropped thousands of standards. So the default is
 now a full rebuild: drop the collection, re-embed from the files on disk.
 `--upsert` restores the old add-to-existing behaviour when you know you want it.
 
-**Stable ids.** Ids are `{course}:{grade}:{code}`, derived from the chunk, so the
-same chunk always lands on the same id and a rebuild is idempotent. The previous
+**Stable ids.** Ids are `{state}:{course}:{grade}:{code}`, derived from the
+chunk, so the same chunk always lands on the same id and identical standards
+adopted by two jurisdictions do not collapse into one metadata row. The previous
 `{source_document}_{code}` scheme collided as soon as one standard covered
 several grades (a standard tagged 9-12 is one chunk per grade) and disambiguated
 with an arbitrary `_1`, `_2` suffix whose assignment depended on dict ordering.
@@ -25,10 +26,12 @@ with an arbitrary `_1`, `_2` suffix whose assignment depended on dict ordering.
 Usage:
     python scripts/02_embed_store.py              # full rebuild (default)
     python scripts/02_embed_store.py --upsert     # add to the existing collection
+    python scripts/02_embed_store.py --upsert --state DC  # add one jurisdiction safely
     python scripts/02_embed_store.py --dry-run    # report what would be embedded
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -39,6 +42,8 @@ import sys
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
+
+from backend import db
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "db" / "chroma_db"
@@ -52,16 +57,18 @@ from backend.embeddings import EMBED_DIMS, EMBED_MODEL
 # release path; the local content-addressed embedding cache makes retries and
 # incremental rebuilds cheap by avoiding repeat API work.
 BATCH_SIZE = 1000
+DB_WORKERS = 4
 EMBED_CACHE_PATH = PROJECT_ROOT / ".cache" / "standards_embeddings.sqlite3"
 
 
 def chunk_id(chunk: dict) -> str:
-    """Deterministic, human-readable, unique per (course, grade, code)."""
+    """Deterministic, human-readable, unique per (state, course, grade, code)."""
+    state = re.sub(r"\s+", " ", str(chunk.get("state") or "?")).strip()
     course = chunk.get("course") or "?"
     grade = chunk.get("grade")
     grade_s = "K" if grade == 0 else ("na" if grade is None else str(grade))
     code = re.sub(r"\s+", " ", str(chunk.get("code") or "?")).strip()
-    return f"{course}:{grade_s}:{code}"
+    return f"{state}:{course}:{grade_s}:{code}"
 
 
 def flatten(chunk: dict) -> dict:
@@ -100,6 +107,14 @@ def load_all_chunks() -> tuple[list[dict], list[str]]:
         loaded = [
             {
                 **chunk,
+                # AP/Pre-AP and ACT standards are national frameworks. The
+                # Alabama recurring source is different: it is a state-specific
+                # recurring standard and must retain its Alabama partition.
+                "state": (
+                    "National" if chunk.get("source_type") == "act_standards"
+                    else "AP" if chunk.get("source_type") in ("college_board", "ap_skills")
+                    else chunk.get("state")
+                ),
                 "source_snapshot_sha256": chunk.get("source_snapshot_sha256") or snapshot,
                 "embedding_model": EMBED_MODEL,
                 "embedding_dimensions": EMBED_DIMS,
@@ -109,6 +124,34 @@ def load_all_chunks() -> tuple[list[dict], list[str]]:
         notes.append(f"  {path.name}: {len(loaded)} chunks")
         chunks.extend(loaded)
     return chunks, notes
+
+
+def insert_batch(rows: list[tuple], table: str) -> None:
+    """Insert one-row statements concurrently, keeping the TLS-safe path.
+
+    Supabase's pooler has rejected multi-row payloads in this environment, but
+    independent one-row statements are stable. Four short-lived workers use
+    the app's existing pool without holding a connection during embedding and
+    reduce wall-clock time while keeping each SQL statement small.
+    """
+    parts = [rows[i::DB_WORKERS] for i in range(DB_WORKERS)]
+
+    def write_part(part: list[tuple]) -> None:
+        if not part:
+            return
+        with db.borrow() as conn, conn.cursor() as cur:
+            for value in part:
+                cur.execute(
+                    f"INSERT INTO {table} (id, document, metadata, embedding) "
+                    "VALUES (%s, %s, %s::jsonb, %s) "
+                    "ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document, "
+                    "metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding",
+                    value,
+                )
+            conn.commit()
+
+    with ThreadPoolExecutor(max_workers=DB_WORKERS) as executor:
+        list(executor.map(write_part, parts))
 
 
 def _cache_key(document: str) -> str:
@@ -186,6 +229,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--upsert", action="store_true",
                     help="add to the existing collection instead of rebuilding it")
+    ap.add_argument("--state", help="with --upsert, limit the write to one state/jurisdiction")
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would be embedded, then stop")
     args = ap.parse_args()
@@ -198,6 +242,16 @@ def main() -> int:
     print("Chunk sources:")
     for line in notes:
         print(line)
+
+    if args.state:
+        if not args.upsert:
+            ap.error("--state is only safe with --upsert; a full rebuild already reads the whole corpus")
+        requested_state = args.state.strip().upper()
+        chunks = [chunk for chunk in chunks if str(chunk.get("state") or "").upper() == requested_state]
+        notes = [f"  filtered to {requested_state}: {len(chunks)} chunks"]
+        if not chunks:
+            print(f"Error: no chunks found for state={requested_state}.")
+            return 1
 
     # Group by the naive (course, grade, code) id first. Two chunks that land
     # on the same naive id with the SAME description are the same standard
@@ -254,7 +308,6 @@ def main() -> int:
 
 
     print("\\nPostgreSQL Database configured in settings.")
-    from backend import db
     db.connect()
     # A real `with`, not ctx.__enter__(). borrow() takes a pool slot and a
     # semaphore permit; entering without exiting leaks both. Harmless in a
@@ -312,22 +365,7 @@ def main() -> int:
             for i, d, m, e in zip(batch_ids, batch_docs, batch_metas, batch_embs)
         ]
         table = target_table if args.upsert else staging_table
-        with db.borrow() as conn:
-            with conn.cursor() as cur:
-                for value in values:
-                    cur.execute(
-                        f"INSERT INTO {table} (id, document, metadata, embedding) "
-                        "VALUES (%s, %s, %s::jsonb, %s) "
-                        "ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document, "
-                        "metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding",
-                        value,
-                    )
-                conn.commit()
-            # Supabase's pooler has intermittently returned a connection with
-            # a broken TLS record on the following large write. Do not return
-            # this batch connection to the pool for reuse; the next borrow will
-            # replace it with a fresh physical connection.
-            conn.close()
+        insert_batch(values, table)
 
     if not args.upsert:
         # Build indexes after loading. Maintaining HNSW for every inserted row
@@ -335,6 +373,9 @@ def main() -> int:
         # table remains private until both indexes finish successfully.
         print("Building staging vector and full-text indexes...")
         with db.borrow() as conn, conn.cursor() as cur:
+            # HNSW creation can exceed the pooler's default statement timeout;
+            # this transaction only builds private staging indexes.
+            cur.execute("SET LOCAL statement_timeout = 0")
             cur.execute(
                 f"CREATE INDEX {staging_table}_embedding_idx ON {staging_table} "
                 "USING hnsw (embedding vector_cosine_ops)"

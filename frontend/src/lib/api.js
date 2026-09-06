@@ -400,6 +400,8 @@ export const api = {
   driveConnectUrl: (returnTo) =>
     `${API_BASE}/api/drive/connect?return_to=${encodeURIComponent(returnTo)}`,
   driveDisconnect: () => request('/api/drive/disconnect', { method: 'POST' }),
+  mcpStatus: ({ signal } = {}) => request('/api/mcp/status', { signal }),
+  mcpDisconnect: () => request('/api/mcp/disconnect', { method: 'POST' }),
   sharePlan: (planId, { email, role = 'reader' } = {}) => {
     // My Drive saves do not have a recipient. Do not serialize that empty
     // form value as `email: ''`: the backend intentionally validates a

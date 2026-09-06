@@ -9,6 +9,7 @@ for whatever route triggered it.
 from __future__ import annotations
 
 import logging
+from html import escape
 
 import requests
 
@@ -58,9 +59,9 @@ def send_template_active_email(*, to: str, uploader_name: str | None, school_nam
     return send(
         to=to,
         subject="Your custom lesson plan format is ready!",
-        html=f"""
-            <p>Hi {uploader_name or 'there'},</p>
-            <p>Great news! FlexEd Academy is now fully trained on <strong>{school_name}</strong>'s lesson plan format.</p>
+            html=f"""
+            <p>Hi {escape(uploader_name or 'there')},</p>
+            <p>Great news! FlexEd Academy is now fully trained on <strong>{escape(school_name)}</strong>'s lesson plan format.</p>
             <p>All your future downloads will perfectly match your district's requirements.</p>
             <br/>
             <p>Happy teaching,<br/>Josh Cole</p>

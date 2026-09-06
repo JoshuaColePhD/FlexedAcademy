@@ -389,6 +389,15 @@ class Settings(BaseSettings):
 
     session_secret: str = "dev-secret-do-not-use-in-production"
 
+    # ── MCP / ChatGPT Apps SDK ──────────────────────────────────────────────
+    # MCP tokens are signed with SESSION_SECRET and checked against the user's
+    # current session_version, so signing out everywhere revokes them too.
+    mcp_enabled: bool = True
+    mcp_public_url: str = ""
+    mcp_access_token: str = ""
+    mcp_access_user_id: str = ""
+    mcp_token_ttl_seconds: int = 30 * 24 * 60 * 60
+
     # Optional recruiter showcase account. Both values must be present before
     # the account or its one-click login route exists; the password stays in
     # deployment secrets and never belongs in the repository or frontend.

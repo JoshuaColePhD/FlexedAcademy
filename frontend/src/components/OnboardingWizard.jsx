@@ -532,7 +532,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     }
     if (!isStandardsReady(state, activeStates)) {
       setStateError(
-        "We don't have that state's standards yet. Ask for it above, then pick Alabama to carry on for now.",
+        "We don't have that jurisdiction's standards yet. Ask for it above, then pick an available jurisdiction to carry on for now.",
       )
       return
     }
