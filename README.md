@@ -1,12 +1,16 @@
 # FlexedAcademy
 
+[![Quality](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/quality.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/quality.yml)
+[![Security](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/security.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/security.yml)
+[![Uptime](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/uptime.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/uptime.yml)
+
 FlexedAcademy is a standards-grounded AI lesson-planning platform for high-school teachers. It turns a teacher's weekly request into a structured, standards-aligned lesson plan, shows the sources behind the standards it cites, and exports the result as a district-formatted Word document.
 
 Live product: [flexedacademy.com](https://flexedacademy.com)
 
 ## Five-minute reviewer path
 
-1. Open the [live product](https://flexedacademy.com) or the read-only recruiter demo if it is enabled.
+1. Open the [live product](https://flexedacademy.com) and click **Explore demo (read-only)** on the sign-in page.
 2. Review the [portfolio brief](docs/recruiter/PORTFOLIO_BRIEF.md) for the problem, evidence, and interview story.
 3. Read the [architecture](docs/ARCHITECTURE.md) and [engineering decisions](docs/DECISIONS.md).
 4. Run `./venv/bin/python scripts/05_eval_harness.py --offline` for the no-network regression gate.
@@ -169,10 +173,10 @@ The deployed product is the primary way to experience FlexedAcademy. The reposit
 - [Applied-AI case study](docs/recruiter/FlexedAcademy_Case_Study.md)
 - [Sample generated lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx)
 
-### Optional demo access
+### Recruiter demo access
 
-The deployed sign-in page can expose a one-click “Explore demo” account for
-recruiters and potential customers. It uses the same application shell and
+The deployed sign-in page currently exposes a one-click “Explore demo” account
+for recruiters and potential customers. It uses the same application shell and
 seeded sample plan as the live product, but server-side enforcement disables
 generation, edits, uploads, sharing, billing, and other mutations. No payment
 or local setup is required.

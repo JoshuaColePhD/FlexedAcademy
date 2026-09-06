@@ -25,9 +25,9 @@ the product contract.
 - [Product walkthrough](./FlexedAcademy_Walkthrough.mp4)
 - [Sample generated lesson plan](./FlexedAcademy_Sample_Lesson_Plan.docx)
 
-If the read-only recruiter demo is enabled in Render, use the demo entry point
-so the reviewer can inspect plans, citations, warnings, and the artifact flow
-without creating an account or consuming generation credits.
+The deployed sign-in page currently exposes a read-only recruiter demo. Use its
+demo entry point so the reviewer can inspect plans, citations, warnings, and the
+artifact flow without creating an account or consuming generation credits.
 
 ## Two-minute walkthrough
 
