@@ -4158,6 +4158,117 @@
     border-top: 1px solid var(--edge);
     background: rgb(var(--paper-inset-rgb) / 0.42);
   }
+
+  /* Desktop checkout is intentionally composed like the compact mobile
+     sheet: one short identity row, one clear plan summary, then the payment
+     controls.  Keeping the modal comfortably below the viewport height means
+     the checkout reads as a single surface instead of a page that needs its
+     own scroll.  The mobile breakpoint below retains the full-screen sheet
+     treatment for genuinely narrow devices. */
+  @media (min-width: 641px) {
+    .dialog.dialog-checkout {
+      width: min(720px, 92vw);
+      max-height: min(90dvh, 720px);
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    .dialog.dialog-checkout::-webkit-scrollbar {
+      display: none;
+    }
+    .dialog-checkout .checkout-header {
+      align-items: center;
+      justify-content: flex-start;
+      gap: var(--sp-3);
+      padding: var(--sp-4) var(--sp-5) var(--sp-3);
+    }
+    .dialog-checkout .checkout-brand {
+      flex-direction: row;
+      align-items: center;
+      gap: var(--sp-2);
+      text-align: left;
+    }
+    .dialog-checkout .checkout-brand-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+    }
+    .dialog-checkout .checkout-kicker {
+      font-size: 0.7rem !important;
+    }
+    .dialog-checkout .checkout-flow-label {
+      font-size: 0.7rem !important;
+    }
+    .dialog-checkout .checkout-close {
+      top: var(--sp-3);
+      right: var(--sp-4);
+      min-width: 40px;
+      min-height: 40px;
+    }
+    .dialog-checkout .checkout-summary {
+      gap: var(--sp-3);
+      margin-right: var(--sp-5);
+      margin-left: var(--sp-5);
+      padding: var(--sp-3);
+    }
+    .dialog-checkout .checkout-summary-copy h2 {
+      font-size: var(--fs-md) !important;
+    }
+    .dialog-checkout .checkout-summary-copy p {
+      max-width: 30rem;
+      font-size: 0.72rem !important;
+      line-height: 1.35;
+    }
+    .dialog-checkout .checkout-price-card strong {
+      font-size: var(--fs-sm);
+    }
+    .dialog-checkout .checkout-price-card span {
+      font-size: 0.68rem;
+    }
+    .dialog-checkout .checkout-trust-line {
+      margin: var(--sp-2) var(--sp-5) 0;
+      padding: var(--sp-2) 0;
+      font-size: 0.72rem;
+    }
+    .dialog-checkout .checkout-preview-notice {
+      margin: var(--sp-2) var(--sp-5) 0;
+      padding: var(--sp-2) var(--sp-3);
+      font-size: 0.72rem;
+    }
+    .dialog-checkout .checkout-form {
+      gap: var(--sp-2);
+      padding: var(--sp-3) var(--sp-5) var(--sp-4);
+    }
+    .dialog-checkout .checkout-payment-heading,
+    .dialog-checkout .checkout-preview-field {
+      font-size: 0.72rem;
+    }
+    .dialog-checkout .checkout-method-tab {
+      min-height: 30px;
+      font-size: 0.72rem;
+    }
+    .dialog-checkout .checkout-preview-field input,
+    .dialog-checkout .checkout-preview-card {
+      min-height: 42px;
+      padding: var(--sp-2) var(--sp-3);
+    }
+    .dialog-checkout .checkout-preview-card {
+      gap: var(--sp-2);
+    }
+    .dialog-checkout .checkout-preview-card span:not(:first-child) {
+      padding-left: var(--sp-2);
+    }
+    .dialog-checkout .checkout-payment-block {
+      padding: var(--sp-2);
+    }
+    .dialog-checkout .checkout-submit {
+      min-height: 44px;
+    }
+    .dialog-checkout .checkout-footnote {
+      padding: var(--sp-2) var(--sp-5);
+      padding-bottom: calc(var(--sp-3) + var(--safe-b));
+      font-size: 0.68rem;
+    }
+  }
   .billing-free-card {
     color: var(--ink);
   }
@@ -10178,11 +10289,36 @@
 }
 
 .chat-thinking-mark {
+  position: relative;
   width: 0.42rem;
   height: 0.42rem;
   flex: 0 0 auto;
   border-radius: 999px;
   background: rgb(var(--accent-rgb) / 0.72);
+  box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.28);
+  animation: chat-thinking-pulse 1.8s ease-out infinite;
+}
+
+/* A tiny orbiting halo gives the inline thinking state a little life without
+   turning it into a loud loader. The dot remains the stable visual anchor;
+   only the hairline ring moves around it. */
+.chat-thinking-mark::after {
+  position: absolute;
+  inset: -0.28rem;
+  content: '';
+  border: 1px solid rgb(var(--accent-rgb) / 0.26);
+  border-top-color: rgb(var(--accent-rgb) / 0.9);
+  border-radius: 999px;
+  animation: chat-thinking-orbit 1.35s linear infinite;
+}
+
+@keyframes chat-thinking-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.24); }
+  62% { box-shadow: 0 0 0 0.28rem rgb(var(--accent-rgb) / 0); }
+}
+
+@keyframes chat-thinking-orbit {
+  to { transform: rotate(360deg); }
 }
 
 .chat-live-status-dot {
@@ -10207,6 +10343,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .chat-thinking-mark,
+  .chat-thinking-mark::after { animation: none; }
   .chat-live-status-dot { animation: none; }
   .fa-press:active { transform: none; }
 }

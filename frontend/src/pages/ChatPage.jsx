@@ -4006,7 +4006,7 @@ export function ChatPage() {
                 revising
                   ? 'Writing your lesson-plan update'
                   : chatStream.isStreaming
-                    ? 'Thinking through your suggestion'
+                    ? 'Working on your suggestion'
                     : 'Sending your suggestion'
               }
             >
@@ -4016,13 +4016,11 @@ export function ChatPage() {
               <strong className="composer-writing-status-label">
                 {revising ? 'Updating your lesson plan' : 'Working on your suggestion'}
               </strong>
-              <span className="composer-writing-status-status">
-                {revising
-                  ? 'Writing your update…'
-                  : chatStream.isStreaming
-                    ? 'Thinking…'
-                    : 'Sending…'}
-              </span>
+              {revising || !chatStream.isStreaming ? (
+                <span className="composer-writing-status-status">
+                  {revising ? 'Writing your update…' : 'Sending…'}
+                </span>
+              ) : null}
             </div>
           ) : artifact?.planId && (planSaveState === 'saved' || planSaveState === 'pending' || planSaveState === 'error') ? (
             <div

@@ -91,10 +91,12 @@ function topicFromPrompt(content) {
     // itself ("revise the review … plan plan plan").
     .replace(/^(?:revise|review|finish)\s+(?:the\s+)?/i, '')
     .replace(/^(?:revise|review|finish)\s+(?:the\s+)?/i, '')
-    .replace(/^(?:plan|lesson plan)(?:\s+(?:for|about|on))?\s*/i, '')
-    .replace(/^(?:a|an|the)\s+(?:lesson\s+)?plan\s+(?:for|on|about)\s+/i, '')
+    .replace(/^(?:build|create|make)\s+(?:a|an|the)\s+(?:lesson\s+)?plan\b(?:\s+(?:for|about|on|around|using))?\s*/i, '')
+    .replace(/^(?:plan|lesson plan)(?:\s+(?:for|about|on|around|using))?\s*/i, '')
+    .replace(/^(?:a|an|the)\s+(?:lesson\s+)?plan\s+(?:for|on|about|around|using)\s+/i, '')
     .replace(/\b(?:for|in)\s+week\s+\d+\b/gi, '')
     .replace(/\b(plan)(?:\s+\1)+\b/gi, '$1')
+    .replace(/^[.!?]\s*/, '')
     .replace(/[.!?]+$/, '')
     .trim()
 

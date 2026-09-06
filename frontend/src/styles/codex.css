@@ -941,21 +941,25 @@
     opacity: 1;
   }
 
-  /* Keep the transcript readable behind the floating inspector. The rail
-     should feel like a companion surface, while the transcript still uses
-     the available canvas instead of stopping at an arbitrary max-width. */
+  /* Keep one stable reading lane behind the floating inspector. The lane is
+     wide enough for a real reply, but its width never expands into newly
+     available pixels when either sidebar opens or closes. */
   .chat-transcript-column {
-    max-width: none !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
+    --chat-inspector-reserve: calc(clamp(292px, 26vw, 360px) + 44px);
+    width: min(60rem, calc(100% - var(--chat-inspector-reserve))) !important;
+    max-width: min(60rem, calc(100% - var(--chat-inspector-reserve))) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    transform: translateX(calc(var(--chat-inspector-reserve) / -2));
   }
   .workspace-panes:has(.artifact-drawer.is-open) .chat-transcript-column {
-    /* The drawer is absolute, so reserve its live inspector width in the
-       transcript lane without changing the chat pane or composer geometry. */
-    width: calc(100% - clamp(292px, 26vw, 360px) - 44px) !important;
-    max-width: none !important;
+    /* The drawer is absolute and does not participate in this lane's width,
+       so the same fixed measure applies in both rail states. If a narrow
+       viewport cannot afford it, min(100%, …) lets the lane shrink safely. */
+    width: min(60rem, calc(100% - var(--chat-inspector-reserve))) !important;
+    max-width: min(60rem, calc(100% - var(--chat-inspector-reserve))) !important;
     margin-right: auto !important;
-    margin-left: 32px !important;
+    margin-left: auto !important;
   }
   .chat-transcript-column .msg-bubble-assistant,
   .chat-transcript-column .msg-bubble-user {
