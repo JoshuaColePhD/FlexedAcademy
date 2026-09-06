@@ -16,6 +16,7 @@ DEMO_CHAT_ID = "recruiter_demo_chat"
 # stable across restarts so the showcase remains a single, durable artifact.
 DEMO_PLAN_ID = "9b31e7af5e5c4c5a9c1a3d78e6b2f104"
 _LEGACY_DEMO_PLAN_ID = "recruiter_demo_plan"
+DEMO_RETRIEVED_IDS = ["2.A", "2.B", "4.A", "4.C", "6.A"]
 
 
 def ensure_demo_account() -> dict | None:
@@ -137,19 +138,22 @@ def _ensure_sample_content(user: dict) -> None:
                 query="Build a standards-grounded AP Language week on rhetorical analysis.",
                 plan_json=plan_json,
                 docx_path=str(PROJECT_ROOT / "docs" / "recruiter" / "FlexedAcademy_Sample_Lesson_Plan.docx"),
-                retrieved_ids=[
-                    "AP_Lang:11:2.A",
-                    "AP_Lang:11:2.B",
-                    "AP_Lang:11:4.A",
-                    "AP_Lang:11:4.C",
-                    "AP_Lang:11:6.A",
-                ],
+                retrieved_ids=DEMO_RETRIEVED_IDS,
                 warnings=[],
                 chat_id=chat["id"],
                 template="florence-docx-v2",
                 class_id=DEMO_CLASS_ID,
                 week_number=2,
             )
+
+    # The stored plan ids are source-record identifiers, while the frontend's
+    # grounding audit compares retrieved values to the codes cited inside the
+    # plan. Keep the showcase's source list in the exact code form so its
+    # "Sources used" panel visibly proves the grounding path.
+    db._write(
+        "UPDATE plans SET retrieved_ids = ? WHERE id = ? AND user_id = ?",
+        (json.dumps(DEMO_RETRIEVED_IDS), DEMO_PLAN_ID, user_id),
+    )
 
     # Fixed client ids make this safe to run at every application startup.
     db.add_message(
@@ -161,7 +165,20 @@ def _ensure_sample_content(user: dict) -> None:
     db.add_message(
         DEMO_CHAT_ID,
         "assistant",
-        "Built a sample Week 02 plan. Review the cited standards, grounding details, and downloadable artifact.",
+        "Built a sample Week 02 plan. Open the plan to inspect the 5-day sequence, click Standards to see grounded citations, and download the DOCX. This showcase is read-only.",
         plan_id=DEMO_PLAN_ID,
         client_id="recruiter-demo-assistant-response",
+    )
+    db._write(
+        """
+        UPDATE messages
+        SET content = ?, plan_id = ?
+        WHERE chat_id = ? AND client_id = ?
+        """,
+        (
+            "Built a sample Week 02 plan. Open the plan to inspect the 5-day sequence, click Standards to see grounded citations, and download the DOCX. This showcase is read-only.",
+            DEMO_PLAN_ID,
+            DEMO_CHAT_ID,
+            "recruiter-demo-assistant-response",
+        ),
     )
