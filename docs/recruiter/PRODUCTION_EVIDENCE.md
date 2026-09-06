@@ -9,6 +9,8 @@ This is a dated evidence snapshot, not a claim of customer adoption.
 | Public homepage | HTTP 200 |
 | Public liveness endpoint | HTTP 200, `{"ok":true}` |
 | Deployment readiness endpoint | HTTP 200, `{"ok":true}` |
+| Read-only recruiter demo | Enabled; demo availability and login returned HTTP 200 |
+| Custom domain and TLS | `flexedacademy.com` and `www.flexedacademy.com` verified in Render; certificate issued for apex |
 | Authenticated browser path | Existing class and 5-day lesson plan rendered |
 | Browser console | No warning or error entries during inspection |
 | Backend fast regression gate | 10 suites passed |

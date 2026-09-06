@@ -72,9 +72,9 @@ The system still depends on external model and embedding APIs, and a grounded ci
 - [WebM walkthrough](./FlexedAcademy_Walkthrough.webm)
 - [Sample generated lesson plan](./FlexedAcademy_Sample_Lesson_Plan.docx)
 
-## Optional live demo
+## Live recruiter demo
 
-The deployed sign-in page can expose a free, read-only “Explore demo” for
+The deployed sign-in page exposes a free, read-only “Explore demo” for
 recruiters and potential customers. It is
 configured with `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` in deployment
 secrets, then provisions a seeded AP Language example account. Recruiters can
