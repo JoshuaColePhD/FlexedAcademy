@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Step 5 — Eval harness.
 
-Four suites. The first three need no API key; only generation calls OpenAI, so
-`--offline` gives you a full correctness check for free:
+Four suites. The document contract is fully local; retrieval and relevance-floor
+checks use the production-shaped Postgres corpus and OpenAI embeddings; only
+generation calls a chat model. `--offline` runs the network-free regression
+gate and does not claim to measure live retrieval:
 
   retrieval — do known queries surface their expected standard within top_k
   floor     — does the relevance floor keep real queries and reject off-domain
@@ -20,14 +22,15 @@ same phantom key that broke v1's No School gate). Replaced with the real
 validator so the eval and the server can never disagree about what valid means.
 
 Usage:
-    python scripts/05_eval_harness.py            # everything
-    python scripts/05_eval_harness.py --offline  # skip generation
+    python scripts/05_eval_harness.py            # retrieval, floor, docx, generation
+    python scripts/05_eval_harness.py --offline  # no DB, embeddings, or model calls
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -318,18 +321,46 @@ def run_generation_evals() -> bool:
         return False
 
 
+def run_offline_evals() -> bool:
+    """Run the repository's complete no-network regression gate.
+
+    The old ``--offline`` name skipped chat generation but still entered
+    ``retrieve_raw()``, which immediately requested an OpenAI embedding and
+    then failed on a machine without network access. Delegating to the same
+    ``eval/run_all.py --fast`` command used by CI makes the promise in the CLI
+    literal: no database, embedding API, or model endpoint is touched.
+    """
+    _hdr("OFFLINE REGRESSION GATE — no database or model calls")
+    proc = subprocess.run(
+        [sys.executable, str(PROJECT_ROOT / "eval" / "run_all.py"), "--fast"],
+        cwd=PROJECT_ROOT,
+        check=False,
+    )
+    if proc.returncode:
+        print("FAIL — the database-free regression gate reported failures.")
+        return False
+    print("PASS — the database-free regression gate completed without network access.")
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--offline", action="store_true", help="skip the suite that calls OpenAI")
+    ap.add_argument(
+        "--offline",
+        action="store_true",
+        help="run only the no-database, no-embedding, no-model regression gate",
+    )
     args = ap.parse_args()
 
-    results = {
-        "retrieval": run_retrieval_evals(),
-        "floor": run_floor_evals(),
-        "docx": run_docx_evals(),
-    }
-    if not args.offline:
-        results["generation"] = run_generation_evals()
+    if args.offline:
+        results = {"offline_regression": run_offline_evals()}
+    else:
+        results = {
+            "retrieval": run_retrieval_evals(),
+            "floor": run_floor_evals(),
+            "docx": run_docx_evals(),
+            "generation": run_generation_evals(),
+        }
 
     _hdr("SUMMARY")
     for name, ok in results.items():

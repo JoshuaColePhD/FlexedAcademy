@@ -128,7 +128,12 @@ costs real tokens. Run it directly when you touch the builder:
 ./venv/bin/python scripts/05_eval_harness.py --offline
 ```
 
-It measures a different thing from `test_golden_recall.py`, on purpose:
+The `--offline` mode is genuinely network-free: it delegates to
+`eval/run_all.py --fast` and does not attempt database retrieval, embeddings, or
+model generation. Live retrieval quality remains a deliberate check requiring
+the project database and embeddings key.
+
+The full harness measures a different thing from `test_golden_recall.py`, on purpose:
 
 * **`test_golden_recall.py`** ranks with a flat top-k. That is pure retrieval
   quality — a clean signal, and what the baseline guards.

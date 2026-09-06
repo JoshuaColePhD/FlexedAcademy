@@ -39,14 +39,21 @@ This makes a request traceable end to end:
 
 ## Evidence and evaluation
 
-The repository includes deterministic unit, contract, retrieval, grounding, security, and artifact tests. The recorded retrieval baseline contains 143 teacher-style cases:
+The repository includes deterministic unit, contract, retrieval, grounding,
+security, and artifact tests. The current release retrieval gate is generated
+from the canonical course identities:
 
 ```text
-Recall@5:  138 / 143
-Recall@60: 142 / 143
+Current recall@5:  61 / 61
+Current recall@20: 61 / 61
 ```
 
-The current standards corpus contains 2,997 standards and 11,435 chunks across 11 Alabama frameworks for grades 9–12. AP Language is the most thoroughly calibrated path; the README documents that limitation rather than implying uniform performance across every course.
+The current checked Alabama artifact contains 7,456 unique standards and
+19,701 grade-scoped chunks across 11 frameworks when built with `--grades 0-12`.
+The older 143-case set remains a historical drift diagnostic because corpus
+changes intentionally retired or moved some of its expectations. AP Language is
+the most thoroughly calibrated path; the README documents that limitation rather
+than implying uniform performance across every course.
 
 ## What is genuinely impressive
 

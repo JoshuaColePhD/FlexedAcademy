@@ -4,6 +4,18 @@ FlexedAcademy is a standards-grounded AI lesson-planning platform for high-schoo
 
 Live product: [flexedacademy.com](https://flexedacademy.com)
 
+## Five-minute reviewer path
+
+1. Open the [live product](https://flexedacademy.com) or the read-only recruiter demo if it is enabled.
+2. Review the [portfolio brief](docs/recruiter/PORTFOLIO_BRIEF.md) for the problem, evidence, and interview story.
+3. Read the [architecture](docs/ARCHITECTURE.md) and [engineering decisions](docs/DECISIONS.md).
+4. Run `./venv/bin/python scripts/05_eval_harness.py --offline` for the no-network regression gate.
+5. Open the [production evidence snapshot](docs/recruiter/PRODUCTION_EVIDENCE.md) and the [walkthrough video](docs/recruiter/FlexedAcademy_Walkthrough.mp4).
+
+The project is intentionally presented as an Applied AI engineering system:
+retrieval, structured generation, validation, grounding audits, persistence,
+streaming, and document export are one traceable workflow.
+
 ## What it does
 
 - Generates weekly lesson plans from teacher prompts and class context.
