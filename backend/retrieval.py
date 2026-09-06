@@ -766,24 +766,34 @@ def chunk_for_code(code: str, subject_code: str | None = None, state: str = "AL"
     state = (state or "AL").upper()
     if settings.database_url:
         variants = [norm, norm.replace("-", " "), norm.replace(" ", "-")]
+        lookup_states = ("AP", "National") if subject_code and is_ap_course(subject_code) else (state, "National")
         try:
             if subject_code:
                 for course in course_variants(subject_code):
-                    hits = db.find_standard_chunks_by_code(variants, state=state, courses=[course])
-                    if hits:
-                        return hits[0]
-            hits = db.find_standard_chunks_by_code(variants, state=state)
-            if hits:
-                return hits[0]
+                    for lookup_state in lookup_states:
+                        hits = db.find_standard_chunks_by_code(variants, state=lookup_state, courses=[course])
+                        if hits:
+                            return hits[0]
+            for lookup_state in lookup_states:
+                hits = db.find_standard_chunks_by_code(variants, state=lookup_state)
+                if hits:
+                    return hits[0]
         except Exception as exc:  # noqa: BLE001 — cache-backed fallback remains available
             log.warning("database standard code lookup failed for %s: %s", code, exc)
     if subject_code:
         by_course = _chunks_by_state_course_and_code()
-        for course in course_variants(subject_code):
-            hit = by_course.get((state, normalize_course(course), norm))
-            if hit:
-                return hit
-    return _state_scoped_chunk_by_code(state).get(norm)
+        lookup_states = ("AP", "National") if is_ap_course(subject_code) else (state, "National")
+        for lookup_state in lookup_states:
+            for course in course_variants(subject_code):
+                hit = by_course.get((lookup_state, normalize_course(course), norm))
+                if hit:
+                    return hit
+    lookup_states = ("AP", "National") if subject_code and is_ap_course(subject_code) else (state, "National")
+    for lookup_state in lookup_states:
+        hit = _state_scoped_chunk_by_code(lookup_state).get(norm)
+        if hit:
+            return hit
+    return None
 
 
 @functools.lru_cache(maxsize=1)
@@ -941,14 +951,19 @@ class RetrievalResult:
 # pgvector 0.8's iterative scan is the supported answer: keep pulling candidates
 # from the index until enough rows survive the filter. relaxed_order lets it
 # return results slightly out of distance order, which costs nothing here — the
-# caller re-sorts by distance anyway. max_scan_tuples is raised past the table
-# size so a filter matching only a handful of rows can still find them.
+# caller re-sorts by distance anyway. max_scan_tuples is bounded below the full
+# table size so a selective search cannot consume the worker's whole memory
+# budget while still having ample room to find the top results.
 #
 # Cost measured against Supabase: none discernible. All of these queries are
 # ~170-200ms either way; the time is the network round trip, not the scan.
 _ITERATIVE_SCAN = (
     "SET LOCAL hnsw.iterative_scan = relaxed_order; "
-    "SET LOCAL hnsw.max_scan_tuples = 100000; "
+    # A 100k candidate scan is needlessly large for a top-15 query and was a
+    # major transient memory spike on Render's 512 MB instance. The metadata
+    # filters and keyword half of the hybrid search still provide a fallback;
+    # 20000 is enough headroom for the selective state/course partitions.
+    "SET LOCAL hnsw.max_scan_tuples = 20000; "
 )
 
 
@@ -963,7 +978,23 @@ _ITERATIVE_SCAN = (
 #
 # Acquired BEFORE db.borrow(), and always in that order, so the two semaphores
 # cannot deadlock against each other.
-_INFLIGHT = threading.Semaphore(max(1, min(settings.retrieval_workers, settings.db_pool_size)))
+_INFLIGHT = threading.Semaphore(max(1, min(settings.retrieval_workers, settings.db_pool_size, 1)))
+
+
+def _retrieval_states(course: str | None, source_type: str | None, requested: str) -> tuple[str, ...]:
+    """Return the corpus partition(s) a retrieval pass may search.
+
+    State course-of-study rows are state-scoped. College Board AP/Pre-AP rows
+    and ACT rows are national, so a Georgia class must still see them while
+    remaining isolated from Georgia's state standards.
+    """
+    if source_type in ("act_standards",):
+        return ("National",)
+    if source_type == "act_recurring":
+        return ((requested or "AL").upper(),)
+    if is_ap_course(course):
+        return ("AP", "National")
+    return ((requested or "AL").upper(), "National")
 
 
 def retrieve_raw(
@@ -980,27 +1011,24 @@ def retrieve_raw(
         query_vector = embed_query(query)
     from . import db
 
-    # Every state's standards live in the same `chunks` table, distinguished
-    # only by metadata->>'state'. Before a second state existed this filter
-    # was unnecessary — every row already was Alabama — but without it here,
-    # a Georgia teacher's plan can get grounded against an Alabama standard
-    # purely because its embedding happens to be the nearest neighbor.
-    # Defaults to 'AL' so existing classes with no `state` set keep their
-    # current behavior exactly.
-    where_clause = "metadata->>'state' = %s"
-    params = [state]
+    # State standards, AP/Pre-AP standards, and ACT standards occupy distinct
+    # metadata partitions. A state class searches its state; a national course
+    # searches the national partition regardless of the teacher's state.
+    where_clause = "metadata->>'state' = ANY(%s)"
+    params = [list(_retrieval_states(course, source_type, state))]
 
     if source_type == "act_standards":
         # Section-scoped, not cross-course — see act_sections_for().
         sections = act_sections_for(course)
         if not sections:
             return []
-        where_clause += (
+        where_clause = (
+            "metadata->>'state' = %s"
             " AND metadata->>'source_type' = %s"
             " AND (CASE WHEN metadata->>'code' ~ '^[ERMSW]\\.'"
             "           THEN left(metadata->>'code', 1) ELSE 'E' END) = ANY(%s)"
         )
-        params.extend([source_type, list(sections)])
+        params = ["National", source_type, list(sections)]
     elif source_type == "act_recurring":
         # R1-R7 are Alabama's ELA Recurring Standards for Grades 9-12
         if ACT_ENGLISH not in act_sections_for(course) or is_ap_course(course):
@@ -1091,6 +1119,17 @@ def retrieve_raw(
 STRATA = ("ap_skills", "state_course_of_study", "act_standards", "act_recurring")
 
 
+def _retrieval_strata(course: str) -> tuple[str, ...]:
+    """Return only strata that are not already covered by the main query.
+
+    The main query already includes state-course rows for ordinary classes and
+    College Board/AP-skill rows for AP classes. Re-running all four strata for
+    every expanded search multiplied the hybrid query count and memory peak;
+    ACT standards are the only separate national partition required here.
+    """
+    return ("act_standards",) if act_sections_for(course) else ()
+
+
 @dataclass(frozen=True)
 class _CodeInventory:
     """Compact corpus vocabulary used by the generation-time grounding audit."""
@@ -1170,15 +1209,16 @@ def lookup_codes(query: str, course: str, grade: int, state: str = "AL") -> list
         return []
     from . import db
 
+    states = ("AP", "National") if is_ap_course(course) else (state.upper(), "National")
     sql = (
         "SELECT id, document, metadata FROM chunks "
-        "WHERE metadata->>'state' = %s "
+        "WHERE metadata->>'state' = ANY(%s) "
         "AND upper(metadata->>'code') = ANY(%s) "
         "AND metadata->>'course' = ANY(%s) "
         "AND ((metadata->>'grade')::int = %s "
         "     OR metadata->>'source_type' IN ('college_board', 'ap_skills', 'act_standards'))"
     )
-    params: list = [state, sorted(codes), list(course_variants(course)), grade]
+    params: list = [list(states), sorted(codes), list(course_variants(course)), grade]
     # Enforce AP vs General course standards
     if is_ap_course(course):
         sql += " AND metadata->>'source_type' <> 'state_course_of_study'"
@@ -1239,7 +1279,7 @@ def retrieve_grounded(
 
     # db.py now has a ThreadedConnectionPool, so we execute these queries concurrently.
     jobs = [(q, max(top_k * 3, top_k), None) for q in searches]
-    jobs += [(q, top_k, st) for q in searches for st in STRATA]
+    jobs += [(q, top_k, st) for q in searches for st in _retrieval_strata(subject_code)]
 
     # Exact identifier matches first, so they win the per-code dedup in
     # consider() against any approximate hit for the same standard.
@@ -1251,7 +1291,10 @@ def retrieve_grounded(
     # holding a thread, and never more than the memory bound allows. See
     # settings.retrieval_workers: at 8 this peaked over Render's 512MB and the
     # worker was OOM-killed mid-stream.
-    workers = max(1, min(settings.retrieval_workers, settings.db_pool_size))
+    # The current Render free instance has 512 MB. Keep retrieval strictly
+    # serial there even if a larger local config asks for more workers; the
+    # hybrid query's transient buffers are the dominant per-request spike.
+    workers = max(1, min(settings.retrieval_workers, settings.db_pool_size, 1))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = []
         for q, n, source_type in jobs:
@@ -1314,7 +1357,7 @@ def retrieve_grounded(
 
     keep = survivors[:top_k]
     kept_ids = {c["id"] for c in keep}
-    for source_type in STRATA:
+    for source_type in _retrieval_strata(subject_code):
         best_stratum = next(
             (c for c in survivors if (c.get("metadata") or {}).get("source_type") == source_type),
             None,
