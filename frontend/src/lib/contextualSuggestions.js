@@ -37,11 +37,21 @@ const relativeAge = (ms) => {
   return `${days} days ago`
 }
 
+// Keep model-provided wording from surfacing obvious accidental repetition in
+// the ghost completion. This is intentionally narrow: only duplicate
+// "plan" tokens are collapsed, leaving a teacher's actual phrasing intact.
+const normalizeSuggestionPrompt = (prompt) => (
+  typeof prompt === 'string'
+    ? prompt.replace(/\b(plan)(?:\s+\1)+\b/gi, '$1').replace(/\s+/g, ' ').trim()
+    : prompt
+)
+
 const makeSuggestion = (suggestion) => ({
   priority: 99,
   context: 'chat',
   action: 'send-prompt',
   ...suggestion,
+  prompt: normalizeSuggestionPrompt(suggestion.prompt),
 })
 
 const hasRecentChat = (activeChat, messages) => {
@@ -76,9 +86,15 @@ function topicFromPrompt(content) {
     // wrapper before extracting the subject, or the next completion becomes
     // "Let's keep building the keep building the …".
     .replace(/^(?:keep|continue)\s+building(?:\s+(?:the|this))?\s+/i, '')
-    .replace(/^(?:revise|review|finish)\s+(?:the\s+)?(?:plan|lesson plan)(?:\s+(?:for|about|on))?\s*/i, '')
+    // An accepted completion can become the latest user turn. Strip one or
+    // two layers of command language so the next completion does not echo
+    // itself ("revise the review … plan plan plan").
+    .replace(/^(?:revise|review|finish)\s+(?:the\s+)?/i, '')
+    .replace(/^(?:revise|review|finish)\s+(?:the\s+)?/i, '')
+    .replace(/^(?:plan|lesson plan)(?:\s+(?:for|about|on))?\s*/i, '')
     .replace(/^(?:a|an|the)\s+(?:lesson\s+)?plan\s+(?:for|on|about)\s+/i, '')
     .replace(/\b(?:for|in)\s+week\s+\d+\b/gi, '')
+    .replace(/\b(plan)(?:\s+\1)+\b/gi, '$1')
     .replace(/[.!?]+$/, '')
     .trim()
 
@@ -86,6 +102,7 @@ function topicFromPrompt(content) {
   // next prompt. Falling back to the generic lesson-plan continuation keeps
   // the completion useful without echoing a long or truncated question.
   if (/^(?:which|what|how|why|when|where)\b/i.test(topic)) return ''
+  if (/^(?:plan|lesson plan)$/i.test(topic)) return ''
   return topic.length > 72 ? `${topic.slice(0, 69).trimEnd()}…` : topic
 }
 
@@ -95,8 +112,14 @@ function followUpSuggestion(messages, artifact, targetWeek, activeClass, classCo
   if (!previous || !planningLanguage.test(content)) return null
   const topic = topicFromPrompt(content)
   const week = targetWeek ? weekLabel(targetWeek) : 'this week'
-  const focus = topic ? `the ${topic}` : 'this lesson plan'
-  const revisionFocus = topic ? `${focus} plan` : focus
+  // Preserve a topic's own determiner/possessive ("Week 6's plan", "the
+  // Cask") instead of forcing an extra "the" in front of it.
+  const focus = topic
+    ? /^(?:the|this|my|your|week\s+\d+['’]s)\b/i.test(topic) ? topic : `the ${topic}`
+    : 'this lesson plan'
+  // Keep accepted completions idempotent when the extracted topic already
+  // ends in "plan".
+  const revisionFocus = topic ? (/\bplan$/i.test(focus) ? focus : `${focus} plan`) : focus
   return makeSuggestion({
     id: `follow-up:${previous.id || content}`,
     label: artifact ? 'Revise this direction' : 'Keep building this plan',

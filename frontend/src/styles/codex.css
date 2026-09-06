@@ -353,6 +353,12 @@
   background: var(--paper-inset) !important;
   outline: none;
 }
+/* The rail brand row should flow directly into the navigation. Keep the
+   divider off at every desktop breakpoint so a collapsed rail does not leave
+   a stray horizontal rule beneath the centered seal. */
+.app-rail:not(.rail-drawer) .rail-brand-row {
+  border-bottom: 0 !important;
+}
 .checkout-preview,
 .onboarding-course-search-results { min-width: 0; }
 .onboarding-skip { white-space: nowrap; }
@@ -434,11 +440,12 @@
     height: 48px !important;
     margin-top: 0 !important;
     padding-inline: 10px !important;
-    border-bottom: 1px solid var(--edge);
+    border-bottom: 0 !important;
   }
   .app-rail:not(.rail-drawer) .rail-brand-row.is-collapsed {
-    gap: 4px !important;
-    padding-inline: 8px !important;
+    gap: 0 !important;
+    padding-inline: 0 !important;
+    justify-content: center !important;
   }
   .app-rail:not(.rail-drawer) > div:first-child > div:nth-child(2) {
     padding: 8px 10px 6px !important;
@@ -935,20 +942,24 @@
   }
 
   /* Keep the transcript readable behind the floating inspector. The rail
-     should feel like a companion surface, not a reason for message lines to
-     span the entire viewport. */
+     should feel like a companion surface, while the transcript still uses
+     the available canvas instead of stopping at an arbitrary max-width. */
   .chat-transcript-column {
-    max-width: 52rem !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
   }
   .workspace-panes:has(.artifact-drawer.is-open) .chat-transcript-column {
-    width: min(100%, 32rem) !important;
-    max-width: 32rem !important;
+    /* The drawer is absolute, so reserve its live inspector width in the
+       transcript lane without changing the chat pane or composer geometry. */
+    width: calc(100% - clamp(292px, 26vw, 360px) - 44px) !important;
+    max-width: none !important;
     margin-right: auto !important;
     margin-left: 32px !important;
   }
   .chat-transcript-column .msg-bubble-assistant,
   .chat-transcript-column .msg-bubble-user {
-    max-width: 32rem !important;
+    max-width: none !important;
     font-size: 0.9rem !important;
     line-height: 1.5 !important;
   }
