@@ -487,6 +487,41 @@
     flex-direction: column;
   }
 
+  /* The boot state can cover the whole app while auth and the first query
+     settle. Keep its motion on opacity/transform so it stays on the compositor
+     even when the shell is also mounting underneath it. */
+  .boot-screen-mark {
+    position: relative;
+    display: block;
+    width: 0.625rem;
+    height: 0.625rem;
+    flex: 0 0 auto;
+    border-radius: var(--r-full);
+    background: var(--accent);
+    animation: boot-mark-breathe 1.4s var(--ease) infinite;
+    will-change: transform, opacity;
+  }
+
+  .boot-screen-mark::after {
+    position: absolute;
+    inset: -0.45rem;
+    content: '';
+    border: 1px solid rgb(var(--accent-rgb) / 0.28);
+    border-radius: inherit;
+    animation: boot-mark-ring 1.4s var(--ease-out) infinite;
+    will-change: transform, opacity;
+  }
+
+  @keyframes boot-mark-breathe {
+    0%, 100% { opacity: 0.55; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes boot-mark-ring {
+    0% { opacity: 0.75; transform: scale(0.6); }
+    100% { opacity: 0; transform: scale(1.35); }
+  }
+
   .onboarding-content {
     display: flex;
     /* Short questions reserve a lower action zone. That puts their plain-text
@@ -5009,28 +5044,33 @@
      "working" signal. Low alpha over the ordinary paper-sunken base keeps it
      a placeholder, not a rainbow. */
   .skeleton {
+    position: relative;
+    overflow: hidden;
     display: block;
     background-color: var(--paper-sunken);
-    background-image: linear-gradient(
-      90deg,
-      rgb(167 139 250 / 0.32) 0%,
-      rgb(244 114 182 / 0.32) 20%,
-      rgb(251 146 60 / 0.32) 40%,
-      rgb(52 211 153 / 0.32) 60%,
-      rgb(96 165 250 / 0.32) 80%,
-      rgb(167 139 250 / 0.32) 100%
-    );
-    background-size: 300% 100%;
     border-radius: var(--r-xs);
-    animation: skeleton-sweep 2.2s linear infinite;
+  }
+  .skeleton::after {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    content: '';
+    background: linear-gradient(
+      105deg,
+      transparent 20%,
+      rgb(167 139 250 / 0.14) 32%,
+      rgb(244 114 182 / 0.18) 42%,
+      rgb(251 146 60 / 0.18) 52%,
+      rgb(52 211 153 / 0.18) 62%,
+      rgb(96 165 250 / 0.14) 72%,
+      transparent 84%
+    );
+    animation: skeleton-sweep 1.8s linear infinite;
+    will-change: transform;
   }
   @keyframes skeleton-sweep {
-    0% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0 50%;
-    }
+    from { transform: translate3d(-100%, 0, 0); }
+    to { transform: translate3d(100%, 0, 0); }
   }
   /* The lesson-plan panel updates for as long as a plan is generating, which
      can run a couple minutes — an infinite shimmer for that whole span reads
@@ -5038,7 +5078,9 @@
      output lands. Same placeholder box, no sweep. */
   .skeleton-static {
     background: var(--paper-sunken);
-    animation: none;
+  }
+  .skeleton-static::after {
+    display: none;
   }
   .skeleton-text {
     display: flex;
@@ -10311,7 +10353,22 @@
   flex: 0 0 auto;
   border-radius: 999px;
   background: rgb(var(--accent-rgb) / 0.72);
-  box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.28);
+  will-change: transform, opacity;
+}
+
+/* Use pseudo-elements for the expanding halos: transform and opacity are
+   composited, unlike animating box-shadow on the tiny dot itself. */
+.chat-thinking-mark::before,
+.chat-thinking-mark::after {
+  position: absolute;
+  inset: -0.28rem;
+  content: '';
+  border: 1px solid rgb(var(--accent-rgb) / 0.26);
+  border-radius: 999px;
+  will-change: transform, opacity;
+}
+
+.chat-thinking-mark::before {
   animation: chat-thinking-pulse 1.8s ease-out infinite;
 }
 
@@ -10319,18 +10376,13 @@
    turning it into a loud loader. The dot remains the stable visual anchor;
    only the hairline ring moves around it. */
 .chat-thinking-mark::after {
-  position: absolute;
-  inset: -0.28rem;
-  content: '';
-  border: 1px solid rgb(var(--accent-rgb) / 0.26);
   border-top-color: rgb(var(--accent-rgb) / 0.9);
-  border-radius: 999px;
   animation: chat-thinking-orbit 1.35s linear infinite;
 }
 
 @keyframes chat-thinking-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.24); }
-  62% { box-shadow: 0 0 0 0.28rem rgb(var(--accent-rgb) / 0); }
+  0%, 100% { opacity: 0.7; transform: scale(0.65); }
+  62% { opacity: 0; transform: scale(1.55); }
 }
 
 @keyframes chat-thinking-orbit {
@@ -10338,18 +10390,27 @@
 }
 
 .chat-live-status-dot {
+  position: relative;
   width: 0.45rem;
   height: 0.45rem;
   flex: 0 0 auto;
   border-radius: 999px;
   background: rgb(var(--accent-rgb));
-  box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.35);
+}
+
+.chat-live-status-dot::before {
+  position: absolute;
+  inset: -0.15rem;
+  content: '';
+  border: 1px solid rgb(var(--accent-rgb) / 0.35);
+  border-radius: inherit;
   animation: chat-status-pulse 1.5s ease-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes chat-status-pulse {
-  70% { box-shadow: 0 0 0 0.35rem rgb(var(--accent-rgb) / 0); }
-  100% { box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0); }
+  0% { opacity: 0.75; transform: scale(0.75); }
+  70%, 100% { opacity: 0; transform: scale(2); }
 }
 
 /* A single short press response makes controls feel physical without adding
@@ -10360,8 +10421,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .chat-thinking-mark,
-  .chat-thinking-mark::after { animation: none; }
-  .chat-live-status-dot { animation: none; }
+  .chat-thinking-mark::before,
+  .chat-thinking-mark::after,
+  .chat-live-status-dot,
+  .chat-live-status-dot::before,
+  .boot-screen-mark,
+  .boot-screen-mark::after,
+  .skeleton::after { animation: none; }
   .fa-press:active { transform: none; }
 }
 

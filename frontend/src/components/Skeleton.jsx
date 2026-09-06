@@ -4,16 +4,12 @@
    sentence in a role="status" region — a screen reader should hear "Loading
    standards…" once, not forty grey boxes. */
 
-import { motion } from 'framer-motion'
-
 export function Skeleton({ width = '100%', height = '1rem', radius, className = '', style, static: isStatic }) {
   return (
-    <motion.span
+    <span
       aria-hidden="true"
       className={`skeleton ${isStatic ? 'skeleton-static' : ''} ${className}`.trim()}
       style={{ width, height, borderRadius: radius, ...style }}
-      animate={isStatic ? {} : { opacity: [0.4, 0.8, 0.4] }}
-      transition={isStatic ? {} : { duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
     />
   )
 }
