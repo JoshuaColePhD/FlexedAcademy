@@ -4589,6 +4589,7 @@
   .questions-dock {
     display: grid;
     flex-shrink: 0;
+    margin-bottom: var(--sp-2);
     grid-template-rows: 0fr;
     transition: grid-template-rows var(--t-slow) var(--ease-out);
   }
@@ -4600,11 +4601,41 @@
     max-height: min(70vh, 560px);
     overflow-y: auto;
     overflow-x: hidden;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.72);
+    border-radius: 22px;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow-pop);
     /* --ease-glide, not --ease-out — same curve swap as toast-in/dialog-in. */
-    animation: voice-dock-body-in var(--t-base) var(--ease-glide) both;
+    animation: composer-plan-lift-in var(--t-base) var(--ease-glide) both;
   }
   .questions-dock-body.is-closing {
-    animation: voice-dock-body-out var(--t-fast) var(--ease) both;
+    animation: composer-plan-lift-out var(--t-fast) var(--ease) both;
+  }
+  /* The question card is now the Composer's lifted selection surface, so the
+     outer dock owns the elevation and the inner neomorphic treatment must not
+     add a second, inset card inside it. */
+  .questions-dock-body > .neo-world.neo-inset {
+    padding: var(--sp-3) var(--sp-4);
+    background: transparent;
+    box-shadow: none;
+  }
+  .questions-dock-body .lesson-question-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-1) var(--sp-2);
+  }
+  @keyframes composer-plan-lift-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes composer-plan-lift-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: translateY(8px) scale(0.99); }
+  }
+  @media (max-width: 640px) {
+    .questions-dock-body .lesson-question-options {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* A clarification round is a conversation turn, not a form sliding into
