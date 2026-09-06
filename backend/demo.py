@@ -12,7 +12,10 @@ log = logging.getLogger("flexedacademy.demo")
 
 DEMO_CLASS_ID = "recruiter_demo_class"
 DEMO_CHAT_ID = "recruiter_demo_chat"
-DEMO_PLAN_ID = "recruiter_demo_plan"
+# Plan routes validate UUID-shaped ids before looking up a row. Keep this
+# stable across restarts so the showcase remains a single, durable artifact.
+DEMO_PLAN_ID = "9b31e7af5e5c4c5a9c1a3d78e6b2f104"
+_LEGACY_DEMO_PLAN_ID = "recruiter_demo_plan"
 
 
 def ensure_demo_account() -> dict | None:
@@ -77,32 +80,55 @@ def _ensure_sample_content(user: dict) -> None:
     )
 
     if not db.get_plan(user_id, DEMO_PLAN_ID):
-        source_path = PROJECT_ROOT / "backend" / "builder" / "example-week.json"
-        with source_path.open(encoding="utf-8") as source:
-            plan_json = copy.deepcopy(json.load(source))
-        plan_json["teacher"] = teacher
-        db.create_plan(
-            plan_id=DEMO_PLAN_ID,
-            user_id=user_id,
-            course="AP Language & Composition",
-            week_label=plan_json["week_of"],
-            unit="Rhetorical analysis",
-            query="Build a standards-grounded AP Language week on rhetorical analysis.",
-            plan_json=plan_json,
-            docx_path=str(PROJECT_ROOT / "docs" / "recruiter" / "FlexedAcademy_Sample_Lesson_Plan.docx"),
-            retrieved_ids=[
-                "AP_Lang:11:2.A",
-                "AP_Lang:11:2.B",
-                "AP_Lang:11:4.A",
-                "AP_Lang:11:4.C",
-                "AP_Lang:11:6.A",
-            ],
-            warnings=[],
-            chat_id=chat["id"],
-            template="florence-docx-v2",
-            class_id=DEMO_CLASS_ID,
-            week_number=2,
-        )
+        legacy_plan = db.get_plan(user_id, _LEGACY_DEMO_PLAN_ID)
+        if legacy_plan:
+            # The first version of the showcase used a descriptive id. The
+            # plan API intentionally rejects that shape, so move the existing
+            # row and every known child reference once instead of leaving a
+            # duplicate plan in the recruiter's Library.
+            for table in (
+                "messages",
+                "plan_feedback",
+                "quizzes",
+                "plan_shares",
+                "plan_standards",
+                "document_build_jobs",
+            ):
+                db._write(
+                    f"UPDATE {table} SET plan_id = ? WHERE plan_id = ?",
+                    (DEMO_PLAN_ID, _LEGACY_DEMO_PLAN_ID),
+                )
+            db._write(
+                "UPDATE plans SET id = ? WHERE id = ? AND user_id = ?",
+                (DEMO_PLAN_ID, _LEGACY_DEMO_PLAN_ID, user_id),
+            )
+        else:
+            source_path = PROJECT_ROOT / "backend" / "builder" / "example-week.json"
+            with source_path.open(encoding="utf-8") as source:
+                plan_json = copy.deepcopy(json.load(source))
+            plan_json["teacher"] = teacher
+            db.create_plan(
+                plan_id=DEMO_PLAN_ID,
+                user_id=user_id,
+                course="AP Language & Composition",
+                week_label=plan_json["week_of"],
+                unit="Rhetorical analysis",
+                query="Build a standards-grounded AP Language week on rhetorical analysis.",
+                plan_json=plan_json,
+                docx_path=str(PROJECT_ROOT / "docs" / "recruiter" / "FlexedAcademy_Sample_Lesson_Plan.docx"),
+                retrieved_ids=[
+                    "AP_Lang:11:2.A",
+                    "AP_Lang:11:2.B",
+                    "AP_Lang:11:4.A",
+                    "AP_Lang:11:4.C",
+                    "AP_Lang:11:6.A",
+                ],
+                warnings=[],
+                chat_id=chat["id"],
+                template="florence-docx-v2",
+                class_id=DEMO_CLASS_ID,
+                week_number=2,
+            )
 
     # Fixed client ids make this safe to run at every application startup.
     db.add_message(
