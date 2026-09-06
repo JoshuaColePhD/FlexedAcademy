@@ -3563,13 +3563,6 @@ export function ChatPage() {
   // anchor after a plan is built, putting its file controls over the header.
   // Keep the phone dock in the chat's normal flex flow instead.
   const renderComposerDock = (dock) => (isPhone ? dock : createPortal(dock, portalHost))
-  // Action runs now announce themselves in the transcript directly below the
-  // teacher's message. Keeping the older composer banner visible as well
-  // would make one run look like two separate statuses.
-  const hasLiveWorkActivity = Object.values(workActivities).some((activity) => (
-    activity.status === 'active' || activity.status === 'error'
-  ))
-  const writingInProgress = !hasLiveWorkActivity && (revising || (chatStream.isStreaming && !stream.isStreaming) || preparing)
 
   const chatPane = (
     /* border-r-0, not a plain `border`: this pane's own background is only
@@ -3993,32 +3986,7 @@ export function ChatPage() {
           fixed-shape input shell. Only the wrapper's className may change. */}
       <div className={`composer-dock-surface shrink-0 bg-transparent pb-5 pt-3${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-open' : ''}`}>
         <div className="relative mx-auto w-full max-w-4xl px-gutter">
-          {writingInProgress ? (
-            <div
-              className="composer-writing-status mb-2"
-              role="status"
-              aria-live="polite"
-              aria-label={
-                revising
-                  ? 'Writing your lesson-plan update'
-                  : chatStream.isStreaming
-                    ? 'Working on your suggestion'
-                    : 'Sending your suggestion'
-              }
-            >
-              <span className="composer-writing-status-mark" aria-hidden="true">
-                <Loader2 size={14} className="animate-spin" />
-              </span>
-              <strong className="composer-writing-status-label">
-                {revising ? 'Updating your lesson plan' : 'Working on your suggestion'}
-              </strong>
-              {revising || !chatStream.isStreaming ? (
-                <span className="composer-writing-status-status">
-                  {revising ? 'Writing your update…' : 'Sending…'}
-                </span>
-              ) : null}
-            </div>
-          ) : artifact?.planId && (planSaveState === 'saved' || planSaveState === 'pending' || planSaveState === 'error') ? (
+          {artifact?.planId && (planSaveState === 'saved' || planSaveState === 'pending' || planSaveState === 'error') ? (
             <div
               className={`composer-writing-status composer-save-status mb-2${planSaveState === 'error' ? ' is-error' : planSaveState === 'pending' ? ' is-pending' : ' is-saved'}`}
               role="status"
@@ -4158,12 +4126,11 @@ export function ChatPage() {
               clears (see the effect near queueOrSubmit); Steer puts it back
               into the draft, while the trash action removes it. */}
           {queuedMessage ? (
-            <div className="composer-queued-message mb-2" role="status" aria-live="polite">
+            <div className="composer-queued-message" role="status" aria-live="polite">
               <span className="composer-queued-message-icon" aria-hidden="true">
                 <CornerDownLeft size={14} />
               </span>
               <span className="composer-queued-message-copy">
-                <span className="composer-queued-message-label">Queued</span>
                 <span className="composer-queued-message-text">
                   {queuedMessage.text || `Sent ${queuedMessage.attachments.length} file(s)`}
                 </span>

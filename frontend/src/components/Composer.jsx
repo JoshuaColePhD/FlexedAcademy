@@ -217,6 +217,12 @@ export function Composer({
   const recordingTimerRef = useRef(null)
   const recordingDiscardedRef = useRef(false)
   const recordingCursorRef = useRef({ start: 0, end: 0, value: '' })
+  const visualizerBarsRef = useRef([])
+  const visualizerFrameRef = useRef(null)
+  const visualizerContextRef = useRef(null)
+  const visualizerAnalyserRef = useRef(null)
+  const visualizerSamplesRef = useRef(null)
+  const visualizerPausedRef = useRef(false)
 
   const triggerShake = useCallback(() => {
     setShake(true)
@@ -230,6 +236,77 @@ export function Composer({
   }, [])
 
   useEffect(() => () => window.clearTimeout(motionTimerRef.current), [])
+
+  /* The old recording bars used recordingSeconds as their animation clock,
+     which meant they only got a new height once per second. Drive the bars
+     from the live stream instead, but update the DOM imperatively so a 60fps
+     visualizer does not rerender the whole composer on every audio frame. */
+  const stopMicVisualizer = useCallback(() => {
+    window.cancelAnimationFrame(visualizerFrameRef.current)
+    visualizerFrameRef.current = null
+    visualizerAnalyserRef.current = null
+    visualizerSamplesRef.current = null
+    const context = visualizerContextRef.current
+    visualizerContextRef.current = null
+    if (context) void context.close().catch(() => {})
+    visualizerBarsRef.current.forEach((bar) => {
+      if (bar) bar.style.height = '8px'
+    })
+  }, [])
+
+  const startMicVisualizer = useCallback((stream) => {
+    stopMicVisualizer()
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextClass) return
+
+    try {
+      const context = new AudioContextClass()
+      const analyser = context.createAnalyser()
+      const silentGain = context.createGain()
+      analyser.fftSize = 64
+      analyser.smoothingTimeConstant = 0.84
+      silentGain.gain.value = 0
+      context.createMediaStreamSource(stream).connect(analyser)
+      // Keep the analyser in the active audio graph without feeding the
+      // microphone back into the speakers.
+      analyser.connect(silentGain)
+      silentGain.connect(context.destination)
+      visualizerContextRef.current = context
+      visualizerAnalyserRef.current = analyser
+      visualizerSamplesRef.current = new Uint8Array(analyser.fftSize)
+      visualizerPausedRef.current = false
+      void context.resume?.()
+
+      const tick = () => {
+        const activeAnalyser = visualizerAnalyserRef.current
+        const samples = visualizerSamplesRef.current
+        if (!activeAnalyser || !samples) return
+        if (!visualizerPausedRef.current) {
+          activeAnalyser.getByteTimeDomainData(samples)
+          let energy = 0
+          for (const sample of samples) {
+            const normalized = (sample - 128) / 128
+            energy += normalized * normalized
+          }
+          const rms = Math.sqrt(energy / samples.length)
+          const level = Math.min(1, Math.max(0, (rms - 0.012) * 5.5))
+          const now = performance.now()
+          visualizerBarsRef.current.forEach((bar, index) => {
+            if (!bar) return
+            const drift = Math.sin(now / (170 + index * 22) + index * 0.8) * 1.5
+            const height = Math.max(8, Math.round(8 + level * (12 + index * 2.2) + drift))
+            bar.style.height = `${height}px`
+          })
+        }
+        visualizerFrameRef.current = window.requestAnimationFrame(tick)
+      }
+      visualizerFrameRef.current = window.requestAnimationFrame(tick)
+    } catch {
+      // Recording should never fail just because the browser cannot expose a
+      // Web Audio analyser; the CSS fallback still shows a live state.
+      stopMicVisualizer()
+    }
+  }, [stopMicVisualizer])
 
   // Device labels are only exposed after the browser grants microphone
   // permission. Refreshing after permission and on device changes means the
@@ -263,6 +340,10 @@ export function Composer({
     }, 1000)
     return () => window.clearInterval(recordingTimerRef.current)
   }, [isPaused, isRecording])
+
+  useEffect(() => {
+    visualizerPausedRef.current = isPaused
+  }, [isPaused])
 
   useEffect(() => () => window.clearInterval(recordingTimerRef.current), [])
 
@@ -390,6 +471,7 @@ export function Composer({
         if (event.data.size > 0) audioChunks.current.push(event.data)
       }
       recorder.onstop = async () => {
+        stopMicVisualizer()
         stream.getTracks().forEach((track) => track.stop())
         mediaRecorder.current = null
         if (recordingDiscardedRef.current) {
@@ -418,6 +500,7 @@ export function Composer({
       }
       recorder.start(250)
       setIsRecording(true)
+      startMicVisualizer(stream)
       const activeTrack = stream.getAudioTracks()[0]
       const deviceId = activeTrack?.getSettings?.().deviceId
       if (deviceId && deviceId !== selectedDeviceId) {
@@ -502,11 +585,12 @@ export function Composer({
   useEffect(
     () => () => {
       recordingDiscardedRef.current = true
+      stopMicVisualizer()
       const rec = mediaRecorder.current
       if (rec && rec.state !== 'inactive') rec.stop()
       rec?.stream?.getTracks?.().forEach((t) => t.stop())
     },
-    []
+    [stopMicVisualizer]
   )
 
   // Both the file-picker input and drag-and-drop used to take only
@@ -723,9 +807,13 @@ export function Composer({
 
       {isRecording ? (
         <div className="mb-2 flex min-h-10 items-center gap-3 rounded-xl border border-mark/30 bg-mark-tint px-3 py-2 text-sm text-ink" role="status" aria-live="polite">
-          <span className="flex items-end gap-0.5 text-mark" aria-hidden="true">
+          <span className="composer-mic-level flex items-end gap-0.5 text-mark" aria-hidden="true">
             {[0, 1, 2, 3, 4].map((bar) => (
-              <span key={bar} className="w-1 rounded-full bg-current animate-pulse" style={{ height: `${8 + ((bar + recordingSeconds) % 3) * 4}px`, animationDelay: `${bar * 90}ms` }} />
+              <span
+                key={bar}
+                ref={(node) => { visualizerBarsRef.current[bar] = node }}
+                className="composer-mic-level-bar w-1 rounded-full bg-current"
+              />
             ))}
           </span>
           <span className="font-semibold tabular-nums">{`${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, '0')}`}</span>
