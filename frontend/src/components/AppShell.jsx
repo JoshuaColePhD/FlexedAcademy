@@ -769,7 +769,7 @@ export function AppShell({ children }) {
   const location = useLocation()
   const isChatRoute = /^\/c\/[^/]+(\/chat\/[^/]+)?$/.test(location.pathname)
   const isFocusMode = false // We now want the sidebar to be permanent across all pages
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
 
   const [railCollapsed, setRailCollapsed] = useState(() => {
     try {
@@ -843,8 +843,18 @@ export function AppShell({ children }) {
       >
         <OnboardingWizardHost />
         {user?.read_only ? (
-          <div className="shrink-0 border-b border-blue-500/20 bg-blue-500/10 px-4 py-2.5 text-center text-xs font-medium text-blue-700">
-            Explore demo · read-only. Existing plans, citations, and exports are available; generation and account changes are disabled.
+          <div className="flex shrink-0 flex-col items-center justify-between gap-2 border-b border-blue-500/20 bg-blue-500/10 px-4 py-2.5 text-center text-xs text-blue-800 sm:flex-row sm:text-left">
+            <p>
+              <strong className="font-semibold">Recruiter showcase · read-only.</strong>{' '}
+              Inspect the seeded plan, cited standards, and DOCX export. Generation and account changes are disabled.
+            </p>
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="shrink-0 rounded-md border border-blue-500/25 bg-white/45 px-2.5 py-1 font-semibold text-blue-700 transition-colors hover:bg-white/75"
+            >
+              Exit demo
+            </button>
           </div>
         ) : null}
         {isNarrow && (!isPhone || !isChatRoute) ? (

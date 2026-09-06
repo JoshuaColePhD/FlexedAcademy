@@ -3323,11 +3323,14 @@ export function ChatPage() {
     if (hasArtifact) {
       /* Landscape phone has enough width for an optional rail, but not enough
          height to justify opening it automatically. Leave its slim handle
-         available so the teacher can pull Materials in when wanted. */
+         available so the teacher can pull Materials in when wanted. The
+         recruiter showcase is the exception on a portrait phone: it should
+         open on the evidence, not make a visitor hunt for the lesson plan. */
       setRailOpen(!isLandscapePhone)
+      if (user?.read_only && isPhone) setExpanded(true)
       railAutoOpenedRef.current = true
     }
-  }, [busy, hasArtifact, isLandscapePhone])
+  }, [busy, hasArtifact, isLandscapePhone, isPhone, user?.read_only])
 
   // Process autoPrompt from navigation (e.g. 5-Minute Sub Plan)
   useEffect(() => {

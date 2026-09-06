@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Eye, EyeOff, Lock, Mail, X } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowRight, BookOpen, Eye, EyeOff, FileText, Lock, Mail, ShieldCheck, X } from 'lucide-react'
 import { useAuth } from '../lib/authContext'
 import { api } from '../lib/api'
 import { GoogleAuthButton } from './GoogleAuthButton'
@@ -19,6 +19,11 @@ import { GoogleAuthButton } from './GoogleAuthButton'
  */
 const fieldClass =
   'block w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'
+
+// Keep the recruiter path stable. The backend provisions this fixed showcase
+// class/chat pair so a visitor can see the product's strongest evidence
+// immediately instead of landing in an empty composer.
+const DEMO_ENTRY_PATH = '/c/recruiter_demo_class/chat/recruiter_demo_chat'
 
 /* The actual sign-in mechanics — Google button, divider, email/password
  * form, the "forgot password" disclosure and the "create an account" link —
@@ -43,6 +48,7 @@ const fieldClass =
  */
 export function SignInForm({ compact = false, idPrefix = '', onClose }) {
   const { login, loginDemo, loginWithGoogle } = useAuth()
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -143,6 +149,7 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
     setDemoLoading(true)
     try {
       await loginDemo()
+      navigate(DEMO_ENTRY_PATH, { replace: true })
     } catch (err) {
       setError(err.message || 'The demo is temporarily unavailable.')
     } finally {
@@ -177,16 +184,31 @@ export function SignInForm({ compact = false, idPrefix = '', onClose }) {
       ) : null}
 
       {demoEnabled ? (
-        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-3 text-sm text-blue-900">
-          <div className="font-semibold">Explore demo</div>
-          <p className="mt-0.5 text-blue-800">See the product with seeded plans, citations, and exports—no payment or local setup required.</p>
+        <div className="mb-5 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 px-3.5 py-3.5 text-sm text-blue-950 shadow-sm">
+          <div className="flex items-center gap-2 font-semibold">
+            <ShieldCheck size={16} className="text-blue-600" aria-hidden="true" />
+            Recruiter walkthrough
+          </div>
+          <p className="mt-1 text-blue-900">Open a seeded lesson plan and inspect the evidence behind it. No account setup, payment, or AI credits required.</p>
+          <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] font-medium text-blue-800">
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/75 px-2 py-1 ring-1 ring-blue-200/80">
+              <BookOpen size={12} aria-hidden="true" /> Grounded plan
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/75 px-2 py-1 ring-1 ring-blue-200/80">
+              <ShieldCheck size={12} aria-hidden="true" /> Cited standards
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/75 px-2 py-1 ring-1 ring-blue-200/80">
+              <FileText size={12} aria-hidden="true" /> DOCX export
+            </span>
+          </div>
           <button
             type="button"
             onClick={handleDemoLogin}
             disabled={demoLoading || loading}
-            className="mt-2 min-h-touch w-full rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-3 inline-flex min-h-touch w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {demoLoading ? 'Opening demo…' : 'Explore demo (read-only)'}
+            {demoLoading ? 'Opening walkthrough…' : 'Open the 2-minute walkthrough'}
+            {!demoLoading ? <ArrowRight size={16} aria-hidden="true" /> : null}
           </button>
         </div>
       ) : null}
