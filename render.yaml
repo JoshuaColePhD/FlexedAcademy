@@ -79,6 +79,19 @@ services:
         value: "1"
       - key: DB_POOL_SIZE
         value: "2"
+      # Keep model work bounded on the 512MB instance. Requests beyond this
+      # run in the per-user/global queue instead of multiplying retrieval and
+      # streaming memory until Render restarts the service.
+      - key: GENERATION_MAX_CONCURRENT
+        value: "1"
+      - key: GENERATION_MAX_PER_USER
+        value: "1"
+      - key: GENERATION_MAX_QUEUE
+        value: "40"
+      - key: GENERATION_MAX_QUEUE_PER_USER
+        value: "6"
+      - key: GENERATION_MIN_START_INTERVAL_SECONDS
+        value: "1"
       # Builder codegen shells out to LibreOffice and rasterizes pages. It is
       # an onboarding feature, not part of ordinary lesson-plan generation;
       # leave it off on the 512MB service until that workload has a larger

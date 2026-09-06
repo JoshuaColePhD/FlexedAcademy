@@ -236,19 +236,21 @@ def main() -> int:
         check("pre-cutoff signup stays on the free cap", ent.token_cap, 1000)
         check("pre-cutoff signup is not expired", ent.trial_expired, False)
 
-        # ── 8. the burst ceiling never sits below one lesson plan ──────────
+        # ── 8. burst usage is queued, not a hard entitlement wall ──────────
         #
-        # The burst is a RATE limit on top of the weekly cap. It was a flat
-        # 35% of it, which at the 20,000 free cap came to 7,000 — less than
-        # the ~11-14k a single plan costs. Since the check runs before
-        # generating, the first plan passed and then everything was refused
-        # for 24 hours: a limiter tighter than one unit of work is a wall, not
-        # a rate. MIN_BURST_TOKENS floors it; these pin that it neither drops
-        # below one plan nor ever exceeds the week it sits inside.
-        print("\n8. The burst ceiling is a rate limit, not a wall")
+        # The burst signal still reports recent usage and retains a floor of
+        # one lesson plan, but may_generate must stay true while the weekly
+        # budget is available. generation_queue.py applies the short-term
+        # pacing separately, so the entitlement gate cannot turn a legitimate
+        # burst into a subscription error.
+        print("\n8. Burst usage is queued, not a hard entitlement wall")
         ent = scenario(None, 0, keys=True, free_cap=20_000, created_at=old_signup)
         check("free-tier burst clears one plan", ent.burst_cap >= 15_000, True)
         check("burst never exceeds the weekly cap", ent.burst_cap <= ent.token_cap, True)
+
+        ent = scenario(None, 0, keys=True, free_cap=20_000, recent=20_000, created_at=old_signup)
+        check("recent burst does not close the weekly gate", ent.may_generate, True)
+        check("recent burst remains visible to pacing", ent.burst_limited, True)
 
         # A deliberately tiny admin cap must not have the floor hand it MORE
         # than its own week's allowance.

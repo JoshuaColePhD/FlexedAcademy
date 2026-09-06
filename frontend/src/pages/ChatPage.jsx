@@ -4235,6 +4235,7 @@ export function ChatPage() {
             suggestions={composerSuggestions}
             mode={chatMode}
             onModeChange={changeChatMode}
+            voiceGlossary={[activeClass?.name, activeClass?.subject, selectedStandard?.code].filter(Boolean)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
                 <div className={`questions-dock${pendingQuestions ? ' is-open' : ''}`}>

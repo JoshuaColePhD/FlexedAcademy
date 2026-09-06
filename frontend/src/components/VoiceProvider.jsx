@@ -6,6 +6,7 @@ import { createSpeechQueue } from '../lib/voiceSpeechQueue'
 import * as metrics from '../lib/voiceMetrics'
 
 const CONNECT_TIMEOUT_MS = 12000
+const VOICE_DEVICE_STORAGE_KEY = 'flexedacademy.voice.inputDevice'
 // A cap, not a target — this app's own entitlement check only runs when a
 // session OPENS (see voice_session's own docstring), so nothing stops an
 // already-open WebRTC session from just staying open. 20 minutes is
@@ -376,8 +377,24 @@ export function VoiceProvider({ children }) {
         week_number: context.weekNumber ?? context.week_number ?? null,
         mode: context.mode || 'brainstorm',
       }, { signal: connectAbort.signal })
-      const mediaPromise = navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      let preferredDeviceId = ''
+      try { preferredDeviceId = window.localStorage.getItem(VOICE_DEVICE_STORAGE_KEY) || '' } catch { /* optional persistence */ }
+      const mediaConstraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          ...(preferredDeviceId ? { deviceId: { exact: preferredDeviceId } } : {}),
+        },
+      }
+      const mediaPromise = navigator.mediaDevices.getUserMedia(mediaConstraints).catch((error) => {
+        // A remembered Bluetooth/USB mic may no longer be connected. Fall
+        // back to the computer's current default instead of prompting for a
+        // different device or failing the entire Realtime session.
+        if (!preferredDeviceId || error?.name !== 'OverconstrainedError') throw error
+        return navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        })
       }).then((stream) => {
         // getUserMedia cannot be aborted while Chrome's permission prompt is
         // open. If the teacher closes the panel or the handshake times out and
@@ -395,6 +412,10 @@ export function VoiceProvider({ children }) {
       const [{ token, model }, stream] = await Promise.race([handshake, deadline])
       if (cancelled()) return
       if (!stream) throw new Error('Microphone permission was not granted.')
+      const actualDeviceId = stream.getAudioTracks()[0]?.getSettings?.().deviceId
+      if (actualDeviceId) {
+        try { window.localStorage.setItem(VOICE_DEVICE_STORAGE_KEY, actualDeviceId) } catch { /* optional persistence */ }
+      }
 
       const pc = new RTCPeerConnection()
       pcRef.current = pc

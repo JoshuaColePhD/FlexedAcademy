@@ -13,7 +13,9 @@ import time
 from pathlib import Path
 
 from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, storage, units
+from .entitlement import require_entitlement
 from .errors import AppError
+from .generation_queue import generation_queue
 from .retrieval import RetrievalResult
 from .template_context import day_names_for_school
 
@@ -549,25 +551,32 @@ def generate(
     function's called wasn't this fix's job."""
     # Supporting document/conversation context belongs in the model prompt,
     # but the standards lookup should use only the teacher's actual request.
-    result = prepare(user_id, retrieval_query or query, cls=cls)
-    return finalize(
-        user_id=user_id,
-        plan_raw=llm.generate_plan(
-            user_id,
-            query,
-            result,
-            school_id=school_id or db.get_user_school(user_id),
+    # A burst of requests waits here for a bounded generation slot instead of
+    # tripping entitlement.py's old 24-hour hard wall.
+    with generation_queue.slot(user_id):
+        # A request can wait behind another generation that consumes the
+        # remaining weekly allowance. Re-check when the slot is actually
+        # acquired so the weekly quota remains a hard stop.
+        require_entitlement(user_id)
+        result = prepare(user_id, retrieval_query or query, cls=cls)
+        return finalize(
+            user_id=user_id,
+            plan_raw=llm.generate_plan(
+                user_id,
+                query,
+                result,
+                school_id=school_id or db.get_user_school(user_id),
+                class_id=class_id,
+            ),
+            query=query,
+            result=result,
+            chat_id=chat_id,
+            bg_tasks=bg_tasks,
             class_id=class_id,
-        ),
-        query=query,
-        result=result,
-        chat_id=chat_id,
-        bg_tasks=bg_tasks,
-        class_id=class_id,
-        cls=cls,
-        subject=cls["subject"] if cls else None,
-        grade=cls["grade"] if cls else None,
-    )
+            cls=cls,
+            subject=cls["subject"] if cls else None,
+            grade=cls["grade"] if cls else None,
+        )
 
 
 def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None) -> dict:

@@ -250,6 +250,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
           }
           if (event.status) {
             const labels = {
+              queued: 'Queued — your request is safe…',
               retrieving: 'Preparing your class context…',
               thinking: 'Thinking…',
               writing: 'Writing your lesson plan…',
@@ -269,7 +270,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               label: nextStatus.label,
               requestId: nextStatus.requestId,
               attempt: nextStatus.attempt,
-              step: phase === 'retrieving' ? 'retrieval' : phase === 'writing' ? 'building' : phase === 'thinking' ? 'planning' : phase === 'context_ready' ? 'planning' : phase === 'accepted' ? 'context' : undefined,
+              step: phase === 'retrieving' ? 'retrieval' : phase === 'writing' ? 'building' : phase === 'thinking' ? 'planning' : phase === 'context_ready' ? 'planning' : phase === 'accepted' || phase === 'queued' ? 'context' : undefined,
             })
           }
           if (Array.isArray(event.template_days) && event.template_days.length) {

@@ -377,6 +377,16 @@ class Settings(BaseSettings):
     # off a 512MB instance.
     retrieval_workers: int = 2
 
+    # Short-term backpressure for LLM work. Requests that arrive in a burst are
+    # queued instead of being mistaken for a subscription/usage failure. Keep
+    # this conservative on small Render instances; raise it only after a load
+    # test confirms the service has both RAM and database headroom.
+    generation_max_concurrent: int = 2
+    generation_max_per_user: int = 1
+    generation_max_queue: int = 40
+    generation_max_queue_per_user: int = 6
+    generation_min_start_interval_seconds: float = 1.0
+
     session_secret: str = "dev-secret-do-not-use-in-production"
 
     # Optional recruiter showcase account. Both values must be present before

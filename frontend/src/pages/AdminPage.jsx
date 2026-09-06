@@ -149,9 +149,9 @@ function tier(account) {
 
 /* The cap actually in effect for one account, and how close it's running to
    it — same precedence entitlement.py itself uses (custom override, then
-   comped-is-truly-unlimited, then tier default), and the same weekly+burst
-   thresholds it gates generation on, just read here for DISPLAY rather than
-   enforcement.
+   comped-is-truly-unlimited, then tier default), and the same weekly threshold
+   it gates generation on. Recent burst usage is display-only now because the
+   backend paces it through generation_queue.py rather than refusing it.
 
    'comped' with no custom override is genuinely uncapped — entitlement.py's
    own fix (see its comment there): comped used to just mean "ride the
@@ -172,7 +172,7 @@ function capStatusFor(account) {
   const burst = account.tokens_burst || 0
 
   if (weekly >= cap) return { tone: 'mark', label: 'At weekly cap', cap }
-  if (burst >= burstCap) return { tone: 'mark', label: 'Burst-limited now', cap }
+  if (burst >= burstCap) return { tone: 'flag', label: 'Pacing queue active', cap }
   if (weekly / cap >= 0.85) return { tone: 'flag', label: 'Near cap', cap }
   return { tone: 'ok', label: 'Fine', cap }
 }

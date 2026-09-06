@@ -19,19 +19,14 @@ The rule, in full:
                                         config.py's own comment on the
                                         number); everyone else gets the free
                                         cap.
-  * Under the trailing-day burst cap  -> also required, on top of the above.
-                                        A weekly cap alone still lets someone
-                                        spend the WHOLE week's budget in one
-                                        sitting — fine for a bug, not fine
-                                        for a script. This just slows that
-                                        down to "a very good day," not "a bad
-                                        fifteen minutes."
-  * Otherwise                        -> may NOT generate or revise until usage
-                                        from more than a week (or a day, for
-                                        the burst cap) ago rolls off, but may
-                                        still open, download and read
-                                        everything already built. Downloads are
-                                        never gated at all.
+  * Under the trailing-day burst cap  -> still allowed, but paced by the
+                                        generation queue. A burst is a short-
+                                        term concurrency/cost signal, not a
+                                        paywall; queued work runs in order.
+  * Otherwise                        -> only the trailing-week token cap,
+                                        trial cutoff, or trial-group cap can
+                                        refuse new work. Existing plans may
+                                        always be opened and downloaded.
 
 This replaces "one free plan, ever" (migration 15, db.count_plans). That gated
 on plan COUNT, so a teacher who revised the same week fifteen times paid
@@ -72,28 +67,19 @@ USAGE_WINDOW_DAYS = 7
 # after this date are ever subject to the cutoff.
 TRIAL_ENFORCEMENT_START = datetime(2026, 8, 28, tzinfo=UTC)
 
-# The weekly cap alone bounds total spend but not the RATE of it — a script
-# with valid credentials could still spend the entire week's allowance in
-# one sitting, minutes after it starts, well within generate.py's own
-# request-rate limit. This is a second, tighter ceiling on top of the
-# weekly one: no more than this fraction of the weekly cap in any trailing
-# 24 hours. 35% comfortably covers a real teacher's heaviest realistic day
-# (building or revising several classes' weeks in one sitting) while still
-# turning "blow the whole week in 15 minutes" into "blow the whole week
-# over multiple days" — slow enough to catch and act on before it repeats.
+# The weekly cap remains the durable spend ceiling. This rolling-day figure is
+# retained as an observability signal for pacing and the admin UI: a high recent
+# total means the account should be paced, never that a normal request should
+# become a subscription error. The short-term backpressure layer lives in
+# generation_queue.py, where work can wait without turning into a paywall.
 BURST_WINDOW_HOURS = 24
 BURST_FRACTION = 0.35
 
-# ...but never below the cost of ONE lesson plan, which is the whole reason
-# this floor exists. The fraction alone assumes the weekly cap is large
-# relative to a single operation; at the free tier it isn't. Measured against
-# production usage_events: a single "build me a week" turn runs ~11-14k tokens
-# (stream_plan alone averages 10.1k and peaks at 15k, plus expand_query, the
-# chat reply, decisions and the title). Against a 20,000 free cap, 35% is
-# 7,000 — LESS than one plan. The burst check runs before generating, so the
-# first plan was permitted and then every subsequent action was refused for a
-# full 24 hours: a rate limiter tighter than the thing it is rating stops
-# limiting the rate and just becomes a wall.
+# ...but never below the cost of ONE lesson plan, so clients can still explain
+# why a request is being paced. The old implementation ran this check before
+# generating, so the first plan passed and every later plan was refused for a
+# full 24 hours: a rate limiter tighter than the thing it rated became a wall
+# instead of pacing work.
 #
 # 20,000 clears the observed worst case (15k) with room for the rest of the
 # turn. Where the fraction is already larger this changes nothing — at the
@@ -114,10 +100,8 @@ class Entitlement:
     billing_enabled: bool
     period_end: str | None = None
     cancel_at_period_end: bool = False
-    # The burst side of the gate — see BURST_WINDOW_HOURS/BURST_FRACTION.
-    # Carried on the entitlement (not just used internally) so a 402 raised
-    # for burst specifically can say so, rather than pointing a teacher who
-    # tripped it mid-afternoon at "wait out the week."
+    # Recent usage is an observability signal for the generation queue — see
+    # BURST_WINDOW_HOURS/BURST_FRACTION. It is deliberately not an access gate.
     tokens_used_recent: int = 0
     burst_cap: int | None = 0
     # True comped/unlimited (no custom cap set) — see entitlement()'s own
@@ -378,8 +362,10 @@ def entitlement(user_id: str, user: dict | None = None) -> Entitlement:
             and aggregate_ip_tokens_used < aggregate_ip_token_cap
         )
     )
+    # A burst is queued/paced by generation_queue.py. Only the weekly token
+    # budget (plus the explicit trial/group rules above) can make this false.
     may_generate = not settings.billing_enabled or (
-        tokens_used < cap and tokens_used_recent < burst_cap and aggregate_ok
+        tokens_used < cap and aggregate_ok
     )
     return Entitlement(
         may_generate=may_generate,
@@ -419,10 +405,11 @@ def require_entitlement(user_id: str) -> None:
     ent = entitlement(user_id)
     if ent.may_generate:
         return
-    # Same 402 shape in all three cases (the paywall/account-menu UI only
+    # Same 402 shape in all hard-stop cases (the paywall/account-menu UI only
     # branches on may_generate), but the message has to match what actually
     # clears it. A trial that's over never resets — telling that teacher to
-    # "wait it out" would be a straightforwardly false promise.
+    # "wait it out" would be a straightforwardly false promise. Burst usage
+    # is intentionally absent here: it queues, it does not raise a 402.
     if ent.trial_expired:
         if ent.trial_reused:
             raise AppError(
@@ -445,15 +432,6 @@ def require_entitlement(user_id: str) -> None:
             "Free-trial activity from this network has reached its daily limit.",
             status=402,
             hint="Try again tomorrow or subscribe for uninterrupted access.",
-            extra={"entitlement": ent.as_dict()},
-        )
-    if ent.burst_limited:
-        raise AppError(
-            "subscription_required",
-            "That’s a lot of generating in a short window.",
-            status=402,
-            hint="This isn’t your weekly limit — it’s a pace check, and it clears within a day. "
-            "Everything you’ve already built stays yours — open it, revise it, download it.",
             extra={"entitlement": ent.as_dict()},
         )
     raise AppError(

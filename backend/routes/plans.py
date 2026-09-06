@@ -26,6 +26,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..generation_queue import generation_queue
 from ..template_context import day_names_for_school
 from .drive import get_valid_access_token
 
@@ -489,10 +490,14 @@ def revise_whole_plan(
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
     school_id = db.class_school(cls, user_id)
 
-    # Generate critique and revised plan
-    new_plan_json = llm.critique_and_revise(
-        user_id, row["plan_json"], context, feedback=(body.feedback if body else None), school_id=school_id
-    )
+    # Generate critique and revised plan. Revisions are subject to the same
+    # bounded pacing as fresh plans; the second entitlement check preserves the
+    # weekly hard stop if an earlier queued job used the remaining allowance.
+    with generation_queue.slot(user_id):
+        require_entitlement(user_id)
+        new_plan_json = llm.critique_and_revise(
+            user_id, row["plan_json"], context, feedback=(body.feedback if body else None), school_id=school_id
+        )
     
     # Validate and save
     plan, warnings = schema.validate_plan(new_plan_json, day_names=day_names_for_school(school_id))
@@ -695,16 +700,20 @@ def create_quiz(
             status=400,
         )
 
-    quiz_raw = llm.generate_quiz(
-        user_id,
-        row["plan_json"],
-        body.question_types,
-        body.num_questions,
-        class_id=row.get("class_id"),
-        passage_mode=body.passage_mode,
-        passage_text=body.passage_text,
-        passage_title=body.passage_title,
-    )
+    with generation_queue.slot(user_id):
+        # A request may have waited behind another generation long enough for
+        # the weekly allowance to change. Re-check at the actual model start.
+        require_entitlement(user_id)
+        quiz_raw = llm.generate_quiz(
+            user_id,
+            row["plan_json"],
+            body.question_types,
+            body.num_questions,
+            class_id=row.get("class_id"),
+            passage_mode=body.passage_mode,
+            passage_text=body.passage_text,
+            passage_title=body.passage_title,
+        )
     try:
         warnings = schema.validate_quiz(quiz_raw)
     except schema.QuizSchemaError as e:
@@ -746,9 +755,11 @@ def revise_quiz_route(
     require_entitlement(user_id)
     quiz_row = _require_quiz(user_id, plan_id, quiz_id)
 
-    quiz_raw = llm.revise_quiz(
-        user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback, class_id=row.get("class_id")
-    )
+    with generation_queue.slot(user_id):
+        require_entitlement(user_id)
+        quiz_raw = llm.revise_quiz(
+            user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback, class_id=row.get("class_id")
+        )
     try:
         warnings = schema.validate_quiz(quiz_raw)
     except schema.QuizSchemaError as e:

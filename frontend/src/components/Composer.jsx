@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
 // linter until someone dragged a file.
-import { ArrowUp, AudioLines, BookOpen, FileText, Loader2, Mic, Paperclip, Plus, Square, Upload, X } from 'lucide-react'
+import { ArrowUp, AudioLines, BookOpen, Check, FileText, Loader2, Mic, Paperclip, Pause, Play, Plus, RotateCcw, Square, Trash2, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -29,6 +29,53 @@ const MAX_ATTACH_BATCH = 5
 // optical center instead of sitting a little high or low as the controls swap.
 const COMPOSER_TEXT_METRICS = 'px-0 py-3 text-[0.9375rem] leading-6'
 const COMPOSER_GHOST_METRICS = 'text-[0.9375rem] leading-6'
+const VOICE_DEVICE_STORAGE_KEY = 'flexedacademy.voice.inputDevice'
+
+// Keep cleanup deterministic and local. The review step lets a teacher fix
+// anything unusual, while these common spoken controls make dictation useful
+// for lesson-plan prose without another model call or another billed request.
+const VOICE_GLOSSARY = [
+  [/\bflex\s*ed\b/gi, 'FlexEd'],
+  [/\bap\s+language\b/gi, 'AP Language'],
+  [/\brhetorical\s+devices\b/gi, 'rhetorical devices'],
+  [/\bgoogle\s+drive\b/gi, 'Google Drive'],
+]
+
+function cleanDictation(text, glossary = []) {
+  let cleaned = `${text || ''}`.replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').trim()
+  if (!cleaned) return ''
+
+  cleaned = cleaned
+    .replace(/\bnew paragraph\b/gi, '\n\n')
+    .replace(/\bnew line\b/gi, '\n')
+    .replace(/\b(?:make|start) (?:a )?list\b/gi, '\n')
+
+  // Only treat ordinals as list commands when there are at least two of them;
+  // that avoids turning an ordinary phrase such as “first, consider…” into a
+  // bullet by accident.
+  const ordinal = /\b(?:first|second|third|fourth|fifth|sixth|one|two|three|four|five|six)\b/gi
+  const ordinalMatches = cleaned.match(ordinal) || []
+  if (ordinalMatches.length >= 2) {
+    cleaned = cleaned.replace(ordinal, '\n• ')
+  }
+
+  cleaned = cleaned
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\s+([,.;!?])/g, '$1')
+  for (const [pattern, replacement] of VOICE_GLOSSARY) cleaned = cleaned.replace(pattern, replacement)
+  for (const term of glossary) {
+    const canonical = `${term || ''}`.trim()
+    if (!canonical) continue
+    const escaped = canonical.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    cleaned = cleaned.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), canonical)
+  }
+
+  // Capitalize the beginning of each paragraph/sentence without changing
+  // intentional all-caps standards codes or the teacher's reviewed wording.
+  cleaned = cleaned.replace(/(^|[.!?]\s+|\n+)(•\s*)?([a-z])/g, (_match, lead, bullet = '', letter) => `${lead}${bullet || ''}${letter.toUpperCase()}`)
+  return cleaned.trim()
+}
 
 /* An attachment chip's own mount lifecycle — entrance was already implicit
  * (a plain array render, no fade), removal was a hard splice. This is
@@ -139,6 +186,10 @@ export function Composer({
      generates a document. */
   placeholder = 'What are you teaching? (Press ⌘K for actions)',
   sendLabel = 'Send',
+  // Optional teacher/course vocabulary supplied by the caller. Common terms
+  // remain deterministic above; this lets a class add names, standards, or
+  // school-specific phrases without another model call.
+  voiceGlossary = [],
 }) {
   const toast = useToast()
   const textareaRef = useRef(null)
@@ -148,13 +199,24 @@ export function Composer({
   // key comment below for why filename+index wasn't a safe key.
   const attachmentIdRef = useRef(0)
   const [isRecording, setIsRecording] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
+  const [recordingSeconds, setRecordingSeconds] = useState(0)
+  const [recordingPreview, setRecordingPreview] = useState(null)
+  const [reviewText, setReviewText] = useState('')
+  const [inputDevices, setInputDevices] = useState([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState(() => {
+    try { return window.localStorage.getItem(VOICE_DEVICE_STORAGE_KEY) || '' } catch { return '' }
+  })
   const [isAttaching, setIsAttaching] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [shake, setShake] = useState(false)
   const [motionState, setMotionState] = useState('')
   const motionTimerRef = useRef(null)
+  const recordingTimerRef = useRef(null)
+  const recordingDiscardedRef = useRef(false)
+  const recordingCursorRef = useRef({ start: 0, end: 0, value: '' })
 
   const triggerShake = useCallback(() => {
     setShake(true)
@@ -168,6 +230,41 @@ export function Composer({
   }, [])
 
   useEffect(() => () => window.clearTimeout(motionTimerRef.current), [])
+
+  // Device labels are only exposed after the browser grants microphone
+  // permission. Refreshing after permission and on device changes means the
+  // selector reflects the computer's actual microphones, not the iPhone or a
+  // stale Bluetooth device from an earlier session.
+  useEffect(() => {
+    let cancelled = false
+    const refreshDevices = async () => {
+      if (!navigator.mediaDevices?.enumerateDevices) return
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        if (cancelled) return
+        setInputDevices(devices.filter((device) => device.kind === 'audioinput'))
+      } catch { /* device enumeration is optional; recording still works */ }
+    }
+    void refreshDevices()
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices)
+    return () => {
+      cancelled = true
+      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isRecording || isPaused) {
+      window.clearInterval(recordingTimerRef.current)
+      return undefined
+    }
+    recordingTimerRef.current = window.setInterval(() => {
+      setRecordingSeconds((seconds) => seconds + 1)
+    }, 1000)
+    return () => window.clearInterval(recordingTimerRef.current)
+  }, [isPaused, isRecording])
+
+  useEffect(() => () => window.clearInterval(recordingTimerRef.current), [])
 
   // Always 0 or 1 items — the composer has exactly one caller (ChatPage),
   // and contextualSuggestions.js's MAX_SUGGESTIONS caps `suggestions` at 1;
@@ -257,47 +354,145 @@ export function Composer({
   }, [])
 
   const startRecording = async () => {
+    if (isRecording || isTranscribing) return
+    recordingDiscardedRef.current = false
+    setRecordingPreview(null)
+    setReviewText('')
+    const input = textareaRef.current
+    recordingCursorRef.current = {
+      start: input?.selectionStart ?? value.length,
+      end: input?.selectionEnd ?? value.length,
+      value,
+    }
     try {
-      // Same constraints as VoiceModePanel's mic request — noise
-      // suppression and auto gain help transcription quality generally,
-      // not just the echo case live voice mode has to worry about.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      })
+      // A selected device is preferred, but a disconnected Bluetooth mic
+      // should fall back to the system microphone instead of trapping the
+      // teacher in an OverconstrainedError loop.
+      const audio = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        ...(selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : {}),
+      }
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio })
+      } catch (error) {
+        if (!selectedDeviceId || error?.name !== 'OverconstrainedError') throw error
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      }
       const recorder = new MediaRecorder(stream)
       mediaRecorder.current = recorder
       audioChunks.current = []
-      recorder.ondataavailable = (e) => e.data.size > 0 && audioChunks.current.push(e.data)
+      setRecordingSeconds(0)
+      setIsPaused(false)
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunks.current.push(event.data)
+      }
       recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop())
-        // recorder.mimeType, not a hardcoded 'audio/webm' — MediaRecorder's
-        // default container varies by browser (webm/opus on Chrome/Firefox,
-        // mp4/aac on Safari/iOS), and api.transcribe() picks the upload
-        // extension from this Blob's own `type`. Hardcoding it here meant
-        // every Safari recording was uploaded mislabeled as .webm regardless
-        // of what was actually recorded, and Whisper's decoder disagreed
-        // with the real container.
+        stream.getTracks().forEach((track) => track.stop())
+        mediaRecorder.current = null
+        if (recordingDiscardedRef.current) {
+          audioChunks.current = []
+          return
+        }
+        // recorder.mimeType, not a hardcoded container — Safari records
+        // mp4/aac while Chrome commonly records webm/opus.
         const blob = new Blob(audioChunks.current, { type: recorder.mimeType || 'audio/webm' })
+        audioChunks.current = []
+        if (blob.size === 0) return
         setIsTranscribing(true)
         try {
           const { text } = await api.transcribe(blob)
-          onChange(value ? `${value.trim()} ${text}` : text)
+          const cleaned = cleanDictation(text, voiceGlossary)
+          setReviewText(cleaned)
+          // Keep only the text after transcription; retaining the audio Blob
+          // in React state would unnecessarily pin a potentially large file
+          // until the teacher accepts or dismisses the review.
+          setRecordingPreview({ text: cleaned })
         } catch (err) {
-          toast.error('Could not transcribe that', err.hint || err.message)
+          toast.error('Could not transcribe that', err.message || err.hint)
         } finally {
           setIsTranscribing(false)
         }
       }
-      recorder.start()
+      recorder.start(250)
       setIsRecording(true)
-    } catch {
-      toast.error('No microphone access', 'Allow microphone access in your browser settings.')
+      const activeTrack = stream.getAudioTracks()[0]
+      const deviceId = activeTrack?.getSettings?.().deviceId
+      if (deviceId && deviceId !== selectedDeviceId) {
+        setSelectedDeviceId(deviceId)
+        try { window.localStorage.setItem(VOICE_DEVICE_STORAGE_KEY, deviceId) } catch { /* optional persistence */ }
+      }
+      // Permission has now been granted, so labels become available.
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices?.()
+        if (devices) setInputDevices(devices.filter((device) => device.kind === 'audioinput'))
+      } catch { /* labels are optional after recording has started */ }
+    } catch (error) {
+      toast.error(
+        error?.name === 'NotAllowedError' ? 'Microphone permission needed' : 'No microphone access',
+        error?.name === 'NotAllowedError' ? 'Allow microphone access for this computer, then try again.' : 'Choose a connected computer microphone and try again.'
+      )
     }
   }
 
   const stopRecording = () => {
-    mediaRecorder.current?.stop()
+    const recorder = mediaRecorder.current
+    if (!recorder || recorder.state === 'inactive') return
+    recorder.stop()
     setIsRecording(false)
+    setIsPaused(false)
+  }
+
+  const togglePauseRecording = () => {
+    const recorder = mediaRecorder.current
+    if (!recorder || !isRecording) return
+    if (recorder.state === 'paused') {
+      recorder.resume()
+      setIsPaused(false)
+    } else {
+      recorder.pause()
+      setIsPaused(true)
+    }
+  }
+
+  const cancelRecording = () => {
+    recordingDiscardedRef.current = true
+    const recorder = mediaRecorder.current
+    if (recorder && recorder.state !== 'inactive') recorder.stop()
+    else mediaRecorder.current?.stream?.getTracks?.().forEach((track) => track.stop())
+    mediaRecorder.current = null
+    audioChunks.current = []
+    setIsRecording(false)
+    setIsPaused(false)
+    setRecordingSeconds(0)
+  }
+
+  const redoRecording = () => {
+    setRecordingPreview(null)
+    setReviewText('')
+    void startRecording()
+  }
+
+  const insertRecording = () => {
+    const text = cleanDictation(reviewText, voiceGlossary)
+    if (!text) return
+    const snapshot = recordingCursorRef.current
+    const base = snapshot.value || value
+    const before = base.slice(0, snapshot.start)
+    const after = base.slice(snapshot.end)
+    const leftSpace = before && !/[\s\n]$/.test(before) ? ' ' : ''
+    const rightSpace = after && !/^[\s\n]/.test(after) ? ' ' : ''
+    const nextValue = `${before}${leftSpace}${text}${rightSpace}${after}`
+    onChange(nextValue)
+    setRecordingPreview(null)
+    setReviewText('')
+    requestAnimationFrame(() => {
+      const nextCursor = before.length + leftSpace.length + text.length
+      textareaRef.current?.focus()
+      textareaRef.current?.setSelectionRange(nextCursor, nextCursor)
+    })
   }
 
   /* The tracks are stopped inside recorder.onstop, which never runs if the
@@ -306,6 +501,7 @@ export function Composer({
      dot lit on the tab indefinitely. */
   useEffect(
     () => () => {
+      recordingDiscardedRef.current = true
       const rec = mediaRecorder.current
       if (rec && rec.state !== 'inactive') rec.stop()
       rec?.stream?.getTracks?.().forEach((t) => t.stop())
@@ -524,6 +720,66 @@ export function Composer({
     <div className="relative w-full">
       {voicePanel}
       {questionsPanel}
+
+      {isRecording ? (
+        <div className="mb-2 flex min-h-10 items-center gap-3 rounded-xl border border-mark/30 bg-mark-tint px-3 py-2 text-sm text-ink" role="status" aria-live="polite">
+          <span className="flex items-end gap-0.5 text-mark" aria-hidden="true">
+            {[0, 1, 2, 3, 4].map((bar) => (
+              <span key={bar} className="w-1 rounded-full bg-current animate-pulse" style={{ height: `${8 + ((bar + recordingSeconds) % 3) * 4}px`, animationDelay: `${bar * 90}ms` }} />
+            ))}
+          </span>
+          <span className="font-semibold tabular-nums">{`${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, '0')}`}</span>
+          <span className="min-w-0 flex-1 truncate">{isPaused ? 'Recording paused' : 'Recording from this computer'}</span>
+          {inputDevices.length > 1 ? (
+            <select
+              className="max-w-[11rem] rounded-md border border-mark/20 bg-paper-raised px-2 py-1 text-xs text-ink outline-none"
+              value={selectedDeviceId}
+              onChange={(event) => setSelectedDeviceId(event.target.value)}
+              aria-label="Recording microphone"
+              disabled={isRecording}
+            >
+              {inputDevices.map((device, index) => <option key={device.deviceId || `mic-${index}`} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+            </select>
+          ) : null}
+          <button type="button" className="fa-press rounded-md p-1.5 text-ink-muted hover:bg-paper-raised hover:text-ink" onClick={togglePauseRecording} aria-label={isPaused ? 'Resume recording' : 'Pause recording'} title={isPaused ? 'Resume recording' : 'Pause recording'}>
+            {isPaused ? <Play size={15} aria-hidden="true" /> : <Pause size={15} aria-hidden="true" />}
+          </button>
+          <button type="button" className="fa-press rounded-md p-1.5 text-ink-muted hover:bg-paper-raised hover:text-ink" onClick={cancelRecording} aria-label="Cancel recording" title="Cancel recording">
+            <Trash2 size={15} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
+
+      {isTranscribing ? (
+        <div className="mb-2 flex min-h-10 items-center gap-2 rounded-xl border border-accent/20 bg-accent-tint px-3 py-2 text-sm text-ink" role="status" aria-live="polite">
+          <Loader2 size={16} className="animate-spin text-accent" aria-hidden="true" />
+          <span>Transcribing your note…</span>
+        </div>
+      ) : null}
+
+      {recordingPreview ? (
+        <div className="mb-2 rounded-xl border border-accent/25 bg-paper-raised p-3 shadow-sm" role="region" aria-label="Review dictated text">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Review dictation</span>
+            <span className="text-xs text-ink-faint">Cleaned for punctuation and lists</span>
+          </div>
+          <textarea
+            value={reviewText}
+            onChange={(event) => setReviewText(event.target.value)}
+            rows={3}
+            className="w-full resize-y rounded-lg border border-edge bg-paper px-3 py-2 text-sm leading-6 text-ink outline-none focus:border-accent"
+            aria-label="Dictated text to insert"
+          />
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button type="button" className="fa-press inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-ink-muted hover:bg-paper-sunken hover:text-ink" onClick={redoRecording}>
+              <RotateCcw size={14} aria-hidden="true" /> Redo
+            </button>
+            <button type="button" className="fa-press inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-on hover:bg-accent-hover" onClick={insertRecording} disabled={!reviewText.trim()}>
+              <Check size={14} aria-hidden="true" /> Insert at cursor
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {selectedStandard ? (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-accent/20 bg-accent-tint px-3 py-2 text-xs text-ink" role="status">
@@ -769,8 +1025,8 @@ export function Composer({
             ) : null}
             {toolsOpen ? (
               <div className="composer-tools-menu" role="menu">
-                {onModeChange ? (
-                  <div className="border-b border-edge px-2 py-2" role="group" aria-label="Conversation mode">
+              {onModeChange ? (
+                <div className="border-b border-edge px-2 py-2" role="group" aria-label="Conversation mode">
                     <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Mode</p>
                     {modeOptions.map((option) => (
                       <button
@@ -800,6 +1056,23 @@ export function Composer({
                         <span className="truncate text-xs text-ink-muted">{option.description}</span>
                       </button>
                     ))}
+                </div>
+              ) : null}
+                {inputDevices.length > 1 ? (
+                  <div className="border-b border-edge px-2 py-2" role="group" aria-label="Dictation microphone">
+                    <label className="block px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint" htmlFor="composer-mic-device">Microphone</label>
+                    <select
+                      id="composer-mic-device"
+                      className="w-full rounded-md border border-edge bg-paper-raised px-2 py-1.5 text-xs text-ink outline-none focus:border-accent"
+                      value={selectedDeviceId}
+                      onChange={(event) => {
+                        const next = event.target.value
+                        setSelectedDeviceId(next)
+                        try { window.localStorage.setItem(VOICE_DEVICE_STORAGE_KEY, next) } catch { /* optional persistence */ }
+                      }}
+                    >
+                      {inputDevices.map((device, index) => <option key={device.deviceId || `mic-${index}`} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+                    </select>
                   </div>
                 ) : null}
                 {onOpenVoice ? (

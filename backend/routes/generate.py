@@ -15,6 +15,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..generation_queue import generation_queue
 from ..ratelimit import limiter
 from ..schema import SchemaError
 from ..template_context import day_names_for_school, weekly_template_context
@@ -360,6 +361,55 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     request_id = req.request_id or str(uuid.uuid4())
 
     def event_stream():
+        lease = None
+        try:
+            lease = generation_queue.enqueue(user_id)
+            yield _activity_sse(
+                {
+                    "status": "queued",
+                    "status_code": "queued",
+                    "label": "Queued behind another generation…" if lease.position > 1 else "Starting shortly…",
+                    "queue_position": lease.position,
+                },
+                request_id,
+                step="context",
+                step_state="active",
+                attempt=req.attempt,
+            )
+            while not lease.wait(timeout=15):
+                if lease.cancelled:
+                    lease.cancel()
+                    return
+                yield _activity_sse(
+                    {
+                        "status": "queued",
+                        "status_code": "queued",
+                        "label": "Still queued — your request is safe…",
+                        "queue_position": lease.position,
+                    },
+                    request_id,
+                    step="context",
+                    step_state="active",
+                    attempt=req.attempt,
+                )
+            # The weekly allowance may have changed while this request was
+            # queued behind another generation. Re-check at execution time so
+            # the queue never turns a hard weekly quota into an overspend.
+            require_entitlement(user_id)
+            yield _activity_sse(
+                {"status": "accepted", "status_code": "accepted", "label": "Generation started"},
+                request_id,
+                step="context",
+                step_state="complete",
+                attempt=req.attempt,
+            )
+        except (AppError, SchemaError) as e:
+            log.warning("stream queue failed code=%s", e.code)
+            if lease is not None:
+                lease.release()
+            yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="context", step_state="error", attempt=req.attempt)
+            return
+
         chunks: list[str] = []
         try:
             # Emitted BEFORE service.prepare, which is the slowest thing in
@@ -431,6 +481,9 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
             yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="validation", step_state="error", attempt=req.attempt)
         except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
             yield _activity_sse({"error": _openai_error_event(e), "status": "error"}, request_id, step="building", step_state="error", attempt=req.attempt)
+        finally:
+            if lease is not None:
+                lease.release()
 
     return StreamingResponse(
         event_stream(),
@@ -822,8 +875,59 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
     require_entitlement(user_id)
 
     def event_stream():
+        request_id = req.request_id or str(uuid.uuid4())
+        lease = None
         try:
-            request_id = req.request_id or str(uuid.uuid4())
+            lease = generation_queue.enqueue(user_id)
+            yield _activity_sse(
+                {
+                    "status": "queued",
+                    "status_code": "queued",
+                    "label": "Queued behind another request…" if lease.position > 1 else "Starting shortly…",
+                    "queue_position": lease.position,
+                },
+                request_id,
+                step="context",
+                step_state="active",
+                artifact_type="conversation",
+                attempt=req.attempt,
+            )
+            while not lease.wait(timeout=15):
+                if lease.cancelled:
+                    lease.cancel()
+                    return
+                yield _activity_sse(
+                    {
+                        "status": "queued",
+                        "status_code": "queued",
+                        "label": "Still queued — your request is safe…",
+                        "queue_position": lease.position,
+                    },
+                    request_id,
+                    step="context",
+                    step_state="active",
+                    artifact_type="conversation",
+                    attempt=req.attempt,
+                )
+            # A prior queued turn may have consumed the remaining weekly
+            # allowance. Keep that quota a hard stop when this ticket starts.
+            require_entitlement(user_id)
+            yield _activity_sse(
+                {"status": "accepted", "status_code": "accepted", "label": "Request started"},
+                request_id,
+                step="context",
+                step_state="complete",
+                artifact_type="conversation",
+                attempt=req.attempt,
+            )
+        except (AppError, SchemaError) as e:
+            log.warning("chat stream queue failed code=%s", e.code)
+            if lease is not None:
+                lease.release()
+            yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="context", step_state="error", artifact_type="conversation", attempt=req.attempt)
+            return
+
+        try:
             # Send an acknowledgement before database lookups, template
             # resolution, or retrieval. A browser should never have to infer
             # that a click worked from the absence of a response.
@@ -1084,6 +1188,9 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="planning", step_state="error", artifact_type="conversation", attempt=req.attempt)
         except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
             yield _activity_sse({"error": _openai_error_event(e), "status": "error"}, request_id, step="planning", step_state="error", artifact_type="conversation", attempt=req.attempt)
+        finally:
+            if lease is not None:
+                lease.release()
 
     return StreamingResponse(
         event_stream(),
@@ -1143,7 +1250,12 @@ def revise_day(req: ReviseDayRequest, request: Request, user_id: str = Depends(g
     """Rewrite one day — or one cell of it — AND rebuild the .docx, so the file
     matches what's on screen."""
     require_entitlement(user_id)
-    return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback, req.field)
+    # Revisions spend model tokens too. Keep them behind the same bounded
+    # worker queue as fresh plans so a burst of cell edits cannot multiply
+    # retrieval/model memory on a small Render instance.
+    with generation_queue.slot(user_id):
+        require_entitlement(user_id)
+        return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback, req.field)
 
 
 @router.post("/set_day_field")
@@ -1161,7 +1273,9 @@ def revise_days(req: ReviseDaysRequest, request: Request, user_id: str = Depends
     """Rewrite one field across several days from a single instruction, then
     rebuild the .docx once."""
     require_entitlement(user_id)
-    return service.revise_days(user_id, req.plan_id, req.day_indices, req.feedback, req.field)
+    with generation_queue.slot(user_id):
+        require_entitlement(user_id)
+        return service.revise_days(user_id, req.plan_id, req.day_indices, req.feedback, req.field)
 
 
 @router.post("/chats/{chat_id}/messages")
