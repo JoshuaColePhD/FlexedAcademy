@@ -1046,7 +1046,7 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     break  # a real commitment — the unbuilt stretch ends here
                 # Anything else (a plain nudge, a brainstorm reply) is still
                 # part of the same unbuilt stretch — keep scanning past it.
-            if prior_clarify_rounds >= 2:
+            if prior_clarify_rounds >= 2 and req.mode != "plan":
                 system_prompt += (
                     f"\n\nThis conversation has already had {prior_clarify_rounds} rounds of "
                     "clarifying questions in a row with nothing built yet. Do NOT call "
@@ -1058,7 +1058,20 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             # Mutually exclusive, not stacked — see prompts.voice_prompt's own
             # docstring for why appending both used to directly contradict
             # each other on every spoken turn.
-            if req.mode == "brainstorm" and not req.voice:
+            if req.mode == "plan" and not req.voice:
+                system_prompt += (
+                    "You are in FlexEd's guided Plan flow. This turn must begin the teacher's planning conversation: "
+                    "do not build a lesson plan yet and do not answer with a long planning essay. Call the "
+                    "`ask_clarifying_questions` tool with 2-4 short, concrete questions that help determine "
+                    "the learning goal, content or text, student task, instructional approach, and any important "
+                    "constraints. Use the class, week, standards, pacing guide, and reference context already "
+                    "available instead of asking the teacher to repeat them. Each question must include 2-5 "
+                    "clickable options. The teacher can choose an option or use the built-in custom response path. "
+                    "Ask only questions that will materially change the plan, and never ask for information already "
+                    "present in the conversation or class context. Accompany the tool call with one brief line such "
+                    "as 'A few quick choices will help me shape the plan:' and nothing else."
+                )
+            elif req.mode == "brainstorm" and not req.voice:
                 system_prompt += (
                     "Act as an expert in education having a natural back-and-forth conversation with a colleague. Brainstorm ideas for their upcoming week, or discuss revisions to an existing week. "
                     "Give advice, feedback, and clear choices directly in your conversational replies. When a teacher names a text, a skill, or an angle, "

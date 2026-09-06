@@ -416,7 +416,7 @@ class ChatWeekBody(BaseModel):
 
 
 class ChatModeBody(BaseModel):
-    mode: str = Field(pattern=r"^(brainstorm|build|research|interview|standards|sub_plan)$")
+    mode: str = Field(pattern=r"^(brainstorm|build|research|plan|interview|standards|sub_plan)$")
 
 
 @router.patch("/chats/{chat_id}/mode")

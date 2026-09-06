@@ -2012,6 +2012,7 @@ export function ChatPage() {
       // Composer passes its current draft snapshot. Avoid reading the parent
       // query state here so this callback stays stable while a teacher types.
       const typed = (text ?? '').trim()
+      const planning = Boolean(options.planning)
       // A retry reuses the original optimistic user turn. Re-appending that
       // turn made a failed request look like a second teacher message and
       // sent duplicate history to the model. Remove only the failed error row
@@ -2048,6 +2049,12 @@ export function ChatPage() {
         })
         .join('\n\n')
 
+      // Plan is an explicit Composer action. With no opening note, give the
+      // teacher a natural first turn so the guided questions still have a
+      // visible anchor in the conversation; with a draft, preserve exactly
+      // what they wrote as the topic to plan around.
+      const promptText = planning && !typed && atts.length === 0 ? 'Help me plan this week.' : typed
+
       // Keep the actionable request separate from the context sent to the
       // direct lesson-plan generator. This prevents a long PDF (or an older
       // transcript) from tripping GenerateRequest.query's request limit and
@@ -2056,8 +2063,8 @@ export function ChatPage() {
         .map((m) => `${m.role.toUpperCase()}: ${m.content || m.planLabel || m.weekLabel || ''}`)
         .join('\n\n')
 
-      const content = docs ? `${docs}\n\n---\n\n${typed}` : typed
-      const chatUserContent = typed || (docs ? 'Please use the attached documents as reference for this request.' : '')
+      const content = docs ? `${docs}\n\n---\n\n${promptText}` : promptText
+      const chatUserContent = promptText || (docs ? 'Please use the attached documents as reference for this request.' : '')
       const selectedStandardContext = selectedStandard
         ? [
             'Teacher-selected primary course standard (apply this exact standard when building the plan):',
@@ -2071,8 +2078,8 @@ export function ChatPage() {
       // visible prompt and gives the generator a clear instruction to use the
       // exact selected code, rather than merely treating it as a search hint.
       const modelQuery = selectedStandard
-        ? `${typed}\n\n${selectedStandardContext}`
-        : typed
+        ? `${promptText}\n\n${selectedStandardContext}`
+        : promptText
       const referenceContext = [selectedStandardContext, docs].filter(Boolean).join('\n\n')
       // Guards on the COMBINED text, so an attachment with no typed message
       // sends — the send button was already enabled for that and did nothing.
@@ -2091,7 +2098,7 @@ export function ChatPage() {
       // payload; leaving the chip pinned implied they were still in context
       // for every later message, which was never true even before this fix.
       setAttachments([])
-      const newUserMessage = retryMessage || { id: nextId(), role: 'user', content: typed || `Sent ${atts.length} file(s)` }
+      const newUserMessage = retryMessage || { id: nextId(), role: 'user', content: promptText || `Sent ${atts.length} file(s)` }
       const nextMessages = retryMessage ? [...historyMessages, retryMessage] : [...messages, newUserMessage]
       // The scroll effect reads this once and follows the latest transcript
       // content instead of leaving the new turn above the visible area.
@@ -2120,7 +2127,7 @@ export function ChatPage() {
           for (let attempt = 0; attempt < 3; attempt += 1) {
             try {
               created = await api.createChat(
-                (typed || atts[0]?.filename || 'New plan').slice(0, 80),
+                (promptText || atts[0]?.filename || 'New plan').slice(0, 80),
                 classId,
                 effectiveWeek,
                 chatMode
@@ -2152,7 +2159,7 @@ export function ChatPage() {
              Deliberately not awaited: it is a second model call, it is purely
              cosmetic, and nothing about sending the first message should wait
              on it. Failure leaves the placeholder, which is what we have today. */
-          const basis = typed || atts[0]?.filename
+          const basis = promptText || atts[0]?.filename
           if (basis) {
             api
               .suggestChatTitle(basis)
@@ -2189,7 +2196,7 @@ export function ChatPage() {
         }
       }
 
-      const shown = typed || `Sent ${atts.length} file(s)`
+      const shown = promptText || `Sent ${atts.length} file(s)`
       if (activeChatId) {
         // Persistence is deliberately decoupled from model startup. The
         // message is already visible optimistically and the stream has all
@@ -2263,7 +2270,7 @@ export function ChatPage() {
           { role: 'user', content: selectedStandard ? modelQuery : chatUserContent },
         ]
 
-        if (isClearlySpecifiedPlanRequest(typed)) {
+        if (!planning && isClearlySpecifiedPlanRequest(promptText)) {
           setPreparing(false)
           pendingActivityKindRef.current = 'plan'
           if (voiceOpen) voice.speak(VOICE_BUILDING)
@@ -2295,7 +2302,7 @@ export function ChatPage() {
           chatId: activeChatId,
           classId,
           voice: voiceOpen,
-          mode: chatMode,
+          mode: planning ? 'plan' : chatMode,
           weekNumber: effectiveWeek,
           referenceContext,
           requestId: options.requestId,
@@ -2370,7 +2377,7 @@ export function ChatPage() {
         chatId: activeChatId,
         classId,
         voice: voiceOpen,
-        mode: chatMode,
+        mode: planning ? 'plan' : chatMode,
         weekNumber: conversationWeek,
         referenceContext,
         requestId: options.requestId,
@@ -2589,6 +2596,14 @@ export function ChatPage() {
       }
     },
     [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity]
+  )
+
+  const startPlanning = useCallback(
+    (text) => {
+      if (busy) return
+      submit(text, { planning: true })
+    },
+    [busy, submit]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -4209,6 +4224,7 @@ export function ChatPage() {
             suggestions={composerSuggestions}
             mode={chatMode}
             onModeChange={changeChatMode}
+            onPlan={startPlanning}
             voiceGlossary={[activeClass?.name, activeClass?.subject, selectedStandard?.code].filter(Boolean)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (

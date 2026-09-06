@@ -179,6 +179,7 @@ export function Composer({
   questionsPanel = null,
   mode = 'brainstorm',
   onModeChange,
+  onPlan,
   focusOnMount = false,
   /* Composer is shared by the chat and (formerly) the plan surface, so the two
      strings that name the ACTION are props. Hardcoding "Build the lesson plan"
@@ -1040,6 +1041,20 @@ export function Composer({
               cluster. A row keeps the bar's height constant regardless of
               which button is showing. */}
           <div className="relative flex shrink-0 flex-row items-center gap-1.5 md:gap-1">
+            {onPlan && !voiceModeActive && !isStreaming ? (
+              <button
+                type="button"
+                className="fa-press tap-target flex h-11 items-center justify-center rounded-lg px-2.5 text-sm font-semibold text-accent transition-colors hover:bg-accent-tint md:h-9"
+                onClick={() => {
+                  setToolsOpen(false)
+                  onPlan(value)
+                }}
+                aria-label="Plan with guided questions"
+                title="Plan with guided questions"
+              >
+                Plan
+              </button>
+            ) : null}
             {/* One persistent button now, not three swapped in and out —
                 a swapped-out button unmounts outright, so nothing about a
                 plain CSS transition could ever animate THAT change; only an
