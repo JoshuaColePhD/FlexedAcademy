@@ -464,7 +464,9 @@ def finalize(
     out_path = docx_build.plan_output_path(plan, plan_id)
 
     if bg_tasks is not None:
-        bg_tasks.add_task(_build_docx_bg, user_id, plan, out_path, plan_id)
+        # Queue only after create_plan commits the parent row below. Adding
+        # this as a response background task here races the INSERT and causes
+        # document_build_jobs.plan_id to violate its foreign key.
         docx_path_val = None
     else:
         _build_docx_for_template(plan, out_path, resolved_school_id, selected_template_id)

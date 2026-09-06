@@ -3964,16 +3964,19 @@ def standard_stats(
         }
 
 
-def standard_frameworks(*, state: str = "AL") -> list[dict]:
+def standard_frameworks(*, state: str = "AL", include_national: bool = False) -> list[dict]:
     """Return course/grade aggregates for the framework picker."""
+    states = [state.upper()]
+    if include_national:
+        states.extend(["AP", "National"])
     rows = _rows(
         "SELECT metadata->>'course' AS course, metadata->>'grade' AS grade, "
         "COUNT(*) AS chunks, "
         "COUNT(*) FILTER (WHERE metadata->>'verbatim_ok' = 'true') AS verbatim_ok "
-        "FROM chunks WHERE metadata->>'state' = %s "
+        "FROM chunks WHERE metadata->>'state' = ANY(%s) "
         "GROUP BY metadata->>'course', metadata->>'grade' "
         "ORDER BY metadata->>'course', metadata->>'grade'",
-        (state.upper(),),
+        (states,),
     )
     return rows
 
@@ -4015,7 +4018,7 @@ def list_standard_code_metadata() -> list[dict]:
     every generated plan.
     """
     return _rows(
-        "SELECT metadata->>'code' AS code, "
+        "SELECT DISTINCT metadata->>'code' AS code, "
         "metadata->>'course' AS course, "
         "metadata->>'state' AS state, "
         "metadata->>'source_type' AS source_type "

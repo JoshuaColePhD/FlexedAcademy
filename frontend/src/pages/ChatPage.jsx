@@ -477,7 +477,11 @@ function planContainsStandard(plan, code) {
 }
 
 export function ChatPage() {
-  const { classId, chatId } = useParams()
+  const { classId, chatId: routeChatId } = useParams()
+  // `/chat/new` is a draft surface, not a persisted conversation. Treating
+  // the literal route segment as a real id made every first message try to
+  // save to `/api/chats/new`, leaving the plan preview detached from its chat.
+  const chatId = routeChatId === 'new' ? null : routeChatId
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
