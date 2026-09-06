@@ -85,7 +85,28 @@ def _ensure_sample_content(user: dict) -> None:
             # The first version of the showcase used a descriptive id. The
             # plan API intentionally rejects that shape, so move the existing
             # row and every known child reference once instead of leaving a
-            # duplicate plan in the recruiter's Library.
+            # duplicate plan in the recruiter's Library. Clone the parent
+            # first: PostgreSQL enforces the foreign key even between two
+            # separate writes, so updating children before the new parent
+            # exists would be rejected.
+            db._write(
+                """
+                INSERT INTO plans (
+                    id, created_at, course, week_label, unit, query, plan_json,
+                    docx_path, retrieved_ids, warnings, chat_id, template,
+                    template_id, user_id, class_id, week_number, drive_file_id,
+                    drive_web_link, is_public, shared_at
+                )
+                SELECT ?, created_at, course, week_label, unit, query, plan_json,
+                       docx_path, retrieved_ids, warnings, chat_id, template,
+                       template_id, user_id, class_id, week_number, drive_file_id,
+                       drive_web_link, is_public, shared_at
+                FROM plans
+                WHERE id = ? AND user_id = ?
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (DEMO_PLAN_ID, _LEGACY_DEMO_PLAN_ID, user_id),
+            )
             for table in (
                 "messages",
                 "plan_feedback",
@@ -99,8 +120,8 @@ def _ensure_sample_content(user: dict) -> None:
                     (DEMO_PLAN_ID, _LEGACY_DEMO_PLAN_ID),
                 )
             db._write(
-                "UPDATE plans SET id = ? WHERE id = ? AND user_id = ?",
-                (DEMO_PLAN_ID, _LEGACY_DEMO_PLAN_ID, user_id),
+                "DELETE FROM plans WHERE id = ? AND user_id = ?",
+                (_LEGACY_DEMO_PLAN_ID, user_id),
             )
         else:
             source_path = PROJECT_ROOT / "backend" / "builder" / "example-week.json"
