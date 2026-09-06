@@ -86,6 +86,13 @@ _CODE_RE = re.compile(
     # an INVENTED RHS-3Z would have passed silently — in the flagship course,
     # which is the one failure this whole apparatus exists to prevent.
     r"|[A-Z]{2,4}-\d+[A-Z]?(?:\.[A-Za-z0-9]+)*"
+    # Numeric-leading state frameworks, including Georgia's grade/course
+    # codes such as 10.P.AC.1.a. These must be captured as one code so
+    # grounding and plan_standards can distinguish them from ACT companions.
+    r"|\d{1,2}\.[A-Z]{1,8}(?:\.[A-Za-z0-9-]+){1,6}"
+    # Common Core identifiers used by DC ELA, e.g.
+    # CCSS.ELA-Literacy.SL.11-12.3 and CCSS.ELA-Literacy.W.11-12.1.
+    r"|CCSS\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+){2,6}"
     # Alabama CASE codes as published by ALSDE: a subject+year prefix, a grade or
     # course segment, then the standard. e.g. ELA21.11.R2, MA19.GDA.5,
     # SS24.11.3a, SCI23.9.1, CSC26.9-12.CD.3, ARTS24.HS.MU.1
