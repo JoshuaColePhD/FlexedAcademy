@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, Database, FileText, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react'
+import { ChevronDown, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
@@ -300,7 +300,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
 }
 
 /* Exported so ChatPage.jsx can reuse it as the phone-only "home" screen —
-   chats list + Workspace Tools + account controls, the same content as the desktop
+   the chats list and account controls, the same core content as the desktop
    sidebar, landing where a teacher currently gets dropped straight into an
    empty chat instead. See MobileChatHome.jsx. */
 export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious }) {
@@ -645,64 +645,6 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
           </div>
         )}
         
-        {/* Every plan this class has ever built, placed at the bottom near account settings. */}
-        <div className="mt-2 mb-2">
-          {collapsed ? null : <p className="rail-reveal eyebrow px-4 pb-2">Workspace Tools</p>}
-          <ul className={`flex flex-col gap-0 ${collapsed ? 'px-1 items-center' : 'px-2'}`}>
-            <li>
-              <NavLink
-                to={`${classPath}/standards`}
-                onClick={onNavigate}
-                title="Standards"
-                className={({ isActive }) =>
-                  `flex items-center gap-2.5 rounded-md transition-all duration-300 ${
-                    collapsed ? 'justify-center w-10 h-10 text-sm' : spacious ? 'px-3 py-3 min-h-[48px] text-base' : 'px-2 py-1.5 text-sm'
-                  } ${
-                    isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
-                  }`
-                }
-              >
-                <Database size={spacious ? 19 : 17} aria-hidden="true" />
-                {collapsed ? null : <span className="rail-reveal">Standards</span>}
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`${classPath}/class`}
-                end
-                onClick={onNavigate}
-                title="Classroom Profile"
-                className={({ isActive }) =>
-                  `flex items-center gap-2.5 rounded-md transition-all duration-300 ${
-                    collapsed ? 'justify-center w-10 h-10 text-sm' : spacious ? 'px-3 py-3 min-h-[48px] text-base' : 'px-2 py-1.5 text-sm'
-                  } ${
-                    isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
-                  }`
-                }
-              >
-                <Users size={spacious ? 19 : 17} aria-hidden="true" />
-                {collapsed ? null : <span className="rail-reveal">Classroom Profile</span>}
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`${classPath}/plans`}
-                onClick={onNavigate}
-                title="Library"
-                className={({ isActive }) =>
-                  `flex items-center gap-2.5 rounded-md transition-all duration-300 ${
-                    collapsed ? 'justify-center w-10 h-10 text-sm' : spacious ? 'px-3 py-3 min-h-[48px] text-base' : 'px-2 py-1.5 text-sm'
-                  } ${
-                    isActive ? 'neo-inset bg-paper-sunken text-accent-text font-medium drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]' : 'text-ink-soft hover:bg-paper-inset hover:text-ink'
-                  }`
-                }
-              >
-                <FileText size={spacious ? 19 : 17} aria-hidden="true" />
-                {collapsed ? null : <span className="rail-reveal">Library</span>}
-              </NavLink>
-            </li>
-          </ul>
-        </div>
         <div className="mt-auto">
           <AccountMenu classPath={classPath} collapsed={collapsed} spacious={spacious} />
         </div>
