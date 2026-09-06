@@ -450,15 +450,21 @@ def revise_whole_plan(
     retrieved_ids = row.get("retrieved_ids") or []
     if not retrieved_ids:
         raise AppError("no_context", "Cannot revise without retrieved standards.", status=400)
-    
+
     # plans.retrieved_ids holds standard CODES — service.finalize writes
-    # `sorted(result.codes)`, which reads metadata["code"]. This used to filter
-    # load_chunks() on c["id"], and chunk ids are "{course}:{grade}:{code}", so
-    # nothing ever matched: every revise ran with an empty context and the model
-    # re-invented the standards it was supposed to be held to.
-    by_code = retrieval.chunks_by_code()
+    # `sorted(result.codes)`, which reads metadata["code"]. Resolve each code
+    # through the plan's own class so a revision cannot pick the same code from
+    # another state or course. This matters especially for DC/Common Core,
+    # where identical code shapes occur in multiple jurisdictions.
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    subject_code = (cls or {}).get("subject") or row.get("course") or "AP_Lang"
+    state = (cls or {}).get("state") or "AL"
     wanted = {retrieval._norm_code(c) for c in retrieved_ids}
-    chunks = [by_code[c] for c in wanted if c in by_code]
+    chunks = [
+        chunk
+        for code in wanted
+        if (chunk := retrieval.chunk_for_code(code, subject_code=subject_code, state=state))
+    ]
     if not chunks:
         raise AppError(
             "no_context",
@@ -487,7 +493,6 @@ def revise_whole_plan(
     )
     context = retrieval.format_context(res)
     
-    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
     school_id = db.class_school(cls, user_id)
 
     # Generate critique and revised plan. Revisions are subject to the same
@@ -509,6 +514,13 @@ def revise_whole_plan(
         period=identity["period"],
         subject=service.subject_label(cls["subject"]) if cls else None,
     )
+
+    # A whole-plan revision can add, drop, or move standard references. Keep
+    # the saved grounding snapshot in lockstep with the revised plan rather
+    # than leaving citations from the previous version attached to it.
+    allowed = set(retrieved_ids)
+    warnings += retrieval.audit_grounding(plan, allowed, subject_code=subject_code)
+    cited = retrieval.cited_standards(plan, allowed, subject_code=subject_code)
     
     out_path = docx_build.plan_output_path(plan, plan_id)
     bg_tasks.add_task(service._build_docx_bg, user_id, plan, out_path, plan_id)
@@ -523,7 +535,15 @@ def revise_whole_plan(
         warnings=warnings,
         course=plan.get("course", row["course"]),
     )
-    
+    db.replace_plan_standards(
+        plan_id,
+        user_id,
+        class_id=row.get("class_id"),
+        subject=subject_code,
+        grade=str((cls or {}).get("grade") or ""),
+        entries=cited,
+    )
+
     return db.get_plan(user_id, plan_id)
 
 
