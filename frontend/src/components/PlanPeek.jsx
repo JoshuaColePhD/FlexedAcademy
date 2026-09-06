@@ -22,7 +22,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
   // handle to the bottom of the phone's header so a pull can reach the full
   // available reader height on every device.
   const MIN_OPEN_DRAG_DISTANCE = 104
-  const CLOSE_DRAG_DISTANCE = 88
+  const MIN_CLOSE_DRAG_DISTANCE = 88
 
   const measureOpenHeight = () => {
     const sheet = sheetRef.current
@@ -81,7 +81,8 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     // distance threshold. A slow gesture has to travel far enough to make the
     // intended resting point unambiguous.
     const openDistance = openHeightRef.current || MIN_OPEN_DRAG_DISTANCE
-    if (open && (delta > CLOSE_DRAG_DISTANCE * 0.7 || velocity > 0.7)) onToggle(false)
+    const closeDistance = Math.max(MIN_CLOSE_DRAG_DISTANCE, openHeightRef.current || MIN_CLOSE_DRAG_DISTANCE)
+    if (open && (delta > closeDistance * 0.24 || velocity > 0.7)) onToggle(false)
     else if (!open && (-delta > openDistance * 0.24 || velocity < -0.5)) onToggle(true)
   }
 
@@ -103,8 +104,9 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     // the first slice of the document. Open: a downward pull collapses that
     // slice before release. This keeps the thumb connected to the content
     // instead of translating a handle over a still-hidden panel.
+    const closeDistance = Math.max(MIN_CLOSE_DRAG_DISTANCE, openHeightRef.current || MIN_CLOSE_DRAG_DISTANCE)
     const next = open
-      ? Math.min(CLOSE_DRAG_DISTANCE, Math.max(0, delta))
+      ? Math.min(closeDistance, Math.max(0, delta))
       : Math.min(openHeightRef.current || MIN_OPEN_DRAG_DISTANCE, Math.max(0, -delta))
     setPreview(next)
     if (event.cancelable) event.preventDefault()

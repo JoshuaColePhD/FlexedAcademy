@@ -184,4 +184,16 @@ test('phone lesson-plan peek follows a long thumb pull to the transcript edge', 
   const openSheet = await sheet.boundingBox()
   expect(openBody.height).toBeGreaterThan(initialBody.height + 200)
   expect(Math.abs(openSheet.y - transcript.y)).toBeLessThanOrEqual(2)
+
+  const openHandleBox = await handle.boundingBox()
+  await page.mouse.move(openHandleBox.x + openHandleBox.width / 2, openHandleBox.y + openHandleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(openHandleBox.x + openHandleBox.width / 2, openHandleBox.y + openBody.height + 12, { steps: 8 })
+  await page.mouse.up()
+
+  await expect(handle).toHaveAttribute('aria-expanded', 'false')
+  const closedBody = await sheet.locator('.plan-peek-body').boundingBox()
+  const closedSheet = await sheet.boundingBox()
+  expect(closedBody.height).toBeLessThanOrEqual(2)
+  expect(closedSheet.y).toBeGreaterThan(openSheet.y + 200)
 })
