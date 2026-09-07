@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronUp, GraduationCap, Info, LogOut, Mail, ShieldCheck } from 'lucide-react'
+import { ChevronUp, GraduationCap, Info, LogOut, Mail, Settings, ShieldCheck } from 'lucide-react'
 import { getAvatar, getInitials } from '../lib/avatars'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
@@ -21,12 +21,11 @@ import { SupportDialog } from './SupportDialog'
  * look for it.
  *
  * Redesigned on Josh's own ask (findability): "My classes" and "Settings" used
- * to be one link ("Classes & settings") pointing at one page — they were split
- * into separate rows to separate routes, and a usage readout sits under the
- * identity block. The Settings row is gone again since: Class setup is no
- * longer surfaced anywhere in the shell (it went from the rail nav and the
- * command palette in the same pass), which leaves Class profiles as the one
- * class route up here and Log out back to a labeled row of its own. */
+ * to be one link ("Classes & settings") pointing at one page — now they're two
+ * separate rows to two separate routes (ClassPage / SettingsPage), and a usage
+ * readout sits under the identity block. Log out sits icon-only right beside
+ * Settings, not a labeled row of its own — the label doesn't add anything a
+ * teacher hasn't already learned this icon means the one time they hover it. */
 
 /* Usage was deliberately pulled OUT of every teacher's own settings page and
  * centralized in the admin accounts panel (see SettingsPage.jsx's own
@@ -233,10 +232,11 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
         <div className="rail-reveal flex min-w-0 flex-1 items-center">
           {/* One control, not two — this used to be a Link straight to
               Settings sitting beside a separate chevron button that opened
-              this same popover, and the popover carried the same destination
-              in its own row. Both pieces did the same job of "find your
-              account," just at different distances, so they're merged into
-              the single toggle the collapsed state above already uses. */}
+              this same popover, and the popover already has its own
+              Settings row (below). Both pieces did the same job of "find
+              your account," just at different distances, so they're merged
+              into the single toggle the collapsed state above already
+              uses. */}
           <button
             type="button"
             className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left transition-colors hover:bg-paper-inset ${spacious ? 'min-h-[48px] px-2.5 py-2.5' : 'gap-2 px-2 py-1.5'}`}
@@ -274,14 +274,14 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
             }}
           />
 
-          {/* Its own group, not lumped in with the account rows below —
+          {/* Its own group, not lumped in with My classes/Settings below —
               it used to sit one plain row among them, same size, same grey,
               same divider treatment as everything else, which made the one
               genuinely privileged link in this whole menu just as easy to
               graze past (or mis-tap) as an everyday one. A boundary is the
               signal, not a colour change — this isn't "actionable" the way
               --accent means elsewhere in the app, it's "different in kind."
-              Placed first (above those rows), on Josh's own ask —
+              Placed first (above My classes/Settings), on Josh's own ask —
               the one control gated to admins only is the one that should be
               hardest to scroll past, not the last thing in the list. */}
           {user?.is_admin ? (
@@ -324,21 +324,30 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
                 <GraduationCap size={14} aria-hidden="true" /> Class profiles
               </Link>
             </div>
-            {/* Back to a full-width labelled row: the icon-only variant only
-                made sense while it sat beside Settings, borrowing that row's
-                label for context. On its own it would be an unlabelled icon
-                in a menu of text rows. The --mark hover tint still keeps it
-                reading as the one destructive control up here. */}
             <div className="flex items-center">
+              <Link
+                to={`${classPath}/settings`}
+                onClick={() => setOpen(false)}
+                className="flex min-h-touch min-w-0 flex-1 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <Settings size={14} aria-hidden="true" /> Settings
+              </Link>
+              {/* Icon-only, right beside Settings — no label needed once it
+                  sits next to the one thing it's most often reached for
+                  right after (or instead of). Its own hover tint (--mark)
+                  keeps it reading as the one destructive control up here,
+                  same as the full-width row this replaced. */}
               <button
                 type="button"
                 onClick={() => {
                   setOpen(false)
                   logout()
                 }}
-                className="flex min-h-touch min-w-0 flex-1 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-mark-tint hover:text-mark"
+                aria-label="Log out"
+                title="Log out"
+                className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-soft transition-colors hover:bg-mark-tint hover:text-mark"
               >
-                <LogOut size={14} aria-hidden="true" /> Log out
+                <LogOut size={14} aria-hidden="true" />
               </button>
             </div>
           </div>
