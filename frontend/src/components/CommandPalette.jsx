@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Command } from 'cmdk'
 import { useNavigate } from 'react-router-dom'
-import { ShieldCheck, History, BookOpen, Plus, Calendar, Sparkles } from 'lucide-react'
+import { Settings, ShieldCheck, History, BookOpen, Plus, Calendar, Sparkles } from 'lucide-react'
 import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { useAuth } from '../lib/authContext'
@@ -103,6 +103,12 @@ export function CommandPalette() {
               className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <History size={16} /> Recent History
+            </Command.Item>
+            <Command.Item
+              onSelect={() => runCommand(() => navigate(classPath ? `${classPath}/settings` : '/'))}
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
+            >
+              <Settings size={16} /> Settings
             </Command.Item>
             {classPath && user?.is_admin ? (
               <Command.Item
