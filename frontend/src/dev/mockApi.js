@@ -227,6 +227,7 @@ const state = {
   // `state` mirrors migration 76. Springfield is deliberately in a DIFFERENT
   // state from Florence, so the school step's state filter is exercised as a
   // filter rather than passing trivially with one bucket.
+  schoolTemplates: {},
   schools: [
     { id: 'florence-high-school', name: 'Florence High School', state: 'AL', created_at: '2026-01-01T00:00:00+00:00', has_calendar: true },
     { id: 'springfield-ms', name: 'Springfield Middle School', state: 'TN', created_at: '2026-01-02T00:00:00+00:00', has_calendar: false },
@@ -878,6 +879,47 @@ export function installMockApi() {
     }
 
     if (path === '/api/schools' && method === 'GET') return json(state.schools)
+
+    // Local-only template walkthrough. These sample sections model the real
+    // response contract; preview uploads never reach the backend or an AI API.
+    const templateList = path.match(/^\/api\/school-calendars\/([^/]+)\/templates$/)
+    if (templateList && method === 'GET') {
+      return json({ templates: state.schoolTemplates[templateList[1]] || [] })
+    }
+    const templateUpload = path.match(/^\/api\/school-calendars\/([^/]+)\/template$/)
+    if (templateUpload && method === 'POST') {
+      if (init.body?.get('blank_template_attested') !== 'true') {
+        return new Response(JSON.stringify({ error: { message: 'Confirm that this is a blank, reusable template.' } }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+      }
+      await wait(state.templateAnalysisDelayMs ?? 2400)
+      if (state.templateIntakeOutcome === 'network_error') {
+        return new Response(JSON.stringify({ error: { message: 'The analysis service is unavailable. Please try again.' } }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+      }
+      const status = state.templateIntakeOutcome || 'analyzed'
+      const analysis = { sections: status === 'failed' ? [] : ['Learning targets', 'Standards', 'Opening activity', 'Instruction & practice', 'Check for understanding', 'Reflection'].map((name) => ({ name })) }
+      const findings = status === 'failed'
+        ? [{ severity: 'error', message: 'No readable section headings were found. Try a clearer blank template.' }]
+        : status === 'analyzed_with_warnings'
+          ? [{ severity: 'warning', message: 'Check the order of merged table cells against your original.' }]
+          : []
+      const row = {
+        id: `preview-template-${Date.now()}`,
+        filename: init.body?.get('file')?.name || 'Google Doc template.docx',
+        template_scope: init.body?.get('template_scope') || 'personal',
+        analysis_status: status,
+        analysis_summary: JSON.stringify(analysis),
+        is_personal_default: status !== 'failed',
+        created_at: new Date().toISOString(),
+      }
+      const previous = state.schoolTemplates[templateUpload[1]] || []
+      state.schoolTemplates[templateUpload[1]] = [...previous.map((item) => ({ ...item, is_personal_default: status === 'failed' ? item.is_personal_default : false })), row]
+      return json({ template: row, findings, auto_activated: false })
+    }
+    const templateSelect = path.match(/^\/api\/school-calendars\/([^/]+)\/templates\/([^/]+)\/select$/)
+    if (templateSelect && method === 'POST') {
+      state.schoolTemplates[templateSelect[1]] = (state.schoolTemplates[templateSelect[1]] || []).map((item) => ({ ...item, is_personal_default: item.id === templateSelect[2] }))
+      return json({ status: 'ok', template_id: templateSelect[2] })
+    }
 
     if (path === '/api/admin/schools' && method === 'POST') {
       await wait(200)

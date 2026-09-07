@@ -294,6 +294,7 @@
        the way the app does rather than as a small card adrift in a large empty
        ground. */
     padding: var(--sp-2);
+    background: rgb(249 248 253);
   }
 
   .onboarding-card {
@@ -305,6 +306,46 @@
        every other card-shaped surface in the app — .app-rail,
        .app-shell-main, .split-layout-shell — is rounded-2xl = --r-xl. */
     border-radius: var(--r-xl);
+    /* Onboarding follows the light IDE surface even when the account's
+       global theme is dark. Keep the palette local to this card so the rest
+       of the workspace still honours the user's theme choice. */
+    --paper-rgb: 249 248 253;
+    --paper-raised-rgb: 255 255 255;
+    --paper-sunken-rgb: 244 243 250;
+    --paper-inset-rgb: 237 235 247;
+    --edge-rgb: 232 230 240;
+    --edge-strong-rgb: 211 208 225;
+    --ink-rgb: 53 39 73;
+    --ink-soft-rgb: 89 75 106;
+    --ink-muted-rgb: 110 99 126;
+    --ink-faint-rgb: 143 132 154;
+    --ink-inverse-rgb: 255 255 255;
+    --accent-rgb: 116 76 196;
+    --accent-hover-rgb: 94 55 163;
+    --accent-tint-rgb: 239 232 253;
+    --accent-text-rgb: 97 55 165;
+    --mark-rgb: 182 48 48;
+    --mark-tint-rgb: 250 231 231;
+    --neo-light-rgb: 255 255 255;
+    --neo-dark-rgb: 199 194 188;
+    --paper: rgb(var(--paper-rgb));
+    --paper-raised: rgb(var(--paper-raised-rgb));
+    --paper-sunken: rgb(var(--paper-sunken-rgb));
+    --paper-inset: rgb(var(--paper-inset-rgb));
+    --edge: rgb(var(--edge-rgb));
+    --edge-strong: rgb(var(--edge-strong-rgb));
+    --ink: rgb(var(--ink-rgb));
+    --ink-soft: rgb(var(--ink-soft-rgb));
+    --ink-muted: rgb(var(--ink-muted-rgb));
+    --ink-faint: rgb(var(--ink-faint-rgb));
+    --ink-inverse: rgb(var(--ink-inverse-rgb));
+    --accent: rgb(var(--accent-rgb));
+    --accent-hover: rgb(var(--accent-hover-rgb));
+    --accent-tint: rgb(var(--accent-tint-rgb));
+    --accent-text: rgb(var(--accent-text-rgb));
+    --accent-ring: rgb(var(--accent-rgb) / 0.32);
+    --mark: rgb(var(--mark-rgb));
+    --mark-tint: rgb(var(--mark-tint-rgb));
   }
 
   /* The aurora, ON the mat.
@@ -393,11 +434,15 @@
     letter-spacing: var(--tracking-tight);
   }
 
+  .onboarding-topbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+
   .onboarding-topbar-logo {
-    position: absolute;
-    left: var(--sp-4);
-    height: 1.375rem;
-    width: 1.375rem;
+    height: 1.25rem;
+    width: 1.25rem;
     color: #7c3aed;
   }
 
@@ -583,6 +628,10 @@
     min-height: 0;
     flex: 1;
     flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
   }
 
   /* ── the step rail ──────────────────────────────────────────────────────── */
@@ -782,20 +831,9 @@
     flex-direction: column;
     min-height: 0;
   }
-  /* This, not .onboarding-where-layout below, is what needs to fill the
-     step's remaining height — the watermark is sized as a fraction of THIS
-     box, so it stays small if this stays small. (.onboarding-content's own
-     data-center flag is what gives the shell above something taller than the
-     question to grow into in the first place — see OnboardingWizard.jsx.)
-
-     justify-content is flex-start, not center: centering the fields within
-     this box meant their vertical position depended on their own height, so
-     the State select visibly jumped the moment the School field (and, past
-     that, an un-ingested-state notice) appeared below it and grew the group
-     taller. Top-aligned, State stays exactly where it was the instant more
-     content appears beneath it — the watermark is still centered in the
-     full height regardless, since it has its own positioning independent of
-     this. */
+  /* This keeps the state and school controls anchored as the dependent school
+     field appears. The rail owns the state outline now, so this body only
+     needs to provide a stable vertical home for the controls themselves. */
   .onboarding-where-body {
     position: relative;
     display: flex;
@@ -807,10 +845,9 @@
   /* Centred within the CONTENT column, margin:auto (on the fields, below)
      still lands right of the page's true centre — the rail column and its
      gap (11rem + --sp-10) sit to the left of that column and are never
-     counted. Shifting the body left by half of that width re-centres both
-     the fields and the watermark behind them on the whole card instead of
-     just their own column — the question above the body, outside this box,
-     is untouched by the shift. Desktop-only: on the phone breakpoint the
+     counted. Shifting the body left by half of that width re-centres the
+     fields on the whole card instead of just their own column — the question
+     above the body, outside this box, is untouched by the shift. Desktop-only: on the phone breakpoint the
      rail collapses to a strip above the content and this column IS the full
      width, so the same shift would push it off-centre the other way. */
   @container onboarding-step (min-width: 34rem) {
@@ -825,9 +862,9 @@
     margin-inline: auto;
     text-align: center;
   }
-  /* State and School sit over the watermark rather than plain paper, so the
-     small --fs-sm label the rest of onboarding uses is harder to read here.
-     Bigger, scoped to this step only — and left-aligned over the dropdown's
+  /* State and School are the focus of this step, so the small --fs-sm label
+     the rest of onboarding uses is harder to read here. Bigger, scoped to
+     this step only — and left-aligned over the dropdown's
      own left edge rather than following the centred text below it, so each
      reads as a caption anchored to its field instead of a centred title. */
   .onboarding-where-fields .onboarding-choice-label {
@@ -864,40 +901,33 @@
     text-align: center;
   }
   .onboarding-where-watermark {
-    display: none;
-    position: absolute;
-    inset: 0;
-    z-index: 0;
+    display: flex;
+    position: relative;
+    width: 11rem;
+    height: 11rem;
+    margin-top: var(--sp-5);
     align-items: center;
     justify-content: center;
+    z-index: 0;
     pointer-events: none;
   }
-  /* A container query on the card, not a viewport breakpoint: this step
-     lives inside a pane whose width has nothing to do with the window's. */
-  @container onboarding-step (min-width: 34rem) {
-    .onboarding-where-watermark {
-      display: flex;
-    }
-    .onboarding-where-watermark-svg {
-      /* Sized against the shell, which now actually fills the step's full
-         height — a fixed rem height here would either float in a much
-         bigger box (too small to read as "most of the page") or, on a short
-         window, blow past it. */
-      width: min(64rem, 98%);
-      height: 105%;
-      /* Nudged down rather than dead-centred behind the fields: centred, the
-         shape sat fully underneath State/School with nothing peeking out
-         past them. Bigger than the shell's own box (height > 100%) so the
-         outline's shoulders reach up and genuinely overlap the dropdowns
-         instead of just filling the space below them. A margin, not a
-         transform — the svg already carries its own inline transform for
-         the entrance scale, and a second transform source here would only
-         replace it again. */
-      margin-top: 2%;
-    }
-    .onboarding-where-watermark-svg path {
-      stroke: var(--accent);
-      opacity: 0.16;
+  .onboarding-where-watermark-svg {
+    width: 9rem;
+    height: 9rem;
+  }
+  .onboarding-where-watermark-svg path {
+    stroke: var(--accent);
+    opacity: 0.28;
+  }
+  /* The map now belongs to the rail, where it reinforces the active context
+     without sitting behind the controls. Keep the rail's text above it if a
+     particularly wide outline happens to overlap its box. */
+  .onboarding-rail-slot > .onboarding-where-watermark {
+    z-index: 0;
+  }
+  @media (max-width: 767px) {
+    .onboarding-rail-slot > .onboarding-where-watermark {
+      display: none;
     }
   }
 
@@ -1147,6 +1177,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--sp-2);
+    margin-left: var(--sp-4);
   }
   .onboarding-footer-skip {
     position: absolute;
@@ -1260,6 +1291,7 @@
       grid-row: 1;
       grid-column: 1;
       min-width: 0;
+      margin-left: 0;
     }
     .onboarding-footer-skip {
       position: static;
@@ -10845,6 +10877,33 @@
   .onboarding-template-upload .bg-paper-raised {
     background-color: rgb(var(--paper-raised-rgb) / 0.38) !important;
   }
+  .template-blank-attestation {
+    display: grid;
+    gap: var(--sp-2);
+    margin: var(--sp-1) var(--sp-1) 0;
+    color: var(--ink-muted);
+    font-size: var(--fs-xs);
+  }
+  .template-blank-note {
+    margin: 0;
+    color: var(--accent-text);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+  }
+  .template-blank-note span {
+    color: var(--accent);
+  }
+  .template-blank-attestation label {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    cursor: pointer;
+    line-height: var(--lh-normal);
+  }
+  .template-blank-attestation input {
+    flex: 0 0 auto;
+    margin-top: 0.1rem;
+  }
   :root[data-theme='dark'] .onboarding-template-panel {
     background-color: rgb(15 23 42 / 0.34) !important;
     background-image: linear-gradient(
@@ -10912,6 +10971,27 @@
     box-shadow:
       inset 0 1px 1px rgba(255, 255, 255, 0.12),
       0 12px 30px rgba(0, 0, 0, 0.22) !important;
+  }
+
+  /* The onboarding card opts into the light IDE palette above even when the
+     root workspace is in dark mode. These inner surfaces have older dark-mode
+     overrides with higher specificity, so restate their light treatment here
+     at the onboarding boundary. */
+  :root[data-theme='dark'] .onboarding-card.glass-panel,
+  :root[data-theme='dark'] .onboarding-card .onboarding-template-panel,
+  :root[data-theme='dark'] .onboarding-card .onboarding-glass-pane,
+  :root[data-theme='dark'] .onboarding-card .onboarding-glass-list {
+    background-color: rgb(var(--paper-raised-rgb) / 0.96) !important;
+    background-image: none !important;
+    border-color: rgb(var(--edge-rgb) / 0.86) !important;
+    box-shadow: 0 8px 24px rgb(53 39 73 / 0.08) !important;
+  }
+  :root[data-theme='dark'] .onboarding-card .onboarding-template-upload {
+    background: rgb(var(--paper-raised-rgb) / 0.72) !important;
+    border-color: rgb(var(--edge-strong-rgb) / 0.9) !important;
+  }
+  :root[data-theme='dark'] .onboarding-card .onboarding-ingest-path {
+    background: rgb(var(--paper-raised-rgb) / 0.56) !important;
   }
 
   /* The wizard shell itself is glass too; the inner panes should feel like
@@ -11713,4 +11793,145 @@
   .onboarding-final-title { max-width: none; font-size: var(--fs-xl); }
   .onboarding-final-stage, .onboarding-final-setup, .onboarding-final-footer { width: 100%; }
   .onboarding-final-footer { font-size: var(--fs-2xs); }
+}
+
+/* Onboarding celebration: a welcome, small wins, and a finite confetti finish.
+   All effects are scoped to setup; motion stays on opacity and transform. */
+.onboarding-celebration {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 132px;
+  isolation: isolate;
+  pointer-events: none;
+}
+.onboarding-celebration-halo {
+  position: absolute;
+  width: 126px;
+  height: 126px;
+  border: 1px solid rgb(var(--accent-rgb) / 0.16);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--accent-rgb) / 0.12), transparent 72%);
+  animation: onboarding-halo-in 1s var(--ease-out) both;
+}
+.onboarding-celebration-halo::after {
+  position: absolute;
+  inset: 12px;
+  content: '';
+  border: 1px dashed rgb(var(--accent-rgb) / 0.22);
+  border-radius: inherit;
+}
+.onboarding-celebration-emblem {
+  display: grid;
+  place-items: center;
+  width: 78px;
+  height: 78px;
+  border-radius: 24px;
+  background: var(--accent);
+  color: var(--ink-inverse);
+  animation: onboarding-emblem-in 700ms cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+.onboarding-celebration-spark, .onboarding-celebration-star {
+  position: absolute;
+  left: calc(50% + 65px);
+  top: 22px;
+  color: var(--accent-text);
+  animation: onboarding-spark-in 800ms var(--ease-out) 250ms both;
+}
+.onboarding-celebration-star { left: calc(50% - 90px); top: 85px; }
+.onboarding-confetti {
+  --confetti-x: 0px;
+  --confetti-y: 0px;
+  --confetti-turn: 0deg;
+  position: absolute;
+  left: calc(50% - 3px);
+  top: calc(50% - 5px);
+  z-index: -1;
+  width: 6px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  animation: onboarding-confetti-burst 1800ms cubic-bezier(0.15, 0.65, 0.3, 1) both;
+}
+.onboarding-confetti:nth-of-type(3n) { background: var(--ok); border-radius: 50%; }
+.onboarding-confetti:nth-of-type(3n + 1) { background: var(--ink-muted); width: 4px; }
+.onboarding-celebration[data-complete='true'] { height: 176px; }
+.onboarding-celebration[data-complete='true'] .onboarding-celebration-emblem { width: 96px; height: 96px; border-radius: 50%; }
+.onboarding-celebration[data-complete='true'] .onboarding-celebration-halo { width: 160px; height: 160px; }
+.onboarding-welcome .onboarding-question { display: flex; flex-direction: column; }
+.onboarding-welcome .onboarding-celebration { order: -1; margin-bottom: var(--sp-4); }
+.onboarding-welcome .onboarding-question h2 { font-size: clamp(1.65rem, 3vw, 2.25rem); line-height: 1.15; }
+.onboarding-welcome .onboarding-lead { max-width: 31rem; font-size: var(--fs-base); }
+.onboarding-avatar-wide {
+  width: calc(100% + 11rem + var(--sp-10));
+  margin-left: calc(-1 * (11rem + var(--sp-10)));
+}
+.onboarding-avatar-wide > .onboarding-choice-label { margin-top: var(--sp-8); }
+.onboarding-welcome button[aria-pressed='true'] { animation: onboarding-avatar-pop 450ms var(--ease-out); }
+.onboarding-encouragement {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-5);
+  border-top: 1px solid rgb(var(--accent-rgb) / 0.18);
+  color: var(--accent-text);
+  animation: onboarding-encourage-in 450ms var(--ease-out) both;
+}
+.onboarding-encouragement p { margin: var(--sp-2) 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+  .onboarding-encouragement span { display: block; max-width: 10rem; color: var(--ink-muted); font-size: var(--fs-xs); line-height: 1.6; }
+  .onboarding-rail-visual {
+    display: grid;
+    width: 11rem;
+    min-height: 9rem;
+    margin-top: var(--sp-5);
+    place-items: center;
+    overflow: hidden;
+  }
+  .onboarding-rail-visual .template-reading-art {
+    width: 10rem;
+    height: 10rem;
+  }
+  .onboarding-rail-step[data-state='done'] .onboarding-rail-dot { display: grid; place-items: center; color: var(--ink-inverse); background: var(--accent); box-shadow: 0 0 0 4px var(--accent); animation: onboarding-avatar-pop 400ms var(--ease-out); }
+.onboarding-rail-step[data-terminal='true'][data-state='upcoming'] .onboarding-rail-dot { border-color: var(--accent); }
+.onboarding-final .onboarding-final-title { max-width: 28rem; font-size: clamp(1.75rem, 3vw, 2.4rem); line-height: 1.15; }
+.onboarding-final .onboarding-final-kicker { margin-bottom: var(--sp-2); font-size: var(--fs-sm); letter-spacing: 0; }
+.onboarding-final .onboarding-final-intro { margin-top: var(--sp-3); font-size: var(--fs-base); line-height: 1.6; }
+.onboarding-final .onboarding-final-card-label { color: var(--ink-muted); }
+.onboarding-final .onboarding-final-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+@keyframes onboarding-emblem-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.6) rotate(-14deg); }
+  to { opacity: 1; transform: translateY(0) scale(1) rotate(-6deg); }
+}
+@keyframes onboarding-halo-in {
+  from { opacity: 0; transform: scale(0.65); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes onboarding-spark-in {
+  from { opacity: 0; transform: scale(0.3) rotate(-45deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes onboarding-confetti-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(0); }
+  15% { opacity: 1; }
+  65% { opacity: 0.85; }
+  100% { opacity: 0; transform: translate(var(--confetti-x), var(--confetti-y)) rotate(var(--confetti-turn)) scale(0.6); }
+}
+@keyframes onboarding-avatar-pop {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.15) rotate(-5deg); }
+}
+@keyframes onboarding-encourage-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 767px) {
+  .onboarding-encouragement { display: none; }
+  .onboarding-rail-visual { display: none; }
+  .onboarding-avatar-wide { width: 100%; margin-left: 0; }
+  .onboarding-welcome .onboarding-celebration { height: 112px; margin-bottom: var(--sp-3); }
+  .onboarding-final .onboarding-final-cards { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-confetti { display: none; }
+  .onboarding-celebration *, .onboarding-encouragement, .onboarding-welcome button[aria-pressed='true'], .onboarding-rail-step[data-state='done'] .onboarding-rail-dot { animation: none !important; }
 }

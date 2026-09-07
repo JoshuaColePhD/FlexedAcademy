@@ -14,15 +14,16 @@
  * before it advances — so a control that looks pressable and isn't would be a
  * lie.
  *
- * No measured track, no percentage, no ResizeObserver. The plan is 4-7 steps
+ * No measured track, no percentage, no ResizeObserver. The plan is four stages
  * depending on what this account still has to answer, so each row draws its
  * own connector segment above itself and colours it from its own data-state.
  * Correct for any length, index-free, and nothing to keep in sync.
  */
 
 import { useLayoutEffect, useRef, useState } from 'react'
+import { Check, Sparkles } from 'lucide-react'
 
-export function OnboardingStepRail({ steps, activeKey, onGoTo }) {
+export function OnboardingStepRail({ steps, activeKey, onGoTo, watermark = null, railVisual = null }) {
   const activeIndex = steps.findIndex((step) => step.key === activeKey)
 
   /* One marker that SLIDES between steps, rather than each dot changing
@@ -94,7 +95,9 @@ export function OnboardingStepRail({ steps, activeKey, onGoTo }) {
                 data-terminal={step.terminal || undefined}
                 aria-current={state === 'current' ? 'step' : undefined}
               >
-                <span className="onboarding-rail-dot" aria-hidden="true" />
+                <span className="onboarding-rail-dot" aria-hidden="true">
+                  {state === 'done' ? <Check size={10} strokeWidth={3} /> : null}
+                </span>
                 {state === 'done' ? (
                   <button type="button" className="onboarding-rail-label" onClick={() => onGoTo(step.key)}>
                     {step.label}
@@ -109,6 +112,13 @@ export function OnboardingStepRail({ steps, activeKey, onGoTo }) {
           </ol>
         </div>
       </nav>
+      <div className="onboarding-encouragement" key={activeKey}>
+        <Sparkles size={18} aria-hidden="true" />
+        <p>{activeIndex === 0 ? 'A fresh start, all yours.' : activeIndex === steps.length - 1 ? 'Look what you made.' : activeIndex >= steps.length - 2 ? 'The good part is almost here.' : 'Looking more like you.'}</p>
+        <span>{activeIndex === 0 ? 'Your next great lesson starts here.' : activeIndex === steps.length - 1 ? 'Your next chapter starts now.' : `${activeIndex} of ${steps.length - 1} setup steps behind you.`}</span>
+      </div>
+      {watermark}
+      {railVisual ? <div className="onboarding-rail-visual">{railVisual}</div> : null}
       {/* Phone only. The <ol> above stays the accessible source of truth in both
           layouts — below md it collapses to a hairline track with only the
           current label visible, so this count is redundant to a screen reader

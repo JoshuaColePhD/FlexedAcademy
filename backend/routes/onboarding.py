@@ -36,12 +36,9 @@ router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
 # on ORDER, this is the authority on what may be STORED.
 STEPS = frozenset({
     "avatar",
-    "course",
-    "school",
-    "calendar",
+    "context",
     "format",
     "preview",
-    "materials",
 })
 
 # Mirrors ONBOARDING_EVENTS in the same module.
@@ -184,7 +181,7 @@ def request_state(
 
     db.record_onboarding_events(user_id, [{
         "name": "state_unsupported_interest",
-        "step": "school",
+        "step": "context",
         "props": {"state": code},
     }])
 

@@ -29,37 +29,13 @@ import { GENERIC_SCHOOL, hasChosenSchool, hasUsableSchoolTemplate } from './scho
  */
 export const STEP_ORDER = [
   'avatar',
-  /* Second, so the flow's first real question is "where do you teach" — which
-     opens with the state, because that is what decides the standards a plan
-     can quote at all.
-    
-     It sits before `course` even though it WRITES to the class, which the
-     course step creates. That works because db.create_class stamps the
-     account's current default school (get_user_school), so this step's
-     api.updateMe({school}) lands first and the class inherits it; the state is
-     held in component state and passed into api.createClass, which already
-     accepts it. See saveSchool. */
-  'school',
-  'course',
-  'calendar',
+  /* School, course, grade, and calendar are one teaching-context decision.
+     The screen still guides those choices in a safe order, but the rail no
+     longer makes a teacher feel like each field is a separate task. */
+  'context',
   'format',
-  'materials',
-  /* Last, and it has to be.
-   *
-   * This sat before `materials` first, because the intent was to put the
-   * payoff ahead of the flow's biggest upload ask — asking for a teacher's
-   * pacing guide lands very differently once the product has proved itself.
-   * But `preview` is also the CLOSING screen (the old `done` step was merged
-   * into it, since the two were rendering the same summary twice), and its
-   * primary button is what records completion. A finish screen in the middle
-   * made `materials` unreachable: nextStep('format') returned 'preview', the
-   * flow ended, and the rail cheerfully showed a Materials step nobody could
-   * get to.
-   *
-   * When the real payoff screen lands — the standards receipt, quoting the
-   * teacher's own ingested standards back to them — it goes in HERE, as its
-   * own step before `materials`, which is what that ordering was reaching
-   * for. It is not this screen. */
+  /* The payoff is the closing screen. Optional supporting materials move
+     into the workspace after the teacher has received the core value. */
   'preview',
 ]
 
@@ -85,37 +61,14 @@ export const ONBOARDING_STEPS = {
        .docx header — so it is printed on every plan the teacher hands their
        district. The icon rides along because it is the part with genuinely
        nothing at stake, which is what makes this a safe opener. */
-    title: 'First — what name goes on your plans?',
+    title: 'Welcome to your next chapter.',
     required: false,
   },
-  course: {
-    label: 'Course',
-    title: 'Which course are you teaching?',
+  context: {
+    label: 'Teaching context',
+    title: 'Tell us about your teaching context.',
     required: true,
-  },
-  school: {
-    label: 'School',
-    /* One question, answered with a state and then a school. The state used to
-       be a step of its own, which meant spending a whole screen on a fifty-row
-       listbox where exactly one row was clickable.
-    
-       Asking it HERE rather than on page one is also what keeps it simple:
-       classes.state is a column on the class, and by this step the course step
-       has already created one — so it is a plain PATCH instead of something
-       threaded through api.createClass. */
-    title: 'Where do you teach?',
-    /* Required, because it carries the state, and the state is what says which
-       course of study a plan's standards are quoted from. The SCHOOL half is
-       still skippable inside the step: a teacher whose school isn't listed
-       keeps the 'generic' default and plans by week number. */
-    required: true,
-    writes: ['classes.state', 'users.school', 'classes.school'],
-  },
-  calendar: {
-    label: 'Calendar',
-    title: 'Is this your school year?',
-    required: false,
-    skipLabel: 'Skip — the dates look right',
+    writes: ['classes.state', 'users.school', 'classes.school', 'classes.subject', 'classes.grade'],
   },
   format: {
     label: 'Format',
@@ -128,12 +81,6 @@ export const ONBOARDING_STEPS = {
     title: 'Does this look right?',
     required: false,
     reward: true,
-  },
-  materials: {
-    label: 'Materials',
-    title: 'Do you want to add your teaching materials?',
-    required: false,
-    skipLabel: "Skip — I'll add these later",
   },
 }
 
@@ -193,7 +140,6 @@ export function derivePlan({
   schoolTemplates = [],
   schoolTemplatesLoading = false,
   calendarStatus = 'none',
-  hasMaterials = false,
 } = {}) {
   const chosenSchool = hasChosenSchool(school)
   const selectedSchool = schools.find((s) => s.id === school)
@@ -229,9 +175,7 @@ export function derivePlan({
        setup from Settings skips it, because by then the teacher has an avatar
        they chose and a menu to change it in. */
     avatar: firstRun,
-    course: !subject || !grade,
-    // Either half unanswered brings the step back.
-    school: !chosenSchool || !state,
+    context: decidingSchool || !subject || !grade || calendarStatus === 'pending' || school === GENERIC_SCHOOL,
     /* Only when there is something to review or disclose. A confirmed,
      * uncorrected calendar is a rubber stamp, so it folds into the preview
      * step's receipt instead of spending a screen. `generic` earns the screen
@@ -249,14 +193,10 @@ export function derivePlan({
      * (that shrink is what frozenPlan hides mid-flow); a step must never
      * appear. See the monotonicity assertion in
      * scripts/test-onboarding-steps.mjs. */
-    calendar: decidingSchool || calendarStatus === 'pending' || school === GENERIC_SCHOOL,
     format: decidingSchool || schoolNeedsTemplate || schoolTemplateSelectionStep,
     /* The payoff always renders. It is the only screen that gives something
-     * back rather than asking for something, which is the whole reason it sits
-     * before `materials` instead of after: asking for a teacher's biggest
-     * upload lands very differently once the product has proved itself. */
+     * back rather than asking for something. */
     preview: true,
-    materials: !hasMaterials,
   }
 
   return STEP_ORDER.filter((key) => needed[key])

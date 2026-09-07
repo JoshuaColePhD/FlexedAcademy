@@ -44,9 +44,16 @@ test.describe('onboarding progress journey', () => {
     expect(await footerBottom()).toBeCloseTo(profileFooterBottom, 0)
 
     await page.getByRole('option', { name: /AP English Language/ }).click()
-    await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByRole('heading', { name: 'Is this your school year?' })).toBeVisible()
+    await expect.poll(() => page.locator('#onboarding-title').evaluate((el) => el === document.activeElement)).toBe(true)
     expect(await footerBottom()).toBeCloseTo(profileFooterBottom, 0)
+
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.getByRole('button', { name: 'Skip — use a neutral layout for now' }).click()
+    await expect(page.getByRole('heading', { name: "You're ready to make great things." })).toBeVisible()
+    await expect(page.locator('.onboarding-confetti')).toHaveCount(32)
+    await page.getByRole('button', { name: 'Open my workspace', exact: true }).click()
+    await expect(page).toHaveURL(/\/c\/[^/]+$/)
   })
 
   test('keeps the compact track and fixed action footer inside a phone viewport, including reduced motion', async ({ page }) => {
@@ -61,6 +68,8 @@ test.describe('onboarding progress journey', () => {
       footerBottom: document.querySelector('.onboarding-footer')?.getBoundingClientRect().bottom,
       viewportBottom: window.innerHeight,
     }))
+    await expect(page.locator('.onboarding-confetti')).toHaveCount(0)
+    expect(await page.locator('.onboarding-celebration-emblem').evaluate((el) => getComputedStyle(el).animationName)).toBe('none')
     expect(layout.horizontalOverflow).toBe(false)
     // Chromium serializes the same reduced-motion duration as either 0.01ms
     // or 1e-05s, depending on the engine build.

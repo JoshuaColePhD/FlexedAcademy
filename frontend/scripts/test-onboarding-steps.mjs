@@ -80,15 +80,15 @@ const SETTLED = {
 // A brand-new account, holding the default 'generic', MUST still be asked.
 // This is what silently stopped happening.
 assert.ok(
-  derivePlan({ ...SETTLED, school: GENERIC_SCHOOL }).includes('school'),
+  derivePlan({ ...SETTLED, school: GENERIC_SCHOOL }).includes('context'),
   'a new account on the default school must still be asked where it teaches'
 )
 assert.ok(
-  derivePlan({ ...SETTLED, school: undefined }).includes('school'),
+  derivePlan({ ...SETTLED, school: undefined }).includes('context'),
   'an account with no school must be asked'
 )
 assert.ok(
-  !derivePlan(SETTLED).includes('school'),
+  !derivePlan(SETTLED).includes('context'),
   'an account with a real school is not asked again'
 )
 
@@ -114,7 +114,7 @@ assert.ok(
   'while templates are still loading we do not yet know, so keep the step'
 )
 
-// ── course is present exactly when course or grade is missing ─────────────
+// ── context is present exactly when teaching context is incomplete ─────────
 // The double-ask bug: /welcome collected both, then the wizard asked again,
 // because the derivation branched on `variant === 'page'` instead of on the
 // data. There is one flow and one condition now.
@@ -125,9 +125,9 @@ for (const [subject, grade, expected] of [
   [null, null, true],
 ]) {
   assert.equal(
-    derivePlan({ ...SETTLED, subject, grade }).includes('course'),
+    derivePlan({ ...SETTLED, subject, grade }).includes('context'),
     expected,
-    `course step for subject=${subject} grade=${grade}`
+    `context step for subject=${subject} grade=${grade}`
   )
 }
 
@@ -135,11 +135,8 @@ for (const [subject, grade, expected] of [
 /* `preview` is the finish: its button records completion. It sat mid-order
    once, which made every step after it unreachable while the rail still
    advertised them -- so this pins the invariant rather than the intent. */
-/* Every fixture here must include a step that COULD be sequenced after the
-   closing screen, or the assertion is vacuous. An earlier version used only
-   fixtures with hasMaterials: true -- so `materials` was never in the plan,
-   `preview` was trivially last, and moving it back to the middle did not fail
-   the suite. Checked by mutation, which is the only way to notice. */
+/* Every fixture here exercises the closing screen as a real terminal route,
+   so moving it earlier in STEP_ORDER would fail the suite. */
 for (const fixture of [
   { ...SETTLED, hasMaterials: false },
   { ...SETTLED, hasMaterials: false, firstRun: true },
@@ -270,25 +267,9 @@ const ANSWERS = {
      the purposes of this sweep -- see the note on `avatar` in derivePlan for
      why this is not read back off users.avatar. */
   avatar: () => ({ firstRun: false }),
-  course: () => ({ subject: 'ap-lang', grade: '11' }),
-  state: () => ({ state: 'AL' }),
-  /* Picking a school REVEALS two things that were unknowable before it: whether
-     that school has a usable format, and what state its calendar is in. Model
-     the worst case for both — a school with no template and a calendar still
-     awaiting review — because that is the combination that would make a step
-     appear if either guard were dropped. An earlier version of this answer left
-     calendarStatus untouched, and the monotonicity sweep passed even with the
-     `!chosenSchool` guard removed from `calendar`; it was asserting over a case
-     it never actually reached. */
-  /* Answering the school step answers BOTH halves of it — the state and the
-     school — since that is what the step asks for. Leaving the state out meant
-     the step stayed in the plan after being answered, which made the sweep
-     walk it forever. */
-  school: () => ({ school: 'unconfigured-school', state: 'AL', calendarStatus: 'pending' }),
-  calendar: () => ({ calendarStatus: 'confirmed' }),
+  context: () => ({ subject: 'ap-lang', grade: '11', school: 'florence-high-school', state: 'AL', calendarStatus: 'confirmed' }),
   format: () => ({ schoolTemplates: [{ id: 't1' }], schoolTemplatesLoading: false }),
   preview: () => ({}),
-  materials: () => ({ hasMaterials: true }),
 }
 
 for (const fixture of FIXTURES) {
@@ -317,8 +298,8 @@ for (const fixture of FIXTURES) {
  * documented catastrophic failure (db.py migration 38). */
 assert.deepEqual(
   Object.keys(ONBOARDING_STEPS).filter((key) => ONBOARDING_STEPS[key].required),
-  ['course', 'school'],
-  'only course and the school step (which carries the state) are required'
+  ['context'],
+  'the combined teaching-context stage is required'
 )
 
 // Metadata and order can never disagree about which steps exist.

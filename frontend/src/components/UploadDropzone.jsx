@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, FileText, Link as LinkIcon, Loader2, Upload } from 'lucide-react'
+import { FileText, Link as LinkIcon, Loader2, Upload } from 'lucide-react'
 
 const formatFileSize = (bytes) => {
   if (!bytes) return ''
@@ -44,15 +44,14 @@ export function UploadDropzone({
   blankTemplateAttested = false,
   onBlankTemplateAttestedChange,
   uploadStatus = 'idle',
-  compactGuidance = false,
   className = '',
 }) {
   const fileRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
+  const [fileError, setFileError] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
   const [linkOpen, setLinkOpen] = useState(Boolean(url?.trim()))
-  const [guidanceOpen, setGuidanceOpen] = useState(!compactGuidance && !blankTemplateAttested)
 
   useEffect(() => {
     if (!selectedFile || selectedFile.type !== 'application/pdf') {
@@ -69,13 +68,15 @@ export function UploadDropzone({
     if (url?.trim()) setLinkOpen(true)
   }, [url])
 
-  useEffect(() => {
-    if (!blankTemplateAttested && !compactGuidance) setGuidanceOpen(true)
-  }, [blankTemplateAttested, compactGuidance])
-
   const handleFiles = (fileList) => {
+    if (uploading || (templateUpload && !blankTemplateAttested)) return
     const file = fileList?.[0]
     if (file) {
+      if (templateUpload && !/\.(pdf|docx)$/i.test(file.name)) {
+        setFileError('Choose a PDF or Word (.docx) file. For a Google Doc, use the link option below.')
+        return
+      }
+      setFileError('')
       setSelectedFile(file)
       onFile(file)
     }
@@ -117,40 +118,7 @@ export function UploadDropzone({
           </p>
         </div>
       ) : null}
-      {templateUpload ? (
-        <div className={`rounded-lg border px-3 py-2 text-xs ${blankTemplateAttested ? 'border-ok/20 bg-ok/5' : 'border-amber-500/25 bg-amber-50/70'}`}>
-          <button
-            type="button"
-            aria-expanded={guidanceOpen}
-            onClick={() => setGuidanceOpen((open) => !open)}
-            className="flex w-full items-center justify-between gap-2 text-left"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="font-semibold text-ink">Before you upload</span>
-              <span className={`rounded-full px-1.5 py-0.5 text-2xs font-medium ${blankTemplateAttested ? 'bg-ok/10 text-ok' : 'bg-amber-500/10 text-amber-800'}`}>
-                {blankTemplateAttested ? 'Confirmed' : 'Required'}
-              </span>
-            </span>
-            <ChevronDown size={14} aria-hidden="true" className={`shrink-0 text-ink-muted transition-transform ${guidanceOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {guidanceOpen ? (
-            <div className="mt-2 border-t border-amber-500/15 pt-2 text-amber-900/80">
-              <p>Remove names, dates, standards, activities, and completed cells. Keep the blank layout, labels, colors, tables, and formatting.</p>
-              <label className="mt-2 flex cursor-pointer items-start gap-2 font-medium text-ink">
-                <input
-                  type="checkbox"
-                  checked={blankTemplateAttested}
-                  onChange={(e) => {
-                    onBlankTemplateAttestedChange?.(e.target.checked)
-                    if (e.target.checked) setGuidanceOpen(false)
-                  }}
-                />
-                <span>I confirm this is a blank reusable format.</span>
-              </label>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {fileError ? <p className="text-sm text-mark" role="alert">{fileError}</p> : null}
       {templateUpload && !selectedName ? (
         <div className="flex items-center gap-2 rounded-lg bg-paper-sunken px-3 py-2 text-xs text-ink-muted">
           <Upload size={14} className="shrink-0 text-accent-text" aria-hidden="true" />
@@ -174,7 +142,7 @@ export function UploadDropzone({
             <p className="truncate text-sm font-semibold text-ink">{selectedName}</p>
             <p className="mt-0.5 text-2xs text-ink-muted">
               {selectedFile ? `${fileTypeLabel(selectedFile)}${formatFileSize(selectedFile.size) ? ` · ${formatFileSize(selectedFile.size)}` : ''}` : 'Selected format'}
-              {uploading ? ' · Reading…' : uploadStatus === 'processing' ? ' · Being analyzed' : ' · Ready to replace'}
+              {uploading ? ' · Reading…' : uploadStatus === 'processing' ? ' · Being analyzed' : ' · Ready to analyze'}
             </p>
           </div>
           {statusMeta ? <span className={`hidden shrink-0 rounded-full px-2 py-1 text-2xs font-medium sm:inline-flex ${statusMeta.className}`}>{statusMeta.label}</span> : null}
@@ -186,6 +154,19 @@ export function UploadDropzone({
           >
             Replace
           </button>
+        </div>
+      ) : null}
+      {templateUpload ? (
+        <div className="template-blank-attestation">
+          <p className="template-blank-note"><span aria-hidden="true">*</span> Best if format is blank.</p>
+          <label>
+            <input
+              type="checkbox"
+              checked={blankTemplateAttested}
+              onChange={(e) => onBlankTemplateAttestedChange?.(e.target.checked)}
+            />
+            <span>I confirm this is a blank reusable format.</span>
+          </label>
         </div>
       ) : null}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">

@@ -1,4 +1,4 @@
-import { createContext, Fragment, lazy, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import usaMap from '@svg-maps/usa'
@@ -59,43 +59,16 @@ import { OnboardingStepRail } from './onboarding/OnboardingStepRail'
 import { OnboardingQuestion, OnboardingChoiceLabel } from './onboarding/OnboardingQuestion'
 import { OnboardingActions } from './onboarding/OnboardingActions'
 import { AvatarPicker } from './AvatarPicker'
+import { OnboardingCelebration } from './onboarding/OnboardingCelebration'
+import { TemplateIngestionVisual, TemplateSectionList } from './onboarding/TemplateIngestionVisual'
 import { getAvatar, getInitials } from '../lib/avatars'
-// ClassDocuments used to live inside ClassPage.jsx and was re-exported from
-// there; it later moved out to its own file (components/ClassDocuments.jsx)
-// with nothing left behind at the old path, so this lazy import silently
-// resolved to `{ default: undefined }` and crashed the MaterialsStep below
-// with "Element type is invalid" the moment a teacher reached it — every
-// first-run account, since /welcome always leaves `documents` in the plan.
-const ClassDocuments = lazy(() => import('./ClassDocuments.jsx').then((module) => ({ default: module.ClassDocuments })))
-
-
-/* Steps move UP the way a path does, not sideways like pages.
- *
- * The rail beside them travels DOWN as setup progresses, so the content
- * advancing upward is the same motion read from the other side: forward, the
- * next question rises into place; back, the previous one drops in from above.
- * A horizontal slide said "different page" instead, which is the opposite of
- * what a numbered sequence wants to say.
- *
- * 20px, where the app's own vertical reveals are 4-8px (--motion-reveal,
- * .fa-rise, App.jsx's route transition). Deliberately larger: those are
- * elements settling INTO a page, and this is the whole pane changing, which is
- * one authored moment rather than the scattered motion DESIGN.md rules out.
- *
- * Asymmetric, because AnimatePresence mode="wait" plays exit fully before
- * enter starts: two symmetric --t-base legs would total 440ms for one step.
- * --t-fast out and --t-base in lands around --t-enter. --ease-glide rather
- * than --ease-out, which is already at full speed on its first frame and
- * reads as a snap at this size (see that token's own comment).
- *
- * <MotionConfig reducedMotion="user"> in App.jsx neutralises the transform for
- * anyone who asked; base.css's blanket prefers-reduced-motion block only
- * governs CSS, which is why the rail's own transitions stay in CSS.
- */
+/* Directional step reveals make forward progress feel tangible. The 28px
+ * entrance settles over 320ms; a shorter 18px exit keeps navigation brisk.
+ * App.jsx's MotionConfig neutralises transforms for reduced-motion users. */
 const STEP_VARIANTS = {
-  enter: (dir) => ({ opacity: 0, y: dir * 20 }),
-  center: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
-  exit: (dir) => ({ opacity: 0, y: dir * -20, transition: { duration: 0.13, ease: [0.22, 1, 0.36, 1] } }),
+  enter: (dir) => ({ opacity: 0, y: dir * 28 }),
+  center: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } },
+  exit: (dir) => ({ opacity: 0, y: dir * -18, transition: { duration: 0.13, ease: [0.22, 1, 0.36, 1] } }),
 }
 
 /* The action row belongs to the wizard, not to each individual question.
@@ -112,15 +85,15 @@ const STEP_VARIANTS = {
  * effect into a render loop every time a handler closes over fresh state. */
 const OnboardingActionContext = createContext(null)
 
-function useOnboardingActions(config) {
+function useOnboardingActions(config, enabled = true) {
   const register = useContext(OnboardingActionContext)
   const configRef = useRef(config)
   configRef.current = config
 
   useLayoutEffect(() => {
-    if (!register) return undefined
+    if (!register || !enabled) return undefined
     return register(configRef)
-  }, [register])
+  }, [register, enabled])
 }
 
 /* The teacher's own chosen icon, pinned to the footer's own bottom-left
@@ -148,13 +121,13 @@ function OnboardingFooterAvatar({ configRef }) {
   )
 }
 
-function OnboardingFooter({ configRef }) {
+function OnboardingFooter({ configRef, stepKey }) {
   const config = configRef?.current
   if (!config) return <div className="onboarding-footer" aria-hidden="true" />
 
   if (config.status) {
     return (
-      <div className="onboarding-footer">
+      <div className="onboarding-footer" data-step={stepKey}>
         <OnboardingFooterAvatar configRef={configRef} />
         <p className="flex items-center gap-2 text-sm text-ink-muted" role="status">
           <Loader2 size={14} className="animate-spin" aria-hidden="true" /> {config.status}
@@ -164,7 +137,7 @@ function OnboardingFooter({ configRef }) {
   }
 
   return (
-    <div className="onboarding-footer">
+    <div className="onboarding-footer" data-step={stepKey}>
       <OnboardingFooterAvatar configRef={configRef} />
       {config.onBack ? (
         <button type="button" className="onboarding-quiet onboarding-footer-back" onClick={config.onBack}>
@@ -274,6 +247,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const [templateAnalysis, setTemplateAnalysis] = useState(null)
   const [templateFindings, setTemplateFindings] = useState([])
   const [templateAnalysisStatus, setTemplateAnalysisStatus] = useState(null)
+  const [templateError, setTemplateError] = useState('')
 
   // State is the first onboarding decision because it determines which
   // standards catalog the rest of the setup should be grounded in.
@@ -305,6 +279,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
      labels one screen behind. */
   const [courseSubStep, setCourseSubStep] = useState(() => (subject ? 'course' : grade ? 'discipline' : 'grade'))
   const [courseDiscipline, setCourseDiscipline] = useState(null)
+  const [contextPhase, setContextPhase] = useState('school')
 
   const [finishing, setFinishing] = useState(false)
 
@@ -369,6 +344,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setTemplateAnalysis(null)
     setTemplateFindings([])
     setTemplateAnalysisStatus(null)
+    setTemplateError('')
     setSelectingTemplateId(null)
     setState(activeClass?.state || '')
     setStateError(false)
@@ -377,6 +353,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
     setCourseSubStep(activeClass?.subject ? 'course' : activeClass?.grade ? 'discipline' : 'grade')
     // Re-derived once frameworks load — see the effect inside CourseStep.
     setCourseDiscipline(null)
+    setContextPhase('school')
     /* Keyed on the class this wizard was OPENED with, not on activeClass.
        activeClass changes the moment the course step creates one, and this
        effect resets stepKey to the plan's first step — so on the very first
@@ -402,14 +379,12 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
      exactly the accounts the step exists for: every new teacher silently
      skipped it, was never asked where they teach, and got dateless weeks plus
      the default school's layout on every download with nothing saying so. */
-  const chosenSchool = hasChosenSchool(school)
   const selectedSchool = schools.find((s) => s.id === school)
   // A school can have a usable hand-written or verified generated builder
   // while its separate template-content review is still pending. Onboarding
   // should ask for a file only when downloads genuinely have no usable school
   // format, not when the review status happens to lag behind the builder.
   const schoolHasUsableTemplate = hasUsableSchoolTemplate(selectedSchool)
-  const schoolNeedsTemplate = chosenSchool && selectedSchool && !schoolHasUsableTemplate
 
   /* Which steps this account actually has to sit through. The page variant is
    * the first-run setup, so it always includes a course confirmation even if
@@ -477,6 +452,10 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   }
   const goNext = () => goTo(nextStep(plan, stepKey))
   const goBack = () => goTo(prevStep(plan, stepKey))
+  const goToContext = () => {
+    setContextPhase('school')
+    goTo('context')
+  }
 
   /* The rail now includes the closing screen as the route's visible endpoint.
      `preview` is still terminal in the PLAN (and its CTA still records
@@ -571,7 +550,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
         await api.updateClass(activeClass.id, { school })
         qc.invalidateQueries({ queryKey: qk.classes })
       }
-      goNext()
+      if (stepKey === 'context') setContextPhase('course')
+      else goNext()
     } catch (err) {
       toast.apiError('Could not save that', err)
     } finally {
@@ -580,6 +560,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   }
 
   const saveTemplate = async () => {
+    if (savingTemplate) return
     if (templatePhase === 'confirmed') {
       goNext()
       return
@@ -588,6 +569,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       goNext()
       return
     }
+    if (!hasChosenSchool(school) || !blankTemplateAttested) return
+    setTemplateError('')
     setSavingTemplate(true)
     setTemplatePhase('processing')
     try {
@@ -613,7 +596,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       qc.invalidateQueries({ queryKey: ['school-templates', school] })
     } catch (err) {
       setTemplatePhase('upload')
-      toast.apiError('Could not submit that format', err)
+      setTemplateError(err.message || 'We couldn’t read that template. Try again or choose another file.')
     } finally {
       setSavingTemplate(false)
     }
@@ -702,7 +685,8 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
           qc.invalidateQueries({ queryKey: qk.classes })
         }
       }
-      goNext()
+      if (stepKey === 'context') setContextPhase('calendar')
+      else goNext()
     } catch (err) {
       toast.apiError('Could not set that up', err)
     } finally {
@@ -763,17 +747,19 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       {/* Slim top bar, wordmark centred — the reference layout's chrome, and
           the same treatment /welcome's own header gives it. */}
       <div className="onboarding-topbar">
-        {/* Same seal used in AppShell's own sidebar header — reused rather
-            than a second mark invented for onboarding, so the first screen
-            a new account sees and the app it lands in afterward carry the
-            same logo. */}
-        <svg viewBox="0 0 64 64" className="onboarding-topbar-logo" aria-hidden="true">
-          <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
-          <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
-          <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" className="land-seal-ring" />
-          <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
-        </svg>
-        <span className="onboarding-wordmark">FlexEd Academy</span>
+        <div className="onboarding-topbar-brand">
+          {/* Same seal used in AppShell's own sidebar header — reused rather
+              than a second mark invented for onboarding, so the first screen
+              a new account sees and the app it lands in afterward carry the
+              same logo. */}
+          <svg viewBox="0 0 64 64" className="onboarding-topbar-logo" aria-hidden="true">
+            <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
+            <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
+            <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" className="land-seal-ring" />
+            <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
+          </svg>
+          <span className="onboarding-wordmark">FlexEd Academy</span>
+        </div>
         {/* A mailto:, not a button that sends anything itself — this just
             opens whatever mail client the teacher already has, with them as
             the one composing and sending. Placed even on the page variant,
@@ -799,7 +785,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
           <button
             type="button"
             className="onboarding-topbar-close"
-            onClick={finish}
+            onClick={() => finish()}
             aria-label="Close"
             title="Skip for now"
           >
@@ -816,20 +802,26 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
           tall step out of reach instead. */}
       <div className="onboarding-scroll" ref={scrollRef}>
         <div className="onboarding-body">
-          <OnboardingStepRail steps={railSteps} activeKey={stepKey} onGoTo={goTo} />
+          <OnboardingStepRail
+            steps={railSteps}
+            activeKey={stepKey}
+            onGoTo={goTo}
+            watermark={stepKey === 'context' && contextPhase === 'school' && state ? <StateWatermark stateCode={state} /> : null}
+            railVisual={stepKey === 'format' && templatePhase === 'upload' ? <TemplateIngestionVisual /> : null}
+          />
           <div className="onboarding-column">
           {/* data-fill hands the card's own height down to a step whose
               content is itself a scroll region (the course browser), so there
               is only ever one scrollbar. */}
             <div
               className="onboarding-content"
-              data-fill={stepKey === 'course' ? 'true' : undefined}
+              data-fill={stepKey === 'context' && contextPhase === 'course' ? 'true' : undefined}
               /* .onboarding-content is normally only min-height tall (a
                  floor, not a fill) — that's what leaves the deliberate blank
                  space below every other short step. The school step's own
                  centering has nothing to centre INTO unless this box actually
                  grows to the full column height first. */
-              data-center={stepKey === 'school' ? 'true' : undefined}
+              data-center={stepKey === 'context' && contextPhase === 'school' ? 'true' : undefined}
             >
 
             <AnimatePresence mode="wait" custom={direction} initial={false}>
@@ -852,7 +844,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                    fields floating over a watermark — so it's centred in the
                    full frame instead, equidistant from the rail's top and
                    the footer, not pinned to the question's usual top edge. */
-                className={stepKey === 'school' ? 'onboarding-step-center' : undefined}
+                className={stepKey === 'context' && contextPhase === 'school' ? 'onboarding-step-center' : undefined}
               >
             {stepKey === 'avatar' ? (
               <ProfileStep
@@ -861,8 +853,9 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 saving={savingProfile}
                 onNext={saveProfile}
               />
-            ) : stepKey === 'school' ? (
-              <SchoolStep
+              ) : stepKey === 'context' ? (
+              <TeachingContextStep
+                phase={contextPhase}
                 school={school}
                 onSchoolChange={(value) => {
                   setSchool(value)
@@ -878,30 +871,41 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 activeStates={activeStates}
                 state={state}
                 setState={(value) => { setState(value); setStateError(null) }}
-                error={stateError}
-                saving={savingSchool}
-                requesting={requestingState}
+                stateError={stateError}
+                savingSchool={savingSchool}
+                requestingState={requestingState}
                 requestedState={requestedState}
                 onRequestState={requestStateStandards}
-                onBack={goBack}
-                onNext={saveSchool}
-                onSkip={goNext}
-              />
-            ) : stepKey === 'calendar' ? (
-              <CalendarStep
-                school={school}
+                subject={subject}
+                setSubject={(value) => { setSubject(value); setCourseError(null) }}
+                grade={grade}
+                setGrade={(value) => { setGrade(value); setCourseError(null) }}
+                frameworks={frameworks}
+                savingCourse={savingCourse}
+                courseError={courseError}
+                courseSubStep={courseSubStep}
+                setCourseSubStep={setCourseSubStep}
+                courseDiscipline={courseDiscipline}
+                setCourseDiscipline={setCourseDiscipline}
                 selectedSchool={selectedSchool}
+                onSaveSchool={saveSchool}
+                onSkipSchool={() => setContextPhase('course')}
+                onSaveCourse={saveCourse}
+                onFinish={goNext}
                 onBack={goBack}
-                onNext={goNext}
+                onBackToSchool={() => setContextPhase('school')}
+                onBackToCourse={() => setContextPhase('course')}
               />
             ) : stepKey === 'format' ? (
               <FormatStep
                 schoolName={selectedSchool?.name || school}
+                canUpload={hasChosenSchool(school)}
+                onChooseSchool={goToContext}
+                uploadError={templateError}
                 templates={schoolTemplates}
                 templatesLoading={schoolTemplatesLoading}
                 selectingTemplateId={selectingTemplateId}
                 onSelectTemplate={selectOnboardingTemplate}
-                schoolNeedsTemplate={schoolNeedsTemplate}
                 schoolFormatReady={schoolHasUsableTemplate}
                 phase={templatePhase}
                 analysis={templateAnalysis}
@@ -909,6 +913,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 analysisStatus={templateAnalysisStatus}
                 templateFile={templateFile}
                 setTemplateFile={(file) => {
+                  setTemplateError('')
                   setTemplateFile(file)
                   setTemplatePhase('upload')
                   setTemplateAnalysis(null)
@@ -917,6 +922,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 }}
                 templateUrl={templateUrl}
                 setTemplateUrl={(value) => {
+                  setTemplateError('')
                   setTemplateUrl(value)
                   setTemplatePhase('upload')
                   setTemplateAnalysis(null)
@@ -934,34 +940,6 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                   toast.success('Format confirmed', 'This format will be used for new plans.')
                 }}
               />
-            ) : stepKey === 'course' ? (
-              <CourseStep
-                subject={subject}
-                /* Clears the error, and deliberately does NOT advance.
-                   This used to be `onChange={(v) => { setSubject(v); if (error) onNext() }}`
-                   inside CourseStep, where onNext is saveCourse — which closes
-                   over the CURRENT render's `subject`. So picking a course
-                   while the error was showing called saveCourse() with subject
-                   still '' and simply re-set the same error, which read as the
-                   click doing nothing at all. Auto-advancing on a click inside
-                   a browse list is also hostile on its own: a teacher scanning
-                   courses got teleported forward by a misclick. Same wrapper
-                   shape as setState above. */
-                setSubject={(value) => { setSubject(value); setCourseError(null) }}
-                grade={grade}
-                setGrade={(value) => { setGrade(value); setCourseError(null) }}
-                frameworks={frameworks}
-                saving={savingCourse}
-                error={courseError}
-                onBack={goBack}
-                onNext={saveCourse}
-                subStep={courseSubStep}
-                setSubStep={setCourseSubStep}
-                discipline={courseDiscipline}
-                setDiscipline={setCourseDiscipline}
-              />
-            ) : stepKey === 'materials' ? (
-              <MaterialsStep cls={activeClass} onBack={goBack} onNext={goNext} />
             ) : stepKey === 'preview' ? (
               /* Explicitly matched, not a trailing `else`. As a fallthrough
                  this branch rendered the finish screen for ANY key it didn't
@@ -987,7 +965,9 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
                 courseName={frameworks.find((framework) => framework.id === subject)?.label || subject}
                 gradeName={gradeLabel(grade)}
                 editableSteps={plan}
-                onEdit={(target) => { if (plan.includes(target)) goTo(target) }}
+                onEdit={(target) => {
+                  if (target === 'context' || target === 'school' || target === 'course' || target === 'calendar') goToContext()
+                }}
                 onBack={goBack}
               />
             ) : null}
@@ -998,7 +978,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
           </div>
         </div>
       </div>
-      <OnboardingFooter configRef={footerRef} />
+      <OnboardingFooter configRef={footerRef} stepKey={stepKey} />
     </OnboardingActionContext.Provider>
   )
 
@@ -1077,11 +1057,13 @@ function ProfileStep({ name, setName, saving, onNext }) {
      rather than only updating once this step is saved. */
   useOnboardingActions({ onNext, busy: saving, previewName: name })
   return (
-    <div>
+    <div className="onboarding-welcome">
       <OnboardingQuestion
         question={ONBOARDING_STEPS.avatar.title}
-        lead="Your name is printed in the header of every plan you download, so it's worth getting right — whatever your school actually calls you, not necessarily what's on your contract."
-      />
+        lead="Let's make this space yours. Start with the name you'd like printed on your lesson plans."
+      >
+        <OnboardingCelebration />
+      </OnboardingQuestion>
 
       <OnboardingChoiceLabel as="label" htmlFor="onboarding-name">
         The name on your plans
@@ -1100,8 +1082,10 @@ function ProfileStep({ name, setName, saving, onNext }) {
         className="neo-inset w-full max-w-measure-narrow rounded-lg bg-paper-raised px-3.5 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
       />
 
-      <OnboardingChoiceLabel>And an icon, if you like</OnboardingChoiceLabel>
-      <AvatarPicker size="xl" previewName={name} />
+      <div className="onboarding-avatar-wide">
+        <OnboardingChoiceLabel>Pick a little personality</OnboardingChoiceLabel>
+        <AvatarPicker size="xl" previewName={name} />
+      </div>
 
       {/* No skip. There is nothing to skip past — the name is pre-filled and
           the icon already defaults to initials, so Continue IS the "leave it
@@ -1157,9 +1141,8 @@ function measureStateViewBox(location) {
 
 /* Decoration, not confirmation — the select's own value already says which
  * state got chosen, so this doesn't need a header or a chip row repeating
- * it. It sits behind the fields as a large, pale outline rather than beside
- * them in its own boxed card, which is what made it read as a second,
- * disconnected widget instead of part of the question. */
+ * it. The outline lives in the rail beneath the encouragement copy, where it
+ * adds context without competing with the two controls. */
 function StateWatermark({ stateCode }) {
   const selected = usaMap.locations.find((location) => location.id === stateCode.toLowerCase())
   const viewBox = useMemo(() => (selected ? measureStateViewBox(selected) : null), [selected])
@@ -1218,6 +1201,7 @@ function SchoolStep({
   onBack,
   onNext,
   onSkip,
+  registerActions = true,
 }) {
   const ready = Boolean(state) && isStandardsReady(state, activeStates)
   useOnboardingActions({
@@ -1226,7 +1210,7 @@ function SchoolStep({
     onBack,
     onSkip: ready ? onSkip : undefined,
     skipLabel: "Skip the school — I'll plan by week number",
-  })
+  }, registerActions)
   /* Rows with no recorded state are kept rather than filtered out: NULL means
      "not recorded" (create_school is reachable from the admin page and from a
      calendar submission with no state to hand), and dropping them would hide a
@@ -1242,10 +1226,9 @@ function SchoolStep({
     // carries the horizontal re-centring shift, so the shift never touches
     // the question above it.
     <div className="onboarding-where-shell">
-      <OnboardingQuestion question={ONBOARDING_STEPS.school.title} />
+      <OnboardingQuestion question="Where do you teach?" />
 
       <div className="onboarding-where-body">
-        {state ? <StateWatermark stateCode={state} /> : null}
         <div className="onboarding-where-layout">
         <div className="onboarding-where-fields">
           <OnboardingChoiceLabel as="label" htmlFor="onboarding-state">
@@ -1370,13 +1353,13 @@ function SchoolStep({
  * that fact lived only in a code comment — a teacher could finish setup on the
  * generic school and never be told their plans would have no dates on them.
  */
-function CalendarStep({ school, selectedSchool, onBack, onNext }) {
+function CalendarStep({ school, selectedSchool, onBack, onNext, registerActions = true }) {
   useOnboardingActions({
     onNext,
     onBack,
     onSkip: onNext,
-    skipLabel: ONBOARDING_STEPS.calendar.skipLabel,
-  })
+    skipLabel: 'Skip — the dates look right',
+  }, registerActions)
   const pending = selectedSchool?.has_pending_calendar
   const confirmed = selectedSchool?.has_calendar
   const toast = useToast()
@@ -1409,7 +1392,7 @@ function CalendarStep({ school, selectedSchool, onBack, onNext }) {
   return (
     <div>
       <OnboardingQuestion
-        question={ONBOARDING_STEPS.calendar.title}
+        question="Is this your school year?"
         lead={
           pending
             ? 'A colleague at your school already set this up. Worth a look before we date your plans with it.'
@@ -1466,13 +1449,135 @@ function CalendarStep({ school, selectedSchool, onBack, onNext }) {
   )
 }
 
+/* School, course, grade, and calendar are one teaching-context decision.
+ * They still unfold in a safe order so the school can narrow the choices and
+ * the grade can narrow the course catalog, but the rail treats them as one
+ * stage and the teacher gets one clear destination: their format. */
+function TeachingContextStep({
+  phase,
+  school,
+  onSchoolChange,
+  schools,
+  activeStates,
+  state,
+  setState,
+  stateError,
+  savingSchool,
+  requestingState,
+  requestedState,
+  onRequestState,
+  subject,
+  setSubject,
+  grade,
+  setGrade,
+  frameworks,
+  savingCourse,
+  courseError,
+  courseSubStep,
+  setCourseSubStep,
+  courseDiscipline,
+  setCourseDiscipline,
+  selectedSchool,
+  onSaveSchool,
+  onSkipSchool,
+  onSaveCourse,
+  onFinish,
+  onBack,
+  onBackToSchool,
+  onBackToCourse,
+}) {
+  const phaseIndex = phase === 'school' ? 1 : phase === 'course' ? 2 : 3
+  const phaseLabel = phase === 'school' ? 'School' : phase === 'course' ? 'Course' : 'Calendar'
+  const schoolReady = Boolean(state) && isStandardsReady(state, activeStates)
+  const actionConfig = phase === 'school'
+    ? {
+        onNext: onSaveSchool,
+        busy: savingSchool,
+        onBack,
+        onSkip: schoolReady ? onSkipSchool : undefined,
+        skipLabel: "Skip the school — I'll plan by week number",
+      }
+    : phase === 'course'
+      ? { onNext: onSaveCourse, busy: savingCourse, onBack: onBackToSchool }
+      : { onNext: onFinish, onBack: onBackToCourse, onSkip: onFinish, skipLabel: 'Skip — the dates look right' }
+
+  useOnboardingActions(actionConfig)
+  useEffect(() => {
+    const timer = setTimeout(() => document.getElementById('onboarding-title')?.focus({ preventScroll: true }), 240)
+    return () => clearTimeout(timer)
+  }, [phase])
+
+  return (
+    <div className="onboarding-context-step">
+      <div className="onboarding-context-heading" aria-label={`Teaching context: ${phaseLabel}`}>
+        <span>Teaching context</span>
+        <span>{phaseIndex} of 3 · {phaseLabel}</span>
+      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        {phase === 'school' ? (
+          <motion.div key="context-school" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+            <SchoolStep
+              school={school}
+              onSchoolChange={onSchoolChange}
+              schools={schools}
+              activeStates={activeStates}
+              state={state}
+              setState={setState}
+              error={stateError}
+              saving={savingSchool}
+              requesting={requestingState}
+              requestedState={requestedState}
+              onRequestState={onRequestState}
+              onBack={onBack}
+              onNext={onSaveSchool}
+              onSkip={onSkipSchool}
+              registerActions={false}
+            />
+          </motion.div>
+        ) : phase === 'course' ? (
+          <motion.div key="context-course" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+            <CourseStep
+              subject={subject}
+              setSubject={setSubject}
+              grade={grade}
+              setGrade={setGrade}
+              frameworks={frameworks}
+              saving={savingCourse}
+              error={courseError}
+              onBack={onBackToSchool}
+              onNext={onSaveCourse}
+              subStep={courseSubStep}
+              setSubStep={setCourseSubStep}
+              discipline={courseDiscipline}
+              setDiscipline={setCourseDiscipline}
+              registerActions={false}
+            />
+          </motion.div>
+        ) : (
+          <motion.div key="context-calendar" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+            <CalendarStep
+              school={school}
+              selectedSchool={selectedSchool}
+              onBack={onBackToCourse}
+              onNext={onFinish}
+              registerActions={false}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 function FormatStep({
   schoolName,
+  canUpload,
+  onChooseSchool,
+  uploadError,
   templates,
   templatesLoading,
   selectingTemplateId,
   onSelectTemplate,
-  schoolNeedsTemplate,
   schoolFormatReady,
   phase,
   analysis,
@@ -1495,65 +1600,63 @@ function FormatStep({
   const errors = findings.filter((finding) => finding.severity === 'error')
   const warnings = findings.filter((finding) => finding.severity === 'warning')
   const hasInput = Boolean(templateFile || templateUrl.trim())
-  const reviewable = sections.length > 0 && analysisStatus !== 'failed'
+  const reviewable = sections.length > 0 && ['analyzed', 'analyzed_with_warnings'].includes(analysisStatus)
+  const phaseRef = useRef(phase)
+  const rootRef = useRef(null)
+  const [takingLonger, setTakingLonger] = useState(false)
+  useEffect(() => {
+    if (phaseRef.current !== phase) {
+      rootRef.current?.closest('.onboarding-scroll')?.scrollTo({ top: 0, behavior: 'auto' })
+      rootRef.current?.querySelector('#onboarding-title')?.focus({ preventScroll: true })
+      phaseRef.current = phase
+    }
+    setTakingLonger(false)
+    if (phase !== 'processing') return undefined
+    const timer = setTimeout(() => setTakingLonger(true), 15000)
+    return () => clearTimeout(timer)
+  }, [phase])
   const title = phase === 'processing'
-    ? 'Analyzing your format'
+    ? 'Getting to know your template.'
     : phase === 'review'
-      ? 'Review the detected format'
+      ? reviewable ? 'There’s your teaching rhythm.' : 'Let’s try a clearer template.'
       : phase === 'confirmed'
-        ? 'Your format is ready'
-        : 'Add your lesson-plan format'
+        ? 'Your format. From here on.'
+        : 'Make every plan feel like yours.'
   const personalDefault = templates.find((template) => template.is_personal_default)
   const schoolDefault = templates.find((template) => template.is_school_default)
   const defaultTemplate = personalDefault || schoolDefault
   const body = phase === 'processing'
-    ? 'FlexEd is reading the structure of your template now.'
+    ? 'FlexEd is looking for your headings, tables, and the order your lessons follow.'
     : phase === 'review'
-      ? 'Check the sections FlexEd found before making this the format for new plans.'
+      ? reviewable ? 'Here’s the structure FlexEd found. Check it against your original before moving on.' : 'We couldn’t find a usable structure. Choose a blank PDF or Word document with clear headings.'
       : phase === 'confirmed'
-        ? 'This format is now connected to your planning workflow.'
+        ? 'Your template is saved as your personal default. Your next plan starts with your structure.'
         : defaultTemplate || schoolFormatReady
           ? 'Your school format is ready and will be used for new plans. You can add a personal format if you want.'
           : schoolName
-            ? `Give FlexEd a blank example from ${schoolName}, or choose a format already on file.`
-          : 'Give FlexEd a blank example of the format you want your plans to follow.'
+            ? `Add your blank template from ${schoolName} once. Give every new plan a familiar starting point.`
+          : 'Add your blank template once. Give every new plan a familiar starting point.'
 
   useOnboardingActions(
     phase === 'upload'
-      ? { onNext, nextLabel: hasInput ? 'Analyze format' : 'Continue', busy: saving, onBack, onSkip, skipLabel: 'Skip — use a neutral layout for now' }
+      ? { onNext, nextLabel: hasInput ? 'Analyze my template' : defaultTemplate || schoolFormatReady ? 'Continue with this format' : 'Analyze my template', disabled: hasInput ? !blankTemplateAttested || !canUpload : !defaultTemplate && !schoolFormatReady, busy: saving || Boolean(selectingTemplateId), onBack, onSkip, skipLabel: 'Skip — use a neutral layout for now' }
       : phase === 'processing'
-        ? { status: 'Working on it…' }
+        ? { status: 'Reading your template…' }
         : phase === 'review'
           ? { onNext: onConfirm, nextLabel: 'Use this format', disabled: !reviewable, onBack: onEdit, backLabel: 'Choose another file' }
-          : { onNext, onBack },
+          : { onNext, nextLabel: 'Keep going', onBack: onEdit, backLabel: 'Change template' },
   )
 
   return (
-    <div>
+    <div className="template-ingestion" data-phase={phase} ref={rootRef}>
       <OnboardingQuestion
         question={title}
         lead={body}
       />
-      <div className="onboarding-template-panel rounded-2xl p-5 sm:p-7">
+      <TemplateIngestPath phase={phase} />
+      <div key={phase} className="template-phase-content">
         {phase === 'upload' ? (
           <>
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="onboarding-template-kicker">Template setup</p>
-                <h3 className="mt-1 text-xl font-semibold tracking-tight text-ink">
-                  {defaultTemplate || schoolFormatReady ? 'Use the school format or add your own' : schoolNeedsTemplate ? 'Teach FlexEd your format' : 'Choose how plans should look'}
-                </h3>
-                <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-muted">
-                  Upload a blank lesson-plan example. FlexEd will read the sections, order, and layout before it formats future plans.
-                </p>
-              </div>
-              <span className={`onboarding-template-status ${schoolNeedsTemplate ? 'is-needed' : 'is-ready'}`}>
-                {schoolNeedsTemplate ? 'Needed' : 'Optional'}
-              </span>
-            </div>
-
-            <TemplateIngestPath phase={phase} />
-
             {templates.length || templatesLoading ? (
               <div className="onboarding-template-choice mt-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">{defaultTemplate ? 'Default for new plans' : 'Formats already available'}</p>
@@ -1566,21 +1669,23 @@ function FormatStep({
               </div>
             ) : null}
 
-            <div className="onboarding-template-input-grid mt-6">
+            {uploadError ? <div className="template-upload-error" role="alert"><strong>That didn’t go through.</strong><p>{uploadError}</p><p>Your file is still selected. You can try again below.</p></div> : null}
+            {!canUpload ? (
+              <div className="template-school-needed">
+                <p>Choose your school to save a template for your plans.</p>
+                <button type="button" className="btn" onClick={onChooseSchool}>Choose a school</button>
+              </div>
+            ) : (
+            <div className="template-upload-area">
               <div className="onboarding-template-upload-wrap">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-ink">{templates.length ? 'Add a personal format' : 'Upload a blank format'}</p>
-                    <p className="mt-0.5 text-xs text-ink-muted">PDF or Word document, or a shareable Google Doc.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5" aria-label="What FlexEd reads">
-                    {['Sections', 'Order', 'Layout'].map((item) => (
-                      <span key={item} className="onboarding-template-chip">{item}</span>
-                    ))}
+                    <p className="text-sm font-semibold text-ink">{templates.length ? 'Add a personal format' : 'Start with your blank template'}</p>
+                    <p className="mt-0.5 text-sm text-ink-muted">PDF, Word (.docx), or a shareable Google Doc.</p>
                   </div>
                 </div>
                 <UploadDropzone
-                  label="Choose file"
+                  label="Choose my template"
                   selectedFileName={templateFile?.name}
                   onFile={(file) => {
                     setTemplateFile(file)
@@ -1592,32 +1697,33 @@ function FormatStep({
                     if (v) setTemplateFile(null)
                   }}
                   templateUpload
-                  compactGuidance
                   className="onboarding-template-upload"
                   blankTemplateAttested={blankTemplateAttested}
                   onBlankTemplateAttestedChange={setBlankTemplateAttested}
                 />
               </div>
-              <TemplatePreview file={templateFile} url={templateUrl} />
+              {hasInput ? <p className="template-selected-note" role="status"><CheckCircle2 size={17} aria-hidden="true" /> Ready when you are. Select “Analyze my template” below.</p> : null}
             </div>
+            )}
           </>
         ) : phase === 'processing' ? (
           <>
-            <TemplateIngestPath phase={phase} />
-            <div className="onboarding-template-processing">
-              <Loader2 size={24} className="animate-spin text-accent-text" aria-hidden="true" />
-              <div>
-                <p className="text-sm font-semibold text-ink">Analyzing format…</p>
-                <p className="mt-1 text-sm leading-relaxed text-ink-muted">Looking for headings, tables, labels, and the order your plans should follow.</p>
-              </div>
+            <div className="template-reading-stage" aria-busy="true">
+              <TemplateIngestionVisual processing />
+              <p className="template-source-name">{templateFile?.name || 'Your Google Doc'}</p>
+              <p className="template-reading-caption">One template. The starting point for every new plan.</p>
+              <div className="template-reading-tags" aria-hidden="true"><span>Headings</span><span>Tables</span><span>Section order</span></div>
             </div>
-            <TemplatePreview file={templateFile} url={templateUrl} />
+            <p className="template-wait-note" role="status">{takingLonger ? 'Still reading your template. Larger files can take a little longer. Keep this page open.' : 'Reading your file now. Your detected sections will appear here when the analysis is complete.'}</p>
           </>
         ) : phase === 'review' ? (
           <>
-            <TemplateIngestPath phase={phase} />
-            <div className="onboarding-analysis-grid mt-6">
-              <TemplatePreview file={templateFile} url={templateUrl} />
+            <div className="template-review-summary">
+              <Sparkles size={22} aria-hidden="true" />
+              <div><strong>{reviewable ? `${sections.length} section${sections.length === 1 ? '' : 's'} found` : 'A clearer file will help'}</strong><p>{templateFile?.name || 'Your Google Doc'}</p></div>
+            </div>
+            <div className="template-review-grid">
+              <div className="template-original"><TemplatePreview file={templateFile} url={templateUrl} /></div>
               <div className="onboarding-analysis-card">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1629,19 +1735,13 @@ function FormatStep({
                   </span>
                 </div>
                 {sections.length ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {sections.map((section, index) => (
-                      <span key={`${section.name || section.title || 'section'}-${index}`} className="onboarding-detected-field">
-                        {section.name || section.title || `Section ${index + 1}`}
-                      </span>
-                    ))}
-                  </div>
+                  <TemplateSectionList sections={sections} />
                 ) : (
                   <p className="mt-4 rounded-lg bg-mark/10 p-3 text-sm leading-relaxed text-mark">FlexEd couldn’t verify any sections in this file. Try a blank PDF or Word template with visible headings or tables.</p>
                 )}
                 {errors.length || warnings.length ? (
                   <div className="onboarding-analysis-notes mt-4">
-                    {errors.concat(warnings).slice(0, 3).map((finding, index) => (
+                    {errors.concat(warnings).map((finding, index) => (
                       <p key={`${finding.check_name || 'note'}-${index}`} className={finding.severity === 'error' ? 'is-error' : 'is-warning'}>{finding.message}</p>
                     ))}
                   </div>
@@ -1651,13 +1751,11 @@ function FormatStep({
           </>
         ) : (
           <>
-            <TemplateIngestPath phase={phase} />
-            <div className="onboarding-template-confirmed">
-              <div className="onboarding-template-confirmed-icon"><CheckCircle2 size={23} aria-hidden="true" /></div>
-              <div>
-                <p className="text-base font-semibold text-ink">This format will be used for new plans.</p>
-                <p className="mt-1 text-sm leading-relaxed text-ink-muted">FlexEd will keep the detected sections, order, and layout in view as it builds your plans.</p>
-              </div>
+            <div className="template-success">
+              <OnboardingCelebration complete />
+              <div className="template-success-receipt"><FileText size={24} aria-hidden="true" /><div><strong>{templateFile?.name || 'Your Google Doc'}</strong><p>{sections.length} sections · Saved for your plans</p></div><CheckCircle2 size={22} aria-hidden="true" /></div>
+              <p>Bring the lesson idea. FlexEd will use this structure to help shape the plan.</p>
+              <p className="template-success-note">You can change your format later in Settings.</p>
             </div>
           </>
         )}
@@ -1669,21 +1767,20 @@ function FormatStep({
 function TemplateIngestPath({ phase }) {
   const steps = [
     ['upload', 'Upload'],
-    ['processing', 'Analyze'],
-    ['confirmed', 'Use in plans'],
+    ['processing', 'Read'],
+    ['review', 'Review'],
+    ['confirmed', 'Ready'],
   ]
-  const activeIndex = phase === 'review' ? 1 : phase === 'confirmed' ? 2 : phase === 'processing' ? 1 : 0
+  const activeIndex = steps.findIndex(([key]) => key === phase)
   return (
-    <div className="onboarding-ingest-path" aria-label="Template setup steps">
+    <ol className="template-progress" aria-label="Template setup steps">
       {steps.map(([key, label], index) => (
-        <Fragment key={key}>
-          <div className={`onboarding-ingest-step ${index <= activeIndex ? 'is-active' : ''}`}>
-            <span>{index + 1}</span><strong>{label}</strong>
-          </div>
-          {index < steps.length - 1 ? <div className="onboarding-ingest-line" aria-hidden="true" /> : null}
-        </Fragment>
+        <li key={key} data-state={index < activeIndex ? 'done' : index === activeIndex ? 'current' : 'upcoming'} aria-current={index === activeIndex ? 'step' : undefined}>
+          <span aria-hidden="true">{index < activeIndex || phase === 'confirmed' ? <Check size={14} /> : index + 1}</span>
+          <strong>{label}</strong>
+        </li>
       ))}
-    </div>
+    </ol>
   )
 }
 
@@ -1854,8 +1951,8 @@ function OnboardingSubProgress({ current }) {
  * catalog the same way the old grade <select> did — every framework already
  * carries its own grades[] (lib/frameworks.js), so narrowing is a filter,
  * not a new capability. '' is "all grades". */
-function GradeSubStep({ grade, setGrade, onBack, onNext }) {
-  useOnboardingActions({ onNext, onBack })
+function GradeSubStep({ grade, setGrade, onBack, onNext, registerActions = true }) {
+  useOnboardingActions({ onNext, onBack }, registerActions)
   return (
     <div className="onboarding-class-step">
       <OnboardingQuestion question="What grade do you teach?" lead="Narrows the course list to what's actually taught at that grade." />
@@ -1893,8 +1990,8 @@ function GradeSubStep({ grade, setGrade, onBack, onNext }) {
  * already bucketed by lib/frameworks.js's groupFrameworks — the same
  * grouping the old discipline rail used, just as full rows instead of a
  * narrow sidebar. */
-function DisciplineSubStep({ groups, discipline, setDiscipline, onBack, onNext, onSearch }) {
-  useOnboardingActions({ onNext, onBack, disabled: !discipline })
+function DisciplineSubStep({ groups, discipline, setDiscipline, onBack, onNext, onSearch, registerActions = true }) {
+  useOnboardingActions({ onNext, onBack, disabled: !discipline }, registerActions)
   return (
     <div className="onboarding-class-step">
       <OnboardingQuestion question="Which subject area?" lead="Narrows the list to just the courses in that discipline." />
@@ -1934,8 +2031,8 @@ function DisciplineSubStep({ groups, discipline, setDiscipline, onBack, onNext, 
 /* Third and final screen: the actual course. This is what saveCourse (the
  * real onNext) records, so it carries `saving`/`error` the way the step
  * always has. */
-function CourseSubStep({ items, subject, setSubject, saving, error, onBack, onNext }) {
-  useOnboardingActions({ onNext, onBack, busy: saving, disabled: !subject })
+function CourseSubStep({ items, subject, setSubject, saving, error, onBack, onNext, registerActions = true }) {
+  useOnboardingActions({ onNext, onBack, busy: saving, disabled: !subject }, registerActions)
   return (
     <div className="onboarding-class-step">
       <OnboardingQuestion
@@ -1985,9 +2082,9 @@ function CourseSubStep({ items, subject, setSubject, saving, error, onBack, onNe
  * the discipline screen. Still respects the grade filter (frameworks passed
  * in are already grade-filtered, not the full catalog), so a search here
  * can't surface a course that doesn't fit the grade already chosen. */
-function SearchSubStep({ frameworks, subject, setSubject, saving, error, onBack, onNext }) {
+function SearchSubStep({ frameworks, subject, setSubject, saving, error, onBack, onNext, registerActions = true }) {
   const [query, setQuery] = useState('')
-  useOnboardingActions({ onNext, onBack, busy: saving, disabled: !subject })
+  useOnboardingActions({ onNext, onBack, busy: saving, disabled: !subject }, registerActions)
   const results = useMemo(() => frameworks.filter((f) => matchesFramework(f, query)), [frameworks, query])
   return (
     <div className="onboarding-class-step">
@@ -2060,6 +2157,7 @@ function CourseStep({
   setSubStep,
   discipline,
   setDiscipline,
+  registerActions = true,
 }) {
   const gradeFilteredFrameworks = useMemo(
     () => (!grade ? frameworks : frameworks.filter((f) => (f.grades || []).includes(Number(grade)))),
@@ -2100,6 +2198,7 @@ function CourseStep({
         error={error}
         onBack={() => setSubStep('discipline')}
         onNext={onNext}
+        registerActions={registerActions}
       />
     )
   }
@@ -2113,6 +2212,7 @@ function CourseStep({
         onBack={() => setSubStep('grade')}
         onNext={() => setSubStep('course')}
         onSearch={() => setSubStep('search')}
+        registerActions={registerActions}
       />
     )
   }
@@ -2128,26 +2228,12 @@ function CourseStep({
         error={error}
         onBack={() => setSubStep('discipline')}
         onNext={onNext}
+        registerActions={registerActions}
       />
     )
   }
 
-  return <GradeSubStep grade={grade} setGrade={setGrade} onBack={onBack} onNext={() => setSubStep('discipline')} />
-}
-
-function MaterialsStep({ cls, onBack, onNext }) {
-  useOnboardingActions({ onNext, onBack, onSkip: onNext, skipLabel: 'Skip — I’ll add these later' })
-  return (
-    <div>
-      <OnboardingQuestion
-        question="Add your teaching materials"
-        lead="Optional. Add the planning source FlexEd should use to organize new plans. You can add supporting materials later."
-      />
-      <Suspense fallback={<p className="text-xs text-ink-muted">Loading documents…</p>}>
-        <ClassDocuments cls={cls} variant="onboarding" />
-      </Suspense>
-    </div>
-  )
+  return <GradeSubStep grade={grade} setGrade={setGrade} onBack={onBack} onNext={() => setSubStep('discipline')} registerActions={registerActions} />
 }
 
 /* The closing screen, and now the only place the setup summary is rendered.
@@ -2173,63 +2259,25 @@ const FIRST_CHAT_PROMPT = 'Plan a week for my next unit using my course standard
 
 function PreviewStep({ finishing, onFinish, stateLabel, schoolName, courseName, gradeName, editableSteps = [], onEdit, onBack }) {
   useOnboardingActions({
-    onNext: onFinish,
+    onNext: () => onFinish(),
     nextLabel: finishing ? 'Opening your workspace…' : 'Open my workspace',
     busy: finishing,
     onBack,
   })
   const setupItems = [
-    { key: 'state', label: 'State', value: stateLabel || 'Not set yet', edit: 'state' },
-    { key: 'course', label: 'Course', value: courseName || 'Not set yet', edit: 'course' },
-    { key: 'grade', label: 'Grade', value: gradeName || 'Not set yet', edit: 'course' },
-    { key: 'school', label: 'Your school', value: schoolName || 'Not set yet', edit: 'school' },
+    { key: 'state', label: 'State', value: stateLabel || 'Not set yet', edit: 'context' },
+    { key: 'course', label: 'Course', value: courseName || 'Not set yet', edit: 'context' },
+    { key: 'grade', label: 'Grade', value: gradeName || 'Not set yet', edit: 'context' },
+    { key: 'school', label: 'Your school', value: schoolName || 'Not set yet', edit: 'context' },
   ]
 
   return (
     <div className="onboarding-final">
-      {/* A small overshoot (custom cubic-bezier past 1) reads as a pop rather
-          than a plain fade — the one moment in the whole flow that's a
-          celebration rather than a question, so it's allowed a little more
-          motion than everywhere else. Each row below stays a normal ease-out
-          fade-up, staggered, so the checklist reads as a receipt printing
-          itself rather than a single canned reveal. */}
-      <div className="onboarding-final-hero">
-        {/* The same seal used in the topbar and in AppShell's own sidebar
-            header, just much bigger — the destination this whole flow was
-            walking toward, not a new mark invented for one screen. Gets a
-            small overshoot on entrance (past scale 1, past rotate 0) and a
-            slow, continuous breathing glow afterward — the one moment in the
-            whole flow that's a celebration rather than a question, so it's
-            allowed motion nothing else here gets. Both collapse under the
-            app's blanket prefers-reduced-motion rule (base.css) same as
-            everything else. */}
-        <motion.div
-          className="onboarding-final-hero-logo"
-          initial={{ opacity: 0, scale: 0.55, rotate: -8 }}
-          animate={{ opacity: 1, scale: 1, rotate: 0 }}
-          transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
-          aria-hidden="true"
-        >
-          <svg viewBox="0 0 64 64" className="onboarding-final-hero-svg">
-            <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
-            <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
-            <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" className="land-seal-ring" />
-            <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="land-seal-check" />
-          </svg>
-        </motion.div>
-        <motion.p
-          className="onboarding-final-hero-ready"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-        >
-          Ready
-        </motion.p>
-      </div>
+      <OnboardingCelebration complete />
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}>
-        <p className="onboarding-final-kicker">Workspace ready</p>
-        <h2 id="onboarding-title" tabIndex={-1} className="onboarding-final-title">Your teaching workspace is ready.</h2>
-        <p className="onboarding-final-intro">Everything is saved and ready for your first plan.</p>
+        <p className="onboarding-final-kicker">Made for you. Ready to go.</p>
+        <h2 id="onboarding-title" tabIndex={-1} className="onboarding-final-title">You're ready to make great things.</h2>
+        <p className="onboarding-final-intro">Your teaching workspace is ready. Bring your next big idea — we’ll help with the plan.</p>
       </motion.div>
 
       <div className="onboarding-final-cards" role="list" aria-label="Saved setup details">
