@@ -20,6 +20,7 @@ def main() -> int:
     captured: dict[str, object] = {}
     originals = (
         db.get_class,
+        db.class_school,
         db.get_settings_row,
         llm.map_context_for,
         llm._cached_completion,
@@ -28,10 +29,11 @@ def main() -> int:
     )
 
     db.get_class = lambda _uid, class_id: (
-        {"id": class_id, "subject": "Biology", "grade": "7"}
+        {"id": class_id, "subject": "Biology", "grade": "7", "school": "school"}
         if class_id == "biology-7"
         else None
     )
+    db.class_school = lambda cls, _uid: (cls or {}).get("school") or "generic"
     db.get_settings_row = lambda _uid: {
         "subject": "AP Language & Composition",
         "grade": "11",
@@ -93,6 +95,7 @@ def main() -> int:
     finally:
         (
             db.get_class,
+            db.class_school,
             db.get_settings_row,
             llm.map_context_for,
             llm._cached_completion,

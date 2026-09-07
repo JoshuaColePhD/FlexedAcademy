@@ -8,6 +8,11 @@ are retried automatically but cannot loop forever.
 
 from pathlib import Path
 
+import pytest
+
+from backend import docx_build
+from backend.errors import AppError
+
 DB_SOURCE = Path(__file__).with_name("db.py").read_text()
 PLANS_SOURCE = Path(__file__).with_name("routes").joinpath("plans.py").read_text()
 
@@ -47,3 +52,10 @@ def test_download_recovers_stale_paths():
     download_end = PLANS_SOURCE.index('@router.get("/{plan_id}/download")', download_start)
     download = PLANS_SOURCE[download_start:download_end]
     assert '"docx_invalid_path"' in download
+
+
+def test_legacy_generic_builder_sentinel_cannot_select_a_silent_layout():
+    with pytest.raises(AppError) as error:
+        docx_build.builder("generic")
+
+    assert error.value.code == "template_required"

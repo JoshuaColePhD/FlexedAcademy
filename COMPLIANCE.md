@@ -51,11 +51,12 @@ that OpenAI account.
   `render.yaml`; session tokens are HMAC-signed and re-checked against a
   live `session_version` column on every request (`backend/deps.py`), so
   "sign out of all devices" actually invalidates already-issued cookies.
-- **Row-level security.** Every tenant-scoped table (`classes`, `chats`,
-  `plans`, `messages`, `curriculum_maps`, `plan_feedback`, `quizzes`) has
-  RLS enabled with a policy scoping rows to `current_setting('app.user_id')`
-  (`backend/db.py` migration 20), so a connection that isn't the app's own
-  owner role sees nothing.
+- **Row-level security.** Tenant-scoped tables have RLS policies that scope
+  rows to `current_setting('app.user_id')`, and migration 82 forces those
+  policies to apply even to the table owner. Durable document/codegen workers
+  bind the job owner to that setting before reading or writing tenant rows.
+  Shared system tables remain deny-all to direct Data API roles rather than
+  pretending to have a teacher owner.
 - **TLS enforced on the database connection.** `backend/db.py`'s
   `_dsn_with_tls()` appends `sslmode=require` to `DATABASE_URL` when the
   operator's connection string didn't already specify one, so a bare
@@ -69,7 +70,8 @@ that OpenAI account.
 - **Self-service export and delete.** `GET /api/account/export` returns
   everything a teacher's account owns as JSON; `POST
   /api/auth/delete_account` (re-verifies password first) permanently and
-  immediately deletes the account and everything under it
+  immediately deletes the account and everything under it, including uploaded
+  curriculum/template files and personalized AI-cache rows
   (`backend/db.py`'s `export_user_data` / `delete_user_account`).
 - **Audit log.** `audit_log` (`backend/db.py` migration 27) records who
   did what and when: admin comping/uncomping an account, admin
@@ -81,6 +83,10 @@ that OpenAI account.
 - **In-app privacy policy.** `/privacy` (linked from the landing page
   footer and the account menu) explains in plain language what's stored,
   what goes to OpenAI, and how to export or delete an account.
+- **Personalized AI cache.** Generated completions are keyed and stored by
+  teacher account. Legacy cache rows without an owner are cleared by
+  migration 81, and account deletion removes the teacher's remaining cache
+  rows.
 
 ## Not attempted here (and why)
 

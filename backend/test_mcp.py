@@ -60,3 +60,11 @@ def test_docx_capability_url_is_signed_and_short_lived(monkeypatch):
     token = url.rsplit("/", 1)[-1]
     payload = mcp_artifacts._decode(token)
     assert payload == {"purpose": "mcp_artifact", "uid": "teacher-1", "pid": "plan-1", "exp": payload["exp"]}
+
+
+def test_consent_page_escapes_request_ids():
+    response = mcp_server._consent_page('x"><script>alert(1)</script>')
+
+    assert response.status_code == 200
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.body.decode()
+    assert '<script>alert(1)</script>' not in response.body.decode()

@@ -21,13 +21,13 @@
 #   LibreOffice itself is a per-conversion subprocess, not a resident server
 #   (backend/builder/rasterize.py), so it's a transient spike during a
 #   builder-codegen attempt, not a constant tax — but combined with the
-#   Dockerfile's `--workers 2` (two full app processes, each holding its own
-#   copy of the ~75MB standards corpus in memory — see retrieval.py's
-#   load_chunks cache), free-plan headroom is measurably tighter than the
-#   line above once described. Watch Render's metrics after the first deploy
-#   on this image; move to a paid plan (more RAM, not just more CPU — Starter
-#   is the same 512MB as free) if it's actually OOMing rather than
-#   pre-emptively paying for capacity that might not be needed.
+#   Dockerfile's single app process holding the ~75MB standards corpus in
+#   memory — see retrieval.py's `load_chunks` cache — free-plan headroom is
+#   measurably tighter than the line above once described. Watch Render's
+#   metrics after the first deploy on this image; move to a paid plan (more RAM,
+#   not just more CPU — Starter is the same 512MB as free) if it's actually
+#   OOMing rather than pre-emptively paying for capacity that might not be
+#   needed.
 services:
   - type: web
     name: flexed-academy-backend
@@ -84,6 +84,14 @@ services:
         value: "1"
       - key: DB_POOL_SIZE
         value: "2"
+      # Render is the only public ingress. Trust its forwarded client address
+      # so per-IP rate limits do not collapse onto Render's router address.
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      # The MCP surface is intentionally disabled until its OAuth registration
+      # and consent flow has a dedicated security review.
+      - key: MCP_ENABLED
+        value: "false"
       # Keep model work bounded on the 512MB instance. Requests beyond this
       # run in the per-user/global queue instead of multiplying retrieval and
       # streaming memory until Render restarts the service.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ExternalLink, HardDrive, Loader2, Send, Upload } from 'lucide-react'
+import { Check, ExternalLink, HardDrive, Loader2, Send } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyPlanShareLink, stopSharingPlan } from '../lib/shareLink'
 import { useToast } from '../lib/toastContext'
@@ -156,20 +156,6 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
     }
   }
 
-  const uploadToCanvas = async () => {
-    if (submitting) return
-    setSubmitting(true)
-    try {
-      await api.exportQuizToCanvas(planId, quizId)
-      toast.success('Canvas export previewed', `${documentName || 'The quiz'} was not sent to a live Canvas course.`)
-      onClose()
-    } catch (err) {
-      toast.apiError('Could not sync to Canvas', err)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   if (!mounted) return null
 
   return createPortal(
@@ -192,7 +178,7 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
             button's own dedicated "more options" surface, Josh's own ask:
             "the share link and drive should be in the cloud button." What's
             left here is exactly the two things that only ever lived here —
-            the public link, and Drive/Canvas. */}
+            the public link and Google Drive. */}
         <h2 id="share-title">Share {documentName ? `“${documentName}”` : 'this file'}</h2>
 
         {!isQuiz && (
@@ -391,17 +377,6 @@ export function ShareDialog({ open, onClose, planId, isQuiz, quizId, documentNam
             ) : null}
 
             <div className="dialog-actions mt-6">
-              {isQuiz ? (
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={uploadToCanvas}
-                  disabled={submitting}
-                >
-                  {submitting ? <Loader2 size={14} className="mr-1.5 animate-spin" aria-hidden="true" /> : <Upload size={14} className="mr-1.5" aria-hidden="true" />}
-                  {submitting ? 'Preparing preview…' : 'Preview Canvas export'}
-                </button>
-              ) : null}
               <button type="button" className="btn" onClick={onClose}>
                 Close
               </button>

@@ -39,8 +39,8 @@ export function BetaPage() {
         <h2 className="text-base font-semibold text-ink">Questions, bugs, or something looks wrong</h2>
         <p className="mt-2">
           Email me directly at{' '}
-          <a href="mailto:joshuacolephd@gmail.com" className="text-accent-text hover:underline">
-            joshuacolephd@gmail.com
+          <a href="mailto:support@flexedacademy.com" className="text-accent-text hover:underline">
+            support@flexedacademy.com
           </a>
           . If a lesson plan cites something that isn't actually in your course of study, that's
           exactly the kind of thing I want to hear about — it's the one thing this product is

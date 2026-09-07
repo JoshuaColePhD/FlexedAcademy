@@ -19,6 +19,7 @@ from ..config import settings
 from ..deps import get_current_user, get_current_user_optional
 from ..errors import AppError
 from ..ratelimit import limiter
+from ..template_intake import check_docx_zip
 
 log = logging.getLogger("flexedacademy.misc")
 router = APIRouter(prefix="/api", tags=["misc"])
@@ -593,6 +594,7 @@ def read_text_from_path(path: Path, ext: str) -> str:
     if ext == ".docx":
         import docx as _docx
 
+        check_docx_zip(path)
         d = _docx.Document(str(path))
         parts = [p.text for p in d.paragraphs if p.text.strip()]
         for table in d.tables:

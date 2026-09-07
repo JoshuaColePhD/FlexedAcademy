@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, GraduationCap, Library, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Settings, Trash2, X } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
@@ -524,6 +524,28 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
           )}
         </div>
       </div>
+
+      {collapsed ? null : (
+        <nav className="rail-reveal px-2 pt-2" aria-label="Class pages">
+          <div className="flex flex-col gap-1">
+            {[
+              { to: `${classPath}/plans`, label: 'Library', Icon: Library },
+              { to: `${classPath}/standards`, label: 'Standards', Icon: GraduationCap },
+              { to: `${classPath}/settings`, label: 'Class setup', Icon: Settings },
+            ].map(({ to, label, Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                onClick={onNavigate}
+                className={({ isActive }) => `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive ? 'bg-paper-sunken text-ink' : 'text-ink-muted hover:bg-paper-sunken hover:text-ink'}`}
+              >
+                <Icon size={15} aria-hidden="true" />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      )}
 
       {collapsed ? null : (
         <nav className="rail-reveal min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">

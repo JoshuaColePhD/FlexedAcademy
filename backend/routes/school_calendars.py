@@ -232,8 +232,7 @@ def list_school_templates(school_id: str, user_id: str = Depends(get_current_use
 @router.post("/{school_id}/templates/{template_id}/select")
 def select_school_template(school_id: str, template_id: str, user_id: str = Depends(get_current_user)):
     """Set a teacher's private default; this never changes school state."""
-    if not db.get_school(school_id):
-        raise AppError("not_found", "School not found.", status=404)
+    _require_school_access(user_id, school_id)
     template = db.set_personal_school_template(user_id, school_id, template_id)
     if not template:
         raise AppError(

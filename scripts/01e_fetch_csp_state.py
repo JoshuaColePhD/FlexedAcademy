@@ -81,8 +81,9 @@ def grades_from_title(title: str) -> list[int]:
     ``Grades 6, 7, 8``, ``Grade K``, and occasionally ``Grades K, 1, 2``.
     Alabama's CASE ingest emits a grade-scoped copy for each covered grade;
     doing the same here is important because retrieval filters on the selected
-    class grade.  A title that does not identify a grade remains in the
-    course-level ``99`` bucket.
+    class grade. Named high-school courses that omit an explicit grade (for
+    example ``Algebra I`` or ``American Literature``) are expanded to 9-12;
+    genuinely course-wide records remain in the ``99`` bucket.
     """
     t = title.strip()
     lower = t.lower()
@@ -95,7 +96,14 @@ def grades_from_title(title: str) -> list[int]:
     # are not grade declarations.
     match = re.search(r"\bgrades?\s+([^:]+)", t, flags=re.IGNORECASE)
     if not match:
-        return [99]
+        high_school_course = re.search(
+            r"\b(?:algebra|geometry|calculus|pre[- ]?calculus|statistics|literature|composition|"
+            r"biology|chemistry|physics|earth science|environmental science|government|civics|"
+            r"economics|american history|world history|u\.?s\.? history|psychology|sociology|"
+            r"anatomy|forensic|astronomy|botany|geology|entomology|epidemiology)\b",
+            lower,
+        ) or re.search(r"\b(?:ap|pre[- ]?ap)\b", lower)
+        return list(range(9, 13)) if high_school_course else [99]
     prefix = match.group(1)
     values = [int(n) for n in re.findall(r"\b\d{1,2}\b", prefix) if 0 <= int(n) <= 12]
     if re.search(r"\bK\b", prefix, flags=re.IGNORECASE):

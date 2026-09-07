@@ -38,6 +38,7 @@ import { SkeletonText } from '../components/Skeleton'
 import { SchoolSelect } from '../components/SchoolSelect'
 import { classColor } from '../lib/classColor'
 import { findFramework, verifiedPct } from '../lib/frameworks'
+import { US_STATES, isStandardsReady } from '../lib/states'
 
 /* Your classes.
  *
@@ -138,21 +139,31 @@ function ClassCustomInstructions({ cls, onChanged }) {
    A class is defined by its course of study and grade. The generated name is
    previewed so the teacher understands what will be created without typing a
    second, potentially conflicting name. */
-function ClassSetup({ frameworks, onCreated, onCancel }) {
+function ClassSetup({ defaultState = '', activeStates, onCreated, onCancel }) {
   const toast = useToast()
+  const [state, setState] = useState(defaultState)
   const [subject, setSubject] = useState('')
   const [grade, setGrade] = useState(DEFAULT_GRADE)
   const [saving, setSaving] = useState(false)
+
+  const frameworksState = useQuery({
+    queryKey: qk.frameworks(state),
+    queryFn: ({ signal }) => api.getFrameworks({ state, signal }),
+    enabled: Boolean(state),
+    staleTime: Infinity,
+  })
+  const frameworks = frameworksState.data || []
+  const standardsReady = Boolean(state) && isStandardsReady(state, activeStates)
 
   const fw = findFramework(frameworks, subject)
   const preview = fw ? `${shortLabel(fw)} · ${gradeLabel(grade)}` : ''
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!subject) return
+    if (!state || !subject) return
     setSaving(true)
     try {
-      const created = await api.createClass({ subject, grade })
+      const created = await api.createClass({ subject, grade, state })
       toast.success(`Added ${created.name}`)
       onCreated(created)
     } catch (err) {
@@ -169,20 +180,53 @@ function ClassSetup({ frameworks, onCreated, onCancel }) {
           <p className="eyebrow mb-2">Class management</p>
           <h2 className="text-2xl font-semibold tracking-tight text-ink">Add a class</h2>
           <p className="mt-2 text-sm leading-6 text-ink-muted">
-            Choose the course and grade you teach. FlexEd will load the matching standards and name the class for you.
+            Choose your state, course, and grade. FlexEd will load the matching standards and name the class for you.
           </p>
         </div>
         <form onSubmit={submit} className="flex flex-col gap-6 rounded-2xl bg-paper-sunken p-6 sm:p-8 shadow-sm">
           <div className="flex flex-col gap-2">
+            <label htmlFor="new-class-state" className="text-sm font-medium text-ink">
+              State standards
+            </label>
+            <select
+              id="new-class-state"
+              value={state}
+              onChange={(e) => { setState(e.target.value); setSubject('') }}
+              className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-3 pr-8 text-sm text-ink"
+            >
+              <option value="">Choose your state</option>
+              {US_STATES.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {isStandardsReady(value, activeStates) ? label : `${label} — not ready yet`}
+                </option>
+              ))}
+            </select>
+            {state && !standardsReady ? (
+              <p className="text-xs text-mark" role="alert">
+                Standards for this state are not available yet. You can still set up the class and use your uploaded teaching materials while the catalog is prepared.
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-col gap-2">
             <label htmlFor="new-class-framework" className="text-sm font-medium text-ink">
               Course of Study
             </label>
-            <FrameworkPicker
-              frameworks={frameworks}
-              value={subject}
-              onChange={setSubject}
-              id="new-class-framework"
-            />
+            {standardsReady ? (
+              <FrameworkPicker
+                frameworks={frameworks}
+                value={subject}
+                onChange={setSubject}
+                id="new-class-framework"
+              />
+            ) : (
+              <input
+                id="new-class-framework"
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                placeholder="e.g. English Language Arts, Algebra I"
+                className="neo-inset w-full rounded-lg bg-paper-raised px-3 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+              />
+            )}
           </div>
 
           <div className="flex flex-col gap-2">
@@ -211,7 +255,7 @@ function ClassSetup({ frameworks, onCreated, onCancel }) {
             </button>
             <button
               type="submit"
-              disabled={!subject || saving}
+              disabled={!state || !subject || saving}
               className="fa-press neo-raised flex items-center justify-center gap-2 rounded-lg bg-paper-raised px-6 py-2.5 text-sm font-medium text-ink hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-40"
             >
               {saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : null}
@@ -357,30 +401,42 @@ export function GlobalDocuments() {
   )
 }
 
-function EditClassSettings({ cls, frameworks, onChanged }) {
+function EditClassSettings({ cls, frameworks, activeStates, onChanged }) {
   const toast = useToast()
+  const [state, setState] = useState(cls.state || '')
   const [subject, setSubject] = useState(cls.subject)
   const [grade, setGrade] = useState(gradeSelectValue(cls.grade))
+  const [periodMinutes, setPeriodMinutes] = useState(cls.period_minutes ?? '')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setSubject(cls.subject)
     setGrade(gradeSelectValue(cls.grade))
-  }, [cls.id, cls.subject, cls.grade])
+    setState(cls.state || '')
+    setPeriodMinutes(cls.period_minutes ?? '')
+  }, [cls.id, cls.subject, cls.grade, cls.state, cls.period_minutes])
 
   const selectedFramework = findFramework(frameworks, subject)
   const courseLabel = selectedFramework ? shortLabel(selectedFramework) : shortLabel(null, subject)
   const generatedName = courseLabel && gradeLabel(grade)
     ? `${courseLabel} · ${gradeLabel(grade)}`
     : courseLabel || cls.name || 'Choose a course of study'
-  const isChanged = subject !== cls.subject || grade !== gradeSelectValue(cls.grade)
+  const isChanged = subject !== cls.subject
+    || grade !== gradeSelectValue(cls.grade)
+    || state !== (cls.state || '')
+    || String(periodMinutes) !== String(cls.period_minutes ?? '')
 
   const submit = async (e) => {
     e.preventDefault()
     if (!isChanged) return
     setSaving(true)
     try {
-      const updated = await api.updateClass(cls.id, { subject, grade })
+      const updated = await api.updateClass(cls.id, {
+        subject,
+        grade,
+        state,
+        period_minutes: periodMinutes === '' ? null : Number(periodMinutes),
+      })
       toast.success('Class updated')
       onChanged?.(updated)
     } catch (err) {
@@ -392,6 +448,48 @@ function EditClassSettings({ cls, frameworks, onChanged }) {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
+      <div className="border-b border-edge/50 pb-4">
+        <h4 className="text-sm font-semibold text-ink">Schedule &amp; pacing</h4>
+        <p className="mt-1 text-xs text-ink-muted">
+          This helps the AI make each lesson realistic for this class period. It is optional.
+        </p>
+        <label htmlFor="edit-class-period" className="mt-3 flex flex-col gap-2 text-sm font-medium text-ink">
+          Class period length
+          <div className="flex items-center gap-2">
+            <input
+              id="edit-class-period"
+              type="number"
+              min="15"
+              max="240"
+              step="5"
+              inputMode="numeric"
+              value={periodMinutes}
+              onChange={(e) => setPeriodMinutes(e.target.value)}
+              placeholder="e.g. 50"
+              className="neo-inset w-36 rounded-lg bg-paper-sunken px-3 py-2.5 text-sm font-normal text-ink transition-shadow"
+            />
+            <span className="text-xs font-normal text-ink-muted">minutes</span>
+          </div>
+        </label>
+      </div>
+      <div className="flex flex-col gap-2">
+        <label htmlFor="edit-class-state" className="text-sm font-medium text-ink">
+          State standards
+        </label>
+        <select
+          id="edit-class-state"
+          value={state}
+          onChange={(e) => setState(e.target.value)}
+          className="neo-select neo-inset w-full rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink transition-shadow"
+        >
+          <option value="">Choose your state</option>
+          {US_STATES.map(([value, label]) => (
+            <option key={value} value={value}>
+              {isStandardsReady(value, activeStates) ? label : `${label} — not ready yet`}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="edit-class-framework" className="text-sm font-medium text-ink">
           Course of Study
@@ -474,8 +572,113 @@ function ClassStatusItem({ icon: Icon, label, value, detail, tone = 'neutral' })
   )
 }
 
+function ClassTemplatePicker({ cls }) {
+  const toast = useToast()
+  const queryClient = useQueryClient()
+  const [selectingId, setSelectingId] = useState(null)
+  const templates = useQuery({
+    queryKey: ['class-templates', cls.id],
+    queryFn: ({ signal }) => api.listClassTemplates(cls.id, { signal }),
+    enabled: Boolean(cls.school),
+    retry: false,
+  })
+
+  const select = async (template) => {
+    setSelectingId(template.id)
+    try {
+      await api.selectClassTemplate(cls.id, template.id)
+      await queryClient.invalidateQueries({ queryKey: ['class-templates', cls.id] })
+      toast.success('Template selected for this class', 'Other classes keep their own formats.')
+    } catch (err) {
+      toast.apiError('Could not select that template', err)
+    } finally {
+      setSelectingId(null)
+    }
+  }
+
+  if (!cls.school || templates.isLoading || templates.isError) return null
+  const rows = templates.data?.templates || []
+  const selectedId = templates.data?.selected_template_id
+  return (
+    <section className="rounded-xl border border-edge/50 bg-paper-sunken/35 p-4" aria-labelledby={`class-template-${cls.id}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 id={`class-template-${cls.id}`} className="text-sm font-semibold text-ink">Template for this class</h4>
+          <p className="mt-1 text-xs text-ink-muted">Choose the teacher or school format used when this class’s plans are exported.</p>
+        </div>
+        <FileText size={17} className="shrink-0 text-ink-muted" aria-hidden="true" />
+      </div>
+      {rows.length ? (
+        <ul className="mt-3 space-y-2">
+          {rows.map((template) => {
+            const ready = ['analyzed', 'analyzed_with_warnings'].includes(template.analysis_status) && template.builder_ready
+            const selected = selectedId === template.id
+            return (
+              <li key={template.id} className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${selected ? 'border-accent/30 bg-accent/5' : 'border-edge/60 bg-paper'}`}>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-ink">{template.filename}</p>
+                  <p className="mt-1 text-2xs text-ink-muted">
+                    {selected ? 'Selected for this class' : template.template_scope === 'school_candidate' ? 'School format' : 'Your personal format'}
+                    {' · '}{ready ? 'Ready to render' : template.analysis_status === 'failed' ? 'Needs review' : 'Preparing renderer'}
+                  </p>
+                </div>
+                {selected ? <span className="shrink-0 text-2xs font-medium text-ok">Current</span> : (
+                  <button type="button" className="btn shrink-0 text-2xs" disabled={!ready || selectingId === template.id} onClick={() => select(template)}>
+                    {selectingId === template.id ? 'Selecting…' : ready ? 'Use this' : 'Preparing…'}
+                  </button>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <p className="mt-3 text-xs text-ink-muted">Upload a personal template in School & Templates to make one available here.</p>
+      )}
+    </section>
+  )
+}
+
+function CurriculumProgressNotice({ cls }) {
+  const navigate = useNavigate()
+  const progress = useQuery({
+    queryKey: ['curriculum-progress', cls.id, cls.subject],
+    queryFn: ({ signal }) => api.getCurriculumProgress(cls.subject, { signal }),
+    enabled: Boolean(cls.subject),
+    retry: false,
+  })
+  const summary = progress.data?.summary
+  if (!summary) return null
+  const current = progress.data?.weeks?.find((week) => week.status === 'current')
+  return (
+    <section className={`rounded-xl border p-4 ${summary.behind ? 'border-mark/30 bg-mark/5' : 'border-ok/30 bg-ok/5'}`} aria-live="polite">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-ink">Curriculum pacing</h4>
+          <p className="mt-1 text-xs text-ink-muted">
+            {summary.behind
+              ? `${summary.behind} ${summary.behind === 1 ? 'week is' : 'weeks are'} behind the uploaded pacing guide.`
+              : current
+                ? `Current target: ${current.week_label}.`
+                : 'Your uploaded pacing guide is on track.'}
+          </p>
+        </div>
+        <span className="shrink-0 text-xs font-medium text-ink-muted">{summary.done}/{summary.total} planned</span>
+      </div>
+      {current ? (
+        <button
+          type="button"
+          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+          onClick={() => navigate(`/c/${cls.id}?week=${encodeURIComponent(current.week_number || current.week_label)}`)}
+        >
+          Open current week <ArrowRight size={13} aria-hidden="true" />
+        </button>
+      ) : null}
+    </section>
+  )
+}
+
 /* ── one class details (Right Pane) ────────────────────────────────────────── */
-function ClassDetail({ cls, classes, frameworks, onChanged }) {
+function ClassDetail({ cls, classes, frameworks, activeStates, onChanged }) {
   const confirm = useConfirm()
   const toast = useToast()
   const navigate = useNavigate()
@@ -566,14 +769,18 @@ function ClassDetail({ cls, classes, frameworks, onChanged }) {
           <details className="mt-5 border-t border-edge/50 pt-4">
             <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
               <Settings size={15} aria-hidden="true" className="text-ink-muted" />
-              Edit class details
+              Class settings
               <ChevronDown size={15} aria-hidden="true" className="ml-auto details-chevron" />
             </summary>
             <div className="mt-4 max-w-2xl rounded-xl border border-edge/50 bg-paper-sunken/35 p-4">
-              <EditClassSettings cls={cls} frameworks={frameworks} onChanged={onChanged} />
+              <EditClassSettings cls={cls} frameworks={frameworks} activeStates={activeStates} onChanged={onChanged} />
             </div>
           </details>
         </section>
+
+        <ClassTemplatePicker cls={cls} />
+
+        <CurriculumProgressNotice cls={cls} />
 
         <section id="section-docs" className="flex scroll-mt-8 flex-col rounded-2xl border border-edge/60 bg-paper/40 p-5 shadow-sm backdrop-blur-md md:p-6">
           <div className="mb-4 flex flex-col justify-between gap-3 border-b border-edge/50 pb-4 md:flex-row md:items-center">
@@ -926,6 +1133,12 @@ export function ClassPage() {
     staleTime: Infinity,
   })
   const frameworks = frameworksState.data || []
+  const activeStatesState = useQuery({
+    queryKey: qk.activeStandardsStates,
+    queryFn: ({ signal }) => api.getActiveStandardsStates({ signal }).then((r) => new Set(r.states)),
+    staleTime: Infinity,
+  })
+  const activeStates = activeStatesState.data
 
   const { classId } = useParams()
   const isNew = classId === 'new'
@@ -948,7 +1161,8 @@ export function ClassPage() {
       <div className="flex h-full w-full overflow-hidden bg-transparent items-center justify-center">
         <div className="w-full max-w-3xl flex flex-col py-8 px-8">
           <ClassSetup
-            frameworks={frameworks}
+            defaultState={classes.find((item) => item.state)?.state || ''}
+            activeStates={activeStates}
             onCancel={() => navigate('/')}
             /* Navigate FIRST, then refresh the list. This used to await
                reloadClasses() before navigating — and ClassSetup's own
@@ -984,7 +1198,7 @@ export function ClassPage() {
       tabs={CLASS_TABS}
       backPath="/"
     >
-      <ClassDetail cls={activeClass} classes={classes} frameworks={frameworks} onChanged={reloadClasses} />
+      <ClassDetail cls={activeClass} classes={classes} frameworks={frameworks} activeStates={activeStates} onChanged={reloadClasses} />
     </SplitLayout>
   )
 }

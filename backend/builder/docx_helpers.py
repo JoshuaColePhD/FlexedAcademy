@@ -18,7 +18,7 @@ from pathlib import Path
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt, Twips
+from docx.shared import Pt, RGBColor, Twips
 
 CHIP_FILL = "e8eaed"  # Google Docs' own dropdown-chip grey
 
@@ -54,17 +54,49 @@ def fixed_layout(table):
     )
 
 
-def write_plain(cell, text, bold=False, align=WD_ALIGN_PARAGRAPH.LEFT, size=11):
+def _capture_run_style(cell):
+    runs = cell.paragraphs[0].runs if cell.paragraphs else []
+    run = runs[0] if runs else None
+    if run is None:
+        return {}
+    color = run.font.color.rgb if run.font.color and run.font.color.rgb else None
+    return {
+        "name": run.font.name,
+        "size": run.font.size.pt if run.font.size else None,
+        "bold": run.bold,
+        "italic": run.italic,
+        "color": str(color) if color else None,
+    }
+
+
+def _apply_run_style(run, style):
+    if style.get("name"):
+        run.font.name = style["name"]
+    if style.get("size"):
+        run.font.size = Pt(style["size"])
+    if style.get("bold") is not None:
+        run.bold = style["bold"]
+    if style.get("italic") is not None:
+        run.italic = style["italic"]
+    if style.get("color"):
+        run.font.color.rgb = RGBColor.from_string(style["color"])
+
+
+def write_plain(cell, text, bold=False, align=WD_ALIGN_PARAGRAPH.LEFT, size=11, preserve_style=False):
+    style = _capture_run_style(cell) if preserve_style else {}
     cell.text = ""
     para = cell.paragraphs[0]
     para.alignment = align
     run = para.add_run(text)
-    run.font.size = Pt(size)
-    run.font.bold = bold
+    if preserve_style and style:
+        _apply_run_style(run, style)
+    else:
+        run.font.size = Pt(size)
+        run.font.bold = bold
 
 
-def write_label(cell, label_text):
-    write_plain(cell, label_text, bold=True)
+def write_label(cell, label_text, preserve_style=False):
+    write_plain(cell, label_text, bold=True, preserve_style=preserve_style)
 
 
 def write_dropdown(cell, selected_text, options, control_id, alias="Dropdown"):
@@ -134,16 +166,21 @@ def write_dropdown(cell, selected_text, options, control_id, alias="Dropdown"):
     para._p.append(sdt)
 
 
-def write_content_lines(cell, lines_with_bold):
+def write_content_lines(cell, lines_with_bold, preserve_style=False):
     """lines_with_bold: list of (text, bold). Empty text = blank spacer line."""
+    style = _capture_run_style(cell) if preserve_style else {}
     cell.text = ""
     first = True
     for text, bold in lines_with_bold:
         para = cell.paragraphs[0] if first else cell.add_paragraph()
         first = False
         run = para.add_run(text)
-        run.font.size = Pt(11)
-        run.font.bold = bold
+        if preserve_style and style:
+            _apply_run_style(run, style)
+            run.bold = bold if bold else style.get("bold")
+        else:
+            run.font.size = Pt(11)
+            run.font.bold = bold
 
 
 MINIMAL_STYLES_XML = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

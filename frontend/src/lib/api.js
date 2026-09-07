@@ -81,7 +81,7 @@ async function toError(res) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const isSafeRead = (method) => method === 'GET' || method === 'HEAD'
 
-async function request(path, { method = 'GET', body, signal } = {}) {
+async function request(path, { method = 'GET', body, signal, timeoutMs = 20000 } = {}) {
   // A bare fetch has no default timeout, so a backend that stalls without
   // ever sending a response (a stuck DB connection, a dead proxy) leaves the
   // promise pending forever and callers like OnboardingWizard.finish() never
@@ -96,7 +96,7 @@ async function request(path, { method = 'GET', body, signal } = {}) {
   let res
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const timeoutController = new AbortController()
-    const timeoutId = setTimeout(() => timeoutController.abort(), 20000)
+    const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
     const combinedSignal = signal
       ? AbortSignal.any([signal, timeoutController.signal])
       : timeoutController.signal
@@ -264,6 +264,10 @@ export const api = {
    *  interest and emails support — see backend/routes/onboarding.py. */
   requestStateStandards: (state) =>
     request('/api/onboarding/state-request', { method: 'POST', body: { state } }),
+  setOnboardingProgress: (body) =>
+    request('/api/onboarding/progress', { method: 'POST', body }),
+  recordOnboardingEvents: (events) =>
+    request('/api/onboarding/events', { method: 'POST', body: { events } }),
   signup: (name, email, password, extra = {}) =>
     request('/api/auth/signup', {
       method: 'POST',
@@ -303,7 +307,6 @@ export const api = {
     }),
 
   getSettings: ({ subject, signal } = {}) => request(subject ? `/api/settings?subject=${encodeURIComponent(subject)}` : '/api/settings', { signal }),
-  putSettings: (payload) => request('/api/settings', { method: 'PUT', body: payload }),
   getFrameworks: ({ state, signal } = {}) =>
     request(state ? `/api/frameworks?state=${encodeURIComponent(state)}` : '/api/frameworks', { signal }),
   getActiveStandardsStates: ({ signal } = {}) => request('/api/standards/active-states', { signal }),
@@ -377,10 +380,12 @@ export const api = {
   /* With `feedback` this is the chat's iteration loop — "make Thursday a
      Socratic seminar". Without it, the autonomous self-critique it has always
      been. Returns the updated row so the caller can put it straight into state. */
-  revisePlan: (id, feedback) =>
+  revisePlan: (id, feedback, { signal, timeoutMs = 60000 } = {}) =>
     request(`/api/plans/${id}/revise`, {
       method: 'POST',
       body: { feedback: feedback || null },
+      signal,
+      timeoutMs,
     }),
   planFeedback: (id, isGood, notes, reason) =>
     request(`/api/plans/${id}/feedback`, {
@@ -400,8 +405,6 @@ export const api = {
   driveConnectUrl: (returnTo) =>
     `${API_BASE}/api/drive/connect?return_to=${encodeURIComponent(returnTo)}`,
   driveDisconnect: () => request('/api/drive/disconnect', { method: 'POST' }),
-  mcpStatus: ({ signal } = {}) => request('/api/mcp/status', { signal }),
-  mcpDisconnect: () => request('/api/mcp/disconnect', { method: 'POST' }),
   sharePlan: (planId, { email, role = 'reader' } = {}) => {
     // My Drive saves do not have a recipient. Do not serialize that empty
     // form value as `email: ''`: the backend intentionally validates a
@@ -414,7 +417,6 @@ export const api = {
   },
   listPlanShares: (planId, { signal } = {}) =>
     request(`/api/plans/${planId}/shares`, { signal }),
-  planDownloadUrl: (id) => `${API_BASE}/api/plans/${id}/download`,
   // Never use a native <a download> for a generated document. If the server
   // returns its JSON error envelope, browsers otherwise save that JSON as
   // `download.json`, which is especially confusing on iPad Safari.
@@ -436,8 +438,6 @@ export const api = {
         ...(passageTitle ? { passage_title: passageTitle } : {}),
       },
     }),
-  deleteQuiz: (planId, quizId) =>
-    request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'DELETE' }),
   updateQuiz: (planId, quizId, quizJson) =>
     request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'PUT', body: { quiz_json: quizJson } }),
   /* The chat-driven counterpart to createQuiz — a follow-up like "make it
@@ -451,7 +451,6 @@ export const api = {
       method: 'POST',
       body: { feedback },
     }),
-  listQuizLibrary: ({ signal } = {}) => request('/api/quiz-library', { signal }),
   quizLibrarySuggestions: (planId, { signal } = {}) => request(`/api/quiz-library/suggestions?plan_id=${encodeURIComponent(planId)}`, { signal }),
   saveQuizToLibrary: (planId, quizId, { permissionConfirmed = false } = {}) =>
     request(`/api/quiz-library/plans/${encodeURIComponent(planId)}/quizzes/${encodeURIComponent(quizId)}`, {
@@ -470,7 +469,6 @@ export const api = {
   useQuizLibrarySet: (libraryId) =>
     request(`/api/quiz-library/sets/${encodeURIComponent(libraryId)}/use`, { method: 'POST' }),
   quizDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download`,
-  quizDocxDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download-docx`,
   downloadQuizDocx: (planId, quizId, options = {}) =>
     downloadFile(`${API_BASE}/api/plans/${encodeURIComponent(planId)}/quizzes/${encodeURIComponent(quizId)}/download-docx`, {
       ...options,
@@ -485,8 +483,6 @@ export const api = {
   },
   listQuizShares: (planId, quizId, { signal } = {}) =>
     request(`/api/plans/${planId}/quizzes/${quizId}/shares`, { signal }),
-  exportQuizToCanvas: (planId, quizId) =>
-    request(`/api/canvas/export_quiz?plan_id=${planId}&quiz_id=${quizId}`, { method: 'POST' }),
   /* The two raw SSE endpoints. generate_stream drives useLessonStream and yields
      a structured plan with grounding; chat_stream drives useChatStream and yields
      plain conversational text. They are not interchangeable. */
@@ -637,22 +633,6 @@ export const api = {
   },
   getStandardsCoverage: (classId, { signal } = {}) =>
     request(`/api/standards/coverage?class_id=${encodeURIComponent(classId)}`, { signal }),
-  getStandardLessons: (code, classId, { signal } = {}) =>
-    request(`/api/standards/${encodeURIComponent(code)}/lessons?class_id=${encodeURIComponent(classId)}`, { signal }),
-  deconstructStandard: (code, subject, { signal } = {}) => {
-    const qs = new URLSearchParams()
-    if (subject) qs.set('subject', subject)
-    return request(`/api/standards/${encodeURIComponent(code)}/deconstruct${qs.toString() ? `?${qs}` : ''}`, { signal })
-  },
-  standardsStats: ({ signal, ...params } = {}) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
-    )
-    return request(`/api/standards/stats${qs.toString() ? `?${qs}` : ''}`, { signal })
-  },
-  standardsGaps: ({ signal } = {}) => request('/api/standards/gaps', { signal }),
-  searchStandards: (query, topK = 10, { signal } = {}) =>
-    request('/api/standards/search', { method: 'POST', body: { query, top_k: topK }, signal }),
 
   /* ── sharing a plan by link ───────────────────────────────────────────────
    *
@@ -738,8 +718,6 @@ export const api = {
     return upload('/api/extract_text', fd, { signal })
   },
 
-  getCurriculumMap: (subject, { signal } = {}) =>
-    request(`/api/curriculum_map?subject=${encodeURIComponent(subject)}`, { signal }),
   listGlobalDocuments: ({ signal } = {}) => request('/api/documents/global', { signal }),
   /** `classId` is what makes an upload visible to listClassDocuments — without
    *  it the row is written with class_id NULL and the My Classes list, which
@@ -791,10 +769,6 @@ export const api = {
     request(`/api/school-calendars/pending?school_id=${encodeURIComponent(schoolId)}`, { signal }),
   getConfirmedSchoolCalendar: (schoolId, { signal } = {}) =>
     request(`/api/school-calendars/confirmed/${encodeURIComponent(schoolId)}`, { signal }),
-  confirmSchoolCalendar: (submissionId) =>
-    request(`/api/school-calendars/${encodeURIComponent(submissionId)}/confirm`, { method: 'POST' }),
-  rejectSchoolCalendar: (submissionId) =>
-    request(`/api/school-calendars/${encodeURIComponent(submissionId)}/reject`, { method: 'POST' }),
   listSchoolTemplates: (schoolId, { signal } = {}) =>
     request(`/api/school-calendars/${encodeURIComponent(schoolId)}/templates`, { signal }),
   selectSchoolTemplate: (schoolId, templateId) =>
@@ -814,17 +788,11 @@ export const api = {
   deleteClass: (id) => request(`/api/classes/${id}`, { method: 'DELETE' }),
   listClassDocuments: (id, { signal } = {}) =>
     request(`/api/classes/${id}/documents`, { signal }),
+  listClassTemplates: (id, { signal } = {}) =>
+    request(`/api/classes/${id}/templates`, { signal }),
+  selectClassTemplate: (classId, templateId) =>
+    request(`/api/classes/${encodeURIComponent(classId)}/templates/${encodeURIComponent(templateId)}/select`, { method: 'POST' }),
 
-  getGlobalStandards: (state, subject, grade, { signal } = {}) =>
-    request(`/api/standards/global?state=${encodeURIComponent(state)}&subject=${encodeURIComponent(subject)}&grade=${encodeURIComponent(grade)}`, { signal }),
-  uploadGlobalStandards: (state, subject, grade, file, { signal } = {}) => {
-    const fd = new FormData()
-    fd.append('state', state)
-    fd.append('subject', subject)
-    fd.append('grade', grade)
-    fd.append('file', file)
-    return upload('/api/standards/global/upload', fd, { signal })
-  },
 
   /** The school year for one class: every week, its real dates, whether it has
    *  a plan and whether school is even open. Sourced from the same calendar
@@ -834,11 +802,8 @@ export const api = {
 
   getCurriculumProgress: (subject, { signal } = {}) =>
     request(`/api/curriculum_progress?subject=${encodeURIComponent(subject)}`, { signal }),
+  getAdminOnboardingFunnel: ({ signal } = {}) => request('/api/admin/onboarding-funnel', { signal }),
 
   updateDay: (planId, dayIndex, body) => request(`/api/plans/${planId}/days/${dayIndex}`, { method: 'PUT', body }),
 
-  /** A standalone quick warm-up for a day with no built plan yet — see
-   *  TodayPage and backend/routes/bell_ringer.py. */
-  getBellRinger: ({ subject, grade, topic }, { signal } = {}) =>
-    request('/api/bell_ringer', { method: 'POST', body: { subject, grade, topic }, signal }),
 }

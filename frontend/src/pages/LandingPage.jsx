@@ -4,6 +4,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { api } from '../lib/api'
 import { handleViewTransitionNavigation } from '../lib/viewTransitions'
 import { SignInForm } from '../components/SignInForm'
+import { useAuth } from '../lib/authContext'
 
 /* The public front door — a verification seal on violet, not a bordered grid.
  * The logo mark is a violet gem glowing on near-black; the page commits to
@@ -369,12 +370,28 @@ function SignInPopover() {
 export function LandingPage() {
   useDocumentTitle('Lesson plans, cited to the standard')
   const navigate = useNavigate()
+  const { loginDemo } = useAuth()
   const [pricing, setPricing] = useState(null)
   const [proofRef, proofInView] = useInView()
   const [pipelineRef, pipelineInView] = useInView()
   const [mechRef, mechInView] = useInView()
   const landRef = useRef(null)
   const [barHidden, setBarHidden] = useState(false)
+  const [demoLoading, setDemoLoading] = useState(false)
+  const [demoError, setDemoError] = useState('')
+
+  const openDemo = async () => {
+    if (demoLoading) return
+    setDemoLoading(true)
+    setDemoError('')
+    try {
+      await loginDemo()
+      navigate('/c/recruiter_demo_class/chat/recruiter_demo_chat', { replace: true })
+    } catch (error) {
+      setDemoError(error.message || 'The demo is unavailable right now.')
+      setDemoLoading(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -442,9 +459,39 @@ export function LandingPage() {
             Join Early Access
             <ArrowIcon />
           </Link>
+          <button type="button" className="land-demo-link" onClick={openDemo} disabled={demoLoading}>
+            {demoLoading ? 'Opening demo…' : 'See a finished lesson plan'}
+          </button>
           <span className="land-note">Built by an Alabama high school teacher</span>
         </div>
+        {demoError ? <p className="land-demo-error" role="alert">{demoError}</p> : null}
         {pricing ? <p className="land-price">{pricing}</p> : null}
+      </section>
+
+      <section className="land-template-proof" aria-labelledby="template-proof-heading">
+        <div>
+          <span className="land-tag">Your format, carried through</span>
+          <h2 id="template-proof-heading" className="land-heading">Bring the template your school already uses.</h2>
+          <p className="land-template-copy">
+            Upload a blank Word template and FlexEd reads its cells, colors, headings, and layout intent. Your next lesson plan is written into that same format, alongside your syllabus, pacing guide, and state standards.
+          </p>
+        </div>
+        <div className="land-template-flow" aria-label="Blank template becomes a filled lesson plan">
+          <div className="land-template-card land-template-card--blank">
+            <span className="land-template-card-label">Blank template</span>
+            <span className="land-template-row land-template-row--violet" />
+            <span className="land-template-row land-template-row--short" />
+            <span className="land-template-cell-grid"><i /><i /><i /><i /></span>
+          </div>
+          <ArrowIcon />
+          <div className="land-template-card land-template-card--filled">
+            <span className="land-template-card-label">Filled lesson plan</span>
+            <span className="land-template-row land-template-row--gold" />
+            <span className="land-template-row" />
+            <span className="land-template-row land-template-row--short" />
+            <span className="land-template-row" />
+          </div>
+        </div>
       </section>
 
       <section ref={proofRef} className={`land-proof${proofInView ? ' is-inview' : ''}`}>

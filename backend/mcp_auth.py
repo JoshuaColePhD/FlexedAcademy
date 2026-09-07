@@ -122,6 +122,10 @@ class FlexEdOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Re
                 return True
         return False
 
+    def pending_request(self, request_id: str) -> tuple[OAuthClientInformationFull, AuthorizationParams] | None:
+        """Return a still-live authorization request without consuming it."""
+        return self.pending.get(request_id)
+
     def _session_version(self, user_id: str) -> int:
         user = db.get_user_by_id(user_id)
         return int(user.get("session_version", 0)) if user else -1

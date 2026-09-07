@@ -147,8 +147,8 @@ export function TermsPage() {
         <h2 className="text-base font-semibold text-ink">Contact</h2>
         <p className="mt-2">
           Questions about these terms — reach Joshua Cole at{' '}
-          <a className="text-accent-text hover:underline" href="mailto:joshuacolephd@gmail.com">
-            joshuacolephd@gmail.com
+          <a className="text-accent-text hover:underline" href="mailto:support@flexedacademy.com">
+            support@flexedacademy.com
           </a>
           .
         </p>

@@ -46,9 +46,12 @@ class ClassPatch(BaseModel):
     # Not on ClassBody for the same "auto-set nothing, edit afterward" reason
     # `school` isn't: a brand-new class starts with no class-specific note.
     custom_instructions: str | None = Field(default=None, max_length=2000)
+    # Optional instructional minutes. This is intentionally class-scoped and
+    # is not asked during onboarding; teachers can set it later for each prep.
+    period_minutes: int | None = Field(default=None, ge=15, le=240)
 
 
-def _validate_subject(subject: str) -> None:
+def _validate_subject(subject: str, state: str | None = None) -> None:
     """Reject a subject that would never ground a plan.
 
     ClassBody.subject/ClassPatch.subject are plain strings — nothing at the
@@ -67,14 +70,36 @@ def _validate_subject(subject: str) -> None:
     """
     from .. import service
     from . import misc
+    from .onboarding import US_STATE_CODES
 
     code = service.subject_code(subject)
     if code not in misc.known_course_ids():
+        # A standards catalog may not have been ingested for every US state
+        # yet. Keep the teacher's workspace reachable in that case: the
+        # course name is still useful for their uploaded syllabus/template,
+        # while generation will honestly report that state standards are
+        # pending instead of silently borrowing another state's catalog.
+        normalized_state = (state or '').strip().upper()
+        if (
+            len(normalized_state) == 2
+            and normalized_state in US_STATE_CODES
+            and normalized_state not in db.active_standards_states()
+        ):
+            return
         raise AppError(
             "unknown_subject",
             f"'{subject}' isn't a subject with any standards loaded.",
             status=400,
         )
+
+
+def _validate_state(state: str | None) -> str | None:
+    normalized = (state or '').strip().upper() or None
+    if normalized is not None:
+        from .onboarding import US_STATE_CODES
+        if normalized not in US_STATE_CODES:
+            raise AppError("unknown_state", "Choose a valid U.S. state.", status=400)
+    return normalized
 
 
 def _auto_name(subject: str, grade: str) -> str:
@@ -182,6 +207,10 @@ def update_me_route(body: MeBody, user_id: str = Depends(get_current_user)) -> d
     if body.school is not None and body.school != NO_CALENDAR_SCHOOL_ID and not db.get_school(body.school):
         raise AppError("unknown_school", "Unknown school.", status=400)
     fields = body.model_dump(exclude_none=True)
+    # Unlike the other nullable patch fields, clearing the class-period
+    # setting is an intentional operation from the settings form.
+    if "period_minutes" in body.model_fields_set:
+        fields["period_minutes"] = body.period_minutes
     user = db.update_user(user_id, **fields) if fields else db.get_user_by_id(user_id)
     if not user:
         raise AppError("not_found", "No such user.", status=404)
@@ -203,7 +232,11 @@ def list_classes_route(include_archived: bool = False, user_id: str = Depends(ge
 
 @router.post("/classes", status_code=201)
 def create_class_route(body: ClassBody, user_id: str = Depends(get_current_user)) -> dict:
-    _validate_subject(body.subject)
+    state = _validate_state(body.state)
+    if state is None:
+        school = db.get_school(db.get_user_school(user_id))
+        state = (school or {}).get("state")
+    _validate_subject(body.subject, state)
     name = _auto_name(body.subject, body.grade)
     # A real, production-found bug: a teacher (or an automated session acting
     # on her behalf) ended up with two classes both auto-named "English
@@ -224,14 +257,19 @@ def create_class_route(body: ClassBody, user_id: str = Depends(get_current_user)
             status=409,
             hint="Open that one from the class switcher, or archive it first if you meant to start over.",
         )
-    return db.create_class(user_id, name=name, subject=body.subject, grade=body.grade, state=body.state)
+    # A class created from a direct API client still inherits the school
+    # jurisdiction when the client omits state. The onboarding UI sends an
+    # explicit choice; this fallback keeps older clients from creating a
+    # class that silently loses the school's standards context.
+    return db.create_class(user_id, name=name, subject=body.subject, grade=body.grade, state=state)
 
 
 @router.patch("/classes/{class_id}")
 def update_class_route(
     class_id: str, body: ClassPatch, user_id: str = Depends(get_current_user)
 ) -> dict:
-    if not db.get_class(user_id, class_id):
+    existing_class = db.get_class(user_id, class_id)
+    if not existing_class:
         raise AppError("not_found", "That class doesn't exist.", status=404)
     # Checked here, in the handler body, not a validator — same reasoning as
     # MeBody's identical check just above: the valid set is the live `schools`
@@ -239,11 +277,16 @@ def update_class_route(
     # exemption as that check too — see its comment.
     if body.school is not None and body.school != NO_CALENDAR_SCHOOL_ID and not db.get_school(body.school):
         raise AppError("unknown_school", "Unknown school.", status=400)
+    requested_state = _validate_state(body.state) if body.state is not None else existing_class.get("state")
     if body.subject is not None:
-        _validate_subject(body.subject)
+        _validate_subject(body.subject, requested_state)
+    elif body.state is not None and body.state != existing_class.get("state"):
+        _validate_subject(existing_class["subject"], requested_state)
     fields = body.model_dump(exclude_none=True)
+    if body.state is not None:
+        fields["state"] = requested_state
     if "subject" in fields or "grade" in fields:
-        cls = db.get_class(user_id, class_id)
+        cls = existing_class
         if cls:
             subj = fields.get("subject", cls["subject"])
             grd = fields.get("grade", cls["grade"])
@@ -282,6 +325,30 @@ def list_documents_route(class_id: str, user_id: str = Depends(get_current_user)
     if not db.get_class(user_id, class_id):
         raise AppError("not_found", "That class doesn't exist.", status=404)
     return db.list_class_documents(user_id, class_id)
+
+
+@router.get("/classes/{class_id}/templates")
+def list_class_templates_route(class_id: str, user_id: str = Depends(get_current_user)) -> dict:
+    cls = db.get_class(user_id, class_id)
+    if not cls or not cls.get("school"):
+        raise AppError("not_found", "That class doesn't have a school yet.", status=404)
+    return {
+        "templates": db.list_school_templates_for_user(cls["school"], user_id),
+        "selected_template_id": (
+            db.get_preferred_template_for_class(user_id, class_id, cls.get("school")) or {}
+        ).get("id"),
+    }
+
+
+@router.post("/classes/{class_id}/templates/{template_id}/select")
+def select_class_template_route(class_id: str, template_id: str, user_id: str = Depends(get_current_user)) -> dict:
+    if not db.set_class_template_preference(user_id, class_id, template_id):
+        raise AppError(
+            "template_not_ready",
+            "That template is not available for this class yet.",
+            status=409,
+        )
+    return {"status": "ok", "class_id": class_id, "template_id": template_id}
 
 
 @router.get("/weeks")

@@ -4,12 +4,86 @@ FlexEd is a production-oriented AI application for standards-grounded lesson
 planning. Its central design goal is traceability: a generated standard should
 be connected to the source text and retrieval decision that supported it.
 
+## Product architecture contract
+
+FlexEd is state-agnostic and teacher-owned by default. Florence High School,
+Alabama, and AP Language are calibration data and optional school/course
+contexts; they are never universal assumptions in the product.
+
+Every teacher must be able to:
+
+1. Create an account from any U.S. state and establish a class/course with the
+   relevant state, framework, grade, and subject metadata.
+2. Upload a lesson-plan template and reuse it for future plans. Template
+   ingestion must capture both semantic structure and visual design intent,
+   including worksheets/tables, merged cells, row and column geometry, labels,
+   repeated day/week patterns, fonts, borders, fills, colors, and other
+   meaningful formatting—not just extract its text or verify that it is blank.
+3. Upload class/course materials such as syllabi, calendars, pacing guides,
+   curriculum maps, rubrics, and instructional documents. These materials must
+   be parsed, indexed, and scoped to the owning teacher/class/course.
+4. Start a new chat and request a lesson plan in ordinary language. The
+   generation request must combine the teacher's request with the selected
+   standards, class metadata, calendar, uploaded materials, selected template,
+   and optional per-class instructional period length. The period length is a
+   class setting, is not asked during onboarding, and guides realistic pacing.
+5. Receive a standards-grounded plan rendered back into the selected template,
+   preserving its intended structure and design while exposing the standards
+   sources and any grounding warnings for review.
+
+### Scope hierarchy
+
+Context must be resolved in this order, with narrower scope overriding broader
+defaults:
+
+```text
+Teacher account
+  → School (optional shared context)
+    → Class / course
+      → State + framework + grade + subject standards
+      → Class materials and calendar
+      → Selected teacher template
+      → Current chat request
+```
+
+No generated plan may silently use another teacher's materials or template,
+another class's course context, or a hard-coded school's calendar/profile.
+Shared school resources require explicit school scope and access checks; a
+teacher's personal template and materials remain private unless the product
+explicitly supports sharing them.
+
+### Template ingestion boundary
+
+The template analyzer produces a durable, versioned template specification that
+the document builder can use deterministically. The LLM may help describe
+ambiguous design intent, but it is not the authority for cell placement,
+formatting preservation, or artifact validity. A generated plan must be
+validated against the template specification before its DOCX is offered to the
+teacher. If a template feature cannot be preserved, the system must identify
+the limitation and provide a recoverable warning rather than silently falling
+back to a Florence-, district-, or neutral-layout document.
+
+### Materials and standards boundary
+
+Uploaded materials provide class/course context and instructional intent; they
+do not replace authoritative standards. Standards retrieval must remain scoped
+by the class's selected state, framework, grade, subject, and source policy.
+The model may use teacher materials to understand pacing, sequence, language,
+and constraints, but standards claims must still cite the retrieved standards
+source or be marked as ungrounded.
+
 ## System flow
 
 ```text
-Teacher request
+Teacher account + class/course setup
   ↓
-Class / course / grade resolution
+Template/design ingestion + class-material ingestion
+  ↓
+State / framework / grade / subject standards selection
+  ↓
+Teacher request in New Chat
+  ↓
+Tenant and class-context resolution
   ↓
 Query expansion and embedding
   ↓
@@ -24,6 +98,8 @@ Strict structured lesson-plan response
 Schema validation and citation-grounding audit
   ↓
 Tenant-scoped persistence in Postgres/Supabase
+  ↓
+Template-aware rendering and visual/artifact validation
   ↓
 Streamed browser preview + queued DOCX artifact
 ```
@@ -69,8 +145,9 @@ see that work is underway. The durable path is separate from the stream:
 ## Trust and privacy
 
 The application is designed for teacher-facing workflows. It uses application-
-layer ownership filters for user data, read-only server enforcement for the
-recruiter demo, signed sessions, rate limits, and account export/deletion paths.
+layer ownership filters plus forced Postgres RLS policies for user data,
+read-only server enforcement for the recruiter demo, signed sessions, rate
+limits, and account export/deletion paths.
 Users should not enter student names or other identifying information into
 prompts. Local development must use a separate database before generating real
 plans; the deployed and local configurations otherwise share Supabase data.

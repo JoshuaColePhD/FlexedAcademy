@@ -557,6 +557,11 @@ def _build_chat_system_prompt(
         "interested in what the teacher's going for, not a system logging a transaction.\n\n"
     )
 
+    if cls:
+        period_block = prompts.class_period_block(cls.get("period_minutes"))
+        if period_block:
+            system_prompt += "\n\n" + period_block
+
     if mode == "sub_plan":
         system_prompt += (
             "The teacher is sick today and needs an EMERGENCY 5-MINUTE SUB PLAN. "

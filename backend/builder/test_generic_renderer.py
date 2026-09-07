@@ -55,9 +55,17 @@ if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
 import build_lesson_plan
+from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 from backend.builder.florence_reference_spec import FLORENCE_REFERENCE_SPEC
 from backend.builder.generic_renderer import render as render_spec
+
+
+def _cell_fill(cell) -> str | None:
+    shd = cell._tc.tcPr.find(qn("w:shd"))
+    return shd.get(qn("w:fill")) if shd is not None else None
 
 
 def _document_xml(docx_path: Path) -> bytes:
@@ -102,6 +110,35 @@ def test_generic_renderer_rejects_day_index_gap():
         except SpecRenderError:
             raised = True
         assert raised, "render() should reject a day column with no day_index"
+
+
+def test_template_mode_populates_the_uploaded_table_without_replacing_its_design():
+    fixture = json.loads((_THIS_DIR / "example-week.json").read_text(encoding="utf-8"))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        template_path = Path(tmp) / "teacher-template.docx"
+        output_path = Path(tmp) / "rendered.docx"
+        source = Document()
+        table = source.add_table(rows=7, cols=6)
+        preserved = table.cell(2, 1)
+        preserved.text = "Teacher formatting"
+        tc_pr = preserved._tc.get_or_add_tcPr()
+        shading = OxmlElement("w:shd")
+        shading.set(qn("w:fill"), "D9EAD3")
+        tc_pr.append(shading)
+        source.save(template_path)
+
+        render_spec(
+            FLORENCE_REFERENCE_SPEC,
+            fixture,
+            str(output_path),
+            template_path=str(template_path),
+        )
+
+        rendered = Document(output_path)
+        assert len(rendered.tables) == 1
+        assert _cell_fill(rendered.tables[0].cell(2, 1)) == "D9EAD3"
+        assert fixture["days"][0]["learning_targets"] in rendered.tables[0].cell(2, 1).text
 
 
 if __name__ == "__main__":

@@ -1156,8 +1156,8 @@ export function ArtifactDetailPanel({
           {kind === 'quiz' && planId ? (
             quiz ? (
               <>
-                {/* Cloud sharing and the Canvas preview live behind one
-                    export control; the two local formats remain explicit. */}
+                {/* Cloud sharing lives behind one export control; the two
+                    local formats remain explicit. */}
                 <button
                   type="button"
                   className="btn-icon fa-press"

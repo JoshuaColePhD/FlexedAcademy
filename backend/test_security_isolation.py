@@ -111,6 +111,32 @@ def test_school_calendar_is_limited_to_school_members_or_admin(monkeypatch):
         _clear_overrides()
 
 
+def test_school_template_selection_requires_school_access(monkeypatch):
+    _clear_overrides()
+    schools = {
+        "school-a": {"id": "school-a", "name": "School A"},
+        "school-b": {"id": "school-b", "name": "School B"},
+    }
+    users = {
+        "account-a": {"id": "account-a", "school": "school-a"},
+    }
+    monkeypatch.setattr(db, "get_school", lambda school_id: schools.get(school_id))
+    monkeypatch.setattr(db, "get_user_by_id", lambda user_id: users.get(user_id))
+    monkeypatch.setattr(db, "is_admin", lambda _user_id: False)
+    monkeypatch.setattr(
+        db,
+        "set_personal_school_template",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("cross-school write reached the database")),
+    )
+
+    try:
+        client = _client(monkeypatch, "account-a")
+        response = client.post("/api/school-calendars/school-b/templates/template-b/select")
+        assert response.status_code == 404
+    finally:
+        _clear_overrides()
+
+
 def test_api_responses_are_private_and_uncacheable(monkeypatch):
     _clear_overrides()
     monkeypatch.setattr(db, "get_user_by_id", lambda _user_id: None)

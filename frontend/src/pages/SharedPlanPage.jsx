@@ -99,7 +99,9 @@ export function SharedPlanPage() {
             </div>
             <div>
               <h1 className="text-sm font-semibold text-ink">{plan.week_label || 'Lesson Plan'}</h1>
-              <p className="text-xs text-ink-muted">Shared by a colleague</p>
+              <p className="text-xs text-ink-muted">
+                FlexEd Academy · standards-grounded lesson planning{plan.state ? ` for ${plan.state}` : ''}
+              </p>
             </div>
           </div>
         </div>
@@ -131,11 +133,11 @@ export function SharedPlanPage() {
             </div>
           ) : (
             <button
-              onClick={() => navigate(withReturnTo('/login', `/shared/${id}`))}
+              onClick={() => navigate(withReturnTo('/signup', `/shared/${id}`))}
               className="btn btn-primary flex items-center gap-2 px-2 md:px-3"
             >
-              <span className="hidden sm:inline">Sign in to duplicate</span>
-              <span className="sm:hidden text-xs">Sign in</span>
+              <span className="hidden sm:inline">Build your own plan</span>
+              <span className="sm:hidden text-xs">Build your own</span>
               <ArrowRight size={16} className="hidden sm:block" />
             </button>
           )}
@@ -148,7 +150,8 @@ export function SharedPlanPage() {
             plan={plan.plan_json}
             planId={null}
             subject={plan.course}
-            groundedCodes={new Set()}
+            state={plan.state}
+            groundedCodes={new Set(plan.retrieved_ids || [])}
             busy={false}
             view="print"
           />

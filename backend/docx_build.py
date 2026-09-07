@@ -29,7 +29,12 @@ from .schema import ENGAGEMENT_OPTIONS
 log = logging.getLogger("flexedacademy.docx")
 
 
-def _generated_spec_builder(school_id: str, layout_spec: dict, template_id: str | None = None) -> SimpleNamespace:
+def _generated_spec_builder(
+    school_id: str,
+    layout_spec: dict,
+    template_id: str | None = None,
+    template_path: str | None = None,
+) -> SimpleNamespace:
     """A module-shaped wrapper (matches the same build(data, out_path)
     contract assert_builder_contract() checks) around a school's verified,
     automated-codegen layout spec, rendered through the one shared
@@ -42,7 +47,7 @@ def _generated_spec_builder(school_id: str, layout_spec: dict, template_id: str 
     from .builder.generic_renderer import render as _render
 
     def build(data: dict, out_path: str) -> None:
-        _render(layout_spec, data, out_path)
+        _render(layout_spec, data, out_path, template_path=template_path)
 
     suffix = f", template {template_id}" if template_id else ""
     return SimpleNamespace(build=build, __doc__=f"Generated builder spec for {school_id}{suffix}")
@@ -143,18 +148,26 @@ def builder(school_id: str | None = None, template_id: str | None = None) -> Mod
     # A teacher may select a personal template. Resolve that exact version's
     # verified renderer first; never substitute the school's latest renderer,
     # because that would make two teachers' documents disagree with the
-    # template shown in their settings. While its renderer is still being
-    # prepared, the explicit neutral output is safer than borrowing another
-    # teacher's or the school's format.
+    # template shown in their settings.
     if school_id and template_id:
         selected_template = db.get_school_template(template_id)
         if not selected_template or selected_template.get("school_id") != school_id:
-            return _neutral_builder(school_id)
+            raise AppError("template_not_found", "The selected lesson-plan template is not available.", status=409)
         template_job = db.get_builder_codegen_job_for_template(template_id)
         if template_job and template_job.get("layout_spec_json"):
             import json
-            return _generated_spec_builder(school_id, json.loads(template_job["layout_spec_json"]), template_id)
-        return _neutral_builder(school_id)
+            return _generated_spec_builder(
+                school_id,
+                json.loads(template_job["layout_spec_json"]),
+                template_id,
+                selected_template.get("file_path"),
+            )
+        raise AppError(
+            "template_renderer_pending",
+            "Your selected template is still being prepared for lesson-plan generation.",
+            status=409,
+            hint="Choose a ready template or wait for analysis to finish.",
+        )
 
     path = Path(settings.builder_path)
     # Every school resolves its own builder first. Florence's builder is the
@@ -207,17 +220,42 @@ def builder(school_id: str | None = None, template_id: str | None = None) -> Mod
                 # with a real hand-written builder just works.
                 layout_spec = db.get_school_builder_spec(school_id)
                 if layout_spec:
-                    return _generated_spec_builder(school_id, layout_spec)
+                    job = db.get_builder_codegen_job_for_school(school_id)
+                    source_template = db.get_school_template(job["template_id"]) if job else None
+                    return _generated_spec_builder(
+                        school_id,
+                        layout_spec,
+                        job.get("template_id") if job else None,
+                        source_template.get("file_path") if source_template else None,
+                    )
                 log.error(
                     "school=%s is builder_status='verified' but no layout spec could be "
                     "loaded; using the neutral fallback. Check "
                     "builder_codegen_jobs for this school.",
                     school_id,
                 )
-                return _neutral_builder(school_id)
+                raise AppError(
+                    "template_renderer_missing",
+                    "This school's verified template renderer is unavailable.",
+                    status=409,
+                )
         elif school_id != settings.default_builder_school_id:
-            log.warning("school=%s has no verified district builder; using neutral fallback", school_id)
-            return _neutral_builder(school_id)
+            raise AppError(
+                "template_renderer_pending",
+                "This class does not have a verified lesson-plan template yet.",
+                status=409,
+                hint="Upload a template and wait for its renderer to be verified.",
+            )
+
+    # ``generic`` is a legacy sentinel, not a real teacher-owned template. It
+    # must not quietly resolve to Florence's document when class context is
+    # missing.
+    if school_id == "generic":
+        raise AppError(
+            "template_required",
+            "A teacher-owned lesson-plan template must be selected before generation.",
+            status=409,
+        )
 
     if not path.is_file():
         raise AppError(

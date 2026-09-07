@@ -464,7 +464,7 @@ function speakableQuestions(intro, questions) {
 }
 
 function normalizeChatMode(mode) {
-  if (mode === 'research' || mode === 'build' || mode === 'brainstorm') return mode
+  if (mode === 'research' || mode === 'build' || mode === 'brainstorm' || mode === 'sub_plan') return mode
   // Preserve links from the older interview/standard entry points while
   // presenting the simpler three-mode vocabulary in the composer.
   if (mode === 'standard') return 'build'
@@ -2522,17 +2522,11 @@ export function ChatPage() {
         return
       }
 
-      // The AI called generate_lesson_plan. Combine history for the prompt.
-      // We append any introductory text the AI just streamed ("I'll get right on that!")
-      // so it's in the combined history. Same split as above: the last turn
-      // carries the attachment text, everything before it is the transcript.
-      let combinedHistory = [
-        ...historyMessages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
-        `USER: ${content}`,
-      ].join('\n\n')
-      if (chatResult.text?.trim()) {
-        combinedHistory += `\n\nASSISTANT: ${chatResult.text}`
-      }
+      // The whole-plan endpoint loads the saved plan and its grounding context
+      // server-side. Send only the teacher's new instruction here; replaying
+      // the transcript can exceed ReviseBody's 4000-character boundary and
+      // does not add useful plan context.
+      const revisionFeedback = promptText || 'Use the attached documents as reference for this revision.'
 
       // Same silence problem as a first build — see VOICE_BUILDING's use above.
       if (voiceOpen) {
@@ -2555,7 +2549,7 @@ export function ChatPage() {
       setRevising(true)
       setPlanSaveState('saving')
       try {
-        const row = await api.revisePlan(artifact.planId, combinedHistory)
+        const row = await api.revisePlan(artifact.planId, revisionFeedback, { timeoutMs: 60000 })
         setArtifact((a) => ({
           ...a,
           plan: row.plan_json,

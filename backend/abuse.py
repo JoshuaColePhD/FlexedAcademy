@@ -20,10 +20,13 @@ DEVICE_COOKIE_NAME = "flexed_device"
 
 
 def client_ip(request: Request) -> str:
-    """Return the edge-provided client IP, with a local direct-connection fallback."""
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip()
+    """Return the client address after the ASGI server validates proxy headers.
+
+    Uvicorn is configured with Render's trusted proxy boundary in production,
+    so reading request.client.host gives every rate limiter the same identity.
+    Parsing X-Forwarded-For here would let an untrusted caller choose their own
+    abuse bucket whenever the app is reached without that proxy boundary.
+    """
     return request.client.host if request.client else "unknown"
 
 
@@ -65,4 +68,3 @@ def validate_signup_form(website: str | None, started_at_ms: float | None) -> No
         raise ValueError("signup form timing invalid") from None
     if elapsed < 1.0:
         raise ValueError("signup form completed too quickly")
-

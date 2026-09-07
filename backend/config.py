@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     # reaching a teacher. Override this in EMAIL_FROM if the verified sender
     # address changes.
     email_from: str = "FlexEd Academy <no-reply@flexedacademy.com>"
-    support_email: str = "joshuacolephd@gmail.com"
+    support_email: str = "support@flexedacademy.com"
     # Email verification is required before a password account can receive a
     # session or spend any model tokens. The token lives in Postgres and the
     # link is sent through the same Resend integration used for password reset.
@@ -257,6 +257,9 @@ class Settings(BaseSettings):
     # builder_codegen_max_jobs_per_day x (up to ~12 OpenAI calls).
     builder_codegen_max_jobs_per_day: int = 5
     skill_context_path: Path = Path(__file__).resolve().parent / "context" / "ap_lang_rules.md"
+    school_profiles_dir: Path = Path(__file__).resolve().parent / "context" / "school_profiles"
+    # Retained for compatibility with older local tooling; prompts now resolve
+    # profiles by school id through school_profiles_dir.
     school_profile_path: Path = Path(__file__).resolve().parent / "context" / "school_profile.md"
     # One calendar file per registered school (backend/db.py's `schools` table),
     # named by the school's own id: <calendars_dir>/<id>.md. No separate path

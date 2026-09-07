@@ -61,6 +61,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -75,6 +76,34 @@ log = logging.getLogger("flexedacademy.template_intake")
 # template is always the actual document a school prints/edits, not a link
 # or a plain-text export, so there's no txt/md path here.
 SUPPORTED_EXTS = {".docx", ".pdf"}
+
+_MAX_DOCX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+_MAX_DOCX_COMPRESSION_RATIO = 100
+
+
+def check_docx_zip(path: Path) -> None:
+    """Reject DOCX archives whose expanded contents are unsafe to parse."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            total_uncompressed = 0
+            total_compressed = 0
+            for info in archive.infolist():
+                total_uncompressed += max(0, int(info.file_size))
+                total_compressed += max(1, int(info.compress_size))
+                if total_uncompressed > _MAX_DOCX_UNCOMPRESSED_BYTES:
+                    raise AppError(
+                        "file_too_large",
+                        "That Word document expands beyond the safe processing limit.",
+                        status=413,
+                    )
+            if total_uncompressed and total_uncompressed / total_compressed > _MAX_DOCX_COMPRESSION_RATIO:
+                raise AppError(
+                    "file_too_large",
+                    "That Word document uses an unsafe compression ratio.",
+                    status=413,
+                )
+    except zipfile.BadZipFile as exc:
+        raise AppError("docx_unreadable", "That Word document is not a valid ZIP archive.", status=422) from exc
 
 _MAX_PARAGRAPHS = 400   # a blank template with more than this is probably a filled-in packet, not a template
 _MAX_PDF_PAGES = 20     # ditto for PDFs
@@ -186,6 +215,8 @@ def validate_upload(filename: str, path: Path) -> str:
             "That file's contents don't match its extension.",
             status=400,
         )
+    if ext == ".docx":
+        check_docx_zip(path)
     return ext
 
 
@@ -230,6 +261,13 @@ def _validate_persisted_file(path: Path, claimed_ext: str) -> None:
                 )
             ]
         )
+    if claimed_ext == ".docx":
+        try:
+            check_docx_zip(path)
+        except AppError as exc:
+            raise TemplateAnalysisFailed(
+                [Finding("validate", exc.code, "error", exc.message)]
+            ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +280,67 @@ def _heading_level(style_name: str) -> int:
         return 0
     digits = "".join(ch for ch in style_name if ch.isdigit())
     return int(digits) if digits else 1
+
+
+def _xml_hex(element, tag: str | None = None, attr: str = "val") -> str | None:
+    """Read a WordprocessingML color/fill attribute without trusting style names.
+
+    ``element`` may be the property node itself or its parent.
+    """
+    from docx.oxml.ns import qn
+
+    node = element.find(qn(tag)) if element is not None and tag else element
+    value = node.get(qn(f"w:{attr}")) if node is not None else None
+    if not value or value.lower() in {"auto", "none"}:
+        return None
+    return value.upper()
+
+
+def _cell_visual(cell) -> dict:
+    """Extract the visual facts the renderer must preserve from one DOCX cell."""
+    from docx.oxml.ns import qn
+
+    tc_pr = cell._tc.tcPr
+    shading = tc_pr.find(qn("w:shd")) if tc_pr is not None else None
+    tc_width = tc_pr.find(qn("w:tcW")) if tc_pr is not None else None
+    width = tc_width.get(qn("w:w")) if tc_width is not None else None
+    vertical = tc_pr.find(qn("w:vAlign")) if tc_pr is not None else None
+    borders = tc_pr.find(qn("w:tcBorders")) if tc_pr is not None else None
+    border_values = {}
+    if borders is not None:
+        for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+            node = borders.find(qn(f"w:{edge}"))
+            if node is not None:
+                border_values[edge] = {
+                    "style": node.get(qn("w:val")),
+                    "color": node.get(qn("w:color")),
+                    "size": node.get(qn("w:sz")),
+                }
+    fonts = set()
+    sizes = set()
+    colors = set()
+    bold = italic = False
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            if run.font.name:
+                fonts.add(run.font.name)
+            if run.font.size:
+                sizes.add(round(run.font.size.pt, 1))
+            if run.font.color and run.font.color.rgb:
+                colors.add(str(run.font.color.rgb).upper())
+            bold = bold or bool(run.bold)
+            italic = italic or bool(run.italic)
+    return {
+        "fill_hex": _xml_hex(shading, attr="fill"),
+        "width_dxa": int(width) if width and width.isdigit() else None,
+        "vertical_align": vertical.get(qn("w:val")) if vertical is not None else None,
+        "borders": border_values,
+        "fonts": sorted(fonts),
+        "font_sizes_pt": sorted(sizes),
+        "font_colors": sorted(colors),
+        "bold": bold,
+        "italic": italic,
+    }
 
 
 def _extract_docx_structure(path: Path) -> dict:
@@ -285,6 +384,8 @@ def _extract_docx_structure(path: Path) -> dict:
     tables: list[dict] = []
     for ti, table in enumerate(d.tables):
         rows = []
+        visual_rows = []
+        row_heights_dxa = []
         for row in table.rows:
             # row.cells repeats the SAME _Cell for every grid column a
             # horizontal merge spans (documented python-docx behavior) — a
@@ -302,13 +403,19 @@ def _extract_docx_structure(path: Path) -> dict:
             # same width as the table's real column count.
             seen_tc = None
             row_cells = []
+            visual_cells = []
             for c in row.cells:
                 if c._tc is seen_tc:
                     row_cells.append("")
+                    visual_cells.append({"merged_continuation": True})
                 else:
                     seen_tc = c._tc
                     row_cells.append(c.text.strip())
+                    visual_cells.append(_cell_visual(c))
             rows.append(row_cells)
+            row_height = row.height.twips if row.height is not None else None
+            row_heights_dxa.append(row_height)
+            visual_rows.append(visual_cells)
         col_counts = {len(r) for r in rows}
         total_chars += sum(len(cell) for row in rows for cell in row)
         tables.append(
@@ -318,6 +425,12 @@ def _extract_docx_structure(path: Path) -> dict:
                 "col_counts": sorted(col_counts),
                 "header_row": rows[0] if rows else [],
                 "sample_rows": rows[1 : 1 + _MAX_TABLE_SAMPLE_ROWS],
+                "visual_rows": visual_rows[: 1 + _MAX_TABLE_SAMPLE_ROWS],
+                "column_widths_dxa": [
+                    c.width.twips if c.width is not None else None for c in table.columns
+                ],
+                "row_heights_dxa": row_heights_dxa[: 1 + _MAX_TABLE_SAMPLE_ROWS],
+                "style": table.style.name if table.style else None,
             }
         )
 
@@ -635,6 +748,11 @@ def _summarize_for_llm(structure: dict) -> str:
             lines.append(f"  Table {t['index']}: {t['row_count']} rows, header row: {t['header_row']}")
             for row in t["sample_rows"]:
                 lines.append(f"    row: {row}")
+            lines.append(f"    column widths (dxa): {t.get('column_widths_dxa')}")
+            lines.append(f"    row heights (dxa): {t.get('row_heights_dxa')}")
+            for row_index, visual_row in enumerate(t.get("visual_rows") or []):
+                lines.append(f"    visual row {row_index}: {visual_row}")
+            lines.append(f"    table style: {t.get('style') or '(direct formatting)'}")
         lines.append(f"Fonts used: {', '.join(structure['fonts_used']) or '(default only)'}")
         lines.append(f"Bulleted/numbered list paragraphs: {structure['list_paragraph_count']}")
     elif structure.get("ocr_status") == "succeeded":

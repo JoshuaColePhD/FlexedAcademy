@@ -183,8 +183,8 @@ export function PrivacyPolicyPage() {
           <h2 className="text-xl font-bold text-ink mb-4">Contact</h2>
           <p className="text-sm text-ink-soft leading-relaxed">
             Questions about this policy, or a request about your data — reach Joshua Cole at{' '}
-            <a className="text-accent-text hover:underline" href="mailto:joshuacolephd@gmail.com">
-              joshuacolephd@gmail.com
+            <a className="text-accent-text hover:underline" href="mailto:support@flexedacademy.com">
+              support@flexedacademy.com
             </a>
             .
           </p>

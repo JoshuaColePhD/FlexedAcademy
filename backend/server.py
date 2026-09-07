@@ -32,7 +32,6 @@ from .routes import (
     auth,
     bell_ringer,
     billing,
-    canvas,
     classes,
     coaching,
     curriculum,
@@ -494,13 +493,13 @@ app.include_router(billing.router)
 app.include_router(admin.router)
 app.include_router(account.router)
 app.include_router(drive.router)
-app.include_router(canvas.router)
 app.include_router(bell_ringer.router)
 app.include_router(coaching.router)
 app.include_router(onboarding.router)
-app.include_router(mcp_routes.router)
-app.include_router(mcp_artifacts.router)
-app.include_router(oauth_router)
+if settings.mcp_enabled:
+    app.include_router(mcp_routes.router)
+    app.include_router(mcp_artifacts.router)
+    app.include_router(oauth_router)
 
 # Streamable HTTP is the current MCP transport. The mounted app applies
 # bearer authentication before any tool can reach FlexEd's user-scoped data.
@@ -511,6 +510,16 @@ if settings.mcp_enabled:
         return RedirectResponse("/mcp/", status_code=307)
 
     app.mount("/mcp", mcp_app, name="mcp")
+else:
+    # The SPA fallback below returns index.html for unknown browser paths. Keep
+    # disabled MCP paths explicit so a deploy cannot appear to serve an OAuth
+    # or artifact endpoint merely because React owns the same URL namespace.
+    @app.api_route("/api/mcp", methods=["GET", "POST", "PATCH", "DELETE"], include_in_schema=False)
+    @app.api_route("/api/mcp/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"], include_in_schema=False)
+    @app.api_route("/mcp", methods=["GET", "POST", "DELETE"], include_in_schema=False)
+    @app.api_route("/mcp/{path:path}", methods=["GET", "POST", "DELETE"], include_in_schema=False)
+    def mcp_disabled():
+        raise AppError("mcp_disabled", "The FlexEd MCP connector is disabled.", status=404)
 import os
 
 from fastapi.responses import FileResponse

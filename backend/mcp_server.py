@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import html
 import json
 import time
 from typing import Any
@@ -290,7 +291,10 @@ oauth_router = APIRouter(tags=["mcp"])
 
 
 def _consent_page(request_id: str) -> HTMLResponse:
-    safe_id = request_id.replace("&", "&amp;").replace('"', "&quot;")
+    # This value is reflected into a quoted HTML attribute. Use the complete
+    # HTML escaping rules rather than a partial replacement list at this OAuth
+    # boundary.
+    safe_id = html.escape(request_id, quote=True)
     return HTMLResponse(
         """<!doctype html><html><head><title>Connect FlexEd</title>
         <style>body{font:16px system-ui;margin:48px auto;max-width:520px;padding:0 20px;color:#18212f}
@@ -305,6 +309,8 @@ def _consent_page(request_id: str) -> HTMLResponse:
 
 @oauth_router.get("/mcp/consent")
 def mcp_consent_page(request_id: str, _user_id: str = Depends(get_current_user)):
+    if not oauth_provider.pending_request(request_id):
+        raise AppError("oauth_request_expired", "This authorization request has expired.", status=404)
     return _consent_page(request_id)
 
 

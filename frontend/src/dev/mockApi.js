@@ -636,7 +636,7 @@ export function installMockApi() {
         subject: body.subject || 'FlexEd Academy support',
         message: body.message.trim(),
         from: state.me.email,
-        to: 'joshuacolephd@gmail.com',
+        to: 'support@flexedacademy.com',
       }
       return json({ ok: true })
     }
@@ -1300,11 +1300,6 @@ export function installMockApi() {
       state.mcp.connected = false
       sessionStorage.removeItem('mock.mcpConnected')
       return json({ connected: false })
-    }
-
-    if (path === '/api/canvas/export_quiz' && method === 'POST') {
-      await wait(500)
-      return json({ status: 'preview', message: 'Canvas export preview completed; no live course was changed.' })
     }
 
     const shareListMatch = path.match(/^\/api\/plans\/([^/]+)\/shares$/)

@@ -107,4 +107,4 @@ EXPOSE 8080
 # request-level isolation for actually staying up; revisit if/when this
 # service is on a plan with real headroom (render.yaml's own comment tracks
 # that decision).
-CMD ["sh", "-c", "uvicorn backend.server:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 75"]
+CMD ["sh", "-c", "uvicorn backend.server:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1} --timeout-keep-alive 75"]

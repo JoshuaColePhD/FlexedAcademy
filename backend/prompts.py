@@ -12,6 +12,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import re
 from pathlib import Path
 
 from .config import settings
@@ -33,12 +34,37 @@ def planning_rules() -> str:
     return path.read_text(encoding="utf-8")
 
 
-@functools.lru_cache(maxsize=1)
-def school_profile() -> str:
-    path = Path(settings.school_profile_path)
+@functools.cache
+def school_profile(school_id: str) -> str:
+    # School IDs are slugs, but keep this boundary defensive because the value
+    # comes from persisted data and is used to select a file on disk.
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,127}", school_id):
+        log.warning("invalid school profile id %r", school_id)
+        return ""
+    path = settings.school_profiles_dir / f"{school_id}.md"
     if not path.is_file():
+        log.info("school profile not found for %s at %s", school_id, path)
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _subject_code(subject: str) -> str:
+    """Resolve the stored framework id without duplicating the subject map."""
+    from .service import subject_code
+
+    return subject_code(subject)
+
+
+def class_period_block(period_minutes: int | None) -> str:
+    """Give the model the class's available instructional time when known."""
+    if period_minutes is None:
+        return ""
+    return (
+        f"CLASS PERIOD LENGTH: {period_minutes} instructional minutes. "
+        "Design the lesson's pacing, transitions, independent work, and assessment "
+        "so the total student-facing work is realistic for this amount of time. "
+        "Do not treat this as the bell-period label."
+    )
 
 
 @functools.cache
@@ -243,9 +269,10 @@ def week_system_prompt(
     class_custom_instructions: str | None = None,
     school_id: str = "florence-high-school",
     output_length: str = "medium",
+    period_minutes: int | None = None,
     user_id: str | None = None,
 ) -> str:
-    rules = planning_rules() if subject == "AP Language & Composition" else ""
+    rules = planning_rules() if _subject_code(subject) == "AP_Lang" else ""
     template_days = day_names_for_school(school_id, user_id=user_id)
 
     blocks = [
@@ -256,9 +283,10 @@ def week_system_prompt(
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
+        class_period_block(period_minutes),
         output_length_block(output_length),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
-        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
+        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(school_id),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
         "date or a school year.\n\n" + calendar_context(school_id),
         "SELECTED SCHOOL TEMPLATE — this is the source of truth for the weekly "
@@ -328,9 +356,12 @@ def day_system_prompt(
     custom_instructions: str | None = None,
     class_custom_instructions: str | None = None,
     output_length: str = "medium",
+    period_minutes: int | None = None,
     day_names: list[str] | tuple[str, ...] | None = None,
+    school_id: str = "florence-high-school",
+    user_id: str | None = None,
 ) -> str:
-    rules = planning_rules() if subject == "AP Language & Composition" else ""
+    rules = planning_rules() if _subject_code(subject) == "AP_Lang" else ""
 
     blocks = [
         (f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
@@ -339,9 +370,10 @@ def day_system_prompt(
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
+        class_period_block(period_minutes),
         output_length_block(output_length),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
-        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
+        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(school_id),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         "THE FULL WEEK, for context only — do NOT rewrite the other days:\n\n"
@@ -401,6 +433,9 @@ def day_field_system_prompt(
     grade: str = "11",
     custom_instructions: str | None = None,
     class_custom_instructions: str | None = None,
+    school_id: str = "florence-high-school",
+    period_minutes: int | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Rewrite ONE cell of one day.
 
@@ -409,7 +444,7 @@ def day_field_system_prompt(
     reaches here — it is interpolated into a prompt as a schema key, and a
     teacher-supplied string must never be.
     """
-    rules = planning_rules() if subject == "AP Language & Composition" else ""
+    rules = planning_rules() if _subject_code(subject) == "AP_Lang" else ""
     label = FIELD_LABELS.get(field, field)
 
     if field == "act_alignment":
@@ -436,8 +471,9 @@ def day_field_system_prompt(
         grounding_constraints(subject, grade),
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
+        class_period_block(period_minutes),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
-        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(),
+        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(school_id),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         "THE FULL WEEK, for context only — do NOT rewrite any of it:\n\n" + full_plan_context,

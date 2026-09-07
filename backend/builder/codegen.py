@@ -170,6 +170,18 @@ def _meets_auto_verify_bar(template: dict) -> bool:
 
 
 def run_codegen_job(job_id: str) -> None:
+    """Run a codegen job with its uploader bound to transaction-local RLS."""
+    job = db.get_builder_codegen_job(job_id)
+    if not job:
+        log.warning("run_codegen_job: job %s no longer exists", job_id)
+        return
+    template = db.get_school_template(job["template_id"])
+    owner_id = (template or {}).get("uploaded_by")
+    with db.as_user(owner_id):
+        _run_codegen_job(job_id)
+
+
+def _run_codegen_job(job_id: str) -> None:
     """Runs one job to completion (succeeded or failed_needs_human) — the
     worker loop calls this once per claimed job, synchronously; a job is
     expected to take on the order of minutes (multiple LLM calls + LibreOffice

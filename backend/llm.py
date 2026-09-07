@@ -28,6 +28,7 @@ from .config import settings
 from .embeddings import embed_query
 from .errors import AppError
 from .prompts import (
+    class_period_block,
     day_field_system_prompt,
     day_system_prompt,
     output_length_block,
@@ -196,7 +197,14 @@ def map_context_for(user_id: str, subject: str, query: str, class_id: str | None
         try:
             res = future.result()
             if res:
-                results.append(res)
+                # Keep provenance attached to every retrieved excerpt. The
+                # model should be able to distinguish a syllabus from a
+                # pacing guide and a class document from an account-wide
+                # reference instead of receiving one unlabeled blob.
+                doc = docs[futures.index(future)]
+                label = doc.get("original_name") or doc.get("kind") or "teacher material"
+                scope = "class material" if doc.get("class_id") else "account material"
+                results.append(f"[{scope}: {label}]\n{res}")
         except Exception as e:  # noqa: BLE001
             log.warning("map context lookup failed: %s", e)
 
@@ -364,6 +372,10 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     response_format = kwargs.get("response_format", None)
     
     data = {
+        # Responses can include account-specific instructions, class material,
+        # or retrieved standards. Never let one teacher's completion become a
+        # cache hit for another teacher, even when the visible prompt matches.
+        "user_id": user_id,
         "model": model,
         "temperature": temperature,
         "messages": messages,
@@ -376,7 +388,10 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     }
     hash_key = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
     
-    cached = db.get_llm_cache(hash_key)
+    try:
+        cached = db.get_llm_cache(hash_key, user_id)
+    except TypeError:  # compatibility with lightweight test doubles
+        cached = db.get_llm_cache(hash_key)
     if cached is not None:
         log.info("LLM cache hit for %s", kind)
         return cached
@@ -395,7 +410,10 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     _check_refusal(msg)
     
     if msg.content:
-        db.set_llm_cache(hash_key, msg.content)
+        try:
+            db.set_llm_cache(hash_key, msg.content, user_id)
+        except TypeError:  # compatibility with lightweight test doubles
+            db.set_llm_cache(hash_key, msg.content)
     return msg.content
 
 
@@ -415,6 +433,14 @@ def _prompt_subject_grade(user_id: str, class_id: str | None) -> tuple[str, str]
     return str(s.get("subject") or "AP Language & Composition"), str(s.get("grade") or "11")
 
 
+def _class_period_minutes(user_id: str, class_id: str | None) -> int | None:
+    if not class_id:
+        return None
+    cls = db.get_class(user_id, class_id)
+    value = (cls or {}).get("period_minutes")
+    return int(value) if value is not None else None
+
+
 def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str, class_id: str | None = None) -> dict:
     """Non-streaming week generation. Returns parsed (not yet validated) JSON.
 
@@ -424,6 +450,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     account default — a class at a different school than the account default
     would otherwise get the wrong one named in its own prompt."""
     subject, grade = _prompt_subject_grade(user_id, class_id)
+    period_minutes = _class_period_minutes(user_id, class_id)
     template_days = day_names_for_school(school_id, user_id=user_id)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
@@ -446,6 +473,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,
                     output_length=output_length,
+                    period_minutes=period_minutes,
                     user_id=user_id,
                 ),
             },
@@ -461,6 +489,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
     See generate_plan's own docstring for why `school_id` is a parameter
     rather than resolved internally."""
     subject, grade = _prompt_subject_grade(user_id, class_id)
+    period_minutes = _class_period_minutes(user_id, class_id)
     template_days = day_names_for_school(school_id, user_id=user_id)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
@@ -482,6 +511,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,
                     output_length=output_length,
+                    period_minutes=period_minutes,
                     user_id=user_id,
                 ),
             },
@@ -727,7 +757,9 @@ def rewrite_day(
     """
     subject, grade = _prompt_subject_grade(user_id, class_id)
     cls = db.get_class(user_id, class_id) if class_id else None
-    template_days = day_names_for_school(db.class_school(cls, user_id))
+    period_minutes = (cls or {}).get("period_minutes")
+    school_id = db.class_school(cls, user_id)
+    template_days = day_names_for_school(school_id)
     output_length = output_length_for(user_id)
     content = _cached_completion(
         user_id,
@@ -747,6 +779,9 @@ def rewrite_day(
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     output_length=output_length,
                     day_names=template_days,
+                    period_minutes=period_minutes,
+                    school_id=school_id,
+                    user_id=user_id,
                 ),
             },
             {
@@ -782,6 +817,9 @@ def rewrite_day_field(
     interpolated into the prompt and the response schema as a key name.
     """
     subject, grade = _prompt_subject_grade(user_id, class_id)
+    cls = db.get_class(user_id, class_id) if class_id else None
+    period_minutes = (cls or {}).get("period_minutes")
+    school_id = db.class_school(cls, user_id)
     content = _cached_completion(
         user_id,
         "rewrite_day_field",
@@ -799,6 +837,9 @@ def rewrite_day_field(
                     grade=grade,
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
+                    school_id=school_id,
+                    period_minutes=period_minutes,
+                    user_id=user_id,
                 ),
             },
             {
@@ -1122,8 +1163,11 @@ either a single day_field to a cell (control_type 'plain' for free text, 'dropdo
 dropdown_options_ref='ENGAGEMENT_OPTIONS' only for the engagement_strategy field), or several fields into one \
 cell via multi_field_block (e.g. a combined Do Now / During / Assessment lesson block, each with its own bold \
 sub-label). Reuse shading colors and column proportions the analysis's evidence text suggests came from the \
-original template where you can tell; otherwise use reasonable defaults (a single accent color for header/label \
-cells, white for body cells, roughly equal day-column widths).
+original template where you can tell. Reuse the extracted visual facts exactly where they are available: cell fill \
+	colors, font colors, font sizes, border presence, row heights, and column widths. The renderer will populate the \
+	original uploaded DOCX in place, so do not normalize a teacher's design into a generic new table. If a visual fact \
+	is genuinely unavailable, preserve the existing template formatting and use a conservative value only for the new \
+	content mapping.
 
 If a review pass previously rejected an attempt, its feedback is given below — fix exactly what it flagged, \
 don't restart from scratch unless the feedback says the whole approach was wrong."""

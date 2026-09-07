@@ -704,6 +704,7 @@ export function Composer({
     { value: 'brainstorm', label: 'Coach', description: 'Talk it through with a veteran teacher' },
     { value: 'build', label: 'Build', description: 'Turn the idea into a plan quickly' },
     { value: 'research', label: 'Research', description: 'Use current scholarly sources' },
+    { value: 'sub_plan', label: 'Sub plan', description: 'Emergency packet a substitute can run today' },
   ]
 
   // isStreaming no longer gates this: a teacher thinking of a follow-up

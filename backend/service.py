@@ -247,6 +247,12 @@ def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
 
 
 def run_document_build_job(job: dict) -> None:
+    """Run a build with the job owner bound to transaction-local RLS."""
+    with db.as_user(job.get("user_id")):
+        _run_document_build_job(job)
+
+
+def _run_document_build_job(job: dict) -> None:
     """Build one claimed DOCX job; called by the durable server worker."""
     plan_id, user_id = job["plan_id"], job["user_id"]
     row = db.get_plan(user_id, plan_id)
@@ -421,10 +427,8 @@ def finalize(
     # permits an empty string.
     resolved_school_id = school_id or (cls or {}).get("school")
     uses_weeden_template = resolved_school_id == "weeden-elementary-school"
-    preferred_template = (
-        db.get_preferred_school_template(user_id, resolved_school_id)
-        if resolved_school_id and resolved_school_id != "generic"
-        else None
+    preferred_template = db.get_preferred_template_for_class(
+        user_id, class_id, resolved_school_id
     )
     selected_template_id = preferred_template.get("id") if preferred_template else None
     template_days = day_names_for_school(

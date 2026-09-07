@@ -2209,6 +2209,34 @@ function AdminCustomers({ accounts, sorted, isLoading, isError, search, setSearc
   )
 }
 
+function OnboardingFunnelSection() {
+  const funnel = useQuery({
+    queryKey: ['admin', 'onboarding-funnel'],
+    queryFn: ({ signal }) => api.getAdminOnboardingFunnel({ signal }),
+    staleTime: 60_000,
+  })
+  const rows = funnel.data?.rows || []
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Activation</p>
+        <h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Onboarding funnel</h2>
+        <p className="mt-1 text-sm text-ink-muted">Where accounts created in the last 30 days are stopping or finishing setup.</p>
+      </div>
+      {funnel.isLoading ? <p className="text-sm text-ink-muted">Loading funnel…</p> : funnel.isError ? <p className="text-sm text-mark">Could not load onboarding data.</p> : rows.length ? (
+        <div className="overflow-x-auto rounded-2xl border border-edge">
+          <table className="w-full text-sm">
+            <thead className="border-b border-edge bg-paper-sunken text-left text-2xs uppercase tracking-wide text-ink-muted">
+              <tr><th className="px-4 py-3 font-medium">State</th><th className="px-4 py-3 font-medium">Last step</th><th className="px-4 py-3 text-right font-medium">Accounts</th></tr>
+            </thead>
+            <tbody>{rows.map((row) => <tr key={`${row.state}-${row.step || 'none'}`} className="border-b border-edge last:border-0"><td className="px-4 py-3 text-ink">{row.state}</td><td className="px-4 py-3 text-ink-muted">{row.step || '—'}</td><td className="px-4 py-3 text-right font-mono text-ink">{row.accounts}</td></tr>)}</tbody>
+          </table>
+        </div>
+      ) : <p className="text-sm text-ink-muted">No recent onboarding accounts yet.</p>}
+    </div>
+  )
+}
+
 export function AdminPage() {
   const toast = useToast()
   const confirm = useConfirm()
@@ -2400,6 +2428,7 @@ export function AdminPage() {
     { id: 'plans', label: 'Lesson Plans' },
     { id: 'standards', label: 'Standards Check' },
     { id: 'schools', label: 'Schools' },
+    { id: 'onboarding', label: 'Onboarding' },
     { id: 'billing', label: 'Billing' },
     { id: 'settings', label: 'Settings' },
   ], [accounts.length])
@@ -2741,6 +2770,10 @@ export function AdminPage() {
             <div id="section-billing" className={activeTab === 'billing' ? '' : 'hidden'}>
               <div className="mb-6"><p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Revenue operations</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Billing</h2><p className="mt-1 text-sm text-ink-muted">See revenue, subscription health, and payment risk in one place.</p></div>
               <BillingAdmin />
+            </div>
+
+            <div id="section-onboarding" className={activeTab === 'onboarding' ? '' : 'hidden'}>
+              <OnboardingFunnelSection />
             </div>
 
             {/* Settings Section */}

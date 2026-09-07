@@ -39,6 +39,21 @@ from .errors import AppError
 
 current_user_id = contextvars.ContextVar("current_user_id", default=None)
 
+
+@contextmanager
+def as_user(user_id: str | None):
+    """Bind the authenticated owner to every DB borrow in a worker task.
+
+    Request dependencies already set this through the normal call path. Durable
+    workers run outside that request context, so they must establish the same
+    transaction-local RLS identity explicitly before touching tenant rows.
+    """
+    token = current_user_id.set(user_id)
+    try:
+        yield
+    finally:
+        current_user_id.reset(token)
+
 log = logging.getLogger("flexedacademy.db")
 
 # One pool per process, opened lazily. `_conn` and the global `_lock` it was
@@ -3588,6 +3603,103 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_usage_events_created_at ON usage_events(created_at);
     CREATE INDEX IF NOT EXISTS idx_llm_cache_created_at ON llm_cache(created_at);
     """,
+
+    # ── 79: allow template uploader cleanup on account deletion ─────────────
+    # ON DELETE SET NULL cannot satisfy the original NOT NULL declaration when
+    # a teacher who uploaded a shared school template leaves the service.
+    """
+    ALTER TABLE school_templates ALTER COLUMN uploaded_by DROP NOT NULL;
+    """,
+
+    # ── 80: class-scoped template preferences ───────────────────────────────
+    # A teacher can teach multiple preparations at one school and use a
+    # different district/personal format for each. The existing school-level
+    # preference remains the fallback for older accounts; this table records
+    # the narrower class choice without changing the shared school default.
+    """
+    CREATE TABLE IF NOT EXISTS class_template_preferences (
+      class_id    TEXT PRIMARY KEY REFERENCES classes(id) ON DELETE CASCADE,
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      template_id TEXT NOT NULL REFERENCES school_templates(id) ON DELETE CASCADE,
+      selected_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_class_template_preferences_template
+      ON class_template_preferences(template_id);
+    ALTER TABLE class_template_preferences ENABLE ROW LEVEL SECURITY;
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own class template preferences"
+          ON class_template_preferences
+          USING (user_id = current_setting('app.user_id', true))
+          WITH CHECK (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+    """,
+    # ── 81: make generated-response cache rows tenant-owned ─────────────────
+    # A completion may contain account instructions, retrieved curriculum, or
+    # class materials. The old global cache was keyed only by prompt shape,
+    # which could return one teacher's response to another. New callers include
+    # user_id in the key and this column is the database-level deletion/RLS
+    # boundary. Clearing legacy rows is intentional: they have no trustworthy
+    # owner and must not remain readable after the ownership change.
+    """
+    ALTER TABLE llm_cache ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+    DELETE FROM llm_cache WHERE user_id IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_llm_cache_user_created ON llm_cache(user_id, created_at DESC);
+    """,
+    # ── 82: force tenant RLS for app-owned tables ───────────────────────────
+    # ENABLE RLS protects direct Data API access for non-owners. FORCE also
+    # applies the policies to the table owner, closing the common Supabase
+    # mistake where an elevated session can accidentally bypass them. System
+    # tables intentionally remain deny-all without a tenant policy.
+    """
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own template preferences"
+          ON user_school_template_preferences
+          USING (user_id = current_setting('app.user_id', true))
+          WITH CHECK (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own coaching profiles"
+          ON teacher_coaching_profiles
+          USING (user_id = current_setting('app.user_id', true))
+          WITH CHECK (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+    DO $$ BEGIN
+        CREATE POLICY "Users can access their own coaching memories"
+          ON teacher_coaching_memories
+          USING (user_id = current_setting('app.user_id', true))
+          WITH CHECK (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    ALTER TABLE users FORCE ROW LEVEL SECURITY;
+    ALTER TABLE settings FORCE ROW LEVEL SECURITY;
+    ALTER TABLE classes FORCE ROW LEVEL SECURITY;
+    ALTER TABLE chats FORCE ROW LEVEL SECURITY;
+    ALTER TABLE messages FORCE ROW LEVEL SECURITY;
+    ALTER TABLE plans FORCE ROW LEVEL SECURITY;
+    ALTER TABLE plan_feedback FORCE ROW LEVEL SECURITY;
+    ALTER TABLE curriculum_maps FORCE ROW LEVEL SECURITY;
+    ALTER TABLE curriculum_progress FORCE ROW LEVEL SECURITY;
+    ALTER TABLE curriculum_chunks FORCE ROW LEVEL SECURITY;
+    ALTER TABLE quizzes FORCE ROW LEVEL SECURITY;
+    ALTER TABLE google_drive_tokens FORCE ROW LEVEL SECURITY;
+    ALTER TABLE usage_events FORCE ROW LEVEL SECURITY;
+    ALTER TABLE plan_shares FORCE ROW LEVEL SECURITY;
+    ALTER TABLE user_school_template_preferences FORCE ROW LEVEL SECURITY;
+    ALTER TABLE teacher_coaching_profiles FORCE ROW LEVEL SECURITY;
+    ALTER TABLE teacher_coaching_memories FORCE ROW LEVEL SECURITY;
+    ALTER TABLE quiz_shares FORCE ROW LEVEL SECURITY;
+    ALTER TABLE onboarding_events FORCE ROW LEVEL SECURITY;
+    ALTER TABLE class_template_preferences FORCE ROW LEVEL SECURITY;
+    """,
+    """
+    -- A class period is instructional time, not the human-readable bell
+    -- period label stored in settings.period. Keep it nullable so existing
+    -- classes and teachers whose schedules vary can remain explicitly unset.
+    ALTER TABLE classes ADD COLUMN IF NOT EXISTS period_minutes INTEGER;
+    ALTER TABLE classes DROP CONSTRAINT IF EXISTS classes_period_minutes_check;
+    ALTER TABLE classes ADD CONSTRAINT classes_period_minutes_check
+      CHECK (period_minutes IS NULL OR (period_minutes BETWEEN 15 AND 240));
+    """,
 ]
 
 
@@ -3722,10 +3834,6 @@ def borrow():
         raise TimeoutError("Timed out waiting for a database connection slot.")
     try:
         conn = pool.getconn()
-        user_id = current_user_id.get()
-        if user_id:
-            with conn.cursor() as cur:
-                cur.execute("SET LOCAL app.user_id = %s", (user_id,))
     except Exception:
         _slots.release()
         raise
@@ -3734,6 +3842,10 @@ def borrow():
             # A pooler can drop an idle connection; don't hand a dead one out.
             pool.putconn(conn, close=True)
             conn = pool.getconn()
+        user_id = current_user_id.get()
+        if user_id:
+            with conn.cursor() as cur:
+                cur.execute("SET LOCAL app.user_id = %s", (user_id,))
         # ONCE per physical connection, not once per query. register_vector
         # issues its own round trip to look up the vector type's OID, and doing
         # that on every borrow made concurrent reads SLOWER than sequential
@@ -4229,7 +4341,10 @@ def create_class(user_id: str, *, name: str, subject: str, grade: str, state: st
     return get_class(user_id, class_id)
 
 
-_CLASS_FIELDS = {"name", "subject", "grade", "state", "sort_order", "archived", "school", "custom_instructions"}
+_CLASS_FIELDS = {
+    "name", "subject", "grade", "state", "sort_order", "archived", "school",
+    "custom_instructions", "period_minutes",
+}
 
 
 def class_school(cls: dict | None, user_id: str) -> str:
@@ -4247,7 +4362,12 @@ def class_school(cls: dict | None, user_id: str) -> str:
 
 
 def update_class(user_id: str, class_id: str, **fields: Any) -> dict | None:
-    sets = {k: v for k, v in fields.items() if k in _CLASS_FIELDS and v is not None}
+    # `period_minutes=None` is meaningful: it clears an optional schedule
+    # setting. Preserve the old non-null update behavior for every other field.
+    sets = {
+        k: v for k, v in fields.items()
+        if k in _CLASS_FIELDS and (v is not None or k == "period_minutes")
+    }
     if "grade" in sets:
         sets["grade"] = normalize_grade(sets["grade"])
     if not sets:
@@ -4404,8 +4524,9 @@ def set_personal_school_template(user_id: str, school_id: str, template_id: str)
         SELECT * FROM school_templates
         WHERE id = ? AND school_id = ? AND retired_at IS NULL
           AND analysis_status IN ('analyzed', 'analyzed_with_warnings')
+          AND (template_scope = 'school_candidate' OR uploaded_by = ?)
         """,
-        (template_id, school_id),
+        (template_id, school_id, user_id),
     )
     if not template:
         return None
@@ -4444,6 +4565,62 @@ def get_preferred_school_template(user_id: str, school_id: str) -> dict | None:
         """,
         (user_id, school_id, school_id, user_id, school_id),
     )
+
+
+def get_class_template_preferences(user_id: str, class_id: str) -> dict | None:
+    """Return the exact template selected for one teacher-owned class."""
+    return _row(
+        """
+        SELECT st.*, ctp.selected_at
+        FROM class_template_preferences ctp
+        JOIN classes c ON c.id = ctp.class_id AND c.user_id = ctp.user_id
+        JOIN school_templates st ON st.id = ctp.template_id
+        WHERE ctp.user_id = ? AND ctp.class_id = ?
+          AND st.school_id = c.school AND st.retired_at IS NULL
+        """,
+        (user_id, class_id),
+    )
+
+
+def set_class_template_preference(user_id: str, class_id: str, template_id: str) -> dict | None:
+    """Select a ready template for exactly one class, never another tenant."""
+    cls = get_class(user_id, class_id)
+    if not cls or not cls.get("school"):
+        return None
+    template = _row(
+        """
+        SELECT * FROM school_templates
+        WHERE id = ? AND school_id = ? AND retired_at IS NULL
+          AND analysis_status IN ('analyzed', 'analyzed_with_warnings')
+          AND (template_scope = 'school_candidate' OR uploaded_by = ?)
+        """,
+        (template_id, cls["school"], user_id),
+    )
+    if not template:
+        return None
+    _write(
+        """
+        INSERT INTO class_template_preferences (class_id, user_id, template_id, selected_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (class_id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
+          template_id = EXCLUDED.template_id,
+          selected_at = EXCLUDED.selected_at
+        """,
+        (class_id, user_id, template_id, now()),
+    )
+    return template
+
+
+def get_preferred_template_for_class(user_id: str, class_id: str | None, school_id: str | None) -> dict | None:
+    """Resolve class preference first, then preserve the legacy school fallback."""
+    if class_id:
+        selected = get_class_template_preferences(user_id, class_id)
+        if selected:
+            return selected
+    if school_id and school_id != "generic":
+        return get_preferred_school_template(user_id, school_id)
+    return None
 
 
 def activate_school_template(school_id: str, template_id: str) -> dict | None:
@@ -5075,7 +5252,15 @@ def get_public_plan(plan_id: str) -> dict | None:
     granted. Revoking it (set_plan_public with False) makes every copy of the
     link dead immediately.
     """
-    row = _row("SELECT * FROM plans WHERE id = ? AND is_public", (plan_id,))
+    row = _row(
+        """
+        SELECT p.*, c.state AS class_state
+        FROM plans p
+        LEFT JOIN classes c ON c.id = p.class_id
+        WHERE p.id = ? AND p.is_public
+        """,
+        (plan_id,),
+    )
     return _hydrate_plan(row) if row else None
 
 
@@ -6627,40 +6812,52 @@ def delete_user_account(user_id: str) -> None:
     this behind re-entering a password.
 
     The actual FILES those rows point at — generated .docx plans, QTI quiz
-    exports, uploaded pacing guides — used to be left behind on disk and in
-    Supabase Storage after this ran, since ON DELETE CASCADE only ever
-    touches rows. Collected and removed via storage.remove_file (which
-    handles both the local copy and the durable-storage mirror) BEFORE the
-    DB rows disappear, since every path lives in a column this query would
-    otherwise be deleting a moment later. Best-effort per file — a missing
-    or already-gone file must not abort the account deletion itself, which
-    is why each removal is wrapped individually rather than trusted to
-    storage.remove_file's own internal try/except alone."""
-    docx_paths = [r["docx_path"] for r in _rows("SELECT docx_path FROM plans WHERE user_id = ? AND docx_path IS NOT NULL", (user_id,))]
-    quiz_paths = _rows(
-        "SELECT q.qti_path, q.docx_path FROM quizzes q WHERE q.user_id = ?",
-        (user_id,),
-    )
-    quiz_file_paths = [
-        path
-        for row in quiz_paths
-        for path in (row.get("qti_path"), row.get("docx_path"))
-        if path
-    ]
-    map_paths = [r["stored_path"] for r in _rows("SELECT stored_path FROM curriculum_maps WHERE user_id = ?", (user_id,))]
+    exports, uploaded pacing guides — are collected before the transaction,
+    then removed only after the database commit succeeds. If the transaction
+    fails, the rows and their files remain available for a retry. File cleanup
+    is still best-effort after commit: a missing or already-gone file must not
+    resurrect an account that was successfully deleted."""
+    file_paths: list[str] = []
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT docx_path FROM plans WHERE user_id = %s AND docx_path IS NOT NULL",
+                (user_id,),
+            )
+            file_paths.extend(row["docx_path"] for row in cur.fetchall())
 
-    for path_str in [*docx_paths, *quiz_file_paths, *map_paths]:
+            cur.execute(
+                "SELECT qti_path, docx_path FROM quizzes WHERE user_id = %s",
+                (user_id,),
+            )
+            for row in cur.fetchall():
+                file_paths.extend(path for path in (row["qti_path"], row["docx_path"]) if path)
+
+            cur.execute("SELECT stored_path FROM curriculum_maps WHERE user_id = %s", (user_id,))
+            file_paths.extend(row["stored_path"] for row in cur.fetchall())
+
+            cur.execute("SELECT file_path FROM school_templates WHERE uploaded_by = %s", (user_id,))
+            file_paths.extend(row["file_path"] for row in cur.fetchall())
+
+            # Keep every account-scoped delete in one transaction. The helper
+            # methods below intentionally commit individual writes for normal
+            # request paths, so using them here would reintroduce the partial
+            # deletion this function is specifically meant to prevent.
+            cur.execute("DELETE FROM curriculum_maps WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM plans WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM chats WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM classes WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM settings WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM user_school_template_preferences WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM llm_cache WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+
+    for path_str in file_paths:
         try:
             storage.remove_file(Path(path_str))
-        except Exception:  # noqa: BLE001 — one bad path must not abort account deletion
+        except Exception:  # noqa: BLE001 — cleanup must not undo a committed delete
             log.warning("delete_user_account: could not remove file %r for user %s", path_str, user_id)
-
-    _write("DELETE FROM curriculum_maps WHERE user_id = ?", (user_id,))
-    _write("DELETE FROM plans WHERE user_id = ?", (user_id,))
-    _write("DELETE FROM chats WHERE user_id = ?", (user_id,))
-    _write("DELETE FROM classes WHERE user_id = ?", (user_id,))
-    _write("DELETE FROM settings WHERE user_id = ?", (user_id,))
-    _write("DELETE FROM users WHERE id = ?", (user_id,))
 
 
 def count_plans(user_id: str) -> int:
@@ -6674,7 +6871,7 @@ def count_plans(user_id: str) -> int:
 # ── the LLM response cache ───────────────────────────────────────────────
 
 
-def get_llm_cache(hash_key: str) -> str | None:
+def get_llm_cache(hash_key: str, user_id: str | None = None) -> str | None:
     """The read half of llm.py's _cached_completion.
 
     Both halves were called from day one and neither was ever written, so
@@ -6688,23 +6885,29 @@ def get_llm_cache(hash_key: str) -> str | None:
     A miss must never be an error: this is an optimisation, and a cache
     that can take the request down with it is worse than no cache."""
     try:
-        row = _row("SELECT response FROM llm_cache WHERE hash_key = ?", (hash_key,))
+        if user_id:
+            row = _row(
+                "SELECT response FROM llm_cache WHERE hash_key = ? AND user_id = ?",
+                (hash_key, user_id),
+            )
+        else:
+            row = _row("SELECT response FROM llm_cache WHERE hash_key = ?", (hash_key,))
         return row["response"] if row else None
     except Exception as e:  # noqa: BLE001 — a cold cache beats a failed request
         log.warning("llm cache read failed: %s", e)
         return None
 
 
-def set_llm_cache(hash_key: str, response: str) -> None:
+def set_llm_cache(hash_key: str, response: str, user_id: str | None = None) -> None:
     """The write half. ON CONFLICT DO NOTHING rather than an upsert: entries
     are keyed by a hash of the exact request, so a second write for the same
     key is by definition the same answer, and two concurrent identical calls
     racing here is normal rather than a conflict worth resolving."""
     try:
         _write(
-            "INSERT INTO llm_cache (hash_key, created_at, response) VALUES (?, ?, ?) "
+            "INSERT INTO llm_cache (hash_key, created_at, response, user_id) VALUES (?, ?, ?, ?) "
             "ON CONFLICT (hash_key) DO NOTHING",
-            (hash_key, now(), response),
+            (hash_key, now(), response, user_id),
         )
     except Exception as e:  # noqa: BLE001 — same reasoning as the read
         log.warning("llm cache write failed: %s", e)

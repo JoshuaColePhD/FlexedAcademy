@@ -17,6 +17,7 @@ production-verified output — see backend/builder/test_generic_renderer.py.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from docx import Document
@@ -68,7 +69,7 @@ def _identity_context(plan: dict) -> dict:
     }
 
 
-def _render_header_cell(cell, cell_spec: dict, identity: dict) -> None:
+def _render_header_cell(cell, cell_spec: dict, identity: dict, *, preserve_design: bool = False) -> None:
     template = cell_spec.get("text_template", "")
     try:
         text = template.format(**identity)
@@ -78,8 +79,9 @@ def _render_header_cell(cell, cell_spec: dict, identity: dict) -> None:
         cell, text,
         bold=bool(cell_spec.get("bold", True)),
         align=_ALIGN.get(cell_spec.get("align", "left"), WD_ALIGN_PARAGRAPH.LEFT),
+        preserve_style=preserve_design,
     )
-    if cell_spec.get("shade_hex"):
+    if cell_spec.get("shade_hex") and not preserve_design:
         shade(cell, cell_spec["shade_hex"])
 
 
@@ -87,7 +89,15 @@ def _day_value(day: dict, field: str) -> Any:
     return day.get(field)
 
 
-def _render_body_cell_content(cell, row_spec: dict, day: dict, day_index: int, dropdown_options: list[str] | None) -> None:
+def _render_body_cell_content(
+    cell,
+    row_spec: dict,
+    day: dict,
+    day_index: int,
+    dropdown_options: list[str] | None,
+    *,
+    preserve_design: bool = False,
+) -> None:
     source = row_spec["cell_source"]
     kind = source["kind"]
 
@@ -108,13 +118,19 @@ def _render_body_cell_content(cell, row_spec: dict, day: dict, day_index: int, d
             # This dropdown supports one or two selected values. Cap legacy
             # input here too, since codegen fixtures can bypass validation.
             text = ", ".join(str(s) for s in value[:2]) if isinstance(value, list) else str(value or "")
-            write_dropdown(
-                cell, text, options,
-                control_id=row_spec.get("dropdown_control_base_id", -1823567252) + day_index,
-                alias=row_spec.get("dropdown_alias", "Dropdown"),
-            )
+            if preserve_design:
+                # The uploaded template's existing cell formatting is more
+                # important than replacing it with a generated content-control
+                # wrapper. Preserve the teacher's visual design in place.
+                write_plain(cell, text, preserve_style=True)
+            else:
+                write_dropdown(
+                    cell, text, options,
+                    control_id=row_spec.get("dropdown_control_base_id", -1823567252) + day_index,
+                    alias=row_spec.get("dropdown_alias", "Dropdown"),
+                )
         else:
-            write_plain(cell, str(value or "").strip())
+            write_plain(cell, str(value or "").strip(), preserve_style=preserve_design)
 
     elif kind == "multi_field_block":
         lines: list[tuple[str, bool]] = []
@@ -126,13 +142,13 @@ def _render_body_cell_content(cell, row_spec: dict, day: dict, day_index: int, d
             for ln in text.split("\n"):
                 if ln.strip():
                     lines.append((ln.strip(), False))
-        write_content_lines(cell, lines)
+        write_content_lines(cell, lines, preserve_style=preserve_design)
 
     else:
         raise SpecRenderError(f"unknown cell_source.kind: {kind!r}")
 
 
-def render(layout_spec: dict, plan: dict, out_path: str) -> None:
+def render(layout_spec: dict, plan: dict, out_path: str, template_path: str | None = None) -> None:
     """Render `plan` (the same shape backend/schema.py's plan validator
     already accepts — week_of + days, each with DAY_CONTENT_FIELDS) through
     `layout_spec` into a .docx at out_path. Raises SpecRenderError for any
@@ -149,7 +165,14 @@ def render(layout_spec: dict, plan: dict, out_path: str) -> None:
     if not day_columns:
         raise SpecRenderError("layout_spec.table.columns must include at least one role='day' column")
 
-    doc = Document()
+    preserve_design = bool(template_path)
+    if template_path:
+        path = Path(template_path)
+        if not path.is_file():
+            raise SpecRenderError(f"The selected template file is missing: {path}")
+        doc = Document(str(path))
+    else:
+        doc = Document()
     sec = doc.sections[0]
     sec.orientation = WD_ORIENT.LANDSCAPE if page.get("orientation", "landscape") == "landscape" else WD_ORIENT.PORTRAIT
     if page.get("width_dxa"):
@@ -168,25 +191,40 @@ def render(layout_spec: dict, plan: dict, out_path: str) -> None:
     day_axis = plan_day_names or list(DAY_NAMES)
     identity = _identity_context(plan)
 
-    table = doc.add_table(rows=0, cols=n_cols)
-    table.style = "Table Grid"
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    fixed_layout(table)
+    existing_table = None
+    if preserve_design:
+        # Choose the first table whose column count can represent the spec. The
+        # original table is the visual source of truth; if its shape cannot
+        # satisfy the verified spec, fail loudly instead of creating a generic
+        # replacement that only looks successful in the UI.
+        for candidate in doc.tables:
+            if len(candidate.columns) >= n_cols and len(candidate.rows) >= len(table_spec.get("header_rows", [])) + len(table_spec.get("body_rows", [])):
+                existing_table = candidate
+                break
+        if existing_table is None:
+            raise SpecRenderError("The uploaded template has no table matching its verified layout spec")
+        table = existing_table
+    else:
+        table = doc.add_table(rows=0, cols=n_cols)
+        table.style = "Table Grid"
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        fixed_layout(table)
 
     # Header rows: static/identity content, may merge columns via col_span.
-    for header_row in table_spec.get("header_rows", []):
-        cells = table.add_row().cells
+    for header_index, header_row in enumerate(table_spec.get("header_rows", [])):
+        cells = (table.rows[header_index].cells if preserve_design else table.add_row().cells)
         col_i = 0
         for cell_spec in header_row["cells"]:
             span = cell_spec.get("col_span", 1)
             if col_i + span > n_cols:
                 raise SpecRenderError("header row cell col_span overruns the table width")
             target = cells[col_i]
-            set_width(target, columns[col_i].get("width_dxa", 1000))
-            if span > 1:
+            if not preserve_design:
+                set_width(target, columns[col_i].get("width_dxa", 1000))
+            if span > 1 and not preserve_design:
                 for j in range(1, span):
                     target.merge(cells[col_i + j])
-            _render_header_cell(target, cell_spec, identity)
+            _render_header_cell(target, cell_spec, identity, preserve_design=preserve_design)
             col_i += span
 
     # Body rows: one label cell + one cell per day column, mapped through
@@ -195,13 +233,15 @@ def render(layout_spec: dict, plan: dict, out_path: str) -> None:
     # validate_spec_against_analysis, not re-checked here, so an unmapped
     # field surfaces as a KeyError/empty value rather than being silently
     # invented by this renderer.
-    for row_spec in table_spec.get("body_rows", []):
-        cells = table.add_row().cells
+    header_count = len(table_spec.get("header_rows", []))
+    for body_index, row_spec in enumerate(table_spec.get("body_rows", [])):
+        cells = (table.rows[header_count + body_index].cells if preserve_design else table.add_row().cells)
         for col_i, col in enumerate(columns):
-            set_width(cells[col_i], col.get("width_dxa", 1000))
+            if not preserve_design:
+                set_width(cells[col_i], col.get("width_dxa", 1000))
             if col.get("role") == "label":
-                write_label(cells[col_i], row_spec.get("label", ""))
-                if row_spec.get("shade_label_hex"):
+                write_label(cells[col_i], row_spec.get("label", ""), preserve_style=preserve_design)
+                if row_spec.get("shade_label_hex") and not preserve_design:
                     shade(cells[col_i], row_spec["shade_label_hex"])
                 continue
 
@@ -223,9 +263,12 @@ def render(layout_spec: dict, plan: dict, out_path: str) -> None:
                 if options_ref and options_ref not in _DROPDOWN_OPTION_SETS:
                     raise SpecRenderError(f"unknown dropdown_options_ref: {options_ref!r}")
                 dropdown_options = _DROPDOWN_OPTION_SETS.get(options_ref) if options_ref else None
-                _render_body_cell_content(cell, row_spec, day, day_index + 1, dropdown_options)
+                _render_body_cell_content(
+                    cell, row_spec, day, day_index + 1, dropdown_options,
+                    preserve_design=preserve_design,
+                )
 
-            if row_spec.get("shade_body_hex"):
+            if row_spec.get("shade_body_hex") and not preserve_design:
                 shade(cell, row_spec["shade_body_hex"])
 
     doc.save(out_path)

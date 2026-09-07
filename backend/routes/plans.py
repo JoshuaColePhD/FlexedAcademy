@@ -291,6 +291,8 @@ def get_public_plan(plan_id: str):
         "course": plan["course"],
         "week_label": plan["week_label"],
         "unit": plan["unit"],
+        "retrieved_ids": plan.get("retrieved_ids") or [],
+        "state": plan.get("class_state"),
     }
 
 

@@ -446,6 +446,19 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   }, [open, stepKey])
   const plan = frozenPlan || livePlan
 
+  // Funnel bookkeeping is deliberately fire-and-forget. Setup answers must
+  // remain usable if telemetry is unavailable, but the step snapshot lets the
+  // product see where teachers are actually stopping.
+  useEffect(() => {
+    if (!open || !stepKey) return
+    void api.setOnboardingProgress({ step: stepKey }).catch(() => {})
+    void api.recordOnboardingEvents([{
+      name: 'step_viewed',
+      step: stepKey,
+      props: { resumed: Boolean(user?.onboarding_step) },
+    }]).catch(() => {})
+  }, [open, stepKey, user?.onboarding_step])
+
   const goTo = (next) => {
     setDirection(plan.indexOf(next) > plan.indexOf(stepKey) ? 1 : -1)
     setStepKey(next)
@@ -509,15 +522,16 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
       setStateError('Choose your state — it decides which standards your plans quote.')
       return
     }
-    if (!isStandardsReady(state, activeStates)) {
-      setStateError(
-        "We don't have that jurisdiction's standards yet. Ask for it above, then pick an available jurisdiction to carry on for now.",
-      )
-      return
-    }
+    const standardsReady = isStandardsReady(state, activeStates)
     setStateError(null)
     setSavingSchool(true)
     try {
+      if (!standardsReady && requestedState !== state) {
+        // Preserve the teacher's choice and let them continue while the
+        // jurisdiction is being ingested. A request-email failure must not
+        // turn a usable workspace into a dead end.
+        await requestStateStandards(state)
+      }
       /* No class yet on a first run — this step now runs BEFORE the course
          step that creates one. The account-level updateMe above is what makes
          that safe for the school half: db.create_class stamps
@@ -673,7 +687,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
            rather than stopping short). hasChosenSchool() still reports false
            for it, so the school step is still asked. */
         if (!user?.school) await api.updateMe({ school: GENERIC_SCHOOL })
-        const created = await api.createClass({ subject: courseSubject, grade })
+        const created = await api.createClass({ subject: courseSubject, grade, state })
         setCreatedClass(created)
         await Promise.all([qc.invalidateQueries({ queryKey: qk.classes }), refresh()])
       } else {
@@ -697,6 +711,11 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
   const finish = async (prefill) => {
     setFinishing(true)
     try {
+      void api.recordOnboardingEvents([{
+        name: 'flow_completed',
+        step: 'preview',
+        props: { plan: plan.map((key) => key) },
+      }]).catch(() => {})
       await api.markOnboardingSeen()
       // refresh() re-reads /api/auth/me, which is what ClassRoutes' own
       // `!user.onboarding_seen_at` check (App.jsx) reads to decide whether to
@@ -767,7 +786,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
             class genuinely missing from FlexEd's own catalog is not
             something Back/Skip anywhere in this flow can resolve. */}
         <a
-          href="mailto:joshuacolephd@gmail.com?subject=Missing%20school%20or%20class%20in%20FlexEd"
+          href="mailto:support@flexedacademy.com?subject=Missing%20school%20or%20class%20in%20FlexEd"
           className={`onboarding-topbar-contact${variant !== 'page' ? ' onboarding-topbar-contact-with-close' : ''}`}
           title="Having trouble finding your class or school? Email us and we'll get it added."
         >
@@ -1208,8 +1227,10 @@ function SchoolStep({
     onNext,
     busy: saving,
     onBack,
-    onSkip: ready ? onSkip : undefined,
-    skipLabel: "Skip the school — I'll plan by week number",
+    onSkip: state ? onSkip : undefined,
+    skipLabel: ready
+      ? "Skip the school — I'll plan by week number"
+      : "Continue without standards for now",
   }, registerActions)
   /* Rows with no recorded state are kept rather than filtered out: NULL means
      "not recorded" (create_school is reachable from the admin page and from a
@@ -1494,8 +1515,10 @@ function TeachingContextStep({
         onNext: onSaveSchool,
         busy: savingSchool,
         onBack,
-        onSkip: schoolReady ? onSkipSchool : undefined,
-        skipLabel: "Skip the school — I'll plan by week number",
+        onSkip: state ? onSkipSchool : undefined,
+        skipLabel: schoolReady
+          ? "Skip the school — I'll plan by week number"
+          : 'Continue without standards for now',
       }
     : phase === 'course'
       ? { onNext: onSaveCourse, busy: savingCourse, onBack: onBackToSchool }
@@ -1530,7 +1553,7 @@ function TeachingContextStep({
               onRequestState={onRequestState}
               onBack={onBack}
               onNext={onSaveSchool}
-              onSkip={onSkipSchool}
+              onSkip={state ? onSkipSchool : undefined}
               registerActions={false}
             />
           </motion.div>
@@ -1546,6 +1569,7 @@ function TeachingContextStep({
               error={courseError}
               onBack={onBackToSchool}
               onNext={onSaveCourse}
+              standardsReady={schoolReady}
               subStep={courseSubStep}
               setSubStep={setCourseSubStep}
               discipline={courseDiscipline}
@@ -2149,6 +2173,7 @@ function CourseStep({
   grade,
   setGrade,
   frameworks,
+  standardsReady = true,
   saving,
   error,
   onBack,
@@ -2170,8 +2195,9 @@ function CourseStep({
      left alone, Continue would save a course that is no longer even visible.
      Same reasoning for discipline once grade narrows its group away. */
   useEffect(() => {
+    if (!standardsReady && frameworks.length === 0) return
     if (subject && !gradeFilteredFrameworks.some((f) => f.id === subject)) setSubject('')
-  }, [gradeFilteredFrameworks, subject, setSubject])
+  }, [gradeFilteredFrameworks, subject, setSubject, standardsReady, frameworks.length])
   useEffect(() => {
     if (discipline && !groups.some((g) => g.name === discipline)) setDiscipline(null)
   }, [groups, discipline, setDiscipline])
@@ -2187,6 +2213,26 @@ function CourseStep({
     const match = groups.find((g) => g.items.some((f) => f.id === subject))
     if (match) setDiscipline(match.name)
   }, [subject, discipline, groups, setDiscipline])
+
+  if (!standardsReady && frameworks.length === 0) {
+    return (
+      <div className="onboarding-class-step">
+        <OnboardingQuestion question="What course do you teach?" />
+        <p className="mt-2 text-sm text-ink-muted">
+          Your state is saved. Its standards catalog is still being prepared, so enter the course name now and FlexEd will attach the state standards when they become available.
+        </p>
+        <label htmlFor="pending-state-course" className="mt-6 block text-sm font-medium text-ink">Course name</label>
+        <input
+          id="pending-state-course"
+          value={subject}
+          onChange={(event) => setSubject(event.target.value)}
+          placeholder="e.g. English Language Arts, Algebra I"
+          className="neo-inset mt-2 w-full rounded-lg bg-paper-raised px-3 py-2.5 text-sm text-ink outline-none focus:ring-1 focus:ring-accent"
+        />
+        {error ? <p className="fa-flash mt-2 text-xs font-medium text-mark" role="alert">{error}</p> : null}
+      </div>
+    )
+  }
 
   if (subStep === 'search') {
     return (

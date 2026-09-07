@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react'
 import { Command } from 'cmdk'
 import { useNavigate } from 'react-router-dom'
-import { Settings, ShieldCheck, History, BookOpen, Plus, Calendar, Sparkles } from 'lucide-react'
+import { Settings, ShieldCheck, History, BookOpen, Library, GraduationCap, Plus, Calendar, Sparkles } from 'lucide-react'
 import { useActiveClass, useCalendar } from '../hooks/useAppData'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
+import { useAuth } from '../lib/authContext'
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const { activeClass } = useActiveClass()
+  const { user } = useAuth()
+  const classPath = activeClass ? `/c/${activeClass.id}` : null
   const { data: calendar } = useCalendar(activeClass?.id)
   const currentWeek = calendar?.weeks?.find((week) => week.is_current) || null
   const suggestions = activeClass && calendar
@@ -41,14 +44,14 @@ export function CommandPalette() {
 
   const runSuggestion = (suggestion) => {
     if (suggestion.action === 'open-settings') {
-      navigate('/settings')
+      navigate(classPath ? `${classPath}/settings` : '/')
       return
     }
     if ((suggestion.action === 'open-chat' || suggestion.action === 'review-plan') && suggestion.chatId) {
       navigate(`/c/${activeClass.id}/chat/${suggestion.chatId}`)
       return
     }
-    navigate(`/c/${activeClass.id}${suggestion.weekNumber ? `?week=${suggestion.weekNumber}` : ''}`)
+    navigate(classPath ? `${classPath}${suggestion.weekNumber ? `?week=${suggestion.weekNumber}` : ''}` : '/')
   }
 
   return (
@@ -96,36 +99,54 @@ export function CommandPalette() {
               <BookOpen size={16} /> My Classes
             </Command.Item>
             <Command.Item
-              onSelect={() => runCommand(() => navigate('/history'))}
+              onSelect={() => runCommand(() => navigate(classPath ? `${classPath}/history` : '/'))}
               className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <History size={16} /> Recent History
             </Command.Item>
             <Command.Item
-              onSelect={() => runCommand(() => navigate('/settings'))}
+              onSelect={() => runCommand(() => navigate(classPath ? `${classPath}/settings` : '/'))}
               className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <Settings size={16} /> Settings
             </Command.Item>
-            <Command.Item
-              onSelect={() => runCommand(() => navigate('/admin'))}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
-            >
-              <ShieldCheck size={16} /> Admin Dashboard
-            </Command.Item>
+            {classPath ? (
+              <>
+                <Command.Item
+                  onSelect={() => runCommand(() => navigate(`${classPath}/plans`))}
+                  className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
+                >
+                  <Library size={16} /> Library
+                </Command.Item>
+                <Command.Item
+                  onSelect={() => runCommand(() => navigate(`${classPath}/standards`))}
+                  className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
+                >
+                  <GraduationCap size={16} /> Standards
+                </Command.Item>
+              </>
+            ) : null}
+            {classPath && user?.is_admin ? (
+              <Command.Item
+                onSelect={() => runCommand(() => navigate(`${classPath}/admin`))}
+                className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
+              >
+                <ShieldCheck size={16} /> Admin Dashboard
+              </Command.Item>
+            ) : null}
           </Command.Group>
 
           <Command.Separator className="my-1 h-px bg-edge" />
 
           <Command.Group heading="Actions" className="text-xs font-medium text-ink-muted px-2 py-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1.5">
             <Command.Item
-              onSelect={() => runCommand(() => navigate('/'))}
+              onSelect={() => runCommand(() => navigate(classPath || '/'))}
               className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <Plus size={16} /> New Lesson Plan
             </Command.Item>
             <Command.Item
-              onSelect={() => runCommand(() => navigate('/settings'))}
+              onSelect={() => runCommand(() => navigate(classPath ? `${classPath}/settings` : '/'))}
               className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"
             >
               <Calendar size={16} /> Upload School Calendar
