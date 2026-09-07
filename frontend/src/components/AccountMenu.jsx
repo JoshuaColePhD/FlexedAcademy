@@ -321,7 +321,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
                 onClick={() => setOpen(false)}
                 className="flex min-h-touch min-w-0 flex-1 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
               >
-                <GraduationCap size={14} aria-hidden="true" /> Class settings
+                <GraduationCap size={14} aria-hidden="true" /> Class profiles
               </Link>
             </div>
             <div className="flex items-center">
