@@ -14,26 +14,27 @@
 #
 #   Footprint: query embedding moved to the OpenAI API, so torch (518MB),
 #   transformers (98MB) and sentence-transformers are all gone, along with the
-#   model download at first boot and the CrossEncoder's OOM risk. That headroom
-#   is what the free plan's 512MB used to have "room to spare" in — Docker
-#   spends a real slice of it back on libreoffice-writer/poppler-utils/
-#   tesseract-ocr (see Dockerfile's own top comment for why those are there).
-#   LibreOffice itself is a per-conversion subprocess, not a resident server
-#   (backend/builder/rasterize.py), so it's a transient spike during a
-#   builder-codegen attempt, not a constant tax — but combined with the
-#   Dockerfile's single app process holding the ~75MB standards corpus in
-#   memory — see retrieval.py's `load_chunks` cache — free-plan headroom is
-#   measurably tighter than the line above once described. Watch Render's
-#   metrics after the first deploy on this image; move to a paid plan (more RAM,
-#   not just more CPU — Starter is the same 512MB as free) if it's actually
-#   OOMing rather than pre-emptively paying for capacity that might not be
-#   needed.
+#   model download at first boot and the CrossEncoder's OOM risk. Docker still
+#   installs libreoffice-writer/poppler-utils/tesseract-ocr (see Dockerfile).
+#   LibreOffice is a per-conversion subprocess (backend/builder/rasterize.py)
+#   and MUST stay gated off on this web process — BUILDER_CODEGEN_ENABLED
+#   defaults to false in backend/config.py so a missing dashboard env var
+#   cannot start the codegen worker. Live FlexedAcademy
+#   (srv-d9p9t9u7bikc73anpbu0, flexedacademy.onrender.com) is a dashboard
+#   1c-2g instance (~2GB), not free/512MB. Starter is still 512MB; do not
+#   downsize. Codegen + LibreOffice needs a larger plan or a dedicated
+#   worker — do not flip BUILDER_CODEGEN_ENABLED=true on this web service.
+#   The memory env vars below are the production budget; config.py now
+#   uses the same numbers as defaults so drift cannot reopen the old
+#   8-connection / 2-generation / codegen-on path.
 services:
   - type: web
     name: flexed-academy-backend
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free
+    # Blueprint slug for a 2GB box (matches the live 1c-2g FlexedAcademy
+    # service). `free` / `starter` are 512MB and will OOM this image.
+    plan: standard
     # Push to master -> Render rebuilds and redeploys, no dashboard visit. This
     # is Render's default, but it is stated here so the deploy loop is a fact of
     # the repo rather than a setting someone has to remember checking.
@@ -92,7 +93,7 @@ services:
       # and consent flow has a dedicated security review.
       - key: MCP_ENABLED
         value: "false"
-      # Keep model work bounded on the 512MB instance. Requests beyond this
+      # Keep model work bounded on the 2GB web instance. Requests beyond this
       # run in the per-user/global queue instead of multiplying retrieval and
       # streaming memory until Render restarts the service.
       - key: GENERATION_MAX_CONCURRENT
@@ -106,9 +107,9 @@ services:
       - key: GENERATION_MIN_START_INTERVAL_SECONDS
         value: "1"
       # Builder codegen shells out to LibreOffice and rasterizes pages. It is
-      # an onboarding feature, not part of ordinary lesson-plan generation;
-      # leave it off on the 512MB service until that workload has a larger
-      # memory budget. Re-enable with BUILDER_CODEGEN_ENABLED=true when ready.
+      # an onboarding feature, not part of ordinary lesson-plan generation.
+      # Leave it off on this web service. Re-enable only on a larger plan or
+      # a dedicated worker — never on the public 1c-2g box.
       - key: BUILDER_CODEGEN_ENABLED
         value: "false"
       # Vite inlines this at BUILD time, so it must exist before the build runs,

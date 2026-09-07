@@ -1,5 +1,9 @@
 # Keep the build context small and the image clean. venv/ alone is ~1GB and
 # would be copied into the build context on every build without this.
+# data/ (~470MB) is not COPYed into the runtime image — chunks come from
+# Postgres / Supabase Storage — but without this exclusion every Render
+# Docker build still uploads the raw PDFs and CASE dumps as context.
+data/
 venv/
 .venv/
 **/node_modules/

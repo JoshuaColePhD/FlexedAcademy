@@ -37,6 +37,9 @@ _ACT_SOURCE_TYPES = ("act_standards", "act_recurring")
 
 
 def _act_codes() -> frozenset[str]:
+    inventory = retrieval._code_inventory()
+    if inventory is not None:
+        return inventory.act
     return frozenset(
         retrieval._norm_code(c["code"])
         for c in retrieval.load_chunks()
@@ -52,7 +55,11 @@ def spot_check_plan(row: dict) -> dict:
     cited = raw_ids if isinstance(raw_ids, list) else json.loads(raw_ids or "[]")
     codes = {retrieval._norm_code(c) for c in cited if c}
 
-    all_known = retrieval.chunks_by_code()
+    inventory = retrieval._code_inventory()
+    if inventory is not None:
+        all_known = inventory.anywhere
+    else:
+        all_known = retrieval.chunks_by_code()
     own = retrieval.codes_for_course_and_grade(subject, grade)
     act = _act_codes()
 
