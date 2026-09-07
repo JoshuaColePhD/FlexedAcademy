@@ -174,8 +174,8 @@ function ClassSetup({ defaultState = '', activeStates, onCreated, onCancel }) {
   }
 
   return (
-    <div className="flex h-full w-full items-center justify-center p-4 sm:p-8">
-      <div className="w-full max-w-md">
+    <section id="section-setup" className="w-full max-w-3xl">
+      <div className="max-w-2xl">
         <div className="mb-6">
           <p className="eyebrow mb-2">Class management</p>
           <h2 className="text-2xl font-semibold tracking-tight text-ink">Add a class</h2>
@@ -269,7 +269,7 @@ function ClassSetup({ defaultState = '', activeStates, onCreated, onCancel }) {
           </p>
         ) : null}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -1009,12 +1009,13 @@ function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
 
   return (
     <div className="w-full max-w-6xl pb-16">
-      <div className="mb-8">
+      <section id="section-documents" className="mb-8">
         <h2 className="text-xl font-semibold text-ink border-b border-edge pb-2">Global Documents</h2>
         <GlobalDocuments />
-      </div>
+      </section>
 
-      <div className="mb-8 flex items-center justify-between border-b border-edge pb-4">
+      <section id="section-classes">
+        <div className="mb-8 flex items-center justify-between border-b border-edge pb-4">
         <div>
           <h2 className="text-xl font-semibold text-ink">Class Dashboard</h2>
           <p className="text-sm text-ink-muted mt-1">Manage all your classes and assignments from one place.</p>
@@ -1049,11 +1050,11 @@ function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
             {showArchived ? 'View Active Classes' : `View Archived (${archivedClasses.length})`}
           </button>
         </div>
-      </div>
+        </div>
 
-      <div className="neo-panel rounded-xl bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+        <div className="neo-panel rounded-xl bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
             <thead className="bg-paper-sunken text-xs font-medium uppercase tracking-wider text-ink-muted border-b border-edge">
               <tr>
                 <th scope="col" className="px-4 py-3 w-12">
@@ -1106,9 +1107,10 @@ function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
                 ))
               )}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   )
 }
@@ -1120,6 +1122,15 @@ const CLASS_TABS = [
   { id: 'ai', label: 'Instructions' },
   { id: 'docs', label: 'Documents' },
   { id: 'danger', label: 'More' },
+]
+
+const CLASS_PROFILE_TABS = [
+  { id: 'documents', label: 'Shared documents' },
+  { id: 'classes', label: 'All classes' },
+]
+
+const ADD_CLASS_TABS = [
+  { id: 'setup', label: 'Add a class' },
 ]
 
 export function ClassPage() {
@@ -1158,44 +1169,55 @@ export function ClassPage() {
 
   if (isNew) {
     return (
-      <div className="flex h-full w-full overflow-hidden bg-transparent items-center justify-center">
-        <div className="w-full max-w-3xl flex flex-col py-8 px-8">
-          <ClassSetup
-            defaultState={classes.find((item) => item.state)?.state || ''}
-            activeStates={activeStates}
-            onCancel={() => navigate('/')}
-            /* Navigate FIRST, then refresh the list. This used to await
-               reloadClasses() before navigating — and ClassSetup's own
-               spinner has already stopped by then (its finally runs when the
-               create resolves), so there was a dead window with no indicator
-               at all while a full class-list refetch blocked the transition.
-               The destination route resolves the list itself; nothing here
-               needs to wait for it, and the invalidate still happens. */
-            onCreated={(created) => {
-              navigate(`/c/${created.id}/class`)
-              reloadClasses()
-            }}
-          />
-        </div>
-      </div>
+      <SplitLayout
+        title="Class profiles"
+        icon={GraduationCap}
+        tabs={ADD_CLASS_TABS}
+        mobileTabs={ADD_CLASS_TABS}
+        backPath="/"
+        contentMaxWidth="max-w-3xl"
+      >
+        <ClassSetup
+          defaultState={classes.find((item) => item.state)?.state || ''}
+          activeStates={activeStates}
+          onCancel={() => navigate('/')}
+          /* Navigate FIRST, then refresh the list. This used to await
+             reloadClasses() before navigating — and ClassSetup's own
+             spinner has already stopped by then (its finally runs when the
+             create resolves), so there was a dead window with no indicator
+             at all while a full class-list refetch blocked the transition.
+             The destination route resolves the list itself; nothing here
+             needs to wait for it, and the invalidate still happens. */
+          onCreated={(created) => {
+            navigate(`/c/${created.id}/class`)
+            reloadClasses()
+          }}
+        />
+      </SplitLayout>
     )
   }
 
   if (!activeClass) {
     return (
-      <div className="flex h-full w-full overflow-hidden bg-transparent items-center justify-center">
-        <div className="w-full max-w-3xl flex flex-col py-8 px-8">
-          <GlobalClassDashboard classes={classes} frameworks={frameworks} onUpdated={reloadClasses} />
-        </div>
-      </div>
+      <SplitLayout
+        title="Class profiles"
+        icon={GraduationCap}
+        tabs={CLASS_PROFILE_TABS}
+        mobileTabs={CLASS_PROFILE_TABS}
+        backPath="/"
+        contentMaxWidth="max-w-6xl"
+      >
+        <GlobalClassDashboard classes={classes} frameworks={frameworks} onUpdated={reloadClasses} />
+      </SplitLayout>
     )
   }
 
   return (
     <SplitLayout
-      title="Class"
-      icon={BookOpen}
+      title="Class profiles"
+      icon={GraduationCap}
       tabs={CLASS_TABS}
+      mobileTabs={CLASS_TABS}
       backPath="/"
     >
       <ClassDetail cls={activeClass} classes={classes} frameworks={frameworks} activeStates={activeStates} onChanged={reloadClasses} />
