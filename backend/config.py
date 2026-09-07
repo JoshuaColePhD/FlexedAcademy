@@ -225,22 +225,21 @@ class Settings(BaseSettings):
 
     # Automated builder codegen (backend/builder/codegen.py) — generates and
     # visually verifies a declarative layout spec for a new school instead of
-    # requiring a hand-written {school_id}_builder.py. Turned on 2026-08-26
-    # for the staged, one-school-at-a-time pilot the comment above always
-    # described — generic_renderer.py's cell_source shape bug (the one that
-    # would have KeyError'd on the first real generated spec) is fixed and
-    # covered by backend/builder/test_generic_renderer.py now, so this is
-    # safe to leave live: turning it on only starts an idle worker loop
-    # (backend/server.py's _builder_codegen_worker_loop) that polls for
-    # queued jobs and does nothing until a real template upload's analysis
-    # succeeds (template_intake.run_and_persist is the only enqueue point).
-    # No school currently in `schools` has gotten that far yet (all
-    # template_status='pending'), so this has zero cost or behavior change
-    # today — it just means the NEXT real school template upload actually
-    # gets carried through instead of silently doing nothing. Still gated
-    # behind mandatory admin approval before any generated spec reaches a
-    # teacher (routes/admin.py's /builder-codegen/{job_id}/approve).
-    builder_codegen_enabled: bool = True
+    # requiring a hand-written {school_id}_builder.py. Default OFF.
+    #
+    # A missing env var used to enable this (True). That started
+    # server.py's LibreOffice-backed worker on the public Render web
+    # service whenever BUILDER_CODEGEN_ENABLED was unset, even though
+    # render.yaml already set it false. Live logs around memory-limit
+    # restarts (Aug 28–Sep 6 2026) showed "builder codegen worker loop
+    # started" on every boot. Codegen rasterizes .docx via soffice
+    # (builder/rasterize.py) and is an onboarding spike, not lesson-plan
+    # traffic. Keep it off on the web process; enable it only with an
+    # explicit BUILDER_CODEGEN_ENABLED=true on a larger instance or a
+    # dedicated worker — never by omitting the variable. Admin approval
+    # is still required before a generated spec reaches a teacher
+    # (routes/admin.py's /builder-codegen/{job_id}/approve).
+    builder_codegen_enabled: bool = False
     # Generous enough for a real spec to converge after review feedback,
     # small enough to bound cost — this runs once per school onboarding, not
     # per document generation, so a few minutes of wall-clock is acceptable.
@@ -363,11 +362,11 @@ class Settings(BaseSettings):
     # concurrent reads measured 1.36x faster than nine sequential ones. A pool is
     # what lets two teachers generate at once.
     #
-    # Small on purpose: the app may run as several processes (or several warm
-    # serverless instances), each with its own pool, and Supabase's pooler has a
-    # ceiling. 8 x a few processes stays well inside it, and the work is
+    # Default matches render.yaml's Render budget (2). A missing env var used
+    # to open 8 connections per process; raise DB_POOL_SIZE only after a load
+    # test shows both RAM and Supabase pooler headroom. The work is
     # I/O-bound on OpenAI rather than on Postgres.
-    db_pool_size: int = 8
+    db_pool_size: int = 2
 
     # How many retrieval queries may be IN FLIGHT at once.
     #
@@ -375,22 +374,23 @@ class Settings(BaseSettings):
     # pgvector reads (6 query phrasings x 5 strata), and each in-flight hybrid
     # query transiently holds 50-135MB while psycopg2 buffers the RRF join.
     # At 8 that peaked at 550MB-1.0GB depending on how many happened to overlap
-    # — over Render's 512MB, so the worker was OOM-killed mid-stream and the
-    # browser saw a 502 with no error event. Measured 2026-08-07.
+    # — over a 512MB–2GB Render box, so the worker was OOM-killed mid-stream
+    # and the browser saw a 502 with no error event. Measured 2026-08-07.
     #
     # Lower is also FASTER here: 30 jobs took 5.0s at 8 workers and 2.3s at 2,
     # because the workers were contending for a pool of the same size and for
     # Supabase's pooler behind it. Concurrency past the pool buys nothing.
-    # 2, not 3: the ceiling has to hold when two teachers generate at the SAME
-    # time, not just for one request in isolation. Raise it if the service moves
-    # off a 512MB instance.
-    retrieval_workers: int = 2
+    # Default 1 so a missing env var cannot overlap those buffers. retrieve_grounded
+    # also hard-caps workers at 1; raise RETRIEVAL_WORKERS only together with
+    # that cap and a larger instance.
+    retrieval_workers: int = 1
 
     # Short-term backpressure for LLM work. Requests that arrive in a burst are
-    # queued instead of being mistaken for a subscription/usage failure. Keep
-    # this conservative on small Render instances; raise it only after a load
-    # test confirms the service has both RAM and database headroom.
-    generation_max_concurrent: int = 2
+    # queued instead of being mistaken for a subscription/usage failure. Default
+    # 1 so a missing env var cannot run two generations (and two retrieval
+    # spikes) at once on a small Render box. Raise only after a load test
+    # confirms RAM and database headroom.
+    generation_max_concurrent: int = 1
     generation_max_per_user: int = 1
     generation_max_queue: int = 40
     generation_max_queue_per_user: int = 6

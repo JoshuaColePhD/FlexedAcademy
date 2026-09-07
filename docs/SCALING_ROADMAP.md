@@ -16,6 +16,11 @@ admin usage-cost report and a staging load test before changing production.
   notification.
 - Retain the LLM response cache for 90 days by default. Startup removes a
   bounded batch of older rows, so cache growth is no longer unbounded.
+- Keep `BUILDER_CODEGEN_ENABLED=false` on the public web service. LibreOffice
+  rasterize is an onboarding spike, not lesson-plan traffic; enable it only
+  on a larger instance or a dedicated worker after a memory test.
+- Confirm Render dashboard env matches `render.yaml`: `BUILDER_CODEGEN_ENABLED=false`,
+  `GENERATION_MAX_CONCURRENT=1`, `RETRIEVAL_WORKERS=1`, `DB_POOL_SIZE=2`.
 - Run the safe local burst check:
 
   ```bash

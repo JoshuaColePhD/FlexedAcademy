@@ -4119,6 +4119,20 @@ def standard_course_ids() -> set[str]:
     return {row["course"] for row in rows if row.get("course")}
 
 
+def list_standard_course_identity() -> list[dict]:
+    """Distinct course/source_type pairs — enough for is_ap_course/course_variants.
+
+    retrieve_raw calls those helpers on every generation. Walking the full
+    chunk metadata payload just to learn course names pinned ~75MB in the
+    web process. This query is a few hundred rows of two scalars.
+    """
+    return _rows(
+        "SELECT DISTINCT metadata->>'course' AS course, "
+        "metadata->>'source_type' AS source_type "
+        "FROM chunks WHERE metadata->>'course' IS NOT NULL"
+    )
+
+
 def find_standard_chunks_by_code(
     codes: list[str], *, state: str = "AL", courses: list[str] | None = None
 ) -> list[dict]:
@@ -4150,7 +4164,8 @@ def list_standard_code_metadata() -> list[dict]:
         "SELECT DISTINCT metadata->>'code' AS code, "
         "metadata->>'course' AS course, "
         "metadata->>'state' AS state, "
-        "metadata->>'source_type' AS source_type "
+        "metadata->>'source_type' AS source_type, "
+        "metadata->>'grade' AS grade "
         "FROM chunks WHERE metadata->>'code' IS NOT NULL"
     )
 

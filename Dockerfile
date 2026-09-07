@@ -99,12 +99,9 @@ EXPOSE 8080
 
 # One worker, not two — was 2 (each with its own connection pool, so one
 # slow generation couldn't block another teacher's request), but each worker
-# is a full separate process holding its OWN copy of the ~75MB standards
-# corpus in memory (retrieval.py's load_chunks cache) plus its own Postgres
-# pool, and on the free plan's 512MB that combination genuinely OOM'd the
-# instance in production within minutes of this image going live — see the
-# Render "exceeded its memory limit" alert. Single-worker trades some
-# request-level isolation for actually staying up; revisit if/when this
-# service is on a plan with real headroom (render.yaml's own comment tracks
-# that decision).
+# is a full separate process holding its OWN copy of the standards corpus
+# plus its own Postgres pool. That combination OOM'd the original 512MB
+# instance; keep a single uvicorn worker even on the current 1c-2g (~2GB)
+# FlexedAcademy box. Do not raise --workers without a matching RAM upgrade
+# and a load test. Builder codegen stays off by default (config.py).
 CMD ["sh", "-c", "uvicorn backend.server:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1} --timeout-keep-alive 75"]

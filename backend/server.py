@@ -244,6 +244,11 @@ async def lifespan(app: FastAPI):
     if settings.builder_codegen_enabled:
         _codegen_worker_task = asyncio.create_task(_builder_codegen_worker_loop())
         log.info("builder codegen worker loop started")
+    else:
+        log.info(
+            "builder codegen disabled (BUILDER_CODEGEN_ENABLED=false); "
+            "LibreOffice rasterize will not run on this process"
+        )
 
     document_build_worker_task = asyncio.create_task(_document_build_worker_loop())
 

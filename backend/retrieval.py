@@ -383,14 +383,34 @@ def normalize_course(course: str | None) -> str:
 
 
 @functools.lru_cache(maxsize=1)
+def _course_identity_rows() -> list[dict] | None:
+    """Compact (course, source_type) rows when Postgres is available.
+
+    `is_ap_course()` and `course_variants()` run on every retrieve_raw call.
+    Building those indexes from `load_chunks()` pinned the full ~75MB
+    metadata corpus for the life of the process. Returning None falls back
+    to the file-backed loaders used in local/offline tests.
+    """
+    if not settings.database_url:
+        return None
+    try:
+        return db.list_standard_course_identity()
+    except Exception as exc:  # noqa: BLE001 — file fallback remains available
+        log.warning("could not load compact course identity: %s; using file corpus", exc)
+        return None
+
+
+@functools.lru_cache(maxsize=1)
 def _courses_by_identity() -> dict[str, tuple[str, ...]]:
     """Every `course` value in the corpus, grouped by normalize_course().
 
-    Built from the chunk files rather than the database so it costs no query and
-    cannot disagree with what 02_embed_store.py loaded.
+    Prefer the compact Postgres identity query so a production generation
+    does not materialize every chunk dict just to resolve course aliases.
     """
+    rows = _course_identity_rows()
+    records = rows if rows is not None else load_chunks()
     groups: dict[str, set[str]] = {}
-    for c in load_chunks():
+    for c in records:
         course = c.get("course")
         if course:
             groups.setdefault(normalize_course(course), set()).add(course)
@@ -429,7 +449,9 @@ def course_variants(subject_code: str | None) -> tuple[str, ...]:
 
 @functools.lru_cache(maxsize=1)
 def _all_raw_courses() -> frozenset[str]:
-    return frozenset(c["course"] for c in load_chunks() if c.get("course"))
+    rows = _course_identity_rows()
+    records = rows if rows is not None else load_chunks()
+    return frozenset(c["course"] for c in records if c.get("course"))
 
 
 # Raw course values that are genuinely shared CED content across more than one
@@ -471,11 +493,14 @@ def _ap_courses() -> frozenset[str]:
     excluded exactly the college_board/ap_skills chunks holding the answer,
     and eight golden-set codes dropped out of the top 60 entirely with no
     error, no course this affects ever raising anything. Built from the
-    chunk files, like _courses_by_identity() beside it, so it costs no query
-    and cannot disagree with what 02_embed_store.py loaded."""
+    compact course-identity query when Postgres is available, otherwise
+    the chunk files, so it cannot disagree with what 02_embed_store.py
+    loaded."""
+    rows = _course_identity_rows()
+    records = rows if rows is not None else load_chunks()
     return frozenset(
         c["course"]
-        for c in load_chunks()
+        for c in records
         if c.get("course") and c.get("source_type") in ("college_board", "ap_skills")
     )
 
@@ -850,6 +875,11 @@ def codes_for_course_and_grade(subject_code: str | None, grade) -> frozenset[str
     """Every standard code that exists for this course AND this grade — see
     _codes_by_course_and_grade's own docstring for why codes_for_course()
     alone isn't enough for a grade check."""
+    inventory = _code_inventory()
+    if inventory is not None:
+        return inventory.by_course_and_grade.get(
+            (normalize_course(subject_code), str(grade)), frozenset()
+        )
     return _codes_by_course_and_grade().get((normalize_course(subject_code), str(grade)), frozenset())
 
 
@@ -871,6 +901,9 @@ def codes_for_course(subject_code: str | None) -> frozenset[str]:
     that documented hallucination would be waved through in an AP Lang plan.
     Scoping the check to the course is what makes it mean anything.
     """
+    inventory = _code_inventory()
+    if inventory is not None:
+        return inventory.by_course.get(normalize_course(subject_code), frozenset())
     return _codes_by_course().get(normalize_course(subject_code), frozenset())
 
 
@@ -1144,6 +1177,7 @@ class _CodeInventory:
 
     anywhere: frozenset[str]
     by_course: dict[str, frozenset[str]]
+    by_course_and_grade: dict[tuple[str, str], frozenset[str]]
     act: frozenset[str]
 
 
@@ -1166,6 +1200,7 @@ def _code_inventory() -> _CodeInventory | None:
 
     anywhere: set[str] = set()
     by_course: dict[str, set[str]] = {}
+    by_course_and_grade: dict[tuple[str, str], set[str]] = {}
     act: set[str] = set()
     for row in rows:
         raw_code = row.get("code")
@@ -1177,10 +1212,15 @@ def _code_inventory() -> _CodeInventory | None:
             act.add(code)
         course = row.get("course")
         if course:
-            by_course.setdefault(normalize_course(course), set()).add(code)
+            identity = normalize_course(course)
+            by_course.setdefault(identity, set()).add(code)
+            grade = row.get("grade")
+            if grade is not None and str(grade) != "":
+                by_course_and_grade.setdefault((identity, str(grade)), set()).add(code)
     return _CodeInventory(
         anywhere=frozenset(anywhere),
         by_course={k: frozenset(v) for k, v in by_course.items()},
+        by_course_and_grade={k: frozenset(v) for k, v in by_course_and_grade.items()},
         act=frozenset(act),
     )
 
