@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronUp, Info, LogOut, Mail, Settings, ShieldCheck } from 'lucide-react'
+import { ChevronUp, GraduationCap, Info, LogOut, Mail, Settings, ShieldCheck } from 'lucide-react'
 import { getAvatar, getInitials } from '../lib/avatars'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
@@ -315,6 +315,15 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
             >
               <Info size={14} aria-hidden="true" /> Privacy &amp; data policy
             </Link>
+            <div className="flex items-center">
+              <Link
+                to={`${classPath}/class`}
+                onClick={() => setOpen(false)}
+                className="flex min-h-touch min-w-0 flex-1 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <GraduationCap size={14} aria-hidden="true" /> Class settings
+              </Link>
+            </div>
             <div className="flex items-center">
               <Link
                 to={`${classPath}/settings`}
