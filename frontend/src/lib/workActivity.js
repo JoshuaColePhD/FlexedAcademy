@@ -90,13 +90,18 @@ export function updateWorkActivity(activity, event = {}) {
 
   if (status === 'error' || event.error) {
     next.status = 'error'
-    next.error = event.error || event.label || 'The request could not be completed.'
+    next.error = event.error || next.error || event.label || 'The request could not be completed.'
     next.steps = normalizedSteps(next).map((item) => (
       item.key === next.activeStep ? { ...item, state: 'error' } : item
     ))
   } else if (status === 'cancelled') {
     next.status = 'cancelled'
-  } else if (status === 'complete' || event.done) {
+  } else if (event.done === true || event.finish === true) {
+    // Chat conversation streams also emit status "complete" when the model
+    // has finished talking — including the turn that only *decided* to
+    // generate a week. That is not the plan being saved. Only an explicit
+    // done/finish flag (lesson stream onDone, quiz/revision finish) means
+    // the artifact exists.
     next.status = 'complete'
     next.steps = normalizedSteps(next).map((item) => ({ ...item, state: 'complete' }))
   }
