@@ -63,7 +63,7 @@ export function ChatHeaderSheet({
         <div className="chat-header-selection">
           <section className="chat-header-selection-field" aria-labelledby="chat-header-course-label">
             <p id="chat-header-course-label" className="chat-header-selection-label">Course</p>
-            <ClassSwitcher classes={classes} activeClass={activeClass} classPath={classPath} />
+            <ClassSwitcher classes={classes} activeClass={activeClass} classPath={classPath} fullWidthMenu />
           </section>
 
           {classId && classId !== 'default' && classes.length > 0 ? (
@@ -78,6 +78,7 @@ export function ChatHeaderSheet({
                 }}
                 schoolName={calendar?.school?.name}
                 disabled={busy}
+                fullWidthMenu
               />
             </section>
           ) : null}

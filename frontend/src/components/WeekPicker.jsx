@@ -6,7 +6,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
 /* Which week this conversation is planning. This is a themed listbox rather
  * than a native select so its open state uses the same curved menu treatment
  * as the class picker on every platform. */
-export function WeekPicker({ options, value, onChange, schoolName, disabled = false }) {
+export function WeekPicker({ options, value, onChange, schoolName, disabled = false, fullWidthMenu = false }) {
   const [open, setOpen] = useState(false)
   const { mounted, closing } = useExitTransition(open, 150)
   const ref = useRef(null)
@@ -55,7 +55,7 @@ export function WeekPicker({ options, value, onChange, schoolName, disabled = fa
         <ul
           role="listbox"
           aria-label={schoolName ? `${schoolName} weeks` : 'Weeks'}
-          className={`week-picker-menu neo-panel fa-card-drop absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised py-1${closing ? ' fa-chip-exit' : ''}`}
+          className={`week-picker-menu neo-panel fa-card-drop absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised py-1${fullWidthMenu ? ' chat-header-sheet-menu' : ''}${closing ? ' fa-chip-exit' : ''}`}
         >
           {options.map((week) => (
             <li key={week.week}>

@@ -11,7 +11,7 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
-import { NARROW, PHONE, useMediaQuery } from '../hooks/useMediaQuery'
+import { NARROW, PHONE, TOUCH, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { AccountMenu } from './AccountMenu'
 import { SkeletonText } from './Skeleton'
@@ -31,7 +31,7 @@ import { WorkspaceRailContext } from '../lib/workspaceRailContext'
 const SWIPE_ACTIONS_WIDTH = 132
 const OnboardingWizard = lazy(() => import('./OnboardingWizard').then((module) => ({ default: module.OnboardingWizard })))
 
-function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOpen, onSwipeOpenChange }) {
+function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchActions = false, swipeOpen, onSwipeOpenChange }) {
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(chat.title)
@@ -128,15 +128,16 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
     </NavLink>
   )
 
-  if (spacious) {
+  if (spacious || touchActions) {
     // Swipe-to-reveal, the native iOS list pattern, instead of the
     // desktop/tablet hover-reveal cluster: on a screen with no hover at
-    // all, a row permanently showing three icons read as cluttered (see
+    // all, a row permanently showing three icons reads as cluttered (see
     // .chat-row-actions's own history — that CSS fix made the icons
     // reachable on touch for the first time, but "always visible" and
     // "phone-native" are different bars). Pin/rename/delete sit on a
     // layer BEHIND the row; dragging the row left uncovers them, same as
-    // Mail.app or Messages.
+    // Mail.app or Messages. This branch is used both by the spacious
+    // phone home and by the compact phone drawer.
     return (
       <motion.li
         className="relative touch-pan-y overflow-hidden px-2"
@@ -295,7 +296,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
    the chats list and account controls, the same core content as the desktop
    sidebar, landing where a teacher currently gets dropped straight into an
    empty chat instead. See MobileChatHome.jsx. */
-export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious }) {
+export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious, touchActions = false }) {
   const { classId } = useParams()
   const location = useLocation()
   const { data: chats, isLoading, refetch } = useChats()
@@ -499,7 +500,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                 <ul className="flex flex-col gap-0">
                   <AnimatePresence initial={false}>
                     {pinnedChats.map((c) => (
-                      <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} swipeOpen={swipeOpenId === c.id} onSwipeOpenChange={(open) => setSwipeOpenId(open ? c.id : null)} />
+                      <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} touchActions={touchActions} swipeOpen={swipeOpenId === c.id} onSwipeOpenChange={(open) => setSwipeOpenId(open ? c.id : null)} />
                     ))}
                   </AnimatePresence>
                 </ul>
@@ -539,7 +540,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                     <ul className="flex flex-col gap-0">
                       <AnimatePresence initial={false}>
                         {visibleRecentChats.map((c) => (
-                          <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} swipeOpen={swipeOpenId === c.id} onSwipeOpenChange={(open) => setSwipeOpenId(open ? c.id : null)} />
+                          <ChatRow key={c.id} chat={c} classId={classId} onDelete={remove} onPin={togglePin} onNavigate={onNavigate} spacious={spacious} touchActions={touchActions} swipeOpen={swipeOpenId === c.id} onSwipeOpenChange={(open) => setSwipeOpenId(open ? c.id : null)} />
                         ))}
                       </AnimatePresence>
                     </ul>
@@ -610,6 +611,7 @@ function OnboardingWizardHost() {
 export function AppShell({ children }) {
   const isNarrow = useMediaQuery(NARROW)
   const isPhone = useMediaQuery(PHONE)
+  const isTouch = useMediaQuery(TOUCH)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerRef = useRef(null)
   const drawerExit = useExitTransition(drawerOpen, 130)
@@ -673,7 +675,7 @@ export function AppShell({ children }) {
           }}
         >
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <Rail collapsed={effectiveRailCollapsed} onToggleCollapse={toggleRailCollapsed} />
+            <Rail collapsed={effectiveRailCollapsed} onToggleCollapse={toggleRailCollapsed} touchActions={isTouch} />
           </div>
         </div>
       ) : null}
@@ -692,7 +694,7 @@ export function AppShell({ children }) {
               ref={drawerRef}
               className={`app-rail rail-drawer neo-world${drawerExit.closing ? ' is-closing' : ''} fixed inset-y-0 left-0 z-[210] flex w-[min(300px,85vw)] flex-col shadow-lg`}
             >
-              <Rail onNavigate={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} />
+              <Rail onNavigate={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} touchActions={isTouch} />
             </div>
           </>,
           document.body

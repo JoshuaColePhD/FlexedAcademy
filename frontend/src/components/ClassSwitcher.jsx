@@ -21,7 +21,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
    reserves blue for "something is waiting for you"; the class you are already
    looking at is not waiting for anything, and spending accent here is part of
    why the blue had stopped meaning anything. */
-export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default' }) {
+export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default', fullWidthMenu = false }) {
   const heading = variant === 'heading'
   const [open, setOpen] = useState(false)
   // The menu used to unmount the instant `open` went false — a hard cut, the
@@ -187,12 +187,12 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
           /* Inline: matches the trigger's own width (text + caret) exactly —
              w-full of this relative wrapper, whose only in-flow child is
              that trigger button — rather than a fixed 224px box that
-             dangled far past a compact pill. The non-inline (full sidebar
-             row) trigger still gets the fixed w-56 via left/right insets;
-             that one has room to be a real menu width. */
-          className={`neo-panel fa-card-drop absolute z-50 mt-1 overflow-hidden rounded-2xl bg-paper-raised py-1 ${
-            inline ? 'left-0 w-full' : 'left-2 right-2 w-56'
-          }${closing ? ' fa-chip-exit' : ''}`}
+             dangled far past a compact pill. Heading and inline triggers use
+             their full control width; the compact rail trigger keeps its
+             narrower fixed menu. */
+          className={`neo-panel fa-card-drop absolute z-50 mt-2 max-h-[min(60vh,360px)] overflow-y-auto overflow-x-hidden rounded-2xl border border-edge/80 bg-paper-sunken p-1 shadow-xl ${
+            fullWidthMenu || heading || inline ? 'left-0 w-full' : 'left-2 right-2 w-56'
+          }${fullWidthMenu ? ' chat-header-sheet-menu' : ''}${closing ? ' fa-chip-exit' : ''}`}
         >
           {classes.map((c) => (
             <li key={c.id}>
@@ -204,21 +204,14 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
                   setOpen(false)
                   navigate(targetFor(c.id))
                 }}
-                /* The selected row's own fill/ink stays exactly what the
-                   comment above the component argues for (--paper-inset +
-                   --ok, never --accent). This border is additive, not a
-                   replacement for that logic — a class-coloured edge so a
-                   teacher with three preps can place each one before reading
-                   the name, same job the rail's own dot already does. */
-                style={{ borderLeft: `3px solid rgb(${classColor(c.id).rgb} / 0.7)` }}
-                className={`flex min-h-touch w-full items-center gap-2 py-1.5 pl-2.5 pr-3 text-left text-sm transition-colors ${
+                className={`flex min-h-touch w-full items-center gap-2 rounded-xl py-1.5 pl-2.5 pr-3 text-left text-sm transition-colors ${
                   c.id === activeClass?.id
                     ? 'bg-paper-inset text-ink'
                     : 'text-ink-soft hover:bg-paper-sunken'
                 }`}
               >
                 <span
-                  className="class-dot"
+                  className="class-dot h-2.5 w-2.5 shrink-0 rounded-full"
                   aria-hidden="true"
                   style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
                 />
@@ -233,7 +226,7 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
             <Link
               to="/c/new/class"
               onClick={() => setOpen(false)}
-              className="flex min-h-touch items-center gap-2 border-t border-edge px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+              className="flex min-h-touch items-center gap-2 rounded-xl border-t border-edge px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-paper-raised hover:text-ink"
             >
               <Plus size={13} aria-hidden="true" /> Add a class
             </Link>

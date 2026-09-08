@@ -710,7 +710,7 @@ function ClassDetail({ cls, classes, frameworks, activeStates, onChanged }) {
     <div className="w-full max-w-5xl flex flex-col gap-6">
 
       <div className="flex flex-col gap-6 fa-rise">
-        <section id="section-core" className="scroll-mt-8 rounded-2xl border border-edge bg-paper-raised/50 p-5 shadow-sm backdrop-blur-md md:p-6" aria-labelledby="class-summary-title">
+        <section id="section-core" className="relative z-10 scroll-mt-8 rounded-2xl border border-edge bg-paper-raised/50 p-5 shadow-sm backdrop-blur-md md:p-6" aria-labelledby="class-summary-title">
           <div className="flex flex-col gap-4 border-b border-edge/50 pb-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <p className="eyebrow mb-2">Current class</p>

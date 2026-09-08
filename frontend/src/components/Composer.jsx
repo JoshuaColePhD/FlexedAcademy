@@ -4,8 +4,9 @@ import { createPortal } from 'react-dom'
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
 // linter until someone dragged a file.
-import { ArrowUp, AudioLines, BookOpen, Check, FileText, Loader2, Mic, Paperclip, Pause, Play, Plus, RotateCcw, Square, Trash2, Upload, X } from 'lucide-react'
+import { ArrowUp, BookOpen, Check, FileText, Loader2, Mic, Paperclip, Pause, Play, Plus, RotateCcw, Square, Trash2, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
+import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { suggestionCompletion } from '../lib/contextualSuggestions'
@@ -157,7 +158,6 @@ export function Composer({
   // null (no offer shown) whenever there's no class in scope, or it already
   // has a pacing guide — see ChatPage's own gating.
   onSaveAttachmentAsDocument = null,
-  onOpenVoice,
   suggestions = [],
   /* Kept for callers outside the main chat surface while they migrate to the
      shared suggestion model. It is converted into the same shape below. */
@@ -166,9 +166,8 @@ export function Composer({
      has its own always-on mic listening for speech — letting the
      composer's separate dictate-into-text mic run at the same time meant
      two different "I'm listening" affordances competing for the same
-     microphone and the same attention. Dictate disables outright; the
-     "start a voice conversation" entry point (below) just hides, since the
-     conversation it starts is already the one on screen. */
+     microphone and the same attention. Dictate disables outright; voice
+     conversation controls stay in the dedicated voice panel. */
   voiceModeActive = false,
   voicePanel = null,
   // The text-mode twin of voicePanel — a clarification round docked above
@@ -179,12 +178,7 @@ export function Composer({
   questionsPanel = null,
   mode = 'brainstorm',
   onModeChange,
-  onPlan,
   focusOnMount = false,
-  /* Composer is shared by the chat and (formerly) the plan surface, so the two
-     strings that name the ACTION are props. Hardcoding "Build the lesson plan"
-     meant a screen-reader user on the chat page was told the send button
-     generates a document. */
   placeholder = 'What are you teaching? (Press ⌘K for actions)',
   sendLabel = 'Send',
   // Optional teacher/course vocabulary supplied by the caller. Common terms
@@ -743,13 +737,6 @@ export function Composer({
   }, [handleGlobalDrop])
 
   const hasContent = value.trim().length > 0 || attachments.length > 0
-  const modeOptions = [
-    { value: 'brainstorm', label: 'Coach', description: 'Talk it through with a veteran teacher' },
-    { value: 'build', label: 'Build', description: 'Turn the idea into a plan quickly' },
-    { value: 'research', label: 'Research', description: 'Use current scholarly sources' },
-    { value: 'sub_plan', label: 'Sub plan', description: 'Emergency packet a substitute can run today' },
-  ]
-
   // isStreaming no longer gates this: a teacher thinking of a follow-up
   // while the current reply is still generating can now type it and hit
   // Enter — ChatPage's onSubmit (queueOrSubmit) holds it and sends it the
@@ -991,8 +978,12 @@ export function Composer({
               <button
                 type="button"
                 className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9 ${toolsOpen ? 'bg-paper-sunken text-ink' : ''}`}
-                onClick={() => setToolsOpen((open) => !open)}
-                aria-label="More composer actions"
+                onClick={() => {
+                  haptic('light')
+                  setToolsOpen((open) => !open)
+                }}
+                aria-label={toolsOpen ? 'Close composer actions' : 'More composer actions'}
+                title={toolsOpen ? 'Close composer actions' : 'More composer actions'}
                 aria-expanded={toolsOpen}
                 aria-haspopup="menu"
                 ref={toolsTriggerRef}
@@ -1002,74 +993,35 @@ export function Composer({
             ) : null}
             {toolsOpen ? (
               <div className="composer-tools-menu" role="menu" aria-label="Composer actions">
-                <button type="button" role="menuitem" className="composer-tools-item fa-press" disabled={isAttaching} onClick={() => { setToolsOpen(false); fileInputRef.current?.click() }}>
+                <button type="button" role="menuitem" className="composer-tools-item fa-press" disabled={isAttaching} onClick={() => { haptic('light'); setToolsOpen(false); fileInputRef.current?.click() }}>
                   {isAttaching ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Paperclip size={16} aria-hidden="true" />}<span>Attach a file</span>
                 </button>
-                {onPlan && !isStreaming ? <button type="button" role="menuitem" className="composer-tools-item fa-press" onClick={() => { setToolsOpen(false); onPlan(value) }}><Plus size={16} aria-hidden="true" /><span>Plan with guided questions</span></button> : null}
-              {onModeChange && !isStreaming ? (
-                <div className="border-b border-edge px-2 py-2" role="group" aria-label="Conversation mode">
-                    <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Mode</p>
-                    {modeOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={mode === option.value}
-                        className={`composer-tools-item fa-press w-full ${mode === option.value ? 'bg-paper-sunken text-ink' : ''}`}
-                        onPointerDown={(event) => {
-                          // Select on pointer-down so the menu feels immediate
-                          // even when a surrounding focus/blur handler is
-                          // running. Keyboard activation remains supported by
-                          // the explicit key handler below.
-                          event.preventDefault()
-                          onModeChange(option.value)
-                          setToolsOpen(false)
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Enter' && event.key !== ' ') return
-                          event.preventDefault()
-                          onModeChange(option.value)
-                          setToolsOpen(false)
-                        }}
-                        title={option.description}
-                      >
-                        <span className="w-14 text-left font-semibold">{option.label}</span>
-                        <span className="truncate text-xs text-ink-muted">{option.description}</span>
-                      </button>
-                    ))}
-                </div>
-              ) : null}
-                {inputDevices.length > 1 ? (
-                  <div className="border-b border-edge px-2 py-2" role="group" aria-label="Dictation microphone">
-                    <label className="block px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint" htmlFor="composer-mic-device">Microphone</label>
-                    <select
-                      id="composer-mic-device"
-                      className="w-full rounded-md border border-edge bg-paper-raised px-2 py-1.5 text-xs text-ink outline-none focus:border-accent"
-                      value={selectedDeviceId}
-                      onChange={(event) => {
-                        const next = event.target.value
-                        setSelectedDeviceId(next)
-                        try { window.localStorage.setItem(VOICE_DEVICE_STORAGE_KEY, next) } catch { /* optional persistence */ }
-                      }}
-                    >
-                      {inputDevices.map((device, index) => <option key={device.deviceId || `mic-${index}`} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
-                    </select>
-                  </div>
-                ) : null}
-                {onOpenVoice && !isStreaming ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="composer-tools-item fa-press"
-                  onClick={() => {
-                    setToolsOpen(false)
-                    pulseMotion('voice', 260)
-                    onOpenVoice?.()
-                  }}
-                >
-                  <AudioLines size={16} aria-hidden="true" />
-                  <span>Talk instead of type</span>
-                </button>
+                {onModeChange && !isStreaming ? (
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={mode === 'brainstorm'}
+                    className={`composer-tools-item fa-press ${mode === 'brainstorm' ? 'bg-paper-sunken text-ink' : ''}`}
+                    onPointerDown={(event) => {
+                      // Coach is the only conversational mode exposed from
+                      // this compact menu. Select on pointer-down so the menu
+                      // closes before the accessories blur handler runs.
+                      event.preventDefault()
+                      haptic('selection')
+                      onModeChange('brainstorm')
+                      setToolsOpen(false)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      haptic('selection')
+                      onModeChange('brainstorm')
+                      setToolsOpen(false)
+                    }}
+                    title="Talk it through with a veteran teacher"
+                  >
+                    <span className="font-semibold">Coach</span>
+                  </button>
                 ) : null}
               </div>
             ) : null}
@@ -1173,8 +1125,11 @@ export function Composer({
                       ? stopRecording
                       : showSendAction
                         ? submit
-                        : startRecording
+                      : startRecording
               }
+              onPointerDown={() => {
+                if (!isStreaming && !isTranscribing) haptic(isRecording || showSendAction ? 'medium' : 'light')
+              }}
               disabled={
                 isTranscribing
                 || (isStreaming && !onStop)

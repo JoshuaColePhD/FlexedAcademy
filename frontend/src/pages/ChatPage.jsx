@@ -1211,6 +1211,13 @@ export function ChatPage() {
    * been in the meantime. Comparing ids makes the skip idempotent too, which
    * matters because StrictMode double-invokes effects in dev. */
   const localFor = useRef(null)
+  /* A chat can be submitted before its initial GET finishes. Once that
+     happens, the GET is stale: applying its empty transcript or missing-plan
+     result after generation completes would erase the newly created artifact
+     from the Outputs rail. This version is bumped when the submit path takes
+     ownership of an existing chat, so continuations of the older loader
+     become no-ops. */
+  const chatLoadVersionRef = useRef(0)
 
   /* The id of the placeholder message a plain chat reply streams into, while
      it's in flight — see chatStream's onDone below and the two
@@ -1334,6 +1341,9 @@ export function ChatPage() {
     setPlanPeekOpen(false)
     planBuildStartedRef.current = false
 
+    const loadVersion = ++chatLoadVersionRef.current
+    const loadIsCurrent = () => !cancelled && chatLoadVersionRef.current === loadVersion
+
     // A reopened phone chat often hits the API just as a cellular connection
     // is waking up. One immediate retry simply repeated the same failed
     // connection and then hid an existing plan. Use a short bounded backoff:
@@ -1367,7 +1377,7 @@ export function ChatPage() {
 
     getChatWithRetry(chatId)
       .then(async (row) => {
-        if (cancelled) return
+        if (!loadIsCurrent()) return
         setChatMode(normalizeChatMode(row.mode))
         const loaded = (row.messages || []).map((m) => ({
           id: nextId(),
@@ -1397,10 +1407,10 @@ export function ChatPage() {
           try {
             ;({ items = [] } = await api.listPlans({ chat_id: chatId, limit: 1 }))
           } catch {
-            if (!cancelled) setArtifact(null)
+            if (loadIsCurrent()) setArtifact(null)
             return
           }
-          if (cancelled) return
+          if (!loadIsCurrent()) return
           if (!items[0]) {
             // Genuinely nothing built for this chat — the "before a plan
             // exists" case the "plan so far" list (decisions.length) is for.
@@ -1411,7 +1421,7 @@ export function ChatPage() {
             // The list view drops plan_json (db.list_plans pops it), so the
             // week itself still has to be fetched by id.
             const plan = await getPlanWithRetry(items[0].id)
-            if (cancelled) return
+            if (!loadIsCurrent()) return
             setArtifact({
               planId: plan.id,
               plan: plan.plan_json,
@@ -1422,14 +1432,14 @@ export function ChatPage() {
           } catch {
             // A real plan_id came back from listPlans — this is "exists but
             // failed to load," not "doesn't exist yet."
-            if (!cancelled) setArtifactLoadError(true)
+            if (loadIsCurrent()) setArtifactLoadError(true)
           }
           return
         }
 
         try {
           const plan = await getPlanWithRetry(last.planId)
-          if (cancelled) return
+          if (!loadIsCurrent()) return
           setArtifact({
             planId: plan.id,
             plan: plan.plan_json,
@@ -1454,10 +1464,10 @@ export function ChatPage() {
           // last.planId came from a persisted message — this plan is known
           // to exist, so a failed fetch is "exists but failed to load," not
           // "doesn't exist yet."
-          if (!cancelled) setArtifactLoadError(true)
+          if (loadIsCurrent()) setArtifactLoadError(true)
         }
       })
-      .catch(() => !cancelled && toast.error("Couldn't open that conversation"))
+      .catch(() => loadIsCurrent() && toast.error("Couldn't open that conversation"))
     return () => {
       cancelled = true
     }
@@ -2612,14 +2622,6 @@ export function ChatPage() {
       }
     },
     [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity]
-  )
-
-  const startPlanning = useCallback(
-    (text) => {
-      if (busy) return
-      submit(text, { planning: true })
-    },
-    [busy, submit]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -4168,12 +4170,10 @@ export function ChatPage() {
             selectedStandard={selectedStandard}
             selectedStandardStatus={selectedStandardStatus}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
-            onOpenVoice={betaFeaturesEnabled ? openVoice : undefined}
             voiceModeActive={voiceOpen}
             suggestions={composerSuggestions}
             mode={chatMode}
             onModeChange={changeChatMode}
-            onPlan={startPlanning}
             voiceGlossary={[activeClass?.name, activeClass?.subject, selectedStandard?.code].filter(Boolean)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
