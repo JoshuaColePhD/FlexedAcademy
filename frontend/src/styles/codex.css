@@ -1437,6 +1437,11 @@
   background: var(--paper-inset) !important;
   color: var(--ink) !important;
 }
+/* Swipe actions live behind the translated row. Keep the closed row opaque so
+   those controls cannot show through before the teacher swipes. */
+.chat-workspace-chat-row.is-swipe-row {
+  background: var(--paper);
+}
 .chat-workspace-avatar {
   flex: 0 0 38px;
   width: 38px;

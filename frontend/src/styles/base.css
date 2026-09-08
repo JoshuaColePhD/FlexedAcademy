@@ -10566,8 +10566,8 @@
 }
 
 /* The empty reply state should feel like a purposeful continuation of the
-   transcript, not a separate loading widget. The live label and small spark
-   make the work feel active without adding a raised pill or layout shift. */
+   transcript, not a separate loading widget. The pulsing mark keeps the work
+   feeling active without adding a raised pill or layout shift. */
 .chat-thinking-state {
   display: inline-flex;
   align-items: center;
@@ -10576,12 +10576,6 @@
   color: var(--accent-text);
   font-size: 0.9375rem;
   font-weight: 500;
-}
-
-.chat-thinking-spark {
-  color: var(--accent-text);
-  animation: chat-thinking-spark 1.6s ease-in-out infinite;
-  transform-origin: center;
 }
 
 .chat-thinking-mark {
@@ -10625,11 +10619,6 @@
 
 @keyframes chat-thinking-orbit {
   to { transform: rotate(360deg); }
-}
-
-@keyframes chat-thinking-spark {
-  0%, 100% { opacity: 0.55; transform: scale(0.88) rotate(-8deg); }
-  50% { opacity: 1; transform: scale(1.08) rotate(8deg); }
 }
 
 .chat-live-status-dot {

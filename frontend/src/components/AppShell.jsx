@@ -113,7 +113,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchAc
         }
         onNavigate?.(e)
       }}
-      className={({ isActive }) => `chat-workspace-chat-row${isActive ? ' is-active' : ''}`}
+      className={({ isActive }) => `chat-workspace-chat-row${isActive ? ' is-active' : ''}${spacious || touchActions ? ' is-swipe-row' : ''}`}
     >
       <span className="chat-workspace-avatar" style={{ backgroundColor: chatAvatarColor(chat) }} aria-hidden="true">
         {(chat.title || 'Chat').replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase() || 'C'}
