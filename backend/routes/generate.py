@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
 import re
+import threading
 import uuid
 
 import openai
@@ -23,6 +25,46 @@ from ..template_context import day_names_for_school, weekly_template_context
 
 log = logging.getLogger("flexedacademy.generate")
 router = APIRouter(prefix="/api", tags=["generate"])
+
+# Safari and Render's proxy close an SSE stream that sits idle. The model can
+# spend a long stretch on time-to-first-token after we emit "writing", which
+# is exactly when a phone shows "Building the days" and then "Load failed".
+_SSE_KEEPALIVE_SECONDS = 10.0
+
+
+def _with_keepalives(iterable, *, idle_seconds: float = _SSE_KEEPALIVE_SECONDS):
+    """Yield items from `iterable`, or None when it has been silent too long.
+
+    None is the caller's cue to emit an SSE comment. Work runs on a side
+    thread so a blocking OpenAI iterator cannot starve those heartbeats.
+    """
+    items: queue.Queue = queue.Queue()
+
+    def produce() -> None:
+        try:
+            for item in iterable:
+                items.put(("item", item))
+            items.put(("stop", None))
+        except BaseException as exc:  # noqa: BLE001 - must surface cancel to the SSE generator
+            items.put(("error", exc))
+
+    worker = threading.Thread(target=produce, name="sse-keepalive", daemon=True)
+    worker.start()
+    try:
+        while True:
+            try:
+                kind, payload = items.get(timeout=idle_seconds)
+            except queue.Empty:
+                yield None
+                continue
+            if kind == "item":
+                yield payload
+            elif kind == "stop":
+                return
+            else:
+                raise payload
+    finally:
+        worker.join(timeout=0.1)
 
 
 class GenerateRequest(BaseModel):
@@ -455,26 +497,43 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
             )
             yield _activity_sse({"status": "thinking", "template_days": template_days}, request_id, step="planning", step_state="active", attempt=req.attempt)
             yield _activity_sse({"status": "writing", "template_days": template_days}, request_id, step="building", step_state="active", attempt=req.attempt)
-            for delta in llm.stream_plan(user_id, model_query, result, school_id=school_id, class_id=cls["id"] if cls else None):
+            for delta in _with_keepalives(
+                llm.stream_plan(user_id, model_query, result, school_id=school_id, class_id=cls["id"] if cls else None)
+            ):
+                if delta is None:
+                    yield ": keepalive\n\n"
+                    continue
                 chunks.append(delta)
                 yield _activity_sse({"chunk": delta}, request_id, step="building", step_state="active", attempt=req.attempt)
 
             from ..schema import loads_lenient
 
-            row = service.finalize(
-                user_id=user_id,
-                plan_raw=loads_lenient("".join(chunks)),
-                query=query,
-                result=result,
-                chat_id=req.chat_id,
-                bg_tasks=bg_tasks,
-                class_id=cls["id"] if cls else None,
-                cls=cls,
-                week_number=req.week_number,
-                school_id=school_id,
-                subject=cls["subject"] if cls else None,
-                grade=cls["grade"] if cls else None,
-            )
+            yield _activity_sse({"status": "saving", "template_days": template_days}, request_id, step="building", step_state="active", attempt=req.attempt)
+
+            def _finalize():
+                yield service.finalize(
+                    user_id=user_id,
+                    plan_raw=loads_lenient("".join(chunks)),
+                    query=query,
+                    result=result,
+                    chat_id=req.chat_id,
+                    bg_tasks=bg_tasks,
+                    class_id=cls["id"] if cls else None,
+                    cls=cls,
+                    week_number=req.week_number,
+                    school_id=school_id,
+                    subject=cls["subject"] if cls else None,
+                    grade=cls["grade"] if cls else None,
+                )
+
+            row = None
+            for item in _with_keepalives(_finalize()):
+                if item is None:
+                    yield ": keepalive\n\n"
+                    continue
+                row = item
+            if row is None:
+                raise RuntimeError("finalize returned no plan")
             yield _activity_sse(
                 {
                     "done": True,
@@ -1229,7 +1288,10 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 "update_lesson_day": "lesson_plan_revision",
                 "generate_quiz": "quiz",
             }
-            for event in llm.stream_chat(user_id, messages, voice=req.voice):
+            for event in _with_keepalives(llm.stream_chat(user_id, messages, voice=req.voice)):
+                if event is None:
+                    yield ": keepalive\n\n"
+                    continue
                 if isinstance(event, dict):
                     event.setdefault("request_id", request_id)
                 artifact_type = event.get("artifact_type") or tool_artifacts.get(event.get("tool_call"), "conversation")
