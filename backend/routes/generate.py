@@ -363,6 +363,18 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     def event_stream():
         lease = None
         try:
+            yield ": keepalive\n\n"
+            yield _activity_sse(
+                {
+                    "status": "connecting",
+                    "status_code": "connecting",
+                    "label": "Starting…",
+                },
+                request_id,
+                step="context",
+                step_state="active",
+                attempt=req.attempt,
+            )
             lease = generation_queue.enqueue(user_id)
             yield _activity_sse(
                 {
@@ -892,6 +904,22 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
         request_id = req.request_id or str(uuid.uuid4())
         lease = None
         try:
+            # Headers (and this first frame) must leave the process before
+            # enqueue can block. Safari treats a POST with no response as a
+            # dropped connection — "Chat failed / before the reply started."
+            yield ": keepalive\n\n"
+            yield _activity_sse(
+                {
+                    "status": "connecting",
+                    "status_code": "connecting",
+                    "label": "Starting…",
+                },
+                request_id,
+                step="context",
+                step_state="active",
+                artifact_type="conversation",
+                attempt=req.attempt,
+            )
             lease = generation_queue.enqueue(user_id)
             yield _activity_sse(
                 {

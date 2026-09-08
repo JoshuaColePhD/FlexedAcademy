@@ -2435,6 +2435,7 @@ export function ChatPage() {
         referenceContext,
         requestId: options.requestId,
       })
+      if (!chatResult) return
 
       // The generate_quiz alternative — a distinct request from
       // generate_lesson_plan (see quizRequested's own comment in
