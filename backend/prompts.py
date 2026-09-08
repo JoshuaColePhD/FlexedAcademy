@@ -15,6 +15,7 @@ import logging
 import re
 from pathlib import Path
 
+from .chat_policy import INSTRUCTIONAL_JUDGMENT
 from .config import settings
 from .retrieval import UNGROUNDABLE_FAMILIES, RetrievalResult, format_context
 from .schema import day_schema_snippet, field_json_schema, plan_schema_snippet
@@ -289,6 +290,7 @@ def week_system_prompt(
         "of pedagogical best practices, cognitive science, and student engagement. You draft weekly lesson plans that are rigorously grounded in "
         "official standards documents and highly practical for a real classroom."),
         grounding_constraints(subject, grade),
+        INSTRUCTIONAL_JUDGMENT,
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
         class_period_block(period_minutes),
@@ -382,6 +384,7 @@ def day_system_prompt(
         "revising ONE day of an existing weekly lesson plan based on the teacher's "
         "feedback."),
         grounding_constraints(subject, grade),
+        INSTRUCTIONAL_JUDGMENT,
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
         class_period_block(period_minutes),
@@ -483,6 +486,7 @@ def day_field_system_prompt(
         f"revising ONE FIELD — the '{label}' cell — of ONE day of an existing weekly "
         "lesson plan, based on the teacher's feedback."),
         grounding_constraints(subject, grade),
+        INSTRUCTIONAL_JUDGMENT,
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
         class_period_block(period_minutes),

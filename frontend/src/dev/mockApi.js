@@ -1495,7 +1495,7 @@ export function installMockApi() {
           : wantsPlan
             ? [
                 [{ chunk: 'On it — building that week now.' }, 120],
-                [{ tool_call: 'generate_lesson_plan' }, 120],
+                [{ tool_call: 'generate_lesson_plan', action: body.active_plan_id ? 'revise_week' : 'create', target_plan_id: body.active_plan_id || null, instruction: last, days: [], field: null, week_number: body.week_number }, 120],
                 [{ done: true }, 60],
               ]
             : [

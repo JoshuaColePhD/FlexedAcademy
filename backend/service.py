@@ -1147,18 +1147,17 @@ def revise_days(
     plan_id: str,
     day_indices: list[int],
     feedback: str,
-    field: str,
+    field: str | None,
     bg_tasks: BackgroundTasks | None = None,
 ) -> dict:
-    """The same one-field, one-key rewrite as revise_day's `field` path, applied
-    to several days from a single instruction — the batch counterpart to
-    tweaking one cell at a time. One docx rebuild and one grounding audit
-    cover every touched day, rather than N of each for N cells.
+    """Rewrite selected fields or, with field=None, selected whole days.
+    Generate and validate every change before saving the combined plan.
+    One document rebuild and grounding audit cover all touched days.
 
     A day marked `no_school` has nothing to rewrite and is silently skipped
     rather than erroring the whole batch over one closed day.
     """
-    if field not in schema.REVISABLE_FIELDS:
+    if field is not None and field not in schema.REVISABLE_FIELDS:
         raise AppError(
             "bad_field",
             f"{field!r} is not a revisable field.",
@@ -1200,7 +1199,7 @@ def revise_days(
         template_id=selected_template_id,
         user_id=user_id,
     )
-    needs_retrieval = field in schema.CODE_BEARING_FIELDS
+    needs_retrieval = field is None or field in schema.CODE_BEARING_FIELDS
 
     import json as _json
 
@@ -1227,10 +1226,15 @@ def revise_days(
             result = RetrievalResult()
         retrieved_codes |= result.codes
 
-        value = llm.rewrite_day_field(
-            user_id, original, feedback, field, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
-        )
-        merged = {**original, field: value}
+        if field is None:
+            merged = llm.rewrite_day(
+                user_id, original, feedback, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
+            )
+        else:
+            value = llm.rewrite_day_field(
+                user_id, original, feedback, field, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
+            )
+            merged = {**original, field: value}
         updated, day_warnings = schema.validate_day(
             merged,
             path=f"days[{idx}]",
@@ -1239,9 +1243,13 @@ def revise_days(
             ),
             act_alignment_enabled=act_row,
         )
-        for key, was in original.items():
-            if key != field and key in updated:
-                updated[key] = was
+        updated["name"] = original["name"]
+        if "no_school" in original:
+            updated["no_school"] = original["no_school"]
+        if field is not None:
+            for key, was in original.items():
+                if key != field:
+                    updated[key] = was
         new_days[idx] = updated
         warnings += day_warnings
 
