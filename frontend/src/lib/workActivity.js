@@ -5,10 +5,10 @@ export const DEFAULT_WORK_STEPS = [
 ]
 
 export const WORK_ACTIVITY_MESSAGES = {
-  plan: 'Reading this week, then matching standards and building the days.',
-  revision: 'Updating that part of the plan now.',
+  plan: 'Lining up the week now.',
+  revision: 'Tweaking that part now.',
   quiz: 'Writing the quiz now.',
-  research: 'Digging through the sources now.',
+  research: 'Poking through the sources now.',
 }
 
 const STEP_ORDER = ['context', 'standards', 'days']

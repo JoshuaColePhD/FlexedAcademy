@@ -189,7 +189,7 @@ export function VoiceModePanel({
           : busy || building
             ? 'working'
             : 'listening'
-  const labels = { connecting: 'Connecting', error: 'Needs attention', interrupted: 'Listening', off: 'Mic off', speaking: 'Speaking', working: 'Thinking', listening: 'Listening' }
+  const labels = { connecting: 'Connecting', error: 'Needs attention', interrupted: 'Listening', off: 'Mic off', speaking: 'Speaking', working: 'One sec', listening: 'Listening' }
   const { checklist } = splitDecisions(decisions)
   const decidedCount = checklist.filter((item) => item.value != null).length
   const nextDecision = checklist.find((item) => item.value == null)

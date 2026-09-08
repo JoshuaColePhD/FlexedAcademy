@@ -30,6 +30,7 @@ import { useInterfacePreferences } from '../hooks/useInterfacePreferences'
 import { durableTurnSnapshot, readTurnOutbox, removeTurnOutbox, writeTurnOutbox } from '../lib/turnOutbox'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
+import { chatThinkingLabel } from '../lib/chatThinking'
 import { createWorkActivity, updateWorkActivity } from '../lib/workActivity'
 import { Composer } from '../components/Composer'
 import { AddDocumentDialog } from '../components/AddDocumentDialog'
@@ -436,11 +437,9 @@ const ATTACHMENT_CHAR_CAP = 12000
 
 // Spoken (and captioned) the instant voice mode opens on an empty chat —
 // short on purpose, since it's heard once per conversation, not read.
-const VOICE_GREETING = 'Hey, what do you need a lesson plan for?'
-// Spoken when the model commits to building, which it signals with a tool
-// call carrying no text of its own — see their use in submit().
-const VOICE_BUILDING = 'Building the week now — give me about thirty seconds.'
-const VOICE_REVISING = 'Updating it now — one moment.'
+const VOICE_GREETING = 'Hey — what are we doing with this week?'
+const VOICE_BUILDING = 'Alright, writing the week — give me a bit.'
+const VOICE_REVISING = 'On it — one moment.'
 
 const waitBeforeRetry = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -467,25 +466,6 @@ function normalizeChatMode(mode) {
   // presenting the simpler three-mode vocabulary in the composer.
   if (mode === 'standard') return 'build'
   return 'brainstorm'
-}
-
-/* Shown in the empty assistant slot while chat_stream is running. This is
-   not the lesson builder — that uses WorkActivityCard ("Building the lesson
-   plan"). Hardcoding "Crafting your lesson" here made a "how are you?"
-   follow-up look like a five-day generation. A greeting must never borrow
-   lesson language just because this chat lives on a week. */
-function isCasualTurn(prompt) {
-  const text = String(prompt || '').trim()
-  if (!text) return false
-  return /^(hi+|hello|hey there|hey|yo|sup|good (morning|afternoon|evening)|thanks|thank you|thx|ok|okay|cool)[\s!?.]*$/i.test(text)
-}
-
-function chatThinkingLabel(mode, { planning, prompt } = {}) {
-  if (isCasualTurn(prompt)) return 'Thinking'
-  if (planning) return 'Starting your lesson'
-  if (mode === 'research') return 'Looking through sources'
-  if (mode === 'sub_plan') return 'Putting together a sub plan'
-  return 'Thinking'
 }
 
 function planContainsStandard(plan, code) {
@@ -4426,7 +4406,7 @@ export function ChatPage() {
                      here ever said so, which reads as dead air to anyone
                      depending on this region instead of looking at the
                      screen. */
-                  'Thinking.'
+                  'One sec.'
                 : artifact?.planId
                   ? 'Lesson plan ready.'
                   : ''}
