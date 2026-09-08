@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
+import { droppedConnectionCopy, isDroppedConnectionError } from '../lib/streamTransport'
 import { parsePartialJson, usablePlan } from '../lib/partialJson'
 import * as perf from '../lib/performanceMetrics'
 
@@ -44,8 +45,8 @@ const SSE_PREFIX = 'data:'
 // See useChatStream's identical constant for the reasoning: only retry codes
 // the backend or the reader itself flags as transient, and only a bounded
 // number of times, so a request that can never succeed doesn't loop forever.
-const RETRYABLE_CODES = new Set(['stream_truncated', 'upstream_timeout', 'upstream_connection_error', 'rate_limited'])
-const MAX_AUTO_RETRIES = 1
+const RETRYABLE_CODES = new Set(['stream_truncated', 'stream_connection_error', 'upstream_timeout', 'upstream_connection_error', 'rate_limited'])
+const MAX_AUTO_RETRIES = 2
 const RETRY_DELAY_MS = 600
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -179,27 +180,38 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     perf.mark('lesson-stream:start')
 
     let accumulated = ''
+    let sawWriting = false
 
-    const res = await fetch(api.streamUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        conversation_context: conversationContext || '',
-        reference_context: referenceContext || '',
-        chat_id: chatId ?? null,
-        week_number: weekNumber ?? null,
-        // The page's own class (ChatPage's classId route param), not just
-        // the chat's stored one — an older chat can have no class_id of its
-        // own, and the backend now refuses to guess one. See generate.py's
-        // GenerateRequest.class_id for the write-side half of this fix.
-        class_id: classId ?? null,
-        request_id: requestId,
-        attempt,
-      }),
-      signal: controller.signal,
-      credentials: 'include',
-    })
+    let res
+    try {
+      res = await fetch(api.streamUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          conversation_context: conversationContext || '',
+          reference_context: referenceContext || '',
+          chat_id: chatId ?? null,
+          week_number: weekNumber ?? null,
+          // The page's own class (ChatPage's classId route param), not just
+          // the chat's stored one — an older chat can have no class_id of its
+          // own, and the backend now refuses to guess one. See generate.py's
+          // GenerateRequest.class_id for the write-side half of this fix.
+          class_id: classId ?? null,
+          request_id: requestId,
+          attempt,
+        }),
+        signal: controller.signal,
+        credentials: 'include',
+      })
+    } catch (err) {
+      if (err.name === 'AbortError') throw err
+      if (isDroppedConnectionError(err)) {
+        const copy = droppedConnectionCopy(false)
+        throw new ApiError(copy.message, { code: copy.code, hint: copy.hint, extra: { retryable: true } })
+      }
+      throw err
+    }
 
     if (!res.ok || !res.body) {
       let payload = null
@@ -220,7 +232,22 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
 
     // Read until the stream ends, keeping any trailing partial record.
     for (;;) {
-      const { value, done } = await reader.read()
+      let next
+      try {
+        next = await reader.read()
+      } catch (err) {
+        if (err.name === 'AbortError') throw err
+        if (isDroppedConnectionError(err)) {
+          const copy = droppedConnectionCopy(sawWriting || Boolean(accumulated))
+          throw new ApiError(copy.message, { code: copy.code, hint: copy.hint, extra: { retryable: true } })
+        }
+        throw new ApiError('The connection dropped while writing the week.', {
+          code: 'stream_connection_error',
+          hint: 'Nothing was saved. Try again.',
+          extra: { retryable: true },
+        })
+      }
+      const { value, done } = next
       if (value) {
         buffer += decoder.decode(value, { stream: !done })
 
@@ -254,10 +281,12 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               retrieving: 'Preparing your class context…',
               thinking: 'Thinking…',
               writing: 'Writing your lesson plan…',
+              saving: 'Saving the week…',
               accepted: 'Accepted',
               context_ready: 'Class context ready',
             }
             const phase = typeof event.status === 'string' ? event.status : event.status.phase
+            if (phase === 'writing' || phase === 'saving') sawWriting = true
             const nextStatus = {
               phase,
               label: event.status.label || labels[phase] || phase,
@@ -270,7 +299,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               label: nextStatus.label,
               requestId: nextStatus.requestId,
               attempt: nextStatus.attempt,
-              step: phase === 'retrieving' ? 'standards' : phase === 'writing' ? 'days' : phase === 'thinking' ? 'standards' : phase === 'context_ready' ? 'standards' : phase === 'accepted' || phase === 'queued' ? 'context' : undefined,
+              step: phase === 'retrieving' ? 'standards' : phase === 'writing' || phase === 'saving' ? 'days' : phase === 'thinking' ? 'standards' : phase === 'context_ready' ? 'standards' : phase === 'accepted' || phase === 'queued' ? 'context' : undefined,
             })
           }
           if (Array.isArray(event.template_days) && event.template_days.length) {

@@ -32,6 +32,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { chatThinkingLabel } from '../lib/chatThinking'
 import { createWorkActivity, updateWorkActivity } from '../lib/workActivity'
+import { droppedConnectionCopy, isDroppedConnectionError } from '../lib/streamTransport'
 import { Composer } from '../components/Composer'
 import { AddDocumentDialog } from '../components/AddDocumentDialog'
 import { VoiceModePanel } from '../components/VoiceModePanel'
@@ -799,6 +800,7 @@ export function ChatPage() {
   const activityAnchorRef = useRef(null)
   const activeActivityRequestRef = useRef(null)
   const pendingActivityKindRef = useRef(null)
+  const planBuildInFlightRef = useRef(false)
 
   const activityTitle = useCallback((kind) => ({
     plan: 'Building your lesson plan',
@@ -1656,6 +1658,7 @@ export function ChatPage() {
     },
     onStatus: (event) => updateActiveWorkActivity(event),
     onDone: (done) => {
+      planBuildInFlightRef.current = false
       finishWorkActivity(done.requestId, {
         status: 'complete',
         summary: `${done.plan?.days?.length || 0} days built and checked.`,
@@ -1735,9 +1738,12 @@ export function ChatPage() {
       refreshAuth()
     },
     onError: (err) => {
+      planBuildInFlightRef.current = false
+      const dropped = isDroppedConnectionError(err)
+      const copy = dropped ? droppedConnectionCopy(true) : null
       finishWorkActivity(null, {
         status: 'error',
-        error: err.message || "I couldn't finish the week just then.",
+        error: copy?.message || err.message || "I couldn't finish the week just then.",
       })
       setMessages((prev) => [
         ...prev,
@@ -1745,8 +1751,8 @@ export function ChatPage() {
           id: nextId(),
           role: 'assistant',
           isError: true,
-          content: "I couldn't finish the week just then.",
-          hint: err.hint || 'Tap Try again.',
+          content: copy?.message || "I couldn't finish the week just then.",
+          hint: copy?.hint || err.hint || 'Tap Try again.',
         },
       ])
       // The server is the authority; if it refused on entitlement, show the
@@ -1797,7 +1803,7 @@ export function ChatPage() {
       label: stream.status.label,
       previewDays: stream.preview?.days || [],
       dayNames: stream.dayNames || undefined,
-      step: stream.status.phase === 'writing' ? 'days' : stream.status.phase === 'retrieving' ? 'standards' : stream.status.phase === 'thinking' ? 'standards' : undefined,
+      step: stream.status.phase === 'writing' || stream.status.phase === 'saving' ? 'days' : stream.status.phase === 'retrieving' ? 'standards' : stream.status.phase === 'thinking' ? 'standards' : undefined,
       code: stream.status.phase,
     })
   }, [stream.dayNames, stream.isStreaming, stream.preview, stream.status, updateActiveWorkActivity])
@@ -1971,6 +1977,10 @@ export function ChatPage() {
       }
     },
     onError: () => {
+      if (planBuildInFlightRef.current) {
+        liveMessageIdRef.current = null
+        return
+      }
       finishWorkActivity(null, {
         status: 'error',
         error: "I couldn't get a reply just then.",
@@ -2391,6 +2401,7 @@ export function ChatPage() {
         if (!planning && isClearlySpecifiedPlanRequest(promptText)) {
           setPreparing(false)
           pendingActivityKindRef.current = 'plan'
+          planBuildInFlightRef.current = true
           if (voiceOpen) voice.speak(VOICE_BUILDING)
           // No chat placeholder is needed here: the activity line attached to
           // the teacher's message is the live response surface, and the
@@ -2453,6 +2464,7 @@ export function ChatPage() {
         if (voiceOpen) {
       voice.speak(VOICE_BUILDING)
         }
+        planBuildInFlightRef.current = true
         // stream.start() flips stream.isStreaming synchronously before its
         // first await, so busy is already covered by the time preparing drops.
         stream.start(modelQuery, {
@@ -3058,6 +3070,7 @@ export function ChatPage() {
      never acquired a reply. The teacher was left looking at their own message
      with no indication anything had happened. */
   const stopGenerating = useCallback(() => {
+    planBuildInFlightRef.current = false
     stream.stop()
     finishWorkActivity(null, { status: 'cancelled', summary: 'Paused — send whenever you’re ready.' })
     const content = 'Paused — send whenever you’re ready.'
@@ -3092,9 +3105,13 @@ export function ChatPage() {
      in the transcript or in the model's history. */
   const retryLast = useCallback((requestId) => {
     const last = messages[messages.length - 1]
-    if (!last?.isError) return
     const lastAsk = [...messages].reverse().find((m) => m.role === 'user')
-    if (lastAsk) submit(lastAsk.content, { retryMessageId: lastAsk.id, retryErrorId: last.id, requestId })
+    if (!lastAsk) return
+    submit(lastAsk.content, {
+      retryMessageId: lastAsk.id,
+      retryErrorId: last?.isError ? last.id : undefined,
+      requestId,
+    })
   }, [messages, submit])
 
   /* Both of these exist to keep <Message>'s props referentially stable, which

@@ -28,6 +28,8 @@ const RETRYABLE_CODES = new Set([
 ])
 const MAX_AUTO_RETRIES = 3
 const RETRY_DELAY_MS = 800
+// Idle silence, not total turn length. Keepalives and tokens reset this, so a
+// slow but live reply is not aborted at 25s the way a hung connection is.
 const ATTEMPT_TIMEOUT_MS = 25000
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -213,7 +215,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, referenceContext, controller, requestId, attempt }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, referenceContext, controller, requestId, attempt, onProgress }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -340,6 +342,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           extra: { retryable: true },
         })
       }
+      onProgress?.()
       const { value, done } = next
       if (value) {
         buffer += decoder.decode(value, { stream: !done })
@@ -551,7 +554,12 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           const attemptController = new AbortController()
           const onParentAbort = () => attemptController.abort()
           controller.signal.addEventListener('abort', onParentAbort)
-          const timeoutId = window.setTimeout(() => attemptController.abort(), ATTEMPT_TIMEOUT_MS)
+          let timeoutId
+          const bumpIdleTimeout = () => {
+            window.clearTimeout(timeoutId)
+            timeoutId = window.setTimeout(() => attemptController.abort(), ATTEMPT_TIMEOUT_MS)
+          }
+          bumpIdleTimeout()
           try {
             const result = await attempt(messages, {
               chatId,
@@ -563,6 +571,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
               controller: attemptController,
               requestId,
               attempt: tryNum,
+              onProgress: bumpIdleTimeout,
             })
             onDoneRef.current?.(result)
             setStatus({ code: 'complete', label: 'Ready', requestId })

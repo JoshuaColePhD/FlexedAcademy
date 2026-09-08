@@ -1,6 +1,6 @@
 import json
 
-from backend.routes.generate import ChatStreamRequest, GenerateRequest, _activity_sse
+from backend.routes.generate import ChatStreamRequest, GenerateRequest, _activity_sse, _with_keepalives
 
 
 def _event(raw: str) -> dict:
@@ -33,3 +33,16 @@ def test_stream_requests_preserve_logical_request_and_attempt():
 
     assert plan.request_id == chat.request_id == "request-2"
     assert plan.attempt == chat.attempt == 1
+
+
+def test_keepalive_iter_emits_none_while_producer_is_silent():
+    import time
+
+    def slow():
+        time.sleep(0.05)
+        yield "ok"
+
+    got = list(_with_keepalives(slow(), idle_seconds=0.02))
+    assert None in got
+    assert "ok" in got
+    assert got[-1] == "ok"
