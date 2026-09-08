@@ -216,7 +216,7 @@ export function getContextualSuggestions(context = {}) {
     suggestions.push(makeSuggestion({
       id: 'plan-current-week',
       label: `Plan ${label}`,
-      prompt: `Help me plan ${label}${className}.`,
+      prompt: `Help me plan ${label}.`,
       reason: partial
         ? `A shortened, unplanned week (${targetWeek.notes}).`
         : `${label} is the current unplanned teaching week.`,

@@ -1,4 +1,4 @@
-export function ThinkingIndicator({ label = 'Thinking' }) {
+export function ThinkingIndicator({ label = 'One sec' }) {
   return (
     <div className="chat-thinking-state" role="status" aria-label={label}>
       <span className="chat-thinking-mark" aria-hidden="true" />

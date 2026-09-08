@@ -30,6 +30,7 @@ import { useInterfacePreferences } from '../hooks/useInterfacePreferences'
 import { durableTurnSnapshot, readTurnOutbox, removeTurnOutbox, writeTurnOutbox } from '../lib/turnOutbox'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useExitTransition } from '../hooks/useExitTransition'
+import { chatThinkingLabel } from '../lib/chatThinking'
 import { createWorkActivity, updateWorkActivity } from '../lib/workActivity'
 import { Composer } from '../components/Composer'
 import { AddDocumentDialog } from '../components/AddDocumentDialog'
@@ -436,11 +437,9 @@ const ATTACHMENT_CHAR_CAP = 12000
 
 // Spoken (and captioned) the instant voice mode opens on an empty chat —
 // short on purpose, since it's heard once per conversation, not read.
-const VOICE_GREETING = 'Hey, what do you need a lesson plan for?'
-// Spoken when the model commits to building, which it signals with a tool
-// call carrying no text of its own — see their use in submit().
-const VOICE_BUILDING = 'Building the week now — give me about thirty seconds.'
-const VOICE_REVISING = 'Updating it now — one moment.'
+const VOICE_GREETING = 'Hey — what are we doing with this week?'
+const VOICE_BUILDING = 'Alright, writing the week — give me a bit.'
+const VOICE_REVISING = 'On it — one moment.'
 
 const waitBeforeRetry = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -467,17 +466,6 @@ function normalizeChatMode(mode) {
   // presenting the simpler three-mode vocabulary in the composer.
   if (mode === 'standard') return 'build'
   return 'brainstorm'
-}
-
-/* Shown in the empty assistant slot while chat_stream is running. This is
-   not the lesson builder — that uses WorkActivityCard ("Building the lesson
-   plan"). Hardcoding "Crafting your lesson" here made a "how are you?"
-   follow-up look like a five-day generation. */
-function chatThinkingLabel(mode, { planning } = {}) {
-  if (planning) return 'Starting your lesson'
-  if (mode === 'research') return 'Looking through sources'
-  if (mode === 'sub_plan') return 'Putting together a sub plan'
-  return 'Thinking'
 }
 
 function planContainsStandard(plan, code) {
@@ -2394,7 +2382,7 @@ export function ChatPage() {
         setPreparing(false)
         if (chatMode === 'research') pendingActivityKindRef.current = 'research'
         liveMessageIdRef.current = nextId()
-        const firstThinking = chatThinkingLabel(chatMode, { planning })
+        const firstThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
         setMessages((prev) => [
           ...prev,
           { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
@@ -2474,7 +2462,7 @@ export function ChatPage() {
          spoken) with no idea which week it was on. The chat's pinned week
          doesn't drift, so it's safe to keep sending. */
       liveMessageIdRef.current = nextId()
-      const laterThinking = chatThinkingLabel(chatMode, { planning })
+      const laterThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
       setMessages((prev) => [
         ...prev,
         { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
@@ -3939,7 +3927,7 @@ export function ChatPage() {
                 "not yet decided" through every question after it, which
                 read as the app losing the answer, not as it waiting on a
                 bundle. */}
-            {!hasArtifact && !busy && !pendingQuestions && decisions.length > 0 ? (
+            {!hasArtifact && !busy && !pendingQuestions && [...coreChecklist, ...extraDecisions].some((item) => item.key !== 'week' && item.value != null) ? (
               // fa-rise: this used to pop in/out with the conditional itself,
               // no different from any other layout change — but it's tied to
               // a few booleans that flip turn to turn (hasArtifact, busy),
@@ -4350,8 +4338,8 @@ export function ChatPage() {
             placeholder={
               chatMode === 'research' ? 'What should I look up?'
                 : chatMode === 'build' || chatMode === 'sub_plan'
-                  ? (displayWeek ? `What should Week ${displayWeek.week} cover?` : 'What should this week cover?')
-                : (displayWeek ? `Ask anything about Week ${displayWeek.week}…` : 'Ask anything about this week…')
+                  ? (displayWeek ? `Week ${displayWeek.week} — what’s the focus?` : 'What’s the focus this week?')
+                : (displayWeek ? `Ask about Week ${displayWeek.week}…` : 'Ask about this week…')
             }
             sendLabel="Send message"
           />
@@ -4418,7 +4406,7 @@ export function ChatPage() {
                      here ever said so, which reads as dead air to anyone
                      depending on this region instead of looking at the
                      screen. */
-                  'Thinking.'
+                  'One sec.'
                 : artifact?.planId
                   ? 'Lesson plan ready.'
                   : ''}
