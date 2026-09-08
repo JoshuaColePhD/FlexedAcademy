@@ -697,13 +697,6 @@ def get_audit_log_route(limit: int = 50, _admin: str = Depends(get_current_admin
     return {"entries": db.list_admin_audit_log(limit=min(limit, 200))}
 
 
-# Statuses that mean "a real Stripe subscription, paying or trying to" —
-# what MRR is computed over. Deliberately NOT the same set as
-# entitlement.ENTITLED_STATUSES: 'comped' entitles someone to generate but
-# pays nothing, so counting it toward revenue would be fictional income.
-_PAYING_STATUSES = frozenset({"active", "trialing", "past_due"})
-
-
 @router.get("/billing")
 def get_billing_route(_admin: str = Depends(get_current_admin)):
     """Revenue and payment-risk, without a Stripe dashboard login.
@@ -715,7 +708,10 @@ def get_billing_route(_admin: str = Depends(get_current_admin)):
     """
     summary = db.billing_summary()
     counts = summary["counts"]
-    paying = sum(counts.get(s, 0) for s in _PAYING_STATUSES)
+    # Account rows can retain an old subscription status after billing is
+    # disabled or before Stripe has ever been configured. In that state there
+    # are no billable customers, regardless of what a stale status says.
+    paying = int(summary.get("paying_accounts", 0)) if settings.billing_enabled else 0
 
     price = None
     mrr_cents = None

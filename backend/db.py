@@ -7935,9 +7935,11 @@ def billing_summary() -> dict:
     """Account counts by subscription_status, plus the 'past_due' accounts by
     name — the two things an admin actually needs from Stripe without
     calling Stripe: how many people are paying, and who's at risk of losing
-    access because a card failed. 'past_due' is set by the same webhook
-    (routes/billing.py) that would otherwise only ever be seen in the Stripe
-    dashboard, so this is that state surfaced somewhere an admin already is.
+    access because a card failed. A paid count also requires a Stripe customer
+    id, because beta accounts use the same 'active' entitlement status without
+    being paying customers. 'past_due' is set by the same webhook (routes/billing.py)
+    that would otherwise only ever be seen in the Stripe dashboard, so this is
+    that state surfaced somewhere an admin already is.
 
     MRR is computed by the caller (routes/admin.py), not here — it needs the
     live Stripe price, which is a network call this DB layer has no business
@@ -7949,8 +7951,12 @@ def billing_summary() -> dict:
     past_due = _rows(
         "SELECT id, email, name, subscription_period_end FROM users WHERE subscription_status = 'past_due' ORDER BY email"
     )
+    paying = _rows(
+        "SELECT COUNT(*) AS n FROM users WHERE subscription_status = 'active' AND stripe_customer_id IS NOT NULL"
+    )
     return {
         "counts": {row["status"]: row["n"] for row in counts},
+        "paying_accounts": int(paying[0]["n"]) if paying else 0,
         "past_due_accounts": past_due,
     }
 

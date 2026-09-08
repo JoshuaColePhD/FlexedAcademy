@@ -1877,6 +1877,14 @@
 .account-menu-footer.is-spacious .account-menu-avatar {
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.22);
 }
+.account-theme-toggle {
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+}
+.account-menu-footer.is-spacious .account-theme-toggle {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
 .app-rail a:focus-visible,
 .app-rail button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .workspace-topbar { padding-inline: 16px !important; gap: 10px; }

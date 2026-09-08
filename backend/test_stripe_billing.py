@@ -185,6 +185,51 @@ def test_cancel_subscriptions_schedules_live_subscriptions(monkeypatch):
     assert [sub["id"] for sub in result] == ["sub_live", "sub_scheduled"]
 
 
+def test_admin_billing_does_not_report_stale_statuses_when_billing_is_disabled(monkeypatch):
+    monkeypatch.setattr(billing.settings, "stripe_secret_key", "")
+    monkeypatch.setattr(billing.settings, "stripe_price_id", "")
+    monkeypatch.setattr(billing.settings, "stripe_webhook_secret", "")
+    monkeypatch.setattr(
+        billing.db,
+        "billing_summary",
+        lambda: {
+            "counts": {"active": 4, "trialing": 2, "past_due": 1, "comped": 3},
+            "past_due_accounts": [],
+        },
+    )
+
+    result = billing.get_billing_route("owner")
+
+    assert result["billing_enabled"] is False
+    assert result["paying_accounts"] == 0
+    assert result["mrr_cents"] is None
+
+
+def test_admin_billing_counts_only_active_subscriptions(monkeypatch):
+    monkeypatch.setattr(billing.settings, "stripe_secret_key", "sk_test")
+    monkeypatch.setattr(billing.settings, "stripe_price_id", "price_test")
+    monkeypatch.setattr(billing.settings, "stripe_webhook_secret", "whsec_test")
+    monkeypatch.setattr(
+        billing.db,
+        "billing_summary",
+        lambda: {
+            "counts": {"active": 2, "trialing": 3, "past_due": 1, "comped": 4},
+            "paying_accounts": 2,
+            "past_due_accounts": [],
+        },
+    )
+    monkeypatch.setattr(
+        billing.stripe_api,
+        "get_price",
+        lambda price_id: {"amount": 799, "currency": "USD", "interval": "month"},
+    )
+
+    result = billing.get_billing_route("owner")
+
+    assert result["paying_accounts"] == 2
+    assert result["mrr_cents"] == 1598
+
+
 def test_cancel_route_mirrors_successful_stripe_cancellation(monkeypatch):
     writes = []
     subscription = {

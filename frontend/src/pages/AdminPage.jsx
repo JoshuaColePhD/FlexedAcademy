@@ -2356,12 +2356,18 @@ function AdminPriorityQueue({ accounts, onNavigate, onFindCustomer, supportNotif
 }
 
 function AdminOverview({ accounts, onNavigate, onFindCustomer, supportNotificationCount }) {
+  const billingQuery = useQuery({
+    queryKey: ['admin', 'billing'],
+    queryFn: () => api.adminBilling(),
+    staleTime: 30_000,
+  })
   const summary = useMemo(() => {
     const activeThisWeek = accounts.filter((account) => {
       if (!account.last_plan_at) return false
       return Date.now() - new Date(account.last_plan_at).getTime() <= 7 * 86400000
     }).length
-    const paying = accounts.filter((account) => tier(account) === 'subscribed').length
+    const billing = billingQuery.data
+    const paying = billingQuery.isError || !billing ? null : Number(billing.paying_accounts || 0)
     const contextReady = accounts.filter((account) => {
       const context = account.learning_context || {}
       return context.pacing_guides?.active_count > 0 || context.calendar?.status === 'confirmed'
@@ -2374,8 +2380,28 @@ function AdminOverview({ accounts, onNavigate, onFindCustomer, supportNotificati
     }).length
     const tokens = accounts.reduce((sum, account) => sum + (account.tokens_7d || 0), 0)
     const topAccounts = [...accounts].sort((a, b) => (b.tokens_7d || 0) - (a.tokens_7d || 0)).slice(0, 5)
-    return { activeThisWeek, paying, contextReady, attention, tokens, topAccounts }
-  }, [accounts])
+    return {
+      activeThisWeek,
+      paying,
+      billingEnabled: billing?.billing_enabled ?? null,
+      billingLoading: billingQuery.isLoading,
+      billingError: billingQuery.isError,
+      contextReady,
+      attention,
+      tokens,
+      topAccounts,
+    }
+  }, [accounts, billingQuery.data, billingQuery.isError, billingQuery.isLoading])
+
+  const payingDetail = summary.billingLoading
+    ? 'Checking billing status…'
+    : summary.billingError
+      ? 'Billing status unavailable'
+      : summary.billingEnabled
+        ? summary.paying === 0
+          ? 'No paid subscriptions yet'
+          : `${Math.round((summary.paying / Math.max(accounts.length, 1)) * 100)}% of accounts`
+        : 'Billing not configured'
 
   return (
     <div className="space-y-6">
@@ -2392,7 +2418,7 @@ function AdminOverview({ accounts, onNavigate, onFindCustomer, supportNotificati
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <AdminKpi label="Customers" value={accounts.length} detail={`${summary.activeThisWeek} active this week`} icon={Users} />
-        <AdminKpi label="Paying customers" value={summary.paying} detail={accounts.length ? `${Math.round((summary.paying / accounts.length) * 100)}% of accounts` : 'No accounts yet'} icon={CircleDollarSign} tone="ok" />
+        <AdminKpi label="Paying customers" value={summary.paying ?? '—'} detail={payingDetail} icon={CircleDollarSign} tone="ok" />
         <AdminKpi label="Planning context" value={summary.contextReady} detail="Have a guide or confirmed calendar" icon={FileText} tone="ok" />
         <AdminKpi label="Needs attention" value={summary.attention} detail="Usage, billing, or context follow-up" icon={Activity} tone={summary.attention ? 'flag' : 'ok'} />
       </div>

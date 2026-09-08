@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ChevronUp, GraduationCap, Info, LogOut, Mail, Settings, ShieldCheck } from 'lucide-react'
+import { ChevronUp, GraduationCap, Info, LogOut, Mail, Moon, Settings, ShieldCheck, Sun } from 'lucide-react'
 import { getAvatar, getInitials } from '../lib/avatars'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/authContext'
@@ -10,6 +10,7 @@ import { useBilling } from '../lib/billingContext'
 import { qk } from '../lib/queryKeys'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
+import { useTheme } from '../hooks/useTheme'
 
 /* The rail footer, and the home of the control that did not exist.
  *
@@ -161,6 +162,7 @@ function ProfileNotificationBadge({ count, admin }) {
 export function AccountMenu({ classPath, collapsed, spacious }) {
   const { user, logout } = useAuth()
   const { entitlement, openPaywall } = useBilling()
+  const { resolved, setMode } = useTheme()
   const supportQuery = useQuery({
     queryKey: user?.is_owner ? qk.adminSupportThreads : qk.supportThreads,
     queryFn: () => (user?.is_owner ? api.adminListSupportThreads() : api.listSupportThreads()),
@@ -278,7 +280,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           {profileAvatarNode}
         </button>
       ) : (
-        <div className="rail-reveal flex min-w-0 flex-1 items-center">
+        <div className="rail-reveal flex min-w-0 flex-1 items-center gap-1">
           {/* One control, not two — this used to be a Link straight to
               Settings sitting beside a separate chevron button that opened
               this same popover, and the popover already has its own
@@ -297,6 +299,16 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
             {profileAvatarNode}
             <span className={`min-w-0 flex-1 truncate font-medium text-ink-soft ${spacious ? 'text-base' : 'text-xs'}`}>{name}</span>
             <ChevronUp size={spacious ? 15 : 13} className="shrink-0 text-ink-faint" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="account-theme-toggle inline-flex shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+            onClick={() => setMode(resolved === 'dark' ? 'light' : 'dark')}
+            aria-pressed={resolved === 'dark'}
+            aria-label={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} mode`}
+            title={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {resolved === 'dark' ? <Sun size={spacious ? 17 : 14} aria-hidden="true" /> : <Moon size={spacious ? 17 : 14} aria-hidden="true" />}
           </button>
         </div>
       )}
