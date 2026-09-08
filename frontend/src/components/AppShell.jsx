@@ -1,9 +1,10 @@
+import { chatAvatarColor, chatPreview, formatChatListTime } from '../lib/chatPresentation'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, GraduationCap, Library, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Settings, Trash2, X } from 'lucide-react'
+import { ChevronDown, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
@@ -33,9 +34,9 @@ const OnboardingWizard = lazy(() => import('./OnboardingWizard').then((module) =
 function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOpen, onSwipeOpenChange }) {
   const rename = useRenameChat()
   const [editing, setEditing] = useState(false)
-  const [actionsOpen, setActionsOpen] = useState(false)
-  const actionsRef = useRef(null)
   const [draft, setDraft] = useState(chat.title)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const optionsRef = useRef(null)
   // Tracks which side of the reveal threshold the CURRENT drag gesture is
   // on, so the haptic tick below fires once per crossing instead of once
   // per pixel of drag. Seeded from swipeOpen (not always false) so a drag
@@ -51,20 +52,20 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
   }
 
   useEffect(() => {
-    if (!actionsOpen) return undefined
-    const closeOnOutsidePress = (event) => {
-      if (!actionsRef.current?.contains(event.target)) setActionsOpen(false)
+    if (!optionsOpen) return undefined
+    const onPointerDown = (event) => {
+      if (!optionsRef.current?.contains(event.target)) setOptionsOpen(false)
     }
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setActionsOpen(false)
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setOptionsOpen(false)
     }
-    document.addEventListener('pointerdown', closeOnOutsidePress)
-    document.addEventListener('keydown', closeOnEscape)
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
     return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePress)
-      document.removeEventListener('keydown', closeOnEscape)
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
     }
-  }, [actionsOpen])
+  }, [optionsOpen])
 
   if (editing) {
     return (
@@ -112,26 +113,18 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
         }
         onNavigate?.(e)
       }}
-      className={({ isActive }) =>
-        /* neo-inset, not a background tint — "pressed in" is what already
-           means "selected" in this world (see every neo-raised button's
-           own :active state), so the active row reads as a permanent
-           version of that same press instead of a third, unrelated
-           signal.
-
-           spacious (MobileChatHome only — the one place a chat row is a
-           thumb target on a screen with nothing else fighting it for
-           room): taller rows and larger type instead of just a bigger
-           invisible .tap-target hit area, since there's space here to
-           actually grow the control, not just its hitbox. */
-        `flex items-center rounded-md transition-all duration-300 ${spacious ? 'bg-paper' : ''} ${
-          spacious ? 'min-h-[44px] py-2.5 px-3 pr-4 text-base' : 'min-h-[28px] py-1.5 px-2 pr-4 text-sm'
-        } ${
-          isActive ? 'neo-inset bg-paper-sunken text-accent-text drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] font-medium' : 'text-ink-soft hover:bg-paper-inset/60 hover:text-ink'
-        }`
-      }
+      className={({ isActive }) => `chat-workspace-chat-row${isActive ? ' is-active' : ''}`}
     >
-      <span className="truncate">{chat.title}</span>
+      <span className="chat-workspace-avatar" style={{ backgroundColor: chatAvatarColor(chat) }} aria-hidden="true">
+        {(chat.title || 'Chat').replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase() || 'C'}
+      </span>
+      <span className="chat-workspace-chat-copy">
+        <span className="chat-workspace-chat-heading">
+          <span className="truncate">{chat.title || 'Untitled chat'}</span>
+          <time dateTime={chat.updated_at || chat.created_at || undefined}>{formatChatListTime(chat.updated_at || chat.created_at)}</time>
+        </span>
+        <span className="chat-workspace-chat-preview">{chatPreview(chat)}</span>
+      </span>
     </NavLink>
   )
 
@@ -243,58 +236,57 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
       exit={{ opacity: 0, height: 0, x: -20, transition: { duration: 0.2 } }}
     >
       {rowInner}
-      <span ref={actionsRef} className={`chat-row-actions absolute right-2 top-1/2 flex -translate-y-1/2 items-center${actionsOpen ? ' is-open' : ''}`}>
+      <div ref={optionsRef} className={`chat-row-options${optionsOpen ? ' is-open' : ''}`}>
         <button
           type="button"
-          className="btn-icon"
-          aria-label={`More actions for ${chat.title}`}
+          className="chat-row-options-trigger"
+          aria-label={`Options for ${chat.title}`}
           aria-haspopup="menu"
-          aria-expanded={actionsOpen}
-          onClick={() => setActionsOpen((open) => !open)}
+          aria-expanded={optionsOpen}
+          title="Chat options"
+          onClick={() => setOptionsOpen((open) => !open)}
         >
-          <MoreHorizontal size={16} aria-hidden="true" />
+          <MoreHorizontal size={17} aria-hidden="true" />
         </button>
-        {actionsOpen ? (
-          <div className="chat-row-menu" role="menu" aria-label={`Actions for ${chat.title}`}>
+        {optionsOpen ? (
+          <div className="chat-row-options-menu" role="menu" aria-label={`Options for ${chat.title}`}>
             <button
               type="button"
               role="menuitem"
-              className="chat-row-menu-item"
               onClick={() => {
                 onPin(chat)
-                setActionsOpen(false)
+                setOptionsOpen(false)
               }}
             >
-              <Pin size={15} aria-hidden="true" className={chat.is_pinned ? 'fill-amber-500 text-amber-500' : ''} />
-              {chat.is_pinned ? 'Unpin' : 'Pin'}
+              <Pin size={15} aria-hidden="true" className={chat.is_pinned ? 'fill-amber-500' : ''} />
+              {chat.is_pinned ? 'Unpin chat' : 'Pin chat'}
             </button>
             <button
               type="button"
               role="menuitem"
-              className="chat-row-menu-item"
               onClick={() => {
                 setEditing(true)
-                setActionsOpen(false)
+                setOptionsOpen(false)
               }}
             >
               <Pencil size={15} aria-hidden="true" />
-              Rename
+              Rename chat
             </button>
             <button
               type="button"
               role="menuitem"
-              className="chat-row-menu-item text-mark"
+              className="is-destructive"
               onClick={() => {
                 onDelete(chat)
-                setActionsOpen(false)
+                setOptionsOpen(false)
               }}
             >
               <Trash2 size={15} aria-hidden="true" />
-              Delete
+              Delete chat
             </button>
           </div>
         ) : null}
-      </span>
+      </div>
     </motion.li>
   )
 }
@@ -304,7 +296,6 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, swipeOp
    sidebar, landing where a teacher currently gets dropped straight into an
    empty chat instead. See MobileChatHome.jsx. */
 export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious }) {
-  const { entitlement } = useAuth()
   const { classId } = useParams()
   const location = useLocation()
   const { data: chats, isLoading, refetch } = useChats()
@@ -313,11 +304,9 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   const toast = useToast()
   const navigate = useNavigate()
   const classPath = `/c/${classId}`
-  const isChatRoute = /^\/c\/[^/]+(?:\/chat\/[^/]+)?$/.test(location.pathname)
   // Only one row's swipe strip open at a time — opening a second one closes
   // whichever was already open, same as every native swipe-action list.
   const [swipeOpenId, setSwipeOpenId] = useState(null)
-  const [searchOpen, setSearchOpen] = useState(false)
   const searchInputRef = useRef(null)
   // Always called (Rules of Hooks) but only wired up when spacious — see the
   // scroller div below. Harmless unused otherwise: the hook no-ops until its
@@ -337,18 +326,23 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   // view, but searching in place is faster than leaving the conversation just
   // to find an older plan. The sidebar and phone home use the same filter.
   const [chatSearch, setChatSearch] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [recentOpen, setRecentOpen] = useState(true)
   const chatSearchQuery = chatSearch.trim().toLowerCase()
-  const searchFilter = (c) => !chatSearchQuery || c.title?.toLowerCase().includes(chatSearchQuery)
+  const searchFilter = (c) => !chatSearchQuery || `${c.title || ''} ${c.last_message_preview || c.preview || ''}`.toLowerCase().includes(chatSearchQuery)
+
+  const pinnedChats = (chats?.filter((c) => c.is_pinned) || []).filter(searchFilter)
+  const recentChats = (chats?.filter((c) => !c.is_pinned) || []).filter(searchFilter)
+  const visibleRecentChats = recentChats
+  const showRecentChats = recentOpen || Boolean(chatSearchQuery)
 
   useEffect(() => {
     if (!searchOpen) return undefined
     const frame = requestAnimationFrame(() => searchInputRef.current?.focus())
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape') {
-        setChatSearch('')
-        setSearchOpen(false)
-      }
+      if (event.key !== 'Escape') return
+      setChatSearch('')
+      setSearchOpen(false)
     }
     document.addEventListener('keydown', closeOnEscape)
     return () => {
@@ -356,21 +350,6 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [searchOpen])
-
-  const closeSearch = () => {
-    setChatSearch('')
-    setSearchOpen(false)
-  }
-
-  const pinnedChats = (chats?.filter((c) => c.is_pinned) || []).filter(searchFilter)
-  const recentChats = (chats?.filter((c) => !c.is_pinned) || []).filter(searchFilter)
-  const visibleRecentChats = chatSearchQuery ? recentChats : recentChats.slice(0, 10)
-  const showRecentChats = recentOpen || Boolean(chatSearchQuery)
-
-  const isFreeTier = entitlement && (!entitlement.subscribed || entitlement.status !== 'active')
-  const freePlansUsed = entitlement ? entitlement.tokens_used : 0
-  const freePlansTotal = entitlement ? entitlement.token_cap : 10
-  const freePlansProgress = Math.min(100, Math.max(0, (freePlansUsed / (freePlansTotal || 1)) * 100))
 
   const remove = async (chat) => {
     const ok = await confirm({
@@ -395,7 +374,23 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
 
   return (
     <>
-      <div className={`rail-brand-row flex h-14 shrink-0 items-center gap-2 px-3 mt-2${collapsed ? ' is-collapsed' : ''}`}>
+      {collapsed ? (
+        <div className="flex h-14 shrink-0 items-center justify-center">
+          <Link
+            to={classPath}
+            onClick={(event) => {
+              onToggleCollapse?.()
+              onNavigate?.(event)
+            }}
+            className="chat-workspace-add"
+            aria-label="New chat"
+            title="New chat"
+          >
+            <Plus size={20} aria-hidden="true" />
+          </Link>
+        </div>
+      ) : (
+      <div className="rail-brand-row flex h-14 shrink-0 items-center gap-2 px-3 mt-2">
         <svg viewBox="0 0 64 64" className="w-6 h-6 shrink-0 text-[#7c3aed] drop-shadow-sm" aria-hidden="true">
           <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
           <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" className="land-seal-ticks" />
@@ -408,31 +403,29 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
             button (below) meant the two together no longer fit, and the
             wordmark itself — not the button — is what should give, since
             "FlexEd Aca…" reads worse truncated than it does simply smaller. */}
-        {collapsed ? null : (
-          <span className="rail-reveal min-w-0 flex-1 truncate text-[13.5px] font-bold tracking-tight text-ink">
-            FlexEd Academy
-          </span>
-        )}
-        {/* Chat pages place this control at the seam beside the workspace
-            selector. Other pages keep it here because they do not render the
-            chat topbar that owns that shared control. */}
-        {onToggleCollapse && !isChatRoute ? (
-          <button
-            type="button"
-            className="workspace-sidebar-toggle shrink-0"
-            aria-label={collapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
-            title={collapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
-            onClick={onToggleCollapse}
-          >
-            <PanelLeft size={14} aria-hidden="true" />
-          </button>
-        ) : null}
+        <span className="rail-reveal min-w-0 flex-1 truncate text-[13.5px] font-bold tracking-tight text-ink">
+          FlexEd Academy
+        </span>
+        <button
+          type="button"
+          className="chat-workspace-add"
+          aria-label={searchOpen ? 'Close chat search' : 'Search chats'}
+          title={searchOpen ? 'Close search' : 'Search chats'}
+          onClick={() => {
+            setChatSearch('')
+            setSearchOpen((open) => !open)
+          }}
+        >
+          {searchOpen ? <X size={18} aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}
+        </button>
+        <Link to={classPath} onClick={onNavigate} className="chat-workspace-add" aria-label="New chat" title="New chat"><Plus size={20} aria-hidden="true" /></Link>
         {onClose ? (
           <button type="button" className="btn-icon" aria-label="Close menu" onClick={onClose}>
             <X size={16} aria-hidden="true" />
           </button>
         ) : null}
       </div>
+      )}
 
       {/* The class switcher used to live here, directly under the logo — it now
           sits inline beside WeekPicker in the chat's own top bar (ChatPage.jsx),
@@ -449,106 +442,17 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
       {headerExtra ? <div className="px-2 pb-2">{headerExtra}</div> : null}
 
 
-      <div className="px-2 pb-1 pt-1">
-
-
-        {/* The one thing a teacher opens this app to do. Was .rail-cta's own
-            --rail-pop teal (colorize.md) — a token .neo-world doesn't
-            redeclare, so it rendered as a mismatched accent against the
-            rose/cream palette here. neo-raised + the redeclared --accent
-            tokens makes it the one floating, emphasized control in the
-            rail instead — still the rarest warm note, just this world's
-            warm note. Solid fill now, not a pastel tint — the one button in
-            the rail that should read as unmistakably "press me." */}
-        <div className={collapsed ? 'flex justify-center' : ''}>
-          {collapsed ? (
-            <Link
-              to={classPath}
-              onClick={onNavigate}
-              title="New plan"
-              className="fa-press neo-raised btn-blob flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium text-ink transition-all duration-300"
-            >
-              <Plus size={spacious ? 18 : 15} aria-hidden="true" className="shrink-0" />
-            </Link>
-          ) : (
-            <div className="rail-new-plan-row">
-              <AnimatePresence initial={false} mode="wait">
-                {searchOpen ? (
-                  <motion.div
-                    key="chat-search"
-                    className={`rail-quick-search${spacious ? ' is-spacious' : ''}`}
-                    initial={{ opacity: 0, x: 8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    transition={{ duration: 0.16, ease: 'easeOut' }}
-                  >
-                    <Search size={14} aria-hidden="true" className="shrink-0 text-ink-muted" />
-                    <input
-                      ref={searchInputRef}
-                      type="search"
-                      value={chatSearch}
-                      onChange={(e) => setChatSearch(e.target.value)}
-                      placeholder="Search chats"
-                      aria-label="Search your chats"
-                      className="rail-quick-search-input"
-                    />
-                    <button type="button" className="btn-icon shrink-0" onClick={closeSearch} aria-label="Close chat search" title="Close search">
-                      <X size={14} aria-hidden="true" />
-                    </button>
-                  </motion.div>
-                ) : (
-                  <motion.div key="new-plan" className="rail-new-plan-content" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.16, ease: 'easeOut' }}>
-                    <Link
-                      to={classPath}
-                      onClick={onNavigate}
-                      className={`fa-press neo-raised btn-blob flex min-w-0 flex-1 items-center rounded-l-md rounded-r-none font-medium text-ink transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                        spacious ? 'gap-2 px-3.5 py-3 min-h-[52px] text-base' : 'gap-2 px-3 py-1.5 min-h-[32px] text-sm'
-                      }`}
-                    >
-                      <Plus size={spacious ? 18 : 15} aria-hidden="true" className="shrink-0" />
-                      <span className="flex-1 overflow-hidden text-ellipsis">New plan</span>
-                    </Link>
-                    <button
-                      type="button"
-                      className={`rail-search-trigger fa-press neo-raised flex shrink-0 items-center justify-center rounded-r-md rounded-l-none text-ink-soft transition-colors hover:text-ink ${spacious ? 'min-h-[52px] w-12' : 'min-h-[32px] w-9'}`}
-                      onClick={() => setSearchOpen(true)}
-                      aria-label="Search chats"
-                      title="Search chats"
-                    >
-                      <Search size={spacious ? 17 : 14} aria-hidden="true" />
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
+      {!collapsed && searchOpen ? (
+        <div className="rail-search-popover px-3 pb-3 pt-1">
+          <label className="chat-workspace-search-field">
+            <Search size={17} aria-hidden="true" />
+            <input ref={searchInputRef} type="search" value={chatSearch} onChange={(event) => setChatSearch(event.target.value)} placeholder="Search chats" aria-label="Search your chats" />
+          </label>
         </div>
-      </div>
+      ) : null}
 
       {collapsed ? null : (
-        <nav className="rail-reveal px-2 pt-2" aria-label="Class pages">
-          <div className="flex flex-col gap-1">
-            {[
-              { to: `${classPath}/plans`, label: 'Library', Icon: Library },
-              { to: `${classPath}/standards`, label: 'Standards', Icon: GraduationCap },
-              { to: `${classPath}/settings`, label: 'Class setup', Icon: Settings },
-            ].map(({ to, label, Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                onClick={onNavigate}
-                className={({ isActive }) => `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive ? 'bg-paper-sunken text-ink' : 'text-ink-muted hover:bg-paper-sunken hover:text-ink'}`}
-              >
-                <Icon size={15} aria-hidden="true" />
-                <span>{label}</span>
-              </NavLink>
-            ))}
-          </div>
-        </nav>
-      )}
-
-      {collapsed ? null : (
-        <nav className="rail-reveal min-h-0 flex-1 flex flex-col pt-2" aria-label="Your plans">
+        <nav className="rail-reveal min-h-0 flex-1 flex flex-col pt-2" aria-label="Your chats">
           <div
             ref={spacious ? pullToRefresh.containerRef : undefined}
             // .scroll-y, not plain overflow-y-auto: without its
@@ -642,7 +546,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
                   </>
                 ) : !pinnedChats.length && (
                   <p className="px-4 py-2 text-xs text-ink-muted">
-                    {chatSearchQuery ? `No chats match "${chatSearch.trim()}".` : 'Nothing yet. Describe a week to get started.'}
+                    {chatSearchQuery ? `No chats match "${chatSearch.trim()}".` : 'No chats yet. Start one with +.'}
                   </p>
                 )}
               </div>
@@ -651,26 +555,13 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         </nav>
       )}
 
-      <div className={`pt-2 pb-1 flex flex-col ${collapsed ? 'flex-1' : 'shrink-0'}`}>
-        {isFreeTier && !collapsed && (
-          <div className="px-4 pb-3">
-            <div className="flex justify-between text-[10px] font-medium text-ink-muted mb-1.5 uppercase tracking-wider">
-              <span>{freePlansUsed} Plans Used</span>
-              <span>Trial</span>
-            </div>
-            <div className="h-1.5 w-full bg-paper-sunken neo-inset rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-accent transition-all duration-500 ease-out" 
-                style={{ width: `${freePlansProgress}%` }} 
-              />
-            </div>
+      {!collapsed ? (
+        <div className="pt-2 pb-1 flex shrink-0 flex-col">
+          <div className="mt-auto">
+            <AccountMenu classPath={classPath} collapsed={false} spacious={spacious} />
           </div>
-        )}
-        
-        <div className="mt-auto">
-          <AccountMenu classPath={classPath} collapsed={collapsed} spacious={spacious} />
         </div>
-      </div>
+      ) : null}
     </>
   )
 }
@@ -732,7 +623,12 @@ export function AppShell({ children }) {
      reload instead of springing back open every visit. */
   const location = useLocation()
   const isChatRoute = /^\/c\/[^/]+(\/chat\/[^/]+)?$/.test(location.pathname)
-  const isFocusMode = false // We now want the sidebar to be permanent across all pages
+  /* Settings, Class Profiles, Admin, and Contact Support are focused
+     master/detail views. Give
+     their own split panels the full shell width so the chat rail never crowds
+     the page's navigation and content surfaces. */
+  const isFocusedRoute = /\/(settings|class|admin|contact)$/.test(location.pathname)
+  const routeCollapsesRail = isFocusedRoute
   const { user, logout } = useAuth()
 
   const [railCollapsed, setRailCollapsed] = useState(() => {
@@ -753,9 +649,11 @@ export function AppShell({ children }) {
     })
   }
 
+  const effectiveRailCollapsed = railCollapsed || routeCollapsesRail
+
   return (
-    <WorkspaceRailContext.Provider value={{ collapsed: railCollapsed, toggle: toggleRailCollapsed }}>
-      <div className="app-shell-frame flex h-full w-full overflow-hidden p-2 gap-2 relative z-10">
+    <WorkspaceRailContext.Provider value={{ collapsed: effectiveRailCollapsed, toggle: toggleRailCollapsed }}>
+      <div className={`app-shell-frame flex h-full w-full overflow-hidden p-2 gap-2 relative z-10${effectiveRailCollapsed ? ' is-rail-collapsed' : ''}`}>
       <div className="app-blob" aria-hidden="true" />
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
@@ -765,17 +663,17 @@ export function AppShell({ children }) {
       </a>
 
       {/* docked */}
-      {!isNarrow && !isFocusMode ? (
+      {!isNarrow ? (
         <div
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
-            width: railCollapsed ? '68px' : 'var(--sidebar-w)',
+            width: effectiveRailCollapsed ? '0px' : 'var(--sidebar-w)',
             transitionDuration: 'var(--t-base)',
             transitionTimingFunction: 'var(--ease-out)',
           }}
         >
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <Rail collapsed={railCollapsed} onToggleCollapse={toggleRailCollapsed} />
+            <Rail collapsed={effectiveRailCollapsed} onToggleCollapse={toggleRailCollapsed} />
           </div>
         </div>
       ) : null}
@@ -802,7 +700,7 @@ export function AppShell({ children }) {
       ) : null}
 
       <div
-        className="app-shell-main relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
+        className={`app-shell-main${routeCollapsesRail ? ' is-focused-route' : ''} relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel`}
         id="main"
       >
         <OnboardingWizardHost />

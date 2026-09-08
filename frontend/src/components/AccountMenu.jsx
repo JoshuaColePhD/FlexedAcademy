@@ -7,7 +7,6 @@ import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
-import { SupportDialog } from './SupportDialog'
 
 /* The rail footer, and the home of the control that did not exist.
  *
@@ -132,7 +131,6 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
   const { user, logout } = useAuth()
   const { entitlement, openPaywall } = useBilling()
   const [open, setOpen] = useState(false)
-  const [supportOpen, setSupportOpen] = useState(false)
   // Sits right above the trigger (bottom-full) — mirrors ClassSwitcher's own
   // dropdown, closing shape and all, just growing up instead of dropping down.
   const { mounted, closing } = useExitTransition(open, 150)
@@ -198,25 +196,25 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
 
   const name = user?.name || user?.email || 'Signed in'
   const avatar = getAvatar(user?.avatar)
-  const sizeCls = spacious ? 'h-9 w-9' : 'h-7 w-7'
+  const sizeCls = spacious ? 'h-12 w-12' : 'h-7 w-7'
   const avatarNode = avatar ? (
     <span
       aria-hidden="true"
-      className={`grid ${sizeCls} shrink-0 place-items-center rounded-full ${avatar.bg} border border-edge/30`}
+      className={`account-menu-avatar grid ${sizeCls} shrink-0 place-items-center rounded-full ${avatar.bg} border border-edge/30`}
     >
       <span className={spacious ? 'text-base leading-none' : 'text-sm leading-none'}>{avatar.emoji}</span>
     </span>
   ) : (
     <span
       aria-hidden="true"
-      className={`grid ${sizeCls} shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted border border-edge/30`}
+      className={`account-menu-avatar grid ${sizeCls} shrink-0 place-items-center rounded-full bg-paper-inset text-ink-muted border border-edge/30`}
     >
       <span className={spacious ? 'text-xs font-bold tracking-wide' : 'text-2xs font-bold tracking-wide'}>{getInitials(user?.name)}</span>
     </span>
   )
 
   return (
-    <div className={`relative flex items-center gap-1 py-2 ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
+    <div className={`account-menu-footer relative flex items-center gap-1 py-2${spacious ? ' is-spacious' : ''} ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
       {collapsed ? (
         <button
           type="button"
@@ -246,7 +244,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
             title={name}
           >
             {avatarNode}
-            <span className={`min-w-0 flex-1 truncate font-medium text-ink-soft ${spacious ? 'text-sm' : 'text-xs'}`}>{name}</span>
+            <span className={`min-w-0 flex-1 truncate font-medium text-ink-soft ${spacious ? 'text-base' : 'text-xs'}`}>{name}</span>
             <ChevronUp size={spacious ? 15 : 13} className="shrink-0 text-ink-faint" aria-hidden="true" />
           </button>
         </div>
@@ -297,17 +295,14 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           ) : null}
 
           <div className="mt-1 border-t border-hairline pt-1">
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                setSupportOpen(true)
-              }}
+            <Link
+              to={`${classPath}/contact`}
+              onClick={() => setOpen(false)}
               title="Contact support"
               className="flex min-h-touch w-full min-w-0 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
             >
               <Mail size={14} aria-hidden="true" /> Contact support
-            </button>
+            </Link>
             <Link
               to="/privacy"
               onClick={() => setOpen(false)}
@@ -355,7 +350,6 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           document.body,
         )
       ) : null}
-      <SupportDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
     </div>
   )
 }

@@ -3858,6 +3858,11 @@
   .dialog.dialog-support {
     width: min(700px, calc(100vw - 2rem));
     max-height: min(88dvh, 780px);
+    /* Support uses the same tapered panel language as the split pages. */
+    border-radius: 22px;
+    overflow: hidden;
+    clip-path: inset(0 round 22px);
+    -webkit-clip-path: inset(0 round 22px);
   }
   .support-message-input {
     min-height: clamp(240px, 40dvh, 390px);
@@ -5200,7 +5205,7 @@
        was truncating "Week 03…" to "We…" and "School calendar" to
        "Scho…" at ordinary laptop widths (15vw is under 220px from roughly
        1024–1466px wide, i.e. most laptops). */
-    width: clamp(254px, 16vw, 320px);
+    width: clamp(280px, 24vw, 360px);
   }
 
   /* Landscape iPhones report a tablet-width viewport but only leave roughly
@@ -10103,12 +10108,10 @@
     }
   }
 
-  /* ── ChatRow's compact action menu ───────────────────────────────────────
-     Desktop/tablet rows expose one trigger instead of reserving room for
-     three buttons. The actions still appear on hover/focus, while touch
-     keeps the trigger visible because there is no hover state to reveal it.
-     MobileChatHome uses the separate swipe-reveal strip above, so this menu
-     never competes with the larger phone row layout. */
+  /* ── ChatRow's contextual actions ───────────────────────────────────────
+     Desktop/tablet rows keep pin, rename, and delete hidden until the row is
+     hovered or focused. MobileChatHome uses the separate swipe-reveal strip
+     above, so touch rows stay uncluttered too. */
   @media (hover: hover) {
     .chat-row-actions {
       opacity: 0;
@@ -10119,65 +10122,7 @@
       opacity: 1;
     }
   }
-  .chat-row-actions.is-open {
-    opacity: 1;
-  }
-  /* The rail normally clips its contents while it animates between the full
-     and collapsed widths. An open action menu is the intentional exception:
-     it should float into the workspace instead of being squeezed over the
-     chat title and clipped at the rail edge. */
-  .app-rail:has(.chat-row-menu),
-  .app-rail:has(.chat-row-menu) > div {
-    overflow: visible;
-  }
-  .chat-row-menu {
-    position: absolute;
-    top: 50%;
-    left: calc(100% + 10px);
-    right: auto;
-    z-index: 20;
-    min-width: 148px;
-    padding: 5px;
-    /* This menu sits over the translucent rail and the neighboring chat
-       titles. Use an opaque raised surface so the actions never visually
-       merge with the rows beneath it, especially in the near-white palette. */
-    background: rgb(var(--paper-raised-rgb) / 1);
-    border: 1px solid rgb(var(--edge-strong-rgb) / 0.9);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow-pop), 0 8px 20px rgb(20 18 30 / 0.12);
-    transform: translateY(-50%);
-  }
-  .chat-row-menu-item {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: var(--sp-2);
-    min-height: 36px;
-    padding: 0 10px;
-    color: rgb(var(--ink-rgb));
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    text-align: left;
-    white-space: nowrap;
-    background: transparent;
-    border: none;
-    border-radius: var(--r-sm);
-    cursor: pointer;
-  }
-  .chat-row-menu-item.text-mark {
-    color: rgb(var(--mark-rgb));
-  }
-  .chat-row-menu-item:hover,
-  .chat-row-menu-item:focus-visible {
-    color: rgb(var(--ink-rgb));
-    background: rgb(var(--paper-sunken-rgb) / 1);
-    outline: none;
-  }
-  .chat-row-menu-item.text-mark:hover,
-  .chat-row-menu-item.text-mark:focus-visible {
-    color: rgb(var(--mark-rgb));
-    background: rgb(var(--mark-tint-rgb) / 1);
-  }
+  .chat-row-actions { gap: 2px; padding: 3px; border-radius: var(--r-sm); background: var(--paper-inset); }
 
   /* ── touch targets ────────────────────────────────────────────────────────
      A 36px control with a 44px target. The pseudo-element is transparent and

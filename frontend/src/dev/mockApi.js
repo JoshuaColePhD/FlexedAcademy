@@ -124,6 +124,7 @@ const state = {
   authenticated: !previewAnonymous,
   credentials: { email: 'jc@x.org', password: 'demo-password' },
   lastSupportMessage: null,
+  supportThreads: [],
   // onboarding_seen_at set (unlike a brand-new account) so preview.html lands
   // on the real app shell — App.jsx's ClassRoutes redirects to the onboarding
   // wizard for as long as this is unset, and nothing in this mock ever set it.
@@ -618,6 +619,7 @@ export function installMockApi() {
       state.messages = {}
       state.planChat = {}
       state.ownedPlanIds = []
+      state.supportThreads = []
     }
 
     /* The entitlement rides on /me exactly as it does in production, so the
@@ -629,16 +631,62 @@ export function installMockApi() {
       if (!state.authenticated) return new Response('{}', { status: 401 })
       return json(currentUser())
     }
+    if (path === '/api/support/threads' && method === 'GET') {
+      return json({ threads: [...state.supportThreads].sort((a, b) => b.updated_at.localeCompare(a.updated_at)) })
+    }
+    if (path === '/api/support/threads' && method === 'POST') {
+      if (!body?.message?.trim()) return new Response('{}', { status: 400 })
+      await wait(250)
+      const now = new Date().toISOString()
+      const thread = {
+        id: uid('support'),
+        subject: body.subject?.trim() || 'FlexEd Academy support',
+        status: 'open',
+        unread_count: 0,
+        created_at: now,
+        updated_at: now,
+        last_message: body.message.trim(),
+        last_author_type: 'teacher',
+        last_message_at: now,
+        messages: [{ id: uid('support_message'), author_type: 'teacher', author_name: state.me.name, author_email: state.me.email, body: body.message.trim(), source: 'app', created_at: now }],
+      }
+      state.supportThreads.push(thread)
+      state.lastSupportMessage = { subject: thread.subject, message: body.message.trim(), from: state.me.email, to: 'support@flexedacademy.com' }
+      return json({ ...thread, email_sent: false })
+    }
+    const supportThreadMatch = path.match(/^\/api\/support\/threads\/([^/]+)$/)
+    if (supportThreadMatch && method === 'GET') {
+      const thread = state.supportThreads.find((item) => item.id === supportThreadMatch[1])
+      return thread ? json(thread) : new Response('{}', { status: 404 })
+    }
+    const supportMessageMatch = path.match(/^\/api\/support\/threads\/([^/]+)\/messages$/)
+    if (supportMessageMatch && method === 'POST') {
+      const thread = state.supportThreads.find((item) => item.id === supportMessageMatch[1])
+      if (!thread || !body?.message?.trim()) return new Response('{}', { status: 400 })
+      const now = new Date().toISOString()
+      const message = { id: uid('support_message'), author_type: 'teacher', author_name: state.me.name, author_email: state.me.email, body: body.message.trim(), source: 'app', created_at: now }
+      thread.messages.push(message)
+      thread.updated_at = now
+      thread.last_message = message.body
+      thread.last_author_type = 'teacher'
+      thread.last_message_at = now
+      return json({ thread, message, email_sent: false })
+    }
+    const supportReadMatch = path.match(/^\/api\/support\/threads\/([^/]+)\/read$/)
+    if (supportReadMatch && method === 'POST') {
+      const thread = state.supportThreads.find((item) => item.id === supportReadMatch[1])
+      if (!thread) return new Response('{}', { status: 404 })
+      thread.unread_count = 0
+      return json({ ok: true })
+    }
     if (path === '/api/support' && method === 'POST') {
       if (!body?.message?.trim()) return new Response('{}', { status: 400 })
       await wait(250)
-      state.lastSupportMessage = {
-        subject: body.subject || 'FlexEd Academy support',
-        message: body.message.trim(),
-        from: state.me.email,
-        to: 'support@flexedacademy.com',
-      }
-      return json({ ok: true })
+      const now = new Date().toISOString()
+      const thread = { id: uid('support'), subject: body.subject || 'FlexEd Academy support', status: 'open', unread_count: 0, created_at: now, updated_at: now, last_message: body.message.trim(), last_author_type: 'teacher', last_message_at: now, messages: [{ id: uid('support_message'), author_type: 'teacher', author_name: state.me.name, author_email: state.me.email, body: body.message.trim(), source: 'app', created_at: now }] }
+      state.supportThreads.push(thread)
+      state.lastSupportMessage = { subject: thread.subject, message: body.message.trim(), from: state.me.email, to: 'support@flexedacademy.com' }
+      return json({ ok: true, thread, email_sent: false })
     }
     if (path === '/api/auth/demo-availability') return json({ enabled: true })
     if (path === '/api/auth/signup' && method === 'POST') {
@@ -994,7 +1042,11 @@ export function installMockApi() {
       await wait(latency.listChats)
       const cid = new URL(url, location.origin).searchParams.get('class_id')
       // Mirrors db.list_chats: scoped, but NULL belongs to everyone.
-      return json(cid ? state.chats.filter((c) => c.class_id === cid || c.class_id == null) : state.chats)
+      const chats = cid ? state.chats.filter((c) => c.class_id === cid || c.class_id == null) : state.chats
+      return json(chats.map((chat) => ({
+        ...chat,
+        last_message_preview: [...(state.messages[chat.id] || [])].reverse().find((message) => message.content)?.content || '',
+      })))
     }
     if (path === '/api/chats/title' && method === 'POST') {
       // Stands in for the model: returns something that is NOT the raw prompt,

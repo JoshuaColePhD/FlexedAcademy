@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     # address changes.
     email_from: str = "FlexEd Academy <no-reply@flexedacademy.com>"
     support_email: str = "support@flexedacademy.com"
+    # Optional secret for the inbound-email provider webhook. When configured,
+    # replies addressed to a support thread are imported into the in-app
+    # mailbox before an email notification is sent to the teacher.
+    support_inbound_webhook_secret: str = ""
     # Email verification is required before a password account can receive a
     # session or spend any model tokens. The token lives in Postgres and the
     # link is sent through the same Resend integration used for password reset.

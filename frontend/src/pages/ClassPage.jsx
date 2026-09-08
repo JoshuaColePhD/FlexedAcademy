@@ -5,14 +5,11 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
-  BookOpen,
   CalendarDays,
-  CheckCircle2,
   ChevronDown,
   FileText,
   GraduationCap,
   Loader2,
-  MapPin,
   Trash2,
   Upload,
   Settings,
@@ -30,7 +27,7 @@ import { useToast } from '../lib/toastContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { qk } from '../lib/queryKeys'
-import { useActiveClass, useCalendar } from '../hooks/useAppData'
+import { useActiveClass } from '../hooks/useAppData'
 import { errorParts } from '../lib/apiError'
 import { FrameworkPicker } from '../components/FrameworkPicker'
 import { ClassSwitcher } from '../components/ClassSwitcher'
@@ -448,100 +445,108 @@ function EditClassSettings({ cls, frameworks, activeStates, onChanged }) {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
-      <div className="border-b border-edge/50 pb-4">
-        <h4 className="text-sm font-semibold text-ink">Schedule &amp; pacing</h4>
-        <p className="mt-1 text-xs text-ink-muted">
-          This helps the AI make each lesson realistic for this class period. It is optional.
-        </p>
-        <label htmlFor="edit-class-period" className="mt-3 flex flex-col gap-2 text-sm font-medium text-ink">
-          Class period length
-          <div className="flex items-center gap-2">
-            <input
-              id="edit-class-period"
-              type="number"
-              min="15"
-              max="240"
-              step="5"
-              inputMode="numeric"
-              value={periodMinutes}
-              onChange={(e) => setPeriodMinutes(e.target.value)}
-              placeholder="e.g. 50"
-              className="neo-inset w-36 rounded-lg bg-paper-sunken px-3 py-2.5 text-sm font-normal text-ink transition-shadow"
-            />
-            <span className="text-xs font-normal text-ink-muted">minutes</span>
+      <section className="rounded-xl border border-edge/70 bg-paper-raised/35 p-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent" aria-hidden="true">
+            <CalendarDays size={16} />
+          </span>
+          <div>
+            <h4 className="text-sm font-semibold text-ink">Schedule &amp; pacing</h4>
+            <p className="mt-0.5 text-xs text-ink-muted">Optional timing context for more realistic lesson plans.</p>
           </div>
-        </label>
-      </div>
-      <div className="flex flex-col gap-2">
-        <label htmlFor="edit-class-state" className="text-sm font-medium text-ink">
-          State standards
-        </label>
-        <select
-          id="edit-class-state"
-          value={state}
-          onChange={(e) => setState(e.target.value)}
-          className="neo-select neo-inset w-full rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink transition-shadow"
-        >
-          <option value="">Choose your state</option>
-          {US_STATES.map(([value, label]) => (
-            <option key={value} value={value}>
-              {isStandardsReady(value, activeStates) ? label : `${label} — not ready yet`}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex flex-col gap-2">
-        <label htmlFor="edit-class-framework" className="text-sm font-medium text-ink">
-          Course of Study
-        </label>
-        <p className="text-xs text-ink-muted">
-          Choose the course you teach. Its standards and class name update together.
-        </p>
-        <FrameworkPicker
-          frameworks={frameworks}
-          value={subject}
-          onChange={setSubject}
-          id="edit-class-framework"
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label htmlFor="edit-class-grade" className="text-sm font-medium text-ink">
-          Grade Level
-        </label>
-        <select
-          id="edit-class-grade"
-          value={grade}
-          onChange={(e) => setGrade(e.target.value)}
-          className="neo-select neo-inset w-full rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink transition-shadow"
-        >
-          {GRADES.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-ink-muted">
-          This sets the grade-specific standards used for the class.
-        </p>
-      </div>
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-ink">Class Name</span>
-        <div
-          aria-readonly="true"
-          className="neo-inset w-full rounded-lg bg-paper-sunken px-3 py-2 text-sm text-ink-muted"
-        >
-          {generatedName}
         </div>
-        <p className="text-xs text-ink-muted">
-          The name is generated from the selected course of study and grade.
-        </p>
-      </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label htmlFor="edit-class-period" className="flex flex-col gap-2 text-sm font-medium text-ink">
+            Class period length
+            <div className="flex items-center gap-2">
+              <input
+                id="edit-class-period"
+                type="number"
+                min="15"
+                max="240"
+                step="5"
+                inputMode="numeric"
+                value={periodMinutes}
+                onChange={(e) => setPeriodMinutes(e.target.value)}
+                placeholder="e.g. 50"
+                className="neo-inset w-full rounded-lg bg-paper-sunken px-3 py-2.5 text-sm font-normal text-ink transition-shadow"
+              />
+              <span className="text-xs font-normal text-ink-muted">minutes</span>
+            </div>
+          </label>
+          <label htmlFor="edit-class-state" className="flex flex-col gap-2 text-sm font-medium text-ink">
+            State standards
+            <select
+              id="edit-class-state"
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+              className="neo-select neo-inset w-full rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink transition-shadow"
+            >
+              <option value="">Choose your state</option>
+              {US_STATES.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {isStandardsReady(value, activeStates) ? label : `${label} — not ready yet`}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
+      <section className="rounded-xl border border-edge/70 bg-paper-raised/35 p-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-paper-sunken text-ink-muted" aria-hidden="true">
+            <GraduationCap size={16} />
+          </span>
+          <div>
+            <h4 className="text-sm font-semibold text-ink">Class identity</h4>
+            <p className="mt-0.5 text-xs text-ink-muted">Set the course and grade used for this class.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="edit-class-framework" className="text-sm font-medium text-ink">Course of Study</label>
+            <FrameworkPicker
+              frameworks={frameworks}
+              value={subject}
+              onChange={setSubject}
+              id="edit-class-framework"
+            />
+            <p className="text-xs text-ink-muted">Standards and class name update together.</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="edit-class-grade" className="text-sm font-medium text-ink">Grade Level</label>
+            <select
+              id="edit-class-grade"
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+              className="neo-select neo-inset w-full rounded-lg bg-paper-sunken py-2.5 pl-3 pr-8 text-sm text-ink transition-shadow"
+            >
+              {GRADES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-ink-muted">Used for grade-specific standards.</p>
+          </div>
+        </div>
+        <div className="mt-4 border-t border-edge/50 pt-4">
+          <span className="text-sm font-medium text-ink">Class Name</span>
+          <div
+            aria-readonly="true"
+            className="neo-inset mt-2 w-full rounded-lg bg-paper-sunken px-3 py-2.5 text-sm text-ink-muted"
+          >
+            {generatedName}
+          </div>
+          <p className="mt-2 text-xs text-ink-muted">Generated from the selected course and grade.</p>
+        </div>
+      </section>
 
-      <div className="mt-2">
+      <div className="flex justify-end pt-1">
         <button
           type="submit"
           disabled={!isChanged || saving}
-          className="fa-press neo-raised flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="fa-press neo-raised flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-36"
         >
           {saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : null}
           Save Changes
@@ -551,30 +556,10 @@ function EditClassSettings({ cls, frameworks, activeStates, onChanged }) {
   )
 }
 
-function ClassStatusItem({ icon: Icon, label, value, detail, tone = 'neutral' }) {
-  const toneClasses = {
-    ready: 'bg-ok-tint text-ok',
-    attention: 'bg-flag-tint text-flag',
-    neutral: 'bg-paper-sunken text-ink-muted',
-  }
-
-  return (
-    <div className="min-w-0 rounded-xl border border-edge/50 bg-paper-raised/55 p-3">
-      <div className="flex items-center gap-2">
-        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${toneClasses[tone] || toneClasses.neutral}`}>
-          <Icon size={14} aria-hidden="true" />
-        </span>
-        <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">{label}</span>
-      </div>
-      <p className="mt-2 truncate text-sm font-semibold text-ink" title={value}>{value}</p>
-      <p className="mt-0.5 truncate text-xs text-ink-muted" title={detail}>{detail}</p>
-    </div>
-  )
-}
-
 function ClassTemplatePicker({ cls }) {
   const toast = useToast()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [selectingId, setSelectingId] = useState(null)
   const templates = useQuery({
     queryKey: ['class-templates', cls.id],
@@ -600,13 +585,18 @@ function ClassTemplatePicker({ cls }) {
   const rows = templates.data?.templates || []
   const selectedId = templates.data?.selected_template_id
   return (
-    <section className="rounded-xl border border-edge/50 bg-paper-sunken/35 p-4" aria-labelledby={`class-template-${cls.id}`}>
+    <section className="rounded-xl border border-edge bg-paper-raised/50 p-4" aria-labelledby={`class-template-${cls.id}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 id={`class-template-${cls.id}`} className="text-sm font-semibold text-ink">Template for this class</h4>
           <p className="mt-1 text-xs text-ink-muted">Choose the teacher or school format used when this class’s plans are exported.</p>
         </div>
-        <FileText size={17} className="shrink-0 text-ink-muted" aria-hidden="true" />
+        <div className="flex shrink-0 items-center gap-2">
+          <FileText size={17} className="text-ink-muted" aria-hidden="true" />
+          <button type="button" className="btn text-2xs" onClick={() => navigate(`/c/${cls.id}/settings#section-school`)}>
+            Manage templates
+          </button>
+        </div>
       </div>
       {rows.length ? (
         <ul className="mt-3 space-y-2">
@@ -614,7 +604,7 @@ function ClassTemplatePicker({ cls }) {
             const ready = ['analyzed', 'analyzed_with_warnings'].includes(template.analysis_status) && template.builder_ready
             const selected = selectedId === template.id
             return (
-              <li key={template.id} className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${selected ? 'border-accent/30 bg-accent/5' : 'border-edge/60 bg-paper'}`}>
+              <li key={template.id} className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${selected ? 'border-accent/30 bg-accent/5' : 'border-edge bg-paper-sunken'}`}>
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-ink">{template.filename}</p>
                   <p className="mt-1 text-2xs text-ink-muted">
@@ -632,7 +622,12 @@ function ClassTemplatePicker({ cls }) {
           })}
         </ul>
       ) : (
-        <p className="mt-3 text-xs text-ink-muted">Upload a personal template in School & Templates to make one available here.</p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-edge-strong bg-paper-sunken p-3">
+          <p className="text-xs text-ink-muted">No templates are available for this class yet. Add a school or personal format to choose it here.</p>
+          <button type="button" className="btn shrink-0 text-2xs" onClick={() => navigate(`/c/${cls.id}/settings#section-school`)}>
+            Upload a template
+          </button>
+        </div>
       )}
     </section>
   )
@@ -650,10 +645,10 @@ function CurriculumProgressNotice({ cls }) {
   if (!summary) return null
   const current = progress.data?.weeks?.find((week) => week.status === 'current')
   return (
-    <section className={`rounded-xl border p-4 ${summary.behind ? 'border-mark/30 bg-mark/5' : 'border-ok/30 bg-ok/5'}`} aria-live="polite">
+    <section className="rounded-xl border border-edge bg-paper-raised/50 p-4" aria-live="polite">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h4 className="text-sm font-semibold text-ink">Curriculum pacing</h4>
+          <h4 className={`text-sm font-semibold ${summary.behind ? 'text-mark' : 'text-ink'}`}>Curriculum pacing</h4>
           <p className="mt-1 text-xs text-ink-muted">
             {summary.behind
               ? `${summary.behind} ${summary.behind === 1 ? 'week is' : 'weeks are'} behind the uploaded pacing guide.`
@@ -685,20 +680,6 @@ function ClassDetail({ cls, classes, frameworks, activeStates, onChanged }) {
 
   const fw = findFramework(frameworks, cls.subject)
   const verified = verifiedPct(fw)
-  const calendar = useCalendar(cls.id)
-  const documents = useQuery({
-    queryKey: qk.classDocuments(cls.id),
-    queryFn: ({ signal }) => api.listClassDocuments(cls.id, { signal }),
-    retry: false,
-  })
-  const documentRows = documents.data || []
-  const hasPacingGuide = documentRows.some((doc) => doc.kind === 'pacing_guide')
-  const calendarWeeks = calendar.data?.weeks || []
-  const hasCalendar = Boolean(calendar.data && !calendar.isError && calendarWeeks.length)
-  const schoolName = calendar.data?.school?.name || cls.school || 'Not set'
-  const standardsTone = fw ? 'ready' : 'attention'
-  const calendarTone = calendar.isLoading ? 'neutral' : hasCalendar ? 'ready' : 'attention'
-  const pacingTone = documents.isLoading ? 'neutral' : hasPacingGuide ? 'ready' : 'attention'
 
   // Guards a double-click: the button had no disabled state and this had no
   // reentrancy check, so two fast clicks after confirming sent two
@@ -729,60 +710,30 @@ function ClassDetail({ cls, classes, frameworks, activeStates, onChanged }) {
     <div className="w-full max-w-5xl flex flex-col gap-6">
 
       <div className="flex flex-col gap-6 fa-rise">
-        <section id="section-core" className="scroll-mt-8 rounded-2xl border border-edge/60 bg-paper/45 p-5 shadow-sm backdrop-blur-md md:p-6" aria-labelledby="class-summary-title">
+        <section id="section-core" className="scroll-mt-8 rounded-2xl border border-edge bg-paper-raised/50 p-5 shadow-sm backdrop-blur-md md:p-6" aria-labelledby="class-summary-title">
           <div className="flex flex-col gap-4 border-b border-edge/50 pb-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <p className="eyebrow mb-2">Current class</p>
-              <div className="flex items-center gap-3">
-                <span
-                  className="class-dot h-4 w-4 shrink-0 rounded-full"
-                  aria-hidden="true"
-                  style={{ '--class-dot-color': `rgb(${classColor(cls.id).rgb})`, backgroundColor: 'var(--class-dot-color)' }}
-                />
-                <h2 id="class-summary-title" className="truncate text-xl font-semibold tracking-tight text-ink">{cls.name}</h2>
+              <div id="class-summary-title" className="min-w-0">
+                <ClassSwitcher classes={classes} activeClass={cls} classPath={`/c/${cls.id}`} variant="heading" />
               </div>
-              <p className="mt-2 max-w-2xl text-sm text-ink-muted">The course context FlexEd uses when you build lesson plans for this class.</p>
-            </div>
-            <div className="flex w-full shrink-0 items-center gap-2 lg:w-auto">
-              <div className="min-w-0 flex-1 lg:w-64 lg:flex-none">
-                <ClassSwitcher classes={classes} activeClass={cls} classPath={`/c/${cls.id}`} />
-              </div>
-              <Link
-                to="/c/new/class"
-                className="fa-press neo-raised inline-flex min-h-touch shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent/90"
-              >
-                <Plus size={15} aria-hidden="true" />
-                Add class
-              </Link>
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <ClassStatusItem icon={BookOpen} label="Course" value={shortLabel(fw, cls.subject) || 'Not set'} detail="Course of study" tone={fw ? 'ready' : 'attention'} />
-            <ClassStatusItem icon={GraduationCap} label="Grade" value={gradeLabel(gradeSelectValue(cls.grade)) || 'Not set'} detail="Grade level" tone={cls.grade ? 'ready' : 'attention'} />
-            <ClassStatusItem icon={MapPin} label="School" value={schoolName} detail={cls.school ? 'Class school' : 'Choose a school'} tone={cls.school ? 'ready' : 'attention'} />
-            <ClassStatusItem icon={CheckCircle2} label="Standards" value={fw ? 'Ready' : 'Not set'} detail={fw && verified !== null ? `${verified}% verified` : 'Choose a course'} tone={standardsTone} />
-            <ClassStatusItem icon={CalendarDays} label="Calendar" value={calendar.isLoading ? 'Checking…' : hasCalendar ? 'Ready' : 'Not set'} detail={hasCalendar ? `${calendarWeeks.length} weeks loaded` : 'Add in School & Templates'} tone={calendarTone} />
-            <ClassStatusItem icon={FileText} label="Pacing guide" value={documents.isLoading ? 'Checking…' : hasPacingGuide ? 'Ready' : 'Not set'} detail={hasPacingGuide ? 'Available to the AI' : 'Upload a guide below'} tone={pacingTone} />
-          </div>
-
-          <details className="mt-5 border-t border-edge/50 pt-4">
-            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
-              <Settings size={15} aria-hidden="true" className="text-ink-muted" />
-              Class settings
-              <ChevronDown size={15} aria-hidden="true" className="ml-auto details-chevron" />
-            </summary>
-            <div className="mt-4 max-w-2xl rounded-xl border border-edge/50 bg-paper-sunken/35 p-4">
-              <EditClassSettings cls={cls} frameworks={frameworks} activeStates={activeStates} onChanged={onChanged} />
-            </div>
-          </details>
         </section>
 
-        <ClassTemplatePicker cls={cls} />
+        <section id="section-ai" className="flex scroll-mt-8 flex-col gap-4 rounded-2xl border border-edge bg-paper-raised/50 p-5 shadow-sm backdrop-blur-md md:p-6">
+          <div className="flex items-center gap-2 border-b border-edge/50 pb-3">
+            <Sparkles size={18} className="text-accent" />
+            <div>
+              <h3 className="text-base font-semibold text-ink">Class-specific instructions</h3>
+              <p className="mt-0.5 text-xs text-ink-muted">Extra guidance for this class only.</p>
+            </div>
+          </div>
+          <ClassCustomInstructions cls={cls} onChanged={onChanged} />
+        </section>
 
-        <CurriculumProgressNotice cls={cls} />
-
-        <section id="section-docs" className="flex scroll-mt-8 flex-col rounded-2xl border border-edge/60 bg-paper/40 p-5 shadow-sm backdrop-blur-md md:p-6">
+        <section id="section-docs" className="flex scroll-mt-8 flex-col rounded-2xl border border-edge bg-paper-raised/50 p-5 shadow-sm backdrop-blur-md md:p-6">
           <div className="mb-4 flex flex-col justify-between gap-3 border-b border-edge/50 pb-4 md:flex-row md:items-center">
             <div>
               <div className="flex items-center gap-2">
@@ -803,18 +754,38 @@ function ClassDetail({ cls, classes, frameworks, activeStates, onChanged }) {
           </Suspense>
         </section>
 
-        <section id="section-ai" className="flex scroll-mt-8 flex-col gap-4 rounded-2xl border border-edge/60 bg-paper/40 p-5 shadow-sm backdrop-blur-md md:p-6">
-          <div className="flex items-center gap-2 border-b border-edge/50 pb-3">
-            <Sparkles size={18} className="text-accent" />
+        <section id="section-planning" className="scroll-mt-8">
+          <div className="mb-3 flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-paper-sunken text-ink-muted">
+              <CalendarDays size={17} aria-hidden="true" />
+            </span>
             <div>
-              <h3 className="text-base font-semibold text-ink">Class-specific instructions</h3>
-              <p className="mt-0.5 text-xs text-ink-muted">Extra guidance for this class only.</p>
+              <h3 className="text-base font-semibold text-ink">Planning &amp; format</h3>
+              <p className="mt-1 text-xs text-ink-muted">Keep this class’s pacing and exported plans aligned with your school’s format.</p>
             </div>
           </div>
-          <ClassCustomInstructions cls={cls} onChanged={onChanged} />
+          <div className="grid gap-4 xl:grid-cols-2">
+            <ClassTemplatePicker cls={cls} />
+            <CurriculumProgressNotice cls={cls} />
+          </div>
         </section>
 
-        <section id="section-actions" className="rounded-2xl border border-edge/60 bg-paper/35 p-4 shadow-sm backdrop-blur-md scroll-mt-8" aria-labelledby="class-actions-title">
+        <section id="section-settings" className="scroll-mt-8 rounded-2xl border border-edge bg-paper-raised/50 p-5 shadow-sm backdrop-blur-md md:p-6">
+          <div className="mb-4 flex items-start gap-3 border-b border-edge/50 pb-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-paper-sunken text-ink-muted">
+              <Settings size={17} aria-hidden="true" />
+            </span>
+            <div>
+              <h3 className="text-base font-semibold text-ink">Class settings</h3>
+              <p className="mt-1 text-xs text-ink-muted">Update the schedule, standards, course, and grade for this class.</p>
+            </div>
+          </div>
+          <div className="max-w-3xl">
+            <EditClassSettings cls={cls} frameworks={frameworks} activeStates={activeStates} onChanged={onChanged} />
+          </div>
+        </section>
+
+        <section id="section-actions" className="rounded-2xl border border-edge bg-paper-raised/50 p-4 shadow-sm backdrop-blur-md scroll-mt-8" aria-labelledby="class-actions-title">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 id="class-actions-title" className="text-sm font-semibold text-ink">Quick actions</h3>
@@ -849,6 +820,7 @@ function ClassDetail({ cls, classes, frameworks, activeStates, onChanged }) {
             </button>
           </div>
         </details>
+
       </div>
     </div>
   )
@@ -1118,15 +1090,18 @@ function GlobalClassDashboard({ classes, frameworks, onUpdated }) {
 /* ── Your classes layout (Master-Detail) ──────────────────────────────────── */
 
 const CLASS_TABS = [
-  { id: 'core', label: 'Overview' },
-  { id: 'ai', label: 'Instructions' },
-  { id: 'docs', label: 'Documents' },
-  { id: 'danger', label: 'More' },
+  { id: 'core', label: 'Overview', icon: GraduationCap },
+  { id: 'ai', label: 'Instructions', icon: Sparkles },
+  { id: 'docs', label: 'Documents', icon: Database },
+  { id: 'planning', label: 'Planning', icon: CalendarDays },
+  { id: 'settings', label: 'Class settings', icon: Settings },
+  { id: 'actions', label: 'Actions', icon: Zap },
+  { id: 'danger', label: 'More', icon: Settings },
 ]
 
 const CLASS_PROFILE_TABS = [
-  { id: 'documents', label: 'Shared documents' },
-  { id: 'classes', label: 'All classes' },
+  { id: 'documents', label: 'Shared documents', icon: FileText },
+  { id: 'classes', label: 'All classes', icon: GraduationCap },
 ]
 
 const ADD_CLASS_TABS = [
@@ -1219,6 +1194,15 @@ export function ClassPage() {
       tabs={CLASS_TABS}
       mobileTabs={CLASS_TABS}
       backPath="/"
+      sidebarTopAction={(
+        <Link
+          to="/c/new/class"
+          className="fa-press neo-raised flex min-h-10 w-full items-center gap-2 rounded-lg bg-accent px-2 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover"
+        >
+          <Plus size={15} aria-hidden="true" />
+          Add class
+        </Link>
+      )}
     >
       <ClassDetail cls={activeClass} classes={classes} frameworks={frameworks} activeStates={activeStates} onChanged={reloadClasses} />
     </SplitLayout>

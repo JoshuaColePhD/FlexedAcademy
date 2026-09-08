@@ -10,9 +10,9 @@ function systemTheme() {
 function readMode() {
   try {
     const saved = localStorage.getItem(KEY)
-    return MODES.includes(saved) ? saved : 'system'
+    return MODES.includes(saved) ? saved : 'dark'
   } catch {
-    return 'system'
+    return 'dark'
   }
 }
 
@@ -36,7 +36,7 @@ export function useTheme() {
       // tag cannot read a custom property — these are --paper-rgb in tokens.css.
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', next === 'dark' ? '#171719' : '#f7f7f8')
+        ?.setAttribute('content', next === 'dark' ? '#232323' : '#f7f7f8')
     }
     apply()
 

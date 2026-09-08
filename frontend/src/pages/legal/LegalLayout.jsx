@@ -10,22 +10,33 @@ import { Link } from 'react-router-dom'
  */
 export function LegalLayout({ title, updated, children }) {
   return (
-    <div className="min-h-app w-full bg-paper">
-      <header className="border-b border-edge px-gutter py-4">
+    <div className="legal-page min-h-app w-full bg-paper">
+      <header className="legal-topbar">
+        <div className="legal-topbar-inner">
         <Link
           to="/"
-          className="inline-flex w-fit items-center gap-2.5 text-sm font-semibold tracking-tight text-ink transition-opacity hover:opacity-80"
+          className="legal-brand"
         >
+          <span className="legal-brand-mark" aria-hidden="true">✓</span>
           FlexEd Academy
         </Link>
+        <nav className="legal-nav" aria-label="Legal pages">
+          <Link to="/terms">Terms</Link>
+          <Link to="/privacy" aria-current={title === 'Privacy Policy' ? 'page' : undefined}>Privacy</Link>
+          <Link to="/" className="legal-nav-back">Back to app</Link>
+        </nav>
+        </div>
       </header>
-      <main className="mx-auto w-full max-w-2xl px-gutter py-12">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
-        <p className="mt-1 text-sm text-ink-muted">Last updated {updated}</p>
-        <div className="mt-8 flex flex-col gap-5 text-sm leading-relaxed text-ink-soft">
+      <main className="legal-main">
+        <div className="legal-hero">
+          <p className="legal-kicker">FlexEd Academy · Legal</p>
+          <h1 className="legal-title">{title}</h1>
+          <p className="legal-updated">Last updated {updated}</p>
+        </div>
+        <div className="legal-content">
           {children}
         </div>
-        <p className="mt-10 border-t border-edge pt-6 text-sm text-ink-muted">
+        <p className="legal-footer">
           <Link to="/" className="text-accent-text hover:underline">
             Back to FlexEd Academy
           </Link>

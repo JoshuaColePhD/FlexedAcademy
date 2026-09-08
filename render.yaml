@@ -155,6 +155,8 @@ services:
         sync: false
       - key: EMAIL_FROM
         value: "FlexEd Academy <no-reply@flexedacademy.com>"
+      - key: SUPPORT_INBOUND_WEBHOOK_SECRET
+        sync: false
 
       # Anonymous signup protection. Create a managed Turnstile widget for
       # flexedacademy.com, set its site key before the frontend build, and keep

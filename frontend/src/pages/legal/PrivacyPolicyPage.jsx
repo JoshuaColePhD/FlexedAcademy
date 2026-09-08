@@ -1,6 +1,19 @@
-import { Shield } from 'lucide-react'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
+import { BookOpen, CircleHelp, FileText, LockKeyhole, Mail, ScrollText, ShieldCheck, Users, Wrench } from 'lucide-react'
 import { SplitLayout } from '../../components/SplitLayout'
+
+const PRIVACY_TABS = [
+  { id: 'who', label: 'Who this is for', icon: Users },
+  { id: 'collect', label: 'Information we collect', icon: FileText },
+  { id: 'use', label: 'How we use information', icon: Wrench },
+  { id: 'third-parties', label: 'Third parties', icon: BookOpen },
+  { id: 'control', label: 'Your control', icon: CircleHelp },
+  { id: 'retention', label: 'Data retention', icon: ScrollText },
+  { id: 'security', label: 'Security', icon: LockKeyhole },
+  { id: 'schools', label: 'Districts and schools', icon: Users },
+  { id: 'changes', label: 'Changes to this policy', icon: FileText },
+  { id: 'contact', label: 'Contact', icon: Mail },
+]
 
 /* Reflects what this app actually does — see backend/routes/*.py and
  * db.py's own table comments for the real data flows this describes. Not a
@@ -10,31 +23,20 @@ import { SplitLayout } from '../../components/SplitLayout'
  * sent to, or what a teacher can do about it.
  */
 
-const TABS = [
-  { id: 'who', label: 'Who this is for' },
-  { id: 'collect', label: 'Information we collect' },
-  { id: 'use', label: 'How we use this information' },
-  { id: 'third-parties', label: 'Third parties' },
-  { id: 'control', label: 'Your control over your data' },
-  { id: 'retention', label: 'Data retention' },
-  { id: 'security', label: 'Security' },
-  { id: 'schools', label: 'Districts and schools' },
-  { id: 'changes', label: 'Changes to this policy' },
-  { id: 'contact', label: 'Contact' },
-]
-
 export function PrivacyPolicyPage() {
   useDocumentTitle('Privacy Policy')
   return (
     <SplitLayout
       title="Privacy Policy"
-      icon={Shield}
-      tabs={TABS}
+      icon={ShieldCheck}
+      tabs={PRIVACY_TABS}
+      mobileTabs={PRIVACY_TABS}
       backPath="/"
+      contentMaxWidth="max-w-4xl"
     >
+      <div className="privacy-policy-content">
+        <p className="privacy-policy-updated">Last updated August 16, 2026</p>
       <div className="prose">
-        <p className="text-sm font-medium text-ink-muted mb-8">Last updated August 16, 2026</p>
-
         <p className="text-sm text-ink-soft leading-relaxed mb-8">
           FlexEd Academy ("FlexEd Academy," "we," "us") is operated by Joshua Cole. This policy
           explains what information the app collects from a teacher who creates an account, why,
@@ -189,6 +191,7 @@ export function PrivacyPolicyPage() {
             .
           </p>
         </div>
+      </div>
       </div>
     </SplitLayout>
   )

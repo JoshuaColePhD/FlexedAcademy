@@ -21,7 +21,8 @@ import { useExitTransition } from '../hooks/useExitTransition'
    reserves blue for "something is waiting for you"; the class you are already
    looking at is not waiting for anything, and spending accent here is part of
    why the blue had stopped meaning anything. */
-export function ClassSwitcher({ classes, activeClass, inline = false }) {
+export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default' }) {
+  const heading = variant === 'heading'
   const [open, setOpen] = useState(false)
   // The menu used to unmount the instant `open` went false — a hard cut, the
   // one thing every other neo-panel overlay in the app (toasts, the confirm
@@ -84,18 +85,20 @@ export function ClassSwitcher({ classes, activeClass, inline = false }) {
     return (
       <p
         className={
-          inline
+          heading
+            ? 'flex min-h-touch w-full min-w-0 items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-paper-sunken'
+            : inline
             ? 'chat-week min-w-0 max-w-xs shrink truncate normal-case tracking-normal'
             : 'flex items-center gap-2 truncate px-3 pb-1 text-sm font-medium text-ink'
         }
         title={classes[0].name}
       >
         <span
-          className="class-dot"
+          className={heading ? 'class-dot h-4 w-4 shrink-0 rounded-full' : 'class-dot'}
           aria-hidden="true"
           style={{ '--class-dot-color': `rgb(${classColor(classes[0].id).rgb})` }}
         />
-        <span className="min-w-0 flex-1 truncate">{classes[0].name}</span>
+        <span className={heading ? 'min-w-0 flex-1 truncate text-xl font-semibold tracking-tight text-ink' : 'min-w-0 flex-1 truncate'}>{classes[0].name}</span>
       </p>
     )
   }
@@ -125,14 +128,16 @@ export function ClassSwitcher({ classes, activeClass, inline = false }) {
      stays a fixed-width card either way; only the trigger's shape and the
      popup's anchoring edge change. */
   return (
-    <div className={inline ? 'relative min-w-0 shrink' : 'relative px-2 pb-1'} ref={ref}>
+    <div className={heading ? 'relative min-w-0' : inline ? 'relative min-w-0 shrink' : 'relative px-2 pb-1'} ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
         className={
-          inline
+          heading
+            ? 'flex min-h-touch w-full min-w-0 items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-paper-sunken'
+            : inline
             ? // w-full, not just max-w-[9rem]: the wrapping div above is the
               // actual flex-shrinking item (it carries `shrink`), and a plain
               // <button> inside it sizes itself by its OWN content up to its
@@ -157,7 +162,7 @@ export function ClassSwitcher({ classes, activeClass, inline = false }) {
       >
         {activeClass ? (
           <span
-            className="class-dot"
+            className={heading ? 'class-dot h-4 w-4 shrink-0 rounded-full' : 'class-dot'}
             aria-hidden="true"
             style={{ '--class-dot-color': `rgb(${classColor(activeClass.id).rgb})` }}
           />
@@ -169,7 +174,7 @@ export function ClassSwitcher({ classes, activeClass, inline = false }) {
             w-full this span needs flex-1 to actually claim the space that
             leaves it, rather than sizing off its own (untruncated) content
             again. */}
-        <span className={inline ? 'min-w-0 flex-1 truncate' : 'min-w-0 flex-1 truncate text-sm font-medium text-ink'}>
+        <span className={heading ? 'min-w-0 flex-1 truncate text-xl font-semibold tracking-tight text-ink' : inline ? 'min-w-0 flex-1 truncate' : 'min-w-0 flex-1 truncate text-sm font-medium text-ink'}>
           {(activeClass && displayName.get(activeClass.id)) || 'Choose a class'}
         </span>
         <ChevronsUpDown size={inline ? 12 : 14} aria-hidden="true" className="shrink-0 text-ink-faint" />

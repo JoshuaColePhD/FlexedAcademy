@@ -1,8 +1,9 @@
+import { chatAvatarColor } from '../lib/chatPresentation'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -32,10 +33,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
 import { createWorkActivity, updateWorkActivity } from '../lib/workActivity'
 import { Composer } from '../components/Composer'
 import { AddDocumentDialog } from '../components/AddDocumentDialog'
-import { WeekPicker } from '../components/WeekPicker'
 import { VoiceModePanel } from '../components/VoiceModePanel'
-import { ClassSwitcher } from '../components/ClassSwitcher'
-import { Tooltip } from '../components/Tooltip'
 import { Message } from '../components/Message'
 import { LessonQuestions } from '../components/LessonQuestions'
 import { ArtifactPanel } from '../components/ArtifactPanel'
@@ -540,6 +538,7 @@ export function ChatPage() {
   const { data: meAccount } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
   const betaFeaturesEnabled = Boolean(meAccount?.beta_features)
   const { data: chats = [] } = useChats()
+  const currentChat = chats.find((chat) => chat.id === chatId) || null
   const { data: calendar } = useCalendar(classId)
   // Same check ClassPage runs to gate its own "Add a pacing guide" suggestion —
   // without it, getContextualSuggestions defaults to assuming one exists and
@@ -737,8 +736,8 @@ export function ChatPage() {
      in the composer's own chip, rather than as a suggestion. */
   const [selectedWeek, setSelectedWeek] = useState(null)
 
-  /* The document is now open by default so users can immediately see the lesson plan/artifacts. */
-  const [expanded, setExpanded] = useState(true)
+  // The document reader opens when a teacher selects an artifact.
+  const [expanded, setExpanded] = useState(false)
   /* What `expanded` actually shows — the plan itself (ArtifactPanel, the
      original and only option until now) or one of the rail's other rows,
      rendered through the shared embossed shell in ArtifactDetailPanel.
@@ -747,19 +746,9 @@ export function ChatPage() {
   const [viewKind, setViewKind] = useState('plan')
   const [viewingQuiz, setViewingQuiz] = useState(null)
   const [viewingDoc, setViewingDoc] = useState(null)
-  /* The drawer's own open/closed state — separate from `expanded`, which is
-     the FULL docked/overlay document. Starts closed (just the handle) for
-     every chat; the effect below pulls it open the moment there's a reason
-     to, and only that transition forces it — closing it again afterward is
-     never overridden by a render where nothing changed. */
+  // Open the workspace on request. A new message never steals conversation space.
   const [railOpen, setRailOpen] = useState(false)
-  /* Whether the auto-open effect has already fired for THIS chat. `busy`
-     goes true/false on every single turn (a revision, a follow-up message,
-     a quiz build) — not just the first one — so without this guard the
-     effect's deps changed on every turn and force-reopened the drawer even
-     after the teacher had deliberately closed it. Reset alongside
-     `railOpen` itself wherever that resets to false. */
-  const railAutoOpenedRef = useRef(false)
+  const railAutoOpenedRef = useRef(true)
   /* Mobile plan peek: a first build opens the lightweight sheet above the
      composer once the saved plan is actually ready. Revisions do not force it
      back open after a teacher has intentionally collapsed it. Existing plans
@@ -884,6 +873,21 @@ export function ChatPage() {
   // effect for why the class actually has to land on .artifact-overlay
   // (below) rather than the doc-shell div inside it that clicked the button.
   const [artifactFullscreen, setArtifactFullscreen] = useState(false)
+  const artifactFullscreenRef = useRef(false)
+  const [artifactFullscreenReturning, setArtifactFullscreenReturning] = useState(false)
+  const handleArtifactFullscreenChange = useCallback((next) => {
+    const wasFullscreen = artifactFullscreenRef.current
+    artifactFullscreenRef.current = next
+    if (wasFullscreen && !next) {
+      // Keep this marker for the lifetime of the mounted reader. Clearing it
+      // after the bounds transition would re-apply the ordinary docked
+      // entrance keyframe and make one shrink look like close + open.
+      setArtifactFullscreenReturning(true)
+    } else if (next) {
+      setArtifactFullscreenReturning(false)
+    }
+    setArtifactFullscreen(next)
+  }, [])
   /* The doc overlay is ALWAYS portaled to document.body now, never
      conditionally switched between "rendered in place" and "portaled" —
      that switch used to change the overlay's position in the fiber tree
@@ -897,6 +901,7 @@ export function ChatPage() {
      overlayAnchorRef's rect (see the effect below) instead of switching
      containers. */
   const overlayAnchorRef = useRef(null)
+  const overlayHostReadyRef = useRef(false)
   const [overlayPortalHost] = useState(() => {
     const el = document.createElement('div')
     el.style.position = 'fixed'
@@ -910,6 +915,10 @@ export function ChatPage() {
     // no document was open. Flipped to 'auto' only while the overlay is
     // actually mounted (see the effect keyed on overlayExit.mounted).
     el.style.pointerEvents = 'none'
+    // Once the first measured box exists, animate the host's docked/fullscreen
+    // bounds so shrinking reverses the same reader instead of presenting a
+    // second-looking panel.
+    el.style.willChange = 'top, left, width, height'
     return el
   })
   useEffect(() => {
@@ -925,7 +934,18 @@ export function ChatPage() {
   // by accident.
   useEffect(() => {
     const anchor = overlayAnchorRef.current
-    const sync = () => {
+    const transition = 'top 420ms var(--ease-glide), left 420ms var(--ease-glide), width 420ms var(--ease-glide), height 420ms var(--ease-glide)'
+    const sync = ({ animate = false } = {}) => {
+      if (animate) {
+        // Commit the current box before writing the next one. Otherwise the
+        // portal host can batch both writes into one layout pass and the
+        // shrink reads as a replacement instead of a reversal.
+        overlayPortalHost.style.transition = 'none'
+        void overlayPortalHost.offsetWidth
+        overlayPortalHost.style.transition = transition
+      } else if (!overlayHostReadyRef.current) {
+        overlayPortalHost.style.transition = 'none'
+      }
       if (artifactFullscreen || !anchor) {
         overlayPortalHost.style.top = '0px'
         overlayPortalHost.style.left = '0px'
@@ -939,8 +959,13 @@ export function ChatPage() {
       overlayPortalHost.style.width = `${r.width}px`
       overlayPortalHost.style.height = `${r.height}px`
     }
-    sync()
-    const ro = new ResizeObserver(sync)
+    sync({ animate: overlayHostReadyRef.current })
+    if (!overlayHostReadyRef.current) {
+      requestAnimationFrame(() => {
+        overlayHostReadyRef.current = true
+      })
+    }
+    const ro = new ResizeObserver(() => sync())
     if (anchor) ro.observe(anchor)
     window.addEventListener('resize', sync)
     return () => {
@@ -972,8 +997,9 @@ export function ChatPage() {
     // visible, so resizing cannot leave the dock using an old layout.
     // The bottom inset always follows the anchor's live bottom edge, so
     // browser scaling and the lesson-plan overlay cannot strand the dock.
-    // Follow the measured column directly; a second transition trails its resize.
-    el.style.transition = 'none'
+    // Follow the measured column directly while letting the command surface
+    // glide with the output rail instead of snapping to a second width.
+    el.style.transition = 'left 180ms var(--ease), width 180ms var(--ease)'
     return el
   })
   /* The document opens over the chat, but it uses the SAME composer geometry
@@ -988,7 +1014,6 @@ export function ChatPage() {
 
   const composerAnchorRef = useRef(null)
   const composerDockRef = useRef(null)
-  const stableRailWidthRef = useRef(null)
   const [composerDockH, setComposerDockH] = useState(0)
   // Keeps the host's left/width and shared bottom inset matched to the
   // anchor's live rect. The anchor never moves for its OWN reasons (it's a
@@ -1009,13 +1034,11 @@ export function ChatPage() {
       const viewportWidth = window.visualViewport?.width || window.innerWidth
       const drawer = document.querySelector('.artifact-drawer')
       const drawerRect = drawer?.getBoundingClientRect()
-      if (drawerRect?.width > 0) stableRailWidthRef.current = drawerRect.width
-      // When the rail is closed, retain its last measured width so the
-      // composer does not expand into the inspector's former lane. On the
-      // first open, railOpen supplies the same stable desktop estimate before
-      // the drawer has painted and can be measured directly.
-      const railWidth = stableRailWidthRef.current || (railOpen ? artifactRailWidth(viewportWidth) : 0)
-      const rightBoundary = drawerRect && drawerRect.left > r.left
+      // While the rail is animating, its live left edge gives the composer a
+      // matching width animation. Once it is fully closed, use the complete
+      // viewport so the composer expands back into the released space.
+      const railWidth = railOpen ? (drawerRect?.width > 0 ? drawerRect.width : artifactRailWidth(viewportWidth)) : 0
+      const rightBoundary = railOpen && drawerRect && drawerRect.left > r.left
         ? drawerRect.left
         : railWidth > 0
           ? viewportWidth - ARTIFACT_RAIL_RIGHT_GUTTER - railWidth
@@ -1030,7 +1053,6 @@ export function ChatPage() {
       portalHost.style.top = 'auto'
       portalHost.style.bottom = `${Math.max(0, window.innerHeight - r.bottom)}px`
       portalHost.style.height = 'auto'
-      portalHost.style.transition = 'none'
     }
     sync()
     const ro = new ResizeObserver(sync)
@@ -1276,7 +1298,7 @@ export function ChatPage() {
       setViewingQuiz(null)
       setViewingDoc(null)
       setRailOpen(false)
-      railAutoOpenedRef.current = false
+      railAutoOpenedRef.current = true
       setPlanPeekOpen(false)
       planBuildStartedRef.current = false
       setSelectedWeek(null)
@@ -1308,7 +1330,7 @@ export function ChatPage() {
     setViewingQuiz(null)
     setViewingDoc(null)
     setRailOpen(false)
-    railAutoOpenedRef.current = false
+    railAutoOpenedRef.current = true
     setPlanPeekOpen(false)
     planBuildStartedRef.current = false
 
@@ -3242,6 +3264,15 @@ export function ChatPage() {
   // On desktop the document slides over the workspace, underneath the composer.
   const overlayOpen = expanded && hasArtifact
   const overlayExit = useExitTransition(overlayOpen, 130)
+  useEffect(() => {
+    if (overlayExit.mounted) return
+    // A new reader should get its normal entrance animation. Resetting the
+    // fullscreen state here also prevents a previously maximized reader from
+    // reopening fullscreen after it has been closed.
+    artifactFullscreenRef.current = false
+    setArtifactFullscreen(false)
+    setArtifactFullscreenReturning(false)
+  }, [overlayExit.mounted])
   const mobileReaderOpen = isPhone && viewKind === 'plan' && overlayExit.mounted
   // Tablets have enough room to stop pretending that the document is a phone
   // sheet. Portrait preserves chat focus with a right-hand side sheet; in
@@ -3384,20 +3415,15 @@ export function ChatPage() {
   const collapse = useCallback(() => {
     setOpenTweak(null)
     setExpanded(false)
-    /* Put focus back on the card that opened it.
-       useFocusTrap captures the previously-focused element AFTER React has
-       committed, and opening the docked document unmounts the rail in that
-       same commit — so by then the trigger was already detached and the hook's
-       `document.contains(previous)` guard correctly declined to restore. The
-       result was focus on nothing: the next Tab started from "Skip to content"
-       at the top of the app. The overlay path never had this, because there
-       the trigger is a message button that stays mounted.
-
-       Deferred a frame, because the rail has to remount first. */
-    requestAnimationFrame(() => {
-      document.getElementById('rail-open-title')?.focus({ preventScroll: true })
-    })
-  }, [])
+    /* Return focus after the reader's exit motion ends. The output rail stays
+       mounted underneath, so closing a document does not need to recreate or
+       reanimate the panel just to restore this keyboard destination. */
+    if (railOpen) {
+      window.setTimeout(() => {
+        document.getElementById('rail-open-title')?.focus({ preventScroll: true })
+      }, 150)
+    }
+  }, [railOpen])
 
   // Same scan ArtifactRail runs to decide its own "Standards" row sub-text —
   // recomputed here rather than threaded down, since the two components
@@ -3542,7 +3568,7 @@ export function ChatPage() {
         openTweak={openTweak}
         setOpenTweak={setOpenTweak}
         flashCells={flashCells}
-        onFullscreenChange={setArtifactFullscreen}
+        onFullscreenChange={handleArtifactFullscreenChange}
         mobileReader={isPhone && viewKind === 'plan'}
         readerMode={tabletLandscapePlanOpen || desktopInspectorOpen}
       />
@@ -3552,7 +3578,7 @@ export function ChatPage() {
         kind={viewKind}
         classId={classId}
         planId={artifact?.planId}
-        onFullscreenChange={setArtifactFullscreen}
+        onFullscreenChange={handleArtifactFullscreenChange}
         plan={livePlan}
         subject={activeClass?.subject}
         state={activeClass?.state}
@@ -3643,103 +3669,35 @@ export function ChatPage() {
                   title="School calendar needs to be uploaded"
                 />
               ) : null}
-              <ChevronDown size={14} aria-hidden="true" className="shrink-0 text-ink-faint" />
             </button>
           </>
         ) : (
-          <div className="chat-head pointer-events-auto flex min-w-0 max-w-[70%] flex-nowrap items-center">
-            {/* Which prep, then which week — the two questions that together
-                answer "what is this conversation about," read as one row
-                instead of a switcher a whole sidebar away from the week it
-                scopes. flex-nowrap overrides .chat-head's own wrap (needed
-                when it was just WeekPicker alone): with two controls now
-                sharing this row, wrapping stacked them into separate lines
-                instead of the one row this is meant to read as. Each child
-                gets min-w-0 so it truncates under real width pressure (an
-                iPad's narrower chat pane, a long class name) rather than
-                forcing the row wide enough to overflow the screen. */}
-            <div className="flex items-center gap-2 shrink min-w-0">
-              <ClassSwitcher
-                classes={classes}
-                activeClass={activeClass}
-                classPath={`/c/${classId}`}
-                inline
-              />
-              {!hasPacingGuide ? (
-                <Tooltip
-                  interactive
-                  position="bottom"
-                  content={
-                    <span>
-                      No pacing guide on file.{' '}
-                      <Link
-                        to={`/c/${classId}/class#section-docs`}
-                        className="underline transition-colors hover:text-white"
-                      >
-                        Upload one
-                      </Link>
-                    </span>
-                  }
-                >
-                  {/* A hover-only Tooltip has no touch equivalent — on phone
-                      this dot used to sit there permanently unreadable and
-                      untappable, since a tap has no "hover" step to open it
-                      first. Making the dot itself a real Link means a tap
-                      just does the tooltip's one action directly, and the
-                      Tooltip still opens first on desktop hover the same as
-                      before. tap-target widens the actual hit area to the
-                      touch minimum without enlarging the 8px dot itself. */}
-                  <Link
-                    to={`/c/${classId}/class#section-docs`}
-                    className="tap-target block h-2 w-2 shrink-0 rounded-full bg-red-500"
-                    aria-label="No pacing guide on file — tap to upload one"
-                  />
-                </Tooltip>
-              ) : null}
+          <button
+            type="button"
+            className="chat-head chat-head-trigger pointer-events-auto flex min-w-0 max-w-[52%] flex-1 flex-nowrap items-center text-left"
+            onClick={() => setHeaderSheetOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={headerSheetOpen}
+            aria-label="Choose course and week"
+            title="Choose course and week"
+          >
+            <div className="chat-current-thread flex min-w-0 items-center gap-2">
+              <span
+                className="chat-current-thread-avatar"
+                style={{ backgroundColor: chatAvatarColor(currentChat) }}
+                aria-hidden="true"
+              >
+                {(currentChat?.title || 'N').replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase() || 'N'}
+              </span>
+              <span className="chat-current-thread-copy min-w-0">
+                <span className="chat-current-thread-title truncate">{currentChat?.title || 'New chat'}</span>
+                <span className="chat-current-thread-course truncate">{activeClass?.name || 'Choose a course'}</span>
+              </span>
             </div>
-          </div>
+          </button>
         )}
         <div className="ml-auto flex min-w-0 items-center gap-3">
-          {!isPhone && !isLandscapePhone && classId && classId !== 'default' && classes.length > 0 ? (
-            <div className="flex min-w-0 shrink items-center gap-1.5">
-              <WeekPicker
-                options={weekOptions}
-                value={conversationWeek}
-                onChange={changeWeek}
-                schoolName={calendar?.school?.name}
-                disabled={busy}
-              />
-              {calendarMissing ? (
-                <Tooltip
-                  interactive
-                  position="bottom-left"
-                  content={
-                    <span>
-                      No calendar on file.{' '}
-                      <Link
-                        to={`/c/${classId}/settings#section-school-calendar`}
-                        className="underline transition-colors hover:text-white"
-                      >
-                        Upload one in settings
-                      </Link>
-                    </span>
-                  }
-                >
-                  <Link
-                    to={`/c/${classId}/settings#section-school-calendar`}
-                    className="tap-target block h-2 w-2 shrink-0 rounded-full bg-red-500"
-                    aria-label="No school calendar on file — tap to upload one"
-                  />
-                </Tooltip>
-              ) : null}
-            </div>
-          ) : null}
-          {!isPhone && !isLandscapePhone && calendar?.school?.name ? (
-            <span className="workspace-school hidden min-w-0 truncate text-xs font-medium text-ink-muted md:inline">
-              {calendar.school.name}
-            </span>
-          ) : null}
-          {hasArtifact ? (
+          {(hasArtifact || !isPhone) ? (
             <button
               type="button"
               className="workspace-artifact-toggle fa-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--accent-text)]"
@@ -3747,15 +3705,12 @@ export function ChatPage() {
               title={isPhone ? 'Open lesson plan' : railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
               aria-expanded={isPhone ? undefined : railOpen}
               aria-controls={isPhone ? undefined : 'artifacts-panel'}
-              /* Desktop keeps this control persistent in the complete header:
-                 it opens and closes the docked inspector without changing the
-                 document surface or the composer lane. A phone has no docked
-                 rail (the compact ArtifactRail bar lives above its composer),
-                 so the same control continues to open the lesson-plan reader. */
+              /* A phone has no docked rail, so this opens the reader. On
+                 desktop it opens and closes the persistent outputs panel. */
               onClick={() => (isPhone ? openDocument() : setRailOpen((open) => !open))}
             >
               {isPhone ? <PanelRightOpen size={18} aria-hidden="true" /> : <PanelRight size={18} aria-hidden="true" />}
-              {!railOpen ? (
+              {hasArtifact && !railOpen ? (
                 <span
                   className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
                   aria-hidden="true"
@@ -3766,7 +3721,7 @@ export function ChatPage() {
         </div>
       </div>
 
-      {isPhone || isLandscapePhone ? (
+      {createPortal(
         <ChatHeaderSheet
           open={headerSheetOpen}
           onClose={() => setHeaderSheetOpen(false)}
@@ -3779,8 +3734,8 @@ export function ChatPage() {
           conversationWeek={conversationWeek}
           changeWeek={changeWeek}
           busy={busy}
-        />
-      ) : null}
+        />, document.body
+      )}
 
       <TemplateBanner />
       <TrialBanner />
@@ -4302,16 +4257,8 @@ export function ChatPage() {
             /* The example is worth its length on a laptop and clipped on a
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */
-            placeholder={
-              artifact?.planId
-                ? isPhone
-                  ? 'Revise this plan…'
-                  : 'What should change? — e.g. make Thursday a Socratic seminar'
-                : isPhone
-                  ? 'Plan this week…'
-                  : 'What do you need a lesson plan for?'
-            }
-            sendLabel={artifact?.planId ? 'Revise the plan' : 'Build the lesson plan'}
+            placeholder={currentChat?.title ? `Message ${currentChat.title}` : 'Message FlexEd Academy'}
+            sendLabel="Send message"
           />
           </div>
         </div>
@@ -4382,24 +4329,26 @@ export function ChatPage() {
                   : ''}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {chatPane}
+      <div className="chat-workspace-main flex min-w-0 flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {chatPane}
+        </div>
       </div>
 
       {/* The rail floats from 768 up. Below 768 it is the bar inside chatPane
           instead (the isPhone-only ArtifactRail "bar" variant above the
-          composer).
-
-          Excluded once overlayOpen: the full document already exposes
-          everything this drawer shows (Download, sources, grounding) at full
-          size, so the floating inspector should get out of the way rather
-          than sit underneath the document. */}
-      {!isPhone && !overlayExit.mounted ? (
+          composer). Keep it mounted while a reader overlays the workspace so
+          closing that reader reveals the same fixed rail without a second
+          slide-in animation. */}
+      {!isPhone ? (
         <ArtifactDrawer
           open={railOpen}
+          onClose={() => setRailOpen(false)}
           hasArtifact={hasArtifact}
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
+          classProfile={activeClass}
+          weekLabel={displayWeek ? `Week ${String(displayWeek.week).padStart(2, '0')}` : null}
           onExpand={() => openDocument()}
           onOpenQuiz={openQuiz}
           onOpenStandards={openStandards}
@@ -4437,7 +4386,7 @@ export function ChatPage() {
                 onClick={collapse}
               /> : null}
               <div
-                className={`artifact-overlay${desktopComposerOverlay ? ' is-composer-overlay' : ''}${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${isTablet && tabletPortrait ? ' is-tablet-side-sheet' : ''}`}
+                className={`artifact-overlay${desktopComposerOverlay ? ' is-composer-overlay' : ''}${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${artifactFullscreenReturning ? ' is-fullscreen-returning' : ''}${isTablet && tabletPortrait ? ' is-tablet-side-sheet' : ''}`}
                 style={{ '--composer-h': `${composerDockH}px` }}
               >
                 {artifactEl}

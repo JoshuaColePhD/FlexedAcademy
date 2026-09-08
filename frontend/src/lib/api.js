@@ -347,6 +347,14 @@ export const api = {
   deleteCoachingMemory: (id) => request(`/api/coaching/memories/${id}`, { method: 'DELETE' }),
   sendSupportMessage: ({ subject, message }) =>
     request('/api/support', { method: 'POST', body: { subject, message } }),
+  listSupportThreads: () => request('/api/support/threads'),
+  createSupportThread: ({ subject, message }) =>
+    request('/api/support/threads', { method: 'POST', body: { subject, message } }),
+  getSupportThread: (id) => request(`/api/support/threads/${encodeURIComponent(id)}`),
+  addSupportMessage: (id, message) =>
+    request(`/api/support/threads/${encodeURIComponent(id)}/messages`, { method: 'POST', body: { message } }),
+  markSupportThreadRead: (id) =>
+    request(`/api/support/threads/${encodeURIComponent(id)}/read`, { method: 'POST', body: {} }),
 
   // `signal` is destructured out so it is never serialised into the query string.
   listPlans: ({ signal, ...params } = {}) => {

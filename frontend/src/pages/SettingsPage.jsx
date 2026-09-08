@@ -18,7 +18,6 @@ import { PendingCalendarReview } from '../components/PendingCalendarReview'
 import { ConfirmedCalendarReview } from '../components/OnboardingWizard'
 import { UploadDropzone } from '../components/UploadDropzone'
 import { SchoolSelect } from '../components/SchoolSelect'
-import { SupportDialog } from '../components/SupportDialog'
 import { AvatarPicker } from '../components/AvatarPicker'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -1696,6 +1695,7 @@ export function SettingsPage() {
   const qc = useQueryClient()
   const toast = useToast()
   const navigate = useNavigate()
+  const { classId } = useParams()
   const meState = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
 
   const [teacher, setTeacher] = useState('')
@@ -1714,7 +1714,6 @@ export function SettingsPage() {
   const [classifyPlan, setClassifyPlan] = useState(false)
   const { mode, setMode } = useTheme()
   const { fontSize, setFontSize, highContrast, setHighContrast, autoSave, setAutoSave } = useInterfacePreferences()
-  const [supportOpen, setSupportOpen] = useState(false)
   const [nameEditing, setNameEditing] = useState(false)
 
   useEffect(() => {
@@ -1787,7 +1786,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
+    <div className="settings-layout-shell flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5 shadow-inner shadow-white/5">
       
       {/* Left Sidebar (Master) */}
       <div className="hidden w-52 shrink-0 flex-col border-r border-edge bg-paper-sunken md:flex">
@@ -2068,7 +2067,7 @@ export function SettingsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSupportOpen(true)}
+                  onClick={() => navigate(`/c/${classId}/contact`)}
                   className="btn ml-2"
                 >
                   <Mail size={14} className="mr-1.5" aria-hidden="true" /> Contact support
@@ -2192,7 +2191,6 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <SupportDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
     </div>
   )
 }

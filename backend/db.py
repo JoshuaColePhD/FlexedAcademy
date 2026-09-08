@@ -38,6 +38,7 @@ from .config import settings
 from .errors import AppError
 
 current_user_id = contextvars.ContextVar("current_user_id", default=None)
+support_webhook_context = contextvars.ContextVar("support_webhook_context", default=False)
 
 
 @contextmanager
@@ -53,6 +54,16 @@ def as_user(user_id: str | None):
         yield
     finally:
         current_user_id.reset(token)
+
+
+@contextmanager
+def as_support_webhook():
+    """Allow one secret-authenticated inbound-mail transaction through RLS."""
+    token = support_webhook_context.set(True)
+    try:
+        yield
+    finally:
+        support_webhook_context.reset(token)
 
 log = logging.getLogger("flexedacademy.db")
 
@@ -3700,6 +3711,109 @@ MIGRATIONS: list[str] = [
     ALTER TABLE classes ADD CONSTRAINT classes_period_minutes_check
       CHECK (period_minutes IS NULL OR (period_minutes BETWEEN 15 AND 240));
     """,
+    # ── 84: in-app support mailbox ──────────────────────────────────────────
+    # Support conversations belong to the teacher's account and stay durable
+    # even when outbound email is unavailable. Email is a delivery channel,
+    # never the source of truth; inbound replies are imported into these rows.
+    """
+    CREATE TABLE IF NOT EXISTS support_threads (
+      id            TEXT PRIMARY KEY,
+      user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      subject       TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+      unread_count  INTEGER NOT NULL DEFAULT 0 CHECK (unread_count >= 0),
+      created_at    TEXT NOT NULL,
+      updated_at    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_threads_user_updated
+      ON support_threads(user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id                  TEXT PRIMARY KEY,
+      thread_id           TEXT NOT NULL REFERENCES support_threads(id) ON DELETE CASCADE,
+      author_type         TEXT NOT NULL CHECK (author_type IN ('teacher', 'support')),
+      author_user_id      TEXT REFERENCES users(id) ON DELETE SET NULL,
+      author_name         TEXT,
+      author_email        TEXT,
+      body                TEXT NOT NULL,
+      source              TEXT NOT NULL DEFAULT 'app' CHECK (source IN ('app', 'email')),
+      external_id         TEXT,
+      created_at          TEXT NOT NULL,
+      read_at             TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_messages_thread_created
+      ON support_messages(thread_id, created_at, id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_support_messages_external_id
+      ON support_messages(external_id) WHERE external_id IS NOT NULL;
+
+    ALTER TABLE support_threads ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE support_messages ENABLE ROW LEVEL SECURITY;
+    DO $$ BEGIN
+      CREATE POLICY "Users can access their own support threads"
+        ON support_threads
+        USING (user_id = current_setting('app.user_id', true))
+        WITH CHECK (user_id = current_setting('app.user_id', true));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+    DO $$ BEGIN
+      CREATE POLICY "Users can access their own support messages"
+        ON support_messages
+        USING (EXISTS (
+          SELECT 1 FROM support_threads t
+          WHERE t.id = support_messages.thread_id
+            AND t.user_id = current_setting('app.user_id', true)
+        ))
+        WITH CHECK (EXISTS (
+          SELECT 1 FROM support_threads t
+          WHERE t.id = support_messages.thread_id
+            AND t.user_id = current_setting('app.user_id', true)
+        ));
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+    ALTER TABLE support_threads FORCE ROW LEVEL SECURITY;
+    ALTER TABLE support_messages FORCE ROW LEVEL SECURITY;
+    """,
+    # ── 85: allow the secret-authenticated inbound support hook ──────────────
+    # The webhook has no teacher session from which to derive app.user_id. It
+    # still runs through the same pool and RLS policies, with a transaction
+    # local flag set only after the endpoint verifies its shared secret.
+    """
+    DROP POLICY IF EXISTS "Users can access their own support threads" ON support_threads;
+    CREATE POLICY "Users can access their own support threads"
+      ON support_threads
+      USING (
+        current_setting('app.support_webhook', true) = '1'
+        OR user_id = current_setting('app.user_id', true)
+      )
+      WITH CHECK (
+        current_setting('app.support_webhook', true) = '1'
+        OR user_id = current_setting('app.user_id', true)
+      );
+    DROP POLICY IF EXISTS "Users can access their own support messages" ON support_messages;
+    CREATE POLICY "Users can access their own support messages"
+      ON support_messages
+      USING (
+        current_setting('app.support_webhook', true) = '1'
+        OR EXISTS (
+          SELECT 1 FROM support_threads t
+          WHERE t.id = support_messages.thread_id
+            AND t.user_id = current_setting('app.user_id', true)
+        )
+      )
+      WITH CHECK (
+        current_setting('app.support_webhook', true) = '1'
+        OR EXISTS (
+          SELECT 1 FROM support_threads t
+          WHERE t.id = support_messages.thread_id
+            AND t.user_id = current_setting('app.user_id', true)
+        )
+      );
+    DROP POLICY IF EXISTS "Users can access their own account" ON users;
+    CREATE POLICY "Users can access their own account"
+      ON users
+      USING (
+        current_setting('app.support_webhook', true) = '1'
+        OR id = current_setting('app.user_id', true)
+      );
+    """,
 ]
 
 
@@ -3846,6 +3960,9 @@ def borrow():
         if user_id:
             with conn.cursor() as cur:
                 cur.execute("SET LOCAL app.user_id = %s", (user_id,))
+        if support_webhook_context.get():
+            with conn.cursor() as cur:
+                cur.execute("SET LOCAL app.support_webhook = '1'")
         # ONCE per physical connection, not once per query. register_vector
         # issues its own round trip to look up the vector type's OID, and doing
         # that on every borrow made concurrent reads SLOWER than sequential
@@ -6440,7 +6557,15 @@ def list_chats(user_id: str, limit: int = 100, class_id: str | None = None) -> l
     return [
         dict(r)
         for r in _rows(
-            f"SELECT * FROM chats {where} ORDER BY updated_at DESC LIMIT ?", tuple(params + [limit])
+            f"""
+            SELECT c.*,
+              (SELECT m.content FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_preview,
+              (SELECT m.created_at FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_at
+            FROM chats c
+            {where.replace('user_id', 'c.user_id').replace('class_id', 'c.class_id')}
+            ORDER BY c.updated_at DESC
+            LIMIT ?
+            """, tuple(params + [limit])
         )
     ]
 
@@ -6765,6 +6890,136 @@ def set_account_blocked(user_id: str, blocked: bool, blocked_by: str | None = No
     return bool(row)
 
 
+def create_support_thread(user_id: str, *, subject: str, body: str, author_name: str | None, author_email: str | None) -> dict:
+    """Create a durable teacher support thread and its first message."""
+    thread_id = new_id()
+    message_id = new_id()
+    timestamp = now()
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO support_threads
+                   (id, user_id, subject, status, unread_count, created_at, updated_at)
+                   VALUES (?, ?, ?, 'open', 0, ?, ?)""".replace("?", "%s"),
+                (thread_id, user_id, subject, timestamp, timestamp),
+            )
+            cur.execute(
+                """INSERT INTO support_messages
+                   (id, thread_id, author_type, author_user_id, author_name, author_email, body, source, created_at)
+                   VALUES (?, ?, 'teacher', ?, ?, ?, ?, 'app', ?)""".replace("?", "%s"),
+                (message_id, thread_id, user_id, author_name, author_email, body, timestamp),
+            )
+        conn.commit()
+    return get_support_thread(user_id, thread_id)  # type: ignore[return-value]
+
+
+def list_support_threads(user_id: str) -> list[dict]:
+    """Return mailbox rows with their latest message preview."""
+    return _rows(
+        """SELECT t.id, t.user_id, t.subject, t.status, t.unread_count,
+                         t.created_at, t.updated_at,
+                         latest.body AS last_message,
+                         latest.author_type AS last_author_type,
+                         latest.created_at AS last_message_at
+                    FROM support_threads t
+                    LEFT JOIN LATERAL (
+                      SELECT m.body, m.author_type, m.created_at
+                        FROM support_messages m
+                       WHERE m.thread_id = t.id
+                       ORDER BY m.created_at DESC, m.id DESC
+                       LIMIT 1
+                    ) latest ON TRUE
+                   WHERE t.user_id = ?
+                   ORDER BY t.updated_at DESC, t.id DESC""",
+        (user_id,),
+    )
+
+
+def get_support_thread(user_id: str, thread_id: str) -> dict | None:
+    thread = _row(
+        "SELECT * FROM support_threads WHERE id = ? AND user_id = ?",
+        (thread_id, user_id),
+    )
+    if not thread:
+        return None
+    thread["messages"] = _rows(
+        """SELECT id, thread_id, author_type, author_user_id, author_name,
+                         author_email, body, source, external_id, created_at, read_at
+                    FROM support_messages
+                   WHERE thread_id = ?
+                   ORDER BY created_at ASC, id ASC""",
+        (thread_id,),
+    )
+    return thread
+
+
+def get_support_thread_by_id(thread_id: str) -> dict | None:
+    """Resolve a thread for the trusted inbound-email webhook."""
+    return _row("SELECT * FROM support_threads WHERE id = ?", (thread_id,))
+
+
+def add_support_message(
+    *,
+    thread_id: str,
+    author_type: str,
+    author_user_id: str | None,
+    author_name: str | None,
+    author_email: str | None,
+    body: str,
+    source: str,
+    external_id: str | None = None,
+) -> dict | None:
+    """Append one message and update the thread atomically.
+
+    An external provider may retry a webhook. The unique external id makes
+    those retries harmless while still allowing app messages without one.
+    """
+    existing = _row(
+        "SELECT * FROM support_messages WHERE external_id = ?",
+        (external_id,),
+    ) if external_id else None
+    if existing:
+        return existing
+    message_id = new_id()
+    timestamp = now()
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO support_messages
+                   (id, thread_id, author_type, author_user_id, author_name, author_email,
+                    body, source, external_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""".replace("?", "%s"),
+                (message_id, thread_id, author_type, author_user_id, author_name, author_email, body, source, external_id, timestamp),
+            )
+            cur.execute(
+                """UPDATE support_threads
+                      SET updated_at = ?, unread_count = unread_count + ?
+                    WHERE id = ?""".replace("?", "%s"),
+                (timestamp, 1 if author_type == 'support' else 0, thread_id),
+            )
+        conn.commit()
+    return _row("SELECT * FROM support_messages WHERE id = ?", (message_id,))
+
+
+def mark_support_thread_read(user_id: str, thread_id: str) -> bool:
+    """Clear the teacher's unread support count and message markers."""
+    with borrow() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE support_threads SET unread_count = 0 WHERE id = ? AND user_id = ?".replace("?", "%s"),
+                (thread_id, user_id),
+            )
+            changed = cur.rowcount > 0
+            if changed:
+                cur.execute(
+                    """UPDATE support_messages SET read_at = ?
+                         WHERE thread_id = ? AND author_type = 'support' AND read_at IS NULL""".replace("?", "%s"),
+                    (now(), thread_id),
+                )
+        conn.commit()
+    return changed
+
+
 def export_user_data(user_id: str) -> dict:
     """Everything this teacher put into the app, as one JSON-able dict — for
     self-service data export. Scoped to what they created, not internal
@@ -6793,6 +7048,12 @@ def export_user_data(user_id: str) -> dict:
     curriculum_progress = _rows(
         "SELECT * FROM curriculum_progress WHERE user_id = ? ORDER BY subject, sort_order", (user_id,)
     )
+    support_threads = _rows("SELECT * FROM support_threads WHERE user_id = ? ORDER BY created_at", (user_id,))
+    support_thread_ids = [row["id"] for row in support_threads]
+    support_messages = _rows(
+        "SELECT * FROM support_messages WHERE thread_id = ANY(?) ORDER BY thread_id, created_at, id",
+        (support_thread_ids,),
+    ) if support_thread_ids else []
     return {
         "account": {
             "email": user.get("email"),
@@ -6808,6 +7069,8 @@ def export_user_data(user_id: str) -> dict:
         "plan_feedback": plan_feedback,
         "curriculum_maps": curriculum_maps,
         "curriculum_progress": curriculum_progress,
+        "support_threads": support_threads,
+        "support_messages": support_messages,
     }
 
 

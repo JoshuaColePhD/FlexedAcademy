@@ -6,13 +6,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { ClassSwitcher } from './ClassSwitcher'
 import { WeekPicker } from './WeekPicker'
 
-/* Phone-only. The old header row (ClassSwitcher, a pacing-guide dot, a
- * calendar dot, WeekPicker, all inline) doesn't fit a phone width without
- * everything shrinking to unreadable — this is that same set of controls,
- * given a full-width sheet to breathe in instead, opened by tapping the
- * collapsed title ChatPage now shows on phone in that row's place. Desktop
- * is unchanged; this component isn't rendered there at all.
- */
+/* Class and week controls shared by the desktop chat header and phone title. */
 export function ChatHeaderSheet({
   open,
   onClose,
@@ -40,13 +34,13 @@ export function ChatHeaderSheet({
   const classPath = `/c/${classId}`
 
   return (
-    <>
-      <button
-        type="button"
-        className={`panel-scrim${closing ? ' is-closing' : ''}`}
-        aria-label="Close class and week"
-        onClick={onClose}
-      />
+    <div
+      className={`dialog-scrim chat-header-scrim${closing ? ' is-closing' : ''}`}
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
       <div
         ref={sheetRef}
         tabIndex={-1}
@@ -55,27 +49,37 @@ export function ChatHeaderSheet({
         aria-label="Class and week"
         className={`chat-header-sheet${closing ? ' is-closing' : ''}`}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <p className="eyebrow">Class &amp; week</p>
+        <div className="chat-header-sheet-heading">
+          <div>
+            <p className="eyebrow">FlexEd Academy</p>
+            <h2>Choose your class and week</h2>
+            <p className="chat-header-sheet-intro">Set the course context for this conversation.</p>
+          </div>
           <button type="button" className="btn-icon tap-target" aria-label="Close" onClick={onClose}>
             <X size={16} aria-hidden="true" />
           </button>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <ClassSwitcher classes={classes} activeClass={activeClass} classPath={classPath} />
+        <div className="chat-header-selection">
+          <section className="chat-header-selection-field" aria-labelledby="chat-header-course-label">
+            <p id="chat-header-course-label" className="chat-header-selection-label">Course</p>
+            <ClassSwitcher classes={classes} activeClass={activeClass} classPath={classPath} />
+          </section>
 
           {classId && classId !== 'default' && classes.length > 0 ? (
-            <WeekPicker
-              options={weekOptions}
-              value={conversationWeek}
-              onChange={(week) => {
-                changeWeek(week)
-                onClose()
-              }}
-              schoolName={calendar?.school?.name}
-              disabled={busy}
-            />
+            <section className="chat-header-selection-field" aria-labelledby="chat-header-week-label">
+              <p id="chat-header-week-label" className="chat-header-selection-label">Week</p>
+              <WeekPicker
+                options={weekOptions}
+                value={conversationWeek}
+                onChange={(week) => {
+                  changeWeek(week)
+                  onClose()
+                }}
+                schoolName={calendar?.school?.name}
+                disabled={busy}
+              />
+            </section>
           ) : null}
 
           {!hasPacingGuide ? (
@@ -98,11 +102,11 @@ export function ChatHeaderSheet({
                 No calendar on file for {calendar.school.name} — tap to upload one
               </Link>
             ) : (
-              <p className="text-sm text-ink-muted">{calendar.school.name}</p>
+              <p className="chat-header-sheet-school">{calendar.school.name}</p>
             )
           ) : null}
         </div>
       </div>
-    </>
+    </div>
   )
 }

@@ -6,7 +6,7 @@
  */
 
 :root {
-  --sidebar-w: 15rem;
+  --sidebar-w: clamp(280px, 24vw, 340px);
   --r-xs: 4px;
   --r-sm: 6px;
   --r-md: 8px;
@@ -69,12 +69,12 @@
 }
 
 :root[data-theme='dark'] {
-  --paper-rgb: 23 23 25;
-  --paper-raised-rgb: 30 30 33;
-  --paper-sunken-rgb: 20 20 22;
-  --paper-inset-rgb: 38 38 42;
-  --edge-rgb: 57 57 63;
-  --edge-strong-rgb: 79 79 87;
+  --paper-rgb: 35 35 35;
+  --paper-raised-rgb: 47 47 47;
+  --paper-sunken-rgb: 20 20 19;
+  --paper-inset-rgb: 40 40 39;
+  --edge-rgb: 52 52 50;
+  --edge-strong-rgb: 74 74 71;
   --ink-rgb: 242 242 245;
   --ink-soft-rgb: 209 209 216;
   --ink-muted-rgb: 166 166 177;
@@ -90,6 +90,215 @@
 .app-texture,
 .neo-world {
   background: var(--paper) !important;
+}
+
+/* Public legal pages keep their own article layout. They share the product's
+   tokens and dark palette, but avoid the settings shell and its master/detail
+   navigation so the policy reads like a deliberate document. */
+.legal-page {
+  min-height: 100%;
+  color: var(--ink);
+  background: var(--paper);
+}
+.legal-topbar {
+  border-bottom: 1px solid var(--edge);
+  background: var(--paper-sunken);
+}
+.legal-topbar-inner {
+  display: flex;
+  max-width: 1160px;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.legal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: opacity var(--t-fast) var(--ease);
+}
+.legal-brand:hover { opacity: 0.78; }
+.legal-brand-mark {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--ink);
+  border-radius: 999px;
+}
+.legal-nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+.legal-nav a { transition: color var(--t-fast) var(--ease); }
+.legal-nav a:hover,
+.legal-nav a[aria-current='page'] { color: var(--ink); }
+.legal-nav-back {
+  padding: 8px 12px;
+  color: var(--ink) !important;
+  border: 1px solid var(--edge-strong);
+  border-radius: 9px;
+}
+.legal-nav-back:hover { background: var(--paper-inset); }
+.legal-main {
+  width: min(960px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 58px 0 72px;
+}
+.legal-hero {
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--edge);
+}
+.legal-kicker {
+  margin: 0 0 12px;
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.legal-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+.legal-updated {
+  margin: 12px 0 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+.legal-content {
+  width: min(760px, 100%);
+  margin: 38px auto 0;
+  color: var(--ink-soft);
+}
+.legal-content > .prose {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.legal-content > .prose > p:first-child,
+.legal-content > p:first-child {
+  margin: 0 0 40px;
+  padding: 20px 22px;
+  color: var(--ink);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  background: var(--paper-raised);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+}
+.legal-content .prose h2,
+.legal-content > section h2 {
+  margin: 0 0 14px;
+  padding-top: 28px;
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 650;
+  line-height: 1.3;
+  border-top: 1px solid var(--edge);
+}
+.legal-content .prose > div,
+.legal-content > section {
+  margin-bottom: 38px;
+}
+.legal-content .prose p,
+.legal-content .prose li,
+.legal-content > p,
+.legal-content > section p,
+.legal-content > section li {
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.75;
+}
+.legal-content .prose p { margin-top: 0; }
+.legal-content .prose strong,
+.legal-content > section strong { color: var(--ink); }
+.legal-content .prose ul,
+.legal-content > section ul {
+  margin-top: 0;
+  padding-left: 22px;
+}
+.legal-content a { color: var(--accent-text); }
+.legal-footer {
+  width: min(760px, 100%);
+  margin: 44px auto 0;
+  padding-top: 22px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  border-top: 1px solid var(--edge);
+}
+.privacy-policy-content {
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+.privacy-policy-updated {
+  margin: 0 0 24px;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+.privacy-policy-content .prose {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.privacy-policy-content .prose > p:first-child {
+  margin-bottom: 38px;
+  padding: 18px 20px;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.7;
+  background: var(--paper-raised);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+}
+.privacy-policy-content .prose h2 {
+  margin: 0 0 14px;
+  padding-top: 26px;
+  color: var(--ink);
+  font-size: 1.05rem;
+  border-top: 1px solid var(--edge);
+}
+.privacy-policy-content .prose > div {
+  margin-bottom: 36px;
+}
+.privacy-policy-content .prose p,
+.privacy-policy-content .prose li {
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.75;
+}
+@media (max-width: 640px) {
+  .legal-topbar-inner {
+    min-height: 58px;
+    padding: 0 16px;
+  }
+  .legal-nav { gap: 10px; font-size: 12px; }
+  .legal-nav a:not(.legal-nav-back) { display: none; }
+  .legal-main {
+    width: min(100% - 32px, 760px);
+    padding: 38px 0 52px;
+  }
+  .legal-content { margin-top: 28px; }
+  .legal-content > .prose > p:first-child,
+  .legal-content > p:first-child { padding: 16px; font-size: 1rem; }
+  .privacy-policy-content { width: 100%; }
 }
 .app-blob,
 .app-shell-frame > .app-blob,
@@ -166,8 +375,8 @@
 .msg-bubble-assistant {
   max-width: min(100%, 48rem) !important;
   border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
+  border-radius: 20px !important;
+  background: var(--paper-raised) !important;
 }
 .msg-bubble-user {
   border: 1px solid rgb(var(--accent-rgb) / 0.28) !important;
@@ -182,15 +391,17 @@
 /* A command-like composer: clear edge, quiet controls, one strong send. */
 .composer-shell {
   border: 1px solid var(--edge-strong) !important;
-  border-radius: var(--r-lg) !important;
+  border-radius: 28px !important;
+  /* Lift the composer one surface above the transcript so it reads as the
+     active command bar without needing a heavy shadow or bright accent fill. */
   background: var(--paper-raised) !important;
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.05) !important;
   transition-property: border-color, box-shadow !important;
   transition-duration: var(--t-fast) !important;
 }
 .composer-shell:focus-within {
-  border-color: rgb(var(--accent-rgb) / 0.75) !important;
-  box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.12) !important;
+  border-color: rgb(var(--accent-rgb) / 0.58) !important;
+  box-shadow: 0 0 0 2px rgb(var(--accent-rgb) / 0.1) !important;
 }
 .composer-shell .btn-icon,
 .composer-shell button {
@@ -201,6 +412,41 @@
 .composer-shell .composer-send {
   background: var(--accent) !important;
   color: var(--ink-inverse) !important;
+}
+.composer-shell.is-expanded {
+  border-radius: 20px !important;
+}
+.composer-input {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--ink-muted-rgb) / 0.38) transparent;
+}
+/* The dock is the bottom edge of the conversation. Its height transition
+   therefore grows upward into the transcript, matching the mental model of
+   writing a longer thought without moving the send controls away. */
+.composer-shell {
+  transition:
+    height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color var(--t-fast) var(--ease),
+    box-shadow 180ms var(--ease-out),
+    background-color 180ms var(--ease-out) !important;
+  will-change: height;
+}
+.composer-input {
+  transition:
+    height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 160ms var(--ease-out) !important;
+}
+/* The shell grows from the dock upward. Anchor both control clusters to its
+   lower edge, while the textarea is the only piece that claims the added
+   vertical space. This keeps attach, dictate, and send in the same reliable
+   bottom-left/bottom-right positions during the height transition. */
+.composer-control-row.is-expanded > .composer-accessories,
+.composer-control-row.is-expanded > .composer-action-cluster {
+  align-self: flex-end;
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-shell,
+  .composer-input { transition-duration: 0.01ms !important; }
 }
 
 /* Documents become an inspector, with an unobtrusive full-screen reader. */
@@ -261,6 +507,13 @@
     backdrop-filter: none !important;
     will-change: auto !important;
   }
+  /* Leaving fullscreen must reuse the mounted reader. The ordinary docked
+     rule above has an entrance animation for a newly opened document; without
+     this return state, removing the fullscreen class replays that entrance
+     and makes the shrink look like a second panel opening. */
+  .artifact-overlay.is-composer-overlay.is-fullscreen-returning:not(.is-overlay-fullscreen) {
+    animation: none !important;
+  }
   .is-composer-overlay .doc-body {
     padding: 20px 24px calc(24px + var(--composer-h, 0px));
     scroll-padding-bottom: calc(24px + var(--composer-h, 0px));
@@ -310,8 +563,133 @@
 }
 
 .workspace-chat { min-width: 0; container-type: inline-size; }
+
+/* Shared conversation navigation. */
+.chat-workspace-main { min-width: 0; min-height: 0; background: var(--paper); }
+.chat-workspace-add {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex-shrink: 0;
+  border-radius: 8px; color: var(--ink-muted);
+}
+.chat-workspace-add:hover { color: var(--ink); background: var(--paper-inset); }
+.chat-workspace-search-field {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 12px; border: 1px solid var(--edge); color: var(--ink-muted);
+}
+.chat-workspace-search-field:focus-within { border-color: var(--accent); }
+.chat-workspace-search-field input {
+  width: 100%; min-width: 0; flex: 1; background: transparent;
+  border: 0; outline: 0; color: var(--ink); font-size: 15px;
+}
+.chat-workspace-chat-row { display: flex; min-width: 0; transition: background-color var(--t-fast); }
+.chat-workspace-avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 16px; }
+.chat-workspace-chat-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.chat-workspace-chat-heading { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--ink); }
+.chat-workspace-chat-heading > span { min-width: 0; }
+.chat-workspace-chat-heading time { flex: 0 0 auto; color: var(--ink-muted); white-space: nowrap; }
+.chat-workspace-chat-preview { color: var(--ink-muted); }
+
 .workspace-panes,
 .split-layout-content { min-width: 0; min-height: 0; }
+.settings-layout-shell,
+.split-layout-shell {
+  /* Settings is the reference surface for account and class management.
+     Scope the neutral tokens here so these pages do not inherit the legacy
+     neo-world purple/blue palette from the application root. */
+  --paper-rgb: 247 247 248;
+  --paper-raised-rgb: 255 255 255;
+  --paper-sunken-rgb: 242 242 244;
+  --paper-inset-rgb: 235 235 238;
+  --edge-rgb: 225 225 229;
+  --edge-strong-rgb: 203 203 210;
+  --ink-rgb: 30 30 34;
+  --ink-soft-rgb: 64 64 71;
+  --ink-muted-rgb: 105 105 115;
+  --ink-faint-rgb: 155 155 166;
+  --ink-inverse-rgb: 255 255 255;
+  --accent-rgb: 111 87 221;
+  --accent-hover-rgb: 91 70 190;
+  --accent-tint-rgb: 239 236 255;
+  --accent-text-rgb: 91 70 190;
+  --paper: rgb(var(--paper-rgb));
+  --paper-raised: rgb(var(--paper-raised-rgb));
+  --paper-sunken: rgb(var(--paper-sunken-rgb));
+  --paper-inset: rgb(var(--paper-inset-rgb));
+  --edge: rgb(var(--edge-rgb));
+  --edge-strong: rgb(var(--edge-strong-rgb));
+  --ink: rgb(var(--ink-rgb));
+  --ink-soft: rgb(var(--ink-soft-rgb));
+  --ink-muted: rgb(var(--ink-muted-rgb));
+  --ink-faint: rgb(var(--ink-faint-rgb));
+  --ink-inverse: rgb(var(--ink-inverse-rgb));
+  --accent: rgb(var(--accent-rgb));
+  --accent-hover: rgb(var(--accent-hover-rgb));
+  --accent-tint: rgb(var(--accent-tint-rgb));
+  --accent-text: rgb(var(--accent-text-rgb));
+}
+:root[data-theme='dark'] .settings-layout-shell,
+:root[data-theme='dark'] .split-layout-shell {
+  --paper-rgb: 35 35 35;
+  --paper-raised-rgb: 47 47 47;
+  --paper-sunken-rgb: 20 20 19;
+  --paper-inset-rgb: 40 40 39;
+  --edge-rgb: 52 52 50;
+  --edge-strong-rgb: 74 74 71;
+  --ink-rgb: 242 242 245;
+  --ink-soft-rgb: 209 209 216;
+  --ink-muted-rgb: 166 166 177;
+  --ink-faint-rgb: 112 112 124;
+  --ink-inverse-rgb: 20 20 19;
+  --accent-rgb: 151 132 255;
+  --accent-hover-rgb: 174 160 255;
+  --accent-tint-rgb: 54 48 82;
+  --accent-text-rgb: 183 171 255;
+}
+.split-layout-shell {
+  /* Split pages use the same neutral paper as Settings. Do not let the
+     historical glass-panel navy wash recolor this master/detail surface. */
+  background: var(--paper) !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.split-layout-shell-general {
+  border: 0 !important;
+  background: var(--paper) !important;
+}
+.split-layout-general-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  min-height: 42px;
+}
+.split-layout-general-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 28px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--edge);
+  scrollbar-width: none;
+}
+.split-layout-general-tabs::-webkit-scrollbar { display: none; }
+.split-layout-general-tabs button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 12px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 500;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  white-space: nowrap;
+}
+.split-layout-general-tabs button:hover { color: var(--ink); }
+.split-layout-general-tabs button.is-active {
+  color: var(--accent-text);
+  border-bottom-color: var(--accent);
+}
 .rail-collapse-collapsed {
   background: transparent !important;
   border-color: transparent !important;
@@ -365,7 +743,49 @@
 .details-chevron { flex-shrink: 0; transition: transform var(--t-fast); }
 .workspace-topbar { gap: 12px; }
   .workspace-topbar button { box-shadow: none !important; }
+.workspace-topbar .chat-head-trigger {
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  padding: 3px 6px;
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.workspace-topbar .chat-head-trigger:hover { background: var(--paper-inset); }
+.workspace-topbar .chat-head-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
 .workspace-topbar .chat-head { max-width: 45%; }
+.workspace-topbar .chat-current-thread { min-width: 0; }
+.workspace-topbar .chat-current-thread-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.workspace-topbar .chat-current-thread-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.workspace-topbar .chat-current-thread-title {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.workspace-topbar .chat-current-thread-course {
+  color: var(--ink-muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
 .workspace-topbar .chat-week { min-width: 0; }
 .workspace-topbar .chat-week select { min-width: 0; width: 100%; }
 @container (max-width: 700px) {
@@ -511,28 +931,26 @@
     border: 1px solid transparent;
     border-radius: var(--r-md) !important;
   }
-  /* The materials rail is an inspector, not a column in the chat grid. Float
-     it over the right edge like the reference app so opening it cannot move
-     the transcript or resize the composer. */
+  /* The materials rail is a real inspector column, like the reference app.
+     Keeping it in the grid gives the conversation an honest width and keeps
+     the greeting/composer from hiding underneath the panel. */
   .workspace-panes {
     position: relative;
     align-items: stretch !important;
   }
   .workspace-panes > .artifact-drawer {
-    position: absolute;
-    /* Start at the header's bottom edge. The inspector owns the right side of
-       the context strip now, so there is no visual gap between the header and
-       the panel. */
-    top: 54px;
-    right: 12px;
+    position: relative;
+    top: auto;
+    right: auto;
     bottom: auto;
-    height: min(560px, calc(100% - 66px));
-    z-index: 40;
+    height: 100%;
+    z-index: 2;
     width: clamp(292px, 26vw, 360px);
-    border: 1px solid var(--edge) !important;
-    border-radius: 0 0 var(--r-xl) var(--r-xl) !important;
+    border: 0 !important;
+    border-left: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
     background: var(--paper-raised) !important;
-    box-shadow: var(--shadow-lg) !important;
+    box-shadow: none !important;
     transition: width var(--t-panel) var(--ease-out), box-shadow var(--t-fast) var(--ease-out) !important;
   }
   .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body {
@@ -941,31 +1359,17 @@
     opacity: 1;
   }
 
-  /* Keep one stable reading lane behind the floating inspector. The lane is
-     wide enough for a real reply, but its width never expands into newly
-     available pixels when either sidebar opens or closes. */
-  .chat-transcript-column {
-    --chat-inspector-reserve: calc(clamp(292px, 26vw, 360px) + 44px);
-    width: min(60rem, calc(100% - var(--chat-inspector-reserve))) !important;
-    max-width: min(60rem, calc(100% - var(--chat-inspector-reserve))) !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-    transform: translateX(calc(var(--chat-inspector-reserve) / -2));
-  }
+  .chat-transcript-column,
   .workspace-panes:has(.artifact-drawer.is-open) .chat-transcript-column {
-    /* The drawer is absolute and does not participate in this lane's width,
-       so the same fixed measure applies in both rail states. If a narrow
-       viewport cannot afford it, min(100%, …) lets the lane shrink safely. */
-    width: min(60rem, calc(100% - var(--chat-inspector-reserve))) !important;
-    max-width: min(60rem, calc(100% - var(--chat-inspector-reserve))) !important;
-    margin-right: auto !important;
-    margin-left: auto !important;
+    width: 100% !important;
+    max-width: 54rem !important;
+    margin-inline: auto !important;
+    transform: none;
   }
   .chat-transcript-column .msg-bubble-assistant,
   .chat-transcript-column .msg-bubble-user {
-    max-width: none !important;
-    font-size: 0.9rem !important;
-    line-height: 1.5 !important;
+    font-size: 1rem !important;
+    line-height: 1.6 !important;
   }
   .artifact-rail:not(.is-bar) > section[aria-label='Context'] {
     flex: 0 0 auto;
@@ -1003,5 +1407,884 @@
   .artifact-overlay {
     border-left: 0 !important;
     border-top: 1px solid var(--edge) !important;
+  }
+}
+
+/* One conversation list and an optional workspace, shared across classes. */
+.chat-workspace-chat-row {
+  align-items: center;
+  min-height: 70px;
+  padding: 11px 12px;
+  gap: 12px;
+  border: 0 !important;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: none !important;
+}
+.chat-workspace-chat-row.is-active,
+.chat-workspace-chat-row:hover {
+  background: var(--paper-inset) !important;
+  color: var(--ink) !important;
+}
+.chat-workspace-avatar {
+  flex-basis: 38px;
+  width: 38px;
+  height: 38px;
+  color: rgb(20 20 19);
+  font-weight: 500;
+  box-shadow: none;
+}
+.chat-workspace-chat-heading { font-size: 15px; line-height: 1.4; }
+.chat-workspace-chat-heading > span { font-weight: 500; }
+.chat-workspace-chat-heading time { font-size: 12px; font-weight: 400; }
+.chat-workspace-chat-preview {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+.chat-row-options {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  z-index: 20;
+  transform: translateY(-50%);
+}
+.chat-row-options-trigger {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  background: var(--paper-inset);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.14);
+  transition: color var(--t-fast), background-color var(--t-fast), transform var(--t-fast);
+}
+.chat-row-options-trigger:hover,
+.chat-row-options.is-open .chat-row-options-trigger,
+.chat-row-options-trigger:focus-visible {
+  color: var(--ink);
+  background: var(--paper-raised);
+}
+.chat-row-options-trigger:active { transform: translateY(1px); }
+.chat-row-options-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 148px;
+  padding: 4px;
+  background: var(--paper-raised);
+  border: 1px solid var(--edge-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+}
+.chat-row-options-menu button {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.chat-row-options-menu button:hover,
+.chat-row-options-menu button:focus-visible {
+  color: var(--ink);
+  background: var(--paper-inset);
+  outline: none;
+}
+.chat-row-options-menu button.is-destructive { color: var(--mark, #ef6b67); }
+.chat-row-options-menu button.is-destructive:hover,
+.chat-row-options-menu button.is-destructive:focus-visible { color: var(--mark, #ef6b67); }
+@media (hover: hover) {
+  .chat-row-options { opacity: 0; pointer-events: none; transition: opacity var(--t-fast) var(--ease); }
+  .group:hover .chat-row-options,
+  .chat-row-options:focus-within,
+  .chat-row-options.is-open { opacity: 1; pointer-events: auto; }
+}
+.app-rail .rail-brand-row { min-height: 58px; margin: 0; padding: 0 20px !important; }
+.app-rail .rail-brand-row > svg { color: var(--ink-muted); filter: none; }
+.app-rail .eyebrow { font-size: 12px !important; font-weight: 400; letter-spacing: 0 !important; text-transform: none; }
+.chat-workspace-search-field { min-height: 42px; background: var(--paper-inset); border-radius: 12px; }
+/* Search is an on-demand surface: the rail stays a simple chat list until
+   the magnifying-glass control in its header is used. */
+.rail-search-popover { flex: 0 0 auto; }
+.account-menu-footer.is-spacious {
+  margin-top: 6px;
+  padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--edge);
+  background: var(--paper);
+}
+.account-menu-footer.is-spacious .rail-reveal > button {
+  min-height: 64px;
+  width: 100%;
+  gap: 14px;
+  border-radius: 16px;
+  padding: 8px 10px;
+}
+.account-menu-footer.is-spacious .account-menu-avatar {
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.22);
+}
+.app-rail a:focus-visible,
+.app-rail button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.workspace-topbar { padding-inline: 16px !important; gap: 10px; }
+.workspace-topbar .chat-current-thread-title { font-size: 15px; font-weight: 500; }
+.workspace-topbar .chat-current-thread-avatar { color: rgb(20 20 19); box-shadow: none; }
+.workspace-school { display: none !important; }
+.artifact-drawer-heading {
+  display: flex;
+  min-height: 54px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--edge);
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+.composer-dock-surface { padding-bottom: 18px !important; }
+.composer-dock-surface > div { max-width: 54rem; }
+/* A modal owns the screen while it is open. Keep the persistent composer from
+   showing through the dimmed layer as a distracting dark rectangle beneath the
+   card; it returns with its original geometry as soon as the modal closes. */
+body:has(.dialog-scrim) .composer-dock-surface {
+  visibility: hidden;
+  pointer-events: none;
+}
+.composer-shell button { border-radius: 999px !important; }
+.composer-shell textarea { font-size: 16px !important; }
+.msg-bubble-user { border: 0 !important; border-radius: 20px !important; background: var(--paper-inset) !important; }
+@media (min-width: 768px) {
+  .workspace-panes > .artifact-drawer {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 clamp(280px, 25vw, 340px);
+    width: clamp(280px, 25vw, 340px);
+    min-width: 0;
+  }
+  .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body { width: 100%; }
+  .chat-context-strip,
+  .workspace-panes:has(.artifact-drawer.is-open) .chat-context-strip { padding-inline: 24px; }
+  :root[data-theme='dark'] .workspace-panes > .artifact-drawer,
+  :root[data-theme='dark'] .artifact-rail:not(.is-bar) { background: rgb(28 27 23) !important; }
+}
+@media (max-width: 1023.98px) {
+  .workspace-topbar .workspace-sidebar-toggle { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-chat-row, .app-rail, .artifact-drawer { transition: none !important; }
+}
+
+/* Let the two rails read as deliberate side surfaces instead of square strips
+   cut from the canvas. The shared outer gutter makes their curved top and
+   bottom edges visible, while the chat still owns the uninterrupted center.
+   Phone drawers stay edge-to-edge, where this framing would waste reading
+   space. */
+@media (min-width: 768px) {
+  .app-shell-frame {
+    gap: 10px !important;
+    padding: 10px !important;
+  }
+  .app-shell-frame.is-rail-collapsed { gap: 0 !important; }
+  :root[data-theme] .app-rail:not(.rail-drawer),
+  :root[data-theme] .app-shell-main {
+    border: 1px solid var(--edge) !important;
+    border-radius: 22px !important;
+  }
+  /* The workspace has several full-height inner surfaces. Clip them to the
+     outer shell's silhouette so a seam or child background cannot continue
+     past the curved top-left and bottom-left corners. */
+  :root[data-theme] .app-shell-main {
+    clip-path: inset(0 round 22px);
+    -webkit-clip-path: inset(0 round 22px);
+  }
+  /* Focused pages such as Settings render their own two-sided shell inside
+     the main workspace. Let that shell own the visible frame; otherwise the
+     collapsed chat rail leaves the parent workspace border running straight
+     through the rounded corners of the settings surface. */
+  :root[data-theme] .app-shell-main.is-focused-route,
+  :root[data-theme] .app-shell-main:has(.split-layout-shell) {
+    border: 0 !important;
+    border-radius: 0 !important;
+    clip-path: none;
+    -webkit-clip-path: none;
+  }
+  :root[data-theme] .app-shell-main.is-focused-route .split-layout-shell,
+  :root[data-theme] .app-shell-main:has(.split-layout-shell) .split-layout-shell {
+    border: 1px solid var(--edge) !important;
+    border-radius: 22px !important;
+    overflow: hidden;
+  }
+  /* Settings has a dedicated master/detail wrapper rather than SplitLayout,
+     but it needs the same ownership of the rounded frame. */
+  :root[data-theme] .app-shell-main.is-focused-route:has(.settings-layout-shell) {
+    border: 0 !important;
+    border-radius: 0 !important;
+    clip-path: none;
+    -webkit-clip-path: none;
+  }
+  .settings-layout-shell {
+    border: 1px solid var(--edge) !important;
+    border-radius: 22px !important;
+    overflow: hidden;
+    clip-path: inset(0 round 22px);
+    -webkit-clip-path: inset(0 round 22px);
+    box-shadow: none !important;
+  }
+  /* Split pages own the same tapered frame as Settings. Clipping the shell
+     keeps the dark sidebar/content fills from running square through the
+     curved top-left and bottom-right corners. */
+  .split-layout-shell {
+    border: 1px solid var(--edge) !important;
+    border-radius: 22px !important;
+    overflow: hidden;
+    clip-path: inset(0 round 22px);
+    -webkit-clip-path: inset(0 round 22px);
+    box-shadow: none !important;
+  }
+  .split-layout-sidebar {
+    border-radius: 21px 0 0 21px;
+  }
+  .split-layout-content {
+    border-radius: 0 21px 21px 0;
+  }
+  /* A zero-width rail still contributes its own border box. Remove that
+     border when collapsed so it cannot leave a full-height hairline beside
+     the center panel's rounded left corners. */
+  .app-shell-frame.is-rail-collapsed > .app-rail {
+    border: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    opacity: 0;
+    pointer-events: none;
+  }
+  :root[data-theme] .app-rail:not(.rail-drawer) {
+    border-right-color: var(--edge) !important;
+  }
+  .workspace-panes > .artifact-drawer {
+    height: auto !important;
+    margin: 10px 10px 10px 0;
+    border: 1px solid var(--edge) !important;
+    border-radius: 22px !important;
+    overflow: hidden;
+  }
+  /* The drawer has its own inner header and scrolling body, so make the
+     curve explicit on those surfaces as well. Otherwise their dark fills can
+     visually square off the outer shell even though its border is rounded. */
+  .workspace-panes > .artifact-drawer.is-open {
+    border-color: rgb(var(--edge-strong-rgb) / 0.82) !important;
+    border-radius: 22px !important;
+    box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
+    isolation: isolate;
+  }
+  .workspace-panes > .artifact-drawer.is-open .artifact-drawer-heading {
+    border-radius: 21px 21px 0 0;
+  }
+  .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body,
+  .workspace-panes > .artifact-drawer.is-open .artifact-rail:not(.is-bar) {
+    border-radius: 0 0 21px 21px;
+  }
+}
+
+/* The expanded lesson-plan reader is the third desktop panel. Give it the
+   same inset and curved silhouette as the navigation and outputs rails so its
+   left edge does not cut squarely across the workspace. */
+@media (min-width: 900px) {
+  .artifact-overlay.is-composer-overlay:not(.is-overlay-fullscreen) {
+    /* Sit a touch inside the conversation canvas rather than lining up
+       exactly with its edge. The exposed sliver and soft shadow make the
+       reader feel layered over the chat instead of replacing that panel. */
+    inset: 10px 10px 10px calc(var(--sidebar-w) + 1.75rem) !important;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.82) !important;
+    border-radius: 22px !important;
+    box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .artifact-overlay.is-composer-overlay .doc-head {
+    border-radius: 21px 21px 0 0;
+  }
+  .artifact-overlay.is-composer-overlay .doc-body {
+    border-radius: 0 0 21px 21px;
+  }
+}
+
+/* Fullscreen is still part of the desktop workspace, rather than a separate
+   browser page. Keep a narrow app gutter and the same curved shell here so
+   the reader retains its visible top-left and bottom-left flare when it
+   expands to fill the canvas. Phone fullscreen deliberately remains flush. */
+@media (min-width: 768px) {
+  .artifact-overlay.is-overlay-fullscreen {
+    inset: 10px !important;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.82) !important;
+    border-radius: 22px !important;
+    box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .artifact-overlay.is-overlay-fullscreen .doc-head {
+    border-radius: 21px 21px 0 0 !important;
+  }
+  .artifact-overlay.is-overlay-fullscreen .doc-body {
+    border-radius: 0 0 21px 21px;
+  }
+}
+
+.composer-accessories .composer-tools-menu { left: 0; right: auto; width: min(320px, calc(100vw - 48px)); }
+.composer-ghost-overlay {
+  font-size: 16px !important;
+  transform: translateY(3px);
+}
+.workspace-topbar .chat-head { max-width: none; flex: 1; }
+@media (min-width: 768px) {
+  .chat-header-sheet {
+    top: auto;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    width: min(680px, calc(100vw - 48px));
+    border: 1px solid var(--edge);
+    border-radius: 18px;
+    padding: 20px;
+  }
+}
+
+.chat-header-scrim { z-index: 310; }
+.chat-header-sheet {
+  position: relative;
+  inset: auto;
+  z-index: 311;
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(88dvh, 820px);
+  overflow-y: auto;
+  padding: 32px;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--edge-strong);
+  border-radius: 22px;
+  box-shadow: var(--shadow-pop);
+  animation: dialog-in var(--t-base) var(--ease-glide) both;
+}
+.chat-header-sheet.is-closing {
+  animation: dialog-out var(--t-fast) var(--ease) both;
+}
+.chat-header-sheet-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.chat-header-sheet-heading h2 {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.15;
+}
+.chat-header-sheet-intro {
+  margin: 10px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.95rem;
+}
+.chat-header-selection {
+  display: grid;
+  gap: 14px;
+}
+.chat-header-selection-field {
+  padding: 18px;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+}
+.chat-header-selection-label {
+  margin: 0 0 10px;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.chat-header-selection-field > .relative {
+  padding: 0;
+}
+.chat-header-selection-field > .relative > button {
+  min-height: 52px;
+  padding-inline: 14px;
+  background: var(--paper-raised);
+  border: 1px solid var(--edge-strong);
+  border-radius: 12px;
+}
+.chat-header-selection-field > .relative > button:hover,
+.chat-header-selection-field > .relative > button:focus-visible {
+  background: var(--paper-inset);
+}
+.chat-header-selection-field .chat-week {
+  position: relative;
+  display: flex;
+  min-height: 52px;
+  gap: 10px;
+  padding: 0 14px;
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--edge-strong);
+  border-radius: 12px;
+}
+.week-picker-trigger {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  min-height: 50px;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  color: var(--ink);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+}
+.week-picker-trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.week-picker-menu {
+  max-height: min(45vh, 360px);
+  overflow-y: auto;
+}
+.week-picker-menu button:focus-visible {
+  outline: none;
+}
+.chat-header-sheet-school {
+  margin: 8px 2px 0;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+@media (max-width: 767.98px) {
+  .chat-header-sheet {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 32px);
+    padding: 24px;
+    border-radius: 20px;
+  }
+  .chat-header-sheet-heading { gap: 12px; margin-bottom: 22px; }
+  .chat-header-sheet-heading h2 { font-size: 1.45rem; }
+}
+.workspace-sidebar-toggle:focus-visible,
+.workspace-artifact-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) {
+  .artifact-rail-scroll .rail-actions { opacity: 1; }
+}
+
+/* The workspace is an inspector, closer to the reference app's quiet routines
+   pane than a second dashboard. Its structure stays intact, but most cards
+   become compact rows and the class details recede behind the chat. */
+@media (min-width: 768px) {
+  .artifact-drawer-heading {
+    min-height: 50px;
+    padding-inline: 16px;
+    color: var(--ink-soft);
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .artifact-drawer-heading .btn-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px !important;
+    color: var(--ink-muted);
+  }
+  .artifact-rail-scroll {
+    gap: 0;
+    padding: 12px 16px 16px;
+  }
+  .artifact-rail-scroll > section,
+  .artifact-rail-scroll > section[aria-label='This week'],
+  .artifact-rail-scroll > section[aria-label='Sources used'],
+  .artifact-rail-scroll > section[aria-label='Deliverables'],
+  .artifact-rail-scroll > section[aria-label='Outputs'] {
+    margin: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Class context'] {
+    padding: 0 0 12px;
+  }
+  .artifact-rail-scroll > section[aria-label='Class context'] > div:first-child {
+    padding: 0 0 8px !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Class context'] > div:first-child span {
+    color: var(--ink-muted) !important;
+    font-size: 11px !important;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .artifact-rail-scroll > section[aria-label='Class context'] > div:last-child {
+    padding: 0 !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Class context'] dl,
+  .artifact-rail-scroll > section[aria-label='Class context'] a {
+    display: none;
+  }
+  .artifact-rail-scroll > section[aria-label='Class context'] .rail-tile {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+  .artifact-rail-scroll > section[aria-label='Class context'] p:first-child {
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .artifact-rail-scroll > section[aria-label='Class context'] p:last-child {
+    font-size: 12px;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] > div:first-child,
+  .artifact-rail-scroll > section[aria-label='Lesson plans'] > div:first-child,
+  .artifact-rail-scroll > section[aria-label='Assessments'] > div:first-child,
+  .artifact-rail-scroll > section[aria-label='This week'] > div:first-child,
+  .artifact-rail-scroll > section[aria-label='Sources used'] > div:first-child,
+  .artifact-rail-scroll > section[aria-label='Deliverables'] > div:first-child {
+    padding: 14px 0 7px !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card,
+  .artifact-rail-scroll > section[aria-label='Lesson plans'] .rail-card,
+  .artifact-rail-scroll > section[aria-label='Assessments'] .rail-card,
+  .artifact-rail-scroll > section[aria-label='Assessments'] .rail-row,
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card,
+  .artifact-rail-scroll > section[aria-label='Sources used'] .rail-row {
+    min-height: 44px;
+    padding: 8px 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card:first-child {
+    padding-inline: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll .rail-card:hover,
+  .artifact-rail-scroll .rail-row:hover,
+  .artifact-rail-scroll .rail-card:focus-within,
+  .artifact-rail-scroll .rail-row:focus-within {
+    background: transparent !important;
+    color: var(--ink) !important;
+  }
+  .artifact-rail-scroll .rail-tile,
+  .artifact-rail-scroll .rail-row-tile {
+    width: 26px !important;
+    height: 26px !important;
+    border-radius: 7px !important;
+  }
+  .artifact-rail-scroll .rail-title,
+  .artifact-rail-scroll .rail-row-label {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+  }
+  .artifact-rail-scroll .rail-sub {
+    color: var(--ink-muted) !important;
+    font-size: 11px !important;
+  }
+  .artifact-rail-scroll .rail-actions { opacity: 1; }
+  .artifact-rail-scroll > section[aria-label='This week'] { padding-bottom: 10px; }
+  .artifact-rail-scroll > section[aria-label='This week'] li {
+    padding: 6px 0 !important;
+    border-color: var(--edge) !important;
+  }
+  .artifact-rail-scroll .rail-starter-card {
+    min-height: auto;
+    gap: 6px;
+    padding: 11px 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--edge) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .artifact-rail-scroll .rail-starter-card:last-child { border-bottom: 0 !important; }
+  .artifact-rail-scroll .rail-starter-card > div:first-child { justify-content: flex-start; gap: 10px; }
+  .artifact-rail-scroll .rail-starter-card > div:first-child > svg { margin-left: auto; }
+  .artifact-rail-scroll .rail-starter-card p { padding-left: 36px; }
+  .artifact-rail:not(.is-bar) > section[aria-label='Context'] {
+    padding: 14px 16px 16px;
+    border-top: 0 !important;
+    background: var(--paper-sunken) !important;
+  }
+  .artifact-rail:not(.is-bar) .rail-connector-row {
+    padding: 8px 0;
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent !important;
+  }
+  .artifact-rail:not(.is-bar) .rail-connector-tile {
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 7px;
+  }
+  /* Give workspace actions the same compact, rounded selection affordance as
+     the conversation rows. The rail keeps its flat structure until a person
+     points at or tabs to an action. */
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card,
+  .artifact-rail-scroll > section[aria-label='Lesson plans'] .rail-card,
+  .artifact-rail-scroll > section[aria-label='Assessments'] .rail-card,
+  .artifact-rail-scroll > section[aria-label='Assessments'] .rail-row.is-interactive,
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card,
+  .artifact-rail-scroll > section[aria-label='Sources used'] .rail-row.is-interactive,
+  .artifact-rail-scroll .rail-starter-card,
+  .artifact-rail:not(.is-bar) .rail-connector-row {
+    position: relative;
+    margin-inline: -8px;
+    width: calc(100% + 16px);
+    padding-inline: 8px !important;
+    border-radius: 12px !important;
+    transition: background-color var(--t-fast), color var(--t-fast), box-shadow var(--t-fast) !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card:hover,
+  .artifact-rail-scroll > section[aria-label='Lesson plans'] .rail-card:hover,
+  .artifact-rail-scroll > section[aria-label='Assessments'] .rail-card:hover,
+  .artifact-rail-scroll > section[aria-label='Assessments'] .rail-row.is-interactive:hover,
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card:hover,
+  .artifact-rail-scroll > section[aria-label='Sources used'] .rail-row.is-interactive:hover,
+  .artifact-rail-scroll .rail-starter-card:hover,
+  .artifact-rail:not(.is-bar) .rail-connector-row:hover {
+    background: var(--paper-inset) !important;
+  }
+  .artifact-rail-scroll > section[aria-label='Outputs'] .rail-card:has(:focus-visible),
+  .artifact-rail-scroll > section[aria-label='Lesson plans'] .rail-card:has(:focus-visible),
+  .artifact-rail-scroll > section[aria-label='Assessments'] .rail-card:has(:focus-visible),
+  .artifact-rail-scroll > section[aria-label='Assessments'] .rail-row.is-interactive:focus-visible,
+  .artifact-rail-scroll > section[aria-label='Deliverables'] .rail-card:has(:focus-visible),
+  .artifact-rail-scroll > section[aria-label='Sources used'] .rail-row.is-interactive:focus-visible,
+  .artifact-rail-scroll .rail-starter-card:focus-visible,
+  .artifact-rail:not(.is-bar) .rail-connector-row:focus-visible {
+    background: var(--paper-inset) !important;
+    box-shadow: inset 3px 0 0 var(--accent), var(--focus-ring) !important;
+  }
+  .artifact-rail-scroll .rail-card-reader:hover .rail-reader-chevron,
+  .artifact-rail-scroll .rail-card-reader:focus-visible .rail-reader-chevron,
+  .artifact-rail-scroll .rail-starter-card:hover > div:first-child > svg {
+    color: var(--accent-text);
+    transform: translateX(2px);
+  }
+}
+
+/* ══ PHONE + TABLET FIT ═══════════════════════════════════════════════════
+   The shell has a deliberately dense desktop rhythm, but a touch viewport
+   needs two different protections: phones need every surface to stay inside
+   the visual viewport, while iPad portrait needs the navigation and artifact
+   drawer to give the conversation a usable reading column. Keep these rules
+   at the end of the Codex layer so they win over the desktop density pass
+   above. */
+@media (max-width: 767.98px) {
+  html,
+  body,
+  #root {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-shell-main,
+  .workspace-panes,
+  .workspace-chat,
+  .chat-workspace-main,
+  .chat-transcript-column {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .workspace-topbar {
+    min-height: 52px !important;
+    height: 52px !important;
+    padding-right: max(8px, var(--safe-r)) !important;
+    padding-left: max(8px, var(--safe-l)) !important;
+  }
+
+  .workspace-topbar .ml-auto {
+    gap: 4px;
+  }
+
+  .workspace-artifact-toggle,
+  .split-layout-mobile-header > button,
+  .split-layout-general-header > button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .split-layout-mobile-tabs button {
+    min-height: 44px;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .chat-transcript-column {
+    padding-right: max(12px, var(--safe-r)) !important;
+    padding-left: max(12px, var(--safe-l)) !important;
+  }
+
+  .chat-transcript-column .msg-bubble-assistant,
+  .chat-transcript-column .msg-bubble-user {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  /* The dock is in normal flow on phones. Let the home indicator add space
+     without changing the shell's measured composer width. */
+  .composer-dock-surface {
+    padding-right: 0 !important;
+    padding-bottom: max(18px, calc(18px + var(--safe-b))) !important;
+    padding-left: 0 !important;
+  }
+
+  .composer-dock-surface > div {
+    width: 100%;
+    max-width: none !important;
+    padding-right: max(12px, var(--safe-r));
+    padding-left: max(12px, var(--safe-l));
+  }
+
+  .composer-shell,
+  .composer-control-row {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .composer-control-row {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .composer-tools-menu {
+    max-height: min(60dvh, 420px);
+    overflow-y: auto;
+  }
+
+  /* Keep reader controls reachable when the plan is opened from a narrow
+     phone, including devices with a bottom home indicator. */
+  .mobile-plan-reader .doc-head {
+    padding-right: max(12px, var(--safe-r));
+    padding-left: max(12px, var(--safe-l));
+  }
+
+  .mobile-plan-reader .doc-body {
+    padding-right: max(16px, var(--safe-r));
+    padding-left: max(16px, var(--safe-l));
+  }
+
+  .mobile-composer-plan-sheet,
+  .mobile-composer-plan-sheet .plan-peek,
+  .mobile-composer-plan-sheet .plan-peek-body {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  html,
+  body,
+  #root {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* iPad portrait keeps a drawer for global navigation, but its width should
+     leave room for the chat rather than consuming the desktop 300px minimum. */
+  .app-rail.rail-drawer {
+    width: min(320px, 82vw) !important;
+  }
+
+  .app-shell-main,
+  .workspace-panes,
+  .workspace-chat,
+  .chat-workspace-main {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .workspace-topbar {
+    min-height: 52px !important;
+    height: 52px !important;
+    padding-right: max(12px, var(--safe-r)) !important;
+    padding-left: max(12px, var(--safe-l)) !important;
+  }
+
+  .workspace-artifact-toggle,
+  .split-layout-general-header > button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* The drawer is an inspector at tablet size, not a second desktop column.
+     A 248px floor preserves labels while returning meaningful width to the
+     transcript at 768–900px. */
+  .workspace-panes > .artifact-drawer {
+    flex-basis: clamp(248px, 31vw, 320px) !important;
+    width: clamp(248px, 31vw, 320px) !important;
+    margin-top: 8px;
+    margin-right: 8px;
+    margin-bottom: 8px;
+    border-radius: 18px !important;
+  }
+
+  .workspace-panes:has(.artifact-drawer.is-open) .chat-context-strip {
+    padding-right: 24px !important;
+  }
+
+  .composer-dock-surface {
+    padding-right: max(12px, var(--safe-r)) !important;
+    padding-bottom: max(18px, calc(18px + var(--safe-b))) !important;
+    padding-left: max(12px, var(--safe-l)) !important;
+  }
+
+  .composer-dock-surface > div {
+    max-width: 54rem;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .artifact-rail-scroll {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  /* The portrait side sheet should leave a visible conversation sliver but
+     never exceed the available height once the browser chrome is present. */
+  .artifact-overlay.is-tablet-side-sheet {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .split-layout-content-inner {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .split-layout-sidebar header > button,
+  .split-layout-sidebar nav button {
+    min-width: 44px;
+    min-height: 44px;
   }
 }

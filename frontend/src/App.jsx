@@ -39,6 +39,7 @@ const SettingsPage = lazyNamed(() => import('./pages/SettingsPage.jsx'), 'Settin
 const HistoryPage = lazyNamed(() => import('./pages/HistoryPage.jsx'), 'HistoryPage')
 const OnboardingSetupPage = lazyNamed(() => import('./pages/onboarding/OnboardingSetupPage.jsx'), 'OnboardingSetupPage')
 const AdminPage = lazyNamed(() => import('./pages/AdminPage.jsx'), 'AdminPage')
+const SupportPage = lazyNamed(() => import('./pages/SupportPage.jsx'), 'SupportPage')
 const LandingPage = lazyNamed(() => import('./pages/LandingPage.jsx'), 'LandingPage')
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'))
 const SignupPage = lazy(() => import('./pages/auth/SignupPage.jsx'))
@@ -174,6 +175,7 @@ function ClassRoutes() {
           <Route path="standards" element={<ErrorBoundary scope="standards" compact><StandardsPage /></ErrorBoundary>} />
           <Route path="settings" element={<ErrorBoundary scope="settings" compact><SettingsPage /></ErrorBoundary>} />
           <Route path="admin" element={<ErrorBoundary scope="admin" compact><AdminPage /></ErrorBoundary>} />
+          <Route path="contact" element={<ErrorBoundary scope="support" compact><SupportPage /></ErrorBoundary>} />
             <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </Suspense>

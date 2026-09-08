@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import hmac
 import re
 import subprocess
 import tempfile
@@ -10,7 +11,7 @@ from html import escape
 from pathlib import Path
 
 import requests
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -306,35 +307,162 @@ class SupportMessageBody(BaseModel):
     message: str = Field(min_length=1, max_length=5000)
 
 
-@router.post("/support")
-@limiter.limit("5/hour")
-def send_support_message(request: Request, body: SupportMessageBody, user_id: str = Depends(get_current_user)):
-    """Send a teacher's support note without opening an external mail client."""
+def _support_reply_address(thread_id: str) -> str:
+    """Address routed by the email provider back to the inbound webhook."""
+    local, _, domain = settings.support_email.partition("@")
+    return f"{local}+{thread_id}@{domain or 'flexedacademy.com'}"
+
+
+def _send_support_email(*, to: str, subject: str, body: str, reply_to: str) -> bool:
+    """Best-effort delivery; the database remains authoritative."""
+    return mail.send(
+        to=to,
+        subject=subject,
+        reply_to=reply_to,
+        html=f"<p>{escape(body).replace(chr(10), '<br>')}</p>",
+    )
+
+
+def _create_support_thread(user_id: str, subject: str, message: str) -> dict:
     user = db.get_user_by_id(user_id)
     if not user or not user.get("email"):
         raise AppError("support_sender_missing", "Your account email is unavailable. Please try again.", status=400)
-
-    subject = re.sub(r"[\r\n]+", " ", body.subject.strip()) or "FlexEd Academy support"
-    message = body.message.strip()
-    sender_name = escape(str(user.get("name") or "FlexEd teacher"))
-    sender_email = escape(str(user["email"]))
-    message_html = escape(message).replace("\n", "<br>")
-    sent = mail.send(
-        to=settings.support_email,
-        subject=f"FlexEd support — {subject}",
-        reply_to=str(user["email"]),
-        html=(
-            f"<p><strong>From:</strong> {sender_name} &lt;{sender_email}&gt;</p>"
-            f"<p>{message_html}</p>"
-        ),
+    clean_subject = re.sub(r"[\r\n]+", " ", subject.strip()) or "FlexEd Academy support"
+    clean_message = message.strip()
+    if not clean_message:
+        raise AppError("support_message_empty", "Write a message before sending it.", status=400)
+    thread = db.create_support_thread(
+        user_id,
+        subject=clean_subject,
+        body=clean_message,
+        author_name=user.get("name"),
+        author_email=user.get("email"),
     )
-    if not sent:
-        raise AppError(
-            "support_unavailable",
-            "Support email is not available right now. Please try again later.",
-            status=503,
-        )
+    delivered = _send_support_email(
+        to=settings.support_email,
+        subject=f"FlexEd support — {clean_subject}",
+        body=f"From: {user.get('name') or 'FlexEd teacher'} <{user['email']}>\n\n{clean_message}",
+        reply_to=_support_reply_address(thread["id"]),
+    )
+    thread["email_sent"] = delivered
+    return thread
+
+
+@router.get("/support/threads")
+def list_support_threads(user_id: str = Depends(get_current_user)):
+    return {"threads": db.list_support_threads(user_id)}
+
+
+@router.post("/support/threads")
+def create_support_thread(body: SupportMessageBody, user_id: str = Depends(get_current_user)):
+    return _create_support_thread(user_id, body.subject, body.message)
+
+
+@router.get("/support/threads/{thread_id}")
+def get_support_thread(thread_id: str, user_id: str = Depends(get_current_user)):
+    thread = db.get_support_thread(user_id, thread_id)
+    if not thread:
+        raise AppError("support_thread_not_found", "That support conversation is no longer available.", status=404)
+    return thread
+
+
+@router.post("/support/threads/{thread_id}/messages")
+def add_support_thread_message(thread_id: str, body: SupportMessageBody, user_id: str = Depends(get_current_user)):
+    thread = db.get_support_thread(user_id, thread_id)
+    if not thread:
+        raise AppError("support_thread_not_found", "That support conversation is no longer available.", status=404)
+    user = db.get_user_by_id(user_id)
+    clean_message = body.message.strip()
+    if not clean_message:
+        raise AppError("support_message_empty", "Write a reply before sending it.", status=400)
+    message = db.add_support_message(
+        thread_id=thread_id,
+        author_type="teacher",
+        author_user_id=user_id,
+        author_name=(user or {}).get("name"),
+        author_email=(user or {}).get("email"),
+        body=clean_message,
+        source="app",
+    )
+    delivered = _send_support_email(
+        to=settings.support_email,
+        subject=f"FlexEd support — {thread['subject']}",
+        body=f"From: {(user or {}).get('name') or 'FlexEd teacher'} <{(user or {}).get('email') or 'unknown'}>\n\n{clean_message}",
+        reply_to=_support_reply_address(thread_id),
+    )
+    return {"thread": db.get_support_thread(user_id, thread_id), "message": message, "email_sent": delivered}
+
+
+@router.post("/support/threads/{thread_id}/read")
+def mark_support_thread_read(thread_id: str, user_id: str = Depends(get_current_user)):
+    if not db.mark_support_thread_read(user_id, thread_id):
+        raise AppError("support_thread_not_found", "That support conversation is no longer available.", status=404)
     return {"ok": True}
+
+
+@router.post("/support")
+@limiter.limit("5/hour")
+def send_support_message(request: Request, body: SupportMessageBody, user_id: str = Depends(get_current_user)):
+    """Compatibility endpoint for the original one-shot support composer."""
+    thread = _create_support_thread(user_id, body.subject, body.message)
+    return {"ok": True, "thread": thread, "email_sent": thread.get("email_sent", False)}
+
+
+@router.post("/support/inbound")
+async def receive_support_email(
+    request: Request,
+    x_support_webhook_secret: str | None = Header(default=None),
+):
+    """Import a provider webhook reply into the matching in-app thread.
+
+    Configure the provider to deliver mail sent to support+THREAD_ID@domain to
+    this endpoint and set SUPPORT_INBOUND_WEBHOOK_SECRET. The endpoint accepts
+    the common `from`, `to`, `text`, `html`, and `message_id` JSON fields.
+    """
+    configured = settings.support_inbound_webhook_secret
+    if not configured:
+        raise AppError("support_inbound_unconfigured", "Inbound support email is not configured.", status=503)
+    if not x_support_webhook_secret or not hmac.compare_digest(x_support_webhook_secret, configured):
+        raise AppError("support_inbound_unauthorized", "Invalid support email webhook signature.", status=401)
+    payload = await request.json()
+    recipients = payload.get("to") or payload.get("recipient") or ""
+    if isinstance(recipients, list):
+        recipients = recipients[0] if recipients else ""
+    match = re.search(r"support\+([a-f0-9]+)@", str(recipients), re.IGNORECASE)
+    sender = payload.get("from") or payload.get("sender") or "FlexEd support"
+    sender_email = sender.get("email") if isinstance(sender, dict) else str(sender)
+    sender_name = sender.get("name") if isinstance(sender, dict) else None
+    body = payload.get("text") or payload.get("text_body") or payload.get("body")
+    if not body and payload.get("html"):
+        body = re.sub(r"<[^>]+>", " ", str(payload["html"]))
+    if not str(body or "").strip():
+        raise AppError("support_message_empty", "The inbound support email did not contain any text.", status=400)
+    # There is no teacher session on an inbound email. Keep the lookup and
+    # insert inside a short, transaction-local RLS context that is reachable
+    # only after the shared webhook secret has been verified above.
+    with db.as_support_webhook():
+        thread = db.get_support_thread_by_id(match.group(1)) if match else None
+        if not thread:
+            raise AppError("support_thread_not_found", "No support thread matches that email address.", status=404)
+        message = db.add_support_message(
+            thread_id=thread["id"],
+            author_type="support",
+            author_user_id=None,
+            author_name=sender_name or "FlexEd support",
+            author_email=sender_email,
+            body=str(body).strip()[:5000],
+            source="email",
+            external_id=payload.get("message_id") or payload.get("id"),
+        )
+        user = db.get_user_by_id(thread["user_id"])
+    if user and user.get("email"):
+        _send_support_email(
+            to=user["email"],
+            subject=f"Re: {thread['subject']}",
+            body=f"FlexEd support replied to your message:\n\n{str(body).strip()}",
+            reply_to=_support_reply_address(thread["id"]),
+        )
+    return {"ok": True, "message": message}
 
 
 # ---------------------------------------------------------------------------

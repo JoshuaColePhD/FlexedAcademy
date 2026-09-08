@@ -24,10 +24,10 @@ const MAX_ATTACH_BATCH = 5
 // when you type," 2026-08-27). One shared string both className templates
 // below pull from, so there's no second copy left to silently diverge.
 // Keep the textarea's line box aligned with the shell's centered control row.
-// Equal vertical padding is intentional here: the row no longer has a
-// bottom-only action gutter, so the placeholder and typed text share the same
-// optical center instead of sitting a little high or low as the controls swap.
-const COMPOSER_TEXT_METRICS = 'px-0 py-3 text-[0.9375rem] leading-6'
+// A small optical nudge in the padding puts the text baseline on the same
+// visual center as the geometric center of the plus button. The total vertical
+// padding stays 24px, so the one-line field keeps the same measured height.
+const COMPOSER_TEXT_METRICS = 'px-0 pt-[0.9375rem] pb-[0.5625rem] text-[0.9375rem] leading-6'
 const COMPOSER_GHOST_METRICS = 'text-[0.9375rem] leading-6'
 const VOICE_DEVICE_STORAGE_KEY = 'flexedacademy.voice.inputDevice'
 
@@ -212,6 +212,38 @@ export function Composer({
   const [isAttaching, setIsAttaching] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
+  const [textareaHeight, setTextareaHeight] = useState(48)
+  const toolsMenuRef = useRef(null)
+  const toolsTriggerRef = useRef(null)
+  const fileInputRef = useRef(null)
+  useEffect(() => {
+    if (!toolsOpen) return undefined
+    const frame = requestAnimationFrame(() => toolsMenuRef.current?.querySelector('[role="menuitem"]:not(:disabled)')?.focus())
+    const dismiss = (event) => {
+      if (!toolsMenuRef.current?.contains(event.target)) setToolsOpen(false)
+    }
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setToolsOpen(false)
+        toolsTriggerRef.current?.focus()
+      }
+      if (!toolsMenuRef.current?.contains(event.target) || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+      const items = Array.from(toolsMenuRef.current.querySelectorAll('[role^="menuitem"]:not(:disabled), select'))
+      if (!items.length) return
+      event.preventDefault()
+      const current = items.indexOf(document.activeElement)
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+      items[next].focus()
+    }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      cancelAnimationFrame(frame)
+      document.removeEventListener('pointerdown', dismiss)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [toolsOpen])
   const [shake, setShake] = useState(false)
   const [motionState, setMotionState] = useState('')
   const motionTimerRef = useRef(null)
@@ -396,11 +428,10 @@ export function Composer({
   // rather than requiring a specific "prove it's stale" keystroke.
   const [dismissed, setDismissed] = useState(null)
   const isDismissed = dismissed && dismissed.key === suggestionKey && dismissed.value === value
-  // The suggestion is always an inline completion, including when the
-  // composer is empty. The real placeholder disappears while the ghost text
-  // is visible, so there is one sentence in the field and one interaction:
-  // press Tab to accept it, or keep typing to replace it.
-  const completion = activeSuggestion && !isDismissed
+  // Keep an empty field as a familiar message prompt. Suggestions become
+  // useful once a teacher begins a matching thought, where Tab completion
+  // reads as help rather than text that must be cleared before writing.
+  const completion = value.trim() && activeSuggestion && !isDismissed
     ? suggestionCompletion(value, activeSuggestion)
     : ''
 
@@ -434,6 +465,18 @@ export function Composer({
     if (focusOnMount) textareaRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Enter sends, but Shift+Enter promises a real new line. The previous
+  // fixed-height textarea silently clipped those extra lines. Let a draft
+  // grow to five lines; after that it scrolls inside the field.
+  useEffect(() => {
+    const input = textareaRef.current
+    if (!input) return
+    input.style.height = 'auto'
+    const nextHeight = Math.min(144, Math.max(48, input.scrollHeight))
+    input.style.height = `${nextHeight}px`
+    setTextareaHeight(nextHeight)
+  }, [value])
 
   const startRecording = async () => {
     if (isRecording || isTranscribing) return
@@ -715,6 +758,10 @@ export function Composer({
   // (aborting is a separate, still-available action), so this only changes
   // what Enter itself does — see onKeyDown below.
   const canSend = hasContent && !isRecording && !isTranscribing
+  // The right-side action is one control: an empty composer starts dictation,
+  // while a draft (or an attachment) sends. Keeping the decision here means
+  // the icon, label, disabled state, and click handler cannot drift apart.
+  const showSendAction = hasContent
 
   // canSend's own false→true edge — a scale-pop the instant the send
   // button actually becomes pressable, so "you can go now" isn't only a
@@ -798,10 +845,8 @@ export function Composer({
     }
   }
 
-  // The input surface is deliberately invariant: accessory panels and file
-  // chips live above it, while the textarea scrolls internally. This keeps a
-  // suggestion, a long draft, a clarification round, or a streaming state
-  // from changing the composer's outer shape under the teacher's cursor.
+  // Accessories and file chips live above the input. The field itself gets a
+  // little room for a multi-line thought, then scrolls internally.
   return (
     <div className="relative w-full">
       {voicePanel}
@@ -904,7 +949,8 @@ export function Composer({
       ) : null}
 
       <div
-        className={`composer-shell relative flex h-14 min-h-14 max-h-14 w-full flex-col border border-edge bg-paper-raised ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
+        className={`composer-shell relative flex min-h-14 w-full flex-col border border-edge bg-paper-raised ${textareaHeight > 48 ? 'is-expanded' : ''} ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
+        style={{ height: `${Math.max(56, textareaHeight + 8)}px`, maxHeight: '152px' }}
       >
         {isDragging ? createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/60 backdrop-blur-md">
@@ -921,7 +967,7 @@ export function Composer({
           document.body
         ) : null}
         <div
-          className={`relative flex h-14 min-h-14 items-center px-3 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
+          className={`composer-control-row relative flex min-h-14 ${textareaHeight > 48 ? 'is-expanded items-end' : 'items-center'} px-3 py-1 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
         >
           {/* Was hardcoded to "Describe the week you want to plan" — missed
               when `placeholder`/`sendLabel` below were made props specifically
@@ -940,182 +986,8 @@ export function Composer({
               composer space still reads as small and crowded on a phone;
               this makes the actual button that size instead of just its
               hit box. */}
-          {onPlan && !voiceModeActive && !isStreaming ? (
-            <button
-              type="button"
-              className="fa-press tap-target mr-1 flex h-11 shrink-0 items-center justify-center rounded-lg px-2.5 text-sm font-semibold text-accent transition-colors hover:bg-accent-tint md:h-9"
-              onClick={() => {
-                setToolsOpen(false)
-                onPlan(value)
-              }}
-              aria-label="Plan with guided questions"
-              title="Plan with guided questions"
-            >
-              Plan
-            </button>
-          ) : null}
-          <label
-            className="fa-press tap-target relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
-            htmlFor="composer-file"
-          >
-            {/* Same stacked-icon cross-fade the send button uses (below) —
-                was a hard swap straight to the spinner, the one task-state
-                change in this bar with no motion of its own. */}
-            <Paperclip
-              size={19}
-              className={`absolute transition-all duration-300 md:size-[18px] ${
-                isAttaching ? 'scale-50 -rotate-90 opacity-0' : 'scale-100 rotate-0 opacity-100'
-              }`}
-              aria-hidden="true"
-            />
-            <Loader2
-              size={19}
-              className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${
-                isAttaching ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
-              }`}
-              aria-hidden="true"
-            />
-            <span className="sr-only">Attach a PDF or text file</span>
-          </label>
-          <input
-            id="composer-file"
-            className="sr-only"
-            aria-label="Attach a PDF or text file"
-            type="file"
-            accept=".pdf,.txt,.md,.csv"
-            multiple
-            onChange={handleFile}
-            disabled={isAttaching}
-          />
-
-          <div
-            className={`relative min-w-0 flex-1 rounded-md ${motionState === 'accept' ? 'fa-input-flash' : ''}`}
-          >
-            <span className="sr-only" role="status" aria-live="polite">
-              {suggestionAnnouncement}
-            </span>
-            {completion ? (
-              <div
-                key={activeSuggestion?.id || 'none'}
-                aria-hidden="true"
-                // Keep the preview in the same centered, single-line row as
-                // the real input. Vertical padding here used to make the
-                // overlay's line box taller than the fixed composer and clip
-                // the bottom of long ghost text.
-                className={`composer-ghost-overlay pointer-events-none absolute inset-0 overflow-hidden ${COMPOSER_GHOST_METRICS}`}
-              >
-                <span className="composer-ghost-prefix text-ink">{value}</span>
-                <span className="composer-ghost shrink-0 animate-slide-in-right text-ink-faint">
-                  {completion}
-                </span>
-              </div>
-            ) : null}
-            <textarea
-              id="composer-input"
-              ref={textareaRef}
-              rows={1}
-              value={value}
-              /* Suppressed while the ghost-completion overlay above is showing a
-               * suggested prompt — that overlay already fills this space with its
-               * own text, and the native placeholder pseudo-element isn't covered
-               * by the textarea's text-transparent, so both rendered stacked on
-               * top of each other. */
-              placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
-              title="Enter to send · Shift+Enter for a new line"
-              aria-keyshortcuts="Tab, Escape, Enter"
-              /* COMPOSER_TEXT_METRICS (module scope, top of file), not each
-                 side hardcoding its own copy — that's what let the real
-                 textarea (py-2.5/text-sm) and the ghost-completion overlay
-                 above it (py-[0.9375rem]/text-[0.9375rem]) drift apart in
-                 the first place: a suggested prompt sat at a different
-                 size and vertical position than the real text that
-                 replaces it the instant you start typing (Josh's own "the
-                 text is not centered when you type," 2026-08-27). One
-                 constant now, so there's no second copy left to diverge.
-                 The input now remains one line tall and scrolls internally for
-                 a multiline draft. The shared COMPOSER_TEXT_METRICS keeps the
-                 ghost preview and real draft on the same line-height and
-                 padding so they never jump when typing starts. */
-              className={`composer-input h-12 min-h-12 max-h-12 w-full resize-none overflow-x-auto overflow-y-hidden whitespace-nowrap border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted transition-[color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
-              onChange={(e) => onChange(e.target.value)}
-              onKeyDown={onKeyDown}
-              disabled={isRecording || isTranscribing}
-            />
-          </div>
-
-          {/* gap-1.5, not gap-1 — at 44px buttons the tighter gap read as
-              the icons overlapping their own tap targets. md:gap-1 restores
-              the denser desktop spacing these were tuned for.
-              Always a row, never stacked — this used to be flex-col below
-              sm, on the theory that stacking left the Send button less
-              crowded. In practice it made the whole composer noticeably
-              taller on a phone (two 44px buttons stacked is a ~94px column)
-              for a bar that reads as a single-line input everywhere else in
-              the app, and stacking the dictate mic above the voice-mode
-              button read as two disconnected controls rather than one
-              cluster. A row keeps the bar's height constant regardless of
-              which button is showing. */}
-          <div className="relative flex shrink-0 flex-row items-center gap-1.5 md:gap-1">
-            {/* One persistent button now, not three swapped in and out —
-                a swapped-out button unmounts outright, so nothing about a
-                plain CSS transition could ever animate THAT change; only an
-                icon morphing in place on the same element can. Same stacked
-                cross-fade as the send button below, across all three of
-                this control's states instead of just two. */}
-            <button
-              type="button"
-              className={`tap-target relative flex h-11 w-11 items-center justify-center rounded-lg transition-colors md:h-9 md:w-9 ${
-                isRecording
-                  ? /* fa-listening: the tinted background already says
-                       "recording is on," a fact — this ring says the mic is
-                       live RIGHT NOW, an ongoing one, the way a hardware
-                       recording light doesn't just switch on but keeps
-                       pulsing for as long as it's true. */
-                    'fa-listening text-mark hover:bg-mark-tint'
-                  : 'text-ink-muted hover:bg-paper-sunken hover:text-ink disabled:opacity-50'
-              }`}
-              onClick={isTranscribing ? undefined : isRecording ? stopRecording : startRecording}
-              disabled={isTranscribing || (!isRecording && (isStreaming || voiceModeActive))}
-              aria-label={
-                isTranscribing
-                  ? 'Transcribing'
-                  : isRecording
-                    ? 'Stop recording'
-                    : voiceModeActive
-                      ? 'Dictate (already listening in voice mode)'
-                      : 'Dictate'
-              }
-              title={
-                !isRecording && !isTranscribing && voiceModeActive
-                  ? "Already listening — it's transcribing straight into the chat"
-                  : undefined
-              }
-            >
-              <Mic
-                size={19}
-                className={`absolute transition-all duration-300 md:size-[18px] ${
-                  !isRecording && !isTranscribing ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
-                }`}
-                aria-hidden="true"
-              />
-              <Square
-                size={17}
-                className={`absolute transition-all duration-300 md:size-4 ${
-                  isRecording ? 'scale-100 rotate-0 opacity-100' : 'scale-50 rotate-90 opacity-0'
-                }`}
-                fill="currentColor"
-                aria-hidden="true"
-              />
-              <Loader2
-                size={19}
-                className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${
-                  isTranscribing ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
-                }`}
-                aria-hidden="true"
-              />
-            </button>
-
-            {(onOpenVoice || onModeChange) && !voiceModeActive && !isStreaming ? (
+          <div ref={toolsMenuRef} className="composer-accessories relative shrink-0" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setToolsOpen(false) }}>
+            {!voiceModeActive ? (
               <button
                 type="button"
                 className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9 ${toolsOpen ? 'bg-paper-sunken text-ink' : ''}`}
@@ -1123,13 +995,18 @@ export function Composer({
                 aria-label="More composer actions"
                 aria-expanded={toolsOpen}
                 aria-haspopup="menu"
+                ref={toolsTriggerRef}
               >
                 <Plus size={19} className={`transition-transform duration-200 md:size-[18px] ${toolsOpen ? 'rotate-45' : ''}`} aria-hidden="true" />
               </button>
             ) : null}
             {toolsOpen ? (
-              <div className="composer-tools-menu" role="menu">
-              {onModeChange ? (
+              <div className="composer-tools-menu" role="menu" aria-label="Composer actions">
+                <button type="button" role="menuitem" className="composer-tools-item fa-press" disabled={isAttaching} onClick={() => { setToolsOpen(false); fileInputRef.current?.click() }}>
+                  {isAttaching ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Paperclip size={16} aria-hidden="true" />}<span>Attach a file</span>
+                </button>
+                {onPlan && !isStreaming ? <button type="button" role="menuitem" className="composer-tools-item fa-press" onClick={() => { setToolsOpen(false); onPlan(value) }}><Plus size={16} aria-hidden="true" /><span>Plan with guided questions</span></button> : null}
+              {onModeChange && !isStreaming ? (
                 <div className="border-b border-edge px-2 py-2" role="group" aria-label="Conversation mode">
                     <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Mode</p>
                     {modeOptions.map((option) => (
@@ -1179,7 +1056,7 @@ export function Composer({
                     </select>
                   </div>
                 ) : null}
-                {onOpenVoice ? (
+                {onOpenVoice && !isStreaming ? (
                 <button
                   type="button"
                   role="menuitem"
@@ -1196,21 +1073,159 @@ export function Composer({
                 ) : null}
               </div>
             ) : null}
+          </div>
+          <input
+            ref={fileInputRef}
+            id="composer-file"
+            tabIndex={-1}
+            className="sr-only"
+            aria-label="Attach a PDF or text file"
+            type="file"
+            accept=".pdf,.txt,.md,.csv"
+            multiple
+            onChange={handleFile}
+            disabled={isAttaching}
+          />
+
+          <div
+            className={`relative min-w-0 flex-1 rounded-md ${motionState === 'accept' ? 'fa-input-flash' : ''}`}
+          >
+            <span className="sr-only" role="status" aria-live="polite">
+              {suggestionAnnouncement}
+            </span>
+            <span id="composer-keyboard-hint" className="sr-only">
+              Press Enter to send. Press Shift+Enter for a new line.
+            </span>
+            {completion ? (
+              <div
+                key={activeSuggestion?.id || 'none'}
+                aria-hidden="true"
+                // Keep the preview in the same centered, single-line row as
+                // the real input. Vertical padding here used to make the
+                // overlay's line box taller than the fixed composer and clip
+                // the bottom of long ghost text.
+                className={`composer-ghost-overlay pointer-events-none absolute inset-0 overflow-hidden ${COMPOSER_GHOST_METRICS}`}
+              >
+                <span className="composer-ghost-prefix text-ink">{value}</span>
+                <span className="composer-ghost shrink-0 animate-slide-in-right text-ink-faint">
+                  {completion}
+                </span>
+              </div>
+            ) : null}
+            <textarea
+              id="composer-input"
+              ref={textareaRef}
+              rows={1}
+              value={value}
+              /* Suppressed while the ghost-completion overlay above is showing a
+               * suggested prompt — that overlay already fills this space with its
+               * own text, and the native placeholder pseudo-element isn't covered
+               * by the textarea's text-transparent, so both rendered stacked on
+               * top of each other. */
+              placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
+              title="Enter to send · Shift+Enter for a new line"
+              aria-keyshortcuts="Tab, Escape, Enter"
+              aria-describedby="composer-keyboard-hint"
+              /* COMPOSER_TEXT_METRICS (module scope, top of file), not each
+                 side hardcoding its own copy — that's what let the real
+                 textarea (py-2.5/text-sm) and the ghost-completion overlay
+                 above it (py-[0.9375rem]/text-[0.9375rem]) drift apart in
+                 the first place: a suggested prompt sat at a different
+                 size and vertical position than the real text that
+                 replaces it the instant you start typing (Josh's own "the
+                 text is not centered when you type," 2026-08-27). One
+                 constant now, so there's no second copy left to diverge.
+                 The input now remains one line tall and scrolls internally for
+                 a multiline draft. The shared COMPOSER_TEXT_METRICS keeps the
+                 ghost preview and real draft on the same line-height and
+                 padding so they never jump when typing starts. */
+              className={`composer-input min-h-12 max-h-36 w-full resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted transition-[color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={onKeyDown}
+              disabled={isRecording || isTranscribing}
+            />
+          </div>
+
+          {/* One right-side action keeps the composer quiet: an empty field
+              offers dictation, and the moment a draft exists it morphs into
+              send. Recording, transcription, and streaming still take over
+              the same control without shifting the composer layout. */}
+          <div className="composer-action-cluster relative flex shrink-0 flex-row items-center">
             <button
               type="button"
-              className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-8 md:w-8 ${
-                  isStreaming && onStop ? 'bg-mark-tint text-mark hover:shadow-sm'
-                  : isStreaming ? 'bg-transparent text-ink-muted'
-                  : canSend ? 'bg-accent text-accent-on hover:bg-accent-hover'
-                  : 'cursor-not-allowed bg-paper-inset text-ink-faint'
-                } ${motionState === 'submit' ? 'fa-settle' : motionState === 'ready' ? 'fa-ready-pop' : ''}`}
-              onClick={isStreaming && onStop ? onStop : isStreaming ? undefined : submit}
-              disabled={(!canSend && !isStreaming) || (isStreaming && !onStop)}
-              aria-label={isStreaming && onStop ? "Stop generating" : sendLabel}
+              className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-9 md:w-9 ${
+                isRecording
+                  ? 'fa-listening bg-mark text-white hover:bg-mark/90'
+                  : isStreaming && onStop
+                    ? 'bg-mark-tint text-mark hover:shadow-sm'
+                    : isStreaming
+                      ? 'bg-transparent text-ink-muted'
+                      : showSendAction
+                        ? 'bg-accent text-accent-on hover:bg-accent-hover'
+                        : 'bg-mark text-white hover:bg-mark/90 disabled:opacity-50'
+              } ${motionState === 'submit' ? 'fa-settle' : motionState === 'ready' ? 'fa-ready-pop' : ''}`}
+              onClick={
+                isStreaming && onStop
+                  ? onStop
+                  : isStreaming || isTranscribing
+                    ? undefined
+                    : isRecording
+                      ? stopRecording
+                      : showSendAction
+                        ? submit
+                        : startRecording
+              }
+              disabled={
+                isTranscribing
+                || (isStreaming && !onStop)
+                || (!isRecording && !showSendAction && voiceModeActive)
+                || (!isStreaming && showSendAction && !canSend)
+              }
+              aria-label={
+                isStreaming && onStop
+                  ? 'Stop generating'
+                  : isTranscribing
+                    ? 'Transcribing'
+                    : isRecording
+                      ? 'Stop recording'
+                      : showSendAction
+                        ? sendLabel
+                        : voiceModeActive
+                          ? 'Dictate (already listening in voice mode)'
+                          : 'Dictate'
+              }
+              title={!isRecording && !isTranscribing && !showSendAction && voiceModeActive ? "Already listening — it's transcribing straight into the chat" : undefined}
             >
-              <ArrowUp size={19} className={`absolute transition-all duration-300 md:size-[18px] ${isStreaming ? 'scale-50 opacity-0 rotate-90' : 'scale-100 opacity-100 rotate-0'}`} strokeWidth={3} aria-hidden="true" />
-              <Loader2 size={20} className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${isStreaming && !onStop ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`} aria-hidden="true" />
-              <Square size={15} className={`absolute transition-all duration-300 md:size-3.5 ${isStreaming && onStop ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`} fill="currentColor" aria-hidden="true" />
+              <Mic
+                size={19}
+                className={`absolute transition-all duration-300 md:size-[18px] ${
+                  !isRecording && !isTranscribing && !isStreaming && !showSendAction ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
+                }`}
+                aria-hidden="true"
+              />
+              <ArrowUp
+                size={19}
+                className={`absolute transition-all duration-300 md:size-[18px] ${
+                  !isRecording && !isTranscribing && !isStreaming && showSendAction ? 'scale-100 rotate-0 opacity-100' : 'scale-50 rotate-90 opacity-0'
+                }`}
+                strokeWidth={3}
+                aria-hidden="true"
+              />
+              <Loader2
+                size={20}
+                className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${
+                  isTranscribing || (isStreaming && !onStop) ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
+                }`}
+                aria-hidden="true"
+              />
+              <Square
+                size={15}
+                className={`absolute transition-all duration-300 md:size-3.5 ${
+                  isRecording || (isStreaming && onStop) ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
+                }`}
+                fill="currentColor"
+                aria-hidden="true"
+              />
             </button>
           </div>
         </div>

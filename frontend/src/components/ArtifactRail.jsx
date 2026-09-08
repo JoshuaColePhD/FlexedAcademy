@@ -3,26 +3,20 @@ import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
-  BookOpen,
-  Calendar,
   ChevronDown,
   ChevronRight,
   Download,
-  ExternalLink,
   FileText,
-  HardDrive,
   ListChecks,
   Loader2,
+  X,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
-import { scanGrounding } from '../lib/grounding'
-import { orderedDays, unitSuffix } from '../lib/planShape'
+import { unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { shortDateTime } from '../lib/dates'
-import { KIND_LABEL } from './documentKinds'
 import { ShareDialog } from './ShareDialog'
 import { DocxDownloadButton } from './DocxDownloadButton'
 
@@ -32,14 +26,13 @@ const RailGroup = ({ title, headerTitle = title, isBar, children }) => {
   }
   return (
     <section className="mb-3 overflow-hidden rounded-xl border border-edge bg-paper-raised shadow-sm" aria-label={title}>
-      <div className="border-b border-edge bg-paper px-3 py-2.5">
+      <div className="border-b border-edge bg-transparent px-3 py-2.5">
       <span className="text-sm font-semibold text-ink">{headerTitle}</span>
       </div>
       <div className="rail-group border-none bg-transparent p-1">{children}</div>
     </section>
   )
 }
-import { WeekStrip } from './WeekStrip'
 import { useToast } from '../lib/toastContext'
 
 
@@ -246,13 +239,6 @@ export function ArtifactRail({
   // isBar: the phone bar never renders the rows these belong to at all, so
   // there's nothing there to wire up.
   onOpenQuiz,
-  onOpenStandards,
-  onOpenCalendar,
-  onOpenDocument,
-  // Drops a starter prompt into the composer — see AccordionSkeleton, the
-  // empty-rail state before any plan exists for this chat. Optional: when
-  // omitted the skeleton falls back to its old inert-preview rendering.
-  onSuggestPrompt,
   // True only when a plan is KNOWN to exist for this chat (a message or
   // the plans table named its id) and fetching it failed — see ChatPage's
   // own reload effect. Distinct from "nothing built yet," the plain
@@ -291,46 +277,11 @@ export function ArtifactRail({
   const isBar = variant === 'bar'
   const color = classColor(classId)
 
-  /* Already fetched by ClassPage under the same key, so opening a chat after
-     visiting My Classes costs nothing. Best-effort: a class with no uploaded
-     documents is the common case, not an error. */
-  const { data: documents = [] } = useQuery({
-    queryKey: qk.classDocuments(classId),
-    queryFn: () => api.listClassDocuments(classId),
-    // The bar does not render this group, so it does not fetch it.
-    enabled: Boolean(classId) && !isBar,
-    retry: false,
-    staleTime: 5 * 60_000,
-  })
-  const { data: driveStatus } = useQuery({
-    queryKey: qk.driveStatus,
-    queryFn: () => api.driveStatus(),
-    enabled: Boolean(classId) && !isBar,
-    retry: false,
-    staleTime: 60_000,
-  })
-
-  const retrieved = artifact?.grounding?.codes || artifact?.retrievedIds || []
-  const { grounded, checking } = scanGrounding(plan, retrieved)
-
-  /* The calendar's contribution to this week, read off the plan the calendar
-     shaped — backend/schoolcal.py is what put the no_school flags there. */
-  const closed = plan?.days?.length
-    ? orderedDays(plan, 'no_school')
-        .filter((d) => d.no_school)
-        .map((d) => d.name)
-    : []
-  const teachingDays = 5 - closed.length
-
   return (
-    <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Plan workspace">
+    <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Outputs">
       <div className={isBar ? 'artifact-rail-bar-content' : 'artifact-rail-scroll'}>
       {planId || busy || artifactLoadError ? (
-        <RailGroup
-          title="Outputs"
-          headerTitle={plan?.week_of || 'Outputs'}
-          isBar={isBar}
-        >
+        <RailGroup title="Lesson plans" isBar={isBar}>
           {planId ? (
           /* Reading is the primary action. The full content area is one real
              button, while download remains its separate, unambiguous sibling
@@ -402,77 +353,9 @@ export function ArtifactRail({
           </div>
         ) : null}
         </RailGroup>
-      ) : (
-        <AccordionSkeleton color={color} onSuggestPrompt={onSuggestPrompt} />
-      )}
-
-      {/* The day-by-day breakdown belongs directly after the current plan:
-          it answers "what happens this week?" before a teacher opens source
-          material or secondary deliverables. */}
-      {!isBar && (planId ? plan?.days?.length : busy) ? (
-        <RailGroup title="This week" isBar={isBar}>
-          <WeekStrip days={plan?.days} writing={!planId} loose />
-        </RailGroup>
       ) : null}
-
-      {planId && !isBar ? (
-        <RailGroup title="Sources used" isBar={isBar}>
-
-          <RailRow
-            index={0}
-            icon={Calendar}
-            label="School calendar"
-            sub={
-              closed.length
-                ? `${closed.join(', ')} · no school`
-                : `${teachingDays} teaching days`
-            }
-            title="The plan's no-school days come from the school calendar"
-            onClick={onOpenCalendar}
-          />
-
-          {documents.map((doc, i) => (
-            <RailRow
-              key={doc.id}
-              index={i + 1}
-              icon={FileText}
-              label={KIND_LABEL[doc.kind] || doc.kind?.replace(/_/g, ' ') || 'Course document'}
-              sub={doc.original_name}
-              title={doc.original_name}
-              onClick={onOpenDocument ? () => onOpenDocument(doc) : undefined}
-            />
-          ))}
-
-          <RailRow
-            index={documents.length + 1}
-            icon={BookOpen}
-            label={
-              checking
-                ? `${grounded.length} standard${grounded.length === 1 ? '' : 's'}`
-                : 'Standards'
-            }
-            sub="Standards library"
-            // Capped rather than the full list: a plan citing a few dozen
-            // standards turned this into one giant, unwrapped tooltip line.
-            // Click-through to the Standards row itself is still the real
-            // answer for "show me all of them."
-            title={
-              checking
-                ? grounded.length > 8
-                  ? `${grounded.slice(0, 8).join(', ')}, and ${grounded.length - 8} more`
-                  : grounded.join(', ')
-                : undefined
-            }
-            onClick={onOpenStandards}
-          />
-        </RailGroup>
-      ) : null}
-
-      {/* Quizzes are secondary deliverables, so keep them after the plan's
-          week and source context rather than mixing them into the materials
-          the plan depends on. */}
       {quizBuilding || quizzes.length > 0 ? (
-        <RailGroup title="Deliverables" isBar={isBar}>
+        <RailGroup title="Assessments" isBar={isBar}>
           {quizBuilding ? (
             <div className="rail-row fa-rise">
               <span className="rail-row-tile">
@@ -499,30 +382,13 @@ export function ArtifactRail({
             />
           ) : null}
         </RailGroup>
-      ) : null}
+      ) : (
+        !planId && !busy && !artifactLoadError ? (
+          <p className="rail-empty px-2 py-3 text-sm text-ink-muted">Outputs from this chat will appear here.</p>
+        ) : null
+      )}
 
       </div>
-      {!isBar ? (
-        <RailGroup title="Context" isBar={isBar}>
-          <div className="rail-context-label">Connectors</div>
-          <Link
-            to={`/c/${classId}/settings`}
-            className="rail-connector-row"
-            title="Manage Google Drive in settings"
-          >
-            <span className="rail-row-tile rail-connector-tile">
-              <HardDrive size={14} aria-hidden="true" />
-            </span>
-            <span className="rail-text">
-              <span className="rail-row-label">Google Drive</span>
-              <span className="rail-sub">
-                {driveStatus?.connected ? 'Connected' : 'Connect in settings'}
-              </span>
-            </span>
-            <ExternalLink size={13} aria-hidden="true" className="rail-connector-arrow" />
-          </Link>
-        </RailGroup>
-      ) : null}
 
       <ShareDialog
         open={!!shareTarget}
@@ -550,96 +416,20 @@ export function ArtifactRail({
  * the affordance, matching the reference inspector. `open` is still owned by
  * ChatPage so the panel can be hidden while a document overlay is active.
  */
-export function ArtifactDrawer({ open, hasArtifact, busy, ...railProps }) {
+export function ArtifactDrawer({ open, onClose, hasArtifact, busy, ...railProps }) {
   if (!open) return null
 
   return (
     // glass-panel + rounded-2xl, same treatment as the left nav rail's own
     // outer wrapper (AppShell.jsx's .app-rail) and the chat pane itself.
     <div id="artifacts-panel" className={`artifact-drawer glass-panel rounded-2xl shadow-sm overflow-hidden${open ? ' is-open' : ''}`}>
+      <div className="artifact-drawer-heading">
+        <span>Outputs</span>
+        <button type="button" className="btn-icon" onClick={onClose} aria-label="Close workspace" title="Close workspace"><X size={18} aria-hidden="true" /></button>
+      </div>
       <div className="artifact-drawer-body h-full">
         <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
       </div>
     </div>
   )
-}
-
-
-/* Was three inert preview cards ("...will appear here"), permanently
- * opacity-60/pointer-events-none — pure description of what the rail would
- * eventually hold, nothing to act on before that. Now three parallel
- * invitations instead: each drops a starter prompt into the composer (via
- * onSuggestPrompt, ChatPage's setQuery + refocus) so a teacher looking at an
- * empty rail has something to click rather than something to wait out.
- *
- * Deliberately NOT the checklist-with-checkmarks pattern (numbered,
- * sequential, permanently completed) — these three aren't one-time
- * onboarding milestones, they're three concurrent facets of THIS week's
- * plan that get rebuilt every week. A checkmark here would still read
- * "done" next week before anything for that week exists. */
-const STARTER_CARDS = [
-  {
-    icon: Calendar,
-    title: 'Week Overview',
-    desc: "Core objectives, daily breakdown, and standards for this week.",
-    prompt: "Build this week's lesson plan.",
-  },
-  {
-    icon: FileText,
-    title: 'Materials & Resources',
-    desc: 'Worksheets, reading texts, and slide decks generated for this plan.',
-    prompt: 'Generate the worksheets and materials for this week.',
-  },
-  {
-    icon: ListChecks,
-    title: 'Assessments',
-    desc: "Quizzes, rubrics, and exit tickets tied to this week's instruction.",
-    prompt: 'Build a quiz for this week.',
-  },
-]
-
-function AccordionSkeleton({ color, onSuggestPrompt }) {
-  const interactive = Boolean(onSuggestPrompt)
-  return (
-    <div className="flex flex-col gap-4 p-4 w-full">
-      {STARTER_CARDS.map((card, i) => {
-        const Icon = card.icon
-        const Wrapper = interactive ? motion.button : motion.div
-        return (
-          <Wrapper
-            key={card.title}
-            type={interactive ? 'button' : undefined}
-            className={`bg-paper-sunken border border-edge rounded-2xl p-5 flex flex-col gap-3 text-left w-full${
-              interactive ? ' rail-starter-card fa-press' : ''
-            }`}
-            onClick={interactive ? () => onSuggestPrompt(card.prompt) : undefined}
-            title={interactive ? `Ask: “${card.prompt}”` : undefined}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.06 }}
-          >
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <span
-                  className="rail-tile"
-                  style={{ background: `rgb(${color.rgb} / 0.16)`, color: `rgb(${color.rgb})` }}
-                >
-                  <Icon size={14} aria-hidden="true" />
-                </span>
-                <span className="text-[13px] font-semibold text-ink">{card.title}</span>
-              </span>
-              {interactive ? (
-                <ChevronRight size={14} className="text-ink-muted" aria-hidden="true" />
-              ) : (
-                <ChevronDown size={14} className="text-ink-muted" aria-hidden="true" />
-              )}
-            </div>
-            <p className="text-[12px] text-ink-muted/90 leading-relaxed pr-4">
-              {card.desc}
-            </p>
-          </Wrapper>
-        )
-      })}
-    </div>
-  );
 }

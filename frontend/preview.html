@@ -43,7 +43,8 @@
     <!-- Set the theme before first paint so a dark-mode load doesn't flash white. -->
     <script>
       try {
-        var saved = localStorage.getItem('aplang.theme') || 'system'
+        var saved = localStorage.getItem('aplang.theme') || 'dark'
+        if (!['light', 'dark', 'system'].includes(saved)) saved = 'dark'
         var dark =
           saved === 'dark' ||
           (saved === 'system' &&
@@ -53,9 +54,9 @@
         // Literal hex because a meta tag can't read a custom property; these are
         // the two --paper-rgb values in tokens.css.
         var tc = document.querySelector('meta[name="theme-color"]')
-        if (tc) tc.setAttribute('content', dark ? '#171719' : '#f7f7f8')
+        if (tc) tc.setAttribute('content', dark ? '#232323' : '#f7f7f8')
       } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'light')
+        document.documentElement.setAttribute('data-theme', 'dark')
       }
     </script>
   </head>
